@@ -1013,4 +1013,3 @@ TEST_F(SubscriberTest, TestCommandBatchInvalidArgumentStatusIsFatal) {
 }  // namespace pubsub
 
 }  // namespace ray
-

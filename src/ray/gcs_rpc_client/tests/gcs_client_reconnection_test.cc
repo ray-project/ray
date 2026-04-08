@@ -423,4 +423,3 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   ASSERT_TRUE(client->InternalKV().Keys("", "A", rpc::GetGcsTimeoutMs(), values).ok());
   ASSERT_EQ(std::vector<std::string>{"A"}, values);
 }
-

@@ -1517,4 +1517,3 @@ TEST_F(PublisherTest, TestMaxMessageSize) {
 }  // namespace pubsub
 
 }  // namespace ray
-

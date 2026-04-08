@@ -546,4 +546,3 @@ TEST_F(ObjectRecoveryManagerTest, TestTaskCancelledReconstructionFails) {
 
 }  // namespace core
 }  // namespace ray
-

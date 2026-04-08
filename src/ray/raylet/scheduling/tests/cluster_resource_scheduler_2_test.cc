@@ -298,4 +298,3 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
 }
 
 }  // namespace ray
-

@@ -846,4 +846,3 @@ TEST_F(SchedulingPolicyTest, GpuDomainSchedulingInfeasibleTest) {
   ASSERT_TRUE(result.status.IsInfeasible());
   ASSERT_FALSE(result.selected_label_domain.has_value());
 }
-

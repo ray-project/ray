@@ -773,4 +773,3 @@ TEST_F(EventTest, VerifyOnlyNthOccurenceEventLogged) {
 }
 
 }  // namespace ray
-

@@ -105,4 +105,3 @@ TEST(FiberStateTest, DoubleStopJoin) {
 
 }  // namespace core
 }  // namespace ray
-

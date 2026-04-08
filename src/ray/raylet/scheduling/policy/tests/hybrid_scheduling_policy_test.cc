@@ -146,4 +146,3 @@ TEST_F(HybridSchedulingPolicyTest, GetBestNodePrioritizePreferredNode) {
                                  /*preferred_node_score*/ 0));
   }
 }
-

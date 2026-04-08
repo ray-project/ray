@@ -103,4 +103,3 @@ TEST(OutofOrderActorSubmitQueueTest, PassThroughTest) {
 
 }  // namespace core
 }  // namespace ray
-

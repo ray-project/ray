@@ -528,4 +528,3 @@ TEST_F(CreateRequestQueueTest, TestFallbackAllocationFailled) {
 }
 
 }  // namespace plasma
-

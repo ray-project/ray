@@ -395,4 +395,3 @@ TEST_F(ActorManagerTest, TestNamedActorIsKilledBeforeSubscribeFinished) {
 
 }  // namespace core
 }  // namespace ray
-

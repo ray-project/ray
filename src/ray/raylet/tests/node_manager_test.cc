@@ -1539,4 +1539,3 @@ INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
                          ::testing::Bool());
 
 }  // namespace ray::raylet
-

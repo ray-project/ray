@@ -626,4 +626,3 @@ TEST_F(LocalLeaseManagerTest, TestNodeBusyWhenPullingTaskArguments) {
   ASSERT_EQ(scheduler_->GetLocalResourceManager().IsLocalNodeIdle(), false);
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 0);
 }
-

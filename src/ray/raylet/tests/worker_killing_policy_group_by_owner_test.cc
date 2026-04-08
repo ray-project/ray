@@ -308,4 +308,3 @@ TEST_F(WorkerKillingGroupByOwnerTest, TestKillingWorkerWithNoLeaseIfMemoryExceed
 }  // namespace raylet
 
 }  // namespace ray
-

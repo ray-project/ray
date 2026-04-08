@@ -99,4 +99,3 @@ TEST(SignalTest, SIGILL_Test) {
 
 #endif  // !_WIN32
 }  // namespace ray
-

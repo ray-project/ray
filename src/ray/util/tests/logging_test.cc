@@ -380,4 +380,3 @@ TEST(PrintLogTest, TestFailureSignalHandler) {
 }
 
 }  // namespace ray
-

@@ -658,4 +658,3 @@ TEST(MutableObjectTest, TestMutableObjectManagerDestruct) {
 
 }  // namespace experimental
 }  // namespace ray
-

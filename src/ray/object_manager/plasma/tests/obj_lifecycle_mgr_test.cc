@@ -349,4 +349,3 @@ TEST_F(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion) {
   EXPECT_EQ(expect_notified_ids, notify_deleted_ids_);
 }
 }  // namespace plasma
-

@@ -679,4 +679,3 @@ TEST(RuntimeEnvAgentClientTest, HoldsConcurrency) {
 }
 
 }  // namespace ray
-

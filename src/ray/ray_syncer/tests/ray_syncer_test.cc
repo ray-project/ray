@@ -1269,4 +1269,3 @@ TEST_F(SyncerAuthenticationTest, ClientHasTokenServerDoesNotRequire) {
 
 }  // namespace syncer
 }  // namespace ray
-

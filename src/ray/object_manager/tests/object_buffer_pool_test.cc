@@ -141,4 +141,3 @@ TEST_F(ObjectBufferPoolTest, TestSizeMismatch) {
 }
 
 }  // namespace ray
-

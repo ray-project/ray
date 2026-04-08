@@ -401,4 +401,3 @@ TEST_F(AuthenticationTokenLoaderTest, TestJWTExpiration) {
 
 }  // namespace rpc
 }  // namespace ray
-

@@ -113,4 +113,3 @@ TEST_F(AuthenticationTokenTest, TestEmptyString) {
 }
 }  // namespace rpc
 }  // namespace ray
-

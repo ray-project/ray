@@ -132,4 +132,3 @@ TEST_F(CounterMapTest, TestIterate) {
 }
 
 }  // namespace ray
-

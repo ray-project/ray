@@ -435,4 +435,3 @@ TEST(StringAllocationTest, TestCopyWhenPassByPointer) {
   EXPECT_NE(allocation_address, address.node_id().c_str());
 }
 }  // namespace ray
-

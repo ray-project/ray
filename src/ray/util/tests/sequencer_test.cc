@@ -48,4 +48,3 @@ TEST(SequencerTest, ExecuteOrderedTest) {
 }
 
 }  // namespace ray
-

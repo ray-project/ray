@@ -273,4 +273,3 @@ TEST_F(WorkerKillingPolicyByTimeTest,
 }  // namespace raylet
 
 }  // namespace ray
-

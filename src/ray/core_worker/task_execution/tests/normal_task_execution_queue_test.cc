@@ -82,4 +82,3 @@ TEST(NormalTaskExecutionQueueTest, StopCancelsQueuedTasks) {
 
 }  // namespace core
 }  // namespace ray
-

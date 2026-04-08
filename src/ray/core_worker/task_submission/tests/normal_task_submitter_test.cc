@@ -1967,4 +1967,3 @@ TEST(LeaseRequestRateLimiterTest, ClusterSizeBasedLeaseRequestRateLimiter) {
 
 }  // namespace core
 }  // namespace ray
-

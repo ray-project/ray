@@ -75,4 +75,3 @@ TEST_F(ActorCreatorTest, AsyncWaitForFinish) {
 
 }  // namespace core
 }  // namespace ray
-

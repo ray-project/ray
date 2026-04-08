@@ -325,4 +325,3 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
 }
 
 }  // namespace ray
-

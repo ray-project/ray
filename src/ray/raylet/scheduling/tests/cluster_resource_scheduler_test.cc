@@ -2449,4 +2449,3 @@ TEST_F(ClusterResourceSchedulerTest, FallbackReturnsNilForGCSIfAllNodesUnavailab
 }
 
 }  // namespace ray
-

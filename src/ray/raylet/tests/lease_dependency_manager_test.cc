@@ -421,4 +421,3 @@ TEST_F(LeaseDependencyManagerTest, TestRemoveLeaseDependenciesBeforeLocal) {
 }  // namespace raylet
 
 }  // namespace ray
-

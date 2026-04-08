@@ -1287,4 +1287,3 @@ INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests,
                                          BundlePriority::WAIT_REQUEST,
                                          BundlePriority::TASK_ARGS));
 }  // namespace ray
-

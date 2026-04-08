@@ -2535,4 +2535,3 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
 }
 
 }  // namespace ray::raylet
-

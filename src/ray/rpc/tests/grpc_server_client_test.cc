@@ -253,4 +253,3 @@ TEST_F(TestGrpcServerClientFixture, TestTimeoutMacro) {
 
 }  // namespace rpc
 }  // namespace ray
-

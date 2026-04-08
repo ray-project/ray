@@ -395,4 +395,3 @@ INSTANTIATE_TEST_SUITE_P(RedisRemovalTest,
                          ::testing::Values(false, true));
 
 }  // namespace ray
-

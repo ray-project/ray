@@ -310,4 +310,3 @@ TEST(TestPushManager, TestNodeRemoved) {
 }
 
 }  // namespace ray
-

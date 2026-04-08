@@ -1089,4 +1089,3 @@ TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {
 }
 
 }  // namespace ray
-

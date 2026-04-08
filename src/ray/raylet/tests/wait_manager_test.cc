@@ -141,4 +141,3 @@ TEST_F(WaitManagerTest, TestWaitTimeout) {
 
 }  // namespace raylet
 }  // namespace ray
-

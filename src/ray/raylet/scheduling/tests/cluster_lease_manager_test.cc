@@ -3369,4 +3369,3 @@ TEST_F(ClusterLeaseManagerTestWithoutCPUsAtHead, OneCpuInfeasibleLease) {
     ASSERT_TRUE(one_cpu_found);
   }
 }
-

@@ -344,4 +344,3 @@ TEST_F(PythonGcsSubscriberAuthTest, MultipleSubscribersMatchingTokens) {
 
 }  // namespace pubsub
 }  // namespace ray
-

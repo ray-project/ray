@@ -83,4 +83,3 @@ TEST(ConcurrencyGroupManagerTest, TestInitializeThreadCallback) {
 
 }  // namespace core
 }  // namespace ray
-

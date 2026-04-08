@@ -143,4 +143,3 @@ TEST(ContainerUtilTest, TestEraseIf) {
 }
 
 }  // namespace ray
-

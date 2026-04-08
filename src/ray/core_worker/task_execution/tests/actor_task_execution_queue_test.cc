@@ -804,4 +804,3 @@ TEST(UnorderedActorTaskExecutionQueueTest, TestSameTaskMultipleAttemptsCancellat
 
 }  // namespace core
 }  // namespace ray
-

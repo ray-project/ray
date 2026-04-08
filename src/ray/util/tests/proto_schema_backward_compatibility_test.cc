@@ -84,4 +84,3 @@ TEST_F(ProtoSchemaTest, TestActorDeathCauseBackwardCompatibility) {
 }
 
 }  // namespace ray
-

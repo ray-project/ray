@@ -215,4 +215,3 @@ TEST_F(TestGrpcServerClientTokenAuthFixture,
 
 }  // namespace rpc
 }  // namespace ray
-

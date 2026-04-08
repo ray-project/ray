@@ -3231,4 +3231,3 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
 
 }  // namespace core
 }  // namespace ray
-

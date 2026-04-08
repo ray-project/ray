@@ -584,4 +584,3 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleFailure) {
 }
 
 }  // namespace ray
-

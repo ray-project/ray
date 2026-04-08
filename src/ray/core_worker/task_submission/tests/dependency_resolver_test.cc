@@ -500,4 +500,3 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
 
 }  // namespace core
 }  // namespace ray
-

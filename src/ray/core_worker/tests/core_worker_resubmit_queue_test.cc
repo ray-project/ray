@@ -52,4 +52,3 @@ TEST(CoreWorkerResubmitQueueTest, EarlierTaskInsertedAheadOfExisting) {
 
 }  // namespace core
 }  // namespace ray
-

@@ -210,4 +210,3 @@ INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,
 
 }  // namespace rpc
 }  // namespace ray
-

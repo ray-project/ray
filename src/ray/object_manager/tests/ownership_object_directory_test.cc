@@ -547,4 +547,3 @@ TEST_F(OwnershipBasedObjectDirectoryTest, TestNotifyOnUpdate) {
 }
 
 }  // namespace ray
-

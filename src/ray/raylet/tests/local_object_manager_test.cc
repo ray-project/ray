@@ -1909,4 +1909,3 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
 }  // namespace raylet
 
 }  // namespace ray
-
