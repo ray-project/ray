@@ -134,13 +134,8 @@ async def serve_start_async(
 
     usage_lib.record_library_usage("serve")
 
-    client, had_cached = _check_cached_client_alive()
-    if client is None and not had_cached:
-        # Client is not cached and not reachable, so we need to reconnect to
-        # the controller. If controller was dead, client would still be None
-        # because controller alive signal would not have been reached but it
-        # would be still percieved as cached. This would have failed via doing
-        # a hang inside the _get_global_client during _connect.
+    client, _ = _check_cached_client_alive()
+    if client is None:
         try:
             client = _get_global_client()
         except RayServeException:
@@ -216,9 +211,8 @@ def serve_start(
 
     usage_lib.record_library_usage("serve")
 
-    client, had_cached = _check_cached_client_alive()
-    if client is None and not had_cached:
-        # See serve_start_async for explanation.
+    client, _ = _check_cached_client_alive()
+    if client is None:
         try:
             client = _get_global_client()
         except RayServeException:
