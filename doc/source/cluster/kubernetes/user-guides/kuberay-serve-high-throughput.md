@@ -25,7 +25,7 @@ traffic.
 
 ## Example: Serving Qwen on GKE
 
-The following example demonstrates how to deploy Qwen 3.5 4B on four replicas
+The following example demonstrates how to deploy Qwen 3.5 on four replicas
 with NVIDIA L4 GPUs using KubeRay on Google Kubernetes Engine (GKE).
 
 ### 1. Configure the environment
