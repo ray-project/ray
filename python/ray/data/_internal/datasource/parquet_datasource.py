@@ -544,10 +544,6 @@ class ParquetDatasource(Datasource):
         )
         filter_columns = None
         if self._predicate_expr is not None:
-            from ray.data._internal.planner.plan_expression.expression_visitors import (
-                get_column_references,
-            )
-
             filter_columns = get_column_references(self._predicate_expr)
 
         for fragments, paths in zip(
@@ -1058,10 +1054,18 @@ def _needs_nested_type_fallback(
         if columns is not None and metadata.num_row_groups > 0
         else None
     )
+    # fragment.row_groups is non-None when the fragment is a subset of the
+    # file (e.g. only row group 0).  Only inspect those row groups to avoid
+    # falsely triggering the fallback because of a *different* large row
+    # group elsewhere in the same file.
+    if fragment.row_groups is not None:
+        rg_indices = [rg.id for rg in fragment.row_groups]
+    else:
+        rg_indices = range(metadata.num_row_groups)
     return any(
         _row_group_uncompressed_size(metadata.row_group(rg_idx), column_indices)
         >= _ARROW_CHUNK_LIMIT
-        for rg_idx in range(metadata.num_row_groups)
+        for rg_idx in rg_indices
     )
 
 
