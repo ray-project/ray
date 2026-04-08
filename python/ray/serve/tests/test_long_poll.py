@@ -374,9 +374,7 @@ def test_get_metric_namespace_tag():
 
 
 @pytest.mark.asyncio
-async def test_pending_clients_gauge_aggregates_across_keys(
-    monkeypatch, serve_instance
-):
+async def test_pending_clients_gauge_aggregates_across_keys(serve_instance):
     """Test that pending_clients_by_namespace correctly aggregates across keys.
 
     When compact metric tags are enabled and multiple keys share a namespace
@@ -385,10 +383,9 @@ async def test_pending_clients_gauge_aggregates_across_keys(
     key's count.
     See https://github.com/ray-project/ray/issues/62299.
     """
-    monkeypatch.setattr(
-        "ray.serve._private.long_poll.RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", True
-    )
-    host = ray.remote(LongPollHost).remote(
+    host = ray.remote(LongPollHost).options(
+        runtime_env={"env_vars": {"RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS": "1"}}
+    ).remote(
         listen_for_change_request_timeout_s=(0.5, 0.5)
     )
 
