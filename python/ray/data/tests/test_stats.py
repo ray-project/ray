@@ -342,6 +342,7 @@ def gen_expected_metrics(
     task_backpressure: bool = False,
     task_output_backpressure: bool = False,
     extra_metrics: Optional[List[str]] = None,
+    task_locality_hit: bool = False,
 ):
     if is_map:
         metrics = [
@@ -389,6 +390,14 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': N",
             "'num_tasks_finished': N",
             "'num_tasks_failed': Z",
+            f"'task_scheduling_time_task_locality_hit_s': {'N' if task_locality_hit else 'Z'}",
+            f"'task_scheduling_time_task_locality_miss_s': {'Z' if task_locality_hit else 'N'}",
+            f"'bytes_inputs_of_task_locality_hit_tasks': {'N' if task_locality_hit else 'Z'}",
+            f"'bytes_inputs_of_task_locality_miss_tasks': {'Z' if task_locality_hit else 'N'}",
+            f"'task_completion_time_task_locality_hit_s': {'N' if task_locality_hit else 'Z'}",
+            f"'task_completion_time_task_locality_miss_s': {'Z' if task_locality_hit else 'N'}",
+            f"'num_tasks_task_locality_hit': {'N' if task_locality_hit else 'Z'}",
+            f"'num_tasks_task_locality_miss': {'Z' if task_locality_hit else 'N'}",
             "'block_generation_time': N",
             "'block_serialization_time_s': N",
             (
@@ -465,6 +474,14 @@ def gen_expected_metrics(
             "'num_tasks_have_outputs': Z",
             "'num_tasks_finished': Z",
             "'num_tasks_failed': Z",
+            "'task_scheduling_time_task_locality_hit_s': Z",
+            "'task_scheduling_time_task_locality_miss_s': Z",
+            "'bytes_inputs_of_task_locality_hit_tasks': Z",
+            "'bytes_inputs_of_task_locality_miss_tasks': Z",
+            "'task_completion_time_task_locality_hit_s': Z",
+            "'task_completion_time_task_locality_miss_s': Z",
+            "'num_tasks_task_locality_hit': Z",
+            "'num_tasks_task_locality_miss': Z",
             "'block_generation_time': Z",
             "'block_serialization_time_s': Z",
             (
@@ -528,6 +545,16 @@ STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE = gen_expected_metrics(
     extra_metrics=[
         "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
     ],
+)
+
+STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_LOCALITY_HIT = gen_expected_metrics(
+    is_map=True,
+    spilled=False,
+    task_backpressure=True,
+    extra_metrics=[
+        "'ray_remote_args': {'num_cpus': N, 'scheduling_strategy': 'SPREAD'}"
+    ],
+    task_locality_hit=True,
 )
 
 MEM_SPILLED_EXTRA_METRICS = gen_expected_metrics(
@@ -771,7 +798,7 @@ def test_dataset_stats_basic(
                 f"    * Total output num rows: N rows\n"
                 f"    * Ray Data throughput: N rows/s\n"
                 f"    * Estimated single task throughput: N rows/s\n"
-                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE, verbose_stats_logs)}"  # noqa: E501
+                f"{gen_extra_metrics_str(STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_LOCALITY_HIT, verbose_stats_logs)}"  # noqa: E501
                 f"\n"
                 f"Dataset throughput:\n"
                 f"    * Ray Data throughput: N rows/s\n"
@@ -901,6 +928,14 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
+        "      task_scheduling_time_task_locality_hit_s: Z,\n"
+        "      task_scheduling_time_task_locality_miss_s: N,\n"
+        "      bytes_inputs_of_task_locality_hit_tasks: Z,\n"
+        "      bytes_inputs_of_task_locality_miss_tasks: N,\n"
+        "      task_completion_time_task_locality_hit_s: Z,\n"
+        "      task_completion_time_task_locality_miss_s: N,\n"
+        "      num_tasks_task_locality_hit: Z,\n"
+        "      num_tasks_task_locality_miss: N,\n"
         "      block_generation_time: N,\n"
         "      block_serialization_time_s: N,\n"
         "      task_submission_backpressure_time: N,\n"
@@ -1053,6 +1088,14 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "      num_tasks_have_outputs: N,\n"
         "      num_tasks_finished: N,\n"
         "      num_tasks_failed: Z,\n"
+        "      task_scheduling_time_task_locality_hit_s: N,\n"
+        "      task_scheduling_time_task_locality_miss_s: Z,\n"
+        "      bytes_inputs_of_task_locality_hit_tasks: N,\n"
+        "      bytes_inputs_of_task_locality_miss_tasks: Z,\n"
+        "      task_completion_time_task_locality_hit_s: N,\n"
+        "      task_completion_time_task_locality_miss_s: Z,\n"
+        "      num_tasks_task_locality_hit: N,\n"
+        "      num_tasks_task_locality_miss: Z,\n"
         "      block_generation_time: N,\n"
         "      block_serialization_time_s: N,\n"
         "      task_submission_backpressure_time: N,\n"
@@ -1158,6 +1201,14 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "            num_tasks_have_outputs: N,\n"
         "            num_tasks_finished: N,\n"
         "            num_tasks_failed: Z,\n"
+        "            task_scheduling_time_task_locality_hit_s: Z,\n"
+        "            task_scheduling_time_task_locality_miss_s: N,\n"
+        "            bytes_inputs_of_task_locality_hit_tasks: Z,\n"
+        "            bytes_inputs_of_task_locality_miss_tasks: N,\n"
+        "            task_completion_time_task_locality_hit_s: Z,\n"
+        "            task_completion_time_task_locality_miss_s: N,\n"
+        "            num_tasks_task_locality_hit: Z,\n"
+        "            num_tasks_task_locality_miss: N,\n"
         "            block_generation_time: N,\n"
         "            block_serialization_time_s: N,\n"
         "            task_submission_backpressure_time: N,\n"

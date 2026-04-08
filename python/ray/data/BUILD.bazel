@@ -1004,6 +1004,8 @@ py_test(
     name = "test_tf",
     size = "medium",
     srcs = ["tests/datasource/test_tf.py"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "exclusive",
         "team:data",
@@ -1018,6 +1020,8 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/datasource/test_tfrecords.py"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "exclusive",
         "team:data",
