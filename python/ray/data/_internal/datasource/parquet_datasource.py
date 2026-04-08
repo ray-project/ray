@@ -1185,6 +1185,10 @@ def _iter_batches_fallback(
         [rg.id for rg in subset.row_groups] if subset.row_groups is not None else None
     )
 
+    # Filter pruned every row group — nothing to read.
+    if row_groups is not None and len(row_groups) == 0:
+        return
+
     # Build a sub-schema covering only the output columns so alignment
     # doesn't pad with unneeded null columns.  Scoped to ``columns``
     # (not ``read_columns``) because filter-referenced columns may not
