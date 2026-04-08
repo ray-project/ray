@@ -1,5 +1,6 @@
 """Tests for the fatal-engine-error log rate limiter in server_utils."""
 
+import sys
 from contextlib import contextmanager
 from unittest.mock import MagicMock, patch
 
@@ -49,7 +50,7 @@ class TestIsFatalEngineError:
         assert not server_utils._is_fatal_engine_error(ValueError("hi"))
 
     def test_runtime_error_is_not_fatal(self):
-        assert not server_utils._is_fatal_engine_error(RuntimeError)
+        assert not server_utils._is_fatal_engine_error(RuntimeError("error"))
 
 
 class TestFatalEngineErrorLogHandler:
@@ -194,3 +195,7 @@ class TestGetResponseForError:
         mock_log.assert_called_once_with(exc, "rid", 500)
         assert resp.error is not None
         assert "rid" in resp.error.message
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))

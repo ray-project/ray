@@ -10,6 +10,7 @@ from httpx import HTTPStatusError as HTTPXHTTPStatusError
 from pydantic import ValidationError as PydanticValidationError
 
 from ray import serve
+from ray.llm._internal.batch.stages.vllm_engine_stage import _VLLM_FATAL_ERRORS
 from ray.llm._internal.serve.constants import DEFAULT_FATAL_ERROR_COOLDOWN_S
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ErrorInfo,
@@ -22,12 +23,8 @@ logger = get_logger(__name__)
 
 T = TypeVar("T")
 
-# Keep in sync with _VLLM_FATAL_ERRORS in batch/stages/vllm_engine_stage.py
-_FATAL_ERROR_TYPE_NAMES = frozenset(
-    {
-        "EngineDeadError",
-    }
-)
+
+_FATAL_ERROR_TYPE_NAMES = frozenset(e.__name__ for e in _VLLM_FATAL_ERRORS)
 
 
 def _is_fatal_engine_error(e: Exception) -> bool:
