@@ -123,13 +123,12 @@ class LongPollClient:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
-        self.snapshot_ids: Dict[KeyType, int] = {
-            # The initial snapshot id for each key is < 0,
-            # but real snapshot keys in the long poll host are always >= 0,
-            # so this will always trigger an initial update.
-            key: -1
-            for key in self.key_listeners.keys()
-        }
+        # The initial snapshot id for each key is < 0,
+        # but real snapshot keys in the long poll host are always >= 0,
+        # so this will always trigger an initial update.
+        self.snapshot_ids: Dict[KeyType, int] = dict.fromkeys(
+            self.key_listeners.keys(), -1
+        )
         self.is_running = True
 
         # Metric to track end-to-end latency from controller to client

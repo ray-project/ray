@@ -294,7 +294,7 @@ def test_listen_for_change_java_timeout_returns_empty_result(serve_instance):
     assert len(timeout_result.updated_objects) == 0
 
 
-def test_get_metric_namespace_tag():
+def test_get_metric_namespace_tag(monkeypatch):
     """Test _get_metric_namespace_tag in both default and compact modes.
 
     When RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS is disabled (default), metric
@@ -306,71 +306,71 @@ def test_get_metric_namespace_tag():
     import ray.serve._private.long_poll as long_poll_module
 
     # --- Default mode (compact=False): str(key) is used ---
-    original_flag = long_poll_module.RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS
-    try:
-        long_poll_module.RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = False
+    monkeypatch.setattr(
+        long_poll_module, "RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", False
+    )
 
-        # String keys pass through unchanged
-        assert _get_metric_namespace_tag("test_key") == "test_key"
+    # String keys pass through unchanged
+    assert _get_metric_namespace_tag("test_key") == "test_key"
 
-        # LongPollNamespace enum keys use str() representation
-        assert _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_CONFIG) == str(
-            LongPollNamespace.DEPLOYMENT_CONFIG
+    # LongPollNamespace enum keys use str() representation
+    assert _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_CONFIG) == str(
+        LongPollNamespace.DEPLOYMENT_CONFIG
+    )
+
+    # Tuple keys include the full string (deployment name visible)
+    tuple_key = (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deployment1")
+    assert _get_metric_namespace_tag(tuple_key) == str(tuple_key)
+
+    # --- Compact mode (compact=True): low-cardinality tags ---
+    monkeypatch.setattr(
+        long_poll_module, "RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", True
+    )
+
+    # String keys still pass through unchanged
+    assert _get_metric_namespace_tag("test_key") == "test_key"
+    assert _get_metric_namespace_tag("key_1") == "key_1"
+
+    # LongPollNamespace enum keys return just the name
+    assert (
+        _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_CONFIG)
+        == "DEPLOYMENT_CONFIG"
+    )
+    assert (
+        _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_TARGETS)
+        == "DEPLOYMENT_TARGETS"
+    )
+    assert _get_metric_namespace_tag(LongPollNamespace.ROUTE_TABLE) == "ROUTE_TABLE"
+
+    # Tuple keys extract only the namespace, discarding per-deployment identifier
+    assert (
+        _get_metric_namespace_tag(
+            (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deployment1")
         )
-
-        # Tuple keys include the full string (deployment name visible)
-        tuple_key = (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deployment1")
-        assert _get_metric_namespace_tag(tuple_key) == str(tuple_key)
-
-        # --- Compact mode (compact=True): low-cardinality tags ---
-        long_poll_module.RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = True
-
-        # String keys still pass through unchanged
-        assert _get_metric_namespace_tag("test_key") == "test_key"
-        assert _get_metric_namespace_tag("key_1") == "key_1"
-
-        # LongPollNamespace enum keys return just the name
-        assert (
-            _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_CONFIG)
-            == "DEPLOYMENT_CONFIG"
+        == "DEPLOYMENT_CONFIG"
+    )
+    assert (
+        _get_metric_namespace_tag(
+            (LongPollNamespace.DEPLOYMENT_TARGETS, "app2:deployment2")
         )
-        assert (
-            _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_TARGETS)
-            == "DEPLOYMENT_TARGETS"
-        )
-        assert _get_metric_namespace_tag(LongPollNamespace.ROUTE_TABLE) == "ROUTE_TABLE"
+        == "DEPLOYMENT_TARGETS"
+    )
 
-        # Tuple keys extract only the namespace, discarding per-deployment identifier
-        assert (
-            _get_metric_namespace_tag(
-                (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deployment1")
-            )
-            == "DEPLOYMENT_CONFIG"
-        )
-        assert (
-            _get_metric_namespace_tag(
-                (LongPollNamespace.DEPLOYMENT_TARGETS, "app2:deployment2")
-            )
-            == "DEPLOYMENT_TARGETS"
-        )
+    # Tuple keys with long deployment identifiers (the real-world case)
+    long_key = (
+        LongPollNamespace.DEPLOYMENT_CONFIG,
+        "Deployment(name='model', app='workday:perf-test-model-00005:"
+        "key-value-v1:baked-in:global:global:1')",
+    )
+    assert _get_metric_namespace_tag(long_key) == "DEPLOYMENT_CONFIG"
 
-        # Tuple keys with long deployment identifiers (the real-world case)
-        long_key = (
-            LongPollNamespace.DEPLOYMENT_CONFIG,
-            "Deployment(name='model', app='workday:perf-test-model-00005:"
-            "key-value-v1:baked-in:global:global:1')",
-        )
-        assert _get_metric_namespace_tag(long_key) == "DEPLOYMENT_CONFIG"
+    # All LongPollNamespace enum values should work, both bare and in tuples
+    for ns in LongPollNamespace:
+        assert _get_metric_namespace_tag(ns) == ns.name
+        assert _get_metric_namespace_tag((ns, "any_deployment")) == ns.name
 
-        # All LongPollNamespace enum values should work, both bare and in tuples
-        for ns in LongPollNamespace:
-            assert _get_metric_namespace_tag(ns) == ns.name
-            assert _get_metric_namespace_tag((ns, "any_deployment")) == ns.name
-
-        # Defensive: tuple with non-enum first element falls back to str()
-        assert _get_metric_namespace_tag(("custom_ns", "value")) == "custom_ns"
-    finally:
-        long_poll_module.RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = original_flag
+    # Defensive: tuple with non-enum first element falls back to str()
+    assert _get_metric_namespace_tag(("custom_ns", "value")) == "custom_ns"
 
 
 @pytest.mark.asyncio
@@ -383,10 +383,12 @@ async def test_pending_clients_gauge_aggregates_across_keys(serve_instance):
     key's count.
     See https://github.com/ray-project/ray/issues/62299.
     """
-    host = ray.remote(LongPollHost).options(
-        runtime_env={"env_vars": {"RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS": "1"}}
-    ).remote(
-        listen_for_change_request_timeout_s=(0.5, 0.5)
+    host = (
+        ray.remote(LongPollHost)
+        .options(
+            runtime_env={"env_vars": {"RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS": "1"}}
+        )
+        .remote(listen_for_change_request_timeout_s=(0.5, 0.5))
     )
 
     key_a = (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deploy1")
