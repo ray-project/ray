@@ -5,8 +5,8 @@
 ## Prerequisites
 
 * This feature requires KubeRay version 1.6.0 or newer, and it's in alpha testing.
-    * A running Kubernetes cluster.
-    * The KubeRay operator installed and running in your cluster.
+* A running Kubernetes cluster.
+* The KubeRay operator installed and running in your cluster.
 
 ## What is a RayCronJob?
 
@@ -18,10 +18,10 @@ This is particularly useful for recurring tasks such as scheduled model retraini
 
 ## RayCronJob Configuration
 
-The `RayCronJob` CRD acts as an automated scheduler specifically designed to create and manage **RayJob** custom resources on a recurring basis. It does not execute workloads directly; instead, it acts as a factory that generates a new `RayJob` every time its schedule triggers.
+The `RayCronJob` CRD acts as an automated scheduler specifically designed to create and manage **RayJob** custom resources on a recurring basis. It does not execute workloads directly. Instead, it acts as a controller that creates a new `RayJob` on each schedule triggers.
 
 * `schedule` - The cron schedule string defining when a new Ray job should be created and run (e.g., `* * * * *` for every minute).
-* `jobTemplate` - Wraps a standard **RayJob** spec that the controller will use for each scheduled run. It supports the same fields as a RayJob spec. See the standard [RayJob Configuration](kuberay-rayjob-quickstart) documentation for the complete list of supported fields within the `jobTemplate`.*
+* `jobTemplate` - Wraps a standard **RayJob** spec that the controller will use for each scheduled run. It supports the same fields as a RayJob spec. See the standard [RayJob Configuration](kuberay-rayjob-quickstart) documentation for the complete list of supported fields within the `jobTemplate`.
 * `suspend` (Optional): If `suspend` is true, the controller suspends the scheduling of future jobs. This does not apply to or interrupt any `RayJob`s that have already been created and are currently running.
 
 ## How to Configure a RayCronJob
@@ -43,7 +43,7 @@ spec:
     # ... (RayCluster spec, runtimeEnv, etc.)
 ```
 
-## How to Run an Simple RayCronJob
+## How to Run a Simple RayCronJob
 
 Let's deploy a simple `RayCronJob` that executes a short Python script every minute.
 
@@ -75,7 +75,7 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.6.0/ra
 
 ### Step 4: Monitor the RayCronJob
 
-Check the status of your `RayCronJob`. The `SCHEDULE` field should be visible immediately, while `LAST SCHEDULE` may be empty until the first scheduled run is triggered.
+Check the status of your `RayCronJob`. The `SCHEDULE` field should be visible, while `LAST SCHEDULE` may be empty until the first run.
 
 ```sh
 kubectl get raycronjob raycronjob-sample
@@ -100,31 +100,16 @@ kubectl get rayjob -w
 # (Press Ctrl+C to stop watching once the job completes)
 ```
 
-### Step 5: Verify the Output
-
-Once a generated `RayJob` completes, you can inspect the logs of the job submitter pod to verify that the Python script ran successfully:
+### Step 5: Check the output of the RayCronJob
 
 ```shell
-kubectl logs $(kubectl get pods --no-headers | grep raycronjob-sample | grep Completed | awk '{print $1}' | head -n 1)
+# From the previous step, note the RayJob name label (e.g., raycronjob-sample-l76h8)
+# Use it to fetch the submitter pod logs directly:
+kubectl logs -l=job-name=<rayjob-name>
+# Example:
+# kubectl logs -l=job-name=raycronjob-sample-l76h8
 
 # [Example output]
-# 2026-04-02 22:57:35,742 INFO cli.py:41 -- Job submission server address: http://raycronjob-sample-l76h8-hjtrs-head-svc.default.svc.cluster.local:8265
-# 2026-04-02 22:57:36,709 SUCC cli.py:65 -- ----------------------------------------------------------
-# 2026-04-02 22:57:36,710 SUCC cli.py:66 -- Job 'raycronjob-sample-l76h8-hmjz2' submitted successfully
-# 2026-04-02 22:57:36,710 SUCC cli.py:67 -- ----------------------------------------------------------
-# 2026-04-02 22:57:36,710 INFO cli.py:291 -- Next steps
-# 2026-04-02 22:57:36,710 INFO cli.py:292 -- Query the logs of the job:
-# 2026-04-02 22:57:36,710 INFO cli.py:294 -- ray job logs raycronjob-sample-l76h8-hmjz2
-# 2026-04-02 22:57:36,710 INFO cli.py:296 -- Query the status of the job:
-# 2026-04-02 22:57:36,710 INFO cli.py:298 -- ray job status raycronjob-sample-l76h8-hmjz2
-# 2026-04-02 22:57:36,710 INFO cli.py:300 -- Request the job to be stopped:
-# 2026-04-02 22:57:36,710 INFO cli.py:302 -- ray job stop raycronjob-sample-l76h8-hmjz2
-# 2026-04-02 22:57:38,771 INFO cli.py:41 -- Job submission server address: http://raycronjob-sample-l76h8-hjtrs-head-svc.default.svc.cluster.local:8265
-# 2026-04-02 22:57:36,400 INFO job_manager.py:568 -- Runtime env is setting up.
-# Running entrypoint for job raycronjob-sample-l76h8-hmjz2: python /home/ray/samples/sample_code.py
-# 2026-04-02 22:57:46,654 INFO worker.py:1696 -- Using address 10.244.0.39:6379 set in the environment variable RAY_ADDRESS
-# 2026-04-02 22:57:46,659 INFO worker.py:1837 -- Connecting to existing Ray cluster at address: 10.244.0.39:6379...
-# 2026-04-02 22:57:46,681 INFO worker.py:2014 -- Connected to Ray cluster. View the dashboard at 10.244.0.39:8265 
 # /home/ray/anaconda3/lib/python3.10/site-packages/ray/_private/worker.py:2062: FutureWarning: Tip: In future versions of Ray, Ray will no longer override accelerator visible devices env var if num_gpus=0 or num_gpus=None (default). To enable this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0
 #   warnings.warn(
 # test_counter got 1
