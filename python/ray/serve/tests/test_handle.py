@@ -1,3 +1,5 @@
+import asyncio
+import logging
 import re
 
 import pytest
@@ -118,6 +120,55 @@ def test_compose_apps(serve_instance, inner_by_reference, outer_by_reference):
             inp2=handle2.remote("hi3", inp2="hi4"),
         ).result()
         == "app1|app2|hi1|hi2|app2|hi3|hi4"
+    )
+
+
+@pytest.mark.asyncio
+@pytest.mark.timeout(30)
+async def test_non_grpc_exception_no_self_cause(serve_instance):
+    """Regression test for https://github.com/ray-project/ray/issues/62358.
+
+    User-code exceptions on non-gRPC replicas must not produce a
+    self-referential __cause__ chain. Such a chain hangs error-reporting
+    tools (Sentry, Bugsnag, etc.) that walk __cause__ without cycle
+    detection, which starves health checks and causes the controller to
+    kill the replica.
+    """
+    cause_chain_broken = []
+
+    class CauseWalker(logging.Handler):
+        """Simulates an error reporter that walks the __cause__ chain."""
+
+        def emit(self, record):
+            if record.exc_info and record.exc_info[1]:
+                exc = record.exc_info[1]
+                seen = set()
+                while exc.__cause__ is not None:
+                    if id(exc) in seen:
+                        cause_chain_broken.append(True)
+                        return
+                    seen.add(id(exc))
+                    exc = exc.__cause__
+
+    @serve.deployment
+    class App:
+        def __init__(self):
+            logging.getLogger("ray.serve").addHandler(CauseWalker())
+
+        async def fail(self):
+            raise ValueError("user code exception")
+
+    handle = serve.run(App.bind())
+
+    with pytest.raises(Exception):
+        await handle.fail.remote()
+
+    # Give the replica a moment to process the exception through logging.
+    await asyncio.sleep(1)
+
+    assert not cause_chain_broken, (
+        "Self-referential __cause__ chain detected: "
+        "raise e from e was used on a non-gRPC request"
     )
 
 
