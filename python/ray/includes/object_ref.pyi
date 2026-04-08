@@ -63,6 +63,15 @@ class ObjectRef(BaseID, Awaitable[_T]):
         """
         ...
 
+    def _rdt_future(self) -> concurrent.futures.Future[_T]:
+        """Wrap an RDT ObjectRef with a concurrent.futures.Future.
+
+        RDT objects require out-of-band tensor transfers that use blocking
+        operations (threading.Condition waits). We run ray.get in a shared
+        thread pool so that the caller (and any event loop) is never blocked.
+        """
+        ...
+
     def _on_completed(self, py_callback: Callable[[_T], None]):
         """Register a callback that will be called after Object is ready.
         If the ObjectRef is already ready, the callback will be called soon.
