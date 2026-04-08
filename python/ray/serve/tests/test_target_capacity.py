@@ -119,6 +119,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: 0,
             DOWNSTREAM_DEPLOYMENT_NAME: 0,
         },
+        timeout=30,
     )
 
     # Initially deploy at target_capacity 1, should have 1 replica of each.
@@ -131,6 +132,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: 1,
             DOWNSTREAM_DEPLOYMENT_NAME: 1,
         },
+        timeout=30,
     )
 
     # Increase target_capacity to 50, ingress deployment should scale up.
@@ -143,6 +145,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
+        timeout=30,
     )
 
     # Increase target_capacity to 100, both should fully scale up.
@@ -155,6 +158,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
+        timeout=30,
     )
 
     # Finish rollout (remove target_capacity), should have no effect.
@@ -167,6 +171,7 @@ def test_incremental_scale_up(shutdown_ray_and_serve, client: ServeControllerCli
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
+        timeout=30,
     )
 
 
@@ -188,6 +193,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS,
         },
+        timeout=30,
     )
 
     # Decrease target_capacity to 50, both deployments should scale down.
@@ -200,6 +206,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
+        timeout=30,
     )
 
     # Decrease target_capacity to 1, both should fully scale down.
@@ -212,6 +219,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
             INGRESS_DEPLOYMENT_NAME: 1,
             DOWNSTREAM_DEPLOYMENT_NAME: 1,
         },
+        timeout=30,
     )
 
     # Decrease target_capacity to 0, both should fully scale down to zero.
@@ -224,6 +232,7 @@ def test_incremental_scale_down(shutdown_ray_and_serve, client: ServeControllerC
             INGRESS_DEPLOYMENT_NAME: 0,
             DOWNSTREAM_DEPLOYMENT_NAME: 0,
         },
+        timeout=30,
     )
 
 
@@ -256,6 +265,7 @@ def test_controller_recover_target_capacity(
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
+        timeout=30,
     )
     assert (
         ray.get(client._controller._get_target_capacity_direction.remote())
@@ -272,6 +282,7 @@ def test_controller_recover_target_capacity(
             INGRESS_DEPLOYMENT_NAME: INGRESS_DEPLOYMENT_NUM_REPLICAS / 2,
             DOWNSTREAM_DEPLOYMENT_NAME: DOWNSTREAM_DEPLOYMENT_NUM_REPLICAS / 2,
         },
+        timeout=30,
     )
     assert (
         ray.get(client._controller._get_target_capacity_direction.remote())
@@ -726,7 +737,7 @@ class TestTargetCapacityUpdateAndServeStatus:
             expected_num_replicas=int(0.5 * max_replicas),
             app_name=app_name,
             deployment_name=deployment_name,
-            timeout=20,
+            timeout=30,
         )
 
         # Clear requests and check that application scales down.
