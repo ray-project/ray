@@ -1,9 +1,11 @@
 import asyncio
 import logging
 import re
+import uuid
 
 import pytest
 
+import ray
 from ray import serve
 from ray._common.test_utils import SignalActor
 from ray.serve._private.common import OBJ_REF_NOT_SUPPORTED_ERROR
@@ -134,10 +136,36 @@ async def test_non_grpc_exception_no_self_cause(serve_instance):
     detection, which starves health checks and causes the controller to
     kill the replica.
     """
-    cause_chain_broken = []
+
+    @ray.remote
+    class _CycleDetector:
+        """Shared state actor for cross-process detection.
+
+        CauseWalker runs inside the replica actor (a separate OS process).
+        A plain Python list defined in the driver cannot be written to from
+        the replica — Ray serialises it by value (deep copy).  Using a named
+        Ray actor gives us a proper RPC channel so the replica can signal back
+        to the driver.
+        """
+
+        def __init__(self):
+            self._detected = False
+
+        def mark(self):
+            self._detected = True
+
+        def detected(self):
+            return self._detected
+
+    detector_name = f"cycle_detector_{uuid.uuid4().hex}"
+    detector = _CycleDetector.options(name=detector_name).remote()
 
     class CauseWalker(logging.Handler):
         """Simulates an error reporter that walks the __cause__ chain."""
+
+        def __init__(self, det):
+            super().__init__()
+            self._det = det
 
         def emit(self, record):
             if record.exc_info and record.exc_info[1]:
@@ -145,7 +173,7 @@ async def test_non_grpc_exception_no_self_cause(serve_instance):
                 seen = set()
                 while exc.__cause__ is not None:
                     if id(exc) in seen:
-                        cause_chain_broken.append(True)
+                        self._det.mark.remote()
                         return
                     seen.add(id(exc))
                     exc = exc.__cause__
@@ -153,7 +181,8 @@ async def test_non_grpc_exception_no_self_cause(serve_instance):
     @serve.deployment
     class App:
         def __init__(self):
-            logging.getLogger("ray.serve").addHandler(CauseWalker())
+            det = ray.get_actor(detector_name)
+            logging.getLogger("ray.serve").addHandler(CauseWalker(det))
 
         async def fail(self):
             raise ValueError("user code exception")
@@ -166,7 +195,7 @@ async def test_non_grpc_exception_no_self_cause(serve_instance):
     # Give the replica a moment to process the exception through logging.
     await asyncio.sleep(1)
 
-    assert not cause_chain_broken, (
+    assert not await detector.detected.remote(), (
         "Self-referential __cause__ chain detected: "
         "raise e from e was used on a non-gRPC request"
     )
