@@ -186,6 +186,50 @@ def _die_on_error(result):
     _fail_if_false(result.exit_code == 0, result.output)
 
 
+def test_log_unexpected_subprocess_exit_details(monkeypatch, tmp_path):
+    logs_dir = tmp_path
+    (logs_dir / "gcs_server.err").write_text("sentinel_tail_line\n", encoding="utf-8")
+
+    emitted_errors = []
+
+    class _IndentedContext:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def _render_message(message, args):
+        try:
+            return str(message).format(*args)
+        except Exception:
+            return f"{message} {' '.join(map(str, args))}"
+
+    def _capture_error(message, *args, **kwargs):
+        emitted_errors.append(_render_message(message, args))
+
+    monkeypatch.setattr(scripts.cli_logger, "indented", lambda: _IndentedContext())
+    monkeypatch.setattr(scripts.cli_logger, "error", _capture_error)
+    monkeypatch.setattr(scripts.cli_logger, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(scripts.cli_logger, "newline", lambda *args, **kwargs: None)
+
+    process_exit_logger = MagicMock()
+    fake_process = MagicMock(returncode=137)
+
+    scripts._log_unexpected_subprocess_exit_details(
+        [("gcs_server", fake_process)],
+        str(logs_dir),
+        process_exit_logger,
+    )
+
+    process_exit_logger.error.assert_called_once()
+    logged_message = process_exit_logger.error.call_args.args[1]
+    assert "Some Ray subprocesses exited unexpectedly:" in logged_message
+    assert "gcs_server [exit code=" in logged_message
+    assert any("BEGIN gcs_server.err tail (exit code(s)=" in x for x in emitted_errors)
+    assert any("sentinel_tail_line" in x for x in emitted_errors)
+
+
 def _debug_check_line_by_line(result, expected_lines):
     """Print the result and expected output line-by-line."""
     output_lines = result.output.split("\n")
