@@ -1,7 +1,7 @@
 (kuberay-serve-high-throughput)=
 # Enable High Throughput on Ray Serve with KubeRay
 
-Take advantage of major upgrades to Ray Serve, delivering online Inference with
+Take advantage of major upgrades to Ray Serve, delivering online inference with
 88% lower latency and 11.1x higher throughput.
 
 ## Prerequisites
