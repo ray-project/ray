@@ -1,15 +1,14 @@
 """Tests for benchmark smoke mode."""
 
+import sys
 import types
 
 import aiohttp
 import pytest
 
-from ray.llm._internal.serve.benchmark.multiturn_bench import (
-    TurnResult,
-    run_smoke,
-    send_chat_completion,
-)
+from ray.llm._internal.serve.benchmark.http_client import send_chat_completion
+from ray.llm._internal.serve.benchmark.models import TurnResult
+from ray.llm._internal.serve.benchmark.runners import run_smoke
 
 
 @pytest.mark.asyncio
@@ -30,9 +29,9 @@ async def test_send_chat_completion(mock_server: str) -> None:
     assert result.input_tokens == 10
     assert result.output_tokens == 4
     assert result.ttft_ms > 0
-    assert result.latency_ms > 0
+    assert result.e2e_latency_ms > 0
     assert result.fc_ms > 0
-    assert isinstance(result.tpot_ms, float)
+    assert isinstance(result.itl_ms, float)
 
 
 def test_run_smoke(mock_server: str) -> None:
@@ -55,3 +54,7 @@ def test_run_smoke_connection_error(free_port: int) -> None:
     )
     exit_code = run_smoke(args)
     assert exit_code == 1
+
+
+if __name__ == "__main__":
+    sys.exit(pytest.main(["-v", __file__]))
