@@ -335,10 +335,16 @@ class RayEventExportGrpcService : public GrpcService {
 
 }  // namespace events
 
-/// gRPC Health Check service that dispatches through the io_context.
+/// gRPC Health Check service that dispatches to the threads running boost::asio
+/// event loops to ensure they are alive and not overloaded.
+///
 /// Unlike the default gRPC health check service (which responds directly from gRPC
-/// threads), this service's handler runs on the io_context event loop. If the event loop
-/// is stuck, the health check will not respond and the client will time out.
+/// threads), this service's handler runs on the io_context event loop. If the event loops
+/// are stuck, the health check will not respond and the client will time out.
+///
+/// NOTE: we currently ignore the `service` field, which is part of the default
+/// health check protocol. In the future, we may want to implement this as per-service
+/// health checks (which could check the relevant boost::asio event loop).
 class HealthCheckGrpcService : public GrpcService {
  public:
   explicit HealthCheckGrpcService(instrumented_io_context &io_service)

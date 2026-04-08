@@ -72,6 +72,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms(),
                   /*auth_token=*/nullptr,
+                  // The health check implementation is overridden to check the health
+                  // of our boost::asio event loop threads.
                   /*enable_default_health_check_service=*/false),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
