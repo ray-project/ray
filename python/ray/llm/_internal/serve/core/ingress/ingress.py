@@ -397,6 +397,8 @@ class OpenAiIngress(DeploymentProtocol):
 
         self._direct_ingress_rr_counter = 0
         self._ingress_bypass_rr_counter = 0
+        self._di_load_cache: Dict[str, int] = {}
+        self._di_poller_task: Optional[asyncio.Task] = None
         get_or_create_event_loop().create_task(
             self._install_direct_ingress_middleware()
         )
@@ -584,21 +586,34 @@ class OpenAiIngress(DeploymentProtocol):
         # Return original model ID so multiplexed routing works correctly.
         return model
 
-    # TokenTracker removed — probing replicas directly for queue length
-    # is simpler and uses existing Ray Serve infrastructure.
+    async def _start_load_poller(self, model_id: str):
+        """Background task: poll all replica queue lengths every 50ms.
 
-    async def _start_load_poller(self, replicas):
-        """Background task: poll all replica queue lengths periodically."""
-        import asyncio
-
+        Re-resolves the replica set each iteration so scaling events
+        and replica replacements are picked up automatically.
+        """
+        base_model_id = get_base_model_id(model_id)
         while True:
+            handle = self._default_serve_handles.get(base_model_id)
+            if handle is None:
+                await asyncio.sleep(0.05)
+                continue
+            request_router = handle.get_request_router()
+            if request_router is None:
+                await asyncio.sleep(0.05)
+                continue
+            replicas = [
+                r
+                for r in request_router.curr_replicas.values()
+                if r.direct_ingress_endpoint is not None
+            ]
             for r in replicas:
                 try:
                     load = await r.get_queue_len(deadline_s=0.5)
                     self._di_load_cache[r.replica_id] = load
                 except Exception:
-                    pass
-            await asyncio.sleep(0.05)  # 50ms poll interval
+                    self._di_load_cache[r.replica_id] = float("inf")
+            await asyncio.sleep(0.05)
 
     async def _pick_routed_direct_ingress_endpoint(
         self, model_id: str
@@ -609,13 +624,7 @@ class OpenAiIngress(DeploymentProtocol):
         Uses power-of-two-choices: pick 2 random replicas, compare their
         cached queue lengths (refreshed every 50ms by background poller),
         route to the lighter one.
-
-        No per-request RPCs — routing decisions use cached load data,
-        keeping the routing path fast and preserving request delivery
-        timing patterns.
         """
-        import asyncio
-
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -635,10 +644,9 @@ class OpenAiIngress(DeploymentProtocol):
             raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
 
         # Start background load poller on first call.
-        if not hasattr(self, "_di_load_cache"):
-            self._di_load_cache = {}
-            asyncio.get_event_loop().create_task(
-                self._start_load_poller(direct_ingress_replicas)
+        if self._di_poller_task is None:
+            self._di_poller_task = get_or_create_event_loop().create_task(
+                self._start_load_poller(model_id)
             )
 
         # P2C: pick 2 random candidates.
