@@ -16,6 +16,8 @@
 #include <string>
 #include <vector>
 
+#include <grpcpp/grpcpp.h>
+
 #include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
@@ -23,6 +25,7 @@
 #include "ray/gcs/gcs_server.h"
 #include "ray/gcs/metrics.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
+#include "src/proto/grpc/health/v1/health.grpc.pb.h"
 #include "ray/observability/fake_metric.h"
 
 namespace ray {
@@ -88,15 +91,35 @@ class GcsServerTest : public ::testing::Test {
         io_service_, /*record_stats=*/false, /*local_address=*/""));
     client_.reset(
         new rpc::GcsRpcClient("0.0.0.0", gcs_server_->GetPort(), *client_call_manager_));
+
+    // Create health check stub.
+    auto channel =
+        grpc::CreateChannel("localhost:" + std::to_string(gcs_server_->GetPort()),
+                            grpc::InsecureChannelCredentials());
+    health_stub_ = grpc::health::v1::Health::NewStub(channel);
   }
 
   void TearDown() override {
     io_service_.stop();
     rpc::DrainServerCallExecutor();
     gcs_server_->Stop();
-    thread_io_service_->join();
+    if (thread_io_service_ && thread_io_service_->joinable()) {
+      thread_io_service_->join();
+    }
     gcs_server_.reset();
     rpc::ResetServerCallExecutor();
+  }
+
+  grpc::Status CheckHealth(std::chrono::milliseconds timeout) {
+    grpc::health::v1::HealthCheckRequest request;
+    grpc::health::v1::HealthCheckResponse response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + timeout);
+    auto status = health_stub_->Check(&context, request, &response);
+    if (status.ok()) {
+      EXPECT_EQ(response.status(), grpc::health::v1::HealthCheckResponse::SERVING);
+    }
+    return status;
   }
 
   bool AddJob(rpc::AddJobRequest request) {
@@ -252,6 +275,9 @@ class GcsServerTest : public ::testing::Test {
   // Gcs client
   std::unique_ptr<rpc::GcsRpcClient> client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
+
+  // Health check
+  std::unique_ptr<grpc::health::v1::Health::Stub> health_stub_;
 
   // Timeout waiting for gcs server reply, default is 5s
   const std::chrono::milliseconds timeout_ms_{5000};
@@ -519,6 +545,24 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
               worker_data->worker_address().worker_id());
 }
 // TODO(sang): Add tests after adding asyncAdd
+
+TEST_F(GcsServerTest, HealthCheckSucceeds) {
+  auto status = CheckHealth(std::chrono::milliseconds(5000));
+  ASSERT_TRUE(status.ok()) << "Health check failed: " << status.error_message();
+}
+
+TEST_F(GcsServerTest, HealthCheckTimesOutWhenMainIOContextBlocked) {
+  // Stop the main io_context so the custom health check handler cannot be dispatched.
+  io_service_.stop();
+  thread_io_service_->join();
+  thread_io_service_.reset();
+
+  // The health check should time out because the handler is posted to the
+  // main io_context which is no longer processing events.
+  auto status = CheckHealth(std::chrono::milliseconds(500));
+  ASSERT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::DEADLINE_EXCEEDED);
+}
 
 }  // namespace ray
 

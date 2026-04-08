@@ -69,6 +69,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_server_lib",
         "//src/ray/observability:fake_metric",
+        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -96,26 +97,6 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:redis_store_client",
         "@com_google_googletest//:gtest",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_health_check_service_test",
-    size = "medium",
-    srcs = [
-        "gcs_health_check_service_test.cc",
-    ],
-    tags = [
-        "no_windows",
-        "team:core",
-    ],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//src/ray/common:asio",
-        "//src/ray/gcs:grpc_services",
-        "//src/ray/rpc:grpc_server",
-        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
