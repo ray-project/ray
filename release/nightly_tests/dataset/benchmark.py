@@ -160,14 +160,27 @@ class DataTaskName(str, Enum):
 class SchedulingPhase(str, Enum):
     """Phases of the Ray task scheduling lifecycle.
 
-    The full state machine is::
+    See ``src/ray/protobuf/common.proto`` TaskStatus for the source of truth.
+
+    Normal tasks::
 
         PENDING_ARGS_AVAIL
         -> PENDING_NODE_ASSIGNMENT
-        -> PENDING_OBJ_STORE_MEM_AVAIL
-        -> PENDING_ARGS_FETCH
+            -> PENDING_OBJ_STORE_MEM_AVAIL  (sub-state, metrics only)
+            -> PENDING_ARGS_FETCH           (sub-state, metrics only)
         -> SUBMITTED_TO_WORKER
-        -> PENDING_ACTOR_TASK_ARGS_FETCH / PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY
+        -> RUNNING
+        -> FINISHED
+
+    Actor tasks::
+
+        PENDING_ARGS_AVAIL
+        -> PENDING_NODE_ASSIGNMENT
+            -> PENDING_OBJ_STORE_MEM_AVAIL  (sub-state, metrics only)
+            -> PENDING_ARGS_FETCH           (sub-state, metrics only)
+        -> SUBMITTED_TO_WORKER
+        -> PENDING_ACTOR_TASK_ARGS_FETCH
+        -> PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY
         -> RUNNING
         -> FINISHED
 
@@ -206,7 +219,7 @@ class SchedulingPhase(str, Enum):
             case SchedulingPhase.ARGS_FETCH_MS:
                 return (S.PENDING_ARGS_FETCH, S.SUBMITTED_TO_WORKER)
             case SchedulingPhase.WORKER_DISPATCH_MS:
-                return (S.SUBMITTED_TO_WORKER, S.RUNNING)
+                return (S.SUBMITTED_TO_WORKER, S.PENDING_ACTOR_TASK_ARGS_FETCH)
             case SchedulingPhase.ACTOR_TASK_ARGS_FETCH_MS:
                 return (
                     S.PENDING_ACTOR_TASK_ARGS_FETCH,
@@ -276,10 +289,7 @@ class SchedulingOverheadSummary:
                     )
 
         phases: Dict[SchedulingPhase, PhaseStats] = {}
-        for phase in SchedulingPhase:
-            vals = phase_durations.get(phase)
-            if not vals:
-                continue
+        for phase, vals in phase_durations.items():
             arr = np.array(vals)
             phases[phase] = PhaseStats(
                 p50=float(np.percentile(arr, 50)),
@@ -305,6 +315,8 @@ def collect_scheduling_overhead() -> Dict[str, SchedulingOverheadSummary]:
         tasks = list_tasks(
             filters=[("func_or_class_name", "=", name)],
             detail=True,
+            # 10_000 is chosen because it's the default max limit. Therefore, some
+            # tasks may be truncated.
             limit=10_000,
         )
         summaries[name] = SchedulingOverheadSummary.from_task_states(tasks)
