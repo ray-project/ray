@@ -127,10 +127,10 @@ class DeploymentAutoscalingState:
             "serve_autoscaling_target_ongoing_requests",
             description=(
                 "The configured target number of ongoing requests per replica. "
-                "Combined with serve_autoscaling_total_requests, this can be used "
-                "to compute the expected number of replicas "
-                "(total_requests / target_ongoing_requests) and detect autoscaling "
-                "regressions."
+                "For the default policy, this can be combined with "
+                "serve_autoscaling_total_requests to compute the raw desired number "
+                "of replicas (total_requests / target_ongoing_requests) and detect "
+                "autoscaling regressions."
             ),
             tag_keys=("deployment", "application"),
         )
