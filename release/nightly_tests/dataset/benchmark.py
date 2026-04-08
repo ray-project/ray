@@ -143,12 +143,9 @@ class RuntimeEnvSetupTracker:
         return results
 
 
-_BENCHMARK_DIR = os.path.dirname(os.path.abspath(__file__))
-
-
 def benchmark_py_modules() -> List[str]:
-    """Return the absolute path to benchmark.py for use in runtime_env py_modules."""
-    return [os.path.join(_BENCHMARK_DIR, "benchmark.py")]
+    """Return a list containing the absolute path to benchmark.py for use in runtime_env py_modules."""
+    return [os.path.abspath(__file__)]
 
 
 class BenchmarkMetric(Enum):
