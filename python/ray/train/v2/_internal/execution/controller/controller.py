@@ -709,7 +709,8 @@ class TrainController:
         self,
         current_report_index: int,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+        timeout_s: Optional[float] = None,
     ) -> List["ReportedCheckpoint"]:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
-            current_report_index, consistency_mode
+            current_report_index, consistency_mode, timeout_s
         )
