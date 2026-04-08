@@ -66,13 +66,13 @@ void CoreWorkerClient::PushActorTask(std::unique_ptr<PushTaskRequest> request,
     absl::MutexLock lock(&mutex_);
     const std::string &group = request->task_spec().concurrency_group_name();
     int64_t group_seq = request->sequence_number();
-    auto it = max_finished_group_seq_no_.find(group);
-    if (it == max_finished_group_seq_no_.end()) {
-      max_finished_group_seq_no_[group] = group_seq - 1;
+    auto it = group_seq_state_.find(group);
+    if (it == group_seq_state_.end()) {
+      group_seq_state_.emplace(group, GroupSeqState(group_seq - 1));
     }
     // The RPC client assumes that the first request put into the send queue will be
     // the first task handled by the server.
-    RAY_CHECK_LE(max_finished_group_seq_no_[group], group_seq);
+    RAY_CHECK_LE(group_seq_state_.at(group).contiguous_watermark, group_seq);
     send_queue_.emplace_back(std::move(request), std::move(callback));
   }
   SendRequests();
@@ -111,7 +111,7 @@ void CoreWorkerClient::SendRequests() {
     int64_t task_size = RequestSizeInBytes(*request);
     int64_t seq_no = request->sequence_number();
     std::string group = request->task_spec().concurrency_group_name();
-    request->set_client_processed_up_to(max_finished_group_seq_no_[group]);
+    request->set_client_processed_up_to(group_seq_state_.at(group).contiguous_watermark);
     rpc_bytes_in_flight_ += task_size;
 
     auto rpc_callback =
@@ -119,9 +119,9 @@ void CoreWorkerClient::SendRequests() {
             Status status, rpc::PushTaskReply &&reply) {
           {
             absl::MutexLock lk(&mutex_);
-            auto it = max_finished_group_seq_no_.find(group);
-            if (it != max_finished_group_seq_no_.end() && seq_no > it->second) {
-              it->second = seq_no;
+            auto it = group_seq_state_.find(group);
+            if (it != group_seq_state_.end()) {
+              it->second.MarkCompleted(seq_no);
             }
             rpc_bytes_in_flight_ -= task_size;
             RAY_CHECK(rpc_bytes_in_flight_ >= 0);
