@@ -2754,6 +2754,26 @@ class TestParquetFragmentBatchSizeCoercion:
             assert captured["batch_size"] == expected_batch_size_passed_to_to_batches
 
 
+def test_get_safe_batch_size_skips_zero_uncompressed_row_groups(tmp_path):
+    """Regression: a row group whose selected columns have zero uncompressed
+    size (e.g. all-null nested data) should not cause ZeroDivisionError."""
+    import pyarrow.parquet as pq
+
+    from ray.data._internal.datasource.parquet_datasource import (
+        _get_safe_batch_size_for_nested_types,
+    )
+
+    table = pa.table({"x": pa.array([[1, 2]], type=pa.list_(pa.int64()))})
+    path = str(tmp_path / "test.parquet")
+    pq.write_table(table, path)
+
+    pf = pq.ParquetFile(path)
+    # Pass empty column_indices so _row_group_uncompressed_size returns 0
+    # for a row group with non-zero rows — should not raise ZeroDivisionError.
+    batch_size = _get_safe_batch_size_for_nested_types(pf, column_indices=[])
+    assert batch_size >= 1
+
+
 @pytest.fixture(scope="module")
 def nested_parquet_exceeding_2gb(tmp_path_factory):
     """Create a Parquet file with nested columns (list<struct>) whose string

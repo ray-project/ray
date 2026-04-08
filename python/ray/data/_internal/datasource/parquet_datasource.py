@@ -1019,9 +1019,10 @@ def _get_safe_batch_size_for_nested_types(
         rg_meta = pf.metadata.row_group(rg_idx)
         if rg_meta.num_rows == 0:
             continue
-        bytes_per_row = (
-            _row_group_uncompressed_size(rg_meta, column_indices) / rg_meta.num_rows
-        )
+        uncompressed = _row_group_uncompressed_size(rg_meta, column_indices)
+        if uncompressed == 0:
+            continue
+        bytes_per_row = uncompressed / rg_meta.num_rows
         rg_safe = max(int(_ARROW_CHUNK_LIMIT // bytes_per_row // 2), 1)
         safe_batch_size = min(safe_batch_size, rg_safe)
     return safe_batch_size
