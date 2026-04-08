@@ -59,7 +59,7 @@ def _compute_use_gpu(
     Priority order:
     1. Explicit use_cpu flag
     2. placement_group_config GPU bundles
-    3. accelerator_type (known GPU types default to True, else True)
+    3. Default to True — any accelerator_type implies GPU-capable hardware
     """
     # Explicit use_cpu setting takes precedence over all other configurations
     if isinstance(use_cpu, bool):
@@ -76,26 +76,8 @@ def _compute_use_gpu(
         if bundles is not None:
             return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
 
-    # Default behavior based on accelerator_type
-    if not accelerator_type:
-        return True
-
-    return accelerator_type in (
-        GPUType.NVIDIA_TESLA_V100.value,
-        GPUType.NVIDIA_TESLA_P100.value,
-        GPUType.NVIDIA_TESLA_T4.value,
-        GPUType.NVIDIA_TESLA_P4.value,
-        GPUType.NVIDIA_TESLA_K80.value,
-        GPUType.NVIDIA_TESLA_A10G.value,
-        GPUType.NVIDIA_L4.value,
-        GPUType.NVIDIA_L40S.value,
-        GPUType.NVIDIA_A100.value,
-        GPUType.NVIDIA_H100.value,
-        GPUType.NVIDIA_H200.value,
-        GPUType.NVIDIA_H20.value,
-        GPUType.NVIDIA_A100_40G.value,
-        GPUType.NVIDIA_A100_80G.value,
-    )
+    # All supported accelerator types are GPU-capable; default to GPU.
+    return True
 
 
 logger = get_logger(__name__)
