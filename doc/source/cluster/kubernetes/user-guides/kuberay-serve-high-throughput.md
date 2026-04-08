@@ -16,11 +16,11 @@ Serve by setting  the environment variables `RAY_SERVE_ENABLE_HA_PROXY` and
 `RAY_SERVE_THROUGHPUT_OPTIMIZED`.
 
 With the new proxy enabled, each Ray pod's proxy ingress (serving on port 8000
-by default) is now HAProxy ingress, a highly-optimized, battle-tested
+by default) is now HAProxy ingress, a highly optimized, battle-tested
 open-source load balancer written in C.
 
 The throughput optimized variable enables direct gRPC data-plane communications
-between Ray Serve replicas, improving the performance of interdeployment
+between Ray Serve replicas, improving the performance of inter-deployment
 traffic.
 
 ## Example: Serving Qwen on GKE
@@ -85,12 +85,9 @@ Deploy the example high-throughput LLM service:
 kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/master/ray-operator/config/samples/ray-service.high-throughput-llm.yaml
 ```
 
-Ray Serve optimizations for high throughput and the new HAProxy ingress are
-enabled with the environment variables `RAY_SERVE_THROUGHPUT_OPTIMIZED` and
-`RAY_SERVE_ENABLE_HA_PROXY`.
-
-To enable these optimizations on your own Ray Service, add these environment
-variables to both the head and worker group specifications:
+To enable these optimizations on your own Ray Service, add the environment
+variables `RAY_SERVE_ENABLE_HA_PROXY` and `RAY_SERVE_THROUGHPUT_OPTIMIZED` to
+both the head and worker group specifications:
 
 ```yaml
 apiVersion: ray.io/v1
@@ -137,8 +134,8 @@ kubectl exec $HEAD_POD -- pgrep haproxy
 kubectl exec $WORKER_POD -- pgrep haproxy
 ```
 
-If the commands return a process ID, HAProxy is running successfully. If no ID
-is returned, double-check your configuration.
+If the commands return a process ID, HAProxy is running successfully. If the
+command doesn't print an ID, double-check your configuration.
 
 ## Expected performance
 
