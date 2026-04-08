@@ -19,7 +19,7 @@ With the new proxy enabled, each Ray pod's proxy ingress (serving on port 8000
 by default) is now HAProxy ingress, a highly optimized, battle-tested
 open-source load balancer written in C.
 
-The throughput optimized variable enables direct gRPC data-plane communications
+The throughput optimized variable enables multiple high throughput serving optimizations, including direct gRPC data-plane communications
 between Ray Serve replicas, improving the performance of inter-deployment
 traffic.
 
