@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 import time
 from typing import Dict
 
@@ -9,6 +10,7 @@ from benchmark import (
     BenchmarkMetric,
     OperatorStatsTracker,
     RuntimeEnvSetupTracker,
+    collect_scheduling_overhead,
 )
 from torchvision.models import ResNet50_Weights, resnet50
 
@@ -161,6 +163,9 @@ def main(args):
     }
     results.update(OperatorStatsTracker.collect())
     results["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+    results["scheduling_overhead"] = {
+        k: dataclasses.asdict(v) for k, v in collect_scheduling_overhead().items()
+    }
 
     return results
 

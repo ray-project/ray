@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 from typing import Dict
 import uuid
 import boto3
@@ -13,7 +14,12 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
 import ray
 
-from benchmark import Benchmark, OperatorStatsTracker, RuntimeEnvSetupTracker
+from benchmark import (
+    Benchmark,
+    OperatorStatsTracker,
+    RuntimeEnvSetupTracker,
+    collect_scheduling_overhead,
+)
 
 BATCH_SIZE = 128
 
@@ -101,6 +107,9 @@ def main(args: argparse.Namespace):
         )
         metrics = OperatorStatsTracker.collect()
         metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        metrics["scheduling_overhead"] = {
+            k: dataclasses.asdict(v) for k, v in collect_scheduling_overhead().items()
+        }
         return metrics
 
     benchmark.run_fn("main", benchmark_fn)

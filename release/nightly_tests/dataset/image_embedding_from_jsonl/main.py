@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 import uuid
 from io import BytesIO
 from typing import Dict, List, Any
@@ -12,7 +13,12 @@ from pybase64 import b64decode
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
-from benchmark import Benchmark, OperatorStatsTracker, RuntimeEnvSetupTracker
+from benchmark import (
+    Benchmark,
+    OperatorStatsTracker,
+    RuntimeEnvSetupTracker,
+    collect_scheduling_overhead,
+)
 
 
 INPUT_PREFIX = "s3://ray-benchmark-data-internal-us-west-2/10TiB-jsonl-images"
@@ -77,6 +83,9 @@ def main(args: argparse.Namespace):
         )
         metrics = OperatorStatsTracker.collect()
         metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        metrics["scheduling_overhead"] = {
+            k: dataclasses.asdict(v) for k, v in collect_scheduling_overhead().items()
+        }
         return metrics
 
     benchmark.run_fn("main", benchmark_fn)

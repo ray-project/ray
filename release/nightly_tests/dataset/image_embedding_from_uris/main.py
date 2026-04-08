@@ -1,4 +1,5 @@
 import argparse
+import dataclasses
 import io
 import uuid
 from typing import Any, Dict
@@ -6,7 +7,12 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import torch
-from benchmark import Benchmark, OperatorStatsTracker, RuntimeEnvSetupTracker
+from benchmark import (
+    Benchmark,
+    OperatorStatsTracker,
+    RuntimeEnvSetupTracker,
+    collect_scheduling_overhead,
+)
 from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 import albumentations as A
@@ -228,6 +234,9 @@ def main(args: argparse.Namespace):
         )
         metrics = OperatorStatsTracker.collect()
         metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        metrics["scheduling_overhead"] = {
+            k: dataclasses.asdict(v) for k, v in collect_scheduling_overhead().items()
+        }
         return metrics
 
     benchmark.run_fn("main", benchmark_fn)
