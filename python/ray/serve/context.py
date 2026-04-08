@@ -96,7 +96,7 @@ def _get_global_client(
     try:
         if _global_client is not None:
             if _health_check_controller:
-                ray.get(_global_client._controller.check_alive.remote())
+                ray.get(_global_client._controller.check_alive.remote(), timeout=5)
             return _global_client
     except Exception as e:
         # RayActorError when the controller actor died within the same session.
