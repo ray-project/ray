@@ -123,8 +123,8 @@ spec:
 
 ### 7. Verify HAProxy status
 
-Use the [kubectl plugin](kubectl-plugin) or `kubectl port-forward` to establish
-a connection to the Ray head:
+Using the {ref}`Ray kubectl plugin <kubectl-plugin>` or `kubectl port-forward`
+to establish a connection to the Ray head:
 
 ```
 CLUSTER=$(kubectl get raycluster -o jsonpath='{.items[0].metadata.name}')
