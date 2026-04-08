@@ -9,8 +9,8 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
     NAryOperator,
 )
+from ray.data._internal.logical.operators.n_ary_operator import MixStoppingCondition
 from ray.data._internal.stats import StatsDict
-from ray.data._internal.stopping_condition import StoppingCondition
 from ray.data.context import DataContext
 
 
@@ -30,7 +30,7 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
         data_context: DataContext,
         *input_ops: PhysicalOperator,
         weights: List[float],
-        stopping_condition: StoppingCondition = StoppingCondition.STOP_ON_SHORTEST,
+        stopping_condition: MixStoppingCondition = MixStoppingCondition.STOP_ON_SHORTEST,
     ):
         assert len(input_ops) >= 1
         assert len(weights) == len(input_ops)
@@ -164,7 +164,7 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
 
         while True:
             # Check stopping condition before selecting.
-            if self._stopping_condition == StoppingCondition.STOP_ON_SHORTEST:
+            if self._stopping_condition == MixStoppingCondition.STOP_ON_SHORTEST:
                 if any(
                     self._is_input_exhausted(i) for i in range(len(self._input_buffers))
                 ):

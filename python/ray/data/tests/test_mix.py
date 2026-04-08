@@ -2,10 +2,12 @@ import pytest
 
 import ray
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.n_ary_operator import Mix
+from ray.data._internal.logical.operators.n_ary_operator import (
+    Mix,
+    MixStoppingCondition,
+)
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
-from ray.data._internal.stopping_condition import StoppingCondition
 from ray.data.dataset import Dataset
 
 
@@ -18,7 +20,7 @@ def _mix_datasets(datasets, weights=None, stopping_condition=None):
         weights = [1.0] * len(datasets)
 
     if stopping_condition is None:
-        stopping_condition = StoppingCondition.STOP_ON_LONGEST_DROP
+        stopping_condition = MixStoppingCondition.STOP_ON_LONGEST_DROP
 
     logical_plans = [ds._plan._logical_plan for ds in datasets]
     op = Mix(
@@ -57,7 +59,7 @@ def test_mix_equal_weights(ray_start_10_cpus_shared, weights):
     mixed = _mix_datasets(
         [ds1, ds2],
         weights=weights,
-        stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
+        stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
     # We should round robin between the two datasets.
     # The output should alternate 10 rows for each dataset.
@@ -74,7 +76,7 @@ def test_mix_uneven_weights(ray_start_10_cpus_shared):
     mixed = _mix_datasets(
         [ds1, ds2],
         weights=[0.75, 0.25],
-        stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
+        stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
     for batch in mixed.iter_batches(batch_size=4 * rows_per_block):
         ratio = (batch["source"] == 0).sum() / len(batch["source"])
@@ -97,7 +99,7 @@ def test_mix_three_datasets(ray_start_10_cpus_shared):
     mixed = _mix_datasets(
         [ds1, ds2, ds3],
         weights=[0.5, 0.3, 0.2],
-        stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
+        stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
     for batch in mixed.iter_batches(batch_size=10 * rows_per_block):
         ratio_ds1 = (batch["source"] == 0).sum() / len(batch["source"])
@@ -116,7 +118,7 @@ def test_mix_stop_on_shortest(ray_start_10_cpus_shared):
     mixed = _mix_datasets(
         [ds1, ds2],
         weights=[0.5, 0.5],
-        stopping_condition=StoppingCondition.STOP_ON_SHORTEST,
+        stopping_condition=MixStoppingCondition.STOP_ON_SHORTEST,
     )
     result = mixed.take_all()
     count_0 = sum(1 for r in result if r["source"] == 0)
@@ -138,7 +140,7 @@ def test_mix_stop_on_longest_drop(ray_start_10_cpus_shared):
     mixed = _mix_datasets(
         [ds1, ds2],
         weights=[0.5, 0.5],
-        stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
+        stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
     ds2_rows_seen = 0
     for batch in mixed.iter_batches(batch_size=2 * rows_per_block):
@@ -162,7 +164,7 @@ def test_mix_non_uniform_block_sizes(ray_start_10_cpus_shared):
     mixed = _mix_datasets(
         [ds1, ds2],
         weights=[0.75, 0.25],
-        stopping_condition=StoppingCondition.STOP_ON_LONGEST_DROP,
+        stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
 
     # Mix ordering: [ds0: 120], [ds1: 10, 10, 10, 10], ...

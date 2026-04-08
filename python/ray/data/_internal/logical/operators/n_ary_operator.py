@@ -1,3 +1,4 @@
+import enum
 from typing import List, Optional
 
 from ray.data._internal.logical.interfaces import (
@@ -5,14 +6,28 @@ from ray.data._internal.logical.interfaces import (
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
-from ray.data._internal.stopping_condition import StoppingCondition
 
 __all__ = [
     "Mix",
+    "MixStoppingCondition",
     "NAry",
     "Union",
     "Zip",
 ]
+
+
+class MixStoppingCondition(enum.Enum):
+    """Controls when a mix pipeline terminates.
+
+    STOP_ON_SHORTEST: Pipeline ends when the shortest dataset is exhausted.
+        Other datasets are truncated.
+    STOP_ON_LONGEST_DROP: Pipeline ends when the longest dataset is exhausted.
+        Shorter datasets drop out once exhausted; later batches are drawn
+        entirely from longer datasets.
+    """
+
+    STOP_ON_SHORTEST = "stop_on_shortest"
+    STOP_ON_LONGEST_DROP = "stop_on_longest_drop"
 
 
 class NAry(LogicalOperator):
@@ -63,14 +78,14 @@ class Mix(NAry):
         self,
         *input_ops: LogicalOperator,
         weights: List[float],
-        stopping_condition: StoppingCondition = StoppingCondition.STOP_ON_SHORTEST,
+        stopping_condition: MixStoppingCondition = MixStoppingCondition.STOP_ON_SHORTEST,
     ):
         self.weights = weights
         self.stopping_condition = stopping_condition
         super().__init__(*input_ops)
 
     def estimated_num_outputs(self) -> Optional[int]:
-        if self.stopping_condition == StoppingCondition.STOP_ON_SHORTEST:
+        if self.stopping_condition == MixStoppingCondition.STOP_ON_SHORTEST:
             # The output is limited by whichever input runs out first
             # relative to its weight.
             min_outputs = None
