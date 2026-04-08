@@ -1467,6 +1467,34 @@
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
 
+- name: pytest_serve_proxy_autoscaling
+  python: "3.10"
+  group: Serve tests
+  working_dir: serve_tests
+
+  frequency: weekly
+  team: serve
+
+  cluster:
+    cluster_compute: compute_tpl_proxy_autoscaling.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 7200
+    long_running: false
+    script: python workloads/proxy_autoscaling_test.py
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: aws.haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
+
 - name: serve_controller_benchmark_haproxy
   python: "3.10"
   group: Serve tests
