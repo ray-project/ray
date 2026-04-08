@@ -2953,7 +2953,7 @@ Status CoreWorker::ExecuteTask(
   };
   auto mem_before = read_mem();
   RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
-      << "(karticam) [MEM-BEFORE-UDF] rss_mb=" << mem_before.rss_mb
+      << "(karticam) [MEM-BEFORE-PYTASK] rss_mb=" << mem_before.rss_mb
       << " uss_mb=" << mem_before.uss_mb << " shared_mb=" << mem_before.shared_mb;
 
   Status status = options_.task_execution_callback(
@@ -2984,7 +2984,7 @@ Status CoreWorker::ExecuteTask(
 
   auto mem_after = read_mem();
   RAY_LOG(INFO).WithField("task_name", task_spec.GetName())
-      << "(karticam) [MEM-AFTER-UDF] rss_mb=" << mem_after.rss_mb
+      << "(karticam) [MEM-AFTER-PYTASK] rss_mb=" << mem_after.rss_mb
       << " uss_mb=" << mem_after.uss_mb << " shared_mb=" << mem_after.shared_mb
       << " rss_delta_mb=" << (mem_after.rss_mb - mem_before.rss_mb)
       << " uss_delta_mb=" << (mem_after.uss_mb - mem_before.uss_mb);

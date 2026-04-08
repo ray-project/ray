@@ -1800,6 +1800,21 @@ cdef void execute_task(
          ray._private.worker._changeproctitle(title, next_title):
         task_exception = False
         try:
+            # (karticam) memory instrumentation
+            import psutil as _km_psutil
+            import time as _km_time
+            def _km_get_mem():
+                _p = _km_psutil.Process()
+                _i = _p.memory_full_info()
+                return _i.rss / 1e6, _i.uss / 1e6, (_i.rss - _i.uss) / 1e6
+
+            _km_rss, _km_uss, _km_shared = _km_get_mem()
+            print(
+                f"(karticam) [BEFORE-DESER] PID={os.getpid()} "
+                f"task={title} | "
+                f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB Shared={_km_shared:.1f}MB"
+            )
+
             with core_worker.profile_event(b"task:deserialize_arguments"):
                 if c_args.empty():
                     args, kwargs = [], {}
@@ -1843,6 +1858,13 @@ cdef void execute_task(
 
             worker.record_task_log_start(task_id, attempt_number)
 
+            _km_rss, _km_uss, _km_shared = _km_get_mem()
+            print(
+                f"(karticam) [AFTER-DESER] PID={os.getpid()} "
+                f"task={title} | "
+                f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB Shared={_km_shared:.1f}MB"
+            )
+
             # Execute the task.
             with core_worker.profile_event(b"task:execute"):
                 task_exception = True
@@ -1851,7 +1873,27 @@ cdef void execute_task(
                     if debugger_breakpoint != b"":
                         ray.util.pdb.set_trace(
                             breakpoint_uuid=debugger_breakpoint)
+
+                    _km_rss, _km_uss, _km_shared = _km_get_mem()
+                    print(
+                        f"(karticam) [BEFORE-UDF] PID={os.getpid()} "
+                        f"task={title} | "
+                        f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                        f"Shared={_km_shared:.1f}MB"
+                    )
+                    _km_udf_start = _km_time.monotonic()
+
                     outputs = function_executor(*args, **kwargs)
+
+                    _km_udf_elapsed = _km_time.monotonic() - _km_udf_start
+                    _km_rss, _km_uss, _km_shared = _km_get_mem()
+                    print(
+                        f"(karticam) [AFTER-UDF] PID={os.getpid()} "
+                        f"task={title} "
+                        f"udf_time={_km_udf_elapsed:.3f}s | "
+                        f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                        f"Shared={_km_shared:.1f}MB"
+                    )
 
                     if is_streaming_generator:
                         # Streaming generator always has a single return value
@@ -2040,6 +2082,16 @@ cdef void execute_task(
                     None, # ref_generator_id
                     c_tensor_transport
                 )
+
+            # (karticam) after store_outputs
+            _km_rss, _km_uss, _km_shared = _km_get_mem()
+            print(
+                f"(karticam) [AFTER-STORE] PID={os.getpid()} "
+                f"task={title} | "
+                f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                f"Shared={_km_shared:.1f}MB"
+            )
+
         except (KeyboardInterrupt, SystemExit):
             # Special casing these two because Ray can raise them
             raise
