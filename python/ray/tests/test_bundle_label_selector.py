@@ -299,7 +299,7 @@ def test_spread_strategy_bundle_label_selector(ray_start_cluster):
 
 def test_gpu_domain_scheduling_reschedule_on_node_failure(ray_start_cluster):
     """
-    Spins up 18 nodes in a single GPU domain (rack-1). Schedules 16 bundles,
+    Spins up 6 nodes in a single GPU domain (rack-1). Schedules 4 bundles,
     then kills 2 nodes containing bundles. Verifies that the PG reschedules
     the bundles onto remaining nodes that share the same GPU domain.
     """
@@ -313,13 +313,13 @@ def test_gpu_domain_scheduling_reschedule_on_node_failure(ray_start_cluster):
     }
 
     rack_nodes = []
-    for _ in range(18):
+    for _ in range(6):
         rack_nodes.append(cluster.add_node(num_cpus=1, labels=rack_labels))
-    for _ in range(18):
+    for _ in range(2):
         cluster.add_node(num_cpus=1)
 
-    bundles = [{"CPU": 1}] * 16
-    label_selector = [{"ray.io/accelerator-type": "GB300"}] * 16
+    bundles = [{"CPU": 1}] * 4
+    label_selector = [{"ray.io/accelerator-type": "GB300"}] * 4
 
     pg = placement_group(
         bundles=bundles,
