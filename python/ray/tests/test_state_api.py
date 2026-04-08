@@ -5,7 +5,7 @@ import time
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional
-from unittest.mock import AsyncMock
+from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 import yaml
@@ -488,8 +488,6 @@ async def test_handle_list_api_status_codes(
     - ValueError → HTTP 400 BAD_REQUEST
     - DataSourceUnavailable → HTTP 500 INTERNAL_ERROR
     """
-    from unittest.mock import AsyncMock, MagicMock
-
     from ray.dashboard.state_api_utils import handle_list_api
     from ray.util.state.common import ListApiResponse
 
@@ -1490,7 +1488,6 @@ def test_state_api_server_enforce_concurrent_http_requests(
 ):
     import queue
     import threading
-    import time
 
     # Set environment
     with monkeypatch.context() as m:
