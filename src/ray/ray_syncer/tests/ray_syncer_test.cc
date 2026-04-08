@@ -1270,22 +1270,3 @@ TEST_F(SyncerAuthenticationTest, ClientHasTokenServerDoesNotRequire) {
 }  // namespace syncer
 }  // namespace ray
 
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ray::RayLog::InstallFailureSignalHandler(argv[0]);
-  ray::RayLog::InstallTerminateHandler();
-
-  ::testing::InitGoogleTest(&argc, argv);
-  auto ret = RUN_ALL_TESTS();
-  // Sleep for gRPC to gracefully shutdown.
-  std::this_thread::sleep_for(std::chrono::seconds(2));
-  return ret;
-}

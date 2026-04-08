@@ -23,7 +23,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_pubsub_handler",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/pubsub:publisher",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -51,14 +51,14 @@ ray_cc_test(
     srcs = [
         "gcs_server_rpc_test.cc",
     ],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     tags = [
         "no_tsan",
         "no_windows",
@@ -69,7 +69,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_server_lib",
         "//src/ray/observability:fake_metric",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -79,14 +79,14 @@ ray_cc_test(
     srcs = [
         "gcs_kv_manager_test.cc",
     ],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     tags = ["team:core"],
     visibility = ["//visibility:private"],
     deps = [
@@ -95,7 +95,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_store_client_kv",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:redis_store_client",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -264,14 +264,14 @@ ray_cc_test(
     srcs = [
         "redis_gcs_table_storage_test.cc",
     ],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     tags = ["team:core"],
     visibility = ["//visibility:private"],
     deps = [
@@ -279,7 +279,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_table_storage",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -423,7 +423,7 @@ ray_cc_test(
         "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/util:string_utils",
-        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

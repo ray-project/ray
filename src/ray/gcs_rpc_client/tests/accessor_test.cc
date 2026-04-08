@@ -85,10 +85,3 @@ TEST(NodeInfoAccessorTest, TestHandleNotificationDeathInfo) {
   ASSERT_EQ(cached_node->death_info().reason_message(), "Test termination reason");
 }
 
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
-
-}  // namespace gcs
-}  // namespace ray

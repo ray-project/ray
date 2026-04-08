@@ -774,12 +774,3 @@ TEST_F(EventTest, VerifyOnlyNthOccurenceEventLogged) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  // Use ERROR type logger by default to avoid printing large scale logs in current test.
-  const std::string app_name = "event_test";
-  const std::string log_filepath =
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", app_name);
-  ray::RayLog::StartRayLog(app_name, ray::RayLogLevel::INFO, log_filepath);
-  return RUN_ALL_TESTS();
-}

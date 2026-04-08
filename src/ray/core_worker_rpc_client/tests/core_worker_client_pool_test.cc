@@ -326,7 +326,3 @@ INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,
 }  // namespace rpc
 }  // namespace ray
 
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

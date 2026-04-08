@@ -14,6 +14,7 @@
 
 #include "ray/common/test_utils.h"
 
+#include <cstdlib>
 #include <fstream>
 #include <functional>
 #ifndef _WIN32
@@ -36,8 +37,24 @@
 
 namespace ray {
 
+static void InitRedisPathsFromEnv() {
+  if (TEST_REDIS_SERVER_EXEC_PATH.empty()) {
+    const char *env = std::getenv("TEST_REDIS_SERVER_EXEC_PATH");
+    if (env) {
+      TEST_REDIS_SERVER_EXEC_PATH = env;
+    }
+  }
+  if (TEST_REDIS_CLIENT_EXEC_PATH.empty()) {
+    const char *env = std::getenv("TEST_REDIS_CLIENT_EXEC_PATH");
+    if (env) {
+      TEST_REDIS_CLIENT_EXEC_PATH = env;
+    }
+  }
+}
+
 void TestSetupUtil::StartUpRedisServers(const std::vector<int> &redis_server_ports,
                                         bool save) {
+  InitRedisPathsFromEnv();
   if (redis_server_ports.empty()) {
     TEST_REDIS_SERVER_PORTS.push_back(StartUpRedisServer(0, save));
   } else {

@@ -326,7 +326,3 @@ TEST(OpenCensusProtoExporterTest, export_view_data_split_by_payload_size) {
 
 }  // namespace ray
 
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
