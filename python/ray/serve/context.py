@@ -108,6 +108,17 @@ def _get_global_client(
         )
         _set_global_client(None)
 
+        if _health_check_controller:
+            # The health check was requested and the cached controller is
+            # unreachable. Don't fall through to _connect() because if GCS is
+            # also down (e.g. after `ray stop --force`), ray.get_actor() inside
+            # _connect() would hang until the 60-second GCS reconnection
+            # timeout kills the process.  Callers like shutdown() catch
+            # RayServeException and treat this as "nothing to shut down".
+            raise RayServeException(
+                "There is no Serve instance running on this Ray cluster."
+            )
+
     return _connect(raise_if_no_controller_running)
 
 
