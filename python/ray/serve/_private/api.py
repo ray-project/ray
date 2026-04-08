@@ -134,7 +134,7 @@ async def serve_start_async(
 
     usage_lib.record_library_usage("serve")
 
-    client = _check_cached_client_alive()
+    client, _ = _check_cached_client_alive()
     if client is None:
         try:
             client = _get_global_client()
@@ -211,7 +211,7 @@ def serve_start(
 
     usage_lib.record_library_usage("serve")
 
-    client = _check_cached_client_alive()
+    client, _ = _check_cached_client_alive()
     if client is None:
         try:
             client = _get_global_client()

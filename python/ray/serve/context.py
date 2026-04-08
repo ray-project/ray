@@ -96,28 +96,31 @@ def _get_global_client(
     return _connect(raise_if_no_controller_running)
 
 
-def _check_cached_client_alive() -> Optional[ServeControllerClient]:
-    """Return the cached client if the controller is reachable, else None.
+def _check_cached_client_alive() -> tuple:
+    """Health-check the cached controller client.
 
-    Used by shutdown paths that need to verify the cached controller handle
-    is still valid before attempting graceful shutdown.  Unlike
-    ``_get_global_client``, this will **not** try to reconnect via
-    ``_connect()`` when the check fails — doing so would call
-    ``ray.get_actor()`` which hangs if GCS is already dead (e.g. after
-    ``ray stop --force``), triggering the 60-second C++ GCS reconnection
-    timeout and killing the process.
+    Returns:
+        (client, had_cached) tuple.
+        - ``(client, True)`` — cached client is alive.
+        - ``(None, True)``  — cached client existed but is unreachable;
+          the cache has been cleared.  Callers should **not** attempt to
+          reconnect via ``_connect()`` because GCS is likely dead and
+          ``ray.get_actor()`` would hang until the 60-second C++ GCS
+          reconnection timeout kills the process.
+        - ``(None, False)`` — no cached client.  Callers may safely call
+          ``_get_global_client()`` to discover a running controller.
     """
 
     if _global_client is None:
-        return None
+        return None, False
 
     try:
         ray.get(_global_client._controller.check_alive.remote(), timeout=5)
-        return _global_client
+        return _global_client, True
     except Exception as e:
         logger.info(f"The cached controller has died or is unreachable: {e}.")
         _set_global_client(None)
-        return None
+        return None, True
 
 
 def _set_global_client(client):

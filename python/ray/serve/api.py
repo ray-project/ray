@@ -117,13 +117,26 @@ def shutdown():
     Deletes all applications and shuts down Serve system actors.
     """
 
-    client = _check_cached_client_alive()
+    client, had_cached = _check_cached_client_alive()
     if client is None:
-        logger.info(
-            "Nothing to shut down. There's no Serve application "
-            "running on this Ray cluster."
-        )
-        return
+        if had_cached:
+            # Cached client was unreachable — GCS is likely dead.
+            # Don't call _get_global_client() which would hang on dead GCS.
+            logger.info(
+                "Nothing to shut down. There's no Serve application "
+                "running on this Ray cluster."
+            )
+            return
+        # No cached client (fresh process). Try to discover a running
+        # controller via _connect().
+        try:
+            client = _get_global_client()
+        except RayServeException:
+            logger.info(
+                "Nothing to shut down. There's no Serve application "
+                "running on this Ray cluster."
+            )
+            return
 
     client.shutdown()
     _set_global_client(None)
@@ -136,13 +149,22 @@ async def shutdown_async():
     Deletes all applications and shuts down Serve system actors.
     """
 
-    client = _check_cached_client_alive()
+    client, had_cached = _check_cached_client_alive()
     if client is None:
-        logger.info(
-            "Nothing to shut down. There's no Serve application "
-            "running on this Ray cluster."
-        )
-        return
+        if had_cached:
+            logger.info(
+                "Nothing to shut down. There's no Serve application "
+                "running on this Ray cluster."
+            )
+            return
+        try:
+            client = _get_global_client()
+        except RayServeException:
+            logger.info(
+                "Nothing to shut down. There's no Serve application "
+                "running on this Ray cluster."
+            )
+            return
 
     await client.shutdown_async()
     _set_global_client(None)
