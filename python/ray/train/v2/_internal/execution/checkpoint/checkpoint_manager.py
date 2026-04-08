@@ -185,7 +185,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
     def update_checkpoints_with_metrics(
         self,
         checkpoint_to_metrics: Dict[Checkpoint, Dict[str, Any]],
-        checkpoint_to_status: Optional[Dict[Checkpoint, ReportedCheckpointStatus]] = None,
+        checkpoint_to_status: Optional[
+            Dict[Checkpoint, ReportedCheckpointStatus]
+        ] = None,
     ):
         """Update the checkpoints with the metrics."""
         for checkpoint, metrics in checkpoint_to_metrics.items():
@@ -261,23 +263,14 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             ]
             for checkpoint_result in results_to_delete:
                 del self._checkpoint_to_report_index[checkpoint_result.checkpoint]
-                self._validated_checkpoints.discard(checkpoint_result.checkpoint)
 
-                if checkpoint_result.checkpoint in self._validated_checkpoints:
-                    self._validated_checkpoints.discard(checkpoint_result.checkpoint)
-                elif (
+                self._validated_checkpoints.discard(checkpoint_result.checkpoint)
+                self._timed_out_validation_checkpoints.discard(
                     checkpoint_result.checkpoint
-                    in self._timed_out_validation_checkpoints
-                ):
-                    self._timed_out_validation_checkpoints.discard(
-                        checkpoint_result.checkpoint
-                    )
-                elif (
-                    checkpoint_result.checkpoint in self._failed_validation_checkpoints
-                ):
-                    self._failed_validation_checkpoints.discard(
-                        checkpoint_result.checkpoint
-                    )
+                )
+                self._failed_validation_checkpoints.discard(
+                    checkpoint_result.checkpoint
+                )
 
         # Save the checkpoint manager state to storage.
         # Note: We save the state before deleting the old checkpoints.

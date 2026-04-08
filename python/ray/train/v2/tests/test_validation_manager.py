@@ -136,7 +136,9 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     assert vm._kick_off_validations() == 1
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
         {low_initial_high_final_training_result.checkpoint: {"score": 200}},
-        {low_initial_high_final_training_result.checkpoint: ReportedCheckpointStatus.VALIDATED},
+        {
+            low_initial_high_final_training_result.checkpoint: ReportedCheckpointStatus.VALIDATED
+        },
     )
     ray.wait(
         list(vm._pending_validations.keys()),
@@ -146,7 +148,9 @@ def test_checkpoint_validation_management_reordering(tmp_path):
     assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_with(
         {high_initial_low_final_training_result.checkpoint: {"score": 100}},
-        {high_initial_low_final_training_result.checkpoint: ReportedCheckpointStatus.VALIDATED},
+        {
+            high_initial_low_final_training_result.checkpoint: ReportedCheckpointStatus.VALIDATED
+        },
     )
 
 
@@ -186,7 +190,9 @@ def test_checkpoint_validation_management_failure(tmp_path):
     assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
         {failing_training_result.checkpoint: {}},
-        {failing_training_result.checkpoint: ReportedCheckpointStatus.VALIDATION_FAILED},
+        {
+            failing_training_result.checkpoint: ReportedCheckpointStatus.VALIDATION_FAILED
+        },
     )
 
 
@@ -292,7 +298,9 @@ def test_checkpoint_validation_management_slow_validation_fn(tmp_path, monkeypat
     assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
         {timing_out_training_result.checkpoint: {}},
-        {timing_out_training_result.checkpoint: ReportedCheckpointStatus.VALIDATION_TIMEOUT},
+        {
+            timing_out_training_result.checkpoint: ReportedCheckpointStatus.VALIDATION_TIMEOUT
+        },
     )
 
 

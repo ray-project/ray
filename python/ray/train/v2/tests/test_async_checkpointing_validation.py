@@ -384,10 +384,15 @@ def test_report_validation_fn_error(tmp_path):
 
         reported_checkpoints = ray.train.get_all_reported_checkpoints()
         assert len(reported_checkpoints) == 2
-        assert reported_checkpoints[0].status == ReportedCheckpointStatus.VALIDATION_FAILED
+        assert (
+            reported_checkpoints[0].status == ReportedCheckpointStatus.VALIDATION_FAILED
+        )
         assert reported_checkpoints[0].metrics == {"training_score": 0}
         assert reported_checkpoints[1].status == ReportedCheckpointStatus.VALIDATED
-        assert reported_checkpoints[1].metrics == {"training_score": 1, "validation_score": 1}
+        assert reported_checkpoints[1].metrics == {
+            "training_score": 1,
+            "validation_score": 1,
+        }
 
     trainer = DataParallelTrainer(
         train_fn,
@@ -414,7 +419,10 @@ def test_report_validation_fn_timeout(tmp_path):
 
         reported_checkpoints = ray.train.get_all_reported_checkpoints()
         assert len(reported_checkpoints) == 1
-        assert reported_checkpoints[0].status == ReportedCheckpointStatus.VALIDATION_TIMEOUT
+        assert (
+            reported_checkpoints[0].status
+            == ReportedCheckpointStatus.VALIDATION_TIMEOUT
+        )
         assert reported_checkpoints[0].metrics == {"training_score": 1}
 
     DataParallelTrainer(
@@ -425,6 +433,7 @@ def test_report_validation_fn_timeout(tmp_path):
         scaling_config=ScalingConfig(num_workers=1),
         run_config=RunConfig(storage_path=str(tmp_path)),
     ).fit()
+
 
 def test_report_validation_fn_success_after_retry():
     @ray.remote

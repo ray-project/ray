@@ -1,6 +1,6 @@
 import asyncio
-import time
 import logging
+import time
 from collections import OrderedDict, deque
 from typing import TYPE_CHECKING, Any, Dict, List, Tuple, Union
 
@@ -116,7 +116,11 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         for task, (checkpoint, start_time, timeout_s) in list(
             self._pending_validations.items()
         ):
-            if timeout_s is not None and timeout_s != -1 and (now - start_time) > timeout_s:
+            if (
+                timeout_s is not None
+                and timeout_s != -1
+                and (now - start_time) > timeout_s
+            ):
                 ray.cancel(task)
                 self._timed_out_validations[task] = checkpoint
                 logger.warning(f"Validation timed out for checkpoint {checkpoint}")
@@ -144,7 +148,10 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         if self._finished_validations:
             task, checkpoint = next(iter(self._finished_validations.items()))
             self._finished_validations.pop(task)
-            checkpoint_to_metrics, checkpoint_to_status = self._process_finished_validation(task, checkpoint)
+            (
+                checkpoint_to_metrics,
+                checkpoint_to_status,
+            ) = self._process_finished_validation(task, checkpoint)
             self._checkpoint_manager.update_checkpoints_with_metrics(
                 checkpoint_to_metrics, checkpoint_to_status
             )
@@ -172,7 +179,10 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
                 training_report.checkpoint,
             )
 
-            if isinstance(training_report.validation, ValidationTaskConfig) and training_report.validation.timeout_s is not None:
+            if (
+                isinstance(training_report.validation, ValidationTaskConfig)
+                and training_report.validation.timeout_s is not None
+            ):
                 effective_timeout_s = training_report.validation.timeout_s
             else:
                 effective_timeout_s = self._validation_config.task_config.timeout_s
@@ -189,7 +199,9 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
 
     def _process_finished_validation(
         self, task: ray.ObjectRef, checkpoint: Checkpoint
-    ) -> Tuple[Dict[Checkpoint, Dict[str, Any]], Dict[Checkpoint, ReportedCheckpointStatus]]:
+    ) -> Tuple[
+        Dict[Checkpoint, Dict[str, Any]], Dict[Checkpoint, ReportedCheckpointStatus]
+    ]:
         """Process finished validation, return (metrics, status) dicts."""
         checkpoint_to_metrics = {}
         checkpoint_to_status = {}
@@ -200,14 +212,20 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
             checkpoint_to_metrics[checkpoint] = {}
             if task in self._timed_out_validations:
                 self._timed_out_validations.pop(task)
-                checkpoint_to_status[checkpoint] = ReportedCheckpointStatus.VALIDATION_TIMEOUT
+                checkpoint_to_status[
+                    checkpoint
+                ] = ReportedCheckpointStatus.VALIDATION_TIMEOUT
                 logger.warning(f"Validation timed out for checkpoint {checkpoint}")
             else:
-                checkpoint_to_status[checkpoint] = ReportedCheckpointStatus.VALIDATION_FAILED
+                checkpoint_to_status[
+                    checkpoint
+                ] = ReportedCheckpointStatus.VALIDATION_FAILED
                 logger.warning(f"Validation cancelled for checkpoint {checkpoint}")
         except ray.exceptions.RayTaskError:
             checkpoint_to_metrics[checkpoint] = {}
-            checkpoint_to_status[checkpoint] = ReportedCheckpointStatus.VALIDATION_FAILED
+            checkpoint_to_status[
+                checkpoint
+            ] = ReportedCheckpointStatus.VALIDATION_FAILED
             logger.warning(f"Validation failed for checkpoint {checkpoint}")
         return checkpoint_to_metrics, checkpoint_to_status
 
@@ -223,7 +241,9 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
             metrics, status = self._process_finished_validation(task, checkpoint)
             checkpoint_to_metrics.update(metrics)
             checkpoint_to_status.update(status)
-        self._checkpoint_manager.update_checkpoints_with_metrics(checkpoint_to_metrics, checkpoint_to_status)
+        self._checkpoint_manager.update_checkpoints_with_metrics(
+            checkpoint_to_metrics, checkpoint_to_status
+        )
 
     def before_controller_abort(self):
         for task in self._pending_validations.keys():
