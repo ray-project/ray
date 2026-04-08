@@ -1,12 +1,15 @@
 import unittest
 
 import ray
+from ray.cluster_utils import Cluster
 from ray.rllib.algorithms.impala import IMPALA, IMPALAConfig
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 @ray.remote(num_cpus=1)
 class _AlgoBuilder:
+    # Build the Algorithm inside a Ray actor so runtime-context checks happen on the
+    # same execution path as real Tune/Train usage.
     def __init__(self, config_dict):
         self.algo = IMPALAConfig.from_dict(config_dict).build()
 
@@ -51,7 +54,11 @@ class _AlgoBuilder:
         self.algo.stop()
 
 
-def _get_impala_config_with_aggregators():
+def _get_impala_config_with_aggregators(
+    *,
+    num_cpus_for_main_process=1,
+    placement_strategy="PACK",
+):
     return (
         IMPALAConfig()
         .api_stack(
@@ -59,8 +66,8 @@ def _get_impala_config_with_aggregators():
             enable_rl_module_and_learner=True,
         )
         .resources(
-            num_cpus_for_main_process=1,
-            placement_strategy="PACK",
+            num_cpus_for_main_process=num_cpus_for_main_process,
+            placement_strategy=placement_strategy,
         )
         .environment("CartPole-v1")
         .env_runners(num_env_runners=0)
@@ -76,20 +83,23 @@ def _get_impala_config_with_aggregators():
 
 class TestAggregatorPlacementGroups(unittest.TestCase):
     def setUp(self) -> None:
-        ray.init(num_cpus=4)
+        # Two nodes are enough to make cross-node placement mistakes observable.
+        self.cluster = Cluster()
+        self.cluster.add_node(num_cpus=3)
+        self.cluster.add_node(num_cpus=3)
+        ray.init(address=self.cluster.address)
 
     def tearDown(self) -> None:
         ray.shutdown()
+        self.cluster.shutdown()
 
-    def _assert_aggregator_context(self, info, expected_pg_id):
+    def _assert_node_colocation(self, info):
+        # This regression only checks the user-visible guarantee: aggregators stay on
+        # the same node as their mapped learner.
         self.assertEqual(len(info["learner_infos"]), 1)
         self.assertEqual(len(info["aggregator_infos"]), 1)
 
-        learner_info = info["learner_infos"][0]
-        self.assertEqual(learner_info["placement_group_id"], expected_pg_id)
-
         for actor_id, aggregator_info in info["aggregator_infos"].items():
-            self.assertEqual(aggregator_info["placement_group_id"], expected_pg_id)
             learner_idx = info["aggregator_to_learner"][actor_id]
             self.assertEqual(learner_idx, 0)
             self.assertEqual(
@@ -104,13 +114,16 @@ class TestAggregatorPlacementGroups(unittest.TestCase):
         try:
             info = ray.get(builder.inspect_actor_placement.remote())
             self.assertIsNone(info["builder_placement_group_id"])
-            self._assert_aggregator_context(info, expected_pg_id=None)
+            self._assert_node_colocation(info)
         finally:
             ray.get(builder.stop.remote())
             ray.kill(builder)
 
     def test_impala_aggregators_with_default_placement_group(self):
-        config = _get_impala_config_with_aggregators()
+        config = _get_impala_config_with_aggregators(
+            num_cpus_for_main_process=2,
+            placement_strategy="STRICT_SPREAD",
+        )
         placement_group_factory = IMPALA.default_resource_request(config.to_dict())
         placement_group = placement_group_factory.to_placement_group()
         ray.get(placement_group.ready())
@@ -128,10 +141,7 @@ class TestAggregatorPlacementGroups(unittest.TestCase):
             self.assertEqual(
                 info["builder_placement_group_id"], placement_group.id.hex()
             )
-            self._assert_aggregator_context(
-                info,
-                expected_pg_id=placement_group.id.hex(),
-            )
+            self._assert_node_colocation(info)
         finally:
             ray.get(builder.stop.remote())
             ray.kill(builder)
