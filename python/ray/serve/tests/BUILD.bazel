@@ -333,6 +333,7 @@ py_test_module_list(
     },
     files = [
         "test_deployment_actors.py",
+        "test_deployment_actors_recovery.py",
     ],
     tags = [
         "exclusive",
