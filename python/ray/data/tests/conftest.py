@@ -312,7 +312,12 @@ def disable_fallback_to_object_extension(request, restore_data_context):
     )
 
 
-@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+@pytest.fixture(
+    params=[
+        s for s in ShuffleStrategy
+        if s != ShuffleStrategy.GPU_SHUFFLE or os.environ.get("RAY_PYTEST_USE_GPU") == "1"
+    ]
+)
 def configure_shuffle_method(request):
     shuffle_strategy = request.param
 
