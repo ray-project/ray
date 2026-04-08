@@ -6,7 +6,7 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import torch
-from benchmark import Benchmark, OperatorStatsTracker
+from benchmark import Benchmark, OperatorStatsTracker, RuntimeEnvSetupTracker
 from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 import albumentations as A
@@ -226,7 +226,9 @@ def main(args: argparse.Namespace):
             )
             .write_parquet(WRITE_PATH)
         )
-        return OperatorStatsTracker.collect()
+        metrics = OperatorStatsTracker.collect()
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        return metrics
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()

@@ -5,7 +5,7 @@ steps:
     wanda: ci/docker/doc.build.wanda.yaml
     depends_on:
       - oss-ci-base_build-multipy
-      - ray-core-build(*)
+      - ray-core-build
       - ray-dashboard-build
     matrix:
       - "3.10"
