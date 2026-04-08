@@ -49,6 +49,55 @@ GPUType = Enum("GPUType", vars(accelerators))
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
+def _compute_use_gpu(
+    use_cpu: Optional[bool],
+    placement_group_config: Optional[Dict[str, Any]],
+    accelerator_type: Optional[str],
+) -> bool:
+    """Returns True if the configuration resolves to GPU usage.
+
+    Priority order:
+    1. Explicit use_cpu flag
+    2. placement_group_config GPU bundles
+    3. accelerator_type (known GPU types default to True, else True)
+    """
+    # Explicit use_cpu setting takes precedence over all other configurations
+    if isinstance(use_cpu, bool):
+        return not use_cpu
+
+    # Check placement_group_config for explicit GPU specification
+    if placement_group_config:
+        bundle_per_worker = placement_group_config.get("bundle_per_worker")
+        if bundle_per_worker:
+            return bundle_per_worker.get("GPU", 0) > 0
+
+        # Check bundles list (empty list → no GPUs → CPU-only)
+        bundles = placement_group_config.get("bundles")
+        if bundles is not None:
+            return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
+
+    # Default behavior based on accelerator_type
+    if not accelerator_type:
+        return True
+
+    return accelerator_type in (
+        GPUType.NVIDIA_TESLA_V100.value,
+        GPUType.NVIDIA_TESLA_P100.value,
+        GPUType.NVIDIA_TESLA_T4.value,
+        GPUType.NVIDIA_TESLA_P4.value,
+        GPUType.NVIDIA_TESLA_K80.value,
+        GPUType.NVIDIA_TESLA_A10G.value,
+        GPUType.NVIDIA_L4.value,
+        GPUType.NVIDIA_L40S.value,
+        GPUType.NVIDIA_A100.value,
+        GPUType.NVIDIA_H100.value,
+        GPUType.NVIDIA_H200.value,
+        GPUType.NVIDIA_H20.value,
+        GPUType.NVIDIA_A100_40G.value,
+        GPUType.NVIDIA_A100_80G.value,
+    )
+
+
 logger = get_logger(__name__)
 
 
@@ -370,6 +419,11 @@ class LLMConfig(BaseModelExtended):
     def max_request_context_length(self) -> Optional[int]:
         return self.engine_kwargs.get("max_model_len")
 
+    @property
+    def use_gpu(self) -> bool:
+        """Returns True if configured to use GPU resources."""
+        return _compute_use_gpu(self.use_cpu, self.placement_group_config, self.accelerator_type)
+
     @field_validator("accelerator_type")
     def validate_accelerator_type(cls, value: Optional[str]):
         if value is None:
@@ -470,37 +524,18 @@ class LLMConfig(BaseModelExtended):
 
     @model_validator(mode="after")
     def _validate_accelerator_type_with_gpu_mode(self):
-        """Validate that accelerator_type is not set when use_gpu would resolve to False.
+        """Validate that accelerator_type is not set when use_gpu resolves to False.
 
         This catches the case where accelerator_type would be silently ignored because
         the configuration resolves to CPU-only mode (via use_cpu=True or
         placement_group_config with no GPUs).
         """
-        if not self.accelerator_type:
-            return self
-
-        # Check if use_cpu is explicitly True
-        if self.use_cpu is True:
+        if self.accelerator_type and not self.use_gpu:
             raise ValueError(
                 f"accelerator_type='{self.accelerator_type}' cannot be used with "
-                "use_cpu=True. Either remove accelerator_type or set use_cpu=False."
+                "CPU-only configurations. Either remove accelerator_type, set "
+                "use_cpu=False, or ensure placement_group_config bundles include GPUs."
             )
-
-        # Check if placement_group_config has bundles with no GPUs
-        if self.placement_group_config:
-            bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
-            if bundle_per_worker:
-                has_gpu = bundle_per_worker.get("GPU", 0) > 0
-            else:
-                bundles = self.placement_group_config.get("bundles", [])
-                has_gpu = any(bundle.get("GPU", 0) > 0 for bundle in bundles)
-            if not has_gpu:
-                raise ValueError(
-                    f"accelerator_type='{self.accelerator_type}' cannot be used with "
-                    "placement_group_config that contains no GPUs. Either remove "
-                    "accelerator_type or add GPUs to the placement group bundles."
-                )
-
         return self
 
     def multiplex_config(self) -> ServeMultiplexConfig:

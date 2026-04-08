@@ -304,6 +304,7 @@ class TestUseCpuLogic:
             use_cpu=True,
         )
         assert llm_config_cpu.use_cpu is True
+        assert llm_config_cpu.use_gpu is False
         engine_config = llm_config_cpu.get_engine_config()
         assert engine_config.use_gpu is False
 
@@ -313,6 +314,7 @@ class TestUseCpuLogic:
             use_cpu=False,
         )
         assert llm_config_gpu.use_cpu is False
+        assert llm_config_gpu.use_gpu is True
         engine_config_gpu = llm_config_gpu.get_engine_config()
         assert engine_config_gpu.use_gpu is True
 
@@ -320,7 +322,7 @@ class TestUseCpuLogic:
         """Test that accelerator_type with use_cpu=True raises a validation error."""
         with pytest.raises(
             pydantic.ValidationError,
-            match="accelerator_type='L4' cannot be used with use_cpu=True",
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
         ):
             LLMConfig(
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
@@ -332,8 +334,7 @@ class TestUseCpuLogic:
         """Test that accelerator_type with CPU-only placement_group_config raises error."""
         with pytest.raises(
             pydantic.ValidationError,
-            match="accelerator_type='L4' cannot be used with "
-            "placement_group_config that contains no GPUs",
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
         ):
             LLMConfig(
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
@@ -345,8 +346,7 @@ class TestUseCpuLogic:
         """Test that accelerator_type with empty bundles list raises error."""
         with pytest.raises(
             pydantic.ValidationError,
-            match="accelerator_type='L4' cannot be used with "
-            "placement_group_config that contains no GPUs",
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
         ):
             LLMConfig(
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
