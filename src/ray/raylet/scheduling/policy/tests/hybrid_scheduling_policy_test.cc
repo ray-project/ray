@@ -146,3 +146,7 @@ TEST_F(HybridSchedulingPolicyTest, GetBestNodePrioritizePreferredNode) {
                                  /*preferred_node_score*/ 0));
   }
 }
+
+}  // namespace raylet_scheduling_policy
+
+}  // namespace ray

@@ -84,3 +84,6 @@ TEST(NodeInfoAccessorTest, TestHandleNotificationDeathInfo) {
   ASSERT_EQ(cached_node->death_info().reason(), rpc::NodeDeathInfo::EXPECTED_TERMINATION);
   ASSERT_EQ(cached_node->death_info().reason_message(), "Test termination reason");
 }
+
+}  // namespace gcs
+}  // namespace ray
