@@ -111,10 +111,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         to directly scale up nodes.
       * Cluster scaling down isn't handled here. It depends on the idle node
         termination.
-
-    Notes:
-      * It doesn't consider multiple concurrent Datasets for now, as the cluster
-        utilization is calculated by "dataset_usage / global_resources".
     """
 
     # Default cluster utilization threshold to trigger scaling up.
