@@ -2728,6 +2728,7 @@ class TestParquetFragmentBatchSizeCoercion:
         fragment = MagicMock()
         fragment.path = "/tmp/test.parquet"
         fragment.to_batches = fake_to_batches
+        fragment.physical_schema = pa.schema([("x", pa.int64())])
 
         schema = pa.schema([("x", pa.int64())])
 
@@ -2844,7 +2845,7 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     # Verify that the fallback IS needed when all columns are considered.
     import pyarrow.dataset as pds
 
-    fragment = pds.dataset(file_path, format="parquet").get_fragments()[0]
+    fragment = next(pds.dataset(file_path, format="parquet").get_fragments())
     assert _needs_nested_type_fallback(fragment) is True
     # But NOT needed when only the flat "id" column is requested.
     assert _needs_nested_type_fallback(fragment, columns=["id"]) is False

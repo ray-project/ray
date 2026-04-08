@@ -1064,6 +1064,24 @@ def _needs_nested_type_fallback(
     )
 
 
+def _resolve_read_columns(
+    columns: Optional[List[str]],
+    filter_expr: Optional["pyarrow.dataset.Expression"],
+    filter_columns: Optional[List[str]],
+) -> Optional[List[str]]:
+    """Compute the union of projected and filter-referenced columns.
+
+    When a filter references columns outside the projection, we must read
+    the union so the filter can evaluate.  Returns ``None`` (meaning "all
+    columns") when filter_columns is unknown.
+    """
+    if filter_expr is not None and columns is not None:
+        if filter_columns is not None:
+            return list(dict.fromkeys(columns + filter_columns))
+        return None
+    return columns
+
+
 def _iter_batches_with_nested_fallback(
     fragment: "ParquetFileFragment",
     *,
@@ -1090,18 +1108,9 @@ def _iter_batches_with_nested_fallback(
     if batch_size is not None:
         to_batches_kwargs.setdefault("batch_size", batch_size)
 
-    # Determine the columns that will actually be read from the file.
-    # When a filter references columns outside the projection, we must read
-    # the union (read_columns) for correct evaluation, but the *fallback*
-    # decision and batch-size calculation should consider all columns that
-    # will be decoded — i.e. the union of projected + filter columns.
-    if filter_expr is not None and columns is not None and filter_columns is not None:
-        all_read_columns = list(dict.fromkeys(columns + filter_columns))
-    else:
-        all_read_columns = columns  # None means "all columns"
+    read_columns = _resolve_read_columns(columns, filter_expr, filter_columns)
 
-    if not _needs_nested_type_fallback(fragment, all_read_columns):
-        # filter is pushed down to the scanner here
+    if not _needs_nested_type_fallback(fragment, read_columns):
         yield from fragment.to_batches(
             columns=columns,
             filter=filter_expr,
@@ -1111,8 +1120,36 @@ def _iter_batches_with_nested_fallback(
         )
         return
 
+    yield from _iter_batches_fallback(
+        fragment,
+        columns=columns,
+        read_columns=read_columns,
+        schema=schema,
+        batch_size=to_batches_kwargs.get("batch_size"),
+        use_threads=use_threads,
+        filter_expr=filter_expr,
+    )
+
+
+def _iter_batches_fallback(
+    fragment: "ParquetFileFragment",
+    *,
+    columns: Optional[List[str]],
+    read_columns: Optional[List[str]],
+    schema: Optional["pyarrow.Schema"],
+    batch_size: Optional[int],
+    use_threads: bool,
+    filter_expr: Optional["pyarrow.dataset.Expression"],
+) -> Iterable["pyarrow.RecordBatch"]:
+    """Row-level batched reader for fragments with nested types that exceed
+    Arrow's ~2GB chunking threshold (ARROW-5030).
+    """
     import pyarrow as pa
     import pyarrow.parquet as pq
+
+    from ray.data._internal.arrow_ops.transform_pyarrow import (
+        _align_struct_fields,
+    )
 
     if log_once("parquet_nested_fallback"):
         logger.warning(
@@ -1123,54 +1160,30 @@ def _iter_batches_with_nested_fallback(
         )
 
     pf = pq.ParquetFile(fragment.path, filesystem=fragment.filesystem)
+
     # Scope batch-size calculation to only the columns being decoded.
     leaf_indices = (
-        _resolve_leaf_column_indices(pf.metadata, all_read_columns)
-        if all_read_columns is not None and pf.metadata.num_row_groups > 0
+        _resolve_leaf_column_indices(pf.metadata, read_columns)
+        if read_columns is not None and pf.metadata.num_row_groups > 0
         else None
     )
     safe = _get_safe_batch_size_for_nested_types(pf, leaf_indices)
     fallback_batch_size = min(batch_size, safe) if batch_size else safe
 
-    # Determine which row groups to read.  fragment.subset(filter=)
-    # already respects the fragment's existing row-group subset, so a
-    # single subset call handles both the original constraint and
+    # fragment.subset(filter=) respects the fragment's existing row-group
+    # subset, so a single call handles both the original constraint and
     # filter-based predicate pushdown.
-    iter_kwargs: Dict[str, Any] = {}
-    subset = fragment
-    if filter_expr is not None:
-        subset = fragment.subset(filter=filter_expr)
-    if subset.row_groups is not None:
-        iter_kwargs["row_groups"] = [rg.id for rg in subset.row_groups]
-
-    # When both columns (projection) and filter_expr are set, the filter
-    # may reference columns outside the projection.  PyArrow's scanner
-    # handles this internally in the normal path, but pf.iter_batches
-    # does not.  Read the union of projected and filter-referenced columns
-    # so the filter can evaluate, then project down afterward.
-    if filter_expr is not None and columns is not None:
-        if filter_columns is not None:
-            read_columns = list(dict.fromkeys(columns + filter_columns))
-        else:
-            # filter_columns unknown — must read all columns so the
-            # filter can evaluate against any column it references.
-            logger.debug(
-                "filter_columns not provided; reading all columns from "
-                "'%s' so the filter expression can be evaluated.",
-                fragment.path,
-            )
-            read_columns = None
-    else:
-        read_columns = columns
-
-    from ray.data._internal.arrow_ops.transform_pyarrow import (
-        _align_struct_fields,
+    subset = (
+        fragment.subset(filter=filter_expr) if filter_expr is not None else fragment
+    )
+    row_groups = (
+        [rg.id for rg in subset.row_groups] if subset.row_groups is not None else None
     )
 
-    # Build a sub-schema covering only the output columns, so schema
-    # alignment doesn't pad with unneeded null columns.  This is scoped
-    # to `columns` (not `read_columns`) because filter-referenced columns
-    # may not appear in schema — they must survive until after filtering.
+    # Build a sub-schema covering only the output columns so alignment
+    # doesn't pad with unneeded null columns.  Scoped to ``columns``
+    # (not ``read_columns``) because filter-referenced columns may not
+    # appear in the target schema.
     if schema is not None and columns is not None:
         align_schema = pa.schema(
             [schema.field(c) for c in columns if schema.get_field_index(c) != -1]
@@ -1182,7 +1195,7 @@ def _iter_batches_with_nested_fallback(
         batch_size=fallback_batch_size,
         columns=read_columns,
         use_threads=use_threads,
-        **iter_kwargs,
+        row_groups=row_groups,
     ):
         table = pa.Table.from_batches([batch])
 
@@ -1202,8 +1215,7 @@ def _iter_batches_with_nested_fallback(
         # unified dataset schema to match the normal (scanner) path which
         # handles type promotion and missing-column filling automatically.
         if align_schema is not None:
-            table = _align_struct_fields([table], align_schema)[0]
-            table = table.cast(align_schema)
+            table = _align_struct_fields([table], align_schema)[0].cast(align_schema)
 
         yield from table.to_batches()
 
