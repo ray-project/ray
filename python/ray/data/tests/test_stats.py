@@ -309,6 +309,22 @@ def assert_iteration_stats_present(
     assert stats_summary.iter_stats.total_time.get() > 0
 
 
+def find_stats_summary_in_parents(
+    stats_summary: DatasetStatsSummary,
+    name_pattern: str,
+) -> DatasetStatsSummary:
+    """Find and return a DatasetStatsSummary node from the parent chain."""
+    current = stats_summary
+    while current:
+        if current.base_name and re.search(name_pattern, current.base_name):
+            return current
+        current = current.parents[0] if current.parents else None
+
+    raise AssertionError(
+        f"No stats summary found matching pattern '{name_pattern}' in parents chain"
+    )
+
+
 @pytest.mark.skipif(
     platform.system() != "Linux", reason="MemoryProfiler only supported on Linux"
 )
@@ -1314,12 +1330,24 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
 
     stats_summary = mds.get_stats_summary()
 
-    # Verify all operators have valid metrics and 1000 output rows
-    # In this pipeline (RandomShuffle -> Repartition), both operators are expected
-    # to have 1000 output rows
-    for op in stats_summary.operators_stats:
-        assert_basic_operator_metrics(op)
-        assert_output_row_count(op, expected_total=1000)
+    repartition_summary = find_stats_summary_in_parents(stats_summary, "Repartition")
+    random_shuffle_summary = find_stats_summary_in_parents(
+        stats_summary, "RandomShuffle"
+    )
+
+    assert_operator_count(repartition_summary, expected_count=2)
+    get_operator(repartition_summary, name_pattern="RepartitionMap")
+    get_operator(repartition_summary, name_pattern="RepartitionReduce")
+
+    assert_operator_count(random_shuffle_summary, expected_count=2)
+    get_operator(random_shuffle_summary, name_pattern="RandomShuffleMap")
+    get_operator(random_shuffle_summary, name_pattern="RandomShuffleReduce")
+
+    # Both top-level operators should produce 1000 rows across their suboperators.
+    for operator_summary in (repartition_summary, random_shuffle_summary):
+        for op in operator_summary.operators_stats:
+            assert_basic_operator_metrics(op)
+            assert_output_row_count(op, expected_total=1000)
 
 
 def test_dataset_stats_repartition(ray_start_regular_shared):
