@@ -1194,6 +1194,7 @@ class DatasetStatsSummary:
     global_bytes_restored: int
     dataset_bytes_spilled: int
     streaming_exec_schedule_s: float
+    scheduling_overhead: Optional[Dict[str, Any]] = None
 
     def to_string(
         self,
