@@ -1,15 +1,17 @@
 import gc
 import json
+import logging
+import math
 import os
 import time
-from datetime import datetime, timezone
 from enum import Enum
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, List, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray.data._internal.execution.execution_callback import ExecutionCallback
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.util.state import list_runtime_envs
+
+logger = logging.getLogger(__name__)
 
 
 def _get_spilled_bytes_total() -> float:
@@ -24,74 +26,66 @@ def _bytes_to_gb(b: float) -> float:
     return round(b / (1024**3), 4)
 
 
-class OperatorStatsTracker(ExecutionCallback):
-    """Records per-operator start time and duration.
+def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
+    """Collect execution stats from a Dataset as a JSON-serializable dict.
+    This is a subset from `get_stats_summary`, because we are only adding the ones
+    we care about for the release tests."""
+    summary = ds.get_stats_summary()
+    return {
+        "operators": [
+            {
+                "operator_name": op.operator_name,
+                "earliest_start_time": op.earliest_start_time,
+                "latest_end_time": op.latest_end_time,
+            }
+            for op in summary.operators_stats
+        ],
+    }
 
-    Tracks when each operator first submits a task (start) and when it
-    completes (duration = completion time - start time).
 
-    Uses class-level state because the planner instantiates callback classes
-    with ``cls()``, so callers can't hold a reference to the instance.
+class RuntimeEnvSetupTracker:
+    """Collects runtime environment creation times across the cluster.
+
+    Queries the Ray State API for all runtime environments and reports
+    aggregate statistics (mean, stdev) for creation time.
 
     Usage::
 
-        ctx = ray.data.DataContext.get_current()
-        ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
-
-        # ... run pipeline ...
-
-        metrics = OperatorStatsTracker.collect()
+        # After a pipeline or job completes:
+        stats = RuntimeEnvSetupTracker.collect()
     """
 
-    _op_start: Dict[str, float] = {}
-    _op_end: Dict[str, Optional[float]] = {}
-    _start_time: float = 0
+    @staticmethod
+    def collect() -> List[Dict[str, Any]]:
+        try:
+            groups: Dict[str, List[float]] = {}
+            for env in list_runtime_envs(limit=1000):
+                if env.creation_time_ms is None:
+                    continue
+                label = "+".join(sorted(env.runtime_env.keys()))
+                groups.setdefault(label, []).append(env.creation_time_ms)
+        except Exception:
+            logger.warning("Failed to query runtime env creation times.", exc_info=True)
+            return []
 
-    def before_execution_starts(self, executor: "StreamingExecutor"):
-        cls = type(self)
-        cls._start_time = executor._start_time
-        cls._op_start.clear()
-        cls._op_end.clear()
+        results: List[Dict[str, Any]] = []
+        for label, times in groups.items():
+            mean = sum(times) / len(times)
+            variance = sum((t - mean) ** 2 for t in times) / len(times)
+            results.append(
+                {
+                    "runtime_env_type": label,
+                    "count": len(times),
+                    "mean_creation_time_ms": round(mean, 2),
+                    "stdev_creation_time_ms": round(math.sqrt(variance), 2),
+                }
+            )
+        return results
 
-    def on_execution_step(self, executor: "StreamingExecutor"):
-        cls = type(self)
-        if executor._topology is None:
-            return
-        for i, op in enumerate(executor._topology):
-            op_key = f"{op.name}_{i}"
-            if op_key not in cls._op_start and op.metrics.num_tasks_submitted > 0:
-                cls._op_start[op_key] = time.perf_counter()
-                cls._op_end[op_key] = None
-            if (
-                op_key in cls._op_start
-                and cls._op_end[op_key] is None
-                and op.has_completed()
-            ):
-                cls._op_end[op_key] = time.perf_counter()
 
-    @classmethod
-    def collect(cls) -> Dict[str, Any]:
-        stats: Dict[str, Dict[str, Any]] = {}
-        now_wall = time.time()
-        now_perf = time.perf_counter()
-        for key, start in cls._op_start.items():
-            end = cls._op_end.get(key)
-            duration_s = round(end - start, 2) if end is not None else None
-            start_dt = cls._make_readable_timestamp(ts=now_wall - (now_perf - start))
-            stats[key] = {
-                "start": start_dt,
-                "duration_s": duration_s,
-            }
-
-        seconds_since_start = now_perf - cls._start_time
-        start_time = cls._make_readable_timestamp(ts=now_wall - seconds_since_start)
-        return {"start_time": start_time, "op_stats": stats}
-
-    @classmethod
-    def _make_readable_timestamp(cls, ts: float) -> str:
-        return datetime.fromtimestamp(ts, tz=timezone.utc).strftime(
-            "%Y-%m-%dT%H:%M:%SZ"
-        )
+def benchmark_py_modules() -> List[str]:
+    """Return a list containing the absolute path to benchmark.py for use in runtime_env py_modules."""
+    return [os.path.abspath(__file__)]
 
 
 class BenchmarkMetric(Enum):
