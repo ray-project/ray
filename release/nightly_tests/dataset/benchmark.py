@@ -1,4 +1,3 @@
-import dataclasses
 import gc
 import json
 import logging
@@ -28,12 +27,20 @@ def _bytes_to_gb(b: float) -> float:
 
 
 def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
-    """Collect execution stats from a Dataset as a serializable dict.
-
-    Calls ``ds.get_stats_summary()`` and converts the resulting
-    ``DatasetStatsSummary`` into a plain dict via ``dataclasses.asdict()``.
-    """
-    return dataclasses.asdict(ds.get_stats_summary())
+    """Collect execution stats from a Dataset as a JSON-serializable dict.
+    This is a subset from `get_stats_summary`, because we are only adding the ones
+    we care about for the release tests."""
+    summary = ds.get_stats_summary()
+    return {
+        "operators": [
+            {
+                "operator_name": op.operator_name,
+                "earliest_start_time": op.earliest_start_time,
+                "latest_end_time": op.latest_end_time,
+            }
+            for op in summary.operators_stats
+        ],
+    }
 
 
 class RuntimeEnvSetupTracker:

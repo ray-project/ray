@@ -622,7 +622,10 @@ class BasicObject:
             TestDataclass(),
             {
                 "list_field": [1, 2, 3],
-                "dict_field": {"1": 2, "3": "4"},  # keys become strings, values preserved
+                "dict_field": {
+                    "1": 2,
+                    "3": "4",
+                },  # keys become strings, values preserved
                 "string_field": "test",
                 "int_field": 1,
                 "float_field": 1.0,
