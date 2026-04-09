@@ -12,6 +12,10 @@ powershell ci/ray_ci/windows/install_bazelisk.ps1
 powershell -ExecutionPolicy ByPass -c "irm https://astral.sh/uv/0.9.22/install.ps1 | iex"
 
 conda init
+# TODO(ci): Remove once conda fixes the splitext bug in delete.py (conda/conda#15760).
+# Conda 26.3.1 crashes on Windows when it tries to clean up a locked exe during
+# a build-variant swap. Preventing self-update avoids that code path.
+conda config --set auto_update_conda false
 # Include ca-certificates + certifi in this solve so the trust store is refreshed with
 # Python/requests (ray-project/ray#61545). Avoid a follow-up `conda update -c conda-forge`:
 # it can replace conda.exe in place on Windows and fail in Docker (PermissionError on
@@ -27,7 +31,9 @@ pip install -U --ignore-installed -c python/requirements_compiled.txt \
   -r python/requirements/test-requirements.txt \
   -r python/requirements/ml/dl-cpu-requirements.txt
 
-# Ensure urllib/requests see an up-to-date certifi bundle after constrained installs.
+# The installs above use `-c python/requirements_compiled.txt`, which pins exact versions. If we
+# passed that file again here, certifi would stay on the pinned (possibly old) version. We run
+# without it so pip can install the latest certifi. Upgrading certifi alone is low risk for this CI image.
 python -m pip install -U certifi
 
 # Clean up caches to minimize image size. These caches are not needed, and
