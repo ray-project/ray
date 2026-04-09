@@ -1,7 +1,7 @@
 group: core tests
 depends_on:
   - forge
-  - ray-core-build
+  - ray-core-build(*)
   - ray-dashboard-build
 steps:
   # builds
@@ -268,7 +268,7 @@ steps:
       - manylinux-x86_64
       - corebuild-multipy
       - forge
-      - ray-wheel-build
+      - ray-wheel-build(*)
 
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:
