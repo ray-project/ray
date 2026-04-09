@@ -556,7 +556,7 @@ void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
   std::string filename("/proc/" + std::to_string(pid) + "/oom_score_adj");
   oom_score_file.open(filename, std::ofstream::out);
   int oom_score_adj = RayConfig::instance().worker_oom_score_adjustment();
-  oom_score_adj = std::max(oom_score_adj, 0);
+  oom_score_adj = std::max(oom_score_adj, -1000);
   oom_score_adj = std::min(oom_score_adj, 1000);
   if (oom_score_file.is_open()) {
     // Adjust worker's OOM score so that the OS prioritizes killing these
