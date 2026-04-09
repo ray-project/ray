@@ -3333,7 +3333,6 @@ lxml==6.0.2 \
     #   -r python/requirements/py313/test-requirements.txt
     #   dm-control
     #   nbconvert
-    #   vsphere-automation-sdk
 lz4==4.4.5 \
     --hash=sha256:0846e6e78f374156ccf21c631de80967e03cc3c01c373c665789dc0c5431e7fc \
     --hash=sha256:0bba042ec5a61fa77c7e380351a61cb768277801240249841defd2ff0a10742f \
@@ -4186,18 +4185,6 @@ notebook-shim==0.2.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   jupyterlab
-nsx-policy-python-sdk @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/nsx-policy-python-sdk/nsx_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl \
-    --hash=sha256:c8614ba87c80061733c840dc37b31912d3377a77502b34783c9322126e4f3182
-    # via vsphere-automation-sdk
-nsx-python-sdk @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/nsx-python-sdk/nsx_python_sdk-4.1.0.1.0-py2.py3-none-any.whl \
-    --hash=sha256:6525d26a21c611d0b6975bd57dbecfeb2befa7ae5c4af5f46500bf1ed2b90e40
-    # via vsphere-automation-sdk
-nsx-vmc-aws-integration-python-sdk @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/nsx-vmc-aws-integration-python-sdk/nsx_vmc_aws_integration_python_sdk-4.1.0.1.0-py2.py3-none-any.whl \
-    --hash=sha256:beb33de71c4cc1251537d1a6d84470eac1d56abec97081df753e8d23b84e2d3e
-    # via vsphere-automation-sdk
-nsx-vmc-policy-python-sdk @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/nsx-vmc-policy-python-sdk/nsx_vmc_policy_python_sdk-4.1.0.1.0-py2.py3-none-any.whl \
-    --hash=sha256:0e2a9badd2a63bed91b32eacda6037b6a62dd7dd832f8ce3200bd83b49fc6ca7
-    # via vsphere-automation-sdk
 numba==0.62.1 \
     --hash=sha256:03de6d691d6b6e2b76660ba0f38f37b81ece8b2cc524a62f2a0cfae2bfb6f9da \
     --hash=sha256:14432af305ea68627a084cd702124fd5d0c1f5b8a413b05f4e14757202d1cf6c \
@@ -6028,7 +6015,6 @@ pyopenssl==25.0.0 \
     #   -r python/requirements/py313/test-requirements.txt
     #   azure-cli-core
     #   ray
-    #   vapi-runtime
 pyparsing==3.1.1 \
     --hash=sha256:32c7c0b711493c72ff18a981d24f28aaf9c1fb7ed5e9667c9e84e3db623bdbfb \
     --hash=sha256:ede28a1a32462f5a9705e07aea48001a08f7cf81a021585011deba701581a0db
@@ -6273,11 +6259,6 @@ pytz==2022.7.1 \
     #   -r python/requirements/py313/test-requirements.txt
     #   aim
     #   pandas
-pyvmomi==8.0.3.0.1 \
-    --hash=sha256:db795c960159cfa3c81e6af4cf1f46618e61cf0349db1666de75df98a4f29c69
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   vsphere-automation-sdk
 pyyaml==6.0.3 \
     --hash=sha256:00c4bdeba853cc34e7dd471f16b4114f4162dc03e6b7afcc2128711f0eca823c \
     --hash=sha256:0150219816b6a1fa26fb4699fb7daa9caf09eb1999f3b70fb6e786805e80375a \
@@ -6625,7 +6606,6 @@ requests==2.32.5 \
     #   torch-geometric
     #   torchtext
     #   transformers
-    #   vapi-runtime
     #   wandb
 requests-oauthlib==2.0.0 \
     --hash=sha256:7dd8a5c40426b779b0868c404bdef9768deccf22749cde15852df527e6269b36 \
@@ -7358,13 +7338,11 @@ six==1.16.0 \
     #   pytest-remotedata
     #   pytest-shutil
     #   python-dateutil
-    #   pyvmomi
     #   responses
     #   rfc3339-validator
     #   tensorflow
     #   tensorflow-probability
     #   triad
-    #   vapi-runtime
 smart-open==6.2.0 \
     --hash=sha256:088bf00f9327c71e549bc2f86567d3320df5d89667f009ce1c16568976068ef7 \
     --hash=sha256:1b4df5c8365218f3852c507451920ccad606c80b0acb4e67508e50ba9b5d2632
@@ -8325,31 +8303,6 @@ uvloop==0.21.0 ; (python_full_version < '3.12' and platform_python_implementatio
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   pymars
     #   uvicorn
-vapi-common-client @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/vapi-common-client/vapi_common_client-2.40.0-py2.py3-none-any.whl \
-    --hash=sha256:3fb538f8339f1c6475739f740d4a199f13a677554fdad10cc9f240bbc4755dd5
-    # via
-    #   nsx-policy-python-sdk
-    #   nsx-python-sdk
-    #   nsx-vmc-aws-integration-python-sdk
-    #   nsx-vmc-policy-python-sdk
-    #   vmc-client-bindings
-    #   vmc-draas-client-bindings
-    #   vsphere-automation-sdk
-vapi-runtime @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/vapi-runtime/vapi_runtime-2.40.0-py2.py3-none-any.whl \
-    --hash=sha256:89ac5f61858d6a3a452b8ba28e64da7956aeb25e530ee17d1ad1c6c256df49f6
-    # via
-    #   nsx-policy-python-sdk
-    #   nsx-python-sdk
-    #   nsx-vmc-aws-integration-python-sdk
-    #   nsx-vmc-policy-python-sdk
-    #   vapi-common-client
-    #   vcenter-bindings
-    #   vmc-client-bindings
-    #   vmc-draas-client-bindings
-    #   vsphere-automation-sdk
-vcenter-bindings @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/vcenter-bindings/vcenter_bindings-4.1.0-py2.py3-none-any.whl \
-    --hash=sha256:3019a76128019e2b31066e03307eff415e8d34e96ac5589c81e73dbac3834cc3
-    # via vsphere-automation-sdk
 vine==5.1.0 \
     --hash=sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc \
     --hash=sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0
@@ -8366,16 +8319,6 @@ virtualenv==20.29.1 \
     #   -r python/requirements/py313/test-requirements.txt
     #   pytest-virtualenv
     #   ray
-vmc-client-bindings @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/vmc-client-bindings/vmc_client_bindings-1.62.0-py2.py3-none-any.whl \
-    --hash=sha256:2db4a3bb7a848ef81af9fe13aa4df41554ab660dd78e263a1a12317b799e2d7d
-    # via vsphere-automation-sdk
-vmc-draas-client-bindings @ file:///home/ubuntu/.cache/uv/git-v0/checkouts/3a7c78869eb8297a/8ec072f/lib/vmc-draas-client-bindings/vmc_draas_client_bindings-1.21.0-py2.py3-none-any.whl \
-    --hash=sha256:6648ae3dc4078533b349b799410103ef46739ea07b9ecde767bacedc3ce78705
-    # via vsphere-automation-sdk
-vsphere-automation-sdk @ git+https://github.com/vmware/vsphere-automation-sdk-python.git@8ec072f7434d94f75fa5abfdcb0f2c740ff298a6
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/py313/test-requirements.txt
 wadler-lindig==0.1.7 \
     --hash=sha256:81d14d3fe77d441acf3ebd7f4aefac20c74128bf460e84b512806dccf7b2cd55 \
     --hash=sha256:e3ec83835570fd0a9509f969162aeb9c65618f998b1f42918cfc8d45122fe953
