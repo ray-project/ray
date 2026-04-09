@@ -354,7 +354,7 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         return (
             isinstance(other, Checkpoint)
             and self.path == other.path
-            and type(self.filesystem) is type(other.filesystem)
+            and self.filesystem == other.filesystem
         )
 
     def __hash__(self) -> int:
