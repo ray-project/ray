@@ -1468,8 +1468,8 @@ class AlgorithmConfig(_Config):
                 process that runs `Algorithm.training_step()`.
                 Note: This is only relevant when running RLlib through Tune. Otherwise,
                 `Algorithm.training_step()` runs in the main program (driver).
-            custom_resources_for_main_process: Any custom Ray resources to allocate per
-                algorithm process.
+            custom_resources_for_main_process: Any custom Ray resources to allocate for the
+                main `Algorithm` process.
             num_gpus: Number of GPUs to allocate to the algorithm process.
                 Note that not all algorithms can take advantage of GPUs.
                 Support for multi-GPU is currently only available for
