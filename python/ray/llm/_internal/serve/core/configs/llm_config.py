@@ -310,7 +310,7 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = self._load_hf_config(model_id_or_path, trust_remote_code)
+        hf_config = self._load_hf_config(model_id_or_path, trust_remote_code=trust_remote_code)
         self._supports_vision = hasattr(hf_config, "vision_config")
 
     def _set_model_architecture(
@@ -325,7 +325,7 @@ class LLMConfig(BaseModelExtended):
         """
         if model_id_or_path:
             hf_config = self._load_hf_config(
-                model_id_or_path, trust_remote_code
+                model_id_or_path, trust_remote_code=trust_remote_code
             )
             if (
                 hf_config
@@ -341,7 +341,7 @@ class LLMConfig(BaseModelExtended):
         self, model_id_or_path: str, trust_remote_code: bool = False
     ) -> None:
         """Apply the checkpoint info to the model config."""
-        self._infer_supports_vision(model_id_or_path, trust_remote_code)
+        self._infer_supports_vision(model_id_or_path, trust_remote_code=trust_remote_code)
         self._set_model_architecture(model_id_or_path, trust_remote_code=trust_remote_code)
 
     def get_or_create_callback(self) -> Optional[CallbackBase]:
