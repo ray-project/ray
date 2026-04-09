@@ -110,6 +110,9 @@ class RaySyncerTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    // Destroy the syncer while the io_context is still running so that
+    // gRPC disconnect/OnDone callbacks can execute on the io_context thread.
+    syncer_.reset();
     work_guard_->reset();
     io_context_.stop();
     thread_->join();
@@ -420,13 +423,15 @@ struct SyncerServerTest {
 
     server->Shutdown();
 
+    // Destroy the syncer while the io_context is still running so that
+    // gRPC disconnect/OnDone callbacks can execute on the io_context thread.
+    service.reset();
+    syncer.reset();
+
     io_context.stop();
     thread->join();
 
     server.reset();
-    service.reset();
-
-    syncer.reset();
   }
 
   int64_t GetNumConsumedMessages(const std::string &node_id) const {
@@ -526,12 +531,9 @@ class SyncerTest : public ::testing::Test {
 
  protected:
   void TearDown() override {
-    // Drain all grpc requests.
     for (auto &s : servers) {
       s->Stop();
     }
-
-    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
   std::vector<std::unique_ptr<SyncerServerTest>> servers;
 };
@@ -992,6 +994,11 @@ class SyncerReactorTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    // Shut down the gRPC server and disconnect the client reactor while the
+    // io_context is still running so that OnDone callbacks can execute.
+    server->Shutdown();
+    server.reset();
+    rpc_service_.reset();
     io_context_.stop();
     thread_->join();
   }
@@ -1119,6 +1126,10 @@ class SyncerAuthenticationTest : public ::testing::Test {
     ~AuthenticatedSyncerServerTest() {
       server->Shutdown();
       server->Wait();
+      // Destroy the syncer while the io_context is still running so that
+      // gRPC disconnect/OnDone callbacks can execute on the io_context thread.
+      service.reset();
+      syncer.reset();
       work_guard.reset();
       io_context.stop();
       thread->join();
