@@ -9,9 +9,11 @@ Cluster assumption: 16 worker nodes, 8 CPU / 32 GB each.
   - Object store (50%): 256 GB
   - In-core shuffle limit (x/3): ~85 GB
 
-Tests a single (data_size, num_partitions, strategy) combination using
-synthesized data (random int columns). Each combination runs as an
-independent release test so one OOM does not affect others.
+Data: TPC-H lineitem from S3, limited to target row count.
+
+Tests a single (data_size, num_partitions, strategy) combination.
+Each combination runs as an independent release test so one OOM
+does not affect others.
 
 Usage:
     python benchmark_out_of_core_shuffle.py --data-size-gb 50 --num-partitions 200
@@ -22,6 +24,7 @@ Usage:
 import argparse
 import gc
 import json
+import shutil
 import time
 from datetime import datetime
 
@@ -33,50 +36,33 @@ STRATEGY_MAP = {
     "actor": ShuffleStrategy.HASH_SHUFFLE,
 }
 
-NUM_KEY_COLUMNS = 1
-NUM_VALUE_COLUMNS = 9
-KEY_COLUMNS = ["key_0"]
+KEY_COLUMNS = ["column00"]  # l_orderkey
 
-# Each row: NUM_KEY_COLUMNS + NUM_VALUE_COLUMNS int64 columns = 10 * 8 = 80 bytes
-BYTES_PER_ROW = (NUM_KEY_COLUMNS + NUM_VALUE_COLUMNS) * 8
+# Approximate bytes per row for TPC-H lineitem in-memory (Arrow).
+# Measured empirically; used to convert --data-size-gb to a row limit.
+APPROX_BYTES_PER_ROW = 128
 
-
-def _make_block(task_idx, rows_per_task, num_key_cols, num_val_cols):
-    """Generate a single block of random data."""
-    import numpy as np
-    import pyarrow as pa
-
-    rng = np.random.default_rng(seed=task_idx)
-    columns = {}
-    for i in range(num_key_cols):
-        columns[f"key_{i}"] = rng.integers(
-            0, 2**31, size=rows_per_task, dtype=np.int64
-        )
-    for i in range(num_val_cols):
-        columns[f"val_{i}"] = rng.integers(
-            0, 2**63, size=rows_per_task, dtype=np.int64
-        )
-    return pa.table(columns)
+# Local temp dir for shuffle output (forces full materialization).
+OUTPUT_DIR = "/tmp/ooc_bench_ray_output"
 
 
-def generate_dataset(target_bytes, num_map_tasks=128):
-    """Create a synthetic dataset of approximately target_bytes using Ray Data."""
-    total_rows = target_bytes // BYTES_PER_ROW
-    rows_per_task = total_rows // num_map_tasks
+def pick_sf(data_size_gb):
+    """Pick the smallest TPC-H scale factor that has enough data."""
+    # SF100 ≈ 600M rows ≈ 75 GB, SF1000 ≈ 6B rows ≈ 750 GB
+    if data_size_gb <= 70:
+        return 100
+    return 1000
 
-    nk = NUM_KEY_COLUMNS
-    nv = NUM_VALUE_COLUMNS
-    rpt = rows_per_task
 
-    ds = ray.data.from_items(
-        list(range(num_map_tasks)), override_num_blocks=num_map_tasks
-    )
-    ds = ds.map_batches(
-        lambda batch: _make_block(batch["item"][0].as_py(), rpt, nk, nv),
-        batch_size=1,
-        batch_format="pyarrow",
-    )
-    return ds
+def load_dataset(data_size_gb):
+    """Load TPC-H lineitem from S3 with a row limit for the target size."""
+    sf = pick_sf(data_size_gb)
+    target_rows = int(data_size_gb * 1024**3 / APPROX_BYTES_PER_ROW)
+    path = f"s3://ray-benchmark-data/tpch/parquet/sf{sf}/lineitem"
+
+    ds = ray.data.read_parquet(path)
+    ds = ds.limit(target_rows)
+    return ds, sf, target_rows
 
 
 def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=180, poll_s=5):
@@ -96,12 +82,9 @@ def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=180, poll_s=5):
     print(f"    object store drain timed out after {timeout_s}s", flush=True)
 
 
-def run_one(data_size_gb, num_partitions, strategy_name="actorless", num_map_tasks=128):
+def run_one(data_size_gb, num_partitions, strategy_name="actorless"):
     """Run a single shuffle and return timing + status info."""
-    target_bytes = int(data_size_gb * 1024**3)
-
-    print(f"  Generating ~{data_size_gb} GB synthetic data...", flush=True)
-    ds = generate_dataset(target_bytes, num_map_tasks=num_map_tasks)
+    ds, sf, target_rows = load_dataset(data_size_gb)
 
     ds.context.shuffle_strategy = STRATEGY_MAP[strategy_name]
     if strategy_name == "actorless":
@@ -110,34 +93,30 @@ def run_one(data_size_gb, num_partitions, strategy_name="actorless", num_map_tas
             "actorless_shuffle_pre_map_merge_threshold", 1024 * 1024 * 1024
         )  # 1 GB
 
-    name = f"ooc_{strategy_name}_{data_size_gb}gb_p{num_partitions}"
     repartitioned = ds.repartition(num_partitions, keys=KEY_COLUMNS)
-    repartitioned.set_name(name)
+
+    shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
 
     print(
-        f"  Shuffling {data_size_gb} GB -> {num_partitions} partitions ... ",
+        f"  [ray] read(sf{sf}, limit {target_rows:,}) + shuffle -> "
+        f"{num_partitions} partitions ({strategy_name}) ... ",
         end="",
         flush=True,
     )
 
     start = time.perf_counter()
-    result = repartitioned.materialize()
+    repartitioned.write_parquet(OUTPUT_DIR)
     elapsed = time.perf_counter() - start
 
-    num_rows = result.count()
-    actual_bytes = result.size_bytes()
-    actual_gb = actual_bytes / 1024**3
+    print(f"{elapsed:.1f}s")
 
-    print(f"{elapsed:.1f}s ({num_rows:,} rows, {actual_gb:.1f} GB actual)")
-
-    del result, repartitioned, ds
+    shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
+    del repartitioned, ds
     gc.collect()
     wait_for_object_store_to_drain()
 
     return {
         "elapsed_s": elapsed,
-        "num_rows": num_rows,
-        "actual_gb": round(actual_gb, 2),
         "status": "ok",
     }
 
@@ -215,7 +194,6 @@ def main():
             "num_partitions": num_partitions,
             "strategy": strategy_name,
             "ratio_to_in_core_limit": round(ratio, 2),
-            "bytes_per_row": BYTES_PER_ROW,
         },
         **info,
     }
@@ -224,7 +202,7 @@ def main():
 
     print(f"\nResults written to {args.output}")
     t = info["elapsed_s"]
-    tp = f"{info['actual_gb'] / t:.1f} GB/s" if t and t > 0 else "N/A"
+    tp = f"{data_size_gb / t:.1f} GB/s" if t and t > 0 else "N/A"
     print(f"  {data_size_gb} GB, {num_partitions} partitions: {t:.1f}s, {tp}")
 
 
