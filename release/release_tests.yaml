@@ -2331,7 +2331,7 @@
 
   cluster:
     byod:
-      type: llm-cu128 # llm image already has nixl
+      type: llm-cu130 # llm image already has nixl
       post_build_script: byod_llm_pin_cupy_cuda12x.sh # match cupy-cuda12x to ray-llm base lock (BYOD testdeps can float major)
       runtime_env: # env vars for nixl
         - UCX_TLS=all
@@ -3895,7 +3895,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -3916,7 +3916,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -3936,7 +3936,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
       runtime_env:
         - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
     cluster_compute: llm_2x_4xl4.yaml
@@ -3955,7 +3955,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -3972,7 +3972,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -3993,7 +3993,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4013,7 +4013,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4033,7 +4033,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4052,7 +4052,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4071,7 +4071,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4091,7 +4091,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4111,7 +4111,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4131,7 +4131,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4151,7 +4151,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4171,7 +4171,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
       post_build_script: byod_llm_lmcache_test.sh
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
@@ -4192,7 +4192,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
       runtime_env:
         - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
       post_build_script: byod_llm_sglang_test.sh
@@ -4215,7 +4215,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4235,7 +4235,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
       post_build_script: byod_llm_sglang_test.sh
     cluster_compute: llm_4xl4.yaml
 
@@ -4254,7 +4254,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -4273,9 +4273,9 @@
     byod:
       runtime_env:
         - VLLM_DISABLE_COMPILE_CACHE=1
-      type: llm-cu128
+      type: llm-cu130
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
-      python_depset: llm_batch/llm_batch_single_node_benchmark_py311_cu128.lock
+      python_depset: llm_batch/llm_batch_single_node_benchmark_py312_cu130.lock
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
@@ -4285,14 +4285,14 @@
 
 - name: text_embeddings_benchmark_{{scaling}}
   frequency: nightly
-  python: "3.11"  # necessary for the llm-cu128 image
+  python: "3.12"  # necessary for the llm-cu130 image
   working_dir: nightly_tests
   team: data
   group: data-tests
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
 
   matrix:
@@ -4315,7 +4315,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
     cluster_compute: dataset/{{scaling}}_gpu_g6e_2xl_aws.yaml
 
   matrix:
@@ -4375,7 +4375,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_llm_ner.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4400,7 +4400,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_mcp-ray-serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4425,7 +4425,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_langchain_agent_ray_serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4451,7 +4451,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_multi_agent_a2a.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4526,7 +4526,7 @@
 
   cluster:
     byod:
-      type: cpu  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: cpu  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_asynchronous_inference.sh
     cluster_compute: ci/aws.yaml
 
@@ -4678,7 +4678,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
       post_build_script: byod_tensor_parallel_autotp.sh
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4754,7 +4754,7 @@
 
   cluster:
     byod:
-      type: llm-cu128
+      type: llm-cu130
       post_build_script: byod_e2e_audio.sh
     cluster_compute: ci/aws.yaml
 
@@ -4802,7 +4802,7 @@
 
   cluster:
     byod:
-      type: cu123  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu124
+      type: cu123  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_e2e_multimodal_ai_workloads.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4828,7 +4828,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_object_detection.sh # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4854,7 +4854,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_e2e_rag.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4879,7 +4879,7 @@
 
   cluster:
     byod:
-      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu128"]
+      type: cpu  # ["gpu", "cpu", "cu123", "llm-cu130"]
       post_build_script: byod_unstructured_data_ingestion.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4904,7 +4904,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_llamafactory_llm_fine_tune.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4929,7 +4929,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_ray_train_workloads.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4954,7 +4954,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_tune_pytorch_asha.sh
     cluster_compute: ci/aws.yaml
 
@@ -4979,7 +4979,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_llm_batch_inference_text.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -5005,7 +5005,7 @@
 
   cluster:
     byod:
-      type: llm-cu128  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: llm-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py312-cu130
       post_build_script: byod_llm_batch_inference_vision.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
