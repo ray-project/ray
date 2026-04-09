@@ -12,6 +12,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:asio",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:runtime_env",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
@@ -23,7 +24,6 @@ ray_cc_test(
         "//src/ray/observability:fake_metric",
         "//src/ray/pubsub:publisher",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -36,6 +36,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
@@ -50,7 +51,6 @@ ray_cc_test(
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/util:counter_map",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -63,12 +63,12 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs/actor:gcs_actor",
         "//src/ray/gcs/actor:gcs_actor_scheduler",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/util:counter_map",
-        "//src/ray/common:ray_gtest_main",
     ],
 )

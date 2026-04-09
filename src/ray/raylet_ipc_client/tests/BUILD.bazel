@@ -8,9 +8,9 @@ ray_cc_test(
     deps = [
         "//src/ray/common:asio",
         "//src/ray/common:id",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/raylet_ipc_client:client_connection",
         "//src/ray/util:network_util",
         "@boost//:asio",
-        "//src/ray/common:ray_gtest_main",
     ],
 )

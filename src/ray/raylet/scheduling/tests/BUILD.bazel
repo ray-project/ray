@@ -11,11 +11,11 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:lease",
         "//src/ray/common:ray_config",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -27,11 +27,11 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:scheduling_context",
         "//src/ray/raylet/scheduling:scheduling_options",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -43,9 +43,9 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet/scheduling:local_resource_manager",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -58,13 +58,13 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:id",
         "//src/ray/common:lease",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:local_lease_manager",
         "//src/ray/raylet/tests:util",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -79,13 +79,13 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:id",
         "//src/ray/common:lease",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/raylet/scheduling:cluster_lease_manager",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:local_lease_manager",
         "//src/ray/raylet/tests:util",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -97,7 +97,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/raylet/scheduling:cluster_resource_manager",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/raylet/scheduling:cluster_resource_manager",
     ],
 )

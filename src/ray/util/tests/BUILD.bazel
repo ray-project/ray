@@ -7,8 +7,8 @@ ray_cc_test(
     tags = ["team:core"],
     visibility = ["//visibility:private"],
     deps = [
-        "//src/ray/util:file_persistence",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:file_persistence",
     ],
 )
 
@@ -17,8 +17,8 @@ ray_cc_test(
     srcs = ["array_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:array",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:array",
     ],
 )
 
@@ -28,8 +28,8 @@ ray_cc_test(
     srcs = ["thread_checker_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:thread_checker",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:thread_checker",
     ],
 )
 
@@ -40,10 +40,10 @@ ray_cc_test(
     linkstatic = True,
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -53,8 +53,8 @@ ray_cc_test(
     srcs = ["counter_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:counter_map",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:counter_map",
     ],
 )
 
@@ -69,11 +69,11 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common:ray_config",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util:event",
         "//src/ray/util:path_utils",
         "@boost//:range",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -83,8 +83,8 @@ ray_cc_test(
     srcs = ["exponential_backoff_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:exponential_backoff",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:exponential_backoff",
     ],
 )
 
@@ -94,10 +94,10 @@ ray_cc_test(
     srcs = ["filesystem_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/util:filesystem",
         "//src/ray/util:path_utils",
         "//src/ray/util:string_utils",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -115,6 +115,7 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:status",
         "//src/ray/util:env",
         "//src/ray/util:filesystem",
@@ -122,7 +123,6 @@ ray_cc_test(
         "//src/ray/util:time",
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
-        "//src/ray/common:ray_gtest_main",
         "@nlohmann_json",
     ],
 )
@@ -133,9 +133,9 @@ ray_cc_test(
     srcs = ["sequencer_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/util:logging",
         "//src/ray/util:sequencer",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -145,10 +145,10 @@ ray_cc_test(
     srcs = ["signal_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/util:logging",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -158,10 +158,10 @@ ray_cc_test(
     srcs = ["process_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/util:process",
         "//src/ray/util:process_utils",
         "@boost//:process",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -171,8 +171,8 @@ ray_cc_test(
     srcs = ["network_util_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:network_util",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:network_util",
     ],
 )
 
@@ -182,9 +182,9 @@ ray_cc_test(
     srcs = ["proto_schema_backward_compatibility_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:range",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -194,8 +194,8 @@ ray_cc_test(
     srcs = ["size_literals_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:size_literals",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:size_literals",
     ],
 )
 
@@ -205,8 +205,8 @@ ray_cc_test(
     srcs = ["shared_lru_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:shared_lru",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:shared_lru",
     ],
 )
 
@@ -216,8 +216,8 @@ ray_cc_test(
     srcs = ["scoped_env_setter_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:scoped_env_setter",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:scoped_env_setter",
     ],
 )
 
@@ -228,13 +228,13 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:id",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/tests:testing",
         "//src/ray/util:filesystem",
         "//src/ray/util:pipe_logger",
         "//src/ray/util:scoped_env_setter",
         "//src/ray/util:temporary_directory",
         "@com_google_absl//absl/strings:str_format",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -252,11 +252,11 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common:id",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/tests:testing",
         "//src/ray/util:filesystem",
         "//src/ray/util:stream_redirection",
         "@com_google_absl//absl/strings:str_format",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -266,8 +266,8 @@ ray_cc_test(
     srcs = ["cmd_line_utils_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:cmd_line_utils",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:cmd_line_utils",
     ],
 )
 
@@ -277,9 +277,9 @@ ray_cc_test(
     srcs = ["spdlog_fd_sink_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/util:compat",
         "//src/ray/util:spdlog_fd_sink",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -290,13 +290,13 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:id",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/tests:testing",
         "//src/ray/util:filesystem",
         "//src/ray/util:spdlog_fd_sink",
         "//src/ray/util:spdlog_newliner_sink",
         "//src/ray/util:temporary_directory",
         "@com_google_absl//absl/strings:str_format",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -306,8 +306,8 @@ ray_cc_test(
     srcs = ["temporary_directory_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:temporary_directory",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:temporary_directory",
     ],
 )
 
@@ -317,9 +317,9 @@ ray_cc_test(
     srcs = ["compat_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/util:compat",
         "//src/ray/util:filesystem",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -331,8 +331,8 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/ray/util:process",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:process",
     ],
 )
 
@@ -342,13 +342,13 @@ ray_cc_test(
     srcs = ["scoped_dup2_wrapper_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/tests:testing",
         "//src/ray/util:compat",
         "//src/ray/util:filesystem",
         "//src/ray/util:scoped_dup2_wrapper",
         "//src/ray/util:temporary_directory",
         "@boost//:iostreams",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -358,8 +358,8 @@ ray_cc_test(
     srcs = ["concurrent_flat_map_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:concurrent_flat_map",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/util:concurrent_flat_map",
     ],
 )
 
@@ -380,8 +380,8 @@ ray_cc_test(
     srcs = ["string_utils_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:status_or",
         "//src/ray/util:string_utils",
-        "//src/ray/common:ray_gtest_main",
     ],
 )

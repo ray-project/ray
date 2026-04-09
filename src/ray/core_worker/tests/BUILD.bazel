@@ -6,8 +6,8 @@ ray_cc_test(
     srcs = ["core_worker_resubmit_queue_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/core_worker:core_worker_lib",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/core_worker:core_worker_lib",
     ],
 )
 
@@ -17,9 +17,9 @@ ray_cc_test(
     srcs = ["shutdown_coordinator_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker:shutdown_coordinator",
         "@com_google_absl//absl/synchronization",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -30,12 +30,12 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:memory_store",
         "@com_google_absl//absl/synchronization",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -47,6 +47,7 @@ ray_cc_test(
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:asio",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:ray_object",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:reference_counter",
@@ -57,7 +58,6 @@ ray_cc_test(
         "//src/ray/pubsub:publisher_interface",
         "//src/ray/pubsub:subscriber_interface",
         "@com_google_absl//absl/functional:bind_front",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -69,6 +69,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:object_recovery_manager",
@@ -77,7 +78,6 @@ ray_cc_test(
         "//src/ray/pubsub:fake_subscriber",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/raylet_rpc_client:raylet_client_interface",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -89,6 +89,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:memory_store",
@@ -98,7 +99,6 @@ ray_cc_test(
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/observability:fake_metric",
         "//src/ray/pubsub:fake_subscriber",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -109,6 +109,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:task_event_buffer",
@@ -117,7 +118,6 @@ ray_cc_test(
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/types:optional",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -131,13 +131,13 @@ ray_cc_test(
     ],
     deps = [
         "//:ray_mock",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:task_event_buffer",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/util:event",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/types:optional",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -148,11 +148,11 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:common",
         "//src/ray/core_worker:generator_waiter",
         "//src/ray/gcs_rpc_client:gcs_client",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -162,8 +162,8 @@ ray_cc_test(
     srcs = ["lease_policy_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/core_worker:lease_policy",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/core_worker:lease_policy",
     ],
 )
 
@@ -184,6 +184,7 @@ ray_cc_test(
     }),
     deps = [
         "//:ray_mock",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",
@@ -192,7 +193,6 @@ ray_cc_test(
         "@com_google_absl//absl/functional:bind_front",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings:str_format",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -204,6 +204,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:fake_periodical_runner",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/core_worker:grpc_service",
@@ -217,6 +218,5 @@ ray_cc_test(
         "//src/ray/raylet_ipc_client:fake_raylet_ipc_client",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
-        "//src/ray/common:ray_gtest_main",
     ],
 )

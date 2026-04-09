@@ -5,8 +5,8 @@ ray_cc_test(
     srcs = ["thread_pool_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/core_worker/task_execution:thread_pool",
         "//src/ray/common:ray_gtest_main",
+        "//src/ray/core_worker/task_execution:thread_pool",
     ],
 )
 
@@ -15,9 +15,9 @@ ray_cc_test(
     srcs = ["fiber_state_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker/task_execution:fiber",
         "//src/ray/util:logging",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -27,9 +27,9 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:asio",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:concurrency_group_manager",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -38,9 +38,9 @@ ray_cc_test(
     srcs = ["normal_task_execution_queue_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:normal_task_execution_queue",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -50,11 +50,11 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:asio",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:ordered_actor_task_execution_queue",
         "//src/ray/core_worker/task_execution:unordered_actor_task_execution_queue",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -65,11 +65,11 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:asio",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/task_execution:common",
         "//src/ray/core_worker/task_execution:task_receiver",
         "//src/ray/core_worker_rpc_client:core_worker_client_interface",
         "//src/ray/util:time",
-        "//src/ray/common:ray_gtest_main",
     ],
 )
