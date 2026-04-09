@@ -210,6 +210,7 @@ py_test_module_list(
         "test_grpc.py",
         "test_logging.py",
         "test_logging_2.py",
+        "test_shutdown.py",
         "test_standalone.py",
         "test_standalone_3.py",
         "test_target_capacity.py",

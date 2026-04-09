@@ -16,7 +16,11 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.default_impl import get_controller_impl
 from ray.serve.config import HTTPOptions, gRPCOptions
-from ray.serve.context import _get_global_client, _set_global_client
+from ray.serve.context import (
+    _check_cached_client_alive,
+    _get_global_client,
+    _set_global_client,
+)
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import LoggingConfig
@@ -130,8 +134,13 @@ async def serve_start_async(
 
     usage_lib.record_library_usage("serve")
 
-    try:
-        client = _get_global_client(_health_check_controller=True)
+    client, _ = _check_cached_client_alive()
+    if client is None:
+        try:
+            client = _get_global_client()
+        except RayServeException:
+            client = None
+    if client is not None:
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
             " New http options will not be applied."
@@ -139,8 +148,6 @@ async def serve_start_async(
         if http_options:
             _check_http_options(client, http_options)
         return client
-    except RayServeException:
-        pass
 
     controller = (
         await ray.remote(_start_controller)
@@ -204,8 +211,13 @@ def serve_start(
 
     usage_lib.record_library_usage("serve")
 
-    try:
-        client = _get_global_client(_health_check_controller=True)
+    client, _ = _check_cached_client_alive()
+    if client is None:
+        try:
+            client = _get_global_client()
+        except RayServeException:
+            client = None
+    if client is not None:
         logger.info(
             f'Connecting to existing Serve app in namespace "{SERVE_NAMESPACE}".'
             " New http options will not be applied."
@@ -213,8 +225,6 @@ def serve_start(
         if http_options:
             _check_http_options(client, http_options)
         return client
-    except RayServeException:
-        pass
 
     controller = _start_controller(
         http_options, grpc_options, global_logging_config, **kwargs

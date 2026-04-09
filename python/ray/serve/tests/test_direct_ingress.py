@@ -197,7 +197,7 @@ def get_target_groups(
     app_name: str = SERVE_DEFAULT_APP_NAME,
     from_proxy_manager: bool = False,
 ):
-    client = _get_global_client(_health_check_controller=True)
+    client = _get_global_client()
     target_groups = ray.get(
         client._controller.get_target_groups.remote(app_name, from_proxy_manager)
     )
