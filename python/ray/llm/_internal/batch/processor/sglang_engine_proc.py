@@ -218,19 +218,19 @@ def build_sglang_engine_processor(
     # Download model files for telemetry before engine init.
     # Use EXCLUDE_SAFETENSORS for trust_remote_code models so custom .py config
     # files are available locally.
-    download_mode = (
-        NodeModelDownloadable.EXCLUDE_SAFETENSORS
-        if trust_remote_code
-        else NodeModelDownloadable.TOKENIZER_ONLY
-    )
-    model_path_or_id = download_model_files(
-        model_id=config.model_source,
-        mirror_config=None,
-        download_model=download_mode,
-        download_extra_files=False,
-    )
-
     try:
+        download_mode = (
+            NodeModelDownloadable.EXCLUDE_SAFETENSORS
+            if trust_remote_code
+            else NodeModelDownloadable.TOKENIZER_ONLY
+        )
+        model_path_or_id = download_model_files(
+            model_id=config.model_source,
+            mirror_config=None,
+            download_model=download_mode,
+            download_extra_files=False,
+        )
+
         hf_config = transformers.AutoConfig.from_pretrained(
             model_path_or_id,
             trust_remote_code=trust_remote_code,
