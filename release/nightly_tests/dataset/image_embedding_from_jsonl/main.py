@@ -12,7 +12,7 @@ from pybase64 import b64decode
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
-from benchmark import Benchmark, OperatorStatsTracker, RuntimeEnvSetupTracker
+from benchmark import Benchmark, RuntimeEnvSetupTracker, collect_dataset_stats
 
 
 INPUT_PREFIX = "s3://ray-benchmark-data-internal-us-west-2/10TiB-jsonl-images"
@@ -59,11 +59,8 @@ def main(args: argparse.Namespace):
     if args.chaos:
         start_chaos()
 
-    ctx = ray.data.DataContext.get_current()
-    ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
-
     def benchmark_fn():
-        (
+        ds = (
             ray.data.read_json(INPUT_PREFIX, lines=True)
             .flat_map(decode)
             .map(preprocess)
@@ -73,9 +70,9 @@ def main(args: argparse.Namespace):
                 num_gpus=1,
                 concurrency=tuple(args.inference_concurrency),
             )
-            .write_parquet(OUTPUT_PREFIX)
         )
-        metrics = OperatorStatsTracker.collect()
+        ds.write_parquet(OUTPUT_PREFIX)
+        metrics = collect_dataset_stats(ds)
         metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
         return metrics
 
