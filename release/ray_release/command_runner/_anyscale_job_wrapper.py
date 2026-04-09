@@ -276,11 +276,21 @@ def run_oom_check():
 def run_dead_node_check():
     # Connect to the cluster and check for dead nodes
     import ray
+    from ray.core.generated import common_pb2
 
     return_code = 0
     try:
         ray.init(address="auto")  # Connect to the local cluster
-        dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
+        unexpected_termination = common_pb2.NodeDeathInfo.Reason.Value(
+            "UNEXPECTED_TERMINATION"
+        )
+        unspecified = common_pb2.NodeDeathInfo.Reason.Value("UNSPECIFIED")
+        dead_nodes = [
+            node["NodeID"]
+            for node in ray.nodes()
+            if not node["Alive"]
+            and node.get("DeathReason") in [unexpected_termination, unspecified]
+        ]
         if dead_nodes:
             logger.error(f"Dead nodes found, node IDs: {dead_nodes}")
             return_code = 1
