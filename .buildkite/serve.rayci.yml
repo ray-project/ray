@@ -203,7 +203,7 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase
+      - raycpubase(*)
       - servebuild-multipy
 
   - label: ":ray-serve: serve: tracing tests"

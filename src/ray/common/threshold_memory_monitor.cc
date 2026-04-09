@@ -60,7 +60,7 @@ ThresholdMemoryMonitor::ThresholdMemoryMonitor(KillWorkersCallback kill_workers_
 
         if (is_usage_above_threshold && IsEnabled()) {
           Disable();
-          kill_workers_callback_(cur_memory_snapshot);
+          kill_workers_callback_(std::move(cur_memory_snapshot));
         }
       },
       monitor_interval_ms,
@@ -79,7 +79,9 @@ void ThresholdMemoryMonitor::Enable() { worker_killing_in_progress_.store(false)
 
 void ThresholdMemoryMonitor::Disable() { worker_killing_in_progress_.store(true); }
 
-bool ThresholdMemoryMonitor::IsEnabled() { return !worker_killing_in_progress_.load(); }
+bool ThresholdMemoryMonitor::IsEnabled() const {
+  return !worker_killing_in_progress_.load();
+}
 
 bool ThresholdMemoryMonitor::IsUsageAboveThreshold(
     const SystemMemorySnapshot &system_memory, int64_t threshold_bytes) {
