@@ -725,10 +725,10 @@ class TrainController:
         if self._worker_group:
             try:
                 self._worker_group.abort()
+                self._set_state(AbortedState())
             except Exception as e:
                 logger.exception("Error aborting worker group: %s", e)
 
-        self._set_state(AbortedState())
         ray.actor.exit_actor()
 
     def _build_result(self) -> Result:
