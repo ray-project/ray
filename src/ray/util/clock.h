@@ -23,22 +23,22 @@ namespace ray {
 class ClockInterface {
  public:
   virtual ~ClockInterface() = default;
-  virtual absl::Time Now() = 0;
+  virtual absl::Time Now() const = 0;
 };
 
 /// Real clock that delegates to absl::Now().
-class Clock : public ClockInterface {
+class Clock final : public ClockInterface {
  public:
-  absl::Time Now() override { return absl::Now(); }
+  absl::Time Now() const override { return absl::Now(); }
 };
 
 /// Fake clock for deterministic testing. Time only advances when you call
 /// AdvanceTime().
-class FakeClock : public ClockInterface {
+class FakeClock final : public ClockInterface {
  public:
   explicit FakeClock(absl::Time start = absl::FromUnixSeconds(1000)) : now_(start) {}
 
-  absl::Time Now() override { return now_; }
+  absl::Time Now() const override { return now_; }
 
   void AdvanceTime(absl::Duration duration) { now_ += duration; }
 
