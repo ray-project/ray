@@ -13,7 +13,12 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
 import ray
 
-from benchmark import Benchmark
+from benchmark import (
+    Benchmark,
+    OperatorStatsTracker,
+    RuntimeEnvSetupTracker,
+    benchmark_py_modules,
+)
 
 BATCH_SIZE = 128
 
@@ -83,6 +88,9 @@ def main(args: argparse.Namespace):
     if args.chaos:
         start_chaos()
 
+    ctx = ray.data.DataContext.get_current()
+    ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
+
     def benchmark_fn():
         (
             ray.data.read_parquet(INPUT_PREFIX, schema=SCHEMA)
@@ -96,6 +104,9 @@ def main(args: argparse.Namespace):
             )
             .write_parquet(OUTPUT_PREFIX, mode="overwrite")
         )
+        metrics = OperatorStatsTracker.collect()
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        return metrics
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
@@ -144,6 +155,6 @@ def get_hf_token() -> str:
 
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     args = parse_args()
     main(args)

@@ -294,6 +294,8 @@ class MockDeploymentActorWrapper:
         self.pending_killed = False
         self._start_fail_count = 0
         self._start_fail_msg = None
+        self._health_ok = True
+        self.reset_health_state_after_running_count = 0
 
     @property
     def actor_logical_name(self) -> str:
@@ -329,6 +331,18 @@ class MockDeploymentActorWrapper:
         if self._ready:
             return True, None
         return False, None
+
+    def set_health_ok(self, ok: bool) -> None:
+        """If False, ``check_health`` returns False (failed health reconciliation)."""
+        self._health_ok = ok
+
+    def reset_health_state_after_running(self) -> None:
+        """Match DeploymentActorWrapper; increments counter for unit tests."""
+        self.reset_health_state_after_running_count += 1
+
+    def check_health(self) -> bool:
+        """Match DeploymentActorWrapper; controlled via ``set_health_ok``."""
+        return self._health_ok
 
     def kill(self) -> None:
         self.killed = True
@@ -1134,7 +1148,7 @@ def get_application_urls(
     Returns:
         The URLs of the application.
     """
-    client = _get_global_client(_health_check_controller=True)
+    client = _get_global_client()
     serve_details = client.get_serve_details()
     assert (
         app_name in serve_details["applications"]
