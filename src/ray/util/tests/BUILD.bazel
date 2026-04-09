@@ -268,8 +268,8 @@ ray_cc_test(
     srcs = ["cmd_line_utils_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/util:cmd_line_utils",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 
