@@ -8,8 +8,8 @@ import torch
 from benchmark import (
     Benchmark,
     BenchmarkMetric,
-    OperatorStatsTracker,
     RuntimeEnvSetupTracker,
+    collect_dataset_stats,
     benchmark_py_modules,
 )
 from torchvision.models import ResNet50_Weights, resnet50
@@ -49,9 +49,6 @@ def parse_args():
 
 
 def main(args):
-    ctx = ray.data.DataContext.get_current()
-    ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
-
     data_directory: str = args.data_directory
     data_format: str = args.data_format
     smoke_test: bool = args.smoke_test
@@ -134,13 +131,13 @@ def main(args):
         assert dead_nodes
         print(f"Total chaos killed: {dead_nodes}")
 
+    results = collect_dataset_stats(ds)
     results = {
         BenchmarkMetric.RUNTIME: total_time,
         "data_directory": data_directory,
         "data_format": data_format,
         "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
     }
-    results.update(OperatorStatsTracker.collect())
     results["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
 
     return results

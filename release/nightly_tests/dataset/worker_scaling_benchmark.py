@@ -9,9 +9,9 @@ import argparse
 import ray
 from benchmark import (
     Benchmark,
-    OperatorStatsTracker,
     RuntimeEnvSetupTracker,
     benchmark_py_modules,
+    collect_dataset_stats,
 )
 
 BLOCKS_PER_WORKER: int = 10
@@ -50,9 +50,6 @@ def no_op_udf(batch):
 def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
-    ctx = ray.data.DataContext.get_current()
-    ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
-
     def benchmark_fn():
         num_blocks = BLOCKS_PER_WORKER * args.num_workers
         num_rows = num_blocks * ROWS_PER_BLOCK
@@ -70,12 +67,9 @@ def main(args: argparse.Namespace):
                 num_cpus=1,
             )
 
-        total_rows = 0
-        for bundle in ds.iter_internal_ref_bundles():
-            total_rows += bundle.num_rows()
-        metrics = OperatorStatsTracker.collect()
+        ds = ds.materialize()
+        metrics = collect_dataset_stats(ds)
         metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-        assert total_rows == num_rows
         metrics["num_blocks"] = num_blocks
         metrics["num_rows"] = num_rows
         return metrics
