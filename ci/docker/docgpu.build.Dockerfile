@@ -19,6 +19,4 @@ set -euo pipefail
 
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
-pip uninstall -y ray
-
 EOF
