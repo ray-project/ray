@@ -12,7 +12,7 @@ ray_cc_test(
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -29,6 +29,6 @@ ray_cc_test(
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/pubsub:fake_publisher",
         "//src/ray/pubsub:fake_subscriber",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )

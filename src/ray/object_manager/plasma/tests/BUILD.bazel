@@ -8,7 +8,7 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/object_manager/plasma:plasma_allocator",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -20,7 +20,7 @@ ray_cc_test(
         "//src/ray/object_manager/plasma:plasma_object_store",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -35,7 +35,7 @@ ray_cc_test(
     deps = [
         "//src/ray/core_worker:experimental_mutable_object_manager",
         "//src/ray/object_manager:object_manager_common",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -49,7 +49,7 @@ ray_cc_test(
     deps = [
         "//src/ray/object_manager/plasma:obj_lifecycle_mgr",
         "@com_google_absl//absl/random",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -60,6 +60,6 @@ ray_cc_test(
     deps = [
         "//src/ray/object_manager/plasma:plasma_eviction_policy",
         "//src/ray/object_manager/plasma:plasma_object_store",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )

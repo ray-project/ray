@@ -9,7 +9,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/raylet/scheduling:composite_scheduling_policy",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -25,6 +25,6 @@ ray_cc_test(
         "//src/ray/raylet/scheduling:hybrid_scheduling_policy",
         "@com_google_absl//absl/random:mock_distributions",
         "@com_google_absl//absl/random:mocking_bit_gen",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )

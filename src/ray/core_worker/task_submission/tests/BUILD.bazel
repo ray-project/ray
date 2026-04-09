@@ -11,7 +11,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/actor_management:fake_actor_creator",
         "//src/ray/core_worker/task_submission:dependency_resolver",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -23,7 +23,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:asio",
         "//src/ray/core_worker/task_submission:out_of_order_actor_submit_queue",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -38,7 +38,7 @@ ray_cc_test(
         "//src/ray/pubsub:fake_publisher",
         "//src/ray/pubsub:fake_subscriber",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -59,7 +59,7 @@ ray_cc_test(
         "//src/ray/pubsub:fake_publisher",
         "//src/ray/pubsub:fake_subscriber",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -79,6 +79,6 @@ ray_cc_test(
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/raylet_rpc_client:raylet_client_interface",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )

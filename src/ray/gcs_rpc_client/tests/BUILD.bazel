@@ -10,7 +10,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:test_utils",
         "//src/ray/gcs_rpc_client:gcs_client",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -41,7 +41,7 @@ ray_cc_test(
         "//src/ray/observability:fake_metric",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -76,7 +76,7 @@ ray_cc_test(
         "//src/ray/util:network_util",
         "//src/ray/util:raii",
         "//src/ray/util:time",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -105,7 +105,7 @@ ray_cc_test(
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -118,6 +118,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/gcs_rpc_client:gcs_client",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )

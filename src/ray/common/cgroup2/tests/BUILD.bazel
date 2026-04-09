@@ -17,7 +17,7 @@ ray_cc_test(
         "//src/ray/common/cgroup2:sysfs_cgroup_driver",
         "//src/ray/common/tests:testing",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -36,6 +36,6 @@ ray_cc_test(
         "//src/ray/common/cgroup2:cgroup_manager",
         "//src/ray/common/cgroup2:fake_cgroup_driver",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )

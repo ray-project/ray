@@ -23,7 +23,7 @@ ray_cc_test(
         "//src/ray/observability:fake_metric",
         "//src/ray/pubsub:publisher",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -50,7 +50,7 @@ ray_cc_test(
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
         "//src/ray/util:counter_map",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -69,6 +69,6 @@ ray_cc_test(
         "//src/ray/gcs/actor:gcs_actor_scheduler",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/util:counter_map",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )

@@ -17,6 +17,6 @@ ray_cc_test(
         "//src/ray/util:filesystem",
         "//src/ray/util/internal:stream_redirection_handle",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )

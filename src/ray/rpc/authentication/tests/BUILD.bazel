@@ -9,7 +9,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/rpc/authentication:authentication_token",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -24,7 +24,7 @@ ray_cc_test(
         "//src/ray/common:ray_config",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:env",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -42,6 +42,6 @@ ray_cc_test(
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/rpc/tests:grpc_test_common",
         "//src/ray/util:env",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )

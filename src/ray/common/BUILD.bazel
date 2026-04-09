@@ -1,6 +1,19 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
+    name = "ray_gtest_main",
+    testonly = True,
+    srcs = ["test_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/util:logging",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
@@ -427,6 +440,18 @@ ray_cc_library(
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "io_context_monitor",
+    srcs = ["asio/io_context_monitor.cc"],
+    hdrs = ["asio/io_context_monitor.h"],
+    deps = [
+        ":asio",
+        "//src/ray/observability:metric_interface",
+        "//src/ray/util:logging",
+        "//src/ray/util:thread_utils",
     ],
 )
 

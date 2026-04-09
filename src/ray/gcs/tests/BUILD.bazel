@@ -8,7 +8,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/gcs:gcs_function_manager",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -23,7 +23,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_pubsub_handler",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/pubsub:publisher",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -41,7 +41,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_placement_group_manager",
         "//src/ray/observability:fake_metric",
         "//src/ray/util:counter_map",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -70,7 +70,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_server_lib",
         "//src/ray/observability:fake_metric",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -96,7 +96,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_store_client_kv",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:redis_store_client",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -117,7 +117,7 @@ ray_cc_test(
         "//src/ray/rpc:grpc_server",
         "//src/ray/util:network_util",
         "@boost//:thread",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -136,7 +136,7 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -158,7 +158,7 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -175,7 +175,7 @@ ray_cc_test(
         "//src/ray/common:protobuf_utils",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_task_manager",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -197,7 +197,7 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
         "//src/ray/util:counter_map",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -226,7 +226,7 @@ ray_cc_test(
         "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/util:counter_map",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -245,7 +245,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_worker_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/util:process_interface",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -280,7 +280,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_table_storage",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -296,7 +296,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_table_storage",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -319,7 +319,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_store_client_kv",
         "//src/ray/raylet/scheduling:cluster_resource_manager",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -337,7 +337,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_node_manager",
         "//src/ray/gcs:gcs_resource_manager",
         "//src/ray/raylet/scheduling:cluster_resource_manager",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -354,7 +354,7 @@ ray_cc_test(
         "//src/ray/common:asio",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_usage_stats_client",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -375,7 +375,7 @@ ray_cc_test(
         "//src/ray/gcs:gcs_kv_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_ray_event_recorder",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -404,7 +404,7 @@ ray_cc_test(
         "//src/ray/pubsub:publisher",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/util:event",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -424,7 +424,7 @@ ray_cc_test(
         "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/util:string_utils",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -436,6 +436,6 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//src/ray/gcs:gcs_ray_event_converter",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )

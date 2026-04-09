@@ -11,6 +11,6 @@ ray_cc_test(
         "//src/ray/raylet_ipc_client:client_connection",
         "//src/ray/util:network_util",
         "@boost//:asio",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
