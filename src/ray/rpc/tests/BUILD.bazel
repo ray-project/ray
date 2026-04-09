@@ -51,3 +51,21 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+ray_cc_test(
+    name = "push_mutable_object_test",
+    size = "medium",
+    srcs = ["push_mutable_object_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/common:id",
+        "//src/ray/common:ray_config",
+        "//src/ray/protobuf:node_manager_cc_proto",
+        "//src/ray/raylet_rpc_client:raylet_client_lib",
+        "//src/ray/rpc:grpc_client",
+        "//src/ray/rpc:grpc_server",
+        "@com_google_googletest//:gtest",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

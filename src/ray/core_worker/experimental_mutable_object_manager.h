@@ -184,6 +184,19 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
                      std::shared_ptr<RayObject> &result,
                      int64_t timeout_ms = -1);
 
+  /// Overload that returns the version of the object that was read.
+  /// The version is obtained atomically while holding the header semaphore.
+  ///
+  /// \param[in] object_id The ID of the object.
+  /// \param[out] result The read object.
+  /// \param[out] version_read The version of the object that was read.
+  /// \param[in] timeout_ms Timeout in milliseconds.
+  /// \return The return status.
+  Status ReadAcquire(const ObjectID &object_id,
+                     std::shared_ptr<RayObject> &result,
+                     int64_t &version_read,
+                     int64_t timeout_ms);
+
   /// Releases the object, allowing it to be written again. If the caller did
   /// not previously ReadAcquire the object, then this first blocks until the
   /// latest value is available to read, then releases the value.
