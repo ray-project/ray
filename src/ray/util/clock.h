@@ -36,8 +36,7 @@ class Clock : public ClockInterface {
 /// AdvanceTime().
 class FakeClock : public ClockInterface {
  public:
-  explicit FakeClock(absl::Time start = absl::FromUnixSeconds(1000))
-      : now_(start) {}
+  explicit FakeClock(absl::Time start = absl::FromUnixSeconds(1000)) : now_(start) {}
 
   absl::Time Now() override { return now_; }
 
