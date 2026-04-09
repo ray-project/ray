@@ -397,8 +397,6 @@ class OpenAiIngress(DeploymentProtocol):
 
         self._direct_ingress_rr_counter = 0
         self._ingress_bypass_rr_counter = 0
-        self._di_load_cache: Dict[str, int] = {}
-        self._di_poller_task: Optional[asyncio.Task] = None
         get_or_create_event_loop().create_task(
             self._install_direct_ingress_middleware()
         )
@@ -472,9 +470,8 @@ class OpenAiIngress(DeploymentProtocol):
             return
 
         try:
-            routing_key = await self._pick_routed_direct_ingress_endpoint(
-                model_id,
-                parsed,
+            host, port, replica_id = await self._pick_routed_direct_ingress_endpoint(
+                model_id
             )
         except Exception as e:
             await send(
@@ -489,7 +486,7 @@ class OpenAiIngress(DeploymentProtocol):
             )
             return
 
-        resp = orjson.dumps({"routing_key": routing_key})
+        resp = orjson.dumps({"host": host, "port": port})
         await send(
             {
                 "type": "http.response.start",
@@ -587,59 +584,37 @@ class OpenAiIngress(DeploymentProtocol):
         # Return original model ID so multiplexed routing works correctly.
         return model
 
-    async def _start_load_poller(self, model_id: str):
-        """Background task: poll all replica queue lengths every 50ms.
+    # TokenTracker removed — probing replicas directly for queue length
+    # is simpler and uses existing Ray Serve infrastructure.
 
-        Re-resolves the replica set each iteration so scaling events
-        and replica replacements are picked up automatically.
-        """
-        base_model_id = get_base_model_id(model_id)
+    async def _start_load_poller(self, replicas):
+        """Background task: poll all replica queue lengths periodically."""
+        import asyncio
+
         while True:
-            handle = self._default_serve_handles.get(base_model_id)
-            if handle is None:
-                await asyncio.sleep(0.05)
-                continue
-            request_router = handle.get_request_router()
-            if request_router is None:
-                await asyncio.sleep(0.05)
-                continue
-            replicas = [
-                r
-                for r in request_router.curr_replicas.values()
-                if r.direct_ingress_endpoint is not None
-            ]
             for r in replicas:
                 try:
                     load = await r.get_queue_len(deadline_s=0.5)
                     self._di_load_cache[r.replica_id] = load
                 except Exception:
-                    self._di_load_cache[r.replica_id] = float("inf")
-            await asyncio.sleep(0.05)
-
-    @staticmethod
-    def _make_routing_key(host: str, port: int) -> str:
-        """Build the HAProxy server routing key from a replica's endpoint.
-
-        Must match the sc_{ip}_{port} convention in
-        HAProxyManager._target_to_server.
-        """
-        return f"sc_{host.replace('.', '_')}_{port}"
+                    pass
+            await asyncio.sleep(0.05)  # 50ms poll interval
 
     async def _pick_routed_direct_ingress_endpoint(
-        self,
-        model_id: str,
-        body: dict,
-    ) -> str:
+        self, model_id: str
+    ) -> Tuple[str, int, str]:
         """Pick a replica via P2C with background-polled load and return
-        its HAProxy routing key.
+        (host, port, rid).
 
-        Constructs a PendingRequest from the parsed request body so the
-        request router's full routing logic (locality, multiplexing) is
-        applied. Uses background-polled queue lengths for the final
-        tie-break between P2C candidates.
+        Uses power-of-two-choices: pick 2 random replicas, compare their
+        cached queue lengths (refreshed every 50ms by background poller),
+        route to the lighter one.
+
+        No per-request RPCs — routing decisions use cached load data,
+        keeping the routing path fast and preserving request delivery
+        timing patterns.
         """
-        from ray.serve._private.common import RequestMetadata
-        from ray.serve._private.request_router.common import PendingRequest
+        import asyncio
 
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
@@ -660,28 +635,16 @@ class OpenAiIngress(DeploymentProtocol):
             raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
 
         # Start background load poller on first call.
-        if self._di_poller_task is None:
-            self._di_poller_task = get_or_create_event_loop().create_task(
-                self._start_load_poller(model_id)
+        if not hasattr(self, "_di_load_cache"):
+            self._di_load_cache = {}
+            asyncio.get_event_loop().create_task(
+                self._start_load_poller(direct_ingress_replicas)
             )
 
-        # Build a PendingRequest from the parsed request body so the
-        # router applies its full logic (locality, multiplexed model).
-        pending_request = PendingRequest(
-            args=[],
-            kwargs=body,
-            metadata=RequestMetadata(
-                request_id="",
-                internal_request_id="",
-                multiplexed_model_id=model_id if model_id != base_model_id else "",
-                is_streaming=body.get("stream", False),
-            ),
-        )
-
-        # P2C: pick 2 random candidates with locality/multiplex filtering.
+        # P2C: pick 2 random candidates.
         replica_tiers = await request_router.choose_replicas(
             candidate_replicas=direct_ingress_replicas,
-            pending_request=pending_request,
+            pending_request=None,
         )
         if not replica_tiers or not replica_tiers[0]:
             raise RuntimeError(f"P2C returned no candidates for {model_id}")
@@ -693,13 +656,12 @@ class OpenAiIngress(DeploymentProtocol):
                 f"P2C candidates have no direct-ingress endpoints for {model_id}"
             )
 
-        # Tie-break using background-polled cache (no per-request RPC).
+        # Compare using background-polled cache (no per-request RPC).
         best = min(
             candidates,
             key=lambda r: self._di_load_cache.get(r.replica_id, float("inf")),
         )
-        host, port = best.direct_ingress_endpoint
-        return self._make_routing_key(host, port)
+        return (*best.direct_ingress_endpoint, best.replica_id.unique_id)
 
     async def _get_response(
         self,

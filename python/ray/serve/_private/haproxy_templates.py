@@ -80,12 +80,17 @@ frontend http_frontend
     # Inject unique reload ID as header to track which HAProxy instance handled the request (testing only)
     http-request set-header x-haproxy-reload-id {{ config.reload_id }}
     {%- endif %}
+    {%- if has_custom_request_routing %}
+    option http-buffer-request
+    acl is_streaming_path path /v1/chat/completions /v1/completions
+    http-request lua.route_direct_ingress_request if is_streaming_path METH_POST
+    {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
     {%- if backend.custom_request_routing %}
-    use_backend {{ backend.name or 'unknown' }}-custom-routed if is_{{ backend.name or 'unknown' }} METH_POST
+    use_backend {{ backend.name or 'unknown' }}-custom-routed if is_{{ backend.name or 'unknown' }} { var(txn.custom_request_routed) -m found }
     {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
@@ -140,8 +145,6 @@ backend {{ backend.name or 'unknown' }}
 backend {{ backend.name or 'unknown' }}-custom-routed
     log global
     http-reuse always
-    option http-buffer-request
-    http-request lua.route_direct_ingress_request
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
     {%- endif %}

@@ -782,7 +782,12 @@ class HAProxyApi(ProxyApi):
             "{\n" + ",\n".join(router_entries) + "\n}" if router_entries else "{}"
         )
 
-        lua_content = f"""local ROUTERS = {routers_lua}
+        lua_content = f"""local STREAMING_PATHS = {{
+    ["/v1/chat/completions"] = true,
+    ["/v1/completions"] = true,
+}}
+
+local ROUTERS = {routers_lua}
 
 local function path_matches(path, prefix)
     if prefix == "/" then
@@ -798,6 +803,16 @@ local function find_router(path)
         end
     end
     return nil
+end
+
+local function strip_prefix(path, prefix)
+    if prefix == "/" then
+        return path
+    end
+    if path == prefix then
+        return "/"
+    end
+    return string.sub(path, #prefix + 1)
 end
 
 local function do_request(router, body)
@@ -842,8 +857,17 @@ core.register_action("route_direct_ingress_request", {{"http-req"}}, function(tx
         return
     end
 
+    local relative_path = strip_prefix(path, router.path_prefix)
+    if not STREAMING_PATHS[relative_path] then
+        return
+    end
+
     local body = txn.sf:req_body()
     if not body or body == "" then
+        return
+    end
+
+    if not string.find(body, '"stream"') or not string.find(body, "true") then
         return
     end
 
@@ -852,9 +876,11 @@ core.register_action("route_direct_ingress_request", {{"http-req"}}, function(tx
         return
     end
 
-    local routing_key = response:match('"routing_key"%s*:%s*"([^"]+)"')
+    local host = response:match('"host"%s*:%s*"([^"]+)"')
+    local port = response:match('"port"%s*:%s*(%d+)')
 
-    if routing_key then
+    if host and port then
+        local routing_key = "sc_" .. host:gsub("%.", "_") .. "_" .. port
         txn:set_var("txn.direct_ingress_target", routing_key)
         txn:set_var("txn.custom_request_routed", true)
     end
