@@ -10,21 +10,21 @@ Cluster assumption: 16 worker nodes, 8 CPU / 32 GB each.
   - In-core shuffle limit (x/3): ~85 GB
 
 Data: TPC-H lineitem from S3, limited to target row count.
+Times the full read -> shuffle -> materialize pipeline.
 
 Tests a single (data_size, num_partitions, strategy) combination.
 Each combination runs as an independent release test so one OOM
 does not affect others.
 
 Usage:
-    python benchmark_out_of_core_shuffle.py --data-size-gb 50 --num-partitions 200
-    python benchmark_out_of_core_shuffle.py --data-size-gb 50 --num-partitions 200 --strategy actor
-    python benchmark_out_of_core_shuffle.py --data-size-gb 256 --num-partitions 500 --strategy actorless
+    python benchmark_ooc_shuffle.py --data-size-gb 50 --num-partitions 200
+    python benchmark_ooc_shuffle.py --data-size-gb 50 --num-partitions 200 --strategy actor
+    python benchmark_ooc_shuffle.py --data-size-gb 256 --num-partitions 500 --strategy actorless
 """
 
 import argparse
 import gc
 import json
-import shutil
 import time
 from datetime import datetime
 
@@ -39,30 +39,14 @@ STRATEGY_MAP = {
 KEY_COLUMNS = ["column00"]  # l_orderkey
 
 # Approximate bytes per row for TPC-H lineitem in-memory (Arrow).
-# Measured empirically; used to convert --data-size-gb to a row limit.
 APPROX_BYTES_PER_ROW = 128
-
-# Local temp dir for shuffle output (forces full materialization).
-OUTPUT_DIR = "/tmp/ooc_bench_ray_output"
 
 
 def pick_sf(data_size_gb):
     """Pick the smallest TPC-H scale factor that has enough data."""
-    # SF100 ≈ 600M rows ≈ 75 GB, SF1000 ≈ 6B rows ≈ 750 GB
     if data_size_gb <= 70:
         return 100
     return 1000
-
-
-def load_dataset(data_size_gb):
-    """Load TPC-H lineitem from S3 with a row limit for the target size."""
-    sf = pick_sf(data_size_gb)
-    target_rows = int(data_size_gb * 1024**3 / APPROX_BYTES_PER_ROW)
-    path = f"s3://ray-benchmark-data/tpch/parquet/sf{sf}/lineitem"
-
-    ds = ray.data.read_parquet(path)
-    ds = ds.limit(target_rows)
-    return ds, sf, target_rows
 
 
 def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=180, poll_s=5):
@@ -84,7 +68,11 @@ def wait_for_object_store_to_drain(threshold_pct=20, timeout_s=180, poll_s=5):
 
 def run_one(data_size_gb, num_partitions, strategy_name="actorless"):
     """Run a single shuffle and return timing + status info."""
-    ds, sf, target_rows = load_dataset(data_size_gb)
+    sf = pick_sf(data_size_gb)
+    target_rows = int(data_size_gb * 1024**3 / APPROX_BYTES_PER_ROW)
+    path = f"s3://ray-benchmark-data/tpch/parquet/sf{sf}/lineitem"
+
+    ds = ray.data.read_parquet(path).limit(target_rows)
 
     ds.context.shuffle_strategy = STRATEGY_MAP[strategy_name]
     if strategy_name == "actorless":
@@ -95,8 +83,6 @@ def run_one(data_size_gb, num_partitions, strategy_name="actorless"):
 
     repartitioned = ds.repartition(num_partitions, keys=KEY_COLUMNS)
 
-    shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
-
     print(
         f"  [ray] read(sf{sf}, limit {target_rows:,}) + shuffle -> "
         f"{num_partitions} partitions ({strategy_name}) ... ",
@@ -105,18 +91,23 @@ def run_one(data_size_gb, num_partitions, strategy_name="actorless"):
     )
 
     start = time.perf_counter()
-    repartitioned.write_parquet(OUTPUT_DIR)
+    result = repartitioned.materialize()
     elapsed = time.perf_counter() - start
 
-    print(f"{elapsed:.1f}s")
+    num_rows = result.count()
+    actual_bytes = result.size_bytes()
+    actual_gb = actual_bytes / 1024**3
 
-    shutil.rmtree(OUTPUT_DIR, ignore_errors=True)
-    del repartitioned, ds
+    print(f"{elapsed:.1f}s ({num_rows:,} rows, {actual_gb:.1f} GB)")
+
+    del result, repartitioned, ds
     gc.collect()
     wait_for_object_store_to_drain()
 
     return {
         "elapsed_s": elapsed,
+        "num_rows": num_rows,
+        "actual_gb": round(actual_gb, 2),
         "status": "ok",
     }
 
@@ -202,7 +193,7 @@ def main():
 
     print(f"\nResults written to {args.output}")
     t = info["elapsed_s"]
-    tp = f"{data_size_gb / t:.1f} GB/s" if t and t > 0 else "N/A"
+    tp = f"{info['actual_gb'] / t:.1f} GB/s" if t and t > 0 else "N/A"
     print(f"  {data_size_gb} GB, {num_partitions} partitions: {t:.1f}s, {tp}")
 
 
