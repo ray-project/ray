@@ -146,15 +146,20 @@ def test_report_callback_v2_only_arguments(monkeypatch, env_v2_enabled):
 
     if env_v2_enabled:
         from ray.train.v2.api.report_config import CheckpointUploadMode
-        from ray.train.v2.api.validation_config import ValidationTaskConfig
+        from ray.train.v2.api.validation_config import ValidationConfig
+
+        def validation_fn(checkpoint):
+            return {"val_score": 1}
 
         def train_fn():
             ray.train.lightning._lightning_utils.RayTrainReportCallback(
-                checkpoint_upload_mode=CheckpointUploadMode.SYNC,
-                validation=ValidationTaskConfig(fn=lambda: None),
+                checkpoint_upload_mode=CheckpointUploadMode.SYNC, validation=True
             )
 
-        trainer = DataParallelTrainer(train_fn)
+        trainer = DataParallelTrainer(
+            train_fn,
+            validation_config=ValidationConfig(fn=validation_fn),
+        )
         trainer.fit()
     else:
         with pytest.raises(

@@ -271,7 +271,10 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         self.checkpoint_upload_mode = checkpoint_upload_mode
         self.validation = validation
 
-        if not is_v2_enabled():
+        if is_v2_enabled():
+            if checkpoint_upload_mode is None:
+                self.checkpoint_upload_mode = CheckpointUploadMode.SYNC
+        else:
             if checkpoint_upload_mode is not None:
                 raise ValueError(
                     "checkpoint_upload_mode is not supported when using Ray Train V1"
