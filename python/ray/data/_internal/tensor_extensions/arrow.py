@@ -2,6 +2,7 @@ import abc
 import functools
 import json
 import logging
+import os
 import sys
 import threading
 import warnings
@@ -51,21 +52,24 @@ MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR = parse_version("16.0.0")
 # Min version supporting ``ExtensionArray``s in ``pyarrow.concat``
 MIN_PYARROW_VERSION_EXT_ARRAY_CONCAT_SUPPORTED = parse_version("12.0.0")
 
-
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
 
 class _SerializationFormat(Enum):
-    # JSON format is legacy and inefficient, only kept for backward compatibility
     JSON = 0
     CLOUDPICKLE = 1
 
 
 # Set the default serialization format for Arrow extension types.
+# JSON is the default (safe). Cloudpickle is opt-in for backward compatibility.
 ARROW_EXTENSION_SERIALIZATION_FORMAT = _SerializationFormat(
-    _SerializationFormat.JSON  # legacy
-    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_LEGACY_JSON_FORMAT", 0) == 1
-    else _SerializationFormat.CLOUDPICKLE  # default
+    _SerializationFormat.CLOUDPICKLE
+    if env_integer("RAY_DATA_ARROW_EXTENSION_SERIALIZATION_CLOUDPICKLE", 0) == 1
+    else _SerializationFormat.JSON
+)
+
+_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA = (
+    os.environ.get("RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA", "0") == "1"
 )
 
 # Conditional imports for PyArrow features that are only available in newer versions
@@ -125,18 +129,23 @@ def _extension_array_concat_supported() -> bool:
 
 
 def _deserialize_with_fallback(serialized: bytes, field_name: str = "data"):
-    """Deserialize data with cloudpickle first, fallback to JSON."""
+    """Deserialize extension type metadata from Parquet field metadata.
+    Uses JSON only by default. cloudpickle deserialization is available as an
+    opt-in for files written by Ray 2.49-2.54, but MUST NOT be used with
+    untrusted Parquet files.
+    """
     try:
-        # Try cloudpickle first (new format)
-        return cloudpickle.loads(serialized)
-    except Exception:
-        # Fallback to JSON format (legacy)
-        try:
-            return json.loads(serialized)
-        except json.JSONDecodeError:
-            raise ValueError(
-                f"Unable to deserialize {field_name} from {type(serialized)}"
-            )
+        return json.loads(serialized)
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError):
+        if _AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA:
+            # Opt-in only: files written by Ray 2.49-2.54 used cloudpickle.
+            # WARNING: Do not enable this for files from untrusted sources.
+            return cloudpickle.loads(serialized)
+        raise ValueError(
+            f"Unable to deserialize {field_name}. If this file was written by "
+            f"Ray 2.49-2.54, set RAY_DATA_AUTOLOAD_CLOUDPICKLE_TENSOR_METADATA=1 "
+            f"(trusted sources only)."
+        )
 
 
 @DeveloperAPI(stability="beta")
@@ -229,10 +238,22 @@ class ArrowConversionError(Exception):
 
     MAX_DATA_STR_LEN = 200
 
-    def __init__(self, data_str: str):
+    def __init__(
+        self,
+        data_str: str,
+        column_name: Optional[str] = None,
+        pa_type: Optional["pa.DataType"] = None,
+    ):
         if len(data_str) > self.MAX_DATA_STR_LEN:
             data_str = data_str[: self.MAX_DATA_STR_LEN] + "..."
-        message = f"Error converting data to Arrow: {data_str}"
+        if column_name is not None:
+            type_info = f" (target type: {pa_type})" if pa_type is not None else ""
+            message = (
+                f"Error converting column '{column_name}'{type_info}"
+                f" to Arrow: {data_str}"
+            )
+        else:
+            message = f"Error converting data to Arrow: {data_str}"
         super().__init__(message)
 
 
@@ -342,6 +363,7 @@ def _convert_to_pyarrow_native_array(
     """Converts provided NumPy `ndarray` into PyArrow's `array` while only utilizing
     Arrow's natively supported types (ie no custom extension types)"""
 
+    pa_type = None
     try:
         # NOTE: Python's `datetime` only supports precision up to us and could
         #       inadvertently lose precision when handling Pandas `Timestamp` type.
@@ -388,7 +410,9 @@ def _convert_to_pyarrow_native_array(
 
         return pa.array(column_values, type=pa_type)
     except Exception as e:
-        raise ArrowConversionError(str(column_values)) from e
+        raise ArrowConversionError(
+            str(column_values), column_name=column_name, pa_type=pa_type
+        ) from e
 
 
 def _coerce_np_datetime_to_pa_timestamp_precision(
@@ -418,7 +442,7 @@ def _coerce_np_datetime_to_pa_timestamp_precision(
 
 
 def _infer_pyarrow_type(
-    column_values: Union[List[Any], np.ndarray]
+    column_values: Union[List[Any], np.ndarray],
 ) -> Optional[pa.DataType]:
     """Infers target Pyarrow `DataType` based on the provided
     columnar values.
@@ -500,7 +524,7 @@ _NUMPY_TO_ARROW_PRECISION_MAP = {
 
 
 def _try_infer_pa_timestamp_type(
-    column_values: Union[List[Any], np.ndarray]
+    column_values: Union[List[Any], np.ndarray],
 ) -> Optional[pa.DataType]:
     if isinstance(column_values, list) and len(column_values) > 0:
         # In case provided column values is a list of elements, this
@@ -1321,8 +1345,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
                 dtype.byteorder == "=" and sys.byteorder == "big"
             ):
                 raise ValueError(
-                    "Only little-endian string tensors are supported, "
-                    f"but got: {dtype}"
+                    f"Only little-endian string tensors are supported, but got: {dtype}"
                 )
             pa_value_type = pa.binary(dtype.itemsize)
 

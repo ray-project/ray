@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
 import ray
-from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
@@ -21,6 +20,7 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.replica_result import ReplicaResult
+from ray.serve._private.utils import get_deployment_actor_name
 from ray.serve.exceptions import RayServeException
 from ray.serve.gang import GangContext
 from ray.serve.grpc_util import RayServegRPCContext
@@ -72,14 +72,11 @@ class ReplicaContext:
 
 
 def _get_global_client(
-    _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
+    raise_if_no_controller_running: bool = True,
 ) -> Optional[ServeControllerClient]:
     """Gets the global client, which stores the controller's handle.
 
     Args:
-        _health_check_controller: If True, run a health check on the
-            cached controller if it exists. If the check fails, try reconnecting
-            to the controller.
         raise_if_no_controller_running: Whether to raise an exception if
             there is no currently running Serve controller.
 
@@ -93,16 +90,37 @@ def _get_global_client(
             and raise_if_no_controller_running is set to True.
     """
 
-    try:
-        if _global_client is not None:
-            if _health_check_controller:
-                ray.get(_global_client._controller.check_alive.remote())
-            return _global_client
-    except RayActorError:
-        logger.info("The cached controller has died. Reconnecting.")
-        _set_global_client(None)
+    if _global_client is not None:
+        return _global_client
 
     return _connect(raise_if_no_controller_running)
+
+
+def _check_cached_client_alive() -> tuple:
+    """Health-check the cached controller client.
+
+    Returns:
+        (client, had_cached) tuple.
+        - ``(client, True)`` — cached client is alive.
+        - ``(None, True)``  — cached client existed but is unreachable;
+          the cache has been cleared.  Callers should **not** attempt to
+          reconnect via ``_connect()`` because GCS is likely dead and
+          ``ray.get_actor()`` would hang until the 60-second C++ GCS
+          reconnection timeout kills the process.
+        - ``(None, False)`` — no cached client.  Callers may safely call
+          ``_get_global_client()`` to discover a running controller.
+    """
+
+    if _global_client is None:
+        return None, False
+
+    try:
+        ray.get(_global_client._controller.check_alive.remote(), timeout=5)
+        return _global_client, True
+    except Exception as e:
+        logger.info(f"The cached controller has died or is unreachable: {e}.")
+        _set_global_client(None)
+        return None, True
 
 
 def _set_global_client(client):
@@ -112,6 +130,30 @@ def _set_global_client(client):
 
 def _get_internal_replica_context():
     return _INTERNAL_REPLICA_CONTEXT
+
+
+def _get_deployment_actor(actor_name: str):
+    """Get a handle to a deployment-scoped actor by name.
+
+    Thin wrapper around ``ray.get_actor`` with the Serve deployment-actor naming
+    convention. See ``serve.get_deployment_actor`` docstring for behavior,
+    ``ValueError``/``RayActorError`` expectations, and refresh patterns.
+    """
+    internal_context = _get_internal_replica_context()
+    if internal_context is None:
+        raise RayServeException(
+            "`serve.get_deployment_actor()` may only be called from within "
+            "a Ray Serve deployment replica."
+        )
+    deployment_id = internal_context.replica_id.deployment_id
+    return ray.get_actor(
+        get_deployment_actor_name(
+            deployment_id,
+            actor_name,
+            code_version=internal_context.code_version,
+        ),
+        namespace=SERVE_NAMESPACE,
+    )
 
 
 def _set_internal_replica_context(
