@@ -161,23 +161,87 @@ class SchedulingOverheadSummary:
         return cls(num_tasks=len(tasks), phases=phases)
 
 
-def collect_scheduling_overhead() -> Dict[str, SchedulingOverheadSummary]:
-    """Collect per-task-name scheduling overhead from the Ray State API.
+@dataclass
+class BucketedSchedulingOverhead:
+    """Scheduling overhead for a single operator within a time bucket."""
 
-    Calls ``list_tasks(detail=True)`` for each ``DataTaskName`` and returns
-    a dict mapping task name to its ``SchedulingOverheadSummary``.
+    start_ms: float
+    end_ms: float
+    summary: SchedulingOverheadSummary
+
+
+def collect_scheduling_overhead(
+    num_buckets: int = 4,
+) -> Dict[str, List[BucketedSchedulingOverhead]]:
+    """Collect per-operator scheduling overhead from the Ray State API,
+    bucketed into ``num_buckets`` equal time intervals.
+
+    Fetches all Ray Data tasks (``_map_task`` and ``_MapWorker``), determines
+    the global time range from ``creation_time_ms``, splits into equal
+    intervals, and returns a dict mapping operator name to its list of
+    time-bucketed scheduling overhead summaries.
     """
     from ray.util.state.api import list_tasks
 
-    summaries: Dict[str, SchedulingOverheadSummary] = {}
-    for name in DataTaskName:
-        tasks = list_tasks(
-            filters=[("func_or_class_name", "=", name)],
-            detail=True,
-            # 10_000 is chosen because it's the default max limit. Therefore, some
-            # tasks may be truncated.
-            limit=10_000,
-            raise_on_missing_output=False,
+    all_tasks: List[TaskState] = []
+    for task_type in DataTaskName:
+        all_tasks.extend(
+            list_tasks(
+                filters=[("func_or_class_name", "=", task_type)],
+                detail=True,
+                limit=10_000,
+                raise_on_missing_output=False,
+            )
         )
-        summaries[name] = SchedulingOverheadSummary.from_task_states(tasks)
-    return summaries
+
+    # 1. Sort all tasks by creation_time_ms.
+    all_tasks = [t for t in all_tasks if t.creation_time_ms is not None]
+    if not all_tasks:
+        return {}
+    all_tasks.sort(key=lambda t: t.creation_time_ms)
+
+    min_ts: int = all_tasks[0].creation_time_ms
+    max_ts: int = all_tasks[-1].creation_time_ms
+    bucket_width = (max_ts - min_ts) / num_buckets if num_buckets > 0 else 0
+
+    # 2. Build bucket boundaries.
+    if bucket_width == 0:
+        boundaries = [(min_ts, max_ts + 1)]
+    else:
+        boundaries = []
+        for i in range(num_buckets):
+            lo = min_ts + i * bucket_width
+            hi = lo + bucket_width
+            boundaries.append((lo, hi))
+
+    # Pre-allocate per-bucket, per-operator task lists.
+    # bucket_tasks[bucket_idx][operator_name] -> list of tasks
+    bucket_tasks: List[Dict[str, List[TaskState]]] = [
+        defaultdict(list) for _ in boundaries
+    ]
+
+    # 3. Single pass: assign each sorted task to its bucket.
+    def _in_bucket(t: TaskStatus, bucket: Tuple[int, int]) -> bool:
+        return bucket[0] <= t.creation_time_ms < bucket[1]
+
+    bucket_idx = 0
+    for t in all_tasks:
+        while bucket_idx < len(boundaries) - 1 and not _in_bucket(
+            t=t, bucket=boundaries[bucket_idx]
+        ):
+            bucket_idx += 1
+        bucket_tasks[bucket_idx][t.name].append(t)
+
+    # Build the result dict: operator_name -> list of bucketed summaries.
+    result: Dict[str, List[BucketedSchedulingOverhead]] = defaultdict(list)
+    for i, (lo, hi) in enumerate(boundaries):
+        for op_name, tasks in bucket_tasks[i].items():
+            result[op_name].append(
+                BucketedSchedulingOverhead(
+                    start_ms=lo,
+                    end_ms=hi,
+                    summary=SchedulingOverheadSummary.from_task_states(tasks),
+                )
+            )
+
+    return dict(result)

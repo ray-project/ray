@@ -37,14 +37,14 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
                 "operator_name": op.operator_name,
                 "earliest_start_time": op.earliest_start_time,
                 "latest_end_time": op.latest_end_time,
+                "scheduling_overhead": [
+                    dataclasses.asdict(bucket) for bucket in op.scheduling_overhead
+                ]
+                if op.scheduling_overhead
+                else [],
             }
             for op in summary.operators_stats
         ],
-        "scheduling_overhead": {
-            k: dataclasses.asdict(v) for k, v in summary.scheduling_overhead.items()
-        }
-        if summary.scheduling_overhead
-        else {},
     }
 
 
