@@ -251,11 +251,7 @@ class TrainController:
             return failure_result
 
         if self._worker_group:
-            try:
-                self._shutdown_worker_group()
-            except Exception:
-                logger.exception("Error shutting down worker group during resize.")
-                raise
+            self._shutdown_worker_group()
 
         self._start_worker_group(
             num_workers=decision.num_workers,
@@ -590,10 +586,13 @@ class TrainController:
                     ),
                 )
             if worker_group_status.errors:
-                # Raise the worker group error so it is handled by the
-                # catch-all in run(), which routes it through the failure
-                # policy (retry / raise) like any other error.
-                raise worker_group_status.get_worker_group_error()
+                worker_group_error = worker_group_status.get_worker_group_error()
+                failure_decision = self._failure_policy.make_decision(
+                    training_failed_error=worker_group_error,
+                )
+                return self._execute_failure_decision(
+                    failure_decision, training_failed_error=worker_group_error
+                )
 
             scaling_decision = (
                 self._scaling_policy.make_decision_for_running_worker_group(
@@ -719,15 +718,7 @@ class TrainController:
         if self.get_state().is_terminal():
             return
 
-        # Use a manual for-loop instead of CallbackManager here because abort
-        # requires best-effort semantics: every callback must be attempted even
-        # if earlier ones fail. CallbackManager.invoke is fail-fast (raises on
-        # the first error), which would skip remaining callbacks.
-        for callback in self._controller_callbacks:
-            try:
-                callback.before_controller_abort()
-            except Exception as e:
-                logger.exception("Error in before_controller_abort callback: %s", e)
+        self._controller_callback_manager.invoke_best_effort("before_controller_abort")
 
         # Intentionally abort worker group before setting train run state because
         # we only reconcile the states of live train runs.

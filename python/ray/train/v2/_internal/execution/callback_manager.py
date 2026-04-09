@@ -47,3 +47,21 @@ class CallbackManager:
                     f"'{callback_name}'."
                 )
                 raise ControllerError(e) from e
+
+    def invoke_best_effort(self, hook_name: str, *args, **context) -> None:
+        """Invoke a hook on every callback, logging and suppressing errors.
+
+        Unlike ``invoke``, this does not fail fast — every callback is
+        attempted even if earlier ones raise.  Used for cleanup hooks
+        (e.g. ``before_controller_abort``) where partial execution is
+        better than skipping remaining callbacks.
+        """
+        for callback in self._callbacks:
+            method, callback_name = self._get_method(callback, hook_name)
+            try:
+                method(*args, **context)
+            except Exception as e:
+                logger.exception(
+                    f"Error in callback hook '{hook_name}' from callback "
+                    f"'{callback_name}': {e}"
+                )
