@@ -437,8 +437,11 @@ ray_cc_library(
     deps = [
         ":asio",
         "//src/ray/observability:metric_interface",
+        "//src/ray/util:clock",
         "//src/ray/util:logging",
         "//src/ray/util:thread_utils",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 

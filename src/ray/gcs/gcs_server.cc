@@ -324,11 +324,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       std::move(io_contexts),
       io_context_lag_gauge,
       io_context_deadline_exceeded_counter,
-      std::chrono::milliseconds(
+      absl::Milliseconds(
           RayConfig::instance().io_context_monitor_healthy_deadline_ms()));
   io_context_monitor_thread_ = std::make_unique<IOContextMonitorThread>(
       std::move(monitor),
-      std::chrono::milliseconds(
+      absl::Milliseconds(
           RayConfig::instance().io_context_monitor_probe_interval_ms()),
       [health_check_service](bool healthy) {
         health_check_service->SetServingStatus(healthy);

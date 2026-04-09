@@ -15,49 +15,42 @@
 #pragma once
 
 #include <atomic>
-#include <chrono>
-#include <condition_variable>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <string>
 #include <thread>
 #include <vector>
 
+#include "absl/synchronization/mutex.h"
+#include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
-using SteadyClock = std::function<std::chrono::steady_clock::time_point()>;
-
-/// IOContextMonitor monitors a set of IOContexts, periodically posting a callback to them and
-/// measuring the queueing delay.
+/// The probe state machine. Tracks registered io_contexts, posts probes, and
+/// evaluates health. Does NOT own a thread — call Tick() to advance one cycle.
 ///
-/// The delay for each IO context is exported as a gauge metric and a boolean is
-/// returned in each Tick() that indicates if *all* IO contexts are healthy (the
-/// latency is below the configured threshold).
-/// 
 /// This separation from IOContextMonitorThread allows deterministic unit testing
 /// by calling Tick() directly with a fake clock.
 class IOContextMonitor {
  public:
-  /// @param component_name Human-readable name for logging (e.g., "gcs", "raylet").
-  /// @param io_contexts Named io_contexts to monitor. The io_contexts must outlive this
-  /// monitor.
+  /// @param component_name Human-readable name for logging (e.g. "gcs", "raylet").
+  /// @param io_contexts Named io_contexts to monitor.
   /// @param lag_gauge Gauge metric for recording probe lag (ms). Tagged by "Name".
   /// @param deadline_exceeded_counter Counter incremented each time a probe exceeds
   ///   the deadline. Tagged by "Name".
-  /// @param healthy_deadline_ms If a probe has been outstanding longer than this, the
+  /// @param healthy_deadline If a probe has been outstanding longer than this, the
   ///   io_context is considered unhealthy.
-  /// @param clock Injectable clock for testing. Defaults to steady_clock::now.
+  /// @param clock Injectable clock for testing. Defaults to absl::Now.
   IOContextMonitor(
       std::string component_name,
       std::vector<std::pair<std::string, instrumented_io_context *>> io_contexts,
       observability::MetricInterface &lag_gauge,
       observability::MetricInterface &deadline_exceeded_counter,
-      std::chrono::milliseconds healthy_deadline_ms = std::chrono::milliseconds{5000},
-      SteadyClock clock = std::chrono::steady_clock::now);
+      absl::Duration healthy_deadline = absl::Seconds(5),
+      ClockFunc clock = DefaultClock());
 
   /// Run one probe cycle: check previous probes, emit metrics/logs, post new probes.
   /// Returns true if all registered io_contexts are healthy.
@@ -69,15 +62,15 @@ class IOContextMonitor {
     instrumented_io_context *io_context;
     std::atomic<bool> last_probe_completed{true};
     std::atomic<int64_t> probe_complete_time_ns{0};
-    std::chrono::steady_clock::time_point probe_post_time{};
+    absl::Time probe_post_time = absl::InfinitePast();
     bool healthy{true};
   };
 
   bool ProcessProbe(ProbeState &probe);
 
   const std::string component_name_;
-  const std::chrono::milliseconds healthy_deadline_ms_;
-  const SteadyClock clock_;
+  const absl::Duration healthy_deadline_;
+  const ClockFunc clock_;
 
   observability::MetricInterface &lag_gauge_;
   observability::MetricInterface &deadline_exceeded_counter_;
@@ -89,34 +82,28 @@ class IOContextMonitor {
 /// configurable interval.
 class IOContextMonitorThread {
  public:
-  /// @param monitor The monitor to call into.
-  /// @param probe_interval_ms How often to call monitor->Tick().
-  /// @param health_callback Called from the monitor thread after each tick with a
-  /// boolean indicating the health status of the monitored IO contexts.
+  /// @param monitor The monitor to drive. Takes ownership.
+  /// @param probe_interval How often to call monitor->Tick().
+  /// @param health_callback Called from the monitor thread after each tick with the
+  ///   health status. Useful for updating gRPC SetServingStatus.
   IOContextMonitorThread(std::unique_ptr<IOContextMonitor> monitor,
-                         std::chrono::milliseconds probe_interval_ms,
-                         std::function<void(bool healthy)> health_callback = nullptr);
+                         absl::Duration probe_interval,
+                         std::function<void(bool healthy)> health_callback);
   ~IOContextMonitorThread();
 
   IOContextMonitorThread(const IOContextMonitorThread &) = delete;
   IOContextMonitorThread &operator=(const IOContextMonitorThread &) = delete;
 
-  // Start the monitoring thread. Idempotent.
   void Start();
-
-  // Stop and join the monitoring thread. Idempotent.
-  //
-  // Called implicitly in the destructor.
   void Stop();
 
  private:
-  void RunMonitorLoop();
+  void Run();
 
   std::unique_ptr<IOContextMonitor> monitor_;
-  std::chrono::milliseconds probe_interval_ms_;
+  absl::Duration probe_interval_;
   std::function<void(bool)> health_callback_;
-  std::mutex mutex_;
-  std::condition_variable cv_;
+  absl::Mutex mutex_;
   std::atomic<bool> running_{false};
   std::thread thread_;
 };
