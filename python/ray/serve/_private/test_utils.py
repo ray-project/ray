@@ -1234,7 +1234,7 @@ def get_application_urls(
     Returns:
         The URLs of the application.
     """
-    client = _get_global_client(_health_check_controller=True)
+    client = _get_global_client()
     serve_details = client.get_serve_details()
     assert (
         app_name in serve_details["applications"]

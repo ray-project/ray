@@ -213,5 +213,35 @@ void RayEventExportGrpcService::InitServerCallFactories(
 
 }  // namespace events
 
+void HealthCheckGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id,
+    std::shared_ptr<const AuthenticationToken> auth_token) {
+  // Manually construct the ServerCallFactory for the health check proto.
+  // We can't use the RPC_SERVICE_HANDLER macro because the health proto's naming
+  // conventions differ from Ray's (HealthCheckRequest/HealthCheckResponse vs
+  // CheckRequest/CheckReply).
+  std::unique_ptr<ServerCallFactory> Check_call_factory(
+      new ServerCallFactoryImpl<grpc::health::v1::Health,
+                                HealthCheckGrpcService,
+                                grpc::health::v1::HealthCheckRequest,
+                                grpc::health::v1::HealthCheckResponse,
+                                ClusterIdAuthType::NO_AUTH,
+                                false>(
+          service_,
+          &grpc::health::v1::Health::AsyncService::RequestCheck,
+          *this,
+          &HealthCheckGrpcService::HandleCheck,
+          cq,
+          main_service_,
+          "grpc.health.v1.Health.grpc_server.Check",
+          ClusterID::Nil(),
+          auth_token,
+          -1,
+          true));
+  server_call_factories->emplace_back(std::move(Check_call_factory));
+}
+
 }  // namespace rpc
 }  // namespace ray
