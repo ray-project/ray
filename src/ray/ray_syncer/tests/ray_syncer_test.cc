@@ -423,15 +423,12 @@ struct SyncerServerTest {
 
     server->Shutdown();
 
-    // Destroy the syncer while the io_context is still running so that
-    // gRPC disconnect/OnDone callbacks can execute on the io_context thread.
-    service.reset();
-    syncer.reset();
-
     io_context.stop();
     thread->join();
 
     server.reset();
+    service.reset();
+    syncer.reset();
   }
 
   int64_t GetNumConsumedMessages(const std::string &node_id) const {
@@ -1125,10 +1122,6 @@ class SyncerAuthenticationTest : public ::testing::Test {
     ~AuthenticatedSyncerServerTest() {
       server->Shutdown();
       server->Wait();
-      // Destroy the syncer while the io_context is still running so that
-      // gRPC disconnect/OnDone callbacks can execute on the io_context thread.
-      service.reset();
-      syncer.reset();
       work_guard.reset();
       io_context.stop();
       thread->join();
