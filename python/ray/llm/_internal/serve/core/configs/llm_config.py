@@ -280,9 +280,7 @@ class LLMConfig(BaseModelExtended):
     _engine_config: EngineConfigType = PrivateAttr(None)
     _callback_instance: Optional[CallbackBase] = PrivateAttr(None)
 
-    def _load_hf_config(
-        self, model_id_or_path: str, trust_remote_code: bool = False
-    ):
+    def _load_hf_config(self, model_id_or_path: str, trust_remote_code: bool = False):
         """Load the HuggingFace config for a model.
 
         Uses AutoConfig which loads the model-specific config class (e.g.
@@ -310,7 +308,9 @@ class LLMConfig(BaseModelExtended):
         attribute based on whether the config has `vision_config`. All LVM models has
         `vision_config` setup.
         """
-        hf_config = self._load_hf_config(model_id_or_path, trust_remote_code=trust_remote_code)
+        hf_config = self._load_hf_config(
+            model_id_or_path, trust_remote_code=trust_remote_code
+        )
         self._supports_vision = hasattr(hf_config, "vision_config")
 
     def _set_model_architecture(
@@ -341,8 +341,12 @@ class LLMConfig(BaseModelExtended):
         self, model_id_or_path: str, trust_remote_code: bool = False
     ) -> None:
         """Apply the checkpoint info to the model config."""
-        self._infer_supports_vision(model_id_or_path, trust_remote_code=trust_remote_code)
-        self._set_model_architecture(model_id_or_path, trust_remote_code=trust_remote_code)
+        self._infer_supports_vision(
+            model_id_or_path, trust_remote_code=trust_remote_code
+        )
+        self._set_model_architecture(
+            model_id_or_path, trust_remote_code=trust_remote_code
+        )
 
     def get_or_create_callback(self) -> Optional[CallbackBase]:
         """Get or create the callback instance for this process.
