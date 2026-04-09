@@ -181,227 +181,211 @@ def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
     return stats
 
 
-def generate_multi_endpoint_locust_script(
+@ray.remote(num_cpus=1)
+class MultiEndpointLocustProcess:
+    """Ray actor that runs a multi-endpoint locust master or worker subprocess."""
+
+    def __init__(
+        self,
+        worker_type: str,
+        host_url: str,
+        auth_token: str,
+        warmup_endpoints: List[tuple],
+        ramp_endpoints: List[tuple],
+        master_address: str = None,
+        expected_num_workers: int = None,
+        wait_for_workers_timeout_s: float = 600,
+        ramp_profile: List[tuple] = None,
+        warmup_sec: int = 40,
+        warmup_spawn_rate: int = 2,
+        ramp_base_users: int = 9,
+        ramp_spawn_rate: int = 20,
+        stages: List[tuple] = None,
+    ):
+        self.worker_type = worker_type
+        self.host_url = host_url
+        self.auth_token = auth_token
+        self.warmup_endpoints = warmup_endpoints
+        self.ramp_endpoints = ramp_endpoints
+        self.master_address = master_address
+        self.expected_num_workers = expected_num_workers
+        self.wait_for_workers_timeout_s = wait_for_workers_timeout_s
+        self.ramp_profile = ramp_profile
+        self.warmup_sec = warmup_sec
+        self.warmup_spawn_rate = warmup_spawn_rate
+        self.ramp_base_users = ramp_base_users
+        self.ramp_spawn_rate = ramp_spawn_rate
+        self.stages = stages
+
+    def run(self) -> Any:
+        import tempfile
+
+        results_file = tempfile.NamedTemporaryFile(
+            mode="w", delete=False, suffix=".json"
+        )
+        results_file.close()
+
+        if self.worker_type == "master":
+            warmup_json = json.dumps(self.warmup_endpoints)
+            ramp_json = json.dumps(self.ramp_endpoints)
+            ramp_profile_json = json.dumps(self.ramp_profile)
+            stages_json = json.dumps(self.stages)
+            script = f"""
+import sys, json
+from ray.serve._private.benchmarks.locust_utils import run_multi_endpoint_master
+
+warmup_eps = json.loads(sys.argv[1])
+ramp_eps = json.loads(sys.argv[2])
+ramp_profile = [(float(t), float(v)) for t, v in json.loads(sys.argv[3])]
+stages = json.loads(sys.argv[4])
+stages = [(n, s, e) for n, s, e in stages] if stages else None
+
+results = run_multi_endpoint_master(
+    host_url="{self.host_url}",
+    token="{self.auth_token or ''}",
+    expected_num_workers={self.expected_num_workers},
+    warmup_endpoints=[tuple(e) for e in warmup_eps],
+    ramp_endpoints=[tuple(e) for e in ramp_eps],
+    ramp_profile=ramp_profile,
+    warmup_sec={self.warmup_sec},
+    wait_for_workers_timeout_s={self.wait_for_workers_timeout_s},
+    payload={{"x": 1}},
+    warmup_spawn_rate={self.warmup_spawn_rate},
+    ramp_base_users={self.ramp_base_users},
+    ramp_spawn_rate={self.ramp_spawn_rate},
+    stages=stages,
+)
+
+with open("{results_file.name}", "w") as f:
+    json.dump(results, f)
+"""
+            cmd_args = [
+                sys.executable,
+                "-c",
+                script,
+                warmup_json,
+                ramp_json,
+                ramp_profile_json,
+                stages_json,
+            ]
+
+        else:  # worker
+            warmup_json = json.dumps(self.warmup_endpoints)
+            ramp_json = json.dumps(self.ramp_endpoints)
+            script = f"""
+import sys, json
+from ray.serve._private.benchmarks.locust_utils import run_multi_endpoint_worker
+
+warmup_eps = [tuple(e) for e in json.loads(sys.argv[1])]
+ramp_eps = [tuple(e) for e in json.loads(sys.argv[2])]
+
+run_multi_endpoint_worker(
+    master_address="{self.master_address}",
+    host_url="{self.host_url}",
+    token="{self.auth_token or ''}",
+    warmup_endpoints=warmup_eps,
+    ramp_endpoints=ramp_eps,
+    payload={{"x": 1}},
+)
+"""
+            cmd_args = [
+                sys.executable,
+                "-c",
+                script,
+                warmup_json,
+                ramp_json,
+            ]
+
+        self.process = subprocess.Popen(
+            cmd_args,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+            bufsize=1,
+        )
+        print(
+            f"Started multi-endpoint {self.worker_type} subprocess "
+            f"({self.process.pid})"
+        )
+
+        try:
+            for line in self.process.stdout:
+                sys.stdout.write(line)
+
+            return_code = self.process.wait()
+            if return_code != 0:
+                try:
+                    os.unlink(results_file.name)
+                except OSError:
+                    pass
+                raise RuntimeError(f"Subprocess failed with return code {return_code}.")
+
+            with open(results_file.name, "r") as f:
+                result_data = f.read()
+
+            if result_data:
+                return json.loads(result_data)
+        finally:
+            try:
+                os.unlink(results_file.name)
+            except OSError:
+                pass
+
+
+def run_multi_endpoint_load_test(
+    num_workers: int,
+    host_url: str,
+    auth_token: str,
     warmup_endpoints: List[tuple],
     ramp_endpoints: List[tuple],
     ramp_profile: List[tuple],
     warmup_sec: int,
+    stages: List[tuple] = None,
     warmup_spawn_rate: int = 2,
     ramp_base_users: int = 9,
     ramp_spawn_rate: int = 20,
-) -> str:
-    """Generate a locust script for multi-endpoint weighted load testing."""
-    warmup_json = json.dumps(warmup_endpoints)
-    ramp_json = json.dumps(ramp_endpoints)
-    profile_json = json.dumps(ramp_profile)
-
-    return f"""
-import json, os
-from locust import HttpUser, task, between, LoadTestShape
-
-PAYLOAD = {{"x": 1}}
-WARMUP_SEC = {warmup_sec}
-
-def _make_user(name, route, w=1):
-    class U(HttpUser):
-        host = os.environ["LOCUST_HOST"]
-        wait_time = between(0.001, 0.002)
-        weight = w
-        def on_start(self):
-            token = os.environ.get("LOCUST_AUTH_TOKEN", "")
-            if token:
-                self.client.headers["Authorization"] = f"Bearer {{token}}"
-        @task
-        def predict(self):
-            self.client.post(route, json=PAYLOAD, name=name, timeout=0.5)
-    U.__name__ = name.replace("-", "_") + "_User"
-    return U
-
-WARMUP_CLASSES = [_make_user(n, r, w) for n, r, w in {warmup_json}]
-RAMP_CLASSES = [_make_user(n, r, w) for n, r, w in {ramp_json}]
-for _i, _cls in enumerate(WARMUP_CLASSES + RAMP_CLASSES):
-    globals()[f"_locust_user_{{_i}}"] = _cls
-
-_RAMP_PROFILE = {profile_json}
-
-def _interpolate(t, profile):
-    if t <= 0:
-        return float(profile[0][1])
-    for i, (pt, pv) in enumerate(profile):
-        if t <= pt:
-            if i == 0:
-                return float(pv)
-            prev_t, prev_v = profile[i - 1]
-            frac = (t - prev_t) / (pt - prev_t)
-            return prev_v + frac * (pv - prev_v)
-    return 0.0
-
-class MultiEndpointLoadShape(LoadTestShape):
-    def tick(self):
-        run_time = self.get_run_time()
-        if run_time < WARMUP_SEC:
-            return (len(WARMUP_CLASSES), {warmup_spawn_rate}, WARMUP_CLASSES)
-        ramp_time = run_time - WARMUP_SEC
-        ramp_users = _interpolate(ramp_time, _RAMP_PROFILE)
-        total_users = {ramp_base_users} + int(round(ramp_users))
-        if ramp_users <= 0 and ramp_time >= _RAMP_PROFILE[-1][0]:
-            return None
-        return (total_users, {ramp_spawn_rate}, RAMP_CLASSES)
-"""
-
-
-def run_locust_subprocess(
-    host_url: str,
-    auth_token: str,
-    script_content: str,
-    num_processes: int = 4,
-    stages: List[tuple] = None,
+    wait_for_workers_timeout_s: float = 600,
 ) -> dict:
-    """Run a locust script as a subprocess and return parsed CSV stats."""
-    import tempfile
+    """Run a multi-endpoint locust load test using distributed master/worker pattern."""
 
-    csv_dir = tempfile.mkdtemp()
-    csv_prefix = os.path.join(csv_dir, "output")
+    logger.info(f"Spawning {num_workers} multi-endpoint locust workers.")
+    master_address = ray.util.get_node_ip_address()
+    worker_refs = []
 
-    with tempfile.NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write(script_content)
-        script_path = f.name
-
-    env = os.environ.copy()
-    env["LOCUST_HOST"] = host_url
-    env["LOCUST_AUTH_TOKEN"] = auth_token or ""
-
-    try:
-        logger.info(
-            f"Running locust subprocess: {num_processes} processes, "
-            f"target {host_url}"
+    for i in range(num_workers):
+        worker = MultiEndpointLocustProcess.options(
+            name=f"LocustMultiWorker-{i}"
+        ).remote(
+            worker_type="worker",
+            host_url=host_url,
+            auth_token=auth_token,
+            warmup_endpoints=warmup_endpoints,
+            ramp_endpoints=ramp_endpoints,
+            master_address=master_address,
         )
-        subprocess.run(
-            [
-                sys.executable,
-                "-m",
-                "locust",
-                "-f",
-                script_path,
-                "--headless",
-                "--processes",
-                str(num_processes),
-                "--csv",
-                csv_prefix,
-            ],
-            check=True,
-            env=env,
-        )
-    finally:
-        os.unlink(script_path)
+        worker_refs.append(worker.run.remote())
+        logger.info(f"Started multi-endpoint worker: {i} of {num_workers} total")
 
-    stats = parse_locust_csv(csv_prefix)
+    master = MultiEndpointLocustProcess.options(name="LocustMultiMaster").remote(
+        worker_type="master",
+        host_url=host_url,
+        auth_token=auth_token,
+        warmup_endpoints=warmup_endpoints,
+        ramp_endpoints=ramp_endpoints,
+        expected_num_workers=num_workers,
+        wait_for_workers_timeout_s=wait_for_workers_timeout_s,
+        ramp_profile=ramp_profile,
+        warmup_sec=warmup_sec,
+        warmup_spawn_rate=warmup_spawn_rate,
+        ramp_base_users=ramp_base_users,
+        ramp_spawn_rate=ramp_spawn_rate,
+        stages=stages,
+    )
+    master_ref = master.run.remote()
 
-    if stages:
-        stats["stages"] = parse_locust_stats_history(csv_prefix, stages)
-
-    for suffix in (
-        "_stats.csv",
-        "_failures.csv",
-        "_stats_history.csv",
-        "_exceptions.csv",
-    ):
-        path = csv_prefix + suffix
-        if os.path.exists(path):
-            os.unlink(path)
-    os.rmdir(csv_dir)
-
+    stats = ray.get(master_ref)
+    ray.get(worker_refs)
     return stats
-
-
-def parse_locust_csv(csv_prefix: str) -> dict:
-    import csv
-
-    per_endpoint = {}
-    aggregated = {}
-    with open(csv_prefix + "_stats.csv", newline="") as f:
-        for row in csv.DictReader(f):
-            entry = {
-                "request_count": int(row["Request Count"]),
-                "failure_count": int(row["Failure Count"]),
-                "p50_latency": float(row["50%"]),
-                "p90_latency": float(row["90%"]),
-                "p99_latency": float(row["99%"]),
-                "avg_latency": float(row["Average Response Time"]),
-                "rps": float(row["Requests/s"]),
-            }
-            if row["Name"] == "Aggregated":
-                aggregated = entry
-            else:
-                per_endpoint[row["Name"]] = entry
-
-    total_failures = 0
-    with open(csv_prefix + "_failures.csv", newline="") as f:
-        for row in csv.DictReader(f):
-            total_failures += int(row["Occurrences"])
-
-    return {
-        "total_requests": aggregated.get("request_count", 0),
-        "num_failures": total_failures,
-        "p50_latency": aggregated.get("p50_latency", 0),
-        "p90_latency": aggregated.get("p90_latency", 0),
-        "p99_latency": aggregated.get("p99_latency", 0),
-        "avg_latency": aggregated.get("avg_latency", 0),
-        "avg_rps": aggregated.get("rps", 0),
-        "per_endpoint": per_endpoint,
-    }
-
-
-def parse_locust_stats_history(csv_prefix: str, stages: List[tuple]) -> dict:
-    """Parse _stats_history.csv and compute per-stage metrics."""
-    import csv
-
-    # Read all Aggregated rows
-    rows = []
-    with open(csv_prefix + "_stats_history.csv", newline="") as f:
-        for row in csv.DictReader(f):
-            if row["Name"] == "Aggregated":
-                rows.append(row)
-
-    if not rows:
-        return {
-            name: {"avg_rps": 0, "p99_latency": 0, "avg_users": 0}
-            for name, _, _ in stages
-        }
-
-    # Find effective start: first row with Requests/s > 0
-    start_ts = int(rows[0]["Timestamp"])
-    for row in rows:
-        rps = float(row["Requests/s"])
-        if rps > 0:
-            start_ts = int(row["Timestamp"])
-            break
-
-    result = {}
-    for stage_name, start_s, end_s in stages:
-        rps_values = []
-        p99_values = []
-        user_values = []
-
-        for row in rows:
-            offset = int(row["Timestamp"]) - start_ts
-            if offset < start_s or offset >= end_s:
-                continue
-
-            rps_values.append(float(row["Requests/s"]))
-            user_values.append(float(row["User Count"]))
-
-            p99_str = row["99%"]
-            if p99_str != "N/A":
-                p99_values.append(float(p99_str))
-
-        result[stage_name] = {
-            "avg_rps": sum(rps_values) / len(rps_values) if rps_values else 0,
-            "p99_latency": max(p99_values) if p99_values else 0,
-            "avg_users": (sum(user_values) / len(user_values) if user_values else 0),
-        }
-
-    return result
 
 
 if __name__ == "__main__":

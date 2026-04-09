@@ -20,10 +20,7 @@ from anyscale.compute_config.models import (
 
 import ray
 from anyscale_service_utils import start_service
-from locust_utils import (
-    generate_multi_endpoint_locust_script,
-    run_locust_subprocess,
-)
+from locust_utils import run_multi_endpoint_load_test
 from serve_test_utils import save_test_results
 
 logger = logging.getLogger(__file__)
@@ -316,19 +313,15 @@ def main(output_path: Optional[str]):
         status = service.status(name=service_name, cloud=CLOUD)
         logger.info(f"Service {service_name} running at {status.query_url}")
 
-        script = generate_multi_endpoint_locust_script(
+        num_locust_workers = max(1, int(ray.available_resources().get("CPU", 0)) - 4)
+        stats = run_multi_endpoint_load_test(
+            num_workers=num_locust_workers,
+            host_url=status.query_url,
+            auth_token=status.query_auth_token,
             warmup_endpoints=WARMUP_ENDPOINTS,
             ramp_endpoints=RAMP_ENDPOINTS,
             ramp_profile=RAMP_PROFILE,
             warmup_sec=WARMUP_SEC,
-        )
-
-        num_locust_workers = max(1, int(ray.available_resources()["CPU"]) - 1)
-        stats = run_locust_subprocess(
-            host_url=status.query_url,
-            auth_token=status.query_auth_token,
-            script_content=script,
-            num_processes=num_locust_workers,
             stages=LOAD_STAGES,
         )
 
