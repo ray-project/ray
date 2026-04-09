@@ -1323,14 +1323,39 @@ cdef execute_streaming_generator_sync(StreamingGeneratorExecutionContext context
 
     gen = context.generator
 
+    # (karticam) memory instrumentation for streaming generator
+    import psutil as _km_psutil
+    import os as _km_os
+    def _km_get_mem():
+        _p = _km_psutil.Process()
+        _i = _p.memory_full_info()
+        return _i.rss / 1e6, _i.uss / 1e6, (_i.rss - _i.uss) / 1e6
+
     try:
         stats = None
 
         while True:
             try:
+                _km_rss, _km_uss, _km_shared = _km_get_mem()
+                print(
+                    f"(karticam) [GEN-BEFORE-YIELD#{gen_index}] "
+                    f"PID={_km_os.getpid()} | "
+                    f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                    f"Shared={_km_shared:.1f}MB"
+                )
+
                 # Send object serialization duration to the generator and retrieve
                 # next output
                 output = gen.send(stats)
+
+                _km_rss, _km_uss, _km_shared = _km_get_mem()
+                print(
+                    f"(karticam) [GEN-AFTER-YIELD#{gen_index}] "
+                    f"PID={_km_os.getpid()} | "
+                    f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                    f"Shared={_km_shared:.1f}MB"
+                )
+
                 # Track serialization duration of the next output
                 stats = report_streaming_generator_output(context, output, gen_index, None)
 
@@ -1876,7 +1901,7 @@ cdef void execute_task(
 
                     _km_rss, _km_uss, _km_shared = _km_get_mem()
                     print(
-                        f"(karticam) [BEFORE-UDF] PID={os.getpid()} "
+                        f"(karticam) [BEFORE-FUNCTION-EXECUTOR] PID={os.getpid()} "
                         f"task={title} | "
                         f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
                         f"Shared={_km_shared:.1f}MB"
@@ -1888,7 +1913,7 @@ cdef void execute_task(
                     _km_udf_elapsed = _km_time.monotonic() - _km_udf_start
                     _km_rss, _km_uss, _km_shared = _km_get_mem()
                     print(
-                        f"(karticam) [AFTER-UDF] PID={os.getpid()} "
+                        f"(karticam) [AFTER-FUNCTION-EXECUTOR] PID={os.getpid()} "
                         f"task={title} "
                         f"udf_time={_km_udf_elapsed:.3f}s | "
                         f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
@@ -2034,6 +2059,14 @@ cdef void execute_task(
                     "Task returned {} objects, but num_returns={}.".format(
                         len(outputs), returns[0].size()))
 
+            # (karticam) before store_outputs
+            _km_rss, _km_uss, _km_shared = _km_get_mem()
+            print(
+                f"(karticam) [BEFORE-STORE] PID={os.getpid()} "
+                f"task={title} | "
+                f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                f"Shared={_km_shared:.1f}MB"
+            )
             # Store the outputs in the object store.
             with core_worker.profile_event(b"task:store_outputs"):
                 # TODO(sang): Remove it once we use streaming generator
