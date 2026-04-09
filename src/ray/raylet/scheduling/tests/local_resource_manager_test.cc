@@ -352,6 +352,10 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       auto dur = clock_.Now() - *idle_time;
       ASSERT_GE(dur, absl::ZeroDuration());
       ASSERT_LE(dur, absl::Seconds(1));
+
+      const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+      ASSERT_GE(resource_view_sync_messge.idle_duration_ms(), 0);
+      ASSERT_LE(resource_view_sync_messge.idle_duration_ms(), 1 * 1000);
     }
   }
 
@@ -374,6 +378,9 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     ASSERT_TRUE(idle_time.has_value());
     auto dur = clock_.Now() - *idle_time;
     ASSERT_GE(dur, absl::ZeroDuration());
+
+    const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+    ASSERT_GE(resource_view_sync_messge.idle_duration_ms(), 0);
   }
 }
 
