@@ -14,14 +14,18 @@ class Worker:
         pass
 
     def init_gloo_group(
-        self, world_size: int, rank: int, group_name: str, gloo_timeout: int = 30000
+        self,
+        world_size: int,
+        rank: int,
+        group_name: str,
+        rendezvous_timeout: int = 30000,
     ):
         col.init_collective_group(
-            world_size, rank, Backend.GLOO, group_name, gloo_timeout
+            world_size, rank, Backend.GLOO, group_name, rendezvous_timeout
         )
         return True
 
-    def get_gloo_timeout(self, group_name: str) -> int:
+    def get_rendezvous_timeout(self, group_name: str) -> int:
         g = col.get_group_handle(group_name)
         # Check if the group is initialized correctly
         assert isinstance(g, GLOOGroup)
@@ -39,8 +43,8 @@ def test_two_groups_in_one_cluster(ray_start_single_node):
     ret2 = w2.init_gloo_group.remote(1, 0, name2, time2)
     assert ray.get(ret1)
     assert ray.get(ret2)
-    assert ray.get(w1.get_gloo_timeout.remote(name1)) == time1
-    assert ray.get(w2.get_gloo_timeout.remote(name2)) == time2
+    assert ray.get(w1.get_rendezvous_timeout.remote(name1)) == time1
+    assert ray.get(w2.get_rendezvous_timeout.remote(name2)) == time2
 
 
 def test_failure_when_initializing(shutdown_only):
