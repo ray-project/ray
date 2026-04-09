@@ -2,7 +2,7 @@ group: serve tests
 depends_on:
   - forge
   - oss-ci-base_build-multipy
-  - ray-core-build
+  - ray-core-build(*)
   - ray-dashboard-build
 steps:
   # builds
@@ -124,7 +124,7 @@ steps:
       - manylinux-x86_64
       - servebuild-multipy
       - forge
-      - ray-wheel-build
+      - ray-wheel-build(*)
 
   - label: ":ray-serve: serve: doc tests"
     tags:
@@ -203,7 +203,7 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase
+      - raycpubase(*)
       - servebuild-multipy
 
   - label: ":ray-serve: serve: tracing tests"
