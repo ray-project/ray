@@ -39,7 +39,7 @@ def _make_autoscaling_context(prometheus_queries=None) -> AutoscalingContext:
         current_time=None,
         config=None,
         total_pending_async_requests=0,
-        prometheus_queries=prometheus_queries,
+        prometheus_metrics=prometheus_queries,
     )
 
 
@@ -112,14 +112,14 @@ def _make_state(
 # ---------------------------------------------------------------------------
 
 
-class TestAutoscalingContextPrometheusQueries:
+class TestAutoscalingContextPrometheusMetrics:
     def test_none_when_not_configured(self):
         ctx = _make_autoscaling_context(prometheus_queries=None)
-        assert ctx.prometheus_queries is None
+        assert ctx.prometheus_metrics is None
 
     def test_dict_value(self):
         ctx = _make_autoscaling_context(prometheus_queries={"rate(http_rps[5m])": 42.0})
-        assert ctx.prometheus_queries == {"rate(http_rps[5m])": 42.0}
+        assert ctx.prometheus_metrics == {"rate(http_rps[5m])": 42.0}
 
     def test_lazy_callable(self):
         call_count = 0
@@ -131,10 +131,10 @@ class TestAutoscalingContextPrometheusQueries:
 
         ctx = _make_autoscaling_context(prometheus_queries=fetch)
         assert call_count == 0
-        assert ctx.prometheus_queries == {"lazy": 99.0}
+        assert ctx.prometheus_metrics == {"lazy": 99.0}
         assert call_count == 1
         # Cached
-        _ = ctx.prometheus_queries
+        _ = ctx.prometheus_metrics
         assert call_count == 1
 
 

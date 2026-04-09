@@ -396,7 +396,7 @@ class DeploymentAutoscalingState:
             total_queued_requests=self._get_queued_requests,
             aggregated_metrics=self._get_aggregated_custom_metrics,
             raw_metrics=self._get_raw_custom_metrics,
-            prometheus_queries=self._get_cached_prometheus_metrics,
+            prometheus_metrics=self._get_cached_prometheus_metrics,
             last_scale_up_time=self._last_scale_up_time,
             last_scale_down_time=self._last_scale_down_time,
             total_pending_async_requests=self._total_pending_async_requests,

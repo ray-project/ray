@@ -92,7 +92,7 @@ class AutoscalingContext:
         current_time: Optional[float],
         config: Optional[Any],
         total_pending_async_requests: int,
-        prometheus_queries: Optional[
+        prometheus_metrics: Optional[
             Union[Dict[str, float], Callable[[], Dict[str, float]]]
         ] = None,
     ):
@@ -149,7 +149,7 @@ class AutoscalingContext:
         self._total_pending_async_requests = total_pending_async_requests
 
         # Prometheus metrics fetched by the controller
-        self._prometheus_queries_value = prometheus_queries
+        self._prometheus_metrics_value = prometheus_metrics
 
     @cached_property
     def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
@@ -182,15 +182,22 @@ class AutoscalingContext:
         return self.total_num_requests - self.total_queued_requests
 
     @cached_property
-    def prometheus_queries(self) -> Optional[Dict[str, float]]:
+    def prometheus_metrics(self) -> Optional[Dict[str, float]]:
         """Metrics fetched from a Prometheus server by the controller.
 
-        Returns a dict mapping PromQL expression to its latest scalar value,
-        or None if no Prometheus queries are configured or the cache has expired.
+        Returns a dict mapping each PromQL expression (as configured in
+        ``AutoscalingConfig.prometheus_queries``) to its latest scalar value.
+
+        Returns ``None`` when no Prometheus queries are configured **or**
+        when the cached results have expired (e.g. Prometheus is
+        unreachable). Policies that use this field should always handle
+        the ``None`` case::
+
+            rps = (ctx.prometheus_metrics or {}).get("rate(rps[5m])", 0)
         """
-        if callable(self._prometheus_queries_value):
-            return self._prometheus_queries_value()
-        return self._prometheus_queries_value
+        if callable(self._prometheus_metrics_value):
+            return self._prometheus_metrics_value()
+        return self._prometheus_metrics_value
 
     @property
     def total_pending_async_requests(self) -> int:

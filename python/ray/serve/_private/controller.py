@@ -960,6 +960,7 @@ class ServeController:
             self._shutdown_start_time = time.time()
             logger.info("Controller shutdown started.", extra={"log_to_stderr": False})
 
+        self.autoscaling_state_manager.stop_prometheus_fetch_loop()
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
