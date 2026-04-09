@@ -1290,8 +1290,6 @@ def test_agent_log_auto_increment(ray_start_cluster):
         assert "runtime_env_agent.1.log" in runtime_env_log_names, runtime_env_log_names
         return True
 
-    from ray._common.test_utils import wait_for_condition
-
     wait_for_condition(verify_logs_present, timeout=15)
 
 
