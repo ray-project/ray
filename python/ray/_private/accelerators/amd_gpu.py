@@ -3,7 +3,6 @@ import os
 from typing import List, Optional, Tuple
 
 from ray._private.accelerators.accelerator import AcceleratorManager
-from ray._private.accelerators.nvidia_gpu import CUDA_VISIBLE_DEVICES_ENV_VAR
 from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
@@ -48,7 +47,7 @@ class AMDGPUAcceleratorManager(AcceleratorManager):
                 f"Please use {HIP_VISIBLE_DEVICES_ENV_VAR} instead of ROCR_VISIBLE_DEVICES"
             )
 
-        return env_var
+        return HIP_VISIBLE_DEVICES_ENV_VAR
 
     @staticmethod
     def get_current_process_visible_accelerator_ids() -> Optional[List[str]]:
