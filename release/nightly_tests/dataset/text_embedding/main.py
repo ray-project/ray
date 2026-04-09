@@ -13,7 +13,12 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray._private.test_utils import EC2InstanceTerminatorWithGracePeriod
 import ray
 
-from benchmark import Benchmark, RuntimeEnvSetupTracker, collect_dataset_stats
+from benchmark import (
+    Benchmark,
+    RuntimeEnvSetupTracker,
+    benchmark_py_modules,
+    collect_dataset_stats,
+)
 
 BATCH_SIZE = 128
 
@@ -147,6 +152,6 @@ def get_hf_token() -> str:
 
 
 if __name__ == "__main__":
-    ray.init(runtime_env={"py_modules": ["./benchmark.py"]})
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     args = parse_args()
     main(args)

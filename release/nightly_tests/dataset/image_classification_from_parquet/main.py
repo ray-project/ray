@@ -10,6 +10,7 @@ from benchmark import (
     BenchmarkMetric,
     RuntimeEnvSetupTracker,
     collect_dataset_stats,
+    benchmark_py_modules,
 )
 from torchvision.models import ResNet50_Weights, resnet50
 
@@ -130,13 +131,13 @@ def main(args):
         assert dead_nodes
         print(f"Total chaos killed: {dead_nodes}")
 
+    results = collect_dataset_stats(ds)
     results = {
         BenchmarkMetric.RUNTIME: total_time,
         "data_directory": data_directory,
         "data_format": data_format,
         "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
     }
-    results["dataset_stats"] = collect_dataset_stats(ds)
     results["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
 
     return results
@@ -144,7 +145,7 @@ def main(args):
 
 if __name__ == "__main__":
     args = parse_args()
-    ray.init(runtime_env={"py_modules": ["./benchmark.py"]})
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     benchmark = Benchmark()
     benchmark.run_fn("batch-inference", main, args)
     benchmark.write_result()
