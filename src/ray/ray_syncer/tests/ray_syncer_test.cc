@@ -110,6 +110,9 @@ class RaySyncerTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    // Destroy the syncer while the io_context is still running so that
+    // gRPC disconnect/OnDone callbacks can execute on the io_context thread.
+    syncer_.reset();
     work_guard_->reset();
     io_context_.stop();
     thread_->join();
@@ -420,13 +423,15 @@ struct SyncerServerTest {
 
     server->Shutdown();
 
+    // Destroy the syncer while the io_context is still running so that
+    // gRPC disconnect/OnDone callbacks can execute on the io_context thread.
+    service.reset();
+    syncer.reset();
+
     io_context.stop();
     thread->join();
 
     server.reset();
-    service.reset();
-
-    syncer.reset();
   }
 
   int64_t GetNumConsumedMessages(const std::string &node_id) const {
@@ -526,12 +531,9 @@ class SyncerTest : public ::testing::Test {
 
  protected:
   void TearDown() override {
-    // Drain all grpc requests.
     for (auto &s : servers) {
       s->Stop();
     }
-
-    std::this_thread::sleep_for(std::chrono::seconds(1));
   }
   std::vector<std::unique_ptr<SyncerServerTest>> servers;
 };
@@ -992,6 +994,11 @@ class SyncerReactorTest : public ::testing::Test {
   }
 
   void TearDown() override {
+    // Shut down the gRPC server and disconnect the client reactor while the
+    // io_context is still running so that OnDone callbacks can execute.
+    server->Shutdown();
+    server.reset();
+    rpc_service_.reset();
     io_context_.stop();
     thread_->join();
   }
@@ -1119,6 +1126,10 @@ class SyncerAuthenticationTest : public ::testing::Test {
     ~AuthenticatedSyncerServerTest() {
       server->Shutdown();
       server->Wait();
+      // Destroy the syncer while the io_context is still running so that
+      // gRPC disconnect/OnDone callbacks can execute on the io_context thread.
+      service.reset();
+      syncer.reset();
       work_guard.reset();
       io_context.stop();
       thread->join();
@@ -1269,23 +1280,3 @@ TEST_F(SyncerAuthenticationTest, ClientHasTokenServerDoesNotRequire) {
 
 }  // namespace syncer
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ray::RayLog::InstallFailureSignalHandler(argv[0]);
-  ray::RayLog::InstallTerminateHandler();
-
-  ::testing::InitGoogleTest(&argc, argv);
-  auto ret = RUN_ALL_TESTS();
-  // Sleep for gRPC to gracefully shutdown.
-  std::this_thread::sleep_for(std::chrono::seconds(2));
-  return ret;
-}
