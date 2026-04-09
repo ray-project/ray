@@ -4,6 +4,8 @@ zones:
 
 head_node:
     instance_type: n2-standard-4  # 4 CPUs
+    resources:
+      CPU: 4
 
 worker_nodes:
     - instance_type: n2-standard-4
