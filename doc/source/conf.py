@@ -119,6 +119,12 @@ _TEMPLATE_COLLECTIONS = {
     "mcp-ray-serve": {
         "target": "ray-overview/examples/mcp-ray-serve",
     },
+    "model-composition-recsys": {
+        "target": "serve/tutorials/model-composition-recsys",
+    },
+    "model-multiplexing": {
+        "target": "serve/tutorials/model_multiplexing_forecast",
+    },
     "object-detection-video-processing": {
         "target": "ray-overview/examples/object-detection",
     },
@@ -127,6 +133,9 @@ _TEMPLATE_COLLECTIONS = {
     },
     "pytorch-profiling": {
         "target": "train/examples/pytorch/pytorch-profiling",
+    },
+    "unstructured_data_ingestion": {
+        "target": "data/examples/unstructured_data_ingestion",
     },
     "xgboost-training-and-serving": {
         "target": "ray-overview/examples/e2e-xgboost",
