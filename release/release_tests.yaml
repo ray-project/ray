@@ -1483,7 +1483,7 @@
   run:
     timeout: 7200
     long_running: false
-    script: python workloads/proxy_autoscaling_test.py
+    script: python workloads/multi_deployment_autoscaling_test.py
 
   alert: default
 
