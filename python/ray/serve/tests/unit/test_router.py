@@ -42,7 +42,7 @@ from ray.serve._private.router import (
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
 from ray.serve._private.utils import decompress_metric_report, get_random_string
 from ray.serve.config import AutoscalingConfig, RequestRouterConfig
-from ray.serve.exceptions import BackPressureError
+from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
 
 
 class FakeReplicaResult(ReplicaResult):
@@ -129,10 +129,12 @@ class FakeReplica(RunningReplica):
     def try_send_request(
         self, pr: PendingRequest, with_rejection: bool
     ) -> FakeReplicaResult:
-        if with_rejection:
-            if self._error:
-                raise self._error
+        # Raise immediately if we're simulating send-time failure (e.g. ActorDiedError).
+        # Real replicas can raise here when with_rejection=False (e.g. broadcast path).
+        if self._error:
+            raise self._error
 
+        if with_rejection:
             assert (
                 not self.is_cross_language
             ), "Rejection not supported for cross language."
@@ -301,6 +303,111 @@ def dummy_request_metadata(is_streaming: bool = False) -> RequestMetadata:
         internal_request_id="test-internal-request-1",
         is_streaming=is_streaming,
     )
+
+
+@pytest.mark.asyncio
+class TestBroadcast:
+    async def test_unavailable_fails_without_waiting_for_router_init(self):
+        fake_request_router = FakeRequestRouter(use_queue_len_cache=False)
+        router = AsyncioRouter(
+            controller_handle=Mock(),
+            deployment_id=DeploymentID(name="test-deployment"),
+            handle_id="test-handle-id",
+            self_actor_id="test-node-id",
+            handle_source=DeploymentHandleSource.UNKNOWN,
+            event_loop=get_or_create_event_loop(),
+            enable_strict_max_ongoing_requests=False,
+            request_router=fake_request_router,
+            node_id="test-node-id",
+            availability_zone="test-az",
+            prefer_local_node_routing=False,
+            _request_router_initialized_event=asyncio.Event(),
+        )
+        # Simulate a router that has not finished initialization yet.
+        router._request_router_initialized.clear()
+        router._deployment_available = False
+
+        with pytest.raises(DeploymentUnavailableError):
+            await asyncio.wait_for(
+                router.broadcast(dummy_request_metadata()),
+                timeout=0.1,
+            )
+
+    async def test_skips_dead_replica_and_continues(self, setup_router):
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+        r2_id = ReplicaID(unique_id="r2", deployment_id=d_id)
+
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, error=ActorDiedError())
+        )
+        fake_request_router.set_replica_to_return_on_retry(FakeReplica(r2_id))
+
+        results = await router.broadcast(dummy_request_metadata())
+        assert len(results) == 1
+        assert results[0]._replica_id == r2_id
+        assert r1_id in fake_request_router.dropped_replicas
+
+    async def test_all_replicas_dead_raises_unavailable(self, setup_router):
+        router, fake_request_router = setup_router
+        d_id = DeploymentID(name="test")
+        r1_id = ReplicaID(unique_id="r1", deployment_id=d_id)
+
+        fake_request_router.set_replica_to_return(
+            FakeReplica(r1_id, error=ActorDiedError())
+        )
+
+        with pytest.raises(DeploymentUnavailableError):
+            await router.broadcast(dummy_request_metadata())
+
+
+class TestDeploymentBroadcastResponseLocalTesting:
+    """Tests for DeploymentBroadcastResponse with loop=None (local testing mode)."""
+
+    def test_results_twice_after_error_does_not_raise_coroutine_reuse(self):
+        """Calling results() twice when the coroutine raises should replay the
+        cached exception, not crash with 'cannot reuse already awaited coroutine'.
+        """
+        from ray.serve.handle import DeploymentBroadcastResponse
+
+        async def failing_coro():
+            raise DeploymentUnavailableError("no replicas")
+
+        response = DeploymentBroadcastResponse(failing_coro(), loop=None)
+
+        with pytest.raises(DeploymentUnavailableError):
+            response.results()
+
+        # Second call must raise the same error, not RuntimeError about reuse.
+        with pytest.raises(DeploymentUnavailableError):
+            response.results()
+
+    def test_results_twice_after_success_returns_same_results(self):
+        """Calling results() twice on a successful broadcast should return the
+        same cached results both times.
+        """
+        from ray.serve.handle import DeploymentBroadcastResponse
+
+        fake_result = FakeReplicaResult(
+            replica_id=ReplicaID(
+                unique_id="r1", deployment_id=DeploymentID(name="test")
+            ),
+            is_generator_object=False,
+        )
+
+        async def success_coro():
+            return [fake_result]
+
+        response = DeploymentBroadcastResponse(success_coro(), loop=None)
+
+        # First call succeeds and caches.
+        replica_results = response._fetch_replica_results_sync()
+        assert len(replica_results) == 1
+
+        # Second call returns the same cached list.
+        replica_results_2 = response._fetch_replica_results_sync()
+        assert replica_results_2 is replica_results
 
 
 @pytest.mark.asyncio
