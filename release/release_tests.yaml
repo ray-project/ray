@@ -2323,7 +2323,7 @@
     script: python experimental/rdt_single_node_microbenchmark.py
 
 - name: rdt_single_node_A100_microbenchmark
-  python: "3.11"
+  python: "3.12"
   group: core-daily-test
   team: core
   frequency: weekly
@@ -3888,7 +3888,7 @@
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_quantized_tp_1
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -3909,7 +3909,7 @@
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -3929,7 +3929,7 @@
 
 - name: llm_serve_multi_node
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -3948,7 +3948,7 @@
 
 - name: llm_serve_dp_engine_fault
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -3965,7 +3965,7 @@
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -3986,7 +3986,7 @@
 
 - name: llm_serve_llama_3dot1_8B_lora
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4006,7 +4006,7 @@
 
 - name: llm_serve_llama_3dot2_1B_s3
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4026,7 +4026,7 @@
 
 - name: llm_serve_correctness
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4045,7 +4045,7 @@
 
 - name: llm_serve_vllm_integration_tests
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4064,7 +4064,7 @@
 
 - name: llm_serve_sleep_wakeup
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4084,7 +4084,7 @@
 
 - name: llm_serve_pause_resume
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4104,7 +4104,7 @@
 
 - name: llm_serve_rlhf
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4124,7 +4124,7 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4144,7 +4144,7 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4164,7 +4164,7 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
   frequency: manual # todo(ray-llm): fix this test with new/old lmcache version and new vllm version and re-enable it.
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4185,7 +4185,7 @@
 
 - name: llm_serve_sglang_e2e
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4208,7 +4208,7 @@
 
 - name: llm_batch_vllm
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
@@ -4228,7 +4228,7 @@
 
 - name: llm_batch_sglang_llama
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
@@ -4247,7 +4247,7 @@
 - name: llm_batch_vllm_multi_node
   # TODO(ray-llm): https://github.com/anyscale/ray/issues/572
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
@@ -4263,7 +4263,7 @@
       pytest -sv test_batch_multi_node_vllm.py
 
 - name: llm_batch_single_node_baseline_benchmark
-  python: "3.11"
+  python: "3.12"
   group: llm-batch
   working_dir: llm_tests/batch
   frequency: nightly
@@ -4308,7 +4308,7 @@
 # in a test definition, so split off preemptible tests here.
 - name: text_embeddings_benchmark_{{scaling}}_preemptible
   frequency: nightly
-  python: "3.11"
+  python: "3.12"
   working_dir: nightly_tests
   team: data
   group: data-tests
@@ -4368,7 +4368,7 @@
 - name: entity_recognition_with_llms  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57222
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/entity-recognition-with-llms  # use // to access from repo's root
@@ -4393,7 +4393,7 @@
 
 - name: mcp_ray_serve  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/mcp-ray-serve  # use // to access from repo's root
@@ -4418,7 +4418,7 @@
 
 - name: langchain_agent_ray_serve  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: serve
   working_dir: //doc/source/ray-overview/examples/langchain_agent_ray_serve  # use // to access from repo's root
@@ -4444,7 +4444,7 @@
 
 - name: multi_agent_a2a  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: serve
   working_dir: //doc/source/ray-overview/examples/multi_agent_a2a
@@ -4670,7 +4670,7 @@
 
 
 - name: tensor_parallel_autotp  # do not use dashes (regex sensitive)
-  python: "3.11"
+  python: "3.12"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4747,7 +4747,7 @@
 - name: e2e_audio
   # https://github.com/ray-project/ray/issues/57220
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/e2e-audio  # use // to access from repo's root
@@ -4821,7 +4821,7 @@
 - name: object_detection  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57228
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/object-detection
@@ -4847,7 +4847,7 @@
 - name: e2e_rag  # do not use dashes (regex sensitive)
   # https://github.com/ray-project/ray/issues/57224
   frequency: manual
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/e2e-rag  # use // to access from repo's root
@@ -4897,7 +4897,7 @@
 
 - name: llamafactory_llm_fine_tune  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/ray-overview/examples/llamafactory-llm-fine-tune  # use // to access from repo's root
@@ -4922,7 +4922,7 @@
 
 - name: ray_train_workloads  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: train
   working_dir: //doc/source/train/tutorials  # use // from repo root
@@ -4947,7 +4947,7 @@
 
 - name: tune_pytorch_asha  # do not use dashes
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: tune
   working_dir: //doc/source/tune/examples/tune_pytorch_asha
@@ -4972,7 +4972,7 @@
 
 - name: llm_batch_inference_text  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/data/examples/llm_batch_inference_text  # use // to access from repo's root
@@ -4998,7 +4998,7 @@
 
 - name: llm_batch_inference_vision  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.12"
   group: ray-examples
   team: ml
   working_dir: //doc/source/data/examples/llm_batch_inference_vision  # use // to access from repo's root
