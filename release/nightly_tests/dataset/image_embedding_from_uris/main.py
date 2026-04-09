@@ -6,7 +6,12 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import torch
-from benchmark import Benchmark, OperatorStatsTracker, RuntimeEnvSetupTracker
+from benchmark import (
+    Benchmark,
+    OperatorStatsTracker,
+    RuntimeEnvSetupTracker,
+    benchmark_py_modules,
+)
 from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 import albumentations as A
@@ -252,5 +257,5 @@ def start_chaos():
 
 if __name__ == "__main__":
     args = parse_args()
-    ray.init(runtime_env={"py_modules": ["./benchmark.py"]})
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     main(args)
