@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 import unittest
 from typing import Any, Dict
 from unittest.mock import MagicMock
@@ -11,6 +12,7 @@ import pytest
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (
     KubeRayIPPRProvider,
 )
+from ray.autoscaler.v2.schema import IPPRStatus
 from ray.autoscaler.v2.tests.test_node_provider import (
     MockKubernetesHttpApiClient,
 )
@@ -256,6 +258,74 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         with pytest.raises(ValueError):
             self.provider.validate_and_set_ippr_specs(rc)
+
+    def test_sync_with_raylets_calls_gcs_and_clears_resizing_at_on_pod(self):
+        Gi = 1024 * 1024 * 1024
+        rc = _make_ray_cluster_with_ippr(
+            {"small-group": {"max-cpu": 8, "max-memory": "32Gi", "resize-timeout": 60}}
+        )
+        self.provider.validate_and_set_ippr_specs(rc)
+        spec = self.provider.get_ippr_specs().groups["small-group"]
+        raylet_hex = "0" * 56
+        st = IPPRStatus(
+            cloud_instance_id="ray-worker-1",
+            spec=spec,
+            current_cpu=2.0,
+            current_memory=4 * Gi,
+            desired_cpu=2.0,
+            desired_memory=4 * Gi,
+            resizing_at=123,
+            raylet_id=raylet_hex,
+        )
+        self.provider._ippr_statuses["ray-worker-1"] = st
+        assert st.need_sync_with_raylet()
+
+        self.gcs.resize_raylet_resource_instances.return_value = {
+            "CPU": 2.0,
+            "memory": 4 * Gi,
+        }
+
+        self.provider.sync_with_raylets()
+
+        self.gcs.resize_raylet_resource_instances.assert_called_once_with(
+            raylet_hex,
+            {"CPU": 2.0, "memory": 4 * Gi},
+        )
+
+        ann_payload = self.k8s.get_patches("pods/ray-worker-1")
+        assert ann_payload is not None
+        parsed = json.loads(
+            ann_payload["metadata"]["annotations"]["ray.io/ippr-status"]
+        )
+        assert parsed["raylet-id"] == raylet_hex
+        assert parsed["resizing-at"] is None
+
+    def test_sync_with_raylets_missing_raylet_address_noop(self):
+        Gi = 1024 * 1024 * 1024
+        rc = _make_ray_cluster_with_ippr(
+            {"small-group": {"max-cpu": 8, "max-memory": "32Gi", "resize-timeout": 60}}
+        )
+        self.provider.validate_and_set_ippr_specs(rc)
+        spec = self.provider.get_ippr_specs().groups["small-group"]
+        raylet_hex = "0" * 56
+        st = IPPRStatus(
+            cloud_instance_id="ray-worker-1",
+            spec=spec,
+            current_cpu=2.0,
+            current_memory=4 * Gi,
+            desired_cpu=2.0,
+            desired_memory=4 * Gi,
+            resizing_at=int(time.time()),
+            raylet_id=raylet_hex,
+        )
+        self.provider._ippr_statuses["ray-worker-1"] = st
+        self.gcs.resize_raylet_resource_instances.side_effect = ValueError(
+            f"Raylet {raylet_hex} is not alive."
+        )
+        self.provider.sync_with_raylets()
+
+        with pytest.raises(KeyError):
+            _ = self.k8s.get_patches("pods/ray-worker-1")
 
 
 if __name__ == "__main__":

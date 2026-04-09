@@ -12,7 +12,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
     depends_on:
-      - raycpubaseextra
+      - raycpubaseextra(*)
 
   - name: raycudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra-testdeps"
@@ -35,7 +35,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
     depends_on:
-      - raycudabaseextra
+      - raycudabaseextra(*)
 
   - name: ray-llmbaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.llm.base-extra-testdeps (cuda {{matrix.cuda}})"
@@ -55,7 +55,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
     depends_on:
-      - ray-llmbaseextra
+      - ray-llmbaseextra(*)
 
   - name: ray-mlcudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.ml.base-extra-testdeps"
@@ -71,7 +71,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
     depends_on:
-      - ray-mlcudabaseextra
+      - ray-mlcudabaseextra(*)
 
   - name: ray-anyscale-cpu-build
     label: "wanda: ray-anyscale py{{matrix}} cpu"
@@ -90,7 +90,7 @@ steps:
     tags:
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build(*)
       - raycpubaseextra-testdeps
 
   - name: ray-anyscale-cuda-build
@@ -119,7 +119,7 @@ steps:
     tags:
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build(*)
       - raycudabaseextra-testdeps
 
   - label: ":crane: publish: ray-anyscale py{{matrix.python}} {{matrix.platform}}"
@@ -173,7 +173,7 @@ steps:
     tags:
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build(*)
       - ray-llmbaseextra-testdeps
 
   - label: ":crane: publish: ray-llm-anyscale py{{matrix.python}} {{matrix.platform}}"
@@ -220,7 +220,7 @@ steps:
     tags:
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build(*)
       - ray-mlcudabaseextra-testdeps
 
   - label: ":crane: publish: ray-ml-anyscale py{{matrix}} cu12.1.1-cudnn8"

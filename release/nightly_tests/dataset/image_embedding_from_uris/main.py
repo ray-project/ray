@@ -6,7 +6,12 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import torch
-from benchmark import Benchmark
+from benchmark import (
+    Benchmark,
+    OperatorStatsTracker,
+    RuntimeEnvSetupTracker,
+    benchmark_py_modules,
+)
 from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 import albumentations as A
@@ -195,6 +200,9 @@ def main(args: argparse.Namespace):
     if args.chaos:
         start_chaos()
 
+    ctx = ray.data.DataContext.get_current()
+    ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
+
     print("Creating metadata")
     metadata = create_metadata(scale_factor=args.scale_factor)
 
@@ -223,6 +231,9 @@ def main(args: argparse.Namespace):
             )
             .write_parquet(WRITE_PATH)
         )
+        metrics = OperatorStatsTracker.collect()
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        return metrics
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
@@ -246,5 +257,5 @@ def start_chaos():
 
 if __name__ == "__main__":
     args = parse_args()
-    ray.init()
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     main(args)
