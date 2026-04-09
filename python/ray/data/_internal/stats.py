@@ -194,15 +194,6 @@ class Timer:
     def avg(self) -> float:
         return self._total / self._total_count if self._total_count else float("inf")
 
-    def __repr__(self) -> str:
-        return (
-            f"Timer(total={self._total:.4f}s, "
-            f"min={self._min:.4f}s, "
-            f"max={self._max:.4f}s, "
-            f"avg={self.avg():.4f}s, "
-            f"count={int(self._total_count)})"
-        )
-
 
 class _DatasetStatsBuilder:
     """Helper class for building dataset stats.
