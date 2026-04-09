@@ -2854,7 +2854,6 @@
       frequency: manual
       cluster:
         cluster_compute: object_store_gce.yaml
-        anyscale_sdk_2026: true
 
 - name: small_objects
   python: "3.10"
@@ -3057,7 +3056,6 @@
       frequency: manual
       cluster:
         cluster_compute: many_nodes_gce.yaml
-        anyscale_sdk_2026: true
 
 - name: scheduling_test_many_0s_tasks_many_nodes
   python: "3.10"
