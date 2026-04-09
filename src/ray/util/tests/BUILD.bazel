@@ -115,7 +115,9 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/ray/common:ray_gtest_main",
+        # Uses gtest_main (not ray_gtest_main) because this test manages its
+        # own logging setup and checks stderr output directly.
+        "@com_google_googletest//:gtest_main",
         "//src/ray/common:status",
         "//src/ray/util:env",
         "//src/ray/util:filesystem",
