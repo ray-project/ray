@@ -298,6 +298,8 @@ class StreamingExecutor(Executor, threading.Thread):
             for op in self._topology.keys():
                 op.shutdown(timer, force=force)
 
+            self._clear_topology_queues_post_shutdown(force, exception)
+
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
             total = round(timer.get(), 3)
@@ -327,6 +329,29 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context.set_dataset_logger_id(
                 unregister_dataset_logger(self._dataset_id)
             )
+
+    def _clear_topology_queues_post_shutdown(
+        self, force: bool, exception: Optional[Exception] = None
+    ) -> None:
+        """Drain topology queues after operator shutdown (releases block refs)."""
+        output_op, _ = self._output_node
+        for op, state in self._topology.items():
+            if isinstance(op, InternalQueueOperatorMixin):
+                op.clear_internal_input_queue()
+                op.clear_internal_output_queue()
+            # Multi-split sink: only skip clearing on cooperative *success* shutdown
+            # (siblings may still be draining). Failure paths set OpState._exception;
+            # consumers will not drain leftover bundles, so clear to release pins.
+            clear_output = (
+                force
+                or exception is not None
+                or op is not output_op
+                or op.num_output_splits() <= 1
+            )
+            if clear_output:
+                state.output_queue.clear()
+            for inqueue in state.input_queues:
+                inqueue.clear()
 
     def run(self):
         """Run the control loop in a helper thread.
