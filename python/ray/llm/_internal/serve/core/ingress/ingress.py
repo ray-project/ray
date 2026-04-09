@@ -472,8 +472,9 @@ class OpenAiIngress(DeploymentProtocol):
             return
 
         try:
-            host, port, replica_id = await self._pick_routed_direct_ingress_endpoint(
-                model_id
+            routing_key = await self._pick_routed_direct_ingress_endpoint(
+                model_id,
+                parsed,
             )
         except Exception as e:
             await send(
@@ -488,7 +489,7 @@ class OpenAiIngress(DeploymentProtocol):
             )
             return
 
-        resp = orjson.dumps({"host": host, "port": port})
+        resp = orjson.dumps({"routing_key": routing_key})
         await send(
             {
                 "type": "http.response.start",
@@ -615,16 +616,31 @@ class OpenAiIngress(DeploymentProtocol):
                     self._di_load_cache[r.replica_id] = float("inf")
             await asyncio.sleep(0.05)
 
-    async def _pick_routed_direct_ingress_endpoint(
-        self, model_id: str
-    ) -> Tuple[str, int, str]:
-        """Pick a replica via P2C with background-polled load and return
-        (host, port, rid).
+    @staticmethod
+    def _make_routing_key(host: str, port: int) -> str:
+        """Build the HAProxy server routing key from a replica's endpoint.
 
-        Uses power-of-two-choices: pick 2 random replicas, compare their
-        cached queue lengths (refreshed every 50ms by background poller),
-        route to the lighter one.
+        Must match the sc_{ip}_{port} convention in
+        HAProxyManager._target_to_server.
         """
+        return f"sc_{host.replace('.', '_')}_{port}"
+
+    async def _pick_routed_direct_ingress_endpoint(
+        self,
+        model_id: str,
+        body: dict,
+    ) -> str:
+        """Pick a replica via P2C with background-polled load and return
+        its HAProxy routing key.
+
+        Constructs a PendingRequest from the parsed request body so the
+        request router's full routing logic (locality, multiplexing) is
+        applied. Uses background-polled queue lengths for the final
+        tie-break between P2C candidates.
+        """
+        from ray.serve._private.common import RequestMetadata
+        from ray.serve._private.request_router.common import PendingRequest
+
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -649,10 +665,23 @@ class OpenAiIngress(DeploymentProtocol):
                 self._start_load_poller(model_id)
             )
 
-        # P2C: pick 2 random candidates.
+        # Build a PendingRequest from the parsed request body so the
+        # router applies its full logic (locality, multiplexed model).
+        pending_request = PendingRequest(
+            args=[],
+            kwargs=body,
+            metadata=RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                multiplexed_model_id=model_id if model_id != base_model_id else "",
+                is_streaming=body.get("stream", False),
+            ),
+        )
+
+        # P2C: pick 2 random candidates with locality/multiplex filtering.
         replica_tiers = await request_router.choose_replicas(
             candidate_replicas=direct_ingress_replicas,
-            pending_request=None,
+            pending_request=pending_request,
         )
         if not replica_tiers or not replica_tiers[0]:
             raise RuntimeError(f"P2C returned no candidates for {model_id}")
@@ -664,12 +693,13 @@ class OpenAiIngress(DeploymentProtocol):
                 f"P2C candidates have no direct-ingress endpoints for {model_id}"
             )
 
-        # Compare using background-polled cache (no per-request RPC).
+        # Tie-break using background-polled cache (no per-request RPC).
         best = min(
             candidates,
             key=lambda r: self._di_load_cache.get(r.replica_id, float("inf")),
         )
-        return (*best.direct_ingress_endpoint, best.replica_id.unique_id)
+        host, port = best.direct_ingress_endpoint
+        return self._make_routing_key(host, port)
 
     async def _get_response(
         self,
