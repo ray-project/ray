@@ -9,42 +9,20 @@ steps:
     depends_on:
       - oss-ci-base_build-multipy
     env:
-      PYTHON: "3.11"
-      BASE_TYPE: "build"
-      BUILD_VARIANT: "build"
-      RAY_CUDA_CODE: "cpu"
-    tags: cibase
-
-  - name: llmbuild-py312
-    wanda: ci/docker/llm.build.wanda.yaml
-    depends_on:
-      - oss-ci-base_build-multipy
-    env:
       PYTHON: "3.12"
       BASE_TYPE: "build"
-      BUILD_VARIANT: "build-py312"
+      BUILD_VARIANT: "build"
       RAY_CUDA_CODE: "cpu"
     tags: cibase
 
   - name: llmgpubuild
     wanda: ci/docker/llm.build.wanda.yaml
     depends_on:
-      - oss-ci-base_cu128-multipy
-    env:
-      PYTHON: "3.11"
-      BASE_TYPE: "cu128"
-      BUILD_VARIANT: "gpubuild"
-      RAY_CUDA_CODE: "cu128"
-    tags: cibase
-
-  - name: llmgpubuild-py312
-    wanda: ci/docker/llm.build.wanda.yaml
-    depends_on:
       - oss-ci-base_cu130-multipy
     env:
       PYTHON: "3.12"
       BASE_TYPE: "cu130"
-      BUILD_VARIANT: "gpubuild-py312"
+      BUILD_VARIANT: "gpubuild"
       RAY_CUDA_CODE: "cu130"
     tags: cibase
 
@@ -57,9 +35,9 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
-        --python-version 3.12 --build-name llmbuild-py312
+        --python-version 3.12 --build-name llmbuild
         --except-tags gpu
-    depends_on: llmbuild-py312
+    depends_on: llmbuild
 
   - label: "llm gpu tests"
     key: "llm-gpu-tests"
@@ -69,9 +47,9 @@ steps:
     instance_type: g6-large
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //python/ray/llm/... //doc/... llm
-        --python-version 3.12 --build-name llmgpubuild-py312 --only-tags gpu
+        --python-version 3.12 --build-name llmgpubuild --only-tags gpu
         --except-tags multi_gpu_4
-    depends_on: llmgpubuild-py312
+    depends_on: llmgpubuild
 
   - label: "llm gpu tests (4 GPUs)"
     key: "llm-gpu-tests-4gpu"
@@ -81,7 +59,7 @@ steps:
     instance_type: gpu-large
     commands:
       - RAYCI_DISABLE_TEST_DB=1 bazel run //ci/ray_ci:test_in_docker -- //doc/... llm
-        --python-version 3.12 --build-name llmgpubuild-py312
+        --python-version 3.12 --build-name llmgpubuild
         --only-tags multi_gpu_4
         --gpus 4
-    depends_on: llmgpubuild-py312
+    depends_on: llmgpubuild

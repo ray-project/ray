@@ -5,8 +5,6 @@ srcs:
   - ci/env/install-dependencies.sh
   - ci/env/install-llvm-binaries.sh
   - ci/suppress_output
-  - python/deplocks/llm/rayllm_test_py311_cpu.lock
-  - python/deplocks/llm/rayllm_test_py311_cu128.lock
   - python/deplocks/llm/rayllm_test_py312_cpu.lock
   - python/deplocks/llm/rayllm_test_py312_cu130.lock
 tags:
