@@ -33,7 +33,7 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     Calls ``ds.get_stats_summary()`` and converts the resulting
     ``DatasetStatsSummary`` into a plain dict via ``dataclasses.asdict()``.
     """
-    return {"dataset_stats": dataclasses.asdict(ds.get_stats_summary())}
+    return dataclasses.asdict(ds.get_stats_summary())
 
 
 class RuntimeEnvSetupTracker:
