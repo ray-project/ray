@@ -1022,3 +1022,7 @@ RAY_CONFIG(bool, start_python_gc_manager_thread, true)
 // Whether to enable the feature of outputting error log if the task is
 // still retryable.
 RAY_CONFIG(bool, enable_output_error_log_if_still_retry, true)
+
+// Whether to enable/disable multiple gRPC connections to improve object transfer
+// throughput.
+RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
