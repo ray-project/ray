@@ -295,8 +295,8 @@ def _apply_app_level_autoscaling_config(
         final_decisions: Dict[DeploymentID, int] = {}
         final_state: Dict[DeploymentID, Dict] = {}
         for dep_id, ctx in contexts.items():
-            custom_policy_state_per_deployment = updated_custom_policy_state.get(
-                dep_id, {}
+            custom_policy_state_per_deployment = (
+                updated_custom_policy_state.get(dep_id) or {}
             ).copy()
             if dep_id not in desired_num_replicas_dict:
                 final_state[dep_id] = _merge_user_state_with_internal_state(

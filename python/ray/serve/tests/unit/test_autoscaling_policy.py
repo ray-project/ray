@@ -1560,11 +1560,15 @@ class TestAppLevelPolicyStateIsolation:
         # Delay hasn't elapsed (0s < 100s) so no reset.
         assert final_state[d1][SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] == 4
         assert final_state[d1][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
+        # user state remains intact
+        assert final_state[d1]["counter"] == 5
 
         # d2 had counter=0, timestamp=None. Delay logic sees scale-up,
         # increments counter to 1, sets timestamp to fake_now.
         assert final_state[d2][SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] == 1
         assert final_state[d2][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
+        # user state remains intact
+        assert final_state[d1]["counter"] == 5
 
 
 if __name__ == "__main__":
