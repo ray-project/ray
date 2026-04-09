@@ -709,13 +709,6 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
               .WithField(node_id)
           << "REMOVED placement group should have no scheduled bundles on the dead node.";
 
-      bool all_unplaced = iter->second->AllUnplacedBundles();
-      if (all_unplaced && iter->second->GetLabelDomainKey().has_value()) {
-          iter->second->ClearLabelDomainAssignments();
-          RAY_LOG(INFO) << "All bundles for pg " << iter->second->GetPlacementGroupID()
-                        << " are unplaced, rescheduling on a new label domain";
-      }
-
       if (iter->second->GetState() == rpc::PlacementGroupTableData::CREATED) {
         // Only update the placement group state to RESCHEDULING if it is in CREATED
         // state. We don't need to update the placement group state or add to the
@@ -734,12 +727,10 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
             iter->second->GetPlacementGroupTableData(),
             {[this](Status status) { SchedulePendingPlacementGroups(); }, io_context_});
       } else if (iter->second->GetState() == rpc::PlacementGroupTableData::RESCHEDULING) {
-        // For label-domain PGs: if ALL bundles are unplaced (total failure), clear the
-        // domain assignment so a new domain can be selected. If only some bundles are
-        // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
-        // This case represents all are unplaced, hence we clear the label domain and try
-        // to reschedule on new domain.
-        if (all_unplaced && iter->second->GetLabelDomainKey().has_value()) {
+        // For label-domain PGs that are stuck in the infeasible queue: if ALL bundles
+        // are now unplaced (total domain failure), move the PG back to the pending queue
+        // so the scheduler can clear the stale domain assignment and retry on a new domain.
+        if (iter->second->AllUnplacedBundles() && iter->second->GetLabelDomainKey().has_value()) {
           auto infeasible_pg_iter = std::find_if(infeasible_placement_groups_.begin(), infeasible_placement_groups_.end(), 
               [iter](const std::shared_ptr<GcsPlacementGroup> &pg) {
                 return iter->second->GetPlacementGroupID() == pg->GetPlacementGroupID();
@@ -748,6 +739,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
           if (infeasible_pg_iter != infeasible_placement_groups_.end()) {
               AddToPendingQueue(*infeasible_pg_iter);
               infeasible_placement_groups_.erase(infeasible_pg_iter);
+              SchedulePendingPlacementGroups();
           }
         }
       }
