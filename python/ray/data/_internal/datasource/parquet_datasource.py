@@ -555,7 +555,7 @@ class ParquetDatasource(Datasource):
         )
 
     @classmethod
-    def from_state(cls, **kwargs: dict[str, Any]) -> "ParquetDatasource":
+    def from_state(cls, **kwargs) -> "ParquetDatasource":
         """Create a fully-initialized instance from pre-computed state.
 
         This is the preferred entry point for alternate constructors (e.g.
