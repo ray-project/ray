@@ -1568,7 +1568,7 @@ class TestAppLevelPolicyStateIsolation:
         assert final_state[d2][SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] == 1
         assert final_state[d2][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
         # user state remains intact
-        assert final_state[d1]["counter"] == 5
+        assert final_state[d2]["counter"] == 5
 
 
 if __name__ == "__main__":
