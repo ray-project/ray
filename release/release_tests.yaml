@@ -2826,7 +2826,6 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_gce.yaml
-        anyscale_sdk_2026: true
 
 - name: object_store
   python: "3.10"
@@ -3084,7 +3083,6 @@
       frequency: manual
       cluster:
         cluster_compute: scheduling_gce.yaml
-        anyscale_sdk_2026: true
 
 
 # - name: scheduling_test_many_5s_tasks_single_node
