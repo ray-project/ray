@@ -569,12 +569,16 @@ class BasicObject:
 @pytest.mark.parametrize(
     "input_obj,expected_output,truncate_length",
     [
-        # Basic types - should return as strings
-        (42, "42", 100),
-        (3.14, "3.14", 100),
-        (True, "True", 100),
-        (False, "False", 100),
-        (None, "None", 100),
+        # Primitives preserved as-is
+        (42, 42, 100),
+        (3.14, 3.14, 100),
+        (True, True, 100),
+        (False, False, 100),
+        (None, None, 100),
+        # float inf/nan become strings
+        (float("inf"), "inf", 100),
+        (float("-inf"), "-inf", 100),
+        (float("nan"), "nan", 100),
         # Strings - short strings return as-is
         ("hello", "hello", 100),
         # Strings - long strings get truncated
@@ -584,63 +588,58 @@ class BasicObject:
         ({"key": "value"}, {"key": "value"}, 100),
         ({"long_key": "a" * 150}, {"long_key": "a" * 100 + "..."}, 100),
         ({"nested": {"inner": "value"}}, {"nested": {"inner": "value"}}, 100),
-        # Sequences - should recursively sanitize elements (convert to strings)
-        ([1, 2, 3], ["1", "2", "3"], 100),
+        # Sequences - primitives preserved inside lists
+        ([1, 2, 3], [1, 2, 3], 100),
         (["short", "a" * 150], ["short", "a" * 100 + "..."], 100),
         # Complex nested structures
         (
             {"list": [1, "a" * 150], "dict": {"key": "a" * 150}},
-            {"list": ["1", "a" * 100 + "..."], "dict": {"key": "a" * 100 + "..."}},
+            {"list": [1, "a" * 100 + "..."], "dict": {"key": "a" * 100 + "..."}},
             100,
         ),
         # Objects that can be converted to string
         (BasicObject("test"), "BasicObject(test)", 100),  # Falls back to str()
-        # Sets can be converted to Lists of strings
-        ({1, 2, 3}, ["1", "2", "3"], 100),
-        ((1, 2, 3), ["1", "2", "3"], 100),
+        # Sets/tuples converted to lists, primitives preserved
+        ({1, 2, 3}, [1, 2, 3], 100),
+        ((1, 2, 3), [1, 2, 3], 100),
         # Objects that can't be serialized or stringified
         (UnserializableObject(), f"{UNKNOWN}: {UnserializableObject.__name__}", 100),
         # Empty containers
         ({}, {}, 100),
         ([], [], 100),
-        # Mixed type sequences - all converted to strings
+        # Mixed type sequences - primitives preserved
         (
             [1, "hello", {"key": "value"}, None],
-            ["1", "hello", {"key": "value"}, "None"],
+            [1, "hello", {"key": "value"}, None],
             100,
         ),
-        # Bytearrays/bytes - should be converted to lists of string representations
-        (bytearray(b"hello"), ["104", "101", "108", "108", "111"], 100),
-        (bytearray([1, 2, 3, 4, 5]), ["1", "2", "3", "4", "5"], 100),
-        (bytes(b"test"), ["116", "101", "115", "116"], 100),
-        # Dataclass
+        # Bytearrays/bytes - elements are ints, preserved as ints
+        (bytearray(b"hello"), [104, 101, 108, 108, 111], 100),
+        (bytearray([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5], 100),
+        (bytes(b"test"), [116, 101, 115, 116], 100),
+        # Dataclass - primitives preserved
         (
             TestDataclass(),
             {
-                "list_field": ["1", "2", "3"],
-                "dict_field": {"1": "2", "3": "4"},  # key should be strings
+                "list_field": [1, 2, 3],
+                "dict_field": {
+                    "1": 2,
+                    "3": "4",
+                },  # keys become strings, values preserved
                 "string_field": "test",
-                "int_field": "1",
-                "float_field": "1.0",
-                "set_field": [
-                    "1",
-                    "2",
-                    "3",
-                ],  # sets will be converted to Lists of strings
-                "tuple_field": [
-                    "1",
-                    "2",
-                    "3",
-                ],  # tuples will be converted to Lists of strings
-                "bool_field": "True",
-                "none_field": "None",
+                "int_field": 1,
+                "float_field": 1.0,
+                "set_field": [1, 2, 3],
+                "tuple_field": [1, 2, 3],
+                "bool_field": True,
+                "none_field": None,
             },
             100,
         ),
         # Test sequence truncation - list longer than truncate_length gets truncated
         (
             [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
-            ["1", "2", "3", "..."],  # Only first 3 elements after truncation + ...
+            [1, 2, 3, "..."],  # Only first 3 elements after truncation + ...
             3,
         ),
     ],

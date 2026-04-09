@@ -1,5 +1,4 @@
 import argparse
-import dataclasses
 import io
 import uuid
 from typing import Any, Dict
@@ -7,12 +6,7 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import torch
-from benchmark import (
-    Benchmark,
-    OperatorStatsTracker,
-    RuntimeEnvSetupTracker,
-    collect_scheduling_overhead,
-)
+from benchmark import Benchmark, RuntimeEnvSetupTracker, collect_dataset_stats
 from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 import albumentations as A
@@ -201,9 +195,6 @@ def main(args: argparse.Namespace):
     if args.chaos:
         start_chaos()
 
-    ctx = ray.data.DataContext.get_current()
-    ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
-
     print("Creating metadata")
     metadata = create_metadata(scale_factor=args.scale_factor)
 
@@ -213,7 +204,7 @@ def main(args: argparse.Namespace):
         transform = weights.transforms()
         model_ref = ray.put(model)
 
-        (
+        ds = (
             ray.data.from_pandas(metadata)
             .with_column("channel0", download("channel0_uris"))
             .with_column("channel1", download("channel1_uris"))
@@ -230,13 +221,10 @@ def main(args: argparse.Namespace):
                 concurrency=tuple(args.inference_concurrency),
                 fn_constructor_kwargs={"model": model_ref, "device": "cuda"},
             )
-            .write_parquet(WRITE_PATH)
         )
-        metrics = OperatorStatsTracker.collect()
+        ds.write_parquet(WRITE_PATH)
+        metrics = collect_dataset_stats(ds)
         metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-        metrics["scheduling_overhead"] = {
-            k: dataclasses.asdict(v) for k, v in collect_scheduling_overhead().items()
-        }
         return metrics
 
     benchmark.run_fn("main", benchmark_fn)

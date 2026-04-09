@@ -1,5 +1,4 @@
 import argparse
-import dataclasses
 import time
 from typing import Dict
 
@@ -8,9 +7,8 @@ import torch
 from benchmark import (
     Benchmark,
     BenchmarkMetric,
-    OperatorStatsTracker,
     RuntimeEnvSetupTracker,
-    collect_scheduling_overhead,
+    collect_dataset_stats,
 )
 from torchvision.models import ResNet50_Weights, resnet50
 
@@ -47,9 +45,6 @@ def parse_args():
 
 
 def main(args):
-    ctx = ray.data.DataContext.get_current()
-    ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
-
     data_directory: str = args.data_directory
     data_format: str = args.data_format
     smoke_test: bool = args.smoke_test
@@ -161,11 +156,8 @@ def main(args):
         "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
         "throughput_images_s_wo_metadata_fetch": throughput_without_metadata_fetch,
     }
-    results.update(OperatorStatsTracker.collect())
+    results["dataset_stats"] = collect_dataset_stats(ds)
     results["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-    results["scheduling_overhead"] = {
-        k: dataclasses.asdict(v) for k, v in collect_scheduling_overhead().items()
-    }
 
     return results
 

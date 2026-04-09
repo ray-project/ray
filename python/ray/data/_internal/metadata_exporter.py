@@ -1,6 +1,7 @@
 """Metadata exporter API for Ray Data datasets."""
 
 import logging
+import math
 import os
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field, is_dataclass
@@ -206,15 +207,24 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     """Prepares the obj for Struct Protobuf format by recursively
     going through dictionaries, lists, etc...
 
-    - Dataclasses will be converted to dicts
+    - Primitives (int, float, bool, None) are preserved as-is
+    - float("inf"), float("-inf"), and float("nan") become str
+    - Dataclasses will be converted to dicts via ``dataclasses.asdict``
     - Dictionary keys will be converted to strings
     - Lists, tuples, sets, bytes, bytearrays will be converted to lists
+    - All other objects fall back to ``str()``
     """
-    if isinstance(obj, Mapping):
-        # protobuf Struct key names must be strings.
-        return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
+    if obj is None or isinstance(obj, (int, bool)):
+        return obj
+    elif isinstance(obj, float):
+        if math.isinf(obj) or math.isnan(obj):
+            return str(obj)
+        return obj
     elif isinstance(obj, str):
         return _add_ellipsis_for_string(obj, truncate_length)
+    elif isinstance(obj, Mapping):
+        # protobuf Struct key names must be strings.
+        return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
     elif isinstance(obj, (Sequence, set)):
         # Convert all sequence-like types (lists, tuples, sets, bytes, other sequences) to lists
         res = []
