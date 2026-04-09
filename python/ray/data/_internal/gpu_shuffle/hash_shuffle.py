@@ -35,7 +35,7 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 )
 from ray.data._internal.execution.operators.sub_progress import SubProgressBarMixin
 from ray.data._internal.stats import OpRuntimeMetrics
-from ray.data.block import BlockStats, to_stats
+from ray.data.block import Block, BlockAccessor, BlockStats, to_stats
 from ray.data.context import DataContext
 
 if typing.TYPE_CHECKING:
@@ -127,15 +127,16 @@ class GPUShuffleActor:
     # Insert / extract interface (called by GPUShuffleOperator)
     # ------------------------------------------------------------------
 
-    def insert_batch(self, batch: pa.Table) -> int:
-        """Hash-partition *batch* and route shards to peers.
+    def insert_batch(self, block: Block) -> int:
+        """Hash-partition *block* and route shards to peers.
 
-        Returns the number of rows in the incoming batch so the driver can
+        Returns the number of rows in the incoming block so the driver can
         track throughput without serialising the data back.
         """
         import cudf
 
-        df = cudf.DataFrame.from_arrow(batch)
+        table = BlockAccessor.for_block(block).to_arrow()
+        df = cudf.DataFrame.from_arrow(table)
         # This is a fallback in case `infer_schema` is None, we need to then
         # infer from the first batch.
         if self._columns is None:
@@ -160,6 +161,8 @@ class GPUShuffleActor:
 
         for _, partition in self._shuffler.extract():
             exec_stats_builder = BlockExecStats.builder()
+            if partition.num_columns() == 0:
+                continue
             cdf = pylibcudf_to_cudf_dataframe(
                 partition, column_names=self._columns
             ).copy(deep=True)
@@ -545,6 +548,9 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             rank: int = -1,
         ) -> None:
             self._extraction_tasks.pop(rank, None)
+            if not self._extraction_tasks:
+                # release GPU actors so downstream operators can acquire those GPUs
+                self._rank_pool.shutdown(force=True)
 
         for rank_idx, actor in enumerate(self._rank_pool.actors):
             block_gen = actor.finish_and_extract.options(
