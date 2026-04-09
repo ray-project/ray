@@ -980,21 +980,6 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
   failed_workers_cache_.insert(worker_id);
 
   cluster_lease_manager_.CancelAllLeasesOwnedBy(worker_id);
-
-  for (const auto &[_, worker] : leased_workers_) {
-    const auto owner_worker_id =
-        WorkerID::FromBinary(worker->GetOwnerAddress().worker_id());
-    RAY_CHECK(!owner_worker_id.IsNil());
-    if (worker->IsDetachedActor() || owner_worker_id != worker_id) {
-      continue;
-    }
-    // If the failed worker was a leased worker's owner, then kill the leased worker.
-    RAY_LOG(INFO)
-            .WithField(worker->WorkerId())
-            .WithField("owner_worker_id", owner_worker_id)
-        << "Killing leased worker because its owner died.";
-    worker->KillAsync(io_service_);
-  }
 }
 
 bool NodeManager::ResourceCreateUpdated(const NodeID &node_id,
