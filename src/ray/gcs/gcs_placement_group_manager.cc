@@ -730,7 +730,9 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
         // For label-domain PGs that are stuck in the infeasible queue: if ALL bundles
         // are now unplaced (total domain failure), move the PG back to the pending queue
         // so the scheduler can clear the stale domain assignment and retry on a new
-        // domain.
+        // domain. The manager here is just reponsible for rescheduling the
+        // placment group, clearing the domain is handled by
+        // ScheduleUnplacedBundles within the scheduler.
         if (iter->second->AllUnplacedBundles() &&
             iter->second->GetLabelDomainKey().has_value()) {
           auto infeasible_pg_iter = std::find_if(
