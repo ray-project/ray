@@ -722,12 +722,12 @@ class TrainController:
 
         # Intentionally abort worker group before setting train run state because
         # we only reconcile the states of live train runs.
-        if self._worker_group:
-            try:
+        try:
+            if self._worker_group:
                 self._worker_group.abort()
-                self._set_state(AbortedState())
-            except Exception as e:
-                logger.exception("Error aborting worker group: %s", e)
+            self._set_state(AbortedState())
+        except Exception as e:
+            logger.exception("Error aborting worker group: %s", e)
 
         ray.actor.exit_actor()
 
