@@ -494,9 +494,6 @@
           repeat_map_batches: once
 
   cluster:
-    byod:
-      runtime_env:
-        - RAYTEST_FAIL_ON_WORKER_OOM=0
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
