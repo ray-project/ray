@@ -202,6 +202,31 @@ TEST_F(PubSubHandlerTest, HandleReportJobErrorPublishesToSubscribedErrorChannel)
   EXPECT_EQ(msg.error_info_message().error_message(), "test job error");
 }
 
+TEST_F(PubSubHandlerTest, HandleReportJobErrorRejectsInvalidJobIdLength) {
+  rpc::ReportJobErrorRequest err_req;
+  err_req.mutable_job_error()->set_job_id("");
+  err_req.mutable_job_error()->set_error_message("x");
+
+  rpc::ReportJobErrorReply err_reply;
+  Status err_status;
+  pubsub_handler_->HandleReportJobError(
+      err_req,
+      &err_reply,
+      [&err_status](const Status &status, std::function<void()>, std::function<void()>) {
+        err_status = status;
+      });
+  ASSERT_TRUE(err_status.IsInvalidArgument()) << err_status;
+
+  err_req.mutable_job_error()->set_job_id("short");
+  pubsub_handler_->HandleReportJobError(
+      err_req,
+      &err_reply,
+      [&err_status](const Status &status, std::function<void()>, std::function<void()>) {
+        err_status = status;
+      });
+  ASSERT_TRUE(err_status.IsInvalidArgument()) << err_status;
+}
+
 }  // namespace gcs
 }  // namespace ray
 
