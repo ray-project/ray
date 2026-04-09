@@ -1648,6 +1648,7 @@ def start_raylet(
         raylet_name: The name of the raylet socket to create.
         plasma_store_name: The name of the plasma store socket to connect
              to.
+        cluster_id: The cluster ID of this Ray cluster.
         worker_path: The path of the Python file that new worker
             processes will execute.
         setup_worker_path: The path of the Python file that will set up
@@ -1663,9 +1664,9 @@ def start_raylet(
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         session_name: The current Ray session name.
+        is_head_node: whether this node is the head node.
         resource_isolation_config: Resource isolation configuration for reserving
             memory and cpu resources for ray system processes through cgroupv2
-        is_head_node: whether this node is the head node.
         min_worker_port: The lowest port number that workers will bind
             on. If not set, random ports will be chosen.
         max_worker_port: The highest port number that workers will bind
@@ -1695,13 +1696,19 @@ def start_raylet(
             dashboard agent stdout. If None, stdout is not redirected.
         dashboard_agent_stderr_filepath: The file path to dump
             dashboard agent stderr. If None, stderr is not redirected.
+        dashboard_agent_log_filepath: The file path for the dashboard agent
+            log file. If None, defaults to "dashboard_agent.log".
         runtime_env_agent_stdout_filepath: The file path to dump
             runtime env agent stdout. If None, stdout is not redirected.
         runtime_env_agent_stderr_filepath: The file path to dump
             runtime env agent stderr. If None, stderr is not redirected.
+        runtime_env_agent_log_filepath: The file path for the runtime env
+            agent log file. If None, defaults to "runtime_env_agent.log".
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         fate_share: Whether to share fate between raylet and this process.
+        socket_to_use: The file descriptor of a socket to pass to the
+            raylet process. If None, no socket is passed.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
