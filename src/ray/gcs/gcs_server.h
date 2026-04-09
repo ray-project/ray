@@ -20,7 +20,7 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/asio/io_context_monitor.h"
+#include "ray/util/clock.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/gcs/gcs_function_manager.h"
@@ -41,7 +41,6 @@
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/util/clock.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
@@ -238,7 +237,7 @@ class GcsServer {
   /// GCS server metrics
   const ray::gcs::GcsServerMetrics &metrics_;
   IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
-  std::unique_ptr<IOContextMonitorThread> io_context_monitor_thread_;
+  Clock clock_;
 
   /// NOTICE: The declaration order for data members should follow dependency.
   ///
@@ -254,8 +253,6 @@ class GcsServer {
   rpc::RayletClientPool raylet_client_pool_;
   // Core worker client pool.
   rpc::CoreWorkerClientPool worker_client_pool_;
-  /// Clock used for resource scheduling.
-  Clock clock_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// The gcs table storage.

@@ -72,8 +72,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_thread_num,
                   /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms(),
                   /*auth_token=*/nullptr,
-                  // The IOContextMonitor updates the serving status via the callback.
-                  /*enable_default_health_check_service=*/true),
+                  // The health check implementation is overridden to check the health
+                  // of our boost::asio event loop threads.
+                  /*enable_default_health_check_service=*/false),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
                            config.node_ip_address,
@@ -297,45 +298,15 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitUsageStatsClient();
 
+  // Register a custom health check service that runs on the io_context instead of the
+  // default gRPC health check (which responds directly from gRPC threads). This way,
+  // if the GCS event loop is stuck, health checks will time out.
+  rpc_server_.RegisterService(std::make_unique<rpc::HealthCheckGrpcService>(
+      io_context_provider_.GetDefaultIOContext()));
+
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
-
-  // Create the IOContextMonitor and drive it from a dedicated thread.
-  // It updates the gRPC default health check service status after each probe cycle.
-  auto *health_check_service = rpc_server_.GetServer().GetHealthCheckService();
-  std::vector<std::pair<std::string, instrumented_io_context *>> io_contexts;
-  io_contexts.emplace_back("gcs_main", &io_context_provider_.GetDefaultIOContext());
-  for (const auto &ctx : io_context_provider_.GetAllDedicatedIOContexts()) {
-    io_contexts.emplace_back(std::string(ctx->GetName()), &ctx->GetIoService());
-  }
-  static ray::stats::Gauge io_context_lag_gauge{
-      "io_context_event_loop_lag_ms",
-      "The latency of a monitor probe from post to execution",
-      "ms",
-      {"Name"}};
-  static ray::stats::Count io_context_deadline_exceeded_counter{
-      "io_context_monitor_deadline_exceeded_total",
-      "Number of times an io_context probe exceeded the healthy deadline",
-      "",
-      {"Name"}};
-  static Clock real_clock;
-  auto monitor = std::make_unique<IOContextMonitor>(
-      "gcs",
-      std::move(io_contexts),
-      io_context_lag_gauge,
-      io_context_deadline_exceeded_counter,
-      absl::Milliseconds(
-          RayConfig::instance().io_context_monitor_healthy_deadline_ms()),
-      real_clock);
-  io_context_monitor_thread_ = std::make_unique<IOContextMonitorThread>(
-      std::move(monitor),
-      absl::Milliseconds(
-          RayConfig::instance().io_context_monitor_probe_interval_ms()),
-      [health_check_service](bool healthy) {
-        health_check_service->SetServingStatus(healthy);
-      });
-  io_context_monitor_thread_->Start();
   if (port_ready_callback_) {
     port_ready_callback_(rpc_server_.GetPort());
   }
@@ -369,10 +340,6 @@ void GcsServer::Stop() {
       ray_event_recorder_->StopExportingEvents();
     }
 
-    // Stop the monitor thread before io_contexts so it doesn't post to stopped contexts.
-    if (io_context_monitor_thread_) {
-      io_context_monitor_thread_->Stop();
-    }
     io_context_provider_.StopAllDedicatedIOContexts();
 
     ray_syncer_.reset();

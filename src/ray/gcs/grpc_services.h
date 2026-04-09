@@ -339,8 +339,8 @@ class RayEventExportGrpcService : public GrpcService {
 /// event loops to ensure they are alive and not overloaded.
 ///
 /// Unlike the default gRPC health check service (which responds directly from gRPC
-/// threads), this service's handler runs on the io_context event loop. If the event loops
-/// are stuck, the health check will not respond and the client will time out.
+/// threads), this service's handler runs on the io_context event loop. If the event loop
+/// is stuck, the health check will not respond and the client will time out.
 ///
 /// NOTE: we currently ignore the `service` field, which is part of the default
 /// health check protocol. In the future, we may want to implement this as per-service
