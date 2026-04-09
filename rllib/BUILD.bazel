@@ -1674,6 +1674,17 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_appo_multi_agent_data_balance",
+    size = "large",
+    srcs = ["algorithms/appo/tests/test_appo_multi_agent_data_balance.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # BC
 py_test(
     name = "test_bc",
