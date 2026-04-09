@@ -3,10 +3,9 @@ cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 head_node:
     instance_type: r5dn.16xlarge # Network optimized.
     resources:
-      cpu: 0
-      custom_resources:
-        node: 1
-        small: 1
+      CPU: 0
+      node: 1
+      small: 1
 
 worker_nodes:
     - instance_type: m5.16xlarge
@@ -14,12 +13,10 @@ worker_nodes:
       max_nodes: 32
       market_type: ON_DEMAND
       resources:
-        custom_resources:
-          node: 1
+        node: 1
     - instance_type: r5.16xlarge
       min_nodes: 32
       max_nodes: 32
       market_type: ON_DEMAND
       resources:
-        custom_resources:
-          node: 1
+        node: 1
