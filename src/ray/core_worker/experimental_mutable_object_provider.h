@@ -14,12 +14,8 @@
 #pragma once
 
 #include <memory>
-<<<<<<< HEAD
-=======
-#include <unordered_map>
 #include <unordered_set>
 #include <utility>
->>>>>>> rui/ft_push
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
@@ -268,19 +264,19 @@ class MutableObjectProvider : public MutableObjectProviderInterface {
   // handle retries idempotently. The version comes from PlasmaObjectHeader.version on the
   // sender side. The pair (offset, version) uniquely identifies a chunk across different
   // write epochs, preventing stale retries from interfering with new writes.
-  std::flat_hash_map<ObjectID, std::unordered_set<std::pair<uint64_t, int64_t>>>
+  absl::flat_hash_map<ObjectID, std::unordered_set<std::pair<uint64_t, int64_t>>>
       received_chunks_ ABSL_GUARDED_BY(written_so_far_lock_);
   // Tracks whether WriteAcquire has been called AND completed for each object to handle
   // out-of-order chunks. This ensures WriteAcquire is called exactly once, even if chunks
   // arrive concurrently or out of order. Other threads must wait until this is true
   // before calling GetObjectBackingStore().
-  std::flat_hash_map<ObjectID, bool> write_acquired_
+  absl::flat_hash_map<ObjectID, bool> write_acquired_
       ABSL_GUARDED_BY(written_so_far_lock_);
   // Maps writer_object_id to the highest version that has completed WriteRelease.
   // Only version == highest_completed + 1 can actively write to backing store.
   // Versions <= highest_completed are stale retries and are discarded.
   // Versions > highest_completed + 1 are buffered for future processing.
-  std::flat_hash_map<ObjectID, int64_t> highest_completed_version_
+  absl::flat_hash_map<ObjectID, int64_t> highest_completed_version_
       ABSL_GUARDED_BY(written_so_far_lock_);
 
   friend class MutableObjectProvider_MutableObjectBufferReadRelease_Test;
