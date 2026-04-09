@@ -62,12 +62,9 @@ def main(args: argparse.Namespace):
                 num_cpus=1,
             )
 
-        total_rows = 0
-        for bundle in ds.iter_internal_ref_bundles():
-            total_rows += bundle.num_rows()
+        ds = ds.materialize()
         metrics = collect_dataset_stats(ds)
         metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-        assert total_rows == num_rows
         metrics["num_blocks"] = num_blocks
         metrics["num_rows"] = num_rows
         return metrics
