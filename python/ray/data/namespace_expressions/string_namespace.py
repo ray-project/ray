@@ -404,30 +404,32 @@ class _StringNamespace:
 
         @pyarrow_udf(return_dtype=DataType.string())
         def _jq_filter(arr: pyarrow.Array) -> pyarrow.Array:
-            results: List[Union[str, None]] = []
-            for val in arr.to_pylist():
+            def _process(val):
                 if val is None:
-                    results.append(None)
-                    continue
+                    return None
                 try:
                     obj = json.loads(val)
                     obj = _apply_jq_steps(obj, steps)
                     if obj is None:
-                        results.append(None)
-                    elif isinstance(obj, str):
-                        results.append(obj)
-                    else:
-                        results.append(json.dumps(obj, ensure_ascii=False))
+                        return None
+                    return (
+                        obj
+                        if isinstance(obj, str)
+                        else json.dumps(obj, ensure_ascii=False)
+                    )
                 except (json.JSONDecodeError, TypeError):
-                    results.append(None)
-            return pyarrow.array(results, type=pyarrow.string())
+                    return None
+
+            return pyarrow.array(
+                [_process(v.as_py()) for v in arr], type=pyarrow.string()
+            )
 
         return _jq_filter(self._expr)
 
 
 _JQ_TOKEN_RE = re.compile(
     r"""
-    \.(\w+)       # .fieldName
+    (\w+)         # fieldName (after a dot)
     | \[(\d+)\]   # [index]
     """,
     re.VERBOSE,
@@ -439,7 +441,11 @@ def _parse_jq_filter(
 ) -> List[Tuple[str, Union[str, int]]]:
     """Parse a jq filter like ``.foo.bar[0].baz`` into a list of steps.
 
-    Returns a list of ``("field", name)`` or ``("index", int)`` tuples.
+    Args:
+        expr: A jq-style filter expression starting with ``"."``.
+
+    Returns:
+        A list of ``("field", name)`` or ``("index", int)`` tuples.
 
     Raises:
         ValueError: If the expression is empty or cannot be fully parsed.
@@ -449,20 +455,26 @@ def _parse_jq_filter(
         raise ValueError(f"jq filter must start with '.', got: {expr!r}")
 
     steps: List[Tuple[str, Union[str, int]]] = []
-    pos = 0
     # Skip the leading dot if it's just the identity '.'
     if expr == ".":
         return steps
 
-    for m in _JQ_TOKEN_RE.finditer(expr):
+    # Start after the mandatory leading dot.
+    pos = 1
+    for m in _JQ_TOKEN_RE.finditer(expr, pos=1):
         if m.start() < pos:
             continue
         # Ensure there are no gaps (unparsed characters)
-        if m.start() != pos and not (pos == 0 and m.start() == 0):
-            gap = expr[pos : m.start()]
-            if gap not in ("", "."):
-                raise ValueError(f"Unsupported jq syntax at position {pos}: {expr!r}")
+        if m.start() > pos:
+            raise ValueError(f"Unsupported jq syntax at position {pos}: {expr!r}")
         pos = m.end()
+        # Consume a dot separator before the next field name.
+        # A dot is only valid when followed by a word character (field name).
+        if pos < len(expr) and expr[pos] == ".":
+            if pos + 1 < len(expr) and re.match(r"\w", expr[pos + 1]):
+                pos += 1  # consume the dot separator
+            else:
+                raise ValueError(f"Unsupported jq syntax at position {pos}: {expr!r}")
         field, index = m.group(1), m.group(2)
         if field is not None:
             steps.append(("field", field))
