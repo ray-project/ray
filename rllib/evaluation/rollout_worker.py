@@ -129,10 +129,7 @@ def _update_env_seed_if_necessary(
     if seed is None:
         return
 
-    # A single RL job is unlikely to have more than 10K
-    # rollout workers.
-    max_num_envs_per_env_runner: int = 1000
-    computed_seed: int = worker_idx * max_num_envs_per_env_runner + vector_idx + seed
+    computed_seed: int = worker_idx * 1000 + vector_idx + seed
 
     # Gymnasium.env.
     # This will silently fail for most Farama-foundation gymnasium environments.

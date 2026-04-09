@@ -183,19 +183,14 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertTrue(len(unroll_ids_2) > 1)
         ev.stop()
 
-    def test_update_env_seed_accepts_max_worker_idx_with_valid_vector_idx(self):
-        env = SeedRecordingEnv()
-
-        _update_env_seed_if_necessary(env, seed=7, worker_idx=1000, vector_idx=999)
-
-        self.assertEqual(env.last_seed, 1000 * 1000 + 999 + 7)
-
-    def test_update_env_seed_rejects_too_large_vector_idx(self):
+    def test_update_env_seed(self):
         env = SeedRecordingEnv()
 
         _update_env_seed_if_necessary(env, seed=7, worker_idx=0, vector_idx=1000)
-
         self.assertEqual(env.last_seed, 1007)
+
+        _update_env_seed_if_necessary(env, seed=7, worker_idx=1000, vector_idx=999)
+        self.assertEqual(env.last_seed, 1000 * 1000 + 999 + 7)
 
     def test_global_vars_update(self):
         config = (
