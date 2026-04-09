@@ -7,7 +7,12 @@ across a range(N) -> map_batches(1000 actors) -> consume pipeline.
 import argparse
 
 import ray
-from benchmark import Benchmark, RuntimeEnvSetupTracker, collect_dataset_stats
+from benchmark import (
+    Benchmark,
+    RuntimeEnvSetupTracker,
+    benchmark_py_modules,
+    collect_dataset_stats,
+)
 
 BLOCKS_PER_WORKER: int = 10
 TARGET_BLOCK_SIZE_BYTES: int = 128 * 1024 * 1024  # 128 MiB
@@ -74,6 +79,6 @@ def main(args: argparse.Namespace):
 
 
 if __name__ == "__main__":
-    ray.init(runtime_env={"py_modules": ["./benchmark.py"]})
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     args = parse_args()
     main(args)
