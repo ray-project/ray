@@ -2,17 +2,18 @@ group: wheel build
 sort_key: "_wheel-build"
 steps:
   - name: ray-core-build
-    label: "wanda: core binary parts py{{matrix}} (x86_64)"
+    label: "wanda: core binary parts py{{array.python}} (x86_64)"
     wanda: ci/docker/ray-core.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
-      - "3.14"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+        - "3.14"
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
     tags:
@@ -40,23 +41,24 @@ steps:
       - java
 
   - name: ray-wheel-build
-    label: "wanda: wheel py{{matrix}} (x86_64)"
+    label: "wanda: wheel py{{array.python}} (x86_64)"
     wanda: ci/docker/ray-wheel.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.11"
-      - "3.12"
-      - "3.13"
-      - "3.14"
+    array:
+      python:
+        - "3.10"
+        - "3.11"
+        - "3.12"
+        - "3.13"
+        - "3.14"
     env_file: rayci.env
     env:
-      PYTHON_VERSION: "{{matrix}}"
+      PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
     tags:
       - release_wheels
       - linux_wheels
     depends_on:
-      - ray-core-build
+      - ray-core-build($)
       - ray-java-build
       - ray-dashboard-build
