@@ -182,14 +182,14 @@ def run_locust_load_test(config: LocustLoadTestConfig) -> LocustTestResults:
 
 
 def generate_multi_endpoint_locust_script(
-    warmup_endpoints,
-    ramp_endpoints,
-    ramp_profile,
-    warmup_sec,
-    warmup_spawn_rate=2,
-    ramp_base_users=9,
-    ramp_spawn_rate=20,
-):
+    warmup_endpoints: List[tuple],
+    ramp_endpoints: List[tuple],
+    ramp_profile: List[tuple],
+    warmup_sec: int,
+    warmup_spawn_rate: int = 2,
+    ramp_base_users: int = 9,
+    ramp_spawn_rate: int = 20,
+) -> str:
     """Generate a locust script for multi-endpoint weighted load testing."""
     warmup_json = json.dumps(warmup_endpoints)
     ramp_json = json.dumps(ramp_endpoints)
@@ -251,8 +251,12 @@ class MultiEndpointLoadShape(LoadTestShape):
 
 
 def run_locust_subprocess(
-    host_url, auth_token, script_content, num_processes=16, stages=None
-):
+    host_url: str,
+    auth_token: str,
+    script_content: str,
+    num_processes: int = 4,
+    stages: List[tuple] = None,
+) -> dict:
     """Run a locust script as a subprocess and return parsed CSV stats."""
     import tempfile
 
@@ -310,7 +314,7 @@ def run_locust_subprocess(
     return stats
 
 
-def parse_locust_csv(csv_prefix):
+def parse_locust_csv(csv_prefix: str) -> dict:
     import csv
 
     per_endpoint = {}
@@ -348,7 +352,7 @@ def parse_locust_csv(csv_prefix):
     }
 
 
-def parse_locust_stats_history(csv_prefix, stages):
+def parse_locust_stats_history(csv_prefix: str, stages: List[tuple]) -> dict:
     """Parse _stats_history.csv and compute per-stage metrics."""
     import csv
 

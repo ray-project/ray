@@ -8,7 +8,7 @@ Validates that latencies remain stable under autoscaling.
 
 import json
 import logging
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import click
 from anyscale import service
@@ -37,8 +37,8 @@ def _make_application(
     route: str,
     num_cpus: float,
     max_ongoing_requests: int,
-    **autoscaling_overrides,
-):
+    **autoscaling_overrides: Any,
+) -> Dict[str, Any]:
     return {
         "name": app_name,
         "import_path": "simulated_ml_inference:app",
@@ -189,7 +189,7 @@ LOAD_STAGES = [
 ]
 
 
-def assert_results(stats):
+def assert_results(stats: Dict[str, Any]) -> None:
     errors = stats["num_failures"]
     total = stats["total_requests"]
     p99 = stats["p99_latency"]
@@ -225,7 +225,7 @@ def assert_results(stats):
     )
 
 
-def build_results(stats, service_id):
+def build_results(stats: Dict[str, Any], service_id: str) -> Dict[str, Any]:
     metrics = [
         {
             "perf_metric_name": "p50_latency",
