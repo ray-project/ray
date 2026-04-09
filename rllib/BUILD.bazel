@@ -1900,6 +1900,17 @@ py_test(
 
 # Generic testing
 py_test(
+    name = "algorithms/tests/test_aggregator_placement_groups",
+    size = "large",
+    srcs = ["algorithms/tests/test_aggregator_placement_groups.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "algorithms/tests/test_custom_resource",
     size = "large",  # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
     srcs = ["algorithms/tests/test_custom_resource.py"],
