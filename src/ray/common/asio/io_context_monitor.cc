@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -134,7 +134,7 @@ void IOContextMonitorThread::Start() {
   if (!running_.compare_exchange_strong(expected, true)) {
     return;
   }
-  thread_ = std::thread([this] { Run(); });
+  thread_ = std::thread([this] { RunMonitorLoop(); });
 }
 
 void IOContextMonitorThread::Stop() {
@@ -148,14 +148,11 @@ void IOContextMonitorThread::Stop() {
   }
 }
 
-void IOContextMonitorThread::Run() {
+void IOContextMonitorThread::RunMonitorLoop() {
   SetThreadName("io_context_monitor");
 
   while (running_.load(std::memory_order_relaxed)) {
-    bool healthy = monitor_->Tick();
-    if (health_callback_) {
-      health_callback_(healthy);
-    }
+    health_callback_(monitor_->Tick());
 
     std::unique_lock<std::mutex> lock(mutex_);
     cv_.wait_for(lock, probe_interval_ms_, [this] { return !running_.load(); });

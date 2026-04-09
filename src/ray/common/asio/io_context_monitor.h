@@ -1,4 +1,4 @@
-// Copyright 2025 The Ray Authors.
+// Copyright 2026 The Ray Authors.
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -31,15 +31,20 @@ namespace ray {
 
 using SteadyClock = std::function<std::chrono::steady_clock::time_point()>;
 
-/// The probe state machine. Tracks registered io_contexts, posts probes, and
-/// evaluates health. Does NOT own a thread — call Tick() to advance one cycle.
+/// IOContextMonitor monitors a set of IOContexts, periodically posting a callback to them and
+/// measuring the queueing delay.
 ///
+/// The delay for each IO context is exported as a gauge metric and a boolean is
+/// returned in each Tick() that indicates if *all* IO contexts are healthy (the
+/// latency is below the configured threshold).
+/// 
 /// This separation from IOContextMonitorThread allows deterministic unit testing
 /// by calling Tick() directly with a fake clock.
 class IOContextMonitor {
  public:
-  /// @param component_name Human-readable name for logging (e.g. "gcs", "raylet").
-  /// @param io_contexts Named io_contexts to monitor.
+  /// @param component_name Human-readable name for logging (e.g., "gcs", "raylet").
+  /// @param io_contexts Named io_contexts to monitor. The io_contexts must outlive this
+  /// monitor.
   /// @param lag_gauge Gauge metric for recording probe lag (ms). Tagged by "Name".
   /// @param deadline_exceeded_counter Counter incremented each time a probe exceeds
   ///   the deadline. Tagged by "Name".
@@ -84,10 +89,10 @@ class IOContextMonitor {
 /// configurable interval.
 class IOContextMonitorThread {
  public:
-  /// @param monitor The monitor to drive. Takes ownership.
+  /// @param monitor The monitor to call into.
   /// @param probe_interval_ms How often to call monitor->Tick().
-  /// @param health_callback Called from the monitor thread after each tick with the
-  ///   health status. Useful for updating gRPC SetServingStatus.
+  /// @param health_callback Called from the monitor thread after each tick with a
+  /// boolean indicating the health status of the monitored IO contexts.
   IOContextMonitorThread(std::unique_ptr<IOContextMonitor> monitor,
                          std::chrono::milliseconds probe_interval_ms,
                          std::function<void(bool healthy)> health_callback = nullptr);
@@ -96,11 +101,16 @@ class IOContextMonitorThread {
   IOContextMonitorThread(const IOContextMonitorThread &) = delete;
   IOContextMonitorThread &operator=(const IOContextMonitorThread &) = delete;
 
+  // Start the monitoring thread. Idempotent.
   void Start();
+
+  // Stop and join the monitoring thread. Idempotent.
+  //
+  // Called implicitly in the destructor.
   void Stop();
 
  private:
-  void Run();
+  void RunMonitorLoop();
 
   std::unique_ptr<IOContextMonitor> monitor_;
   std::chrono::milliseconds probe_interval_ms_;
