@@ -34,6 +34,7 @@
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/util/counter_map.h"
 
@@ -112,6 +113,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         fake_resource_usage_gauge_,
+        clock_,
         /*is_local_node_with_raylet=*/false);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
@@ -197,6 +199,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
+  ray::Clock clock_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<MockedGcsActorScheduler> gcs_actor_scheduler_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>

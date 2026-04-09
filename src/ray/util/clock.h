@@ -14,19 +14,39 @@
 
 #pragma once
 
-#include <functional>
-
 #include "absl/time/clock.h"
 #include "absl/time/time.h"
 
 namespace ray {
 
-/// Injectable clock for deterministic testing. Defaults to absl::Now.
-using ClockFunc = std::function<absl::Time()>;
+/// Interface for a clock that returns the current time.
+class ClockInterface {
+ public:
+  virtual ~ClockInterface() = default;
+  virtual absl::Time Now() = 0;
+};
 
-/// Returns the default clock implementation (absl::Now).
-inline ClockFunc DefaultClock() {
-  return absl::Now;
-}
+/// Real clock that delegates to absl::Now().
+class Clock : public ClockInterface {
+ public:
+  absl::Time Now() override { return absl::Now(); }
+};
+
+/// Fake clock for deterministic testing. Time only advances when you call
+/// AdvanceTime().
+class FakeClock : public ClockInterface {
+ public:
+  explicit FakeClock(absl::Time start = absl::FromUnixSeconds(1000))
+      : now_(start) {}
+
+  absl::Time Now() override { return now_; }
+
+  void AdvanceTime(absl::Duration duration) { now_ += duration; }
+
+  void SetTime(absl::Time time) { now_ = time; }
+
+ private:
+  absl::Time now_;
+};
 
 }  // namespace ray

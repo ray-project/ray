@@ -24,6 +24,7 @@
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/observability/metric_interface.h"
+#include "ray/util/clock.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
@@ -65,7 +66,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       std::function<void(const NodeResources &)> resource_change_subscriber,
       ray::observability::MetricInterface &resource_usage_gauge,
-      std::function<absl::Time()> now_fn = nullptr);
+      ClockInterface &clock);
 
   scheduling::NodeID GetNodeId() const { return local_node_id_; }
 
@@ -240,8 +241,7 @@ class LocalResourceManager : public syncer::ReporterInterface {
   /// Each entry tracks the current idle time (or nullopt if busy) and optionally
   /// a saved time for speculative busy marking (used only for WorkFootprints).
   absl::flat_hash_map<WorkArtifact, IdleTimeState> idle_time_states_;
-  /// Function to get current time. Defaults to absl::Now() if not provided.
-  std::function<absl::Time()> now_fn_;
+  ClockInterface &clock_;
   /// Function to get used object store memory.
   std::function<int64_t(void)> get_used_object_store_memory_;
   /// Function to get whether the pull manager is at capacity.

@@ -319,13 +319,15 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
       "Number of times an io_context probe exceeded the healthy deadline",
       "",
       {"Name"}};
+  static Clock real_clock;
   auto monitor = std::make_unique<IOContextMonitor>(
       "gcs",
       std::move(io_contexts),
       io_context_lag_gauge,
       io_context_deadline_exceeded_counter,
       absl::Milliseconds(
-          RayConfig::instance().io_context_monitor_healthy_deadline_ms()));
+          RayConfig::instance().io_context_monitor_healthy_deadline_ms()),
+      real_clock);
   io_context_monitor_thread_ = std::make_unique<IOContextMonitorThread>(
       std::move(monitor),
       absl::Milliseconds(
@@ -485,6 +487,7 @@ void GcsServer::InitClusterResourceScheduler() {
       /*is_node_available_fn=*/
       [](auto) { return true; },
       /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
+      /*clock=*/clock_,
       /*is_local_node_with_raylet=*/false);
 }
 

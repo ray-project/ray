@@ -33,7 +33,7 @@ namespace ray {
 /// evaluates health. Does NOT own a thread — call Tick() to advance one cycle.
 ///
 /// This separation from IOContextMonitorThread allows deterministic unit testing
-/// by calling Tick() directly with a fake clock.
+/// by calling Tick() directly with a FakeClock.
 class IOContextMonitor {
  public:
   /// @param component_name Human-readable name for logging (e.g. "gcs", "raylet").
@@ -43,14 +43,14 @@ class IOContextMonitor {
   ///   the deadline. Tagged by "Name".
   /// @param healthy_deadline If a probe has been outstanding longer than this, the
   ///   io_context is considered unhealthy.
-  /// @param clock Injectable clock for testing. Defaults to absl::Now.
+  /// @param clock Clock to use for time. Must outlive the monitor.
   IOContextMonitor(
       std::string component_name,
       std::vector<std::pair<std::string, instrumented_io_context *>> io_contexts,
       observability::MetricInterface &lag_gauge,
       observability::MetricInterface &deadline_exceeded_counter,
-      absl::Duration healthy_deadline = absl::Seconds(5),
-      ClockFunc clock = DefaultClock());
+      absl::Duration healthy_deadline,
+      ClockInterface &clock);
 
   /// Run one probe cycle: check previous probes, emit metrics/logs, post new probes.
   /// Returns true if all registered io_contexts are healthy.
@@ -70,7 +70,7 @@ class IOContextMonitor {
 
   const std::string component_name_;
   const absl::Duration healthy_deadline_;
-  const ClockFunc clock_;
+  ClockInterface &clock_;
 
   observability::MetricInterface &lag_gauge_;
   observability::MetricInterface &deadline_exceeded_counter_;

@@ -23,21 +23,13 @@ namespace {
 
 class IOContextMonitorTest : public ::testing::Test {
  protected:
-  void SetUp() override { fake_now_ = absl::FromUnixSeconds(1000); }
-
-  void AdvanceTime(absl::Duration duration) { fake_now_ += duration; }
-
-  ClockFunc FakeClock() {
-    return [this]() { return fake_now_; };
-  }
-
   IOContextMonitor MakeMonitor(
       std::string name,
       std::vector<std::pair<std::string, instrumented_io_context *>> io_contexts,
       absl::Duration deadline = absl::Seconds(5)) {
     return IOContextMonitor(std::move(name), std::move(io_contexts),
                             lag_gauge_, deadline_counter_,
-                            deadline, FakeClock());
+                            deadline, clock_);
   }
 
   double GetLag(const std::string &ctx_name) {
@@ -60,7 +52,7 @@ class IOContextMonitorTest : public ::testing::Test {
     return 0;
   }
 
-  absl::Time fake_now_;
+  FakeClock clock_;
   observability::FakeGauge lag_gauge_;
   observability::FakeCounter deadline_counter_;
 };
@@ -81,12 +73,12 @@ TEST_F(IOContextMonitorTest, DetectsStuckIOContext) {
                              absl::Milliseconds(100));
 
   EXPECT_TRUE(monitor.Tick());
-  AdvanceTime(absl::Milliseconds(200));
+  clock_.AdvanceTime(absl::Milliseconds(200));
   EXPECT_FALSE(monitor.Tick());
   EXPECT_EQ(GetDeadlineExceeded("stuck"), 1);
 
   // Additional ticks should not increment the counter again (already unhealthy).
-  AdvanceTime(absl::Milliseconds(200));
+  clock_.AdvanceTime(absl::Milliseconds(200));
   monitor.Tick();
   EXPECT_EQ(GetDeadlineExceeded("stuck"), 1);
 }
@@ -96,7 +88,7 @@ TEST_F(IOContextMonitorTest, HealthyWithinDeadline) {
   auto monitor = MakeMonitor("test", {{"ctx", &ctx}}, absl::Milliseconds(100));
 
   monitor.Tick();
-  AdvanceTime(absl::Milliseconds(50));
+  clock_.AdvanceTime(absl::Milliseconds(50));
   EXPECT_TRUE(monitor.Tick());
 }
 
@@ -123,20 +115,17 @@ TEST_F(IOContextMonitorTest, MultipleIOContexts) {
                              {{"healthy", &healthy_ctx}, {"stuck", &stuck_ctx}},
                              absl::Milliseconds(100));
 
-  // Post probes.
   monitor.Tick();
   healthy_ctx.poll();
-  AdvanceTime(absl::Milliseconds(200));
+  clock_.AdvanceTime(absl::Milliseconds(200));
 
-  // Overall unhealthy because stuck_ctx hasn't responded.
   EXPECT_FALSE(monitor.Tick());
   EXPECT_GE(GetLag("healthy"), 0);
   EXPECT_EQ(GetDeadlineExceeded("stuck"), 1);
 
-  // Now unblock the stuck context.
+  // Unblock the stuck context.
   stuck_ctx.poll();
-  // Tick sees the late completion — still unhealthy (completed past deadline).
-  // But it posts a fresh probe.
+  // Tick sees the late completion — still unhealthy, but posts a fresh probe.
   EXPECT_FALSE(monitor.Tick());
 
   // The fresh probe completes within deadline → back to healthy.
@@ -150,7 +139,7 @@ TEST_F(IOContextMonitorTest, LateCompletionDoesNotRestoreHealth) {
   auto monitor = MakeMonitor("test", {{"ctx", &ctx}}, absl::Milliseconds(100));
 
   monitor.Tick();
-  AdvanceTime(absl::Milliseconds(200));
+  clock_.AdvanceTime(absl::Milliseconds(200));
   EXPECT_FALSE(monitor.Tick());
 
   ctx.poll();
@@ -167,9 +156,9 @@ TEST_F(IOContextMonitorTest, DoesNotAccumulateProbesOnStuckContext) {
                              absl::Milliseconds(100));
 
   monitor.Tick();
-  AdvanceTime(absl::Milliseconds(200));
+  clock_.AdvanceTime(absl::Milliseconds(200));
   monitor.Tick();
-  AdvanceTime(absl::Milliseconds(200));
+  clock_.AdvanceTime(absl::Milliseconds(200));
   monitor.Tick();
 
   auto handlers_run = stuck_ctx.poll();
@@ -180,12 +169,13 @@ TEST(IOContextMonitorThreadTest, CallbackAndShutdown) {
   InstrumentedIOContextWithThread ctx("test_ctx");
   observability::FakeGauge lag_gauge;
   observability::FakeCounter deadline_counter;
+  Clock real_clock;
 
   auto monitor = std::make_unique<IOContextMonitor>(
       "test",
       std::vector<std::pair<std::string, instrumented_io_context *>>{
           {"test_ctx", &ctx.GetIoService()}},
-      lag_gauge, deadline_counter);
+      lag_gauge, deadline_counter, absl::Seconds(5), real_clock);
 
   std::atomic<int> callback_count{0};
   IOContextMonitorThread thread(

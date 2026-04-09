@@ -30,10 +30,10 @@ IOContextMonitor::IOContextMonitor(
     observability::MetricInterface &lag_gauge,
     observability::MetricInterface &deadline_exceeded_counter,
     absl::Duration healthy_deadline,
-    ClockFunc clock)
+    ClockInterface &clock)
     : component_name_(std::move(component_name)),
       healthy_deadline_(healthy_deadline),
-      clock_(std::move(clock)),
+      clock_(clock),
       lag_gauge_(lag_gauge),
       deadline_exceeded_counter_(deadline_exceeded_counter) {
   for (auto &[name, io_context] : io_contexts) {
@@ -55,7 +55,7 @@ bool IOContextMonitor::Tick() {
 }
 
 bool IOContextMonitor::ProcessProbe(ProbeState &probe) {
-  absl::Time now = clock_();
+  absl::Time now = clock_.Now();
 
   if (!probe.last_probe_completed.load(std::memory_order_acquire)) {
     // Previous probe still outstanding.

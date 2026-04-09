@@ -41,6 +41,7 @@
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/util/clock.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
@@ -253,6 +254,8 @@ class GcsServer {
   rpc::RayletClientPool raylet_client_pool_;
   // Core worker client pool.
   rpc::CoreWorkerClientPool worker_client_pool_;
+  /// Clock used for resource scheduling.
+  Clock clock_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// The gcs table storage.
