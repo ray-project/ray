@@ -141,6 +141,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         Args:
             training_report: Training report to register.
         """
+        if training_report.checkpoint is None:
+            raise ValueError(
+                "The training report must have a checkpoint to register."
+            )
+
         checkpoint_result = _TrainingResult(
             checkpoint=training_report.checkpoint,
             metrics=training_report.metrics,
@@ -333,7 +338,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 error = e
             raise CheckpointManagerInitializationError(error) from e
 
-        # Do this so we are using the same checkpoint and trainingresult objects.
+        # Do this so we are using the same checkpoint and _TrainingResult objects.
         # TODO: consider asserting that every checkpoint has a unique dir name
         checkpoint_dir_name_to_checkpoint_result = {}
 
@@ -448,14 +453,12 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 fs=checkpoint.filesystem, fs_path=checkpoint.path
             ):
                 raise CheckpointManagerInitializationError(
-                    message=(
-                        "The run snapshot contains a reference to a checkpoint "
-                        f"that does not exist anymore ({checkpoint}). You are "
-                        "running in a corrupted run directory `experiment_fs_path`."
-                        "Please configure a new, unique `RunConfig(name)` "
-                        "or delete the existing folder at "
-                        f"`{self._storage_context.experiment_fs_path}`."
-                    )
+                    "The run snapshot contains a reference to a checkpoint "
+                    f"that does not exist anymore ({checkpoint}). You are "
+                    "running in a corrupted run directory `experiment_fs_path`."
+                    "Please configure a new, unique `RunConfig(name)` "
+                    "or delete the existing folder at "
+                    f"`{self._storage_context.experiment_fs_path}`."
                 )
 
     # --------------------------

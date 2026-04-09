@@ -545,7 +545,7 @@ class StorageContext:
             checkpoint_path: The checkpoint path
 
         Returns:
-            The checkpoint name that removes the experiment directory path\.
+            The checkpoint name that removes the experiment directory path.
         """
         exp_path = Path(self.experiment_fs_path)
         ckpt_path = Path(checkpoint_path)

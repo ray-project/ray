@@ -346,7 +346,15 @@ def test_update_checkpoints_with_metrics_not_in_checkpoint_results(tmp_path):
 
 
 def test_out_of_band_checkpointing(tmp_path):
-    """Check that the checkpoint manager can handle out of band checkpointing."""
+    """Check that the checkpoint manager can handle out of band checkpointing.
+
+    The checkpoint manager exists that the checkpoints are saved within the
+    storage_path (experiment_dir). Out of band checkpoint are ones not saved
+    in the storage_path, so tmp_path is used.
+
+    Further, this test checks that a restored trainer still correctly handles
+    in and out of band checkpointing.
+    """
 
     def write_file(file_path, content: str):
         os.makedirs(file_path.parent, exist_ok=True)
@@ -369,6 +377,7 @@ def test_out_of_band_checkpointing(tmp_path):
         )
 
         # save out of band with NO_UPLOAD
+        write_file(tmp_path / "epoch-3" / "results.txt", "3")
         ray.train.report(
             metrics={"score": 3},
             checkpoint=Checkpoint(tmp_path / "epoch-3"),
@@ -376,11 +385,13 @@ def test_out_of_band_checkpointing(tmp_path):
         )
 
         # save out of band with custom checkpoint_upload_fn
+        write_file(tmp_path / "epoch-4" / "results.txt", "4")
         ray.train.report(
             metrics={"score": 4},
             checkpoint=Checkpoint(tmp_path / "epoch-4"),
             checkpoint_upload_fn=lambda checkpoint, name: checkpoint,
         )
+        write_file(tmp_path / "test" / "epoch-5" / "results.txt", "5")
         ray.train.report(
             metrics={"score": 5},
             checkpoint=Checkpoint(tmp_path / "test" / "epoch-5"),
@@ -389,10 +400,19 @@ def test_out_of_band_checkpointing(tmp_path):
         )
 
         # ensures that all the ray.train.report have finished.
-        ray.train.get_all_reported_checkpoints()
+        reported_checkpoints = ray.train.get_all_reported_checkpoints()
+        assert len(reported_checkpoints) == 5
 
     with tempfile.TemporaryDirectory() as _experiment_dir:
+        # For MacOS, the tempfile can be resolved differently, therefore, we force it
         experiment_dir = Path(_experiment_dir).resolve()
+
+        expected_checkpoint_paths = [
+            Path(experiment_dir) / "test-out-of-band-checkpointing" / "test",
+            tmp_path / "epoch-3",
+            tmp_path / "epoch-4",
+            tmp_path / "test" / "epoch-5",
+        ]
 
         data_trainer = DataParallelTrainer(
             train_fn,
@@ -403,22 +423,42 @@ def test_out_of_band_checkpointing(tmp_path):
             ),
         )
         results: Result = data_trainer.fit()
-        checkpoints = results.best_checkpoints
+        result_checkpoints = results.best_checkpoints
 
-        assert checkpoints is not None and len(checkpoints) == 5
-        assert checkpoints[0][1] == {"score": 1}
-        assert checkpoints[1] == (
-            Checkpoint(
-                Path(experiment_dir) / "test-out-of-band-checkpointing" / "test"
+        assert result_checkpoints is not None and len(result_checkpoints) == 5
+        # The checkpoint manager add the final folder meaning that you can't
+        #   a priori know the final checkpoint path if no checkpoint dir name is used.
+        assert (
+            Path(result_checkpoints[0][0].path).parent
+            == Path(experiment_dir) / "test-out-of-band-checkpointing"
+        )
+        # Check the rest of the checkpoint paths
+        for checkpoint, score, expected_path in zip(
+            result_checkpoints[1:], range(2, 6), expected_checkpoint_paths, strict=True
+        ):
+            assert checkpoint == (Checkpoint(expected_path), {"score": score})
+
+        # Confirm that if you restore an experiment that contains out of band
+        #   checkpoints that the checkpoint paths are all correct still.
+        def restored_train_fn():
+            reported_checkpoints = ray.train.get_all_reported_checkpoints()
+            assert len(reported_checkpoints) == 5
+            for (checkpoint, metric), reported_checkpoint in zip(
+                result_checkpoints, reported_checkpoints, strict=True
+            ):
+                assert checkpoint == reported_checkpoint.checkpoint
+                assert metric == reported_checkpoint.metrics
+
+        restored_data_trainer = DataParallelTrainer(
+            restored_train_fn,
+            run_config=RunConfig(
+                name="test-out-of-band-checkpointing",
+                storage_path=str(experiment_dir),
             ),
-            {"score": 2},
         )
-        assert checkpoints[2] == (Checkpoint(tmp_path / "epoch-3"), {"score": 3})
-        assert checkpoints[3] == (Checkpoint(tmp_path / "epoch-4"), {"score": 4})
-        assert checkpoints[4] == (
-            Checkpoint(tmp_path / "test" / "epoch-5"),
-            {"score": 5},
-        )
+        restored_results = restored_data_trainer.fit()
+        restored_checkpoints = restored_results.best_checkpoints
+        assert restored_checkpoints is not None and len(restored_checkpoints) == 5
 
 
 if __name__ == "__main__":
