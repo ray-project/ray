@@ -1467,7 +1467,7 @@
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
 
-- name: pytest_serve_proxy_autoscaling
+- name: pytest_serve_multi_deployment_autoscaling
   python: "3.10"
   group: Serve tests
   working_dir: serve_tests
