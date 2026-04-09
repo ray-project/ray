@@ -110,11 +110,11 @@ class RaySyncerTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    // Destroy the syncer while the io_context is still running so that
-    // gRPC disconnect/OnDone callbacks can execute on the io_context thread.
     syncer_.reset();
+
+    // Once work_guard_ is reset, io_context_.run() will return once it has finished
+    // executing all pending work and the thread will be joined.
     work_guard_->reset();
-    io_context_.stop();
     thread_->join();
   }
 
@@ -990,12 +990,13 @@ class SyncerReactorTest : public ::testing::Test {
   }
 
   void TearDown() override {
-    // Shut down the gRPC server and disconnect the client reactor while the
-    // io_context is still running so that OnDone callbacks can execute.
     server->Shutdown();
     server.reset();
     rpc_service_.reset();
-    io_context_.stop();
+
+    // Once work_guard_ is reset, io_context_.run() will return once it has finished
+    // executing all pending work and the thread will be joined.
+    work_guard_->reset();
     thread_->join();
   }
 
