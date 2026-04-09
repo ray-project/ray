@@ -2555,6 +2555,17 @@ py_test(
 )
 
 py_test(
+    name = "test_dataset_writer",
+    size = "small",
+    srcs = ["offline/tests/test_dataset_writer.py"],
+    tags = [
+        "offline",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_feature_importance",
     size = "medium",
     srcs = ["offline/tests/test_feature_importance.py"],
@@ -2895,6 +2906,17 @@ py_test(
     name = "test_errors",
     size = "medium",
     srcs = ["utils/tests/test_errors.py"],
+    tags = [
+        "team:rllib",
+        "utils",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_filter",
+    size = "small",
+    srcs = ["utils/tests/test_filter.py"],
     tags = [
         "team:rllib",
         "utils",
