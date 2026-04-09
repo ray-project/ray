@@ -1,10 +1,11 @@
 from abc import ABC, abstractmethod
-from typing import List, Optional, Tuple
+from typing import TYPE_CHECKING, List, Optional, Tuple
 
-from ray.data._internal.datasource_v2 import InputSplit
-from ray.data._internal.datasource_v2.scanners.scanner import Scanner
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from ray.data._internal.datasource_v2.scanners.scanner import Scanner
 
 
 @DeveloperAPI
@@ -16,9 +17,7 @@ class SupportsFilterPushdown(ABC):
     """
 
     @abstractmethod
-    def push_filters(
-        self, predicate: "Expr"
-    ) -> Tuple["Scanner[InputSplit]", Optional["Expr"]]:
+    def push_filters(self, predicate: "Expr") -> Tuple["Scanner", Optional["Expr"]]:
         """Push a filter predicate down to the scanner.
 
         Args:
@@ -42,7 +41,7 @@ class SupportsColumnPruning(ABC):
     """
 
     @abstractmethod
-    def prune_columns(self, columns: List[str]) -> "Scanner[InputSplit]":
+    def prune_columns(self, columns: List[str]) -> "Scanner":
         """Prune the scanner to only read the specified columns.
 
         Args:
@@ -63,7 +62,7 @@ class SupportsLimitPushdown(ABC):
     """
 
     @abstractmethod
-    def push_limit(self, limit: int) -> "Scanner[InputSplit]":
+    def push_limit(self, limit: int) -> "Scanner":
         """Push a row limit down to the scanner.
 
         Args:
@@ -84,7 +83,7 @@ class SupportsPartitionPruning(ABC):
     """
 
     @abstractmethod
-    def prune_partitions(self, predicate: "Expr") -> "Scanner[InputSplit]":
+    def prune_partitions(self, predicate: "Expr") -> "Scanner":
         """Prune partitions based on a predicate.
 
         The scanner determines its partition columns from its

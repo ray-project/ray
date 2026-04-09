@@ -191,6 +191,8 @@ class ArrowFileScanner(
         Returns:
             A new FileManifest containing only matching files.
         """
+        assert self.partitioning is not None
+        assert self.partition_predicate is not None
         parser = PathPartitionParser(self.partitioning)
         keep_indices = []
 
