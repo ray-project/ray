@@ -1912,9 +1912,9 @@ py_test(
 )
 
 py_test(
-    name = "algorithms/tests/test_custom_resources_for_main_process",
+    name = "algorithms/tests/test_get_main_process_bundle",
     size = "small",
-    srcs = ["algorithms/tests/test_custom_resources_for_main_process.py"],
+    srcs = ["algorithms/tests/test_get_main_process_bundle.py"],
     tags = [
         "algorithms",
         "team:rllib",
