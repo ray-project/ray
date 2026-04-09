@@ -843,6 +843,7 @@ class WorkerGroup(ExecutionGroup):
             # TODO: change after we support replica groups of size > 1.
             starting_world_rank=replica_group_index,
             world_size=len(self._replica_groups),
+            replica_group_size=len(old_workers),
         )
 
         # Update internal tracking.
