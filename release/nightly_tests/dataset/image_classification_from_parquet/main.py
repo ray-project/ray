@@ -136,7 +136,7 @@ def main(args):
         "data_format": data_format,
         "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
     }
-    results["dataset_stats"] = collect_dataset_stats(ds)
+    results = collect_dataset_stats(ds)
     results["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
 
     return results
