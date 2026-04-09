@@ -1125,7 +1125,7 @@ more-itertools==10.7.0
     # via configspace
 mosaicml==0.3.1 ; python_version < "3.12"
     # via -r python/requirements/ml/train-test-requirements.txt
-moto==4.2.12
+moto==5.1.18
     # via -r python/requirements/test-requirements.txt
 moviepy==0.2.3.1
     # via -r python/requirements/ml/rllib-test-requirements.txt
@@ -1627,7 +1627,7 @@ py==1.11.0
     # via pytest-forked
 py-cpuinfo==9.0.0
     # via deepspeed
-py-partiql-parser==0.5.0
+py-partiql-parser==0.6.3
     # via moto
 py-spy==0.4.0 ; python_version < "3.12"
     # via -r python/requirements.txt

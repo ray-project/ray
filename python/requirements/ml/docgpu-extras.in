@@ -1,0 +1,12 @@
+# Extra packages for docgpu image that are not in dl-gpu-requirements.txt.
+# These are packages from dl-cpu-requirements.txt that are not overridden by
+# dl-gpu-requirements.txt, plus inline packages from the install-dependencies.sh
+# DOC_TESTING path.
+
+# From dl-cpu-requirements.txt (not present in dl-gpu-requirements.txt)
+torchmetrics==0.10.3
+torchtext==0.18.0
+torch-geometric==2.5.3
+
+# Inline packages from install-dependencies.sh DOC_TESTING
+pytesseract==0.3.13
