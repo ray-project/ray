@@ -14,8 +14,11 @@ from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 # deltalake's write_deltalake requires pyarrow >= 15 for the Arrow C Stream interface.
+_pa_version = get_pyarrow_version()
+assert _pa_version is not None, "pyarrow must be installed to run these tests"
+
 pytestmark = pytest.mark.skipif(
-    get_pyarrow_version() < parse_version("15.0.0"),
+    _pa_version < parse_version("15.0.0"),
     reason="deltalake write_deltalake requires pyarrow >= 15.0",
 )
 
@@ -46,6 +49,8 @@ def test_delta_read_basic(tmp_path, batch_size, write_mode):
     elif write_mode == "overwrite":
         write_deltalake(path, table, mode=write_mode)
         expected = df
+    else:
+        raise ValueError(f"Unexpected write_mode: {write_mode}")
 
     # Read the Delta Lake table
     ds = ray.data.read_delta(path)
