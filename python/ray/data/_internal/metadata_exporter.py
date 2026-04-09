@@ -5,6 +5,7 @@ import os
 from abc import ABC, abstractmethod
 from dataclasses import asdict, dataclass, field, is_dataclass
 from typing import TYPE_CHECKING, Any, Dict, List, Mapping, Optional, Sequence
+import math
 
 import ray
 from ray._private.event.export_event_logger import (
@@ -206,10 +207,21 @@ def sanitize_for_struct(obj, truncate_length=DEFAULT_TRUNCATION_LENGTH):
     """Prepares the obj for Struct Protobuf format by recursively
     going through dictionaries, lists, etc...
 
+    - Primitives (int, float, bool, None) are preserved as-is
+    - float("inf"), float("-inf"), and float("nan") become str
     - Dataclasses will be converted to dicts
     - Dictionary keys will be converted to strings
     - Lists, tuples, sets, bytes, bytearrays will be converted to lists
+    - All other objects fall back to ``str()``
     """
+    if obj is None or isinstance(obj, (int, bool)):
+        return obj
+    if isinstance(obj, float):
+        if math.isinf(obj) or math.isnan(obj):
+            return str(obj)
+        return obj
+    if isinstance(obj, str):
+        return _add_ellipsis_for_string(obj, truncate_length)
     if isinstance(obj, Mapping):
         # protobuf Struct key names must be strings.
         return {str(k): sanitize_for_struct(v, truncate_length) for k, v in obj.items()}
