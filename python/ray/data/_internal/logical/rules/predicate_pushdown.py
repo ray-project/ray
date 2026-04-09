@@ -10,7 +10,13 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators import AbstractMap, Filter, Limit, Project
+from ray.data._internal.logical.operators import (
+    AbstractMap,
+    Download,
+    Filter,
+    Limit,
+    Project,
+)
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
@@ -279,13 +285,25 @@ class PredicatePushdown(Rule):
         For operators with multiple inputs, we can push predicates that reference
         only one side down to that side, when semantically safe.
         """
+        predicate_expr = filter_op.predicate_expr
+
+        # Single-input conditional operators (e.g. Download)
+        if hasattr(conditional_op, "can_push_predicate_through"):
+            if not conditional_op.can_push_predicate_through(predicate_expr):
+                return filter_op
+            new_filter = Filter(
+                conditional_op.input_dependencies[0],
+                predicate_expr=predicate_expr,
+            )
+            pushed_filter = cls._try_push_down_predicate(new_filter)
+            return cls._clone_op_with_new_inputs(conditional_op, [pushed_filter])
+
+        # Multi-input conditional operators (e.g. Join)
         # Check if operator supports conditional pushdown by having the required method
         if not hasattr(conditional_op, "which_side_to_push_predicate"):
             return filter_op
 
-        push_side = conditional_op.which_side_to_push_predicate(
-            filter_op.predicate_expr
-        )
+        push_side = conditional_op.which_side_to_push_predicate(predicate_expr)
 
         if push_side is None:
             # Cannot push through
@@ -298,7 +316,7 @@ class PredicatePushdown(Rule):
         new_inputs = list(conditional_op.input_dependencies)
         branch_filter = Filter(
             new_inputs[branch_idx],
-            predicate_expr=filter_op.predicate_expr,
+            predicate_expr=predicate_expr,
         )
         new_inputs[branch_idx] = cls._try_push_down_predicate(branch_filter)
 
@@ -321,6 +339,15 @@ class PredicatePushdown(Rule):
         if isinstance(op, Limit):
             assert len(new_inputs) == 1, len(new_inputs)
             return Limit(new_inputs[0], op.limit)
+        if isinstance(op, Download):
+            assert len(new_inputs) == 1, len(new_inputs)
+            return Download(
+                new_inputs[0],
+                uri_column_names=op.uri_column_names,
+                output_bytes_column_names=op.output_bytes_column_names,
+                ray_remote_args=op.ray_remote_args,
+                filesystem=op.filesystem,
+            )
         if isinstance(op, AbstractMap) and is_dataclass(op):
             assert len(new_inputs) == 1, len(new_inputs)
             return replace(op, input_op=new_inputs[0])
