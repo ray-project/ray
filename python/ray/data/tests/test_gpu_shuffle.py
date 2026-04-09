@@ -236,6 +236,7 @@ class TestGPURankPool:
 
         assert mock_kill.call_count == 2
         assert pool.actors == []
+        assert pool.is_shutdown
 
     def test_shutdown_without_force_clears_actors(self):
         pool = self._make_pool(nranks=2)
@@ -246,6 +247,7 @@ class TestGPURankPool:
 
         mock_kill.assert_not_called()
         assert pool.actors == []
+        assert pool.is_shutdown
 
 
 # ---------------------------------------------------------------------------
@@ -291,6 +293,23 @@ class TestGPUShuffleOperatorConstructor:
         op = self._make_op(nranks=6, num_partitions=6)
         usage = op.base_resource_usage
         assert usage.gpu == 6
+
+    def test_current_logical_usage_reserves_nranks_before_pool_start(self):
+        """Empty actor list before start must still reserve configured GPUs."""
+        op = self._make_op(nranks=5, num_partitions=5)
+        assert op.current_logical_usage().gpu == 5
+
+    def test_current_logical_usage_matches_len_actors_when_running(self):
+        op = self._make_op(nranks=4, num_partitions=4)
+        op._rank_pool._actors = [MagicMock() for _ in range(4)]
+        assert op.current_logical_usage().gpu == 4
+
+    def test_current_logical_usage_zero_after_pool_shutdown(self):
+        """Early actor release must drop logical GPU usage for the scheduler."""
+        op = self._make_op(nranks=4, num_partitions=4)
+        op._rank_pool._actors = [MagicMock() for _ in range(4)]
+        op._rank_pool.shutdown(force=False)
+        assert op.current_logical_usage().gpu == 0
 
     def test_incremental_resource_usage_is_one_gpu(self):
         op = self._make_op()

@@ -244,6 +244,11 @@ class GPURankPool:
         self._setup_timeout_s = setup_timeout_s
         self._should_sort = should_sort
         self._actors: List[ActorHandle] = []
+        self._shutdown: bool = False
+
+    @property
+    def is_shutdown(self) -> bool:
+        return self._shutdown
 
     @property
     def nranks(self) -> int:
@@ -337,6 +342,7 @@ class GPURankPool:
             for actor in self._actors:
                 ray.kill(actor)
         self._actors.clear()
+        self._shutdown = True
 
 
 # ---------------------------------------------------------------------------
@@ -609,7 +615,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # ------------------------------------------------------------------
 
     def current_logical_usage(self) -> ExecutionResources:
-        return ExecutionResources(gpu=self._rank_pool.nranks)
+        pool = self._rank_pool
+        if pool.is_shutdown:
+            return ExecutionResources(gpu=0)
+        gpus = len(pool.actors) or pool.nranks
+        return ExecutionResources(gpu=gpus)
 
     @property
     def base_resource_usage(self) -> ExecutionResources:

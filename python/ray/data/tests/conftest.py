@@ -327,6 +327,7 @@ def configure_shuffle_method(request):
 
     original_shuffle_strategy = ctx.shuffle_strategy
     original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
+    original_gpu_shuffle_num_actors = ctx.gpu_shuffle_num_actors
 
     ctx.shuffle_strategy = shuffle_strategy
 
@@ -343,6 +344,7 @@ def configure_shuffle_method(request):
 
     ctx.shuffle_strategy = original_shuffle_strategy
     ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
+    ctx.gpu_shuffle_num_actors = original_gpu_shuffle_num_actors
 
 
 @pytest.fixture(params=[True, False])
