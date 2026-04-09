@@ -123,8 +123,9 @@ int main(int argc, char *argv[]) {
 
   // IO Service for main loop.
   SetThreadName("gcs_server");
+  // Lag probe disabled — the IOContextMonitor handles lag measurement for GCS.
   instrumented_io_context main_service(
-      /*enable_metrics=*/RayConfig::instance().emit_main_service_metrics(),
+      /*enable_metrics=*/false,
       /*running_on_single_thread=*/true,
       "gcs_server_main_io_context");
   // Ensure that the IO service keeps running. Without this, the main_service will exit

@@ -431,6 +431,18 @@ ray_cc_library(
 )
 
 ray_cc_library(
+    name = "io_context_monitor",
+    srcs = ["asio/io_context_monitor.cc"],
+    hdrs = ["asio/io_context_monitor.h"],
+    deps = [
+        ":asio",
+        "//src/ray/observability:metric_interface",
+        "//src/ray/util:logging",
+        "//src/ray/util:thread_utils",
+    ],
+)
+
+ray_cc_library(
     name = "fake_periodical_runner",
     hdrs = [
         "asio/fake_periodical_runner.h",
