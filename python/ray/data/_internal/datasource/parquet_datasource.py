@@ -587,17 +587,22 @@ class ParquetDatasource(Datasource):
         dataset with the correct filesystem, schema, and fragment metadata.
         """
         import pyarrow as pa
+        from pyarrow.fs import LocalFileSystem
 
         fragments = list(pa_dataset.get_fragments())
         filesystem = pa_dataset.filesystem
         pq_paths = [f.path for f in fragments]
 
-        supports_distributed_reads = True
+        # Determine locality from the filesystem type rather than path parsing.
+        # PyArrow fragment paths are filesystem-relative (e.g. "bucket/key/file.parquet"
+        # instead of "s3://bucket/key/..."), so _is_local_scheme cannot distinguish
+        # local from remote paths here.
+        is_local = isinstance(filesystem, LocalFileSystem)
+        supports_distributed_reads = not is_local
         local_scheduling = None
 
         if pq_paths:
-            supports_distributed_reads = not _is_local_scheme(pq_paths)
-            if not supports_distributed_reads and ray.util.client.ray.is_connected():
+            if is_local and ray.util.client.ray.is_connected():
                 raise ValueError(
                     "Because you're using Ray Client, read tasks scheduled on "
                     "the Ray cluster can't access your local files. To fix "
@@ -605,7 +610,7 @@ class ParquetDatasource(Datasource):
                     "filesystem like NFS."
                 )
 
-            if not supports_distributed_reads:
+            if is_local:
                 from ray.util.scheduling_strategies import (
                     NodeAffinitySchedulingStrategy,
                 )
