@@ -1,12 +1,9 @@
-import asyncio
 import inspect
 import logging
 import math
 import time
 from collections import defaultdict
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
-
-import aiohttp
 
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
@@ -22,11 +19,8 @@ from ray.serve._private.common import (
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
-    RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     RAY_SERVE_PROMETHEUS_CACHE_TTL_S,
-    RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S,
-    RAY_SERVE_PROMETHEUS_SERVER_ADDRESS,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -824,47 +818,17 @@ class DeploymentAutoscalingState:
         """Whether this deployment has Prometheus queries configured."""
         return bool(self._config and self._config.prometheus_queries)
 
-    async def fetch_prometheus_metrics(self, session: "aiohttp.ClientSession") -> None:
-        """Fetch all configured Prometheus queries concurrently and cache results.
+    def record_prometheus_metrics(
+        self, metrics: Dict[str, float], timestamp: float
+    ) -> None:
+        """Store Prometheus metrics pushed from the fetcher actor.
 
         Args:
-            session: Shared aiohttp session (owned by the manager).
+            metrics: mapping of PromQL expression to scalar value.
+            timestamp: when the metrics were fetched.
         """
-        queries = self._config.prometheus_queries
-        if not queries:
-            return
-
-        base_url = f"http://{RAY_SERVE_PROMETHEUS_SERVER_ADDRESS}/api/v1/query"
-
-        async def _fetch_one(query: str) -> Tuple[str, Optional[float]]:
-            try:
-                async with session.get(
-                    base_url,
-                    params={"query": query},
-                    timeout=aiohttp.ClientTimeout(total=5),
-                ) as resp:
-                    resp.raise_for_status()
-                    body = await resp.json()
-                    data = body.get("data", {}).get("result", [])
-                    if data:
-                        return query, float(data[0]["value"][1])
-                    logger.debug(
-                        f"Prometheus query '{query}' returned empty result "
-                        f"for deployment '{self._deployment_id}'."
-                    )
-                    return query, None
-            except Exception:
-                logger.warning(
-                    f"Failed to fetch Prometheus query '{query}' "
-                    f"for deployment '{self._deployment_id}'.",
-                    exc_info=True,
-                )
-                return query, None
-
-        results = await asyncio.gather(*[_fetch_one(q) for q in queries])
-        metrics = {q: v for q, v in results if v is not None}
         self._cached_prometheus_metrics = metrics if metrics else None
-        self._prometheus_cache_timestamp = time.time()
+        self._prometheus_cache_timestamp = timestamp
 
 
 class ApplicationAutoscalingState:
@@ -1148,16 +1112,6 @@ class ApplicationAutoscalingState:
             for ds in self._deployment_autoscaling_states.values()
         )
 
-    async def fetch_prometheus_metrics(self, session: "aiohttp.ClientSession") -> None:
-        """Fetch Prometheus metrics for all deployments that need them."""
-        tasks = [
-            ds.fetch_prometheus_metrics(session)
-            for ds in self._deployment_autoscaling_states.values()
-            if ds.has_prometheus_queries()
-        ]
-        if tasks:
-            await asyncio.gather(*tasks)
-
 
 class AutoscalingStateManager:
     """Manages all things autoscaling related.
@@ -1343,99 +1297,40 @@ class AutoscalingStateManager:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
 
-    # --- Prometheus background fetch ---
+    # --- Prometheus metrics (pushed from PrometheusMetricsFetcherActor) ---
 
-    def _any_prometheus_queries(self) -> bool:
-        """Short-circuit: are any deployments configured with Prometheus?"""
-        if not RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING:
-            return False
-        return any(
-            app.has_prometheus_queries()
-            for app in self._app_autoscaling_states.values()
-        )
+    def record_prometheus_metrics(
+        self,
+        metrics_by_deployment: Dict[DeploymentID, Dict[str, float]],
+        timestamp: float,
+    ) -> None:
+        """Store Prometheus metrics pushed from the fetcher actor.
 
-    def start_prometheus_fetch_loop(self, event_loop: asyncio.AbstractEventLoop):
-        """Start the background Prometheus fetch task if not already running.
-
-        Should be called from the controller after registering deployments.
+        Args:
+            metrics_by_deployment: mapping of DeploymentID to query results.
+            timestamp: when the metrics were fetched.
         """
-        if getattr(self, "_prometheus_task", None) is not None:
-            return  # Already running
-        if not self._any_prometheus_queries():
-            return
+        for dep_id, dep_metrics in metrics_by_deployment.items():
+            app_state = self._app_autoscaling_states.get(dep_id.app_name)
+            if app_state is None:
+                continue
+            dep_state = app_state._deployment_autoscaling_states.get(dep_id)
+            if dep_state is not None:
+                dep_state.record_prometheus_metrics(dep_metrics, timestamp)
 
-        self._prometheus_task: Optional[asyncio.Task] = event_loop.create_task(
-            self._prometheus_fetch_loop()
-        )
-        logger.info("Started Prometheus autoscaling metrics background task.")
+    def get_prometheus_queries_by_deployment(
+        self,
+    ) -> Dict[DeploymentID, List[str]]:
+        """Return the configured PromQL queries for all deployments.
 
-    def stop_prometheus_fetch_loop(self):
-        """Cancel the background Prometheus fetch task."""
-        task = getattr(self, "_prometheus_task", None)
-        if task is not None:
-            task.cancel()
-            self._prometheus_task = None
+        Used by the controller to tell the fetcher actor what to query.
 
-        session = getattr(self, "_prometheus_session", None)
-        if session is not None and not session.closed:
-            # Schedule the close coroutine; best-effort.
-            asyncio.ensure_future(session.close())
-            self._prometheus_session = None
-
-    async def _prometheus_fetch_loop(self) -> None:
-        """Background loop that periodically fetches Prometheus metrics."""
-        if not RAY_SERVE_PROMETHEUS_SERVER_ADDRESS:
-            logger.error(
-                "RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING is set but "
-                "RAY_SERVE_PROMETHEUS_SERVER_ADDRESS is not configured. "
-                "Set it to your Prometheus server address (host:port)."
-            )
-            return
-
-        self._prometheus_session = aiohttp.ClientSession()
-        logger.info(
-            f"Prometheus fetch loop started "
-            f"(interval={RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S}s, "
-            f"cache_ttl={RAY_SERVE_PROMETHEUS_CACHE_TTL_S}s, "
-            f"server={RAY_SERVE_PROMETHEUS_SERVER_ADDRESS})."
-        )
-
-        # Hard ceiling: a single fetch iteration must not occupy the event
-        # loop longer than half the fetch interval.  If it does, we abandon
-        # the iteration and let the cache expire naturally via TTL.
-        fetch_budget_s = RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S / 2
-
-        try:
-            while True:
-                try:
-                    coros = [
-                        app.fetch_prometheus_metrics(self._prometheus_session)
-                        for app in self._app_autoscaling_states.values()
-                        if app.has_prometheus_queries()
-                    ]
-                    if coros:
-                        await asyncio.wait_for(
-                            asyncio.gather(*coros),
-                            timeout=fetch_budget_s,
-                        )
-                except asyncio.TimeoutError:
-                    logger.warning(
-                        f"Prometheus fetch iteration exceeded budget of "
-                        f"{fetch_budget_s:.1f}s. Results discarded. Consider "
-                        f"reducing the number of prometheus_queries across "
-                        f"deployments or increasing "
-                        f"RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S "
-                        f"(currently {RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S}s)."
-                    )
-                except Exception:
-                    logger.warning(
-                        "Error in Prometheus fetch loop iteration.",
-                        exc_info=True,
-                    )
-                await asyncio.sleep(RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S)
-        except asyncio.CancelledError:
-            logger.info("Prometheus fetch loop cancelled.")
-        finally:
-            if not self._prometheus_session.closed:
-                await self._prometheus_session.close()
-            self._prometheus_session = None
+        Returns:
+            Mapping of DeploymentID to list of PromQL expressions.
+        """
+        result = {}
+        for app_state in self._app_autoscaling_states.values():
+            for dep_id, dep_state in app_state._deployment_autoscaling_states.items():
+                if dep_state.has_prometheus_queries():
+                    result[dep_id] = list(dep_state._config.prometheus_queries)
+        return result
