@@ -58,10 +58,11 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
 
-  if (placement_group->AllUnplacedBundles() && placement_group->GetLabelDomainKey().has_value()) {
-      placement_group->ClearLabelDomainAssignments();
-      RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
-                    << " are unplaced, rescheduling on a new label domain";
+  if (placement_group->AllUnplacedBundles() &&
+      placement_group->GetLabelDomainKey().has_value()) {
+    placement_group->ClearLabelDomainAssignments();
+    RAY_LOG(INFO) << "All bundles for pg " << placement_group->GetPlacementGroupID()
+                  << " are unplaced, rescheduling on a new label domain";
   }
 
   RAY_LOG(DEBUG) << "Scheduling placement group " << placement_group->GetName()

@@ -378,6 +378,7 @@ def test_gpu_domain_scheduling_infeasible_after_node_kill(ray_start_cluster):
     state = placement_group_table(pg)["state"]
     assert state == "RESCHEDULING", f"Expected RESCHEDULING, got {state}"
 
+
 def test_scheduling_feasible_after_rack_kill(ray_start_cluster):
     """Verify label-locality-aware rescheduling after rack failure.
 

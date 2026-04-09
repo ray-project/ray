@@ -729,17 +729,21 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
       } else if (iter->second->GetState() == rpc::PlacementGroupTableData::RESCHEDULING) {
         // For label-domain PGs that are stuck in the infeasible queue: if ALL bundles
         // are now unplaced (total domain failure), move the PG back to the pending queue
-        // so the scheduler can clear the stale domain assignment and retry on a new domain.
-        if (iter->second->AllUnplacedBundles() && iter->second->GetLabelDomainKey().has_value()) {
-          auto infeasible_pg_iter = std::find_if(infeasible_placement_groups_.begin(), infeasible_placement_groups_.end(), 
+        // so the scheduler can clear the stale domain assignment and retry on a new
+        // domain.
+        if (iter->second->AllUnplacedBundles() &&
+            iter->second->GetLabelDomainKey().has_value()) {
+          auto infeasible_pg_iter = std::find_if(
+              infeasible_placement_groups_.begin(),
+              infeasible_placement_groups_.end(),
               [iter](const std::shared_ptr<GcsPlacementGroup> &pg) {
                 return iter->second->GetPlacementGroupID() == pg->GetPlacementGroupID();
               });
 
           if (infeasible_pg_iter != infeasible_placement_groups_.end()) {
-              AddToPendingQueue(*infeasible_pg_iter);
-              infeasible_placement_groups_.erase(infeasible_pg_iter);
-              SchedulePendingPlacementGroups();
+            AddToPendingQueue(*infeasible_pg_iter);
+            infeasible_placement_groups_.erase(infeasible_pg_iter);
+            SchedulePendingPlacementGroups();
           }
         }
       }
