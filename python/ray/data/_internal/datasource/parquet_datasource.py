@@ -66,7 +66,7 @@ if TYPE_CHECKING:
     from pyarrow.dataset import ParquetFileFragment
 
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
-
+    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 # Type aliases for tensor column schema
 ColumnName = str
 # Shape of the tensor
@@ -327,37 +327,37 @@ class ParquetDatasource(Datasource):
         meta_provider: Optional[FileMetadataProvider] = None,
         partition_filter: Optional[PathPartitionFilter] = None,
         partitioning: Optional[Partitioning] = Partitioning("hive"),
-        shuffle: Union["FileShuffleConfig", Literal["files"], None] = None,
+        shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
         super().__init__()
         _check_pyarrow_version()
 
-        self._supports_distributed_reads = not _is_local_scheme(paths)
-        if not self._supports_distributed_reads and ray.util.client.ray.is_connected():
+        supports_distributed_reads = not _is_local_scheme(paths)
+        if not supports_distributed_reads and ray.util.client.ray.is_connected():
             raise ValueError(
                 "Because you're using Ray Client, read tasks scheduled on the Ray "
                 "cluster can't access your local files. To fix this issue, store "
                 "files in cloud storage or a distributed filesystem like NFS."
             )
 
-        self._local_scheduling = None
-        if not self._supports_distributed_reads:
+        local_scheduling = None
+        if not supports_distributed_reads:
             from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
-            self._local_scheduling = NodeAffinitySchedulingStrategy(
+            local_scheduling = NodeAffinitySchedulingStrategy(
                 ray.get_runtime_context().get_node_id(), soft=False
             )
 
         # Need this property for lineage tracking. We should not directly assign paths
         # to self since it is captured every read_task_fn during serialization and
         # causing this data being duplicated and excessive object store spilling.
-        self._source_paths_ref = ray.put(paths)
+        source_paths_ref = ray.put(paths)
 
-        paths, self._filesystem = _resolve_paths_and_filesystem(paths, filesystem)
+        paths, resolved_filesystem = _resolve_paths_and_filesystem(paths, filesystem)
         filesystem = RetryingPyFileSystem.wrap(
-            self._filesystem,
+            resolved_filesystem,
             retryable_errors=DataContext.get_current().retried_io_errors,
         )
 
@@ -454,6 +454,10 @@ class ParquetDatasource(Datasource):
         )
 
         self._init_state(
+            supports_distributed_reads=supports_distributed_reads,
+            local_scheduling=local_scheduling,
+            source_paths_ref=source_paths_ref,
+            filesystem=resolved_filesystem,
             fragments=fragments,
             file_sizes=list(file_sizes),
             file_schema=pq_ds.schema,
@@ -474,6 +478,10 @@ class ParquetDatasource(Datasource):
     def _init_state(
         self,
         *,
+        supports_distributed_reads: bool,
+        local_scheduling: Optional["NodeAffinitySchedulingStrategy"],
+        source_paths_ref: "ray.ObjectRef",
+        filesystem: "pyarrow.fs.FileSystem",
         fragments: List["ParquetFileFragment"],
         file_sizes: List[int],
         file_schema: "pyarrow.Schema",
@@ -488,11 +496,17 @@ class ParquetDatasource(Datasource):
         shuffle: Union["FileShuffleConfig", Literal["files"], None],
         include_paths: bool,
     ):
-        """Shared initialization for fragment state and sampling estimates.
+        """Shared initialization for all instance state and sampling estimates.
 
         Called by both ``__init__`` (after path resolution and file listing)
-        and ``from_pyarrow_dataset`` (which skips those steps).
+        and ``from_state`` (used by alternate constructors like
+        ``from_pyarrow_dataset``).
         """
+        self._supports_distributed_reads = supports_distributed_reads
+        self._local_scheduling = local_scheduling
+        self._source_paths_ref = source_paths_ref
+        self._filesystem = filesystem
+
         # NOTE: Store the custom serialized `ParquetFileFragment` to avoid unexpected
         # network calls when `_ParquetDatasourceReader` is serialized. See
         # `_SerializedFragment()` implementation for more details.
@@ -541,6 +555,20 @@ class ParquetDatasource(Datasource):
         )
 
     @classmethod
+    def from_state(cls, **kwargs: dict[str, Any]) -> "ParquetDatasource":
+        """Create a fully-initialized instance from pre-computed state.
+
+        This is the preferred entry point for alternate constructors (e.g.
+        ``from_pyarrow_dataset``) that bypass the normal ``__init__`` path.
+        All keyword arguments are forwarded to ``_init_state``.
+        """
+        instance = cls.__new__(cls)
+        Datasource.__init__(instance)
+        _check_pyarrow_version()
+        instance._init_state(**kwargs)
+        return instance
+
+    @classmethod
     def from_pyarrow_dataset(
         cls,
         pa_dataset: "pyarrow.dataset.Dataset",
@@ -549,7 +577,7 @@ class ParquetDatasource(Datasource):
         to_batch_kwargs: Optional[Dict[str, Any]] = None,
         _block_udf: Optional[Callable[[Block], Block]] = None,
         schema: Optional["pyarrow.lib.Schema"] = None,
-        shuffle: Union["FileShuffleConfig", Literal["files"], None] = None,
+        shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
     ) -> "ParquetDatasource":
         """Create a ParquetDatasource from a pre-built PyArrow dataset.
@@ -560,20 +588,16 @@ class ParquetDatasource(Datasource):
         """
         import pyarrow as pa
 
-        instance = cls.__new__(cls)
-        Datasource.__init__(instance)
-        _check_pyarrow_version()
-
         fragments = list(pa_dataset.get_fragments())
         filesystem = pa_dataset.filesystem
         pq_paths = [f.path for f in fragments]
 
+        supports_distributed_reads = True
+        local_scheduling = None
+
         if pq_paths:
-            instance._supports_distributed_reads = not _is_local_scheme(pq_paths)
-            if (
-                not instance._supports_distributed_reads
-                and ray.util.client.ray.is_connected()
-            ):
+            supports_distributed_reads = not _is_local_scheme(pq_paths)
+            if not supports_distributed_reads and ray.util.client.ray.is_connected():
                 raise ValueError(
                     "Because you're using Ray Client, read tasks scheduled on "
                     "the Ray cluster can't access your local files. To fix "
@@ -581,25 +605,19 @@ class ParquetDatasource(Datasource):
                     "filesystem like NFS."
                 )
 
-            instance._local_scheduling = None
-            if not instance._supports_distributed_reads:
+            if not supports_distributed_reads:
                 from ray.util.scheduling_strategies import (
                     NodeAffinitySchedulingStrategy,
                 )
 
-                instance._local_scheduling = NodeAffinitySchedulingStrategy(
+                local_scheduling = NodeAffinitySchedulingStrategy(
                     ray.get_runtime_context().get_node_id(), soft=False
                 )
 
             infos = filesystem.get_file_info(pq_paths)
             file_sizes = [info.size if info.size is not None else 0 for info in infos]
         else:
-            instance._supports_distributed_reads = True
-            instance._local_scheduling = None
             file_sizes = []
-
-        instance._source_paths_ref = ray.put(pq_paths)
-        instance._filesystem = filesystem
 
         # Partition columns are intentionally left empty. For PyArrow datasets
         # produced by systems like delta-rs, partition columns are materialized
@@ -607,7 +625,11 @@ class ParquetDatasource(Datasource):
         # parsed from file paths. Setting these to empty prevents Ray Data's
         # path-based partition parsing from duplicating columns that PyArrow
         # already provides.
-        instance._init_state(
+        return cls.from_state(
+            supports_distributed_reads=supports_distributed_reads,
+            local_scheduling=local_scheduling,
+            source_paths_ref=ray.put(pq_paths),
+            filesystem=filesystem,
             fragments=fragments,
             file_sizes=file_sizes,
             file_schema=pa_dataset.schema,
@@ -624,8 +646,6 @@ class ParquetDatasource(Datasource):
             shuffle=shuffle,
             include_paths=include_paths,
         )
-
-        return instance
 
     @property
     def _source_paths(self) -> List[str]:
