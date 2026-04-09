@@ -151,6 +151,14 @@ class ClusterResourceManager {
   void SetNodeLabels(const scheduling::NodeID &node_id,
                      absl::flat_hash_map<std::string, std::string> labels);
 
+  /// Get the labels for a given node.
+  const absl::flat_hash_map<std::string, std::string> &GetNodeLabels(
+      scheduling::NodeID node_id) const;
+
+  /// Get the total capacity of a specific resource on a given node.
+  FixedPoint GetNodeTotalResources(scheduling::NodeID node_id,
+                                   scheduling::ResourceID resource_id) const;
+
  private:
   friend class ClusterResourceScheduler;
   friend class gcs::GcsActorSchedulerTest;

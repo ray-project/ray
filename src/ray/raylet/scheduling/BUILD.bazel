@@ -219,6 +219,7 @@ ray_cc_library(
     srcs = ["policy/label_domain_bundle_scheduling_policy.cc"],
     hdrs = ["policy/label_domain_bundle_scheduling_policy.h"],
     deps = [
+        ":cluster_resource_manager",
         ":scheduling_policy",
     ],
 )
