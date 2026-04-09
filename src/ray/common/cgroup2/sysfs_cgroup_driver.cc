@@ -460,45 +460,23 @@ StatusOr<std::string> SysFsCgroupDriver::GetConstraintValue(
     const std::string &cgroup_path, const std::string &constraint_name) {
   std::filesystem::path constraint_file_path =
       std::filesystem::path(cgroup_path) / constraint_name;
-  int fd = open(constraint_file_path.c_str(), O_RDONLY);
-  if (fd == -1) {
-    if (errno == ENOENT) {
-      return Status::InvalidArgument(
-          absl::StrFormat("Cgroup or constraint does not exist: %s/%s.\n"
-                          "Error: %s",
-                          cgroup_path,
-                          constraint_name,
-                          strerror(errno)));
-    }
-    return Status::IOError(
-        absl::StrFormat("Failed to read %s from cgroup %s.\n"
-                        "Error: %s",
-                        constraint_name,
-                        cgroup_path,
-                        strerror(errno)));
+  if (!std::filesystem::exists(constraint_file_path)) {
+    return Status::InvalidArgument(absl::StrFormat(
+        "Cgroup or constraint does not exist: %s/%s.", cgroup_path, constraint_name));
+  }
+  std::ifstream constraint_file(constraint_file_path);
+  if (!constraint_file.is_open()) {
+    return Status::IOError(absl::StrFormat(
+        "Failed to open %s from cgroup %s.", constraint_name, cgroup_path));
   }
 
-  // Cgroup constraint files typically contains a single integer value.
-  constexpr size_t kBufferSize = 256;
-  std::array<char, kBufferSize> buffer{};
-  ssize_t bytes_read = read(fd, buffer.data(), kBufferSize - 1);
-  if (bytes_read == -1) {
-    close(fd);
-    return Status::IOError(
-        absl::StrFormat("Failed to read %s from cgroup %s.\n"
-                        "Error: %s",
-                        constraint_name,
-                        cgroup_path,
-                        strerror(errno)));
+  std::string value;
+  constraint_file >> value;
+  if (value.empty()) {
+    return Status::IOError(absl::StrFormat(
+        "Failed to read %s from cgroup %s.", constraint_name, cgroup_path));
   }
-  close(fd);
-
-  std::string result(buffer.data(), static_cast<size_t>(bytes_read));
-  if (!result.empty() && result.back() == '\n') {
-    result.pop_back();
-  }
-
-  return result;
+  return value;
 }
 
 }  // namespace ray
