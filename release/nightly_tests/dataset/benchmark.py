@@ -143,6 +143,11 @@ class RuntimeEnvSetupTracker:
         return results
 
 
+def benchmark_py_modules() -> List[str]:
+    """Return a list containing the absolute path to benchmark.py for use in runtime_env py_modules."""
+    return [os.path.abspath(__file__)]
+
+
 class BenchmarkMetric(Enum):
     RUNTIME = "time"
     NUM_ROWS = "num_rows"
