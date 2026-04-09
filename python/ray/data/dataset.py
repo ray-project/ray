@@ -6827,8 +6827,8 @@ class Dataset:
 
             overhead_by_op = collect_scheduling_overhead()
             for op in summary.operators_stats:
-                assert op.operator_name in overhead_by_op
-                op.scheduling_overhead = overhead_by_op[op.operator_name]
+                if op.operator_name in overhead_by_op:
+                    op.scheduling_overhead = overhead_by_op[op.operator_name]
 
         return summary
 

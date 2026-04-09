@@ -123,7 +123,9 @@ class SchedulingOverheadSummary:
     """Summary of scheduling overhead across matched tasks."""
 
     num_tasks: int
-    phases: Dict[SchedulingPhase, PhaseStats]
+    # Each key is a SchedulingPhase enum str. I avoided storing the enum directly
+    # to make it more human readable.
+    phases: Dict[str, PhaseStats]
 
     @classmethod
     def from_task_states(cls, tasks: List[TaskState]) -> "SchedulingOverheadSummary":
@@ -147,10 +149,10 @@ class SchedulingOverheadSummary:
                         ts[phase.end_name] - ts[phase.start_name]
                     )
 
-        phases: Dict[SchedulingPhase, PhaseStats] = {}
+        phases: Dict[str, PhaseStats] = {}
         for phase, vals in phase_durations.items():
             arr = np.array(vals)
-            phases[phase] = PhaseStats(
+            phases[phase.value] = PhaseStats(
                 p50=float(np.percentile(arr, 50)),
                 p99=float(np.percentile(arr, 99)),
                 mean=float(np.mean(arr)),
