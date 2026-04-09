@@ -232,6 +232,11 @@ retry_pip_install() {
 }
 
 install_pip_packages() {
+  if [[ "${SKIP_PIP_INSTALL:-}" == "1" ]]; then
+    echo "Skipping install_pip_packages (SKIP_PIP_INSTALL=1)"
+    return
+  fi
+
   # Install modules needed in all jobs.
   # shellcheck disable=SC2262
   alias pip="python -m pip"

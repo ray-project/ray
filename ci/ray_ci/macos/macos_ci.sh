@@ -121,6 +121,7 @@ _prelude() {
     rm -rf /tmp/bazel_event_logs
     (which bazel && bazel clean) || true;
   fi
+  export SKIP_PIP_INSTALL=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
 
@@ -132,6 +133,9 @@ _prelude() {
 
   ./ci/ci.sh build
   ./ci/env/env_info.sh
+
+  # Install locked dependencies to ensure consistent package versions
+  pip install -r python/deplocks/ci/macos_depset_py3.10.lock --no-deps
 }
 
 _epilogue() {
