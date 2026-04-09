@@ -6,7 +6,11 @@ import pytest
 
 from ray.serve._private.autoscaling_state import DeploymentAutoscalingState
 from ray.serve._private.common import DeploymentID, ReplicaID, TimeStampedValue
-from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S
+from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
+    SERVE_AUTOSCALING_DECISION_COUNTERS_KEY,
+    SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY,
+)
 from ray.serve._private.gang_scheduling_autoscaling_policy import (
     GangSchedulingAutoscalingPolicy,
 )
@@ -1484,6 +1488,83 @@ class TestWarmupScalingFeedbackLoop:
             target = new_target
 
         assert target == min_replicas
+
+
+class TestAppLevelPolicyStateIsolation:
+    """
+    Test that no internal state cross contamination when a user policy returns the same
+    dict object for multiple deployments.
+    """
+
+    def _make_context(self, dep_id, policy_state=None):
+        config = AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=5,
+            upscale_delay_s=100,
+            downscale_delay_s=100,
+        )
+        return AutoscalingContext(
+            config=config,
+            current_num_replicas=2,
+            target_num_replicas=2,
+            total_num_requests=0,
+            total_queued_requests=0,
+            capacity_adjusted_min_replicas=config.min_replicas,
+            capacity_adjusted_max_replicas=config.max_replicas,
+            policy_state=policy_state or {},
+            deployment_id=dep_id,
+            deployment_name=dep_id.name,
+            app_name=dep_id.app_name,
+            running_replicas=[],
+            current_time=None,
+            aggregated_metrics=None,
+            raw_metrics=None,
+            last_scale_up_time=None,
+            last_scale_down_time=None,
+            total_pending_async_requests=0,
+        )
+
+    def test_shared_user_state_does_not_contaminate_internal_state(self):
+
+        d1 = DeploymentID("d1", "app")
+        d2 = DeploymentID("d2", "app")
+
+        fake_now = 1000.0
+
+        d1_internal_state = {
+            SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: 3,
+            SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY: fake_now,
+        }
+        d2_internal_state = {
+            SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: 0,
+            SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY: None,
+        }
+
+        shared_state = {"counter": 5}
+
+        def fake_policy(contexts):
+            return {d1: 3, d2: 3}, {d1: shared_state, d2: shared_state}
+
+        wrapped = _apply_app_level_autoscaling_config(fake_policy)
+        contexts = {
+            d1: self._make_context(d1, policy_state=d1_internal_state),
+            d2: self._make_context(d2, policy_state=d2_internal_state),
+        }
+
+        with patch("ray.serve.autoscaling_policy.time") as mock_time:
+            mock_time.time = lambda: fake_now
+            _, final_state = wrapped(contexts)
+
+        # d1 had counter=3, timestamp=fake_now. Delay logic sees scale-up
+        # (desired=3 > target=2), counter was positive so it increments to 4.
+        # Delay hasn't elapsed (0s < 100s) so no reset.
+        assert final_state[d1][SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] == 4
+        assert final_state[d1][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
+
+        # d2 had counter=0, timestamp=None. Delay logic sees scale-up,
+        # increments counter to 1, sets timestamp to fake_now.
+        assert final_state[d2][SERVE_AUTOSCALING_DECISION_COUNTERS_KEY] == 1
+        assert final_state[d2][SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY] == fake_now
 
 
 if __name__ == "__main__":
