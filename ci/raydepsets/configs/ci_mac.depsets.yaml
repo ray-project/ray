@@ -9,15 +9,13 @@ depsets:
     operation: expand
     source_depset: ray_img_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/py313/test-requirements.txt
+      - python/requirements/test-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
     output: python/deplocks/ci/macos_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=macos
     build_arg_sets:
       - py310
-    pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
     include_setuptools: true
