@@ -119,6 +119,28 @@ class TestSGLangEngineProcessorConfig:
         processor = build_sglang_engine_processor(config)
         assert processor is not None
 
+    def test_build_processor_import_error_with_trust_remote_code(self):
+        config = SGLangEngineProcessorConfig(
+            model_source="org/model-with-custom-code",
+            engine_kwargs={"trust_remote_code": True},
+        )
+
+        with (
+            patch(
+                "ray.llm._internal.batch.processor.sglang_engine_proc."
+                "download_model_files",
+                return_value="/tmp/fake_model_dir",
+            ),
+            patch(
+                "ray.llm._internal.batch.processor.sglang_engine_proc."
+                "transformers.AutoConfig.from_pretrained",
+                side_effect=ModuleNotFoundError("custom modeling module missing"),
+            ),
+        ):
+            processor = build_sglang_engine_processor(config)
+
+        assert processor is not None
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
