@@ -7,7 +7,7 @@ COPY python/deplocks/llm/rayllm_*.lock ./
 
 # vLLM version tag to use for EP kernel and DeepGEMM install scripts
 # Keep in sync with vllm version in python/requirements/llm/llm-requirements.txt
-ARG VLLM_SCRIPTS_REF="v0.16.0"
+ARG VLLM_SCRIPTS_REF="v0.18.0"
 
 RUN <<EOF
 #!/bin/bash
@@ -30,8 +30,13 @@ else
     exit 1
 fi
 
+# Hash verification is disabled because uv pip compile generates hashes from
+# PyPI, but unsafe-best-match may download from the CUDA index which serves
+# different builds of some packages (e.g. triton). The lock file still pins
+# exact versions, so integrity is maintained through version pinning.
 uv pip install --system --no-cache-dir --no-deps \
     --index-strategy unsafe-best-match \
+    --no-verify-hashes \
     -r "rayllm_${PYTHON_CODE}_${CUDA_CODE}.lock"
 
 # Export installed packages
@@ -60,3 +65,7 @@ sudo rm -rf /var/lib/apt/lists/*
 sudo apt-get clean
 
 EOF
+
+# vLLM 0.17.0 eagerly imports xgrammar -> ICU 78 -> CXXABI_1.3.15.
+# System libstdc++ only has 1.3.13; prepend conda's newer copy.
+ENV LD_LIBRARY_PATH=/home/ray/anaconda3/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}

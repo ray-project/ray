@@ -6,6 +6,10 @@ This guide demonstrates how to enable Ray token authentication using Kubernetes 
 
 Starting in Ray v2.55.0, you can configure Ray to delegate token authentication to Kubernetes RBAC. This allows you to use your existing Kubernetes credentials to authenticate to Ray clusters and use Kubernetes RBAC to manage access control. If your Kubernetes cluster is configured with external identity integrations, you can also use those external credentials to authenticate to Ray clusters (e.g., OIDC, IAM, etc.).
 
+:::{warning}
+It is highly recommended to run Ray in secure networks or use TLS when enabling token authentication to prevent leaking Ray tokens. Token authentication does not encrypt traffic, so tokens can be intercepted if transmitted over insecure networks.
+:::
+
 ## Prerequisites
 
 * A Kubernetes cluster. This guide uses GKE, but the concepts apply to other Kubernetes distributions.
@@ -46,11 +50,11 @@ kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/refs/head
 ```
 
 The examples above also create the following Kubernetes RBAC objects:
-* A `raylet` ServiceAccount used by all Ray containers.
-* A `ray-authenticator` ClusterRole that grants the `raylet` ServiceAccount access to the Kubernetes `TokenReview` and `SubjectAccessReview` APIs, which are used to delegate authentication to Kubernetes.
-* A `ray-authenticator` ClusterRoleBinding that binds the `ray-authenticator` ClusterRole to the `raylet` ServiceAccount.
+* A `ray-cluster-with-k8s-auth` ServiceAccount used by all Ray containers.
+* A `ray-authenticator` ClusterRole that grants the `ray-cluster-with-k8s-auth` ServiceAccount access to the Kubernetes `TokenReview` and `SubjectAccessReview` APIs, which are used to delegate authentication to Kubernetes.
+* A `ray-authenticator` ClusterRoleBinding that binds the `ray-authenticator` ClusterRole to the `ray-cluster-with-k8s-auth` ServiceAccount.
 * A `ray-writer` ClusterRole that grants write access to `RayCluster` resources.
-* A `raylet` RoleBinding that binds the `ray-writer` ClusterRole to the `raylet` ServiceAccount.
+* A `ray-cluster-with-k8s-auth` RoleBinding that binds the `ray-writer` ClusterRole to the `ray-cluster-with-k8s-auth` ServiceAccount.
 
 ## Verify initial unauthenticated access
 

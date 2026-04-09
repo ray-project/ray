@@ -1,6 +1,7 @@
 import collections
 import logging
 import warnings
+from dataclasses import replace
 from datetime import datetime
 from typing import (
     TYPE_CHECKING,
@@ -501,7 +502,15 @@ def read_datasource(
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
     stats = DatasetStats(
-        metadata={"Read": [read_task.metadata for read_task in read_tasks]},
+        metadata={
+            "Read": [
+                # NOTE: We're truncating `input_files` from metadata as it could
+                #       be carrying 1000s of input files (for `ImageDatasource` for ex)
+                #       and isn't useful inside `DatasetStats`
+                replace(read_task.metadata, input_files=None)
+                for read_task in read_tasks
+            ]
+        },
         parent=None,
     )
 

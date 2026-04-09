@@ -12,7 +12,7 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       IMAGE_TYPE: "ray"
     depends_on:
-      - raycpubaseextra
+      - raycpubaseextra(*)
 
   - name: raycudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.base-extra-testdeps"
@@ -26,12 +26,16 @@ steps:
           - "3.13"
         cuda:
           - "12.3.2-cudnn9"
+      adjustments:
+        - with:
+            python: "3.12"
+            cuda: "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray"
     depends_on:
-      - raycudabaseextra
+      - raycudabaseextra(*)
 
   - name: ray-llmbaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.llm.base-extra-testdeps (cuda {{matrix.cuda}})"
@@ -51,7 +55,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-llm"
     depends_on:
-      - ray-llmbaseextra
+      - ray-llmbaseextra(*)
 
   - name: ray-mlcudabaseextra-testdeps
     label: "wanda: ray.py{{matrix.python}}.cu{{matrix.cuda}}.ml.base-extra-testdeps"
@@ -67,7 +71,7 @@ steps:
       CUDA_VERSION: "{{matrix.cuda}}"
       IMAGE_TYPE: "ray-ml"
     depends_on:
-      - ray-mlcudabaseextra
+      - ray-mlcudabaseextra(*)
 
   - name: ray-anyscale-cpu-build
     label: "wanda: ray-anyscale py{{matrix}} cpu"
@@ -104,6 +108,10 @@ steps:
           - "3.13"
         cuda:
           - "12.3.2-cudnn9"
+      adjustments:
+        - with:
+            python: "3.12"
+            cuda: "13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -139,6 +147,10 @@ steps:
         platform:
           - cu12.3.2-cudnn9
           - cpu
+      adjustments:
+        - with:
+            python: "3.12"
+            platform: cu13.0.0-cudnn
 
   - name: ray-llm-anyscale-cuda-build
     label: "wanda: ray-llm-anyscale py{{matrix.python}} cu{{matrix.cuda}}"

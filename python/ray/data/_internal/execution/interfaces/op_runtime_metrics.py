@@ -3,7 +3,7 @@ import time
 from collections import defaultdict
 from dataclasses import Field, dataclass, field
 from enum import Enum
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set
 
 import ray
 from ray.data._internal.execution.bundle_queue import create_bundle_queue
@@ -16,7 +16,6 @@ from ray.data._internal.execution.interfaces.common import (
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.memory_tracing import trace_allocation
 from ray.data.block import BlockMetadata, TaskExecWorkerStats
-from ray.data.context import MAX_SAFE_BLOCK_SIZE_FACTOR
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.interfaces.physical_operator import (
@@ -135,12 +134,23 @@ def metric_property(
 class RunningTaskInfo:
     inputs: RefBundle
     num_outputs: int
-    bytes_outputs: int
+    bytes_output: int
     num_rows_produced: int
     start_time: float
     cum_block_gen_time_s: float
     cum_block_ser_time_s: float
     task_id: ray.TaskID
+    # Node IDs derived from the input blocks' exec_stats at task submission time.
+    # Used to determine cache hits: if the task's first output block was produced
+    # on a node that already held an input block, it's a "cache hit" (the task
+    # ran where its data lived). For source operators (e.g., ReadRange), input
+    # blocks lack exec_stats, so input_node_ids will contain NODE_UNKNOWN and
+    # all tasks will be classified as cache misses.
+    input_node_ids: Set[str] = field(default_factory=set)
+    last_updated: float = field(init=False, default_factory=lambda: time.perf_counter())
+    # Set once the task's first output is observed. True if the output node
+    # matched one of the input_node_ids (data locality was preserved).
+    is_task_locality_hit: Optional[bool] = field(init=False, default=None)
 
 
 @dataclass
@@ -381,6 +391,48 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Number of failed tasks.",
         metrics_group=MetricsGroup.TASKS,
     )
+
+    task_scheduling_time_task_locality_hit_s: float = metric_field(
+        default=0,
+        description="Cumulative task scheduling time (s) for cache-hit tasks.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    task_scheduling_time_task_locality_miss_s: float = metric_field(
+        default=0,
+        description="Cumulative task scheduling time (s) for cache-miss tasks.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    bytes_inputs_of_task_locality_hit_tasks: int = metric_field(
+        default=0,
+        description="Total input bytes of completed cache-hit tasks.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    bytes_inputs_of_task_locality_miss_tasks: int = metric_field(
+        default=0,
+        description="Total input bytes of completed cache-miss tasks.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    task_completion_time_task_locality_hit_s: float = metric_field(
+        default=0,
+        description="Total wall time (s) of completed cache-hit tasks.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    task_completion_time_task_locality_miss_s: float = metric_field(
+        default=0,
+        description="Total wall time (s) of completed cache-miss tasks.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    num_tasks_task_locality_hit: int = metric_field(
+        default=0,
+        description="Number of tasks whose first output block was on a node where the input was located.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+    num_tasks_task_locality_miss: int = metric_field(
+        default=0,
+        description="Number of tasks whose first output block was on a node where the input was NOT located.",
+        metrics_group=MetricsGroup.TASKS,
+    )
+
     block_generation_time: float = metric_field(
         default=0,
         description="Time spent generating blocks in tasks.",
@@ -624,7 +676,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return self.num_task_outputs_generated / self.block_generation_time
 
     @metric_property(
-        description="Average task's completion time in seconds (including throttling).",
+        description="Average task's completion time in seconds (inclusive of output throttling).",
         metrics_group=MetricsGroup.TASKS,
     )
     def average_total_task_completion_time_s(self) -> Optional[float]:
@@ -640,10 +692,38 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     )
     def average_task_scheduling_time_s(self) -> Optional[float]:
         """Average task's completion time in seconds (inclusive of output back-pressure)"""
-        if self.num_tasks_finished == 0:
+        if self.num_tasks_have_outputs == 0:
             return None
 
-        return self.task_scheduling_time_s / self.num_tasks_finished
+        # NOTE: For correct calculation, we must use `num_tasks_have_outputs`, since
+        #       scheduling time is incremented upon receiving of the first output
+        return self.task_scheduling_time_s / self.num_tasks_have_outputs
+
+    @metric_property(
+        description="Average scheduling time (s) for cache-hit tasks.",
+        metrics_group=MetricsGroup.TASKS,
+        internal_only=True,
+    )
+    def average_task_scheduling_time_task_locality_hit_s(self) -> Optional[float]:
+        if self.num_tasks_task_locality_hit == 0:
+            return None
+        return (
+            self.task_scheduling_time_task_locality_hit_s
+            / self.num_tasks_task_locality_hit
+        )
+
+    @metric_property(
+        description="Average scheduling time (s) for cache-miss tasks.",
+        metrics_group=MetricsGroup.TASKS,
+        internal_only=True,
+    )
+    def average_task_scheduling_time_task_locality_miss_s(self) -> Optional[float]:
+        if self.num_tasks_task_locality_miss == 0:
+            return None
+        return (
+            self.task_scheduling_time_task_locality_miss_s
+            / self.num_tasks_task_locality_miss
+        )
 
     @metric_property(
         description="Average task's time spent in output back-pressure (in seconds).",
@@ -759,16 +839,14 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             return None
 
         bytes_per_output = self.average_bytes_per_output
-        # If we don’t have a sample yet and the limit is “unlimited”, we can’t
-        # estimate – just bail out.
+        # If no output has been produced it, return null
+        #
+        # NOTE: It's important that we do not overestimate pending task outputs
+        #       assuming that it will be at least `target_max_block_size` as this
+        #       might result in inability to schedule tasks that actually produce
+        #       substantially smaller outputs.
         if bytes_per_output is None:
-            if context.target_max_block_size is None:
-                return None
-            else:
-                # Block size can be up to MAX_SAFE_BLOCK_SIZE_FACTOR larger before being sliced.
-                bytes_per_output = (
-                    context.target_max_block_size * MAX_SAFE_BLOCK_SIZE_FACTOR
-                )
+            return None
 
         num_pending_outputs = context._max_num_blocks_in_streaming_gen_buffer
         if self.average_num_outputs_per_task is not None:
@@ -932,15 +1010,19 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.bytes_inputs_of_submitted_tasks += inputs.size_bytes()
         self.rows_inputs_of_submitted_tasks += inputs.num_rows() or 0
         self._pending_task_inputs.add(inputs)
+        input_node_ids = {
+            node_id_from_block_metadata(meta) for _, meta in inputs.blocks
+        }
         self._running_tasks[task_index] = RunningTaskInfo(
             inputs=inputs,
             num_outputs=0,
-            bytes_outputs=0,
+            bytes_output=0,
             num_rows_produced=0,
             start_time=time.perf_counter(),
             cum_block_gen_time_s=0,
             cum_block_ser_time_s=0,
             task_id=ray.TaskID.nil() if task_id is None else task_id,
+            input_node_ids=input_node_ids,
         )
 
     def on_task_output_generated(self, task_index: int, output: RefBundle):
@@ -959,20 +1041,21 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 self.block_size_rows.observe(block.num_rows)
 
         task_info = self._running_tasks[task_index]
-        if task_info.num_outputs == 0:
-            self.num_tasks_have_outputs += 1
 
         # Check if first task's outputs;
-        # Checkpoint time to first block
-        is_first_block: bool = task_info.num_outputs == 0
-        time_to_first_output_s = (
-            time.perf_counter() - task_info.start_time if is_first_block else None
-        )
+        if task_info.num_outputs == 0:
+            self.num_tasks_have_outputs += 1
+            # Checkpoint time to first block
+            time_to_first_output_s = time.perf_counter() - task_info.start_time
+        else:
+            time_to_first_output_s = None
 
         task_info.num_outputs += num_outputs
-        task_info.bytes_outputs += output_bytes
+        task_info.bytes_output += output_bytes
         task_info.num_rows_produced += num_rows_produced
+        task_info.last_updated = time.perf_counter()
 
+        first_output_node_id = None
         for block_ref, meta in output.blocks:
             exec_stats = meta.exec_stats
 
@@ -998,16 +1081,35 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
                 else:
                     self._cum_max_uss_bytes += exec_stats.max_uss_bytes
 
+            output_node_id = node_id_from_block_metadata(meta)
+            if first_output_node_id is None:
+                first_output_node_id = output_node_id
+
         # Task's scheduling time is calculated as:
         #
         #   Time to first block (driver) - Time to generate & ser first block (worker)
         #
         # NOTE: We're only tracking task scheduling time when `TaskExecStats`
         #       are reported (ie when task completes successfully)
-        if is_first_block:
-            self.task_scheduling_time_s += time_to_first_output_s - (
+        if time_to_first_output_s is not None:
+            scheduling_delta = time_to_first_output_s - (
                 task_info.cum_block_gen_time_s + task_info.cum_block_ser_time_s
             )
+            self.task_scheduling_time_s += scheduling_delta
+
+            # Classify the task as cache hit/miss based on first output block
+            is_hit = (
+                first_output_node_id is not None
+                and first_output_node_id != NODE_UNKNOWN
+                and first_output_node_id in task_info.input_node_ids
+            )
+            task_info.is_task_locality_hit = is_hit
+            if is_hit:
+                self.num_tasks_task_locality_hit += 1
+                self.task_scheduling_time_task_locality_hit_s += scheduling_delta
+            else:
+                self.num_tasks_task_locality_miss += 1
+                self.task_scheduling_time_task_locality_miss_s += scheduling_delta
 
         # Update per node metrics
         if self._per_node_metrics_enabled:
@@ -1034,7 +1136,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         task_info = self._running_tasks[task_index]
 
         self.num_outputs_of_finished_tasks += task_info.num_outputs
-        self.bytes_outputs_of_finished_tasks += task_info.bytes_outputs
+        self.bytes_outputs_of_finished_tasks += task_info.bytes_output
         self.rows_outputs_of_finished_tasks += task_info.num_rows_produced
 
         # NOTE: This metric tracks task's wall-clock time as measured by
@@ -1045,6 +1147,18 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         self.task_completion_time_s += task_wall_time_s
         self.task_completion_time.observe(task_wall_time_s)
 
+        # Accumulate throughput accumulators split by cache hit/miss
+        if task_info.is_task_locality_hit is True:
+            self.bytes_inputs_of_task_locality_hit_tasks += (
+                task_info.inputs.size_bytes()
+            )
+            self.task_completion_time_task_locality_hit_s += task_wall_time_s
+        elif task_info.is_task_locality_hit is False:
+            self.bytes_inputs_of_task_locality_miss_tasks += (
+                task_info.inputs.size_bytes()
+            )
+            self.task_completion_time_task_locality_miss_s += task_wall_time_s
+
         # NOTE: This metric tracks task's wall-clock time as measured by
         #       the workers executing the task
         if task_exec_stats is not None:
@@ -1053,11 +1167,13 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         # NOTE: This is used for Issue Detection
         self._op_task_duration_stats.add_duration(task_wall_time_s)
 
-        self.task_output_backpressure_time_s += (
+        task_output_backpressure_s = (
             task_exec_driver_stats.task_output_backpressure_s
             if task_exec_driver_stats
             else 0
         )
+
+        self.task_output_backpressure_time_s += task_output_backpressure_s
 
         assert task_info.cum_block_gen_time_s is not None
 
