@@ -121,6 +121,11 @@ MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
     ),
     DEFAULT_LATENCY_BUCKET_MS,
 )
+#: Histogram buckets for the gap between replica selection and request dispatch.
+SELECTION_DISPATCH_GAP_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    get_env_str("RAY_SERVE_SELECTION_DISPATCH_GAP_LATENCY_BUCKETS_MS", ""),
+    [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
+)
 
 #: Histogram buckets for replica startup and reconfigure latency.
 #: These are longer operations (constructor, model loading) so buckets start higher.

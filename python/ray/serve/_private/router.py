@@ -41,6 +41,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    SELECTION_DISPATCH_GAP_LATENCY_BUCKETS_MS,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
@@ -650,35 +651,7 @@ class AsyncioRouter:
             event_loop,
         )
 
-        # Phase 2 decoupled routing metrics (issue #62163)
-        self._selection_dispatch_gap_ms = metrics.Histogram(
-            "serve_selection_dispatch_gap_ms",
-            description=(
-                "Time in milliseconds between replica selection (choose_replica "
-                "context entry) and request dispatch (dispatch() call). High values "
-                "may indicate PD proxy coordination latency or stalled clients "
-                "holding reserved slots."
-            ),
-            boundaries=[1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
-            tag_keys=("deployment", "application"),
-        )
-        self._selection_dispatch_gap_ms.set_default_tags(
-            {"deployment": deployment_id.name, "application": deployment_id.app_name}
-        )
-
-        self._selections_released_without_dispatch = metrics.Counter(
-            "serve_selections_released_without_dispatch",
-            description=(
-                "Number of choose_replica() selections that exited without a "
-                "dispatch() call. Each count represents a wasted slot reservation "
-                "(slot reserved then released). Spikes may indicate errors in PD "
-                "proxy logic or client-side aborts."
-            ),
-            tag_keys=("deployment", "application"),
-        )
-        self._selections_released_without_dispatch.set_default_tags(
-            {"deployment": deployment_id.name, "application": deployment_id.app_name}
-        )
+        self._init_decoupled_routing_metrics(deployment_id)
 
         # The Router needs to stay informed about changes to the target deployment's
         # running replicas and deployment config. We do this via the long poll system.
@@ -760,6 +733,32 @@ class AsyncioRouter:
             ):
                 ServeUsageTag.CUSTOM_REQUEST_ROUTER_USED.record("1")
         return self._request_router
+
+    def _init_decoupled_routing_metrics(self, deployment_id: DeploymentID):
+        """Initialize metrics for tracking replica selection and dispatch."""
+        default_tags = {
+            "deployment": deployment_id.name,
+            "application": deployment_id.app_name,
+        }
+        self._selection_dispatch_gap_ms = metrics.Histogram(
+            "serve_selection_dispatch_gap_ms",
+            description=(
+                "Time in milliseconds between replica selection and request dispatch."
+            ),
+            boundaries=SELECTION_DISPATCH_GAP_LATENCY_BUCKETS_MS,
+            tag_keys=("deployment", "application"),
+        )
+        self._selection_dispatch_gap_ms.set_default_tags(default_tags)
+
+        self._selections_released_without_dispatch = metrics.Counter(
+            "serve_selections_released_without_dispatch",
+            description=(
+                "Number of replica selections that exited without a dispatch() call. "
+                "Each count represents a slot reservation that was released unused."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+        self._selections_released_without_dispatch.set_default_tags(default_tags)
 
     def running_replicas_populated(self) -> bool:
         return self._running_replicas_populated

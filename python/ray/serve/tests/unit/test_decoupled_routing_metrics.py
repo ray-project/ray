@@ -7,7 +7,7 @@ Issue: https://github.com/ray-project/ray/issues/62163
 """
 import asyncio
 import sys
-from typing import Dict, Optional, Tuple, Union
+from typing import Optional, Tuple
 from unittest.mock import Mock
 
 import pytest
@@ -29,72 +29,7 @@ from ray.serve._private.request_router import (
 )
 from ray.serve._private.request_router.common import ReplicaQueueLengthCache
 from ray.serve._private.router import AsyncioRouter
-
-# ---------------------------------------------------------------------------
-# Fake metrics classes (defined locally to avoid importing from test_utils,
-# which has many heavy dependencies).
-# ---------------------------------------------------------------------------
-
-
-class FakeCounter:
-    """Fake Counter for unit tests without Ray."""
-
-    def __init__(self, name: str = None, tag_keys: Tuple[str, ...] = None):
-        self.name = name
-        self.counts: Dict = {}
-        self.tags = tag_keys or ()
-        self.default_tags: Dict[str, str] = {}
-
-    def set_default_tags(self, tags: Dict[str, str]):
-        for key in tags:
-            assert key in self.tags
-        self.default_tags = tags.copy()
-
-    def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
-        merged_tags = self.default_tags.copy()
-        merged_tags.update(tags or {})
-        assert set(merged_tags.keys()) == set(self.tags)
-
-        d = self.counts
-        for tag in self.tags[:-1]:
-            tag_value = merged_tags[tag]
-            if tag_value not in d:
-                d[tag_value] = {}
-            d = d[tag_value]
-
-        key = merged_tags[self.tags[-1]]
-        d[key] = d.get(key, 0) + value
-
-    def get_count(self, tags: Dict[str, str]) -> Optional[int]:
-        value = self.counts
-        for tag in self.tags:
-            tag_value = tags[tag]
-            value = value.get(tag_value)
-            if value is None:
-                return None
-        return value
-
-
-class FakeHistogram:
-    """Fake Histogram for unit tests without Ray."""
-
-    def __init__(self, name: str = None, tag_keys: Tuple[str, ...] = None):
-        self.name = name
-        self.observations: list = []
-        self.tags = tag_keys or ()
-        self.default_tags: Dict[str, str] = {}
-
-    def set_default_tags(self, tags: Dict[str, str]):
-        for key in tags:
-            assert key in self.tags
-        self.default_tags = tags.copy()
-
-    def observe(self, value: Union[int, float], tags: Dict[str, str] = None):
-        merged_tags = self.default_tags.copy()
-        merged_tags.update(tags or {})
-        assert set(merged_tags.keys()) == set(self.tags)
-        self.observations.append((value, merged_tags))
-
+from ray.serve._private.test_utils import FakeCounter, FakeHistogram
 
 # ---------------------------------------------------------------------------
 # Helpers
