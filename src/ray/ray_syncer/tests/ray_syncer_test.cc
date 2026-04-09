@@ -393,7 +393,7 @@ struct SyncerServerTest {
       if (f.get()) {
         return;
       } else {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
       }
     }
   }
@@ -410,7 +410,7 @@ struct SyncerServerTest {
       if (f.get()) {
         return true;
       } else {
-        std::this_thread::sleep_for(std::chrono::seconds(1));
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
       }
     }
     return false;
@@ -612,9 +612,9 @@ TEST_F(SyncerTest, Test1To1) {
       },
       5));
 
-  // Make sure no new messages are sent
+  // Make sure no new messages are sent (wait a few poll intervals)
   s2.local_versions[0] = 0;
-  std::this_thread::sleep_for(std::chrono::seconds(1));
+  std::this_thread::sleep_for(std::chrono::milliseconds(300));
 
   ASSERT_EQ(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()), 2);
   ASSERT_EQ(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), 1);
@@ -635,7 +635,7 @@ TEST_F(SyncerTest, Test1To1) {
       s2.local_versions[choose_component(gen)]++;
     }
     if (rand_sleep(gen) < 5) {
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
   }
 
@@ -807,9 +807,9 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
     server->WaitSendingFlush();
   }
 
-  for (size_t i = 0; i < 10; ++i) {
+  for (size_t i = 0; i < 100; ++i) {
     if (!check()) {
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     } else {
       break;
     }
@@ -833,9 +833,8 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
       message_type = 0;
     }
     servers[server_idx]->local_versions[message_type]++;
-    // expect to sleep for 100 times for the whole loop.
     if (rand_sleep(gen) < 100) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
   }
 
@@ -843,9 +842,9 @@ bool TestCorrectness(std::function<TClusterView(RaySyncer &syncer)> get_cluster_
     server->WaitSendingFlush();
   }
   // Make sure everything is synced.
-  for (size_t i = 0; i < 10; ++i) {
+  for (size_t i = 0; i < 100; ++i) {
     if (!check()) {
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     } else {
       break;
     }
@@ -989,7 +988,7 @@ class SyncerReactorTest : public ::testing::Test {
       if (rpc_service_->reactor != nullptr) {
         break;
       };
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
     }
   }
 
