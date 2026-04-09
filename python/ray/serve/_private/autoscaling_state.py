@@ -1400,16 +1400,33 @@ class AutoscalingStateManager:
             f"server={RAY_SERVE_PROMETHEUS_SERVER_ADDRESS})."
         )
 
+        # Hard ceiling: a single fetch iteration must not occupy the event
+        # loop longer than half the fetch interval.  If it does, we abandon
+        # the iteration and let the cache expire naturally via TTL.
+        fetch_budget_s = RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S / 2
+
         try:
             while True:
                 try:
-                    tasks = [
+                    coros = [
                         app.fetch_prometheus_metrics(self._prometheus_session)
                         for app in self._app_autoscaling_states.values()
                         if app.has_prometheus_queries()
                     ]
-                    if tasks:
-                        await asyncio.gather(*tasks)
+                    if coros:
+                        await asyncio.wait_for(
+                            asyncio.gather(*coros),
+                            timeout=fetch_budget_s,
+                        )
+                except asyncio.TimeoutError:
+                    logger.warning(
+                        f"Prometheus fetch iteration exceeded budget of "
+                        f"{fetch_budget_s:.1f}s. Results discarded. Consider "
+                        f"reducing the number of prometheus_queries across "
+                        f"deployments or increasing "
+                        f"RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S "
+                        f"(currently {RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S}s)."
+                    )
                 except Exception:
                     logger.warning(
                         "Error in Prometheus fetch loop iteration.",
