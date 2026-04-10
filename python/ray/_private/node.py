@@ -1249,6 +1249,7 @@ class Node:
             node_name=self._ray_params.node_name,
             webui=self._webui_url,
             resource_isolation_config=self.resource_isolation_config,
+            config=self._config,
         )
         assert ray_constants.PROCESS_TYPE_RAYLET not in self.all_processes
         self.all_processes[ray_constants.PROCESS_TYPE_RAYLET] = [process_info]
@@ -1344,7 +1345,7 @@ class Node:
     def start_head_processes(self):
         """Start head processes on the node."""
         logger.debug(
-            f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
+            f"Process STDOUT and STDERR is being redirected to {self._logs_dir}."
         )
         assert self._gcs_address is None
         assert self._gcs_client is None
@@ -1373,7 +1374,7 @@ class Node:
     def start_ray_processes(self):
         """Start all of the processes on the node."""
         logger.debug(
-            f"Process STDOUT and STDERR is being " f"redirected to {self._logs_dir}."
+            f"Process STDOUT and STDERR is being redirected to {self._logs_dir}."
         )
 
         if not self.head:
