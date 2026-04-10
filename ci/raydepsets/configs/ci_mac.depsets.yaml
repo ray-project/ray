@@ -17,6 +17,7 @@ depsets:
     append_flags:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=macos
+      - --unsafe-package ray
     build_arg_sets:
       - py310
     pre_hooks:
