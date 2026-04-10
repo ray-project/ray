@@ -35,8 +35,10 @@ mypy==1.7.0
 pyright==1.1.408
 numba==0.62.1
 openpyxl==3.0.10
-opentelemetry-api
-opentelemetry-sdk
+opentelemetry-api==1.39.0
+opentelemetry-sdk==1.39.0
+opentelemetry-exporter-prometheus==0.60b0
+opentelemetry-semantic-conventions==0.60b0
 pexpect==4.8.0
 Pillow>=10.4.0; platform_system != "Windows"
 proxy.py==2.4.3
