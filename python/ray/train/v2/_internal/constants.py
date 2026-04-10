@@ -88,7 +88,8 @@ DEFAULT_STATE_ACTOR_RECONCILIATION_INTERVAL_S: float = 30.0
 # when there is high load on the cluster.
 GET_ACTOR_TIMEOUT_S: int = 10
 # GET_ACTOR_TIMEOUT_S * CONTROLLERS_TO_POLL_PER_ITERATION should be
-# way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S.
+# way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S to give the state actor
+# time to update live train run state.
 CONTROLLERS_TO_POLL_PER_ITERATION: int = 1
 
 # Environment variable for Train execution callbacks
