@@ -3,7 +3,7 @@ import dataclasses
 import os
 from typing import Any, Dict, List, Optional
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 from vllm.engine.arg_utils import AsyncEngineArgs
 from vllm.entrypoints.openai.cli_args import FrontendArgs
 
@@ -18,6 +18,7 @@ from ray.llm._internal.serve.constants import (
 from ray.llm._internal.serve.core.configs.llm_config import (
     GPUType,
     LLMConfig,
+    _compute_use_gpu,
 )
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import (
@@ -76,6 +77,22 @@ class VLLMEngineConfig(BaseModelExtended):
         # Validate through PlacementGroupConfig, then dump back to dict
         validated = PlacementGroupConfig(**value)
         return validated.model_dump()
+
+    @model_validator(mode="after")
+    def _validate_accelerator_type_with_gpu_mode(self):
+        """Validate that accelerator_type is not set when use_gpu resolves to False.
+
+        This catches the case where accelerator_type is silently ignored because
+        the configuration resolves to CPU-only mode (via use_cpu=True or
+        placement_group_config with no GPUs).
+        """
+        if self.accelerator_type and not self.use_gpu:
+            raise ValueError(
+                f"accelerator_type='{self.accelerator_type}' cannot be used with "
+                "CPU-only configurations. Either remove accelerator_type, set "
+                "use_cpu=False, or ensure placement_group_config bundles include GPUs."
+            )
+        return self
 
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
@@ -257,44 +274,7 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def use_gpu(self) -> bool:
         """Returns True if vLLM is configured to use GPU resources."""
-        # Explicit use_cpu setting takes precedence over all other configurations
-        if isinstance(self.use_cpu, bool):
-            return not self.use_cpu
-
-        # Check placement_group_config for explicit GPU specification
-        if self.placement_group_config:
-            # Check bundle_per_worker inside placement_group_config
-            bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
-            if bundle_per_worker:
-                return bundle_per_worker.get("GPU", 0) > 0
-
-            # Check bundles list
-            bundles = self.placement_group_config.get("bundles", [])
-            if bundles:
-                # If any bundle has GPU > 0, we use GPU
-                return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
-
-        # Default behavior based on accelerator_type
-        if not self.accelerator_type:
-            # Default to GPU when no accelerator_type is specified
-            return True
-
-        return self.accelerator_type in (
-            GPUType.NVIDIA_TESLA_V100.value,
-            GPUType.NVIDIA_TESLA_P100.value,
-            GPUType.NVIDIA_TESLA_T4.value,
-            GPUType.NVIDIA_TESLA_P4.value,
-            GPUType.NVIDIA_TESLA_K80.value,
-            GPUType.NVIDIA_TESLA_A10G.value,
-            GPUType.NVIDIA_L4.value,
-            GPUType.NVIDIA_L40S.value,
-            GPUType.NVIDIA_A100.value,
-            GPUType.NVIDIA_H100.value,
-            GPUType.NVIDIA_H200.value,
-            GPUType.NVIDIA_H20.value,
-            GPUType.NVIDIA_A100_40G.value,
-            GPUType.NVIDIA_A100_80G.value,
-        )
+        return _compute_use_gpu(self.use_cpu, self.placement_group_config)
 
     def get_or_create_pg(self) -> PlacementGroup:
         """Gets or a creates a placement group.
