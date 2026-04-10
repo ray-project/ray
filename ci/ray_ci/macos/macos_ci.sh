@@ -131,13 +131,13 @@ _prelude() {
     export PATH="/opt/homebrew/opt/miniforge/bin:$PATH"
   fi
 
-  ./ci/ci.sh build
-  ./ci/env/env_info.sh
-
   # Install locked dependencies to ensure consistent package versions
   # Strip hashes from lock file since pip can't verify hashes for VCS dependencies
   sed 's/ \\$//; s/ --hash[^ ]*//g' python/deplocks/ci/macos_depset_py3.10.lock > /tmp/macos_depset_no_hashes.txt
   pip install -r /tmp/macos_depset_no_hashes.txt --no-deps
+
+  ./ci/ci.sh build
+  ./ci/env/env_info.sh
 }
 
 _epilogue() {
