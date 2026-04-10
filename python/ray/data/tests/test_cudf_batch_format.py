@@ -45,10 +45,11 @@ def _make_dataset(data_source: str, shutdown_only, **kwargs):
         raise ValueError(f"Unknown data_source: {data_source}")
 
 
+# TODO(elliot-barn): "range_tensor" is disabled because cudf does not support Ray's TensorDtype.
 @pytest.mark.parametrize(
     "data_source",
-    ["range", "range_tensor", "from_pandas"],
-    ids=["range", "range_tensor", "from_pandas"],
+    ["range", "from_pandas"],
+    ids=["range", "from_pandas"],
 )
 class TestCudfIterBatches:
     """Tests for iter_batches with batch_format='cudf'."""
@@ -73,10 +74,11 @@ class TestCudfIterBatches:
             )
 
 
+# TODO: "range_tensor" is disabled because cudf does not support Ray's TensorDtype.
 @pytest.mark.parametrize(
     "data_source",
-    ["range", "range_tensor"],
-    ids=["range", "range_tensor"],
+    ["range"],
+    ids=["range"],
 )
 class TestCudfTakeBatch:
     """Tests for take_batch with batch_format='cudf'."""

@@ -19,8 +19,7 @@ set -euo pipefail
 
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
-# Install ray from PyPI to get matching compiled binaries (_raylet.so)
-# The depset excludes ray (--unsafe-package ray) since it uses a placeholder wheel
-pip install "ray>=2.47.1"
+# Remove installed ray so the source overlay at /rayci/ is used at test time
+pip uninstall -y ray
 
 EOF
