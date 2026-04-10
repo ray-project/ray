@@ -58,6 +58,8 @@ class DashboardHeadRayEventPublisher:
         try:
             self._do_publish(events)
         except requests.ConnectionError:
+            if self._gcs_client is None:
+                raise
             logger.warning(
                 "Connection to dashboard failed (url=%s). "
                 "Clearing cached URL and retrying.",
