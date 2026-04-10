@@ -11,8 +11,4 @@ pip3 install --no-cache-dir \
     "mlflow==3.4.0" \
     "bitsandbytes==0.47.0" \
     "autoawq==0.2.9" \
-    "liger-kernel==0.6.2" \
-    "hf_transfer==0.1.9"
-
-# Env vars
-export HF_HUB_ENABLE_HF_TRANSFER=1
+    "liger-kernel==0.6.2"

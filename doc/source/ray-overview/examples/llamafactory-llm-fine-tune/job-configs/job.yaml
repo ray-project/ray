@@ -1,0 +1,19 @@
+name: qwen2.5_deepspeed_lora_sft_job
+image_uri: <your_image_uri> # Your custom image from Step 1
+# cloud: <your-cloud-name>
+max_retries: 1
+
+env_vars:
+    # Set this to enable Ray Train in LLaMA-Factory
+    USE_RAY: '1'
+    # Allow Ray to merge Job and Driver runtime envs
+    RAY_OVERRIDE_JOB_RUNTIME_ENV: '1'
+    # Add environment variables here (e.g., API keys)
+    # WANDB_API_KEY: <your_wandb_token>
+    # HF_TOKEN: <your_huggingface_token>
+
+# Point to your training config on shared storage.
+# Copy and adapt train-configs/sft_lora_deepspeed.yaml to /mnt/user_storage/,
+# updating paths (dataset_dir, deepspeed, ray_storage_path) from
+# /mnt/cluster_storage/ to /mnt/user_storage/.
+entrypoint: llamafactory-cli train /mnt/user_storage/sft_lora_deepspeed.yaml

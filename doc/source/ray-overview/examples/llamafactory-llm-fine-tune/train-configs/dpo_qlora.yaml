@@ -59,5 +59,3 @@ ray_init_kwargs:
     env_vars:
       # If using gated models like meta-llama/Llama-3.1-8B-Instruct
       # HF_TOKEN: <your_huggingface_token>
-      # Enable faster downloads if hf_transfer is installed:
-      HF_HUB_ENABLE_HF_TRANSFER: '1'
