@@ -109,3 +109,46 @@ depsets:
       - --upgrade-package pyarrow
     build_arg_sets:
       - py310
+
+  - name: relaxed_data_tfxbsl_ci_depset_${PYTHON_SHORT}
+    operation: relax
+    source_depset: data_base_ci_depset_${PYTHON_SHORT}
+    packages:
+    # these packages have conflicts when compiling v9 depsets
+      - datasets
+      - tensorflow-metadata
+      - tensorflow
+      - tf-keras
+      - pyarrow
+      - pandas
+      - protobuf
+      - hudi
+      - modin
+      - opentelemetry-proto
+      - pylance
+      - numpy
+      - cloudpickle
+      - dill
+      - dask
+      - distributed
+      - multiprocess
+      - tensorboard
+      - ml-dtypes
+      - grpcio-status
+    output: python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py${PYTHON_VERSION}.lock
+    build_arg_sets:
+      - py310
+
+  - name: data_tfxbsl_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - relaxed_data_tfxbsl_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/tfxbsl.txt
+    output: python/deplocks/ci/data-tfxbsl-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310

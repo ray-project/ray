@@ -1,4 +1,4 @@
-tfx-bsl==1.15.1
+tfx-bsl==1.16.1
 crc32c==2.3
 apache-beam[gcp]==2.48
-pyarrow>=10,<11
+tensorflow==2.16.2
