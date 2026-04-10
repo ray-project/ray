@@ -1364,45 +1364,14 @@ def test_raylet_respects_reconnect_timeout_config(
     """Regression test for https://github.com/ray-project/ray/issues/62074.
 
     Verifies that ``gcs_rpc_server_reconnect_timeout_s`` from ``_system_config``
-    is passed to the raylet via ``--config_list`` at launch time and therefore
-    takes effect *before* the first GCS connection attempt.
-
-    Previously, the raylet initialised ``RayConfig`` only after a successful
-    ``AsyncGetInternalConfig`` round-trip, so user-supplied timeout values were
-    always ignored in favour of the hard-coded default (60 s).
-
-    Strategy:
-      - Set the timeout to 10 s (clearly distinct from the 60 s default).
-      - Kill GCS briefly, then restart it within the 10 s window.
-      - Confirm a queued task completes once GCS comes back.
-
-    The test does not use the default 60 s timeout, so the only way it can pass
-    is if the configured 10 s value is actually delivered to the raylet.
+    is passed to the raylet via ``--config_list`` at launch time. That makes the
+    configured value available before the first GCS connection attempt instead of
+    relying on a later ``AsyncGetInternalConfig`` round-trip.
     """
 
-    @ray.remote(num_cpus=0)
-    def identity(x):
-        return x
+    head_config = get_raylet_startup_config(ray._private.worker._global_node)
 
-    # Warm up — confirm the cluster is healthy.
-    assert ray.get(identity.remote(42)) == 42
-
-    # Kill GCS.
-    ray._private.worker._global_node.kill_gcs_server()
-
-    # Submit a task immediately — it will queue at the raylet while GCS is down.
-    future = identity.remote(99)
-
-    # Sleep for less than the configured timeout (10 s) but long enough for the
-    # channel to reach TRANSIENT_FAILURE.
-    time.sleep(3)
-
-    # Bring GCS back.
-    ray._private.worker._global_node.start_gcs_server()
-
-    # The task must complete now that GCS is back.
-    result = ray.get(future, timeout=30)
-    assert result == 99, f"Expected 99, got {result}"
+    assert head_config["gcs_rpc_server_reconnect_timeout_s"] == 10
 
 
 @pytest.mark.skipif(

@@ -265,6 +265,7 @@ int main(int argc, char *argv[]) {
   const std::string session_dir = FLAGS_session_dir;
   const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
+  const std::string config_list = FLAGS_config_list;
   const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
   const std::string plasma_directory = FLAGS_plasma_directory;
@@ -294,7 +295,7 @@ int main(int argc, char *argv[]) {
   // completes.
   {
     std::string config_list_decoded;
-    RAY_CHECK(absl::Base64Unescape(FLAGS_config_list, &config_list_decoded))
+    RAY_CHECK(absl::Base64Unescape(config_list, &config_list_decoded))
         << "config_list is not a valid base64-encoded string.";
     RayConfig::instance().initialize(config_list_decoded);
   }
