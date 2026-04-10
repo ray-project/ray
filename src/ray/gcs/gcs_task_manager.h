@@ -309,21 +309,29 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
     /// locator will be updated accordingly.
     class TaskEventLocator {
      public:
-      TaskEventLocator(std::list<rpc::TaskEvents>::iterator iter, size_t task_list_index)
-          : iter_(iter), task_list_index_(task_list_index) {}
+      TaskEventLocator(std::list<rpc::TaskEvents>::iterator iter,
+                       size_t task_list_index,
+                       uint64_t insertion_order)
+          : iter_(iter),
+            task_list_index_(task_list_index),
+            insertion_order_(insertion_order) {}
 
       rpc::TaskEvents &GetTaskEventsMutable() const { return *iter_; }
 
       size_t GetCurrentListIndex() const { return task_list_index_; }
+
+      uint64_t GetInsertionOrder() const { return insertion_order_; }
 
       std::list<rpc::TaskEvents>::iterator GetCurrentListIterator() const {
         return iter_;
       }
 
       void SetCurrentList(size_t cur_list_index,
-                          std::list<rpc::TaskEvents>::iterator cur_list_iter) {
+                          std::list<rpc::TaskEvents>::iterator cur_list_iter,
+                          uint64_t insertion_order) {
         iter_ = cur_list_iter;
         task_list_index_ = cur_list_index;
+        insertion_order_ = insertion_order;
       }
 
       const std::optional<ActorID> &GetActorIdIndexKey() const { return actor_id_key_; }
@@ -353,6 +361,9 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
       std::list<rpc::TaskEvents>::iterator iter_;
       /// Index of the task list.
       size_t task_list_index_;
+      /// Monotonic sequence tracking insertion/move-to-front order within the current
+      /// list.
+      uint64_t insertion_order_;
 
       std::optional<ActorID> actor_id_key_;
       std::optional<std::string> task_name_key_;
@@ -509,6 +520,7 @@ class GcsTaskManager : public rpc::TaskInfoGcsServiceHandler,
 
     /// Task events lists.
     std::vector<std::list<rpc::TaskEvents>> task_events_list_;
+    uint64_t next_insertion_order_ = 0;
 
     friend class GcsTaskManager;
     FRIEND_TEST(GcsTaskManagerTest, TestHandleAddEventBasic);

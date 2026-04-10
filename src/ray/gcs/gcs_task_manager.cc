@@ -140,18 +140,21 @@ std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvent
     const absl::flat_hash_set<std::shared_ptr<TaskEventLocator>> &task_locators) const {
   std::vector<rpc::TaskEvents> result;
   result.reserve(task_locators.size());
-  absl::flat_hash_set<const rpc::TaskEvents *> selected_task_events;
-  selected_task_events.reserve(task_locators.size());
+  std::vector<std::shared_ptr<TaskEventLocator>> ordered_task_locators;
+  ordered_task_locators.reserve(task_locators.size());
   for (const auto &task_attempt_loc : task_locators) {
-    selected_task_events.insert(&task_attempt_loc->GetTaskEventsMutable());
+    ordered_task_locators.push_back(task_attempt_loc);
   }
-  for (int i = gc_policy_->MaxPriority() - 1; i >= 0; --i) {
-    for (auto itr = task_events_list_[i].rbegin(); itr != task_events_list_[i].rend();
-         ++itr) {
-      if (selected_task_events.contains(&*itr)) {
-        result.push_back(*itr);
-      }
-    }
+  std::sort(ordered_task_locators.begin(),
+            ordered_task_locators.end(),
+            [](const auto &left, const auto &right) {
+              if (left->GetCurrentListIndex() != right->GetCurrentListIndex()) {
+                return left->GetCurrentListIndex() > right->GetCurrentListIndex();
+              }
+              return left->GetInsertionOrder() < right->GetInsertionOrder();
+            });
+  for (const auto &task_attempt_loc : ordered_task_locators) {
+    result.push_back(task_attempt_loc->GetTaskEventsMutable());
   }
 
   return result;
@@ -252,7 +255,9 @@ void GcsTaskManager::GcsTaskManagerStorage::UpdateExistingTaskAttempt(
     task_events_list_[target_list_index].push_front(std::move(existing_task));
 
     task_events_list_[cur_list_index].erase(loc->GetCurrentListIterator());
-    loc->SetCurrentList(target_list_index, task_events_list_[target_list_index].begin());
+    loc->SetCurrentList(target_list_index,
+                        task_events_list_[target_list_index].begin(),
+                        next_insertion_order_++);
   }
 
   // Update the index if needed. Adding to index is idempotent so it is safe to call it
@@ -267,7 +272,8 @@ GcsTaskManager::GcsTaskManagerStorage::AddNewTaskEvent(rpc::TaskEvents &&task_ev
   task_events_list_.at(target_list_index).push_front(std::move(task_events));
   auto list_itr = task_events_list_.at(target_list_index).begin();
 
-  auto loc = std::make_shared<TaskEventLocator>(list_itr, target_list_index);
+  auto loc = std::make_shared<TaskEventLocator>(
+      list_itr, target_list_index, next_insertion_order_++);
 
   // Add to index.
   UpdateIndex(loc);
