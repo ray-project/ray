@@ -2821,7 +2821,6 @@ jinja2==3.1.6 \
     #   jupyterlab
     #   jupyterlab-server
     #   memray
-    #   mlflow
     #   moto
     #   myst-parser
     #   nbconvert
@@ -3529,7 +3528,6 @@ markdown==3.5.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ax-platform
-    #   mlflow
     #   tensorboard
 markdown-it-py==2.2.0 \
     --hash=sha256:5a35f8d1870171d9acc47b99612dc146129b631baf04970128b568f190d0cc30 \
@@ -3812,16 +3810,16 @@ ml-dtypes==0.5.4 \
     #   jaxlib
     #   keras
     #   tensorflow
-mlflow==2.22.0 \
-    --hash=sha256:3ada72e39bd7b381c360aa9baddeb701d41f0b83b5889ddab7fdc6d7a5bc9b52 \
-    --hash=sha256:5b8780a8407c1b2ad441a13054f33ed0a0a58df4a69ddada2e30321d287e4f87
+mlflow==3.1.4 \
+    --hash=sha256:6f56c52905a9b71eca2083fcde7eed935614705d33a34b95e139b0b84a8d7842 \
+    --hash=sha256:77edeac35d470aacd12745362f14e7ceefb2cde686667c7956d648fa72996bde
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/core-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
-mlflow-skinny==2.22.0 \
-    --hash=sha256:774b58970038990650486cd934d46b7038fc390682c3bde70b4e5106f6857cce \
-    --hash=sha256:9efc39454f6cc3433e7d804c3df8dab4fbba1abe504c52c05f00ef1d0696fef5
+mlflow-skinny==3.1.4 \
+    --hash=sha256:7d53259365d09404fc2b2e99a2701cbb1f3bfe44f127ff8c7a7b27e3720aba23 \
+    --hash=sha256:7e05139512c3baf06fb9fcd339e028d9f725d424ce7014d9b0957f8d532ba240
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow

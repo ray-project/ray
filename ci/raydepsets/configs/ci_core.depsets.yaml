@@ -12,7 +12,7 @@ depsets:
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/ml/core-requirements.txt
+      - python/requirements/ml/py313/core-requirements.txt
       - python/requirements/py313/test-requirements.txt
       - python/requirements/ml/py313/dl-cpu-requirements.txt
     constraints:
@@ -23,6 +23,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --prerelease=allow
     build_arg_sets:
       - py310
       - py312
@@ -40,6 +41,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --prerelease=allow
     build_arg_sets:
       - py310
       - py312
@@ -49,7 +51,7 @@ depsets:
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/ml/core-requirements.txt
+      - python/requirements/ml/py313/core-requirements.txt
       - python/requirements/py313/test-requirements.txt
       - python/requirements/ml/py313/dl-cpu-requirements.txt
       - python/requirements/ml/py313/dl-gpu-requirements.txt
@@ -61,6 +63,7 @@ depsets:
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
+      - --prerelease=allow
     build_arg_sets:
       - py310
       - py312

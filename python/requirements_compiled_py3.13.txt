@@ -1109,7 +1109,7 @@ ml-dtypes==0.5.4
     #   tensorflow
 mlflow==3.1.4
     # via -r python/requirements/ml/core-requirements.txt
-mlflow-skinny==2.22.0
+mlflow-skinny==3.1.4
     # via mlflow
 mmh3==4.1.0
     # via pyiceberg
