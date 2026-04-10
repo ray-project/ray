@@ -135,7 +135,9 @@ _prelude() {
   ./ci/env/env_info.sh
 
   # Install locked dependencies to ensure consistent package versions
-  pip install -r python/deplocks/ci/macos_depset_py3.10.lock --no-deps --no-require-hashes
+  # Strip hashes from lock file since pip can't verify hashes for VCS dependencies
+  sed 's/ \\$//; s/ --hash[^ ]*//g' python/deplocks/ci/macos_depset_py3.10.lock > /tmp/macos_depset_no_hashes.txt
+  pip install -r /tmp/macos_depset_no_hashes.txt --no-deps
 }
 
 _epilogue() {
