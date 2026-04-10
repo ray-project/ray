@@ -41,7 +41,9 @@ class MemoryMonitorFactory {
    * @param resource_isolation_enabled When resource isolation is enabled, the
    * memory monitor will work with the configured cgroup constraints to better
    * enforce the memory usage limit.
-   * @param cgroup_manager the cgroup manager to use for reading cgroup constraints.
+   * @param cgroup_manager When resource isolation is enabled, the monitor will determine
+   * the proper memory monitoring threshold based on the set cgroup constraints provided
+   * by the cgroup manager.
    * @return a unique pointer to the memory monitor instance.
    */
   static std::unique_ptr<MemoryMonitorInterface> Create(
