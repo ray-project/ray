@@ -2,7 +2,6 @@ name: "datatfxbslbuild-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_ml-py$PYTHON"]
 dockerfile: ci/docker/data-tfxbsl.build.Dockerfile
 srcs:
-  - ci/env/install-dependencies.sh
   - python/deplocks/ci/data-tfxbsl-ci_depset_py$PYTHON.lock
 build_args:
   - ARROW_VERSION=14.*
