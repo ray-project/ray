@@ -25,7 +25,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
     dies ungracefully.
     """
 
-    def __init__(self, check_interval_s: float = 1.0):
+    def __init__(self, check_interval_s: float = 5.0):
         """Initialize the callback.
 
         Args:
