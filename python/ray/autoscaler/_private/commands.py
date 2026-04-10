@@ -560,18 +560,22 @@ def teardown_cluster(
 
     container_name = config.get("docker", {}).get("container_name")
     if container_name:
-        # Use nodes_for_teardown to include nodes the provider knows about
-        # but reports as terminated.  This handles LocalNodeProvider where
-        # the invoking machine's state file marks workers as terminated
-        # even though the head's autoscaler started them and their Docker
-        # containers are still running.  For cloud providers this is
-        # equivalent to non_terminated_nodes.
+        # Start with A (which already respects --keep-min-workers and
+        # --workers-only).  On top of that, include nodes the provider
+        # knows about but reports as terminated.  This handles
+        # LocalNodeProvider where the invoking machine's state file
+        # marks workers as terminated even though the head's autoscaler
+        # started them and their Docker containers are still running.
+        # For cloud providers this adds nothing because nodes_for_teardown
+        # delegates to non_terminated_nodes.
+        stale_terminated = set(provider.nodes_for_teardown({})) - set(
+            provider.non_terminated_nodes({})
+        )
         if workers_only:
-            docker_stop_nodes = provider.nodes_for_teardown(
-                {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
+            stale_terminated -= set(
+                provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
             )
-        else:
-            docker_stop_nodes = provider.nodes_for_teardown({})
+        docker_stop_nodes = list(set(A) | stale_terminated)
 
         # This is to ensure that the parallel SSH calls below do not mess with
         # the users terminal.
