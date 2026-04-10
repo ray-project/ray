@@ -40,7 +40,7 @@ class ParquetScanner(ArrowFileScanner):
         """
         return ParquetFileReader(
             batch_size=self.batch_size,
-            columns=list(self.columns) if self.columns else None,
+            columns=list(self.columns) if self.columns is not None else None,
             predicate=self.predicate,
             limit=self.limit,
             filesystem=self.filesystem,

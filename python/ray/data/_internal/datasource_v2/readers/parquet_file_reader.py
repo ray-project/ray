@@ -168,7 +168,9 @@ class ParquetFileReader(FileReader):
         )
         self._explicit_batch_size = batch_size
         self._target_block_size = target_block_size
-        self._sampled_batch_size: Optional[int] = _UNSET
+        self._sampled_batch_size: int | object = (
+            _UNSET  # pyrefly: ignore[bad-assignment]
+        )
 
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
         """Determine batch size from explicit setting, metadata, or default.
@@ -184,7 +186,7 @@ class ParquetFileReader(FileReader):
             return self._explicit_batch_size
 
         if self._sampled_batch_size is not _UNSET:
-            return self._sampled_batch_size
+            return self._sampled_batch_size  # pyrefly: ignore[bad-return]
 
         batch_size = _ARROW_DEFAULT_BATCH_SIZE
         if self._target_block_size is not None:
