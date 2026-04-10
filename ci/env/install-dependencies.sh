@@ -232,11 +232,6 @@ retry_pip_install() {
 }
 
 install_pip_packages() {
-  if [[ "${SKIP_PIP_INSTALL:-}" == "1" ]]; then
-    echo "Skipping install_pip_packages (SKIP_PIP_INSTALL=1)"
-    return
-  fi
-
   # Install modules needed in all jobs.
   # shellcheck disable=SC2262
   alias pip="python -m pip"
@@ -440,7 +435,7 @@ install_dependencies() {
     "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 
-  if [[ "${MINIMAL_INSTALL:-}" != "1" && "${SKIP_PYTHON_PACKAGES:-}" != "1" ]]; then
+  if [[ "${MINIMAL_INSTALL:-}" != "1" && "${SKIP_PYTHON_PACKAGES:-}" != "1" && "${SKIP_PIP_INSTALL:-}" != "1" ]]; then
     install_pip_packages
   fi
 
