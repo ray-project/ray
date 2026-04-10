@@ -4,7 +4,6 @@ from collections import defaultdict
 from typing import Callable, List
 
 from opentelemetry import metrics
-from opentelemetry.exporter.prometheus import PrometheusMetricReader
 from opentelemetry.metrics import Observation
 from opentelemetry.sdk.metrics import MeterProvider
 
@@ -99,9 +98,22 @@ class OpenTelemetryMetricRecorder:
         with self._metrics_initialized_lock:
             if self._metrics_initialized:
                 return
-            prometheus_reader = PrometheusMetricReader()
-            provider = MeterProvider(metric_readers=[prometheus_reader])
-            metrics.set_meter_provider(provider)
+            try:
+                # Prometheus exporter is an optional dependency and may be present in an
+                # incompatible version combination (e.g. exporter expects a newer
+                # opentelemetry-sdk / semantic conventions enum).
+                from opentelemetry.exporter.prometheus import PrometheusMetricReader
+
+                prometheus_reader = PrometheusMetricReader()
+                provider = MeterProvider(metric_readers=[prometheus_reader])
+                metrics.set_meter_provider(provider)
+            except Exception:
+                # Don't crash Ray (or the dashboard) if the Prometheus exporter is broken.
+                # Metrics will be disabled for this process.
+                logger.exception(
+                    "Failed to initialize OpenTelemetry Prometheus exporter; "
+                    "continuing without OpenTelemetry metrics."
+                )
             self._metrics_initialized = True
 
     def register_gauge_metric(self, name: str, description: str) -> None:
