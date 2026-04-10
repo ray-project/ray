@@ -42,6 +42,7 @@ depsets:
       - pylance
       - pandas
       - modin
+      - cudf-cu12
     output: python/deplocks/ci/relaxed_data-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
