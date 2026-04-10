@@ -15,6 +15,7 @@
 #include "ray/observability/python_event_interface.h"
 
 #include <google/protobuf/util/json_util.h>
+#include <unistd.h>
 
 #include "absl/status/status.h"
 #include "absl/strings/str_cat.h"
@@ -23,6 +24,7 @@
 #include "google/protobuf/message.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/id.h"
+#include "ray/observability/metrics.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -65,6 +67,13 @@ rpc::events::RayEvent PythonRayEvent::Serialize() && {
   event.set_session_name(session_name_);
   event.mutable_timestamp()->CopyFrom(AbslTimeNanosToProtoTimestamp(
       absl::ToInt64Nanoseconds(event_timestamp_ - absl::UnixEpoch())));
+
+  // Set source process metadata.
+  char hostname_buf[256];
+  if (gethostname(hostname_buf, sizeof(hostname_buf)) == 0) {
+    event.set_source_hostname(hostname_buf);
+  }
+  event.set_source_pid(getpid());
 
   // Use protobuf reflection to set the nested event message by field number.
   // this way, adding new Python event types will not require C++ changes.
