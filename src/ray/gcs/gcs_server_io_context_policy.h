@@ -66,9 +66,8 @@ struct GcsServerIOContextPolicy {
       "ray_event_io_context",
       "internal_kv_io_context",
       "node_manager_io_context"};
-  // Lag probes disabled — the IOContextMonitor handles lag measurement for GCS.
   constexpr static std::array<bool, 6> kAllDedicatedIOContextEnableLagProbe{
-      false, false, false, false, false, false};
+      true, true, true, true, true, true};
 
   constexpr static size_t IndexOf(std::string_view name) {
     return ray::IndexOf(kAllDedicatedIOContextNames, name);

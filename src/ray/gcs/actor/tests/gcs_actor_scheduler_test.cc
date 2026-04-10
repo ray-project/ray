@@ -34,7 +34,6 @@
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
-#include "ray/util/clock.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
