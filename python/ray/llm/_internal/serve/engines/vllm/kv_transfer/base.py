@@ -54,9 +54,10 @@ class BaseConnectorBackend(abc.ABC):
         # Prefer explicit DP rank when available
         dp_rank = self.llm_config.engine_kwargs.get("data_parallel_rank")
         if isinstance(dp_rank, int) and dp_rank >= 0:
-            # vLLM already accounts for TP spacing in DP offset calculation
-            # (data_parallel_rank × tp_size), don't multiply here
-            return dp_rank
+            # vLLM adds data_parallel_index (== data_parallel_rank) to the
+            # base port internally in NixlConnectorScheduler.__init__, so
+            # return 0 here to avoid a double offset.
+            return 0
 
         # Fall back to Serve replica rank for TP/PP cases
         try:
