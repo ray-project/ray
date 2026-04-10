@@ -267,7 +267,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     ASSERT_NE(idle_time, absl::nullopt);
     ASSERT_NE(*idle_time, absl::InfinitePast());
     auto dur = absl::ToInt64Seconds(clock_.Now() - *idle_time);
-    ASSERT_GE(dur, 1);
+    ASSERT_EQ(dur, 1);
   }
 
   /// Test that allocate some resources make it non-idle.
@@ -304,8 +304,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
 
     auto idle_time = manager->GetResourceIdleTime();
     ASSERT_TRUE(idle_time.has_value());
-    auto dur = clock_.Now() - *idle_time;
-    ASSERT_GE(dur, absl::ZeroDuration());
+    ASSERT_EQ(clock_.Now() - *idle_time, absl::ZeroDuration());
   }
 
   {
@@ -314,7 +313,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     {
       auto idle_time = manager->GetResourceIdleTime();
       ASSERT_TRUE(idle_time.has_value());
-      ASSERT_GE(clock_.Now() - *idle_time, absl::Seconds(1));
+      ASSERT_EQ(clock_.Now() - *idle_time, absl::Seconds(1));
     }
 
     // Allocate the resource
@@ -350,8 +349,10 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       auto idle_time = manager->GetResourceIdleTime();
       ASSERT_TRUE(idle_time.has_value());
       auto dur = clock_.Now() - *idle_time;
-      ASSERT_GE(dur, absl::ZeroDuration());
-      ASSERT_LE(dur, absl::Seconds(1));
+      ASSERT_EQ(dur, absl::ZeroDuration());
+
+      const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+      ASSERT_EQ(resource_view_sync_messge.idle_duration_ms(), 1);
     }
   }
 
@@ -373,7 +374,10 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     auto idle_time = manager->GetResourceIdleTime();
     ASSERT_TRUE(idle_time.has_value());
     auto dur = clock_.Now() - *idle_time;
-    ASSERT_GE(dur, absl::ZeroDuration());
+    ASSERT_EQ(dur, absl::ZeroDuration());
+
+    const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
+    ASSERT_EQ(resource_view_sync_messge.idle_duration_ms(), 1);
   }
 }
 

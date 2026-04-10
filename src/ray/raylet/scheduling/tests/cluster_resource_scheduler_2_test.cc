@@ -23,6 +23,7 @@
 #include "ray/util/clock.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_options.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 

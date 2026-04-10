@@ -26,6 +26,7 @@
 #include "ray/observability/metric_interface.h"
 #include "ray/util/clock.h"
 #include "ray/ray_syncer/ray_syncer.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/node_manager.pb.h"
 
