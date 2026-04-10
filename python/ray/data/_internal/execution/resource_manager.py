@@ -716,14 +716,17 @@ class OpResourceAllocator(ABC):
         downstream_eligible_ops = list(self._get_downstream_eligible_ops(op))
 
         # If this operator is a terminal one (no downstream eligible ops):
-        # - External consumer (iter_batches, streaming_split): don't unblock
-        #   backpressure to prevent blocks from piling up faster than the consumer can
-        #   process them. The consumer is always able to drain blocks, so we don't need to
-        #   unblock backpressure to maintain liveness.
         # - No external consumer (e.g., write pipelines where we control draining):
         #   always unblock to maintain liveness.
+        # - External consumer (iter_batches, streaming_split): only unblock if
+        #   consumers are starving (blocked waiting in get_output_blocking). This
+        #   prevents blocks from piling up when consumers are slow, while still
+        #   maintaining liveness when the budget is too small for even one block.
         if not downstream_eligible_ops:
-            return not self._resource_manager.has_external_consumer
+            if not self._resource_manager.has_external_consumer:
+                return True
+            output_op_state = self._topology[self._resource_manager._output_operator]
+            return output_op_state.num_waiting_consumers > 0
 
         for downstream_op in downstream_eligible_ops:
             # To maintain liveness of the pipeline, we relax output backpressure

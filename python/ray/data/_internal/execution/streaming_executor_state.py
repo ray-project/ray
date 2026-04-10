@@ -187,6 +187,14 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
+        # Tracks consumers blocked in get_output_blocking().
+        # Used to detect consumer starvation.
+        self._num_waiting_consumers: int = 0
+
+    @property
+    def num_waiting_consumers(self) -> int:
+        """Return the number of consumers currently blocked in get_output_blocking."""
+        return self._num_waiting_consumers
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -314,20 +322,27 @@ class OpState:
             StopIteration: If all outputs are already consumed.
             Exception: If there was an exception raised during execution.
         """
-        while True:
-            # Check if StreamingExecutor has caught an exception or is done execution.
-            if self._exception is not None:
-                raise self._exception
-            elif self._finished and not self.output_queue.has_next(output_split_idx):
-                raise StopIteration()
-            ref = self.output_queue.pop(output_split_idx)
-            if ref is not None:
-                # Update outqueue metrics when blocks are removed from this operator's outqueue
-                # TODO: Abstract queue-releated metrics to queue.
-                self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
-                self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
-                return ref
-            time.sleep(0.01)
+        self._num_waiting_consumers += 1
+        try:
+            while True:
+                # Check if StreamingExecutor has caught an exception or is done execution.
+                if self._exception is not None:
+                    raise self._exception
+                elif self._finished and not self.output_queue.has_next(
+                    output_split_idx
+                ):
+                    raise StopIteration()
+                ref = self.output_queue.pop(output_split_idx)
+                if ref is not None:
+                    # Update outqueue metrics when blocks are removed from this
+                    # operator's outqueue.
+                    # TODO: Abstract queue-releated metrics to queue.
+                    self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
+                    self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                    return ref
+                time.sleep(0.01)
+        finally:
+            self._num_waiting_consumers -= 1
 
     def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""

@@ -68,8 +68,8 @@ def mock_union_op(input_ops):
 
 
 def mock_join_op(left_input_op, right_input_op):
-    left_input_op._logical_operators = [(MagicMock())]
-    right_input_op._logical_operators = [(MagicMock())]
+    left_input_op._logical_operators = [MagicMock()]
+    right_input_op._logical_operators = [MagicMock()]
 
     with patch(
         "ray.data._internal.execution.operators.hash_shuffle._get_total_cluster_resources"
@@ -813,8 +813,8 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
     def test_no_unblock_backpressure_terminal_with_external_consumer(
         self, restore_data_context
     ):
-        """Terminal operator with an external consumer (iter_batches,
-        streaming_split) should never unblock output backpressure."""
+        """Terminal operator with an external consumer should only unblock
+        when consumers are starving (blocked waiting for output)."""
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2, DataContext.get_current())
@@ -830,16 +830,19 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         allocator = resource_manager._op_resource_allocator
 
         # Register an external consumer (e.g., iter_batches or streaming_split).
-        # Should NOT unblock, to prevent blocks from piling up faster than the
-        # consumer can process them.
         resource_manager.set_external_consumer_bytes(0)
+
+        # No consumers waiting — should NOT unblock (prevents pileup).
         assert allocator._should_unblock_streaming_output_backpressure(o2) is False
 
-        # Even after consumer receives and drains data, should still NOT unblock —
-        # the external consumer exists, so respect backpressure.
-        resource_manager.set_external_consumer_bytes(1000)
-        assert allocator._should_unblock_streaming_output_backpressure(o2) is False
-        resource_manager.set_external_consumer_bytes(0)
+        # Simulate a consumer blocked in get_output_blocking (starving).
+        # The output node is o3 (LimitOperator), which tracks waiting consumers.
+        dag_output_state = topo[o3]
+        dag_output_state._num_waiting_consumers = 1
+        assert allocator._should_unblock_streaming_output_backpressure(o2) is True
+
+        # Consumer gets data and stops waiting — should NOT unblock again.
+        dag_output_state._num_waiting_consumers = 0
         assert allocator._should_unblock_streaming_output_backpressure(o2) is False
 
     def test_unblock_backpressure_downstream_idle(self, restore_data_context):
