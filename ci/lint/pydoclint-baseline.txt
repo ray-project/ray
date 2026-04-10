@@ -178,9 +178,7 @@ python/ray/_private/services.py
     DOC103: Function `start_api_server`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [fate_share: Optional[bool]].
     DOC101: Function `start_gcs_server`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start_gcs_server`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [fate_share: Optional[bool]].
-    DOC101: Function `start_raylet`: Docstring contains fewer arguments than in function signature.
     DOC107: Function `start_raylet`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
-    DOC103: Function `start_raylet`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [cluster_id: str, socket_to_use: Optional[int]].
     DOC101: Function `start_monitor`: Docstring contains fewer arguments than in function signature.
     DOC103: Function `start_monitor`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [autoscaler_v2: bool, fate_share: Optional[bool]].
     DOC101: Function `start_ray_client_server`: Docstring contains fewer arguments than in function signature.
@@ -960,7 +958,6 @@ python/ray/data/_internal/arrow_ops/transform_pyarrow.py
     DOC201: Function `combine_chunked_array` does not have a return section in docstring
 --------------------
 python/ray/data/_internal/block_batching/iter_batches.py
-    DOC103: Function `_format_in_threadpool`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [batch_iter: Iterator[Batch]]. Arguments in the docstring but not in the function signature: [logical_batch_iterator: ].
     DOC201: Function `_format_in_threadpool` does not have a return section in docstring
 --------------------
 python/ray/data/_internal/block_batching/util.py
@@ -1114,7 +1111,7 @@ python/ray/data/_internal/output_buffer.py
 --------------------
 python/ray/data/_internal/plan.py
     DOC101: Method `ExecutionPlan.get_plan_as_string`: Docstring contains fewer arguments than in function signature.
-    DOC103: Method `ExecutionPlan.get_plan_as_string`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [dataset_cls: Type['Dataset']].
+    DOC103: Method `ExecutionPlan.get_plan_as_string`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [dataset: 'Dataset'].
 --------------------
 python/ray/data/_internal/planner/exchange/interfaces.py
     DOC103: Method `ExchangeTaskSpec.reduce`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*mapper_outputs: List[Block]]. Arguments in the docstring but not in the function signature: [mapper_outputs: ].
@@ -1180,7 +1177,6 @@ python/ray/data/datasource/filename_provider.py
 --------------------
 python/ray/data/datasource/path_util.py
     DOC201: Function `_has_file_extension` does not have a return section in docstring
-    DOC201: Function `_resolve_paths_and_filesystem` does not have a return section in docstring
 --------------------
 python/ray/data/grouped_data.py
     DOC103: Method `GroupedData.aggregate`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [*aggs: AggregateFn]. Arguments in the docstring but not in the function signature: [aggs: ].
@@ -2184,7 +2180,6 @@ python/ray/util/client/worker.py
 --------------------
 python/ray/util/collective/collective.py
     DOC101: Function `init_collective_group`: Docstring contains fewer arguments than in function signature.
-    DOC107: Function `init_collective_group`: The option `--arg-type-hints-in-signature` is `True` but not all args in the signature have type hints
     DOC103: Function `init_collective_group`: Docstring arguments are different from function arguments. (Or could be other formatting issues: https://jsh9.github.io/pydoclint/violation_codes.html#notes-on-doc103 ). Arguments in the function signature but not in the docstring: [gloo_timeout: int].
     DOC202: Function `init_collective_group` has a return section in docstring, but there are no return statements or annotations
     DOC101: Function `create_collective_group`: Docstring contains fewer arguments than in function signature.

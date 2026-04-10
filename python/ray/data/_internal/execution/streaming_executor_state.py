@@ -120,6 +120,11 @@ class OpBufferQueue:
             q.clear()
 
     def _get_queue_for(self, output_split_idx: Optional[int]) -> ThreadSafeBundleQueue:
+        assert output_split_idx is not None or len(self._queues) == 1, (
+            "Setting `output_split_idx` to null is only allowed for queues "
+            f"with no output splitting (got {len(self._queues)} total queues)"
+        )
+
         target_output_split_idx = output_split_idx or 0
 
         assert target_output_split_idx < len(self._queues), (
