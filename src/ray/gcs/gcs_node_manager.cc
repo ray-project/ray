@@ -176,8 +176,10 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO).WithField(node_id).WithField("grpc_peer", grpc_peer)
       << "HandleUnregisterNode() for node";
-  auto node = RemoveNodeFromCache(
-      node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, absl::ToUnixMillis(clock_.Now()));
+  auto node = RemoveNodeFromCache(node_id,
+                                  request.node_death_info(),
+                                  rpc::GcsNodeInfo::DEAD,
+                                  absl::ToUnixMillis(clock_.Now()));
   if (!node) {
     RAY_LOG(INFO).WithField(node_id) << "Node is already removed";
     return;
@@ -668,8 +670,7 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNodeFromCache(
               .WithField("ip", removed_node->node_manager_address())
           << error_message.str();
       RAY_LOG(WARNING) << error_message.str();
-      auto error_data = CreateErrorTableData(
-          type, error_message.str(), clock_.Now());
+      auto error_data = CreateErrorTableData(type, error_message.str(), clock_.Now());
       gcs_publisher_->PublishError(node_id.Hex(), std::move(error_data));
     }
 

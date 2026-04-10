@@ -529,7 +529,8 @@ bool RedisDelKeyPrefixSync(const std::string &host,
                                      /*running_on_single_thread=*/true};
   RedisClientOptions options{host, port, username, password, use_ssl};
   Clock real_clock;
-  std::shared_ptr<RedisContext> context = ConnectRedisContext(io_service, options, real_clock);
+  std::shared_ptr<RedisContext> context =
+      ConnectRedisContext(io_service, options, real_clock);
 
   auto thread = std::make_unique<std::thread>([&]() {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(

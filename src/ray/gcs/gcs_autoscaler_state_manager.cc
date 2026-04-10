@@ -93,8 +93,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
 
       if (gcs_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
-        auto error_data = CreateErrorTableData(
-            error_type, error_message, clock_.Now());
+        auto error_data = CreateErrorTableData(error_type, error_message, clock_.Now());
         gcs_publisher_->PublishError(session_name_, std::move(error_data));
       }
     }

@@ -885,8 +885,8 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   std::vector<PlacementGroupID> groups_to_remove;
   const auto &jobs = gcs_init_data.Jobs();
   for (auto &item : gcs_init_data.PlacementGroups()) {
-    auto placement_group =
-        std::make_shared<GcsPlacementGroup>(item.second, placement_group_state_counter_, clock_);
+    auto placement_group = std::make_shared<GcsPlacementGroup>(
+        item.second, placement_group_state_counter_, clock_);
     const auto state = item.second.state();
     const auto &pg_id = placement_group->GetPlacementGroupID();
     if (state == rpc::PlacementGroupTableData::REMOVED) {

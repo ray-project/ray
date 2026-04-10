@@ -119,7 +119,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     JobID job_id = JobID::FromBinary(request.placement_group_spec().creator_job_id());
     std::string ray_namespace = job_namespace_table_[job_id];
     gcs_placement_group_manager_->RegisterPlacementGroup(
-        std::make_shared<gcs::GcsPlacementGroup>(request, ray_namespace, counter_),
+        std::make_shared<gcs::GcsPlacementGroup>(request, ray_namespace, counter_, clock_),
         [&callback, &promise](Status status) {
           RAY_CHECK_OK(status);
           callback(status);
