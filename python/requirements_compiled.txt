@@ -1335,7 +1335,9 @@ opentelemetry-api==1.34.1
     #   opentelemetry-sdk
     #   opentelemetry-semantic-conventions
 opentelemetry-exporter-prometheus==0.55b1
-    # via -r python/requirements.txt
+    # via
+    #   -r python/requirements.txt
+    #   -r python/requirements/test-requirements.txt
 opentelemetry-instrumentation==0.55b1
     # via
     #   opentelemetry-instrumentation-asgi
@@ -1354,6 +1356,7 @@ opentelemetry-sdk==1.34.1
     #   opentelemetry-exporter-prometheus
 opentelemetry-semantic-conventions==0.55b1
     # via
+    #   -r python/requirements/test-requirements.txt
     #   opentelemetry-instrumentation
     #   opentelemetry-instrumentation-asgi
     #   opentelemetry-instrumentation-fastapi
