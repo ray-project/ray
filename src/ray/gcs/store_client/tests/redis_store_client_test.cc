@@ -15,8 +15,6 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 
 #include <boost/optional/optional_io.hpp>
-
-#include "ray/util/clock.h"
 #include <chrono>
 #include <map>
 #include <memory>
@@ -26,6 +24,7 @@
 
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
+#include "ray/util/clock.h"
 #include "ray/util/network_util.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/raii.h"
