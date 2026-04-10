@@ -119,7 +119,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
     JobID job_id = JobID::FromBinary(request.placement_group_spec().creator_job_id());
     std::string ray_namespace = job_namespace_table_[job_id];
     gcs_placement_group_manager_->RegisterPlacementGroup(
-        std::make_shared<gcs::GcsPlacementGroup>(request, ray_namespace, counter_, clock_),
+        std::make_shared<gcs::GcsPlacementGroup>(
+            request, ray_namespace, counter_, clock_),
         [&callback, &promise](Status status) {
           RAY_CHECK_OK(status);
           callback(status);
@@ -229,6 +230,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_placement_group_count_gauge_;
 
  private:
+  Clock clock_;
   ClusterResourceManager cluster_resource_manager_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::shared_ptr<gcs::GcsResourceManager> gcs_resource_manager_;

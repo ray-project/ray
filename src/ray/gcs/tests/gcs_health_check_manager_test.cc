@@ -36,6 +36,7 @@ using namespace boost::asio::ip;  // NOLINT
 #include "gtest/gtest.h"
 #include "ray/gcs/gcs_health_check_manager.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/util/clock.h"
 #include "ray/util/network_util.h"
 
 int GetFreePort() {
@@ -66,6 +67,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
         io_service,
         [this](const NodeID &id) { dead_nodes.insert(id); },
         fake_health_check_rpc_latency_ms_histogram_,
+        clock_,
         initial_delay_ms,
         timeout_ms,
         period_ms,
@@ -138,6 +140,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     }
   }
 
+  Clock clock_;
   instrumented_io_context io_service;
   std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;

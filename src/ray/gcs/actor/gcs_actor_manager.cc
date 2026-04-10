@@ -862,7 +862,7 @@ Status GcsActorManager::CreateActor(const ray::rpc::CreateActorRequest &request,
   actor->UpdateState(rpc::ActorTableData::PENDING_CREATION);
   const auto &actor_table_data = actor->GetActorTableData();
   actor->GetMutableTaskSpec()->set_dependency_resolution_timestamp_ms(
-      absl::ToUnixMillis(clock_.Now()));
+      clock_.NowUnixMillis());
 
   // Pub this state for dashboard showing.
   gcs_publisher_->PublishActor(actor_id, actor_table_data);
@@ -1005,7 +1005,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
 
   gcs_actor_scheduler_->OnActorDestruction(it->second);
 
-  it->second->GetMutableActorTableData()->set_timestamp(absl::ToUnixMillis(clock_.Now()));
+  it->second->GetMutableActorTableData()->set_timestamp(clock_.NowUnixMillis());
   const auto actor = it->second;
 
   // Cancel existing timer only on force_kill to interrupt graceful shutdown.
@@ -1091,7 +1091,7 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   // TODO(swang): We can skip this step and delete the actor table entry
   // entirely if the callers check directly whether the owner is still alive.
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
-  auto time = absl::ToUnixMillis(clock_.Now());
+  auto time = clock_.NowUnixMillis();
   if (actor->GetState() != rpc::ActorTableData::DEAD) {
     actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->set_end_time(time);
@@ -1548,7 +1548,7 @@ void GcsActorManager::RestartActor(
   } else {
     actor->UpdateState(rpc::ActorTableData::DEAD);
     mutable_actor_table_data->mutable_death_cause()->CopyFrom(death_cause);
-    auto time = absl::ToUnixMillis(clock_.Now());
+    auto time = clock_.NowUnixMillis();
     mutable_actor_table_data->set_end_time(time);
     mutable_actor_table_data->set_timestamp(time);
 
@@ -1661,7 +1661,7 @@ void GcsActorManager::OnActorCreationSuccess(const std::shared_ptr<GcsActor> &ac
   }
 
   auto mutable_actor_table_data = actor->GetMutableActorTableData();
-  auto time = absl::ToUnixMillis(clock_.Now());
+  auto time = clock_.NowUnixMillis();
   mutable_actor_table_data->set_timestamp(time);
   if (actor->GetState() != rpc::ActorTableData::RESTARTING) {
     mutable_actor_table_data->set_start_time(time);

@@ -254,7 +254,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
 
   // Setup stats.
   auto stats = placement_group->GetMutableStats();
-  auto now = absl::ToUnixNanos(clock_.Now());
+  auto now = clock_.NowUnixNanos();
   auto scheduling_latency_us =
       absl::Nanoseconds(now - stats->scheduling_started_time_ns()) /
       absl::Microseconds(1);
@@ -316,7 +316,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   bool is_new_placement_group_scheduled = false;
   while (!pending_placement_groups_.empty() && !is_new_placement_group_scheduled) {
     auto iter = pending_placement_groups_.begin();
-    if (iter->first > absl::ToUnixNanos(clock_.Now())) {
+    if (iter->first > clock_.NowUnixNanos()) {
       // Here the rank equals the time to schedule, and it's an ordered tree,
       // it means all the other tasks should be scheduled after this one.
       // If the first one won't be scheduled, we just skip.
@@ -332,7 +332,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     if (registered_placement_groups_.contains(placement_group_id)) {
       auto stats = placement_group->GetMutableStats();
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
-      stats->set_scheduling_started_time_ns(absl::ToUnixNanos(clock_.Now()));
+      stats->set_scheduling_started_time_ns(clock_.NowUnixNanos());
       MarkSchedulingStarted(placement_group_id);
       // We can't use designated initializers thanks to MSVC (error C7555).
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
@@ -649,7 +649,7 @@ void GcsPlacementGroupManager::AddToPendingQueue(
     std::optional<int64_t> rank,
     std::optional<ExponentialBackoff> exp_backer) {
   if (!rank) {
-    rank = absl::ToUnixNanos(clock_.Now());
+    rank = clock_.NowUnixNanos();
   }
 
   // Add the biggest delay that has seen so far.

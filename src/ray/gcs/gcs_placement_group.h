@@ -81,7 +81,7 @@ class GcsPlacementGroup {
         placement_group_spec.soft_target_node_id());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
-        absl::ToUnixMillis(clock_.Now()));
+        clock_.NowUnixMillis());
     ComputeLabelDomainKey();
     SetupStates();
   }
@@ -185,7 +185,7 @@ class GcsPlacementGroup {
     auto stats = placement_group_table_data_.mutable_stats();
     // The default value for the field is 0
     if (stats->creation_request_received_ns() == 0) {
-      auto now = absl::ToUnixNanos(clock_.Now());
+      auto now = clock_.NowUnixNanos();
       stats->set_creation_request_received_ns(now);
     }
     // The default value for the field is 0

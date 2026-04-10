@@ -109,7 +109,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
                                  rpc::SendReplyCallback send_reply_callback) {
   rpc::JobTableData mutable_job_table_data;
   mutable_job_table_data.CopyFrom(request.data());
-  auto time = absl::ToUnixMillis(clock_.Now());
+  auto time = clock_.NowUnixMillis();
   mutable_job_table_data.set_start_time(time);
   mutable_job_table_data.set_timestamp(time);
   const JobID job_id = JobID::FromBinary(mutable_job_table_data.job_id());
@@ -156,7 +156,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
   const JobID job_id = JobID::FromBinary(job_table_data.job_id());
   RAY_LOG(INFO).WithField(job_id) << "Marking job as finished.";
 
-  auto time = absl::ToUnixMillis(clock_.Now());
+  auto time = clock_.NowUnixMillis();
   job_table_data.set_timestamp(time);
   job_table_data.set_end_time(time);
   job_table_data.set_is_dead(true);
@@ -517,7 +517,7 @@ void GcsJobManager::RecordMetrics() {
 
   for (const auto &[job_id, start_time] : running_job_start_times_) {
     job_duration_in_seconds_gauge_.Record(
-        (absl::ToUnixMillis(clock_.Now()) - start_time) / 1000.0,
+        (clock_.NowUnixMillis() - start_time) / 1000.0,
         {{"JobId", job_id.Hex()}});
   }
 }

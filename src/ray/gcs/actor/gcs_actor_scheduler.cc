@@ -346,7 +346,7 @@ void GcsActorScheduler::HandleWorkerLeaseGrantedReply(
     actor->UpdateAddress(leased_worker->GetAddress());
     actor->GetMutableActorTableData()->set_pid(reply.worker_pid());
     actor->GetMutableTaskSpec()->set_lease_grant_timestamp_ms(
-        absl::ToUnixMillis(clock_.Now()));
+        clock_.NowUnixMillis());
     actor->GetCreationTaskSpecification().EmitTaskMetrics(
         scheduler_placement_time_ms_histogram_);
     // Make sure to connect to the client before persisting actor info to GCS.

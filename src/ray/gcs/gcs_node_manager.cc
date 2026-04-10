@@ -179,7 +179,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   auto node = RemoveNodeFromCache(node_id,
                                   request.node_death_info(),
                                   rpc::GcsNodeInfo::DEAD,
-                                  absl::ToUnixMillis(clock_.Now()));
+                                  clock_.NowUnixMillis());
   if (!node) {
     RAY_LOG(INFO).WithField(node_id) << "Node is already removed";
     return;
@@ -553,7 +553,7 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
     expect_force_termination = false;
   } else {
     expect_force_termination =
-        (absl::ToUnixMillis(clock_.Now()) > iter->second->deadline_timestamp_ms()) &&
+        (clock_.NowUnixMillis() > iter->second->deadline_timestamp_ms()) &&
         (iter->second->reason() ==
          rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
   }
@@ -694,7 +694,7 @@ void GcsNodeManager::InternalOnNodeFailure(
   if (maybe_node.has_value()) {
     rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
     auto node = RemoveNodeFromCache(
-        node_id, death_info, rpc::GcsNodeInfo::DEAD, absl::ToUnixMillis(clock_.Now()));
+        node_id, death_info, rpc::GcsNodeInfo::DEAD, clock_.NowUnixMillis());
 
     AddDeadNodeToCache(node);
     rpc::GcsNodeInfo node_info_delta;
