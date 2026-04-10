@@ -554,7 +554,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             self._extraction_tasks.pop(rank, None)
             if not self._extraction_tasks:
                 # release GPU actors so downstream operators can acquire those GPUs
-                self._rank_pool.shutdown(force=True)
+                self._rank_pool.shutdown()
 
         for rank_idx, actor in enumerate(self._rank_pool.actors):
             block_gen = actor.finish_and_extract.options(
