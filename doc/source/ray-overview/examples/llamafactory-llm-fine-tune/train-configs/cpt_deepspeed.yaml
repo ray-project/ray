@@ -50,6 +50,7 @@ resources_per_worker:
   # See https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types.
 ray_init_kwargs:
   runtime_env:
+    # If all env_vars are commented out, use: env_vars: {}
     env_vars:
       # If using gated models like google/gemma-3-4b-pt
       HF_TOKEN: <your_huggingface_token>
