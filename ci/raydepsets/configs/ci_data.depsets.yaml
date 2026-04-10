@@ -2,6 +2,9 @@ build_arg_sets:
   py310:
     PYTHON_VERSION: "3.10"
     PYTHON_SHORT: "310"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
 
 depsets:
   - name: data_base_ci_depset_${PYTHON_SHORT}
@@ -9,11 +12,12 @@ depsets:
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/test-requirements.txt
-      - python/requirements/ml/dl-cpu-requirements.txt
-      - python/requirements/ml/data-requirements.txt
+      - python/requirements/ml/py313/data-requirements.txt
+      - python/requirements/ml/py313/data-test-requirements.txt
+      - python/requirements/ml/py313/dl-cpu-requirements.txt
+      - python/requirements/ml/py313/dl-gpu-requirements.txt
     constraints:
-      - /tmp/ray-deps/requirements_compiled_py${PYTHON_VERSION}.txt
+      - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/data-base-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cpu
@@ -22,39 +26,86 @@ depsets:
       - --unsafe-package ray
     build_arg_sets:
       - py310
+      - py312
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
 
   - name: relaxed_data_ci_depset_${PYTHON_SHORT}
     operation: relax
     source_depset: data_base_ci_depset_${PYTHON_SHORT}
     packages:
+    # these packages have conflicts when compiling v9 depsets
       - pyarrow
-      - tensorflow-datasets
-      - tensorflow-metadata
-      - google-api-python-client
-      - protobuf
-      - grpcio
-      - google-api-core
-      - googleapis-common-protos
+      - numpy
+      - datasets
+      - hudi
+      - pylance
+      - pandas
+      - modin
     output: python/deplocks/ci/relaxed_data-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
+      - py312
 
-  - name: data_tfxbsl_depset_${PYTHON_SHORT}
+  - name: data_pyarrow_latest_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
       - relaxed_data_ci_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/data/tfxbsl.txt
-    output: python/deplocks/ci/data-tfxbsl-ci_depset_py${PYTHON_VERSION}.lock
+      - python/requirements/data/pyarrow-latest.txt
+    output: python/deplocks/ci/data-pyarrow-latest-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+      - py312
+
+  - name: data_pyarrow_v9_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - relaxed_data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-v9.txt
+    output: python/deplocks/ci/data-pyarrow-v9-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+
+  - name: data_mongo_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - relaxed_data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/mongo.txt
+    output: python/deplocks/ci/data-mongo-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+      - --override python/requirements/data/mongo.txt
+    build_arg_sets:
+      - py310
+
+  - name: data_pyarrow_nightly_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - relaxed_data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-nightly.txt
+    output: python/deplocks/ci/data-pyarrow-nightly-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --extra-index-url https://pypi.fury.io/arrow-nightlies/
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
       - --upgrade-package pyarrow
-      - --upgrade-package google-api-python-client
-      - --upgrade-package protobuf
-      - --upgrade-package grpcio
-      - --upgrade-package google-api-core
-      - --upgrade-package googleapis-common-protos
     build_arg_sets:
       - py310
