@@ -19,6 +19,7 @@
 #include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace gcs {
