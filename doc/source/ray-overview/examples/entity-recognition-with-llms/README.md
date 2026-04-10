@@ -1,13 +1,5 @@
 # LLM training and inference
 
-<a href="https://console.anyscale.com/register/ha?render_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=entity-recognition-with-llms&redirectTo=/v2/template-preview/entity-recognition-with-llms\">
-<img src="https://raw.githubusercontent.com/ray-project/ray/c34b74c22a9390aa89baf80815ede59397786d2e/doc/source/_static/img/run-on-anyscale.svg" alt=\"Run on Anyscale\">
-</a>
-<br></br>
-<div align="left">
-<a href="https://github.com/anyscale/e2e-llm-workflows" role="button"><img src="https://img.shields.io/static/v1?label=&amp;message=View%20On%20GitHub&amp;color=586069&amp;logo=github&amp;labelColor=2f363d"></a>&nbsp;
-</div>
-
 This end-to-end tutorial **fine-tunes** an LLM to perform **batch inference** and **online serving** at scale. While entity recognition (NER) is the main task in this tutorial, you can easily extend these end-to-end workflows to any use case.
 
 <img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/e2e_llm.png" width=800>
@@ -40,14 +32,22 @@ This [Anyscale Workspace](https://docs.anyscale.com/platform/workspaces/) automa
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/compute.png" width=500>
 
 ### Dependencies
-Start by downloading the dependencies required for this tutorial. Notice in your [`containerfile`](https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/containerfile) you have a base image [`anyscale/ray-llm:latest-py311-cu124`](https://hub.docker.com/layers/anyscale/ray-llm/latest-py311-cu124/images/sha256-5a1c55f7f416d2d2eb5f4cdd13afeda25d4f7383406cfee1f1f60da495d1b50f) followed by a list of pip packages. If you're not on [Anyscale](https://console.anyscale.com/), you can pull this Docker image yourself and install the dependencies.
-
-
+Start by downloading the dependencies required for this tutorial. Notice in your [`containerfile`](https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/containerfile) you have a base image [`anyscale/ray-llm:latest-py311-cu24`](https://hub.docker.com/layers/anyscale/ray-llm/latest-py311-cu124/images/sha256-5a1c55f7f416d2d2eb5f4cdd13afeda25d4f7383406cfee1f1f60da495d1b50f) followed by a list of pip packages. If you're not on [Anyscale](https://console.anyscale.com/), you can pull this Docker image yourself and install the dependencies.
 
 ```bash
 %%bash
 # Install dependencies
 pip install -q \
+    "ray[llm]==2.46.0" \
+    "vllm==0.6.3" \
+    "transformers==4.45.2" \
+    "datasets==3.0.1" \
+    "accelerate==0.34.2" \
+    "peft==0.13.0" \
+    "bitsandbytes==0.44.1" \
+    "scipy==1.14.1" \
+    "scikit-learn==1.5.2" \
+    "wandb==0.18.3" \
     "xgrammar==0.1.11" \
     "pynvml==12.0.0" \
     "hf_transfer==0.1.9" \
@@ -55,12 +55,9 @@ pip install -q \
     "llamafactory@git+https://github.com/hiyouga/LLaMA-Factory.git@ac8c6fdd3ab7fb6372f231f238e6b8ba6a17eb16#egg=llamafactory"
 ```
 
-    [92mSuccessfully registered `ray, vllm` and 5 other packages to be installed on all cluster nodes.[0m
-    [92mView and update dependencies here: https://console.anyscale.com/cld_kvedZWag2qA8i5BjxUevf5i7/prj_cz951f43jjdybtzkx1s5sjgz99/workspaces/expwrk_mp8cxvgle2yeumgcpu1yua2r3e?workspace-tab=dependencies[0m
-
+    Successfully registered `ray, vllm` and 5 other packages to be installed on all cluster nodes.    View and update dependencies here: https://console.anyscale.com/cld_kvedZWag2qA8i5BjxUevf5i7/prj_cz951f43jjdybtzkx1s5sjgz99/workspaces/expwrk_mp8cxvgle2yeumgcpu1yua2r3e?workspace-tab=dependencies
 
 ## Data ingestion
-
 
 ```python
 import json
@@ -68,8 +65,7 @@ import textwrap
 from IPython.display import Code, Image, display
 ```
 
-Start by downloading the data from cloud storage to local shared storage. 
-
+Start by downloading the data from cloud storage to local shared storage.
 
 ```bash
 %%bash
@@ -81,13 +77,6 @@ wget https://viggo-ds.s3.amazonaws.com/test.jsonl -O /mnt/cluster_storage/viggo/
 wget https://viggo-ds.s3.amazonaws.com/dataset_info.json -O /mnt/cluster_storage/viggo/dataset_info.json
 ```
 
-    download: s3://viggo-ds/train.jsonl to ../../../mnt/cluster_storage/viggo/train.jsonl
-    download: s3://viggo-ds/val.jsonl to ../../../mnt/cluster_storage/viggo/val.jsonl
-    download: s3://viggo-ds/test.jsonl to ../../../mnt/cluster_storage/viggo/test.jsonl
-    download: s3://viggo-ds/dataset_info.json to ../../../mnt/cluster_storage/viggo/dataset_info.json
-
-
-
 ```bash
 %%bash
 head -n 1 /mnt/cluster_storage/viggo/train.jsonl | python3 -m json.tool
@@ -98,8 +87,6 @@ head -n 1 /mnt/cluster_storage/viggo/train.jsonl | python3 -m json.tool
         "input": "Blizzard North is mostly an okay developer, but they released Diablo II for the Mac and so that pushes the game from okay to good in my view.",
         "output": "give_opinion(name[Diablo II], developer[Blizzard North], rating[good], has_mac_release[yes])"
     }
-
-
 
 ```python
 with open("/mnt/cluster_storage/viggo/train.jsonl", "r") as fp:
@@ -119,14 +106,11 @@ print(textwrap.fill(system_content, width=80))
     'player_perspective', 'has_multiplayer', 'platforms', 'available_on_steam',
     'has_linux_release', 'has_mac_release', 'specifier']
 
-
 You also have an info file that identifies the datasets and format (Alpaca and ShareGPT formats) to use for post training.
-
 
 ```python
 display(Code(filename="/mnt/cluster_storage/viggo/dataset_info.json", language="json"))
 ```
-
 
 <style>pre { line-height: 125%; }
 td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
@@ -203,39 +187,30 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 .output_html .vi { color: #19177C } /* Name.Variable.Instance */
 .output_html .vm { color: #19177C } /* Name.Variable.Magic */
 .output_html .il { color: #666666 } /* Literal.Number.Integer.Long */</style><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;viggo-train&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;file_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/mnt/cluster_storage/viggo/train.jsonl&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;formatting&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alpaca&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;columns&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;prompt&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;instruction&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;input&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;response&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span>
+<span class="w">    </span><span class="nt">"viggo-train"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"file_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/mnt/cluster_storage/viggo/train.jsonl"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"formatting"</span><span class="p">:</span><span class="w"> </span><span class="s2">"alpaca"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"columns"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"prompt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"instruction"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"query"</span><span class="p">:</span><span class="w"> </span><span class="s2">"input"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"response"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">    </span><span class="p">},</span>
-<span class="w">    </span><span class="nt">&quot;viggo-val&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">        </span><span class="nt">&quot;file_name&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;/mnt/cluster_storage/viggo/val.jsonl&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;formatting&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;alpaca&quot;</span><span class="p">,</span>
-<span class="w">        </span><span class="nt">&quot;columns&quot;</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
-<span class="w">            </span><span class="nt">&quot;prompt&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;instruction&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;query&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;input&quot;</span><span class="p">,</span>
-<span class="w">            </span><span class="nt">&quot;response&quot;</span><span class="p">:</span><span class="w"> </span><span class="s2">&quot;output&quot;</span>
+<span class="w">    </span><span class="nt">"viggo-val"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">        </span><span class="nt">"file_name"</span><span class="p">:</span><span class="w"> </span><span class="s2">"/mnt/cluster_storage/viggo/val.jsonl"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"formatting"</span><span class="p">:</span><span class="w"> </span><span class="s2">"alpaca"</span><span class="p">,</span>
+<span class="w">        </span><span class="nt">"columns"</span><span class="p">:</span><span class="w"> </span><span class="p">{</span>
+<span class="w">            </span><span class="nt">"prompt"</span><span class="p">:</span><span class="w"> </span><span class="s2">"instruction"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"query"</span><span class="p">:</span><span class="w"> </span><span class="s2">"input"</span><span class="p">,</span>
+<span class="w">            </span><span class="nt">"response"</span><span class="p">:</span><span class="w"> </span><span class="s2">"output"</span>
 <span class="w">        </span><span class="p">}</span>
 <span class="w">    </span><span class="p">}</span>
 <span class="p">}</span>
 </pre></div>
 
-
-
 ## Distributed fine-tuning
 
-Use [Ray Train](https://docs.ray.io/en/latest/train/train.html) + [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) to perform multi-node training. Find the parameters for the training workload, post-training method, dataset location, train/val details, etc. in the `llama3_lora_sft_ray.yaml` config file. See the recipes for even more post-training methods, like SFT, pretraining, PPO, DPO, KTO, etc. [on GitHub](https://github.com/hiyouga/LLaMA-Factory/tree/main/examples).
-
-**Note**: Ray also supports using other tools like [axolotl](https://axolotl-ai-cloud.github.io/axolotl/docs/ray-integration.html) or even [Ray Train + HF Accelerate + FSDP/DeepSpeed](https://docs.ray.io/en/latest/train/huggingface-accelerate.html) directly for complete control of your post-training workloads.
-
-<img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/distributed_training.png" width=800>
-
 ### `config`
-
 
 ```python
 import os
@@ -243,11 +218,9 @@ from pathlib import Path
 import yaml
 ```
 
-
 ```python
 display(Code(filename="lora_sft_ray.yaml", language="yaml"))
 ```
-
 
 <style>pre { line-height: 125%; }
 td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
@@ -382,9 +355,6 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 <span class="nt">eval_steps</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">500</span>
 </pre></div>
 
-
-
-
 ```python
 model_id = "ft-model"  # call it whatever you want
 model_source = yaml.safe_load(open("lora_sft_ray.yaml"))["model_name_or_path"]  # HF model ID, S3 mirror config, or GCS mirror config
@@ -393,12 +363,11 @@ print (model_source)
 
     Qwen/Qwen2.5-7B-Instruct
 
+## Multi-node training
 
-### Multi-node training
+Use Ray Train + LlamaFactory to perform the multi-node train loop.
 
-Use Ray Train + LlamaFactory to perform the mult-node train loop.
-
-<div class="alert alert-block alert"> <b>Ray Train</b> 
+<div class="alert alert-block alert"> <b>Ray Train</b>
 
 Using [Ray Train](https://docs.ray.io/en/latest/train/train.html) has several advantages:
 - it automatically handles **multi-node, multi-GPU** setup with no manual SSH setup or `hostfile` configs. 
@@ -406,17 +375,139 @@ Using [Ray Train](https://docs.ray.io/en/latest/train/train.html) has several ad
 - you can run on **heterogeneous machines** and scale flexibly, for example, CPU for preprocessing and GPU for training.
 - it has built-in **fault tolerance** through retry of failed workers, and continue from last checkpoint.
 - it supports Data Parallel, Model Parallel, Parameter Server, and even custom strategies.
-- [Ray Compiled graphs](https://docs.ray.io/en/latest/ray-core/compiled-graph/ray-compiled-graph.html) allow you to even define different parallelism for jointly optimizing multiple models. Megatron, DeepSpeed, and similar frameworks only allow for one global setting.
+- [Ray Compiled Graphs](https://docs.ray.io/en/latest/ray-core/compiled-graph/ray-compiled-graph.html) allow you to even define different parallelism for jointly optimizing multiple models. Megatron, DeepSpeed, and similar frameworks only allow for one global setting.
 
 [RayTurbo Train](https://docs.anyscale.com/rayturbo/rayturbo-train) offers even more improvement to the price-performance ratio, performance monitoring, and more:
 - **elastic training** to scale to a dynamic number of workers, and continue training on fewer resources, even on spot instances.
-- **purpose-built dashboard** designed to streamline the debugging of Ray Train workloads:
-    - Monitoring: View the status of training runs and train workers.
-    - Metrics: See insights on training throughput and training system operation time.
-    - Profiling: Investigate bottlenecks, hangs, or errors from individual training worker processes.
+- **purpose-built dashboard** designed to streamline the debugging of Ray Train workloads:   
+- ...
+### Observability
+
+<div class="alert alert-block alert"> <b> 🔎 Monitoring and debugging with Ray</b>
+
+OSS Ray offers an extensive [observability suite](https://docs.ray.io/en/latest/ray-observability/index.html) with logs and an observability dashboard that you can use to monitor and debug. The dashboard includes a lot of different components such as:
+
+-  memory, utilization, etc., of the tasks running in the [cluster](https://docs.ray.io/en/latest/ray-observability/getting-started.html#dash-node-view)
+
+<img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/cluster_util.png" width=700>
+
+- views to see all running tasks, utilization across instance types, autoscaling, etc.
+
+<img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/observability_views.png" width=1000>
+
+<div class="alert alert-block alert"> <b> 🔎➕➕ Monitoring and debugging on Anyscale</b> 
+
+OSS Ray comes with an extensive observability suite, and Anyscale takes it many steps further to make monitoring and debugging your workloads even easier and faster with:
+
+- [unified log viewer](https://docs.anyscale.com/monitoring/accessing-logs/) to see logs from *all* driver and worker processes
+- Ray workload specific dashboard, like Data, Train, etc., that can breakdown the tasks. For example, you can observe the preceding training workload live through the Train specific Ray Workloads dashboard:
+
+<img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/train_dashboard.png" width=700>
+
+### Save to cloud storage
+
+<div class="alert alert-block alert"> <b> 🗂️ Storage on Anyscale</b> 
+
+You can always store to data inside [any storage buckets](https://docs.anyscale.com/configuration/storage/#private-storage-buckets) but Anyscale offers a [default storage bucket](https://docs.anyscale.com/configuration/storage/#anyscale-default-storage-bucket) to make things even easier. You also have plenty of other [storage options](https://docs.anyscale.com/configuration/storage/) as well, shared at the cluster, user, and cloud levels.
+
+```bash
+%%bash
+# Anyscale default storage bucket.
+echo $ANYSCALE_ARTIFACT_STORAGE
+```
+
+    s3://anyscale-test-data-cld-i2w99rzq8b6lbjkke9y94vi5/org_7c1Kalm9WcX2bNIjW53GUT/cld_kvedZWag2qA8i5BjxUevf5i7/artifact_storage
+
+```bash
+%%bash
+# Save fine-tuning artifacts to cloud storage.
+STORAGE_PATH="$ANYSCALE_ARTIFACT_STORAGE/viggo"
+LOCAL_OUTPUTS_PATH="/mnt/cluster_storage/viggo/outputs"
+LOCAL_SAVES_PATH="/mnt/cluster_storage/viggo/saves"
+
+# AWS S3 operations.
+if [[ "$STORAGE_PATH" == s3://* ]]; then
+    if aws s3 ls "$STORAGE_PATH" > /dev/null 2>&1; then
+        aws s3 rm "$STORAGE_PATH" --recursive --quiet
+    fi
+    aws s3 cp "$LOCAL_OUTPUTS_PATH" "$STORAGE_PATH/outputs" --recursive --quiet
+    aws s3 cp "$LOCAL_SAVES_PATH" "$STORAGE_PATH/saves" --recursive --quiet
+
+# Google Cloud Storage operations.
+elif [[ "$STORAGE_PATH" == gs://* ]]; then
+    if gsutil ls "$STORAGE_PATH" > /dev/null 2>&1; then
+        gsutil -m -q rm -r "$STORAGE_PATH"
+    fi
+    gsutil -m -q cp -r "$LOCAL_OUTPUTS_PATH" "$STORAGE_PATH/outputs"
+    gsutil -m -q cp -r "$LOCAL_SAVES_PATH" "$STORAGE_PATH/saves"
+
+else
+    echo "Unsupported storage protocol: $STORAGE_PATH"
+    exit 1
+fi
+```
+
+```bash
+%%bash
+ls /mnt/cluster_storage/viggo/saves/lora_sft_ray
+```
+
+    TorchTrainer_95d16_00000_0_2025-04-11_14-47-37
+    TorchTrainer_f9e4e_00000_0_2025-04-11_12-41-34
+    basic-variant-state-2025-04-11_12-41-34.json
+    basic-variant-state-2025-04-11_14-47-37.json
+    experiment_state-2025-04-11_12-41-34.json
+    experiment_state-2025-04-11_14-47-37.json
+    trainer.pkl
+    tuner.pkl
+
+```python
+# LoRA paths.
+save_dir = Path("/mnt/cluster_storage/viggo/saves/lora_sft_ray")
+trainer_dirs = [d for d in save_dir.iterdir() if d.name.startswith("TorchTrainer_") and d.is_dir()]
+latest_trainer = max(trainer_dirs, key=lambda d: d.stat().st_mtime, default=None)
+lora_path = f"{latest_trainer}/checkpoint_000000/checkpoint"
+cloud_lora_path = os.path.join(os.getenv("ANYSCALE_ARTIFACT_STORAGE"), lora_path.split("/mnt/cluster_storage/")[-1])
+dynamic_lora_path, lora_id = cloud_lora_path.rsplit("/", 1)
+print (lora_path)
+print (cloud_lora_path)
+print (dynamic_lora_path)
+print (lora_id)
+```
+
+    /mnt/cluster_storage/viggo/saves/lora_sft_ray/TorchTrainer_95d16_00000_0_2025-04-11_14-47-37/checkpoint_000000/checkpoint
+    s3://anyscale-test-data-cld-i2w99rzq8b6lbjkke9y94vi5/org_7c1Kalm9WcX2bNIjW53GUT/cld_kvedZWag2qA8i5BjxUevf5i7/artifact_storage/viggo/saves/lora_sft_ray/TorchTrainer_95d16_00000_0_2025-04-11_14-47-37/checkpoint_000000/checkpoint
+    s3://anyscale-test-data-cld-i2w99rzq8b6lbjkke9y94vi5/org_7c1Kalm9WcX2bNIjW53GUT/cld_kvedZWag2qA8i5BjxUevf5i7/artifact_storage/viggo/saves/lora_sft_ray/TorchTrainer_95d16_00000_0_2025-04-11_14-47-37/checkpoint_000000
+    checkpoint
+
+```bash
+%%bash -s "$lora_path"
+ls $1
+```
+
+    README.md
+    adapter_config.json
+    adapter_model.safetensors
+    added_tokens.json
+    merges.txt
+    optimizer.pt
+    rng_state_0.pth
+    rng_state_1.pth
+    rng_state_2.pth
+    rng_state_3.pth
+    scheduler.pt
+    special_tokens_map.json
+    tokenizer.json
+    tokenizer_config.json
+    trainer_state.json
+    training_args.bin
+    vocab.json
+
+### Metrics: See insights on training throughput and training system operation time.
+    -
+Profiling: Investigate bottlenecks, hangs, or errors from individual training worker processes.
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/train_dashboard.png" width=700>
-
 
 ```bash
 %%bash
@@ -427,79 +518,178 @@ USE_RAY=1 llamafactory-cli train lora_sft_ray.yaml
     
     
     Training started with configuration:
-        ╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮
-        │ Training config                                                                                      │
-        ├──────────────────────────────────────────────────────────────────────────────────────────────────────┤
-        │ train_loop_config/args/bf16                                                                     True │
-        │ train_loop_config/args/cutoff_len                                                               2048 │
-        │ train_loop_config/args/dataloader_num_workers                                                      4 │
-        │ train_loop_config/args/dataset                                                           viggo-train │
-        │ train_loop_config/args/dataset_dir                                              ...ter_storage/viggo │
-        │ train_loop_config/args/ddp_timeout                                                         180000000 │
-        │ train_loop_config/args/do_train                                                                 True │
-        │ train_loop_config/args/eval_dataset                                                        viggo-val │
-        │ train_loop_config/args/eval_steps                                                                500 │
-        │ train_loop_config/args/eval_strategy                                                           steps │
-        │ train_loop_config/args/finetuning_type                                                          lora │
-        │ train_loop_config/args/gradient_accumulation_steps                                                 8 │
-        │ train_loop_config/args/learning_rate                                                          0.0001 │
-        │ train_loop_config/args/logging_steps                                                              10 │
-        │ train_loop_config/args/lora_rank                                                                   8 │
-        │ train_loop_config/args/lora_target                                                               all │
-        │ train_loop_config/args/lr_scheduler_type                                                      cosine │
-        │ train_loop_config/args/max_samples                                                              1000 │
-        │ train_loop_config/args/model_name_or_path                                       ...en2.5-7B-Instruct │
-        │ train_loop_config/args/num_train_epochs                                                          5.0 │
-        │ train_loop_config/args/output_dir                                               ...age/viggo/outputs │
-        │ train_loop_config/args/overwrite_cache                                                          True │
-        │ train_loop_config/args/overwrite_output_dir                                                     True │
-        │ train_loop_config/args/per_device_eval_batch_size                                                  1 │
-        │ train_loop_config/args/per_device_train_batch_size                                                 1 │
-        │ train_loop_config/args/placement_strategy                                                       PACK │
-        │ train_loop_config/args/plot_loss                                                                True │
-        │ train_loop_config/args/preprocessing_num_workers                                                  16 │
-        │ train_loop_config/args/ray_num_workers                                                             4 │
-        │ train_loop_config/args/ray_run_name                                                     lora_sft_ray │
-        │ train_loop_config/args/ray_storage_path                                         ...orage/viggo/saves │
-        │ train_loop_config/args/resources_per_worker/GPU                                                    1 │
-        │ train_loop_config/args/resources_per_worker/anyscale/accelerator_shape:4xA10G                      1 │
-        │ train_loop_config/args/resume_from_checkpoint                                                        │
-        │ train_loop_config/args/save_only_model                                                         False │
-        │ train_loop_config/args/save_steps                                                                500 │
-        │ train_loop_config/args/stage                                                                     sft │
-        │ train_loop_config/args/template                                                                 qwen │
-        │ train_loop_config/args/trust_remote_code                                                        True │
-        │ train_loop_config/args/warmup_ratio                                                              0.1 │
-        │ train_loop_config/callbacks                                                     ... 0x7e1262910e10>] │
-        ╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+
+      
+╭──────────────────────────────────────────────────────────────────────────────────────────────────────╮
+        │ Training config                      
+                                                               │
+       
+├─────
+────────────────────────────────────────────────────────────────────────────────────────────────┤
+        │ train_loop_config/args/bf16                        
+                                            True │
+        │
+train_loop_config/args/cutoff_len                                                              
+2048 │
+        │ train_loop_config/args/dataloader_num_workers                    
+                                 4 │
+        │ train_loop_config/args/dataset  
+                                                        viggo-train │
+        │
+train_loop_config/args/dataset_dir                                              ...ter_storage/viggo │
+        │ train_loop_config/args/ddp_timeout            
+                                            180000000 │
+        │
+train_loop_config/args/do_train                                                              
+  True │
+        │ train_loop_config/args/eval_dataset                         
+                              viggo-val │
+        │
+train_loop_config/args/eval_steps                                                                500 │
     
-        100%|██████████| 155/155 [07:12<00:00,  2.85s/it][INFO|trainer.py:3942] 2025-04-11 14:57:59,207 >> Saving model checkpoint to /mnt/cluster_storage/viggo/outputs/checkpoint-155
-        
-        Training finished iteration 1 at 2025-04-11 14:58:02. Total running time: 10min 24s
+   │ train_loop_config/args/eval_strategy                                      
+                    steps │
+        │ train_loop_config/args/finetuning_type   
+                                                      lora │
+        │
+train_loop_config/args/gradient_accumulation_steps                                      
+          8 │
+        │ train_loop_config/args/learning_rate                   
+                                      0.0001 │
+        │
+train_loop_config/args/logging_steps                                                              10
+│
+        │ train_loop_config/args/lora_rank                                     
+                             8 │
+        │ train_loop_config/args/lora_target  
+                                                            all │
+        │
+train_loop_config/args/lr_scheduler_type                                           
+          cosine │
+        │ train_loop_config/args/max_samples                
+                                             1000 │
+        │
+train_loop_config/args/model_name_or_path                                      
+...en2.5-7B-Instruct │
+        │ train_loop_config/args/num_train_epochs                         
+                                5.0 │
+        │
+train_loop_config/args/output_dir                                               ...age/viggo/outputs │
+       
+│ train_loop_config/args/overwrite_cache                                        
+                 True │
+        │ train_loop_config/args/overwrite_output_dir  
+                                                  True │
+        │
+train_loop_config/args/per_device_eval_batch_size                                           
+...
+ # LLM training and inference
+...
+## Distributed fine-tuning
+...
+### Multi-node training
+...
+      1 │
+        │ train_loop_config/args/per_device_train_batch_size         
+                                       1 │
+        │
+train_loop_config/args/placement_strategy                                                       PACK │
+   
+    │ train_loop_config/args/plot_loss                                         
+                      True │
+        │
+train_loop_config/args/preprocessing_num_workers                                                  16 │
+        │
+train_loop_config/args/ray_num_workers                                                 
+           4 │
+        │ train_loop_config/args/ray_run_name                   
+                                 lora_sft_ray │
+        │
+train_loop_config/args/ray_storage_path                                         ...orage/viggo/saves
+│
+        │ train_loop_config/args/resources_per_worker/GPU                     
+                              1 │
+        │
+train_loop_config/args/resources_per_worker/anyscale/accelerator_shape:4xA10G                      1 │
+        │
+train_loop_config/args/resume_from_checkpoint                                     
+                  │
+        │
+train_loop_config/args/save_only_model           
+                                             False │
+        │
+train_loop_config/args/save_steps                                                               
+500 │
+        │ train_loop_config/args/stage                                   
+                                 sft │
+        │
+train_loop_config/args/template                                                                 qwen │
+       
+│ train_loop_config/args/trust_remote_code                                     
+                  True │
+        │ train_loop_config/args/warmup_ratio         
+                                                    0.1 │
+        │
+train_loop_config/callbacks                                                     ...
+0x7e1262910e10>] │
+       
+╰──────────────────────────────────────────────────────────────────────────────────────────────────────╯
+    
+        100%|██████████|
+155/155 [07:12<00:00,  2.85s/it][INFO|trainer.py:3942] 2025-04-11 14:57:59,207 >>
+...
+ # LLM training and inference
+...
+## Distributed fine-tuning
+...
+### Multi-node training
+...
+Saving model checkpoint to /mnt/cluster_storage/viggo/outputs/checkpoint-155
+      
+ 
+        Training finished iteration 1 at 2025-04-11 14:58:02. Total running
+time: 10min 24s
         ╭─────────────────────────────────────────╮
-        │ Training result                         │
-        ├─────────────────────────────────────────┤
+        │
+Training result                         │
+       
+├─────────────────────────────────────────┤
         │ checkpoint_dir_name   checkpoint_000000 │
-        │ time_this_iter_s              521.83827 │
-        │ time_total_s                  521.83827 │
+        │
+time_this_iter_s              521.83827 │
+        │ time_total_s                 
+521.83827 │
         │ training_iteration                    1 │
-        │ epoch                             4.704 │
-        │ grad_norm                       0.14288 │
+        │ epoch      
+                      4.704 │
+        │ grad_norm                       0.14288
+│
         │ learning_rate                        0. │
-        │ loss                             0.0065 │
+        │ loss           
+                 0.0065 │
         │ step                                150 │
-        ╰─────────────────────────────────────────╯
-        Training saved a checkpoint for iteration 1 at: (local)/mnt/cluster_storage/viggo/saves/lora_sft_ray/TorchTrainer_95d16_00000_0_2025-04-11_14-47-37/checkpoint_000000
+ 
+      ╰─────────────────────────────────────────╯
+        ...
+ # LLM training and inference
+...
+## Distributed fine-tuning
+...
+### Multi-node training
+...
+        Training saved a
+checkpoint for iteration 1 at:
+(local)/mnt/cluster_storage/viggo/saves/lora_sft_ray/TorchTrainer_95d16_00000_0_2025-04-11_14-47-37/checkpoint_000000
     
     
-    
+   
+
 
 
 
 ```python
 display(Code(filename="/mnt/cluster_storage/viggo/outputs/all_results.json", language="json"))
 ```
-
 
 <style>pre { line-height: 125%; }
 td.linenos .normal { color: inherit; background-color: transparent; padding-left: 5px; padding-right: 5px; }
@@ -576,160 +766,21 @@ span.linenos.special { color: #000000; background-color: #ffffc0; padding-left: 
 .output_html .vi { color: #19177C } /* Name.Variable.Instance */
 .output_html .vm { color: #19177C } /* Name.Variable.Magic */
 .output_html .il { color: #666666 } /* Literal.Number.Integer.Long */</style><div class="highlight"><pre><span></span><span class="p">{</span>
-<span class="w">    </span><span class="nt">&quot;epoch&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">4.864</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;eval_viggo-val_loss&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.13618840277194977</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;eval_viggo-val_runtime&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">20.2797</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;eval_viggo-val_samples_per_second&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">35.208</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;eval_viggo-val_steps_per_second&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">8.827</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;total_flos&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">4.843098686147789e+16</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;train_loss&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.2079355036479331</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;train_runtime&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">437.2951</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;train_samples_per_second&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">11.434</span><span class="p">,</span>
-<span class="w">    </span><span class="nt">&quot;train_steps_per_second&quot;</span><span class="p">:</span><span class="w"> </span><span class="mf">0.354</span>
+<span class="w">    </span><span class="nt">"epoch"</span><span class="p">:</span><span class="w"> </span><span class="mf">4.864</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"eval_viggo-val_loss"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.13618840277194977</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"eval_viggo-val_runtime"</span><span class="p">:</span><span class="w"> </span><span class="mf">20.2797</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"eval_viggo-val_samples_per_second"</span><span class="p">:</span><span class="w"> </span><span class="mf">35.208</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"eval_viggo-val_steps_per_second"</span><span class="p">:</span><span class="w"> </span><span class="mf">8.827</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"total_flos"</span><span class="p">:</span><span class="w"> </span><span class="mf">4.843098686147789e+16</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"train_loss"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.2079355036479331</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"train_runtime"</span><span class="p">:</span><span class="w"> </span><span class="mf">437.2951</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"train_samples_per_second"</span><span class="p">:</span><span class="w"> </span><span class="mf">11.434</span><span class="p">,</span>
+<span class="w">    </span><span class="nt">"train_steps_per_second"</span><span class="p">:</span><span class="w"> </span><span class="mf">0.354</span>
 <span class="p">}</span>
 </pre></div>
 
+## Batch inference
 
-
-<img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/loss.png" width=500>
-
-### Observability
-
-<div class="alert alert-block alert"> <b> 🔎 Monitoring and debugging with Ray</b> 
-
-
-OSS Ray offers an extensive [observability suite](https://docs.ray.io/en/latest/ray-observability/index.html) with logs and an observability dashboard that you can use to monitor and debug. The dashboard includes a lot of different components such as:
-
--  memory, utilization, etc., of the tasks running in the [cluster](https://docs.ray.io/en/latest/ray-observability/getting-started.html#dash-node-view)
-
-<img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/cluster_util.png" width=700>
-
-- views to see all running tasks, utilization across instance types, autoscaling, etc.
-
-<img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/observability_views.png" width=1000>
-
-
-<div class="alert alert-block alert"> <b> 🔎➕➕ Monitoring and debugging on Anyscale</b> 
-
-OSS Ray comes with an extensive observability suite, and Anyscale takes it many steps further to make monitoring and debugging your workloads even easier and faster with:
-
-- [unified log viewer](https://docs.anyscale.com/monitoring/accessing-logs/) to see logs from *all* driver and worker processes
-- Ray workload specific dashboard, like Data, Train, etc., that can breakdown the tasks. For example, you can observe the preceding training workload live through the Train specific Ray Workloads dashboard:
-
-<img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/train_dashboard.png" width=700>
-
-
-
-
-### Save to cloud storage
-
-<div class="alert alert-block alert"> <b> 🗂️ Storage on Anyscale</b> 
-
-You can always store to data inside [any storage buckets](https://docs.anyscale.com/configuration/storage/#private-storage-buckets) but Anyscale offers a [default storage bucket](https://docs.anyscale.com/configuration/storage/#anyscale-default-storage-bucket) to make things even easier. You also have plenty of other [storage options](https://docs.anyscale.com/configuration/storage/) as well, shared at the cluster, user, and cloud levels.
-
-
-```bash
-%%bash
-# Anyscale default storage bucket.
-echo $ANYSCALE_ARTIFACT_STORAGE
-```
-
-    s3://anyscale-test-data-cld-i2w99rzq8b6lbjkke9y94vi5/org_7c1Kalm9WcX2bNIjW53GUT/cld_kvedZWag2qA8i5BjxUevf5i7/artifact_storage
-
-
-
-```bash
-%%bash
-# Save fine-tuning artifacts to cloud storage.
-STORAGE_PATH="$ANYSCALE_ARTIFACT_STORAGE/viggo"
-LOCAL_OUTPUTS_PATH="/mnt/cluster_storage/viggo/outputs"
-LOCAL_SAVES_PATH="/mnt/cluster_storage/viggo/saves"
-
-# AWS S3 operations.
-if [[ "$STORAGE_PATH" == s3://* ]]; then
-    if aws s3 ls "$STORAGE_PATH" > /dev/null 2>&1; then
-        aws s3 rm "$STORAGE_PATH" --recursive --quiet
-    fi
-    aws s3 cp "$LOCAL_OUTPUTS_PATH" "$STORAGE_PATH/outputs" --recursive --quiet
-    aws s3 cp "$LOCAL_SAVES_PATH" "$STORAGE_PATH/saves" --recursive --quiet
-
-# Google Cloud Storage operations.
-elif [[ "$STORAGE_PATH" == gs://* ]]; then
-    if gsutil ls "$STORAGE_PATH" > /dev/null 2>&1; then
-        gsutil -m -q rm -r "$STORAGE_PATH"
-    fi
-    gsutil -m -q cp -r "$LOCAL_OUTPUTS_PATH" "$STORAGE_PATH/outputs"
-    gsutil -m -q cp -r "$LOCAL_SAVES_PATH" "$STORAGE_PATH/saves"
-
-else
-    echo "Unsupported storage protocol: $STORAGE_PATH"
-    exit 1
-fi
-```
-
-
-```bash
-%%bash
-ls /mnt/cluster_storage/viggo/saves/lora_sft_ray
-```
-
-    TorchTrainer_95d16_00000_0_2025-04-11_14-47-37
-    TorchTrainer_f9e4e_00000_0_2025-04-11_12-41-34
-    basic-variant-state-2025-04-11_12-41-34.json
-    basic-variant-state-2025-04-11_14-47-37.json
-    experiment_state-2025-04-11_12-41-34.json
-    experiment_state-2025-04-11_14-47-37.json
-    trainer.pkl
-    tuner.pkl
-
-
-
-```python
-# LoRA paths.
-save_dir = Path("/mnt/cluster_storage/viggo/saves/lora_sft_ray")
-trainer_dirs = [d for d in save_dir.iterdir() if d.name.startswith("TorchTrainer_") and d.is_dir()]
-latest_trainer = max(trainer_dirs, key=lambda d: d.stat().st_mtime, default=None)
-lora_path = f"{latest_trainer}/checkpoint_000000/checkpoint"
-cloud_lora_path = os.path.join(os.getenv("ANYSCALE_ARTIFACT_STORAGE"), lora_path.split("/mnt/cluster_storage/")[-1])
-dynamic_lora_path, lora_id = cloud_lora_path.rsplit("/", 1)
-print (lora_path)
-print (cloud_lora_path)
-print (dynamic_lora_path)
-print (lora_id)
-```
-
-    /mnt/cluster_storage/viggo/saves/lora_sft_ray/TorchTrainer_95d16_00000_0_2025-04-11_14-47-37/checkpoint_000000/checkpoint
-    s3://anyscale-test-data-cld-i2w99rzq8b6lbjkke9y94vi5/org_7c1Kalm9WcX2bNIjW53GUT/cld_kvedZWag2qA8i5BjxUevf5i7/artifact_storage/viggo/saves/lora_sft_ray/TorchTrainer_95d16_00000_0_2025-04-11_14-47-37/checkpoint_000000/checkpoint
-    s3://anyscale-test-data-cld-i2w99rzq8b6lbjkke9y94vi5/org_7c1Kalm9WcX2bNIjW53GUT/cld_kvedZWag2qA8i5BjxUevf5i7/artifact_storage/viggo/saves/lora_sft_ray/TorchTrainer_95d16_00000_0_2025-04-11_14-47-37/checkpoint_000000
-    checkpoint
-
-
-
-```bash
-%%bash -s "$lora_path"
-ls $1
-```
-
-    README.md
-    adapter_config.json
-    adapter_model.safetensors
-    added_tokens.json
-    merges.txt
-    optimizer.pt
-    rng_state_0.pth
-    rng_state_1.pth
-    rng_state_2.pth
-    rng_state_3.pth
-    scheduler.pt
-    special_tokens_map.json
-    tokenizer.json
-    tokenizer_config.json
-    trainer_state.json
-    training_args.bin
-    vocab.json
-
-
-## Batch inference 
 [`Overview`](https://docs.ray.io/en/latest/data/working-with-llms.html) |  [`API reference`](https://docs.ray.io/en/latest/data/api/llm.html)
 
 The `ray.data.llm` module integrates with key large language model (LLM) inference engines and deployed models to enable LLM batch inference. These LLM modules use [Ray Data](https://docs.ray.io/en/latest/data/data.html) under the hood, which makes it extremely easy to distribute workloads but also ensures that they happen:
@@ -738,7 +789,7 @@ The `ray.data.llm` module integrates with key large language model (LLM) inferen
 - **reliably** by checkpointing processes, especially when running workloads on spot instances with on-demand fallback.
 - **flexibly**: connecting to data from any source, applying transformations, and saving to any format and location for your next workload.
 
-<img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/ray_data_solution.png" width=800>
+<img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/ray_data_solution.png" width=800>
 
 [RayTurbo Data](https://docs.anyscale.com/rayturbo/rayturbo-data) has more features on top of Ray Data:
 - **accelerated metadata fetching** to improve reading first time from large datasets 
@@ -751,7 +802,6 @@ Start by defining the [vLLM engine processor config](https://docs.ray.io/en/late
 
 ### vLLM engine processor
 
-
 ```python
 import os
 import ray
@@ -760,17 +810,9 @@ from ray.data.llm import vLLMEngineProcessorConfig
 
     INFO 04-11 14:58:40 __init__.py:194] No platform detected, vLLM is running on UnspecifiedPlatform
 
-
-
 ```python
 config = vLLMEngineProcessorConfig(
     model_source=model_source,
-    runtime_env={
-        "env_vars": {
-            "VLLM_USE_V1": "0",  # v1 doesn't support lora adapters yet
-            # "HF_TOKEN": os.environ.get("HF_TOKEN"),
-        },
-    },
     engine_kwargs={
         "enable_lora": True,
         "max_lora_rank": 8,
@@ -791,13 +833,11 @@ config = vLLMEngineProcessorConfig(
 
 ### LLM processor
 
-Next, pass the config to an [LLM processor](https://docs.ray.io/en/master/data/api/doc/ray.data.llm.build_processor.html#ray.data.llm.build_processor) where you can define the preprocessing and postprocessing steps around inference. With your base model defined in the processor config, you can define the LoRA adapter layers as part of the preprocessing step of the LLM processor itself.
-
+Next, pass the config to an [LLM processor](https://docs.ray.io/en/latest/data/api/doc/ray.data.llm.build_processor.html#ray.data.llm.build_processor) where you can define the preprocessing and postprocessing steps around inference. With your base model defined in the processor config, you can define the LoRA adapter layers as part of the preprocessing step of the LLM processor itself.
 
 ```python
 from ray.data.llm import build_processor
 ```
-
 
 ```python
 processor = build_processor(
@@ -827,14 +867,7 @@ processor = build_processor(
     2025-04-11 14:58:40,960	INFO packaging.py:367 -- Pushing file package 'gcs://_ray_pkg_e71d58b4dc01d065456a9fc0325ee2682e13de88.zip' (2.16MiB) to Ray cluster...
     2025-04-11 14:58:40,969	INFO packaging.py:380 -- Successfully pushed file package 'gcs://_ray_pkg_e71d58b4dc01d065456a9fc0325ee2682e13de88.zip'.
 
-
-
     config.json:   0%|          | 0.00/663 [00:00<?, ?B/s]
-
-
-    [36m(pid=51260)[0m INFO 04-11 14:58:47 __init__.py:194] No platform detected, vLLM is running on UnspecifiedPlatform
-
-
 
 ```python
 # Evaluation on test dataset
@@ -871,6 +904,7 @@ results[0]
         "last_token_time": 1744408863.089174,
         "model_execute_time": null,
         "model_forward_time": null,
+        "queue_time": 0.04162892400017881,
         "scheduler_time": 0.04162892400017881,
         "time_in_queue": 1.981276035308838
       },
@@ -879,21 +913,12 @@ results[0]
       "num_input_tokens": 164,
       "output": "request_attribute(esrb[])",
       "params": "SamplingParams(n=1, presence_penalty=0.0, frequency_penalty=0.0, repetition_penalty=1.0, temperature=0.3, top_p=1.0, top_k=-1, min_p=0.0, seed=None, stop=[], stop_token_ids=[], bad_words=[], include_stop_str_in_output=False, ignore_eos=False, max_tokens=250, min_tokens=0, logprobs=None, prompt_logprobs=None, skip_special_tokens=True, spaces_between_special_tokens=True, truncate_prompt_tokens=None, structured_outputs=None)",
-      "prompt": "<|im_start|>system
-    Given a target sentence construct the underlying meaning representation of the input sentence as a single function with attributes and attribute values. This function should describe the target string accurately and the function must be one of the following ['inform', 'request', 'give_opinion', 'confirm', 'verify_attribute', 'suggest', 'request_explanation', 'recommend', 'request_attribute']. The attributes must be one of the following: ['name', 'exp_release_date', 'release_year', 'developer', 'esrb', 'rating', 'genres', 'player_perspective', 'has_multiplayer', 'platforms', 'available_on_steam', 'has_linux_release', 'has_mac_release', 'specifier']<|im_end|>
-    <|im_start|>user
-    Do you have a favorite ESRB content rating?<|im_end|>
-    <|im_start|>assistant
-    ",
+      "prompt": "<|im_start|>system\n    Given a target sentence construct the underlying meaning representation of the input sentence as a single function with attributes and attribute values. This function should describe the target string accurately and the function must be one of the following ['inform', 'request', 'give_opinion', 'confirm', 'verify_attribute', 'suggest', 'request_explanation', 'recommend', 'request_attribute']. The attributes must be one of the following: ['name', 'exp_release_date', 'release_year', 'developer', 'esrb', 'rating', 'genres', 'player_perspective', 'has_multiplayer', 'platforms', 'available_on_steam', 'has_linux_release', 'has_mac_release', 'specifier']<|im_end|>\n    <|im_start|>user\n    Do you have a favorite ESRB content rating?<|im_end|>\n    <|im_start|>assistant\n    ",
       "prompt_token_ids": [151644, "...", 198],
       "request_id": 94,
       "time_taken_llm": 6.028705836999961,
       "generated_output": "request(esrb)"
     }
-    
-    
-
-
 
 ```python
 # Exact match (strict!)
@@ -909,8 +934,6 @@ matches / float(len(results))
 
     0.6879039704524469
 
-
-
 **Note**: The objective of fine-tuning here isn't to create the most performant model but to show that you can leverage it for downstream workloads, like batch inference and online serving at scale. However, you can increase `num_train_epochs` if you want to.
 
 Observe the individual steps in the batch inference workload through the Anyscale Ray Data dashboard:
@@ -924,6 +947,7 @@ Observe the individual steps in the batch inference workload through the Anyscal
 </div>
 
 ## Online serving
+
 [`Overview`](https://docs.ray.io/en/latest/serve/llm/index.html) | [`API reference`](https://docs.ray.io/en/latest/serve/api/index.html#llm-api)
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/ray_serve.png" width=600>
@@ -935,7 +959,6 @@ Observe the individual steps in the batch inference workload through the Anyscal
 Ray Serve LLM is designed with the following features:
 - Automatic scaling and load balancing
 - Unified multi-node multi-model deployment
-- OpenAI compatibility
 - Multi-LoRA support with shared base models
 - Deep integration with inference engines, vLLM to start
 - Composable multi-model LLM pipelines
@@ -948,9 +971,7 @@ Ray Serve LLM is designed with the following features:
 - [**different environments**](https://docs.anyscale.com/platform/services/multi-app/#multiple-applications-in-different-containers) for each service in a multi-serve application
 - **multi availability-zone** aware scheduling of Ray Serve replicas to provide higher redundancy to availability zone failures
 
-
 ### LLM serve config
-
 
 ```python
 import os
@@ -995,7 +1016,6 @@ llm_config = LLMConfig(
 
 Now deploy the LLM config as an application. And because this application is all built on top of [Ray Serve](https://docs.ray.io/en/latest/serve/index.html), you can have advanced service logic around composing models together, deploying multiple applications, model multiplexing, observability, etc.
 
-
 ```python
 # Deploy.
 app = build_openai_app({"llm_configs": [llm_config]})
@@ -1004,9 +1024,7 @@ serve.run(app)
 
     DeploymentHandle(deployment='LLMRouter')
 
-
-### Service request
-
+## Service request
 
 ```python
 # Initialize client.
@@ -1029,27 +1047,8 @@ for chunk in response:
     Avg prompt throughput: 20.3 tokens/s, Avg generation throughput: 0.1 tokens/s, Running: 1 reqs, Swapped: 0 reqs, Pending: 0 reqs, GPU KV cache usage: 0.3%, CPU KV cache usage: 0.0%.
     
     _opinion(name[Diablo II], developer[Blizzard North], rating[good], has_mac_release[yes])
-    
-    
 
-
-And of course, you can observe the running service, the deployments, and metrics like QPS, latency, etc., through the [Ray Dashboard](https://docs.ray.io/en/latest/ray-observability/getting-started.html)'s [Serve view](https://docs.ray.io/en/latest/ray-observability/getting-started.html#dash-serve-view):
-
-<img src="https://raw.githubusercontent.com/anyscale/e2e-llm-workflows/refs/heads/main/images/serve_dashboard.png" width=1000>
-
-<div class="alert alert-info">
-
-💡 See [more examples](https://docs.ray.io/en/latest/serve/llm/examples.html) and the [API reference](https://docs.ray.io/en/latest/serve/api/index.html#llm-api) for advanced guides on topics like structured outputs (like JSON), vision LMs, multi-LoRA on shared base models, using other inference engines (like `sglang`), fast model loading, etc.
-
-</div>
-
-## Production
-
-Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anyscale [CLI](https://docs.anyscale.com/reference/quickstart-cli) or [SDK](https://docs.anyscale.com/reference/quickstart-sdk) to run [reliable batch jobs](https://docs.anyscale.com/platform/jobs) and deploy [highly available services](https://docs.anyscale.com/platform/services). Given you've been developing in an environment that's almost identical to production with a multi-node cluster, this integration should drastically speed up your dev to prod velocity.
-
-<img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/cicd.png" width=600>
-
-### Jobs
+## Jobs
 
 [Anyscale Jobs](https://docs.anyscale.com/platform/jobs/) ([API ref](https://docs.anyscale.com/reference/job-api/)) allows you to execute discrete workloads in production such as batch inference, embeddings generation, or model fine-tuning.
 - [define and manage](https://docs.anyscale.com/platform/jobs/manage-jobs) your Jobs in many different ways, like CLI and Python SDK
@@ -1058,18 +1057,16 @@ Seamlessly integrate with your existing CI/CD pipelines by leveraging the Anysca
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/job_result.png" width=700>
 
-### Services
+## Services
 
 [Anyscale Services](https://docs.anyscale.com/platform/services/) ([API ref](https://docs.anyscale.com/reference/service-api/)) offers an extremely fault tolerant, scalable, and optimized way to serve your Ray Serve applications:
 - you can [rollout and update](https://docs.anyscale.com/platform/services/update-a-service) services with canary deployment with zero-downtime upgrades
 - [monitor](https://docs.anyscale.com/platform/services/monitoring) your Services through a dedicated Service page, unified log viewer, tracing, set up alerts, etc.
 - scale a service (`num_replicas=auto`) and utilize replica compaction to consolidate nodes that are fractionally utilized
-- [head node fault tolerance](https://docs.anyscale.com/platform/services/production-best-practices#head-node-ft) because OSS Ray recovers from failed workers and replicas but not head node crashes
+- head node fault tolerance because OSS Ray recovers from failed workers and replicas but not head node crashes
 - serving [multiple applications](https://docs.anyscale.com/platform/services/multi-app) in a single Service
 
 <img src="https://raw.githubusercontent.com/anyscale/foundational-ray-app/refs/heads/main/images/canary.png" width=700>
-
-
 
 ```bash
 %%bash
@@ -1082,3 +1079,11 @@ elif [[ "$STORAGE_PATH" == gs://* ]]; then
     gsutil -m -q rm -r "$STORAGE_PATH"
 fi
 ```
+
+# LLM training and inference
+
+<a href="https://console.anyscale.com/register/ha? ender_flow=ray&utm_source=ray_docs&utm_medium=docs&utm_campaign=entity-recognition-with-llms\"><img src="https://raw.githubusercontent.com/ray-project/ray/c34b74c22a9390aa89baf80815ede59397786d2e/doc/source/_static/img/run-on-anyscale.svg" alt=\"Run on Anyscale\"></a>
+<br></br>
+<div align="left">
+<a href="https://github.com/anyscale/e2e-llm-workflows" role="button"><img src="https://img.shields.io/static/v1?label &message=View%20On%20GitHub&color=586069&logo=github&labelColor=2f363d"></a>&nbsp;
+</div>
