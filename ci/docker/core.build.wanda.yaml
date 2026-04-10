@@ -6,6 +6,6 @@ srcs:
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_$BASE_TYPE-py$PYTHON
   - PYTHON=$PYTHON
-  - BUILD_VARIANT=build
+  - BUILD_VARIANT
 tags:
   - cr.ray.io/rayproject/core$BUILD_VARIANT-py$PYTHON
