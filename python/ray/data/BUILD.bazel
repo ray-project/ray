@@ -42,6 +42,19 @@ py_test_module_list(
 
 py_test_module_list(
     size = "medium",
+    files = glob(["_internal/datasource_v2/tests/test_*.py"]),
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test_module_list(
+    size = "medium",
     files = glob(["tests/block_batching/test_*.py"]),
     tags = [
         "exclusive",
@@ -991,6 +1004,8 @@ py_test(
     name = "test_tf",
     size = "medium",
     srcs = ["tests/datasource/test_tf.py"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "exclusive",
         "team:data",
@@ -1005,6 +1020,8 @@ py_test(
     name = "test_tfrecords",
     size = "small",
     srcs = ["tests/datasource/test_tfrecords.py"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "exclusive",
         "team:data",
@@ -2119,6 +2136,20 @@ py_test(
     name = "test_random_api",
     size = "small",
     srcs = ["tests/test_random_api.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_synthetic_expression",
+    size = "small",
+    srcs = ["tests/test_synthetic_expression.py"],
     tags = [
         "exclusive",
         "team:data",
