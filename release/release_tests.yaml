@@ -808,6 +808,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -845,6 +846,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -884,6 +886,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -925,6 +928,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -964,6 +968,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1003,6 +1008,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1042,6 +1048,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1081,6 +1088,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1120,6 +1128,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
