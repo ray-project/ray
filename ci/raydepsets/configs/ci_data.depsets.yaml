@@ -30,6 +30,11 @@ depsets:
       - pyarrow
       - tensorflow-datasets
       - tensorflow-metadata
+      - google-api-python-client
+      - protobuf
+      - grpcio
+      - google-api-core
+      - googleapis-common-protos
     output: python/deplocks/ci/relaxed_data-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310
@@ -46,5 +51,10 @@ depsets:
       - --python-platform=linux
       - --unsafe-package ray
       - --upgrade-package pyarrow
+      - --upgrade-package google-api-python-client
+      - --upgrade-package protobuf
+      - --upgrade-package grpcio
+      - --upgrade-package google-api-core
+      - --upgrade-package googleapis-common-protos
     build_arg_sets:
       - py310
