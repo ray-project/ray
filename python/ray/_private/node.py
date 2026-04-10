@@ -1182,6 +1182,18 @@ class Node:
             create_err=True,
         )
 
+        dashboard_agent_log_filepath = None
+        if dashboard_agent_stdout_filepath is not None:
+            dashboard_agent_log_filepath = self._get_log_file_name(
+                ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, "log", unique=True
+            )
+
+        runtime_env_agent_log_filepath = None
+        if runtime_env_agent_stdout_filepath is not None:
+            runtime_env_agent_log_filepath = self._get_log_file_name(
+                ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, "log", unique=True
+            )
+
         self.resource_isolation_config.add_system_pids(
             self._get_system_processes_for_resource_isolation()
         )
@@ -1223,8 +1235,10 @@ class Node:
             raylet_stderr_filepath=raylet_stderr_filepath,
             dashboard_agent_stdout_filepath=dashboard_agent_stdout_filepath,
             dashboard_agent_stderr_filepath=dashboard_agent_stderr_filepath,
+            dashboard_agent_log_filepath=dashboard_agent_log_filepath,
             runtime_env_agent_stdout_filepath=runtime_env_agent_stdout_filepath,
             runtime_env_agent_stderr_filepath=runtime_env_agent_stderr_filepath,
+            runtime_env_agent_log_filepath=runtime_env_agent_log_filepath,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=None,

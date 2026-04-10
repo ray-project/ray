@@ -50,6 +50,7 @@ ray_cc_test(
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/raylet_rpc_client:raylet_client_pool",
+        "//src/ray/util:clock",
         "//src/ray/util:counter_map",
     ],
 )
@@ -69,6 +70,7 @@ ray_cc_test(
         "//src/ray/gcs/actor:gcs_actor",
         "//src/ray/gcs/actor:gcs_actor_scheduler",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
+        "//src/ray/util:clock",
         "//src/ray/util:counter_map",
     ],
 )

@@ -1,6 +1,17 @@
 load("//bazel:ray.bzl", "ray_cc_test")
 
 ray_cc_test(
+    name = "clock_test",
+    size = "small",
+    srcs = ["clock_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:clock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "file_persistence_test",
     size = "small",
     srcs = ["file_persistence_test.cc"],
