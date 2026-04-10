@@ -50,6 +50,7 @@
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
+#include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
@@ -408,6 +409,7 @@ int main(int argc, char *argv[]) {
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
   /// granting leases.
+  ray::Clock clock;
   std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
   std::unique_ptr<ray::raylet::LocalLeaseManagerInterface> local_lease_manager;
   std::unique_ptr<ray::raylet::ClusterLeaseManagerInterface> cluster_lease_manager;
@@ -911,6 +913,7 @@ int main(int argc, char *argv[]) {
           return gcs_client->Nodes().IsNodeAlive(ray::NodeID::FromBinary(id.Binary()));
         },
         resource_usage_gauge,
+        clock,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
