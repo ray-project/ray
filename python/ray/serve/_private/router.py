@@ -869,9 +869,6 @@ class AsyncioRouter:
         # Notify request router that request completed (for cleanup, e.g., token release)
         if self.request_router:
             self.request_router.on_request_completed(replica_id, internal_request_id)
-            # Decrement queue length cache for successfully dispatched requests.
-            # The increment happens in on_send_request during dispatch/assignment.
-            self.request_router.on_replica_result_finished(replica_id)
 
         actor_died_error = self._get_actor_died_error(result)
         if actor_died_error is not None:
@@ -1318,6 +1315,12 @@ class AsyncioRouter:
             replica.actor_id,
         )
         result.add_done_callback(callback)
+        result.add_done_callback(
+            lambda _: self._event_loop.call_soon_threadsafe(
+                self.request_router.decrement_queue_len_cache,
+                replica.replica_id,
+            )
+        )
 
         return result
 
