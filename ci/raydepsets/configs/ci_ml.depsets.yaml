@@ -81,8 +81,16 @@ depsets:
   - name: ci_ml_lightning1gpubuild_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
-      - ci_ml_gpubuild_depset_${PYTHON_SHORT}
+      - ray_img_depset_${PYTHON_SHORT}
     requirements:
+      - python/requirements/ml/py313/ml-requirements.txt
+      - python/requirements/ml/py313/dl-gpu-requirements.txt
+      - python/requirements/ml/py313/train-requirements.txt
+      - python/requirements/ml/py313/train-test-requirements.txt
+      - python/requirements/ml/py313/tune-requirements.txt
+      - /tmp/ray-deps/tune-test-requirements-no-lightning.txt
+      - python/requirements/ml/py313/rllib-requirements.txt
+      - python/requirements/ml/py313/rllib-test-requirements.txt
       - python/requirements/ml/py313/lightning1.txt
     output: python/deplocks/ci/ml-lightning1gpubuild-ci_depset_py${PYTHON_VERSION}.lock
     constraints:
