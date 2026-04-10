@@ -56,6 +56,6 @@ resources_per_worker:
 
 ray_init_kwargs:
   runtime_env:
-    env_vars:
+    env_vars: {}
       # If using gated models like meta-llama/Llama-3.1-8B-Instruct
       # HF_TOKEN: <your_huggingface_token>
