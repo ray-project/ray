@@ -11,7 +11,7 @@ import pytest
 import ray
 from ray import cloudpickle
 from ray._common.test_utils import wait_for_condition
-from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     AllToAllOperator,
 )
@@ -387,24 +387,93 @@ def test_streaming_split_error_propagation(
     assert res == ["ok"] * num_splits
 
 
-@pytest.mark.skip(
-    reason="Incomplete implementation of _validate_dag causes other errors, so we "
-    "remove DAG validation for now; see https://github.com/ray-project/ray/pull/37829"
-)
-def test_e2e_option_propagation(ray_start_10_cpus_shared, restore_data_context):
-    def run():
-        ray.data.range(5, override_num_blocks=5).map(
-            lambda x: x, compute=ray.data.ActorPoolStrategy(size=2)
-        ).take_all()
+def test_streaming_split_schema_before_execution(ray_start_10_cpus_shared):
+    """Test schema retrieval from splits before execution starts."""
+    ds = ray.data.range(20, override_num_blocks=20)
+    i1, i2 = ds.streaming_split(2, equal=True)
 
-    DataContext.get_current().execution_options.resource_limits = ExecutionResources()
-    run()
+    schema1 = i1.schema()
+    schema2 = i2.schema()
 
-    DataContext.get_current().execution_options.resource_limits = (
-        DataContext.get_current().execution_options.resource_limits.copy(cpu=1)
-    )
-    with pytest.raises(ValueError):
-        run()
+    assert schema1 is not None
+    assert "id" in schema1.names
+    assert schema1 == schema2
+
+
+def test_streaming_split_schema_during_execution(ray_start_10_cpus_shared):
+    """Test schema retrieval from splits during execution."""
+    from ray._common.test_utils import SignalActor
+
+    # Use two signals to coordinate: `started` confirms the executor is running,
+    # `blocker` keeps map tasks alive so the executor stays active.
+    started = SignalActor.remote()
+    blocker = SignalActor.remote()
+
+    def blocking_fn(row):
+        ray.get(started.send.remote())
+        ray.get(blocker.wait.remote())
+        return row
+
+    ds = ray.data.range(20, override_num_blocks=20).map(blocking_fn)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x):
+        for _ in x.iter_rows():
+            pass
+
+    # Start consumers — this triggers the executor on the coordinator.
+    refs = [consume.remote(i1), consume.remote(i2)]
+
+    # Wait until a map task has started, guaranteeing the executor is alive.
+    ray.get(started.wait.remote())
+
+    # schema() should raise because execution is active.
+    with pytest.raises(ray.exceptions.RayTaskError, match="Cannot call schema()"):
+        i1.schema()
+
+    # Unblock map tasks so consumers can finish.
+    ray.get(blocker.send.remote())
+    ray.get(refs)
+
+
+def test_streaming_split_schema_after_execution(ray_start_10_cpus_shared):
+    """Test schema retrieval after execution completes."""
+    ds = ray.data.range(20, override_num_blocks=20)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x):
+        for _ in x.iter_rows():
+            pass
+
+    # Run a full epoch to completion.
+    ray.get([consume.remote(i1), consume.remote(i2)])
+
+    # schema() should work after execution finishes.
+    schema = i1.schema()
+    assert schema is not None
+    assert "id" in schema.names
+
+
+def test_streaming_split_context(ray_start_10_cpus_shared):
+    """Test that get_context() returns a valid DataContext from the coordinator."""
+    ds = ray.data.range(10)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    ctx = i1.get_context()
+    assert isinstance(ctx, ray.data.DataContext)
+
+
+def test_streaming_split_dataset_tag(ray_start_10_cpus_shared):
+    """Test that _get_dataset_tag() returns correct tags from the coordinator."""
+    ds = ray.data.range(10)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    tag1 = i1._get_dataset_tag()
+    tag2 = i2._get_dataset_tag()
+    assert "_split_0" in tag1
+    assert "_split_1" in tag2
 
 
 def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):

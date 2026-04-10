@@ -17,18 +17,8 @@ RUN <<EOF
 ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
 # We manually install tfx-bsl here. Adding the library via data- or
 # test-requirements.txt files causes unresolvable dependency conflicts with pandas.
-# Install the tfx-bsl wheel first, then add a pinned compatible Beam/TensorFlow stack
-# explicitly so pip does not backtrack indefinitely through newer apache-beam[gcp]
-# transitive dependencies.
 
-pip install -U --no-deps tfx-bsl==1.16.1 crc32c==2.3
-pip install -U \
-  apache-beam[gcp]==2.59.0 \
-  pyarrow==10.0.1 \
-  tensorflow==2.16.2 \
-  tensorflow-metadata==1.16.1 \
-  tensorflow-serving-api==2.16.1 \
-  protobuf==3.20.3 \
-  pandas==1.5.3
+pip install --no-deps tfx-bsl==1.16.1
+pip install -U crc32c==2.3 "apache-beam[gcp]==2.59.0" protobuf==4.25.8 googleapis-common-protos==1.66.0 grpcio==1.62.3 google-auth==2.49.0
 
 EOF
