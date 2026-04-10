@@ -495,8 +495,12 @@ def test_as_list_e2e(
     num_parts,
     disable_fallback_to_object_extension,
 ):
-    ds = ray.data.range(10).map_batches(lambda x: x, batch_format=batch_format)
-    ds = ds.with_column("group_key", col("id") % 3).repartition(num_parts)
+    ds = (
+        ray.data.range(10)
+        .with_column("group_key", col("id") % 3)
+        .repartition(num_parts)
+        .map_batches(lambda x: x, batch_format=batch_format)
+    )
 
     # Listing all elements per group:
     result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
@@ -530,8 +534,8 @@ def test_as_list_with_nulls(
                 {"group": "B", "value": 5},
             ]
         )
-        .map_batches(lambda x: x, batch_format=batch_format)
         .repartition(num_parts)
+        .map_batches(lambda x: x, batch_format=batch_format)
     )
 
     # Default: nulls are included in the list

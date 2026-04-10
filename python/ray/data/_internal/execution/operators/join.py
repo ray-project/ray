@@ -107,6 +107,21 @@ class JoiningAggregation(ShuffleAggregation):
         left_on = list(self._left_key_col_names)
         right_on = list(self._right_key_col_names)
 
+        # Eagerly validate suffix conflicts so callers get a clear error instead
+        # of the opaque PyArrow schema-merge error ('Field X exists 2 times').
+        left_cols = set(left_table.schema.names)
+        right_cols = set(right_table.schema.names)
+        collisions = (left_cols & right_cols) - set(left_on) - set(right_on)
+        if (
+            self._left_columns_suffix is None
+            and self._right_columns_suffix is None
+            and collisions
+        ):
+            raise ValueError(
+                "Left and right columns suffixes cannot be both None "
+                f"(overlapping columns: {sorted(collisions)})"
+            )
+
         # Preprocess: split unsupported columns and add index columns if needed
         preprocess_result_l, preprocess_result_r = self._preprocess(
             left_table, right_table, left_on, right_on

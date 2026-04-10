@@ -261,7 +261,9 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
         with pytest.raises(RayTaskError) as exc_info:
             joined.count()
 
-        assert 'Field "double" exists 2 times' in str(exc_info.value.cause)
+        assert "Left and right columns suffixes cannot be both None" in str(
+            exc_info.value.cause
+        )
     else:
         joined_pd = joined.to_pandas()
 
