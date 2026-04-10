@@ -84,7 +84,8 @@ class IOContextMonitorThread {
  public:
   /// @param monitor The monitor to drive. Takes ownership.
   /// @param probe_interval How often to call monitor->Tick().
-  /// @param health_status_callback Called from the monitor thread after each tick with the
+  /// @param health_status_callback Called from the monitor thread after each tick with
+  /// the
   ///   health status.
   IOContextMonitorThread(std::unique_ptr<IOContextMonitor> monitor,
                          absl::Duration probe_interval,

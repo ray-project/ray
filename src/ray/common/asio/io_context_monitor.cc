@@ -14,8 +14,8 @@
 
 #include "ray/common/asio/io_context_monitor.h"
 
-#include "ray/util/logging.h"
 #include "ray/util/clock.h"
+#include "ray/util/logging.h"
 #include "ray/util/thread_utils.h"
 
 namespace ray {
