@@ -20,6 +20,8 @@ from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
+_UNSET = object()
+
 
 def _estimate_batch_size_from_metadata(
     fragment: pds.ParquetFileFragment,
@@ -166,19 +168,25 @@ class ParquetFileReader(FileReader):
         )
         self._explicit_batch_size = batch_size
         self._target_block_size = target_block_size
-        self._sampled_batch_size: Optional[int] = None
+        self._sampled_batch_size: Optional[int] = _UNSET
 
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
         """Determine batch size from explicit setting, metadata, or default.
 
         Priority: explicit batch_size > sampled estimate > metadata estimate > default.
+
+        On the first call ``_sampled_batch_size`` is ``_UNSET``, so we fall
+        through to the metadata estimate and seed ``_sampled_batch_size`` with
+        the result.  ``_on_batch_read`` later refines it from actual data, and
+        subsequent ``read()`` calls on the same instance use the refined value.
         """
         if self._explicit_batch_size is not None:
             return self._explicit_batch_size
 
-        if self._sampled_batch_size is not None:
+        if self._sampled_batch_size is not _UNSET:
             return self._sampled_batch_size
 
+        batch_size = _ARROW_DEFAULT_BATCH_SIZE
         if self._target_block_size is not None:
             first_fragment = next(dataset.get_fragments(), None)
             if first_fragment is not None:
@@ -191,9 +199,10 @@ class ParquetFileReader(FileReader):
                         estimated,
                         self._target_block_size,
                     )
-                    return estimated
+                    batch_size = estimated
 
-        return _ARROW_DEFAULT_BATCH_SIZE
+        self._sampled_batch_size = batch_size
+        return batch_size
 
     def _on_batch_read(self, table: pa.Table) -> None:
         """Refine batch size estimate from actual in-memory data."""
