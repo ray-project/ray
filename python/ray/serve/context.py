@@ -11,7 +11,6 @@ from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
 import ray
-from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
@@ -73,14 +72,11 @@ class ReplicaContext:
 
 
 def _get_global_client(
-    _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
+    raise_if_no_controller_running: bool = True,
 ) -> Optional[ServeControllerClient]:
     """Gets the global client, which stores the controller's handle.
 
     Args:
-        _health_check_controller: If True, run a health check on the
-            cached controller if it exists. If the check fails, try reconnecting
-            to the controller.
         raise_if_no_controller_running: Whether to raise an exception if
             there is no currently running Serve controller.
 
@@ -94,16 +90,37 @@ def _get_global_client(
             and raise_if_no_controller_running is set to True.
     """
 
-    try:
-        if _global_client is not None:
-            if _health_check_controller:
-                ray.get(_global_client._controller.check_alive.remote())
-            return _global_client
-    except RayActorError:
-        logger.info("The cached controller has died. Reconnecting.")
-        _set_global_client(None)
+    if _global_client is not None:
+        return _global_client
 
     return _connect(raise_if_no_controller_running)
+
+
+def _check_cached_client_alive() -> tuple:
+    """Health-check the cached controller client.
+
+    Returns:
+        (client, had_cached) tuple.
+        - ``(client, True)`` — cached client is alive.
+        - ``(None, True)``  — cached client existed but is unreachable;
+          the cache has been cleared.  Callers should **not** attempt to
+          reconnect via ``_connect()`` because GCS is likely dead and
+          ``ray.get_actor()`` would hang until the 60-second C++ GCS
+          reconnection timeout kills the process.
+        - ``(None, False)`` — no cached client.  Callers may safely call
+          ``_get_global_client()`` to discover a running controller.
+    """
+
+    if _global_client is None:
+        return None, False
+
+    try:
+        ray.get(_global_client._controller.check_alive.remote(), timeout=5)
+        return _global_client, True
+    except Exception as e:
+        logger.info(f"The cached controller has died or is unreachable: {e}.")
+        _set_global_client(None)
+        return None, True
 
 
 def _set_global_client(client):
