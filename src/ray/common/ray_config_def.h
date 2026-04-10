@@ -300,6 +300,11 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// 0 means it will use the default (number of CPUs).
 RAY_CONFIG(int64_t, worker_maximum_startup_concurrency, 0)
 
+/// Maximum number of retries for pop worker before the task is
+/// cancelled. 0 means no retry (fail immediately), default is 5.
+/// Retries indefinitely if the value is -1.
+RAY_CONFIG(int32_t, pop_worker_max_retries, 5)
+
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 
@@ -425,6 +430,13 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 /// The base retry delay for exponential backoff when the task fails due to OOM.
 /// No delay if this value is zero.
 RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
+
+/// The base retry delay for exponential backoff when an actor task fails with
+/// ACTOR_UNAVAILABLE (e.g., actor is restarting or network error).
+RAY_CONFIG(uint32_t, task_actor_unavailable_retry_delay_base_ms, 100)
+
+/// The maximum retry delay for ACTOR_UNAVAILABLE exponential backoff.
+RAY_CONFIG(uint32_t, task_actor_unavailable_retry_max_delay_ms, 5000)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
@@ -1076,3 +1088,10 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
 RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+// The threshold of the memory usage in bytes for the idle worker to be considered as
+// a candidate for killing.
+// TODO: We should clean it up after the memory monitor is revamped.
+RAY_CONFIG(int64_t,
+           idle_worker_killing_memory_threshold_bytes,
+           1024 * 1024 * 1024)  // 1GB

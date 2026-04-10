@@ -1,6 +1,7 @@
 import collections
 import logging
 import warnings
+from dataclasses import replace
 from datetime import datetime
 from typing import (
     TYPE_CHECKING,
@@ -47,12 +48,16 @@ from ray.data._internal.datasource.json_datasource import (
 from ray.data._internal.datasource.kafka_datasource import (
     KafkaAuthConfig,
     KafkaDatasource,
+    PerPartitionOffsets,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
 from ray.data._internal.datasource.mongo_datasource import MongoDatasource
 from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.datasource.parquet_datasource import (
+    ParquetDatasource,
+    TensorColumnSchema,
+)
 from ray.data._internal.datasource.range_datasource import RangeDatasource
 from ray.data._internal.datasource.sql_datasource import SQLDatasource
 from ray.data._internal.datasource.text_datasource import TextDatasource
@@ -498,7 +503,15 @@ def read_datasource(
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
     stats = DatasetStats(
-        metadata={"Read": [read_task.metadata for read_task in read_tasks]},
+        metadata={
+            "Read": [
+                # NOTE: We're truncating `input_files` from metadata as it could
+                #       be carrying 1000s of input files (for `ImageDatasource` for ex)
+                #       and isn't useful inside `DatasetStats`
+                replace(read_task.metadata, input_files=None)
+                for read_task in read_tasks
+            ]
+        },
         parent=None,
     )
 
@@ -938,7 +951,7 @@ def read_parquet(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Dict[str, Any] = None,
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
@@ -2816,6 +2829,7 @@ def read_databricks_tables(
     """  # noqa: E501
     # Resolve credential provider (single source of truth for token and host)
     from ray.data._internal.datasource.databricks_credentials import (
+        DatabricksTableCredentialConfig,
         resolve_credential_provider,
     )
     from ray.data._internal.datasource.databricks_uc_datasource import (
@@ -2823,7 +2837,7 @@ def read_databricks_tables(
     )
 
     resolved_provider = resolve_credential_provider(
-        credential_provider=credential_provider
+        DatabricksTableCredentialConfig(credential_provider=credential_provider)
     )
 
     if not catalog:
@@ -4040,6 +4054,7 @@ def read_lance(
             only the rows matching the filter. See
             `Lance filter push-down <https://lance.org/guide/read_and_write/#filter-push-down>`_
             for valid SQL expressions. By default, no filter is applied.
+            **Deprecated**. Use `dataset.filter(expr=expr)` instead to filter rows.
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https://lance.org/guide/object_store/>`_.
@@ -4064,6 +4079,16 @@ def read_lance(
     Returns:
         A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
     """  # noqa: E501
+
+    # Check for deprecated filter parameter
+    if filter is not None:
+        warnings.warn(
+            "The `filter` argument is deprecated and will not be supported in a future release. "
+            "Use `dataset.filter(expr=expr)` instead to filter rows.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     datasource = LanceDatasource(
         uri=uri,
         version=version,
@@ -4252,20 +4277,15 @@ def read_unity_catalog(
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
     from ray.data._internal.datasource.databricks_credentials import (
-        StaticCredentialProvider,
+        UnityCatalogCredentialConfig,
         resolve_credential_provider,
     )
 
-    # Resolve credentials: either from credential_provider or from url/token
-    if credential_provider is not None:
-        resolved_provider = resolve_credential_provider(credential_provider)
-    elif url is not None and token is not None:
-        # Backwards compatible: create provider from url/token
-        resolved_provider = StaticCredentialProvider(token=token, host=url)
-    else:
-        raise ValueError(
-            "Either 'credential_provider' or both 'url' and 'token' must be provided."
+    resolved_provider = resolve_credential_provider(
+        UnityCatalogCredentialConfig(
+            credential_provider=credential_provider, url=url, token=token
         )
+    )
 
     connector = UnityCatalogConnector(
         table_full_name=table,
@@ -4398,8 +4418,10 @@ def read_kafka(
     *,
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
-    start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
-    end_offset: Union[int, datetime, Literal["latest"]] = "latest",
+    start_offset: Union[
+        int, datetime, Literal["earliest"], PerPartitionOffsets
+    ] = "earliest",
+    end_offset: Union[int, datetime, Literal["latest"], PerPartitionOffsets] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
     consumer_config: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
@@ -4440,6 +4462,23 @@ def read_kafka(
                 end_offset=datetime(2025, 1, 2),
             )
 
+        .. testcode::
+            :skipif: True
+
+            # Read using per-partition start offsets; partition 2 falls back
+            # to "earliest" because it is not listed
+            ds = ray.data.read_kafka(
+                topics="my-topic",
+                bootstrap_servers="localhost:9092",
+                start_offset={
+                    "my-topic": {
+                        0: 1500,
+                        1: "earliest",
+                    }
+                },
+                end_offset="latest",
+            )
+
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name
@@ -4453,12 +4492,18 @@ def read_kafka(
             - int: Offset number
             - datetime: Read from the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "earliest"
+            - Dict[str, Dict[int, Union[int, str]]]: Per-partition offsets
+              mapping ``{topic: {partition_id: offset}}``. Partitions not
+              listed fall back to ``"earliest"``.
 
         end_offset: Ending position for reading (exclusive). Can be:
 
             - int: Offset number
             - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
+            - Dict[str, Dict[int, Union[int, str]]]: Per-partition offsets
+              mapping ``{topic: {partition_id: offset}}``. Partitions not
+              listed fall back to ``"latest"``.
 
         kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
         consumer_config: Confluent/librdkafka consumer configuration dict to
@@ -4548,7 +4593,7 @@ def _get_datasource_or_legacy_reader(
 
 
 def _resolve_parquet_args(
-    tensor_column_schema: Optional[Dict[str, Tuple[np.dtype, Tuple[int, ...]]]] = None,
+    tensor_column_schema: Optional[TensorColumnSchema] = None,
     **arrow_parquet_args,
 ) -> Dict[str, Any]:
     if tensor_column_schema is not None:
@@ -4558,15 +4603,22 @@ def _resolve_parquet_args(
             from ray.data.extensions import ArrowTensorArray
 
             for tensor_col_name, (dtype, shape) in tensor_column_schema.items():
-                # NOTE(Clark): We use NumPy to consolidate these potentially
-                # non-contiguous buffers, and to do buffer bookkeeping in
-                # general.
-                np_col = _create_possibly_ragged_ndarray(
-                    [
-                        np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
-                        for buf in block.column(tensor_col_name)
-                    ]
-                )
+                if block.num_rows == 0:
+                    # Empty tables (e.g., dummy tables for schema inference)
+                    # have no buffers to decode. Construct a properly shaped
+                    # empty ndarray so from_numpy infers the correct tensor
+                    # type (shape + dtype).
+                    np_col = np.empty((0,) + shape, dtype=dtype)
+                else:
+                    # NOTE(Clark): We use NumPy to consolidate these
+                    # potentially non-contiguous buffers, and to do buffer
+                    # bookkeeping in general.
+                    np_col = _create_possibly_ragged_ndarray(
+                        [
+                            np.ndarray(shape, buffer=buf.as_buffer(), dtype=dtype)
+                            for buf in block.column(tensor_col_name)
+                        ]
+                    )
 
                 block = block.set_column(
                     block._ensure_integer_index(tensor_col_name),

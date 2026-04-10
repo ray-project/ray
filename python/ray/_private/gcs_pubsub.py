@@ -144,9 +144,9 @@ class _AioSubscriber(_SubscriberBase):
                 if poll.result().publisher_id != self._publisher_id:
                     if self._publisher_id:
                         logger.debug(
-                            f"replied publisher_id {poll.result().publisher_id}"
+                            f"replied publisher_id {poll.result().publisher_id} "
                             f"different from {self._publisher_id}, this should "
-                            "only happens during gcs failover."
+                            "only happen during gcs failover."
                         )
                     self._publisher_id = poll.result().publisher_id
                     self._max_processed_sequence_id = 0

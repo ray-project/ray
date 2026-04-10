@@ -845,6 +845,8 @@ void CoreWorker::RecordMetrics() {
   // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
   reference_counter_->RecordMetrics();
+  // Flush percentile metrics: swap histogram buffers and update exported gauges.
+  normal_task_submitter_->FlushMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -2444,7 +2446,7 @@ Status CoreWorker::SubmitActorTask(
                       /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_events=*/task_options.enable_task_events,
-                      /*labels=*/{},
+                      /*labels=*/task_options.labels,
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{});
   // NOTE: placement_group_capture_child_tasks and runtime_env will
@@ -2785,6 +2787,12 @@ Status CoreWorker::ExecuteTask(
   std::string func_name = task_spec.GetName();
   bool is_retry = task_spec.IsRetry();
 
+  // Modify the worker's per-function counters. This should be done before updating any
+  // substates (running_in_ray_get, running_in_ray_wait, getting_and_pinning_args) since
+  // the metric callback subtracts substate counts from running_total. Incrementing
+  // substates before kRunning could result in wrong values of RUNNING metric.
+  task_counter_.MovePendingToRunning(func_name, is_retry);
+
   ++num_get_pin_args_in_flight_;
   task_counter_.SetMetricStatus(
       func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
@@ -2797,7 +2805,8 @@ Status CoreWorker::ExecuteTask(
     ++num_failed_get_pin_args_;
     // If this has happened, it's because we are unable to talk to our local raylet.
     // This very likely means that the raylet has shutdown before this worker
-    // unexpectedly. In whic case we'll trigger shut down.
+    // unexpectedly. In which case we'll mark the task finished and trigger shut down.
+    task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
          absl::StrCat("Worker failed to get and pin task arguments! Error message: ",
                       pin_args_request_status.message()),
@@ -2807,9 +2816,6 @@ Status CoreWorker::ExecuteTask(
 
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
-
-  // Modify the worker's per-function counters.
-  task_counter_.MovePendingToRunning(func_name, is_retry);
 
   worker::TaskStatusEvent::TaskStateUpdate update;
   {
