@@ -645,8 +645,7 @@ doctest(
             "source/rllib/connector-v2.rst",
         ],
     ),
-    # TODO(elliot-barn): Re-enable once getting-started.rst doctest hang is fixed.
-    tags = ["manual", "team:rllib"],
+    tags = ["team:rllib"],
 )
 
 doctest(

@@ -4654,10 +4654,8 @@ py_test(
         "--as-test",
     ],
     main = "examples/learners/ppo_with_torch_lr_schedulers.py",
-    # TODO(elliot-barn): Re-enable once flaky reward threshold is fixed.
     tags = [
         "examples",
-        "manual",
         "team:rllib",
     ],
 )
@@ -5068,11 +5066,9 @@ py_test(
     # Include the offline data files.
     data = ["offline/tests/data/cartpole/cartpole-v1_large"],
     main = "examples/offline_rl/train_w_bc_finetune_w_ppo.py",
-    # TODO(elliot-barn): Re-enable once flaky reward threshold is fixed.
     tags = [
         "examples",
         "exclusive",
-        "manual",
         "team:rllib",
     ],
 )
@@ -5120,11 +5116,9 @@ py_test(
     ],
     data = glob(["examples/ray_serve/classes/**"]),
     main = "examples/ray_serve/ray_serve_with_rllib.py",
-    # TODO(elliot-barn): Re-enable once timeout issue is fixed.
     tags = [
         "examples",
         "exclusive",
-        "manual",
         "team:rllib",
     ],
 )
@@ -5260,10 +5254,8 @@ py_test(
     size = "large",
     srcs = ["examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py"],
     main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py",
-    # TODO(elliot-barn): Re-enable once SIGSEGV in CartPole render is fixed.
     tags = [
         "examples",
-        "manual",
         "team:rllib",
     ],
 )
