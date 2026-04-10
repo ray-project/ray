@@ -43,6 +43,7 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/metrics_agent_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -236,6 +237,7 @@ class GcsServer {
   /// GCS server metrics
   const ray::gcs::GcsServerMetrics &metrics_;
   IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
+  Clock clock_;
 
   /// NOTICE: The declaration order for data members should follow dependency.
   ///

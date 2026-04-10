@@ -36,9 +36,9 @@ LocalResourceManager::LocalResourceManager(
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     std::function<void(const NodeResources &)> resource_change_subscriber,
     ray::observability::MetricInterface &resource_usage_gauge,
-    std::function<absl::Time()> now_fn)
+    ClockInterface &clock)
     : local_node_id_(local_node_id),
-      now_fn_(now_fn ? std::move(now_fn) : []() { return absl::Now(); }),
+      clock_(clock),
       get_used_object_store_memory_(get_used_object_store_memory),
       get_pull_manager_at_capacity_(get_pull_manager_at_capacity),
       shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
@@ -48,7 +48,7 @@ LocalResourceManager::LocalResourceManager(
   local_resources_.available = NodeResourceInstanceSet(node_resources.total);
   local_resources_.total = NodeResourceInstanceSet(node_resources.total);
   local_resources_.labels = node_resources.labels;
-  const auto now = now_fn_();
+  const auto now = clock_.Now();
   for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
     idle_time_states_[resource_id] = IdleTimeState{now, absl::nullopt};
   }
@@ -191,7 +191,7 @@ void LocalResourceManager::MarkFootprintAsIdle(WorkFootprint item) {
       prev->second.saved = absl::nullopt;
     }
   } else {
-    idle_time_states_[item].current = now_fn_();
+    idle_time_states_[item].current = clock_.Now();
     idle_time_states_[item].saved = absl::nullopt;
   }
 
@@ -265,7 +265,7 @@ void LocalResourceManager::SetResourceIdle(const scheduling::ResourceID &resourc
   if (resource_id.IsImplicitResource()) {
     return;
   }
-  idle_time_states_[resource_id].current = now_fn_();
+  idle_time_states_[resource_id].current = clock_.Now();
 }
 
 std::optional<absl::Time> LocalResourceManager::GetResourceIdleTime() const {
@@ -347,7 +347,7 @@ void LocalResourceManager::UpdateAvailableObjectStoreMemResource() {
     if (used == 0.0) {
       // Set it to idle as of now.
       RAY_LOG(INFO) << "Object store memory is idle.";
-      idle_time_states_[ResourceID::ObjectStoreMemory()].current = now_fn_();
+      idle_time_states_[ResourceID::ObjectStoreMemory()].current = clock_.Now();
     } else {
       // Clear the idle info since we know it's being used.
       RAY_LOG(DEBUG) << "Object store memory is not idle.";
@@ -393,7 +393,7 @@ void LocalResourceManager::PopulateResourceViewSyncMessage(
   if (idle_time.has_value()) {
     // We round up the idle duration to the nearest millisecond such that the idle
     // reporting would be correct even if it's less than 1 millisecond.
-    const auto now = now_fn_();
+    const auto now = clock_.Now();
     resource_view_sync_message.set_idle_duration_ms(std::max(
         static_cast<int64_t>(1), absl::ToInt64Milliseconds(now - idle_time.value())));
   }

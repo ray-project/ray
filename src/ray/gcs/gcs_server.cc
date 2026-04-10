@@ -454,6 +454,7 @@ void GcsServer::InitClusterResourceScheduler() {
       /*is_node_available_fn=*/
       [](auto) { return true; },
       /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
+      /*clock=*/clock_,
       /*is_local_node_with_raylet=*/false);
 }
 
