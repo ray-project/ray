@@ -20,8 +20,5 @@ ARROW_VERSION=$ARROW_VERSION ./ci/env/install-dependencies.sh
 
 pip install --no-deps tfx-bsl==1.16.1
 pip install -U crc32c==2.3 "apache-beam[gcp]==2.59.0" protobuf==4.25.8 googleapis-common-protos==1.66.0 grpcio==1.62.3 google-auth==2.49.0
-# Pin opentelemetry packages to consistent versions to avoid
-# PROMETHEUS_HTTP_TEXT_METRIC_EXPORTER AttributeError in the dashboard
-pip install opentelemetry-api==1.39.0 opentelemetry-sdk==1.39.0 opentelemetry-exporter-prometheus==0.60b0 opentelemetry-semantic-conventions==0.60b0 opentelemetry-instrumentation-fastapi==0.60b0
 
 EOF
