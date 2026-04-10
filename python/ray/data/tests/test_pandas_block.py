@@ -10,7 +10,6 @@ from packaging.version import parse as parse_version
 
 import ray
 import ray.data
-from ray.data.block import BlockAccessor
 from ray.data._internal.pandas_block import (
     PandasBlockAccessor,
     PandasBlockBuilder,
@@ -18,6 +17,7 @@ from ray.data._internal.pandas_block import (
 )
 from ray.data._internal.util import is_null
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 
 # Set seed for the test for size as it related to sampling
@@ -531,7 +531,9 @@ def test_arrow_tensor_block_to_cudf_uses_pandas_fallback(monkeypatch):
         class DataFrame:
             @staticmethod
             def from_arrow(_):
-                raise AssertionError("to_cudf should not call cudf.DataFrame.from_arrow")
+                raise AssertionError(
+                    "to_cudf should not call cudf.DataFrame.from_arrow"
+                )
 
         @staticmethod
         def from_pandas(pandas_df):
