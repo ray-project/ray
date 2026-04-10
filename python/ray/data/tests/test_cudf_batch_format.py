@@ -45,7 +45,10 @@ def _make_dataset(data_source: str, shutdown_only, **kwargs):
         raise ValueError(f"Unknown data_source: {data_source}")
 
 
-# TODO(elliot-barn): "range_tensor" is disabled because cudf does not support Ray's TensorDtype.
+# TODO(elliot-barn): "range_tensor" is disabled because cudf does not support Ray's
+# TensorDtype (TypeError: Unrecognized dtype: TensorDtype). This was not caught before
+# because cudf was not installed in the docgpu CI image — pytest.importorskip skipped
+# the entire file. Now that the depset installs cudf-cu12, these tests run for real.
 @pytest.mark.parametrize(
     "data_source",
     ["range", "from_pandas"],
@@ -74,7 +77,7 @@ class TestCudfIterBatches:
             )
 
 
-# TODO: "range_tensor" is disabled because cudf does not support Ray's TensorDtype.
+# TODO(elliot-barn): "range_tensor" is disabled — see comment on TestCudfIterBatches.
 @pytest.mark.parametrize(
     "data_source",
     ["range"],
