@@ -183,7 +183,10 @@ class TableBlockAccessor(BlockAccessor):
 
     def to_cudf(self) -> Any:
         """Convert this block to a cudf.DataFrame (requires cudf to be installed)."""
-        from ray.data.util.data_batch_conversion import _lazy_import_cudf
+        from ray.data.util.data_batch_conversion import (
+            _cast_tensor_columns_to_ndarrays,
+            _lazy_import_cudf,
+        )
 
         cudf = _lazy_import_cudf()
         if cudf is None:
@@ -193,7 +196,10 @@ class TableBlockAccessor(BlockAccessor):
                 "install cuDF (GPU required)."
             )
 
-        return cudf.DataFrame.from_arrow(self.to_arrow())
+        arrow_table = self.to_arrow()
+        pandas_df = arrow_table.to_pandas()
+        pandas_df = _cast_tensor_columns_to_ndarrays(pandas_df, arrow_table.schema)
+        return cudf.from_pandas(pandas_df)
 
     def column_names(self) -> List[str]:
         raise NotImplementedError
