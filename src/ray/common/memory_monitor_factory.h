@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/memory_monitor_interface.h"
 
 namespace ray {
@@ -40,18 +41,13 @@ class MemoryMonitorFactory {
    * @param resource_isolation_enabled When resource isolation is enabled, the
    * memory monitor will work with the configured cgroup constraints to better
    * enforce the memory usage limit.
-   * @param cgroup_path the path to the cgroup relevant monitors will monitor.
-   * Default to the root cgroup path.
-   * @param cgroup_upper_limit_bytes the upper memory limit of the given cgroup in bytes.
-   * This is used to determine the threshold to monitor for relevant memory monitors.
-   * Default to no cgroup upper limit kNull as a placeholder.
+   * @param cgroup_manager the cgroup manager to use for reading cgroup constraints.
    * @return a unique pointer to the memory monitor instance.
    */
   static std::unique_ptr<MemoryMonitorInterface> Create(
       KillWorkersCallback kill_workers_callback,
       bool resource_isolation_enabled,
-      std::string cgroup_path = MemoryMonitorInterface::kDefaultCgroupPath,
-      int64_t cgroup_upper_limit_bytes = MemoryMonitorInterface::kNull);
+      const CgroupManagerInterface &cgroup_manager);
 };
 
 }  // namespace ray
