@@ -154,4 +154,11 @@ inline std::optional<absl::flat_hash_set<std::string>> GetHardNodeAffinityValues
   return std::nullopt;
 }
 
+inline bool IsGpuAcceleratorConstraint(const LabelConstraint &constraint) {
+  return constraint.GetLabelKey() == kLabelKeyNodeAcceleratorType &&
+         constraint.GetOperator() == LabelSelectorOperator::LABEL_IN &&
+         (constraint.GetLabelValues().contains(kGB300) ||
+          constraint.GetLabelValues().contains(kGB200));
+}
+
 }  // namespace ray

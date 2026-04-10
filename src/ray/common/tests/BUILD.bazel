@@ -58,7 +58,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:placement_group",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
