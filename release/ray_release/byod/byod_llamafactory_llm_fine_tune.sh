@@ -4,7 +4,7 @@ set -exo pipefail
 
 # Python dependencies
 pip3 install --no-cache-dir \
-    "llamafactory@git+https://github.com/hiyouga/LLaMA-Factory.git@v0.9.3" \
+    "llamafactory==0.9.3" \
     "deepspeed==0.16.9" \
     "wandb==0.23.1" \
     "tensorboard==2.20.0" \
