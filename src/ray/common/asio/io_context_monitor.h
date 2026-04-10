@@ -75,7 +75,7 @@ class IOContextMonitor {
   observability::MetricInterface &lag_gauge_;
   observability::MetricInterface &deadline_exceeded_counter_;
 
-  std::vector<std::unique_ptr<ProbeState>> probe_states_;
+  std::vector<std::shared_ptr<ProbeState>> probe_states_;
 };
 
 /// Runs an IOContextMonitor on a dedicated thread, calling Tick() at a

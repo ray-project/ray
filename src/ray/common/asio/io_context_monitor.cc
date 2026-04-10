@@ -33,7 +33,7 @@ IOContextMonitor::IOContextMonitor(
       lag_gauge_(lag_gauge),
       deadline_exceeded_counter_(deadline_exceeded_counter) {
   for (auto &[name, io_context] : io_contexts) {
-    auto state = std::make_unique<ProbeState>();
+    auto state = std::make_shared<ProbeState>();
     state->name = std::move(name);
     state->io_context = io_context;
     probe_states_.push_back(std::move(state));
@@ -71,17 +71,20 @@ bool IOContextMonitor::ProcessProbe(ProbeState &probe) {
     return probe.healthy;
   }
 
-  // Previous probe completed. Record actual lag.
+  // Previous probe completed. Record actual lag and evaluate health.
   if (probe.probe_post_time != absl::InfinitePast()) {
     int64_t complete_ns = probe.probe_complete_time_ns.load(std::memory_order_acquire);
     absl::Time complete_time = absl::FromUnixNanos(complete_ns);
-    double lag_ms = absl::ToDoubleMilliseconds(complete_time - probe.probe_post_time);
-    lag_gauge_.Record(lag_ms, {{"Name", probe.name}});
+    absl::Duration lag = complete_time - probe.probe_post_time;
+    lag_gauge_.Record(absl::ToDoubleMilliseconds(lag), {{"Name", probe.name}});
 
-    // Only mark healthy if we're still within the deadline window. If we're
-    // past the deadline, the probe completed late — wait for a fresh one.
-    if (now - probe.probe_post_time < healthy_deadline_) {
+    if (lag < healthy_deadline_) {
       probe.healthy = true;
+    } else {
+      if (probe.healthy) {
+        deadline_exceeded_counter_.Record(1, {{"Name", probe.name}});
+      }
+      probe.healthy = false;
     }
   }
 
@@ -89,12 +92,16 @@ bool IOContextMonitor::ProcessProbe(ProbeState &probe) {
   probe.last_probe_completed.store(false, std::memory_order_release);
   probe.probe_post_time = now;
 
-  auto *probe_ptr = &probe;
+  // Capture shared_ptr to prevent dangling if the monitor is destroyed while
+  // the probe is still queued on the io_context.
+  auto probe_shared = probe.shared_from_this();
+  ClockInterface &clock = clock_;
   probe.io_context->post(
-      [probe_ptr]() {
-        int64_t complete_ns = absl::GetCurrentTimeNanos();
-        probe_ptr->probe_complete_time_ns.store(complete_ns, std::memory_order_release);
-        probe_ptr->last_probe_completed.store(true, std::memory_order_release);
+      [probe_shared, &clock]() {
+        int64_t complete_ns = absl::ToUnixNanos(clock.Now());
+        probe_shared->probe_complete_time_ns.store(complete_ns,
+                                                   std::memory_order_release);
+        probe_shared->last_probe_completed.store(true, std::memory_order_release);
       },
       "io_context_monitor_probe");
 
