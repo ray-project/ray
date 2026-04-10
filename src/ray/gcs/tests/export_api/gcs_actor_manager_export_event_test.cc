@@ -150,7 +150,9 @@ class GcsActorManagerTest : public ::testing::Test {
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
         /*periodical_runner=*/*periodical_runner_,
-        /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
+        /*get_time_ms=*/[this]() -> double {
+          return absl::ToUnixMicros(clock_.Now());
+        },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
@@ -262,7 +264,7 @@ class GcsActorManagerTest : public ::testing::Test {
     return promise.get_future().get();
   }
 
-  Clock clock_;
+  FakeClock clock_;
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;

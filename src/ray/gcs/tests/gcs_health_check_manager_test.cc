@@ -140,7 +140,7 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     }
   }
 
-  Clock clock_;
+  FakeClock clock_;
   instrumented_io_context io_service;
   std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;

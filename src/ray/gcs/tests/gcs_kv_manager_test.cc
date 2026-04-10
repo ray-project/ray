@@ -21,6 +21,7 @@
 #include <vector>
 
 #include "gtest/gtest.h"
+#include "ray/util/clock.h"
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/redis_store_client.h"
@@ -40,7 +41,7 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
                                          ray::TEST_REDIS_SERVER_PORTS.front()};
     if (GetParam() == "redis") {
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
-          std::make_unique<ray::gcs::RedisStoreClient>(io_service, options));
+          std::make_unique<ray::gcs::RedisStoreClient>(io_service, options, clock_));
     } else if (GetParam() == "memory") {
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
           std::make_unique<ray::gcs::InMemoryStoreClient>());
@@ -55,6 +56,7 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
 
   std::unique_ptr<std::thread> thread_io_service;
   instrumented_io_context io_service;
+  ray::Clock clock_;
   std::unique_ptr<ray::gcs::InternalKVInterface> kv_instance;
 
   /// Synchronous version of Get

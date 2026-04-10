@@ -15,6 +15,8 @@
 #include "ray/gcs/store_client/redis_store_client.h"
 
 #include <boost/optional/optional_io.hpp>
+
+#include "ray/util/clock.h"
 #include <chrono>
 #include <map>
 #include <memory>
@@ -76,10 +78,11 @@ class RedisStoreClientTest : public StoreClientTestBase {
   void InitStoreClient() override {
     auto &io_context = *io_service_pool_->Get();
     RedisClientOptions options{"127.0.0.1", TEST_REDIS_SERVER_PORTS.front()};
-    store_client_ = std::make_shared<RedisStoreClient>(io_context, options);
+    store_client_ = std::make_shared<RedisStoreClient>(io_context, options, clock_);
   }
 
  protected:
+  ray::Clock clock_;
   std::unique_ptr<std::thread> t_;
   std::atomic<bool> stopped_ = false;
 };

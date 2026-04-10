@@ -23,6 +23,7 @@ ray_cc_test(
         "//src/ray/observability:fake_metric",
         "//src/ray/pubsub:publisher",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/util:clock",
         "@com_google_googletest//:gtest_main",
     ],
 )

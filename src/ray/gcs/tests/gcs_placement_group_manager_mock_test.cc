@@ -62,7 +62,7 @@ class GcsPlacementGroupManagerMockTest : public Test {
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   }
 
-  Clock clock_;
+  FakeClock clock_;
   instrumented_io_context io_context_;
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   std::shared_ptr<MockGcsPlacementGroupSchedulerInterface> gcs_placement_group_scheduler_;
@@ -86,7 +86,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
   // Test priority works
   //   When return with reschedule, it should be given with the highest pri
   auto req = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
-  auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_);
+  auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_, clock_);
   auto cb = [](Status s) {};
   SchedulePgRequest request;
   std::unique_ptr<Postable<void(bool)>> put_cb;
@@ -94,12 +94,12 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityReschedule) {
       .WillOnce(DoAll(SaveArgToUniquePtr<4>(&put_cb)));
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .WillOnce(DoAll(SaveArg<0>(&request)));
-  auto now = absl::GetCurrentTimeNanos();
+  auto now = clock_.NowUnixNanos();
   gcs_placement_group_manager_->RegisterPlacementGroup(pg, cb);
   auto &pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_LE(now, pending_queue.begin()->first);
-  ASSERT_GE(absl::GetCurrentTimeNanos(), pending_queue.begin()->first);
+  ASSERT_GE(clock_.NowUnixNanos(), pending_queue.begin()->first);
   std::move(*put_cb).Post("PendingQueuePriorityReschedule", true);
   io_context_.poll();
   pg->UpdateState(rpc::PlacementGroupTableData::RESCHEDULING);
@@ -112,7 +112,7 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   // Test priority works
   //   When return with a failure, exp backoff should work
   auto req = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
-  auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_);
+  auto pg = std::make_shared<GcsPlacementGroup>(req, "", counter_, clock_);
   auto cb = [](Status s) {};
   SchedulePgRequest request;
   std::unique_ptr<Postable<void(bool)>> put_cb;
@@ -121,16 +121,16 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   EXPECT_CALL(*gcs_placement_group_scheduler_, ScheduleUnplacedBundles(_))
       .Times(2)
       .WillRepeatedly(DoAll(SaveArg<0>(&request)));
-  auto now = absl::GetCurrentTimeNanos();
+  auto now = clock_.NowUnixNanos();
   gcs_placement_group_manager_->RegisterPlacementGroup(pg, cb);
   auto &pending_queue = gcs_placement_group_manager_->pending_placement_groups_;
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_LE(now, pending_queue.begin()->first);
-  ASSERT_GE(absl::GetCurrentTimeNanos(), pending_queue.begin()->first);
+  ASSERT_GE(clock_.NowUnixNanos(), pending_queue.begin()->first);
   std::move(*put_cb).Post("PendingQueuePriorityFailed", true);
   io_context_.poll();
   pg->UpdateState(rpc::PlacementGroupTableData::PENDING);
-  now = absl::GetCurrentTimeNanos();
+  now = clock_.NowUnixNanos();
   request.failure_callback(pg, true);
   auto exp_backer = ExponentialBackoff(
       1000000 * RayConfig::instance().gcs_create_placement_group_retry_min_interval_ms(),
@@ -148,12 +148,12 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityFailed) {
   ASSERT_EQ(1, pending_queue.size());
   ASSERT_EQ(rank, pending_queue.begin()->first);
 
-  absl::SleepFor(absl::Milliseconds(1) +
-                 absl::Nanoseconds(rank - absl::GetCurrentTimeNanos()));
+  clock_.AdvanceTime(absl::Milliseconds(1) +
+                     absl::Nanoseconds(rank - clock_.NowUnixNanos()));
   gcs_placement_group_manager_->SchedulePendingPlacementGroups();
   ASSERT_EQ(0, pending_queue.size());
   pg->UpdateState(rpc::PlacementGroupTableData::PENDING);
-  now = absl::GetCurrentTimeNanos();
+  now = clock_.NowUnixNanos();
   request.failure_callback(pg, true);
   next = RayConfig::instance().gcs_create_placement_group_retry_multiplier() * next;
   ASSERT_EQ(1, pending_queue.size());
@@ -165,9 +165,9 @@ TEST_F(GcsPlacementGroupManagerMockTest, PendingQueuePriorityOrder) {
   //   Add two pgs
   //   Fail one and make sure it's scheduled later
   auto req1 = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
-  auto pg1 = std::make_shared<GcsPlacementGroup>(req1, "", counter_);
+  auto pg1 = std::make_shared<GcsPlacementGroup>(req1, "", counter_, clock_);
   auto req2 = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::SPREAD, 1);
-  auto pg2 = std::make_shared<GcsPlacementGroup>(req2, "", counter_);
+  auto pg2 = std::make_shared<GcsPlacementGroup>(req2, "", counter_, clock_);
   auto cb = [](Status s) {};
   SchedulePgRequest request;
   std::unique_ptr<Postable<void(bool)>> put_cb;

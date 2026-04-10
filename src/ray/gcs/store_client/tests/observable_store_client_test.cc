@@ -18,6 +18,7 @@
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/tests/store_client_test_base.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -29,7 +30,8 @@ class ObservableStoreClientTest : public StoreClientTestBase {
     store_client_ = std::make_shared<ObservableStoreClient>(
         std::make_unique<InMemoryStoreClient>(),
         fake_storage_operation_latency_in_ms_histogram_,
-        fake_storage_operation_count_counter_);
+        fake_storage_operation_count_counter_,
+        clock_);
   }
 
   void TestMetrics() override {
@@ -63,6 +65,7 @@ class ObservableStoreClientTest : public StoreClientTestBase {
     ASSERT_EQ(latency_tag_to_value.size(), 3);
   }
 
+  ray::FakeClock clock_;
   ray::observability::FakeHistogram fake_storage_operation_latency_in_ms_histogram_;
   ray::observability::FakeCounter fake_storage_operation_count_counter_;
 };
