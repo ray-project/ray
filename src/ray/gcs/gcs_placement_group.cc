@@ -30,7 +30,7 @@ void GcsPlacementGroup::UpdateState(
     RAY_CHECK_EQ(placement_group_table_data_.state(),
                  rpc::PlacementGroupTableData::PREPARED);
     placement_group_table_data_.set_placement_group_final_bundle_placement_timestamp_ms(
-        current_sys_time_ms());
+        absl::ToUnixMillis(clock_.Now()));
 
     double duration_ms =
         placement_group_table_data_

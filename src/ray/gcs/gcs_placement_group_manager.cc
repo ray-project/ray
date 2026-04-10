@@ -59,7 +59,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
     ray::observability::MetricInterface
         &placement_group_scheduling_latency_in_ms_histogram,
-    ray::observability::MetricInterface &placement_group_count_gauge)
+    ray::observability::MetricInterface &placement_group_count_gauge,
+    ClockInterface &clock)
     : io_context_(io_context),
       gcs_resource_manager_(gcs_resource_manager),
       placement_group_gauge_(placement_group_gauge),
@@ -67,7 +68,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
           placement_group_creation_latency_in_ms_histogram),
       placement_group_scheduling_latency_in_ms_histogram_(
           placement_group_scheduling_latency_in_ms_histogram),
-      placement_group_count_gauge_(placement_group_count_gauge) {}
+      placement_group_count_gauge_(placement_group_count_gauge),
+      clock_(clock) {}
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
@@ -79,7 +81,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
     ray::observability::MetricInterface &placement_group_creation_latency_in_ms_histogram,
     ray::observability::MetricInterface
         &placement_group_scheduling_latency_in_ms_histogram,
-    ray::observability::MetricInterface &placement_group_count_gauge)
+    ray::observability::MetricInterface &placement_group_count_gauge,
+    ClockInterface &clock)
     : io_context_(io_context),
       gcs_placement_group_scheduler_(scheduler),
       gcs_table_storage_(gcs_table_storage),
@@ -90,7 +93,8 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
           placement_group_creation_latency_in_ms_histogram),
       placement_group_scheduling_latency_in_ms_histogram_(
           placement_group_scheduling_latency_in_ms_histogram),
-      placement_group_count_gauge_(placement_group_count_gauge) {
+      placement_group_count_gauge_(placement_group_count_gauge),
+      clock_(clock) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   placement_group_state_counter_->SetOnChangeCallback(
@@ -250,7 +254,7 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationSuccess(
 
   // Setup stats.
   auto stats = placement_group->GetMutableStats();
-  auto now = absl::GetCurrentTimeNanos();
+  auto now = absl::ToUnixNanos(clock_.Now());
   auto scheduling_latency_us =
       absl::Nanoseconds(now - stats->scheduling_started_time_ns()) /
       absl::Microseconds(1);
@@ -312,7 +316,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
   bool is_new_placement_group_scheduled = false;
   while (!pending_placement_groups_.empty() && !is_new_placement_group_scheduled) {
     auto iter = pending_placement_groups_.begin();
-    if (iter->first > absl::GetCurrentTimeNanos()) {
+    if (iter->first > absl::ToUnixNanos(clock_.Now())) {
       // Here the rank equals the time to schedule, and it's an ordered tree,
       // it means all the other tasks should be scheduled after this one.
       // If the first one won't be scheduled, we just skip.
@@ -328,7 +332,7 @@ void GcsPlacementGroupManager::SchedulePendingPlacementGroups() {
     if (registered_placement_groups_.contains(placement_group_id)) {
       auto stats = placement_group->GetMutableStats();
       stats->set_scheduling_attempt(stats->scheduling_attempt() + 1);
-      stats->set_scheduling_started_time_ns(absl::GetCurrentTimeNanos());
+      stats->set_scheduling_started_time_ns(absl::ToUnixNanos(clock_.Now()));
       MarkSchedulingStarted(placement_group_id);
       // We can't use designated initializers thanks to MSVC (error C7555).
       gcs_placement_group_scheduler_->ScheduleUnplacedBundles(SchedulePgRequest{
@@ -357,7 +361,7 @@ void GcsPlacementGroupManager::HandleCreatePlacementGroup(
   const JobID &job_id =
       JobID::FromBinary(request.placement_group_spec().creator_job_id());
   auto placement_group = std::make_shared<GcsPlacementGroup>(
-      request, get_ray_namespace_(job_id), placement_group_state_counter_);
+      request, get_ray_namespace_(job_id), placement_group_state_counter_, clock_);
   RAY_LOG(INFO) << "Registering placement group, " << placement_group->DebugString();
   RegisterPlacementGroup(
       placement_group, [reply, send_reply_callback, placement_group](Status status) {
@@ -645,7 +649,7 @@ void GcsPlacementGroupManager::AddToPendingQueue(
     std::optional<int64_t> rank,
     std::optional<ExponentialBackoff> exp_backer) {
   if (!rank) {
-    rank = absl::GetCurrentTimeNanos();
+    rank = absl::ToUnixNanos(clock_.Now());
   }
 
   // Add the biggest delay that has seen so far.
@@ -882,7 +886,7 @@ void GcsPlacementGroupManager::Initialize(const GcsInitData &gcs_init_data) {
   const auto &jobs = gcs_init_data.Jobs();
   for (auto &item : gcs_init_data.PlacementGroups()) {
     auto placement_group =
-        std::make_shared<GcsPlacementGroup>(item.second, placement_group_state_counter_);
+        std::make_shared<GcsPlacementGroup>(item.second, placement_group_state_counter_, clock_);
     const auto state = item.second.state();
     const auto &pg_id = placement_group->GetPlacementGroupID();
     if (state == rpc::PlacementGroupTableData::REMOVED) {

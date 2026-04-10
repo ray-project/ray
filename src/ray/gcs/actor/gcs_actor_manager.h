@@ -38,6 +38,7 @@
 #include "ray/gcs/usage_stats_client.h"
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
@@ -111,7 +112,8 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       observability::RayEventRecorderInterface &ray_event_recorder,
       const std::string &session_name,
       ray::observability::MetricInterface &actor_by_state_gauge,
-      ray::observability::MetricInterface &gcs_actor_by_state_gauge);
+      ray::observability::MetricInterface &gcs_actor_by_state_gauge,
+      ClockInterface &clock);
 
   ~GcsActorManager() override;
 
@@ -508,6 +510,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       actor_state_counter_;
   ray::observability::MetricInterface &actor_by_state_gauge_;
   ray::observability::MetricInterface &gcs_actor_by_state_gauge_;
+  ClockInterface &clock_;
 
   /// Total number of successfully created actors in the cluster lifetime.
   int64_t lifetime_num_created_actors_ = 0;

@@ -39,7 +39,8 @@ GcsNodeManager::GcsNodeManager(
     rpc::RayletClientPool *raylet_client_pool,
     const ClusterID &cluster_id,
     observability::RayEventRecorderInterface &ray_event_recorder,
-    const std::string &session_name)
+    const std::string &session_name,
+    ClockInterface &clock)
     : gcs_publisher_(gcs_publisher),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
@@ -47,6 +48,7 @@ GcsNodeManager::GcsNodeManager(
       cluster_id_(cluster_id),
       ray_event_recorder_(ray_event_recorder),
       session_name_(session_name),
+      clock_(clock),
       export_event_write_enabled_(IsExportAPIEnabledNode()) {}
 
 void GcsNodeManager::WriteNodeExportEvent(const rpc::GcsNodeInfo &node_info,
@@ -175,7 +177,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   RAY_LOG(INFO).WithField(node_id).WithField("grpc_peer", grpc_peer)
       << "HandleUnregisterNode() for node";
   auto node = RemoveNodeFromCache(
-      node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
+      node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, absl::ToUnixMillis(clock_.Now()));
   if (!node) {
     RAY_LOG(INFO).WithField(node_id) << "Node is already removed";
     return;
@@ -549,7 +551,7 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
     expect_force_termination = false;
   } else {
     expect_force_termination =
-        (current_sys_time_ms() > iter->second->deadline_timestamp_ms()) &&
+        (absl::ToUnixMillis(clock_.Now()) > iter->second->deadline_timestamp_ms()) &&
         (iter->second->reason() ==
          rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION);
   }
@@ -667,7 +669,7 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNodeFromCache(
           << error_message.str();
       RAY_LOG(WARNING) << error_message.str();
       auto error_data = CreateErrorTableData(
-          type, error_message.str(), absl::FromUnixMillis(current_time_ms()));
+          type, error_message.str(), clock_.Now());
       gcs_publisher_->PublishError(node_id.Hex(), std::move(error_data));
     }
 
@@ -691,7 +693,7 @@ void GcsNodeManager::InternalOnNodeFailure(
   if (maybe_node.has_value()) {
     rpc::NodeDeathInfo death_info = InferDeathInfo(node_id);
     auto node = RemoveNodeFromCache(
-        node_id, death_info, rpc::GcsNodeInfo::DEAD, current_sys_time_ms());
+        node_id, death_info, rpc::GcsNodeInfo::DEAD, absl::ToUnixMillis(clock_.Now()));
 
     AddDeadNodeToCache(node);
     rpc::GcsNodeInfo node_info_delta;

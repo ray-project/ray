@@ -27,6 +27,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
@@ -98,7 +99,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
         fake_placement_group_scheduling_latency_in_ms_histogram_,
-        fake_placement_group_count_gauge_));
+        fake_placement_group_count_gauge_,
+        clock_));
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);

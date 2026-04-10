@@ -119,9 +119,10 @@ void RedisStoreClient::MGetValues(
 }
 
 std::shared_ptr<RedisContext> ConnectRedisContext(instrumented_io_context &io_service,
-                                                  const RedisClientOptions &options) {
+                                                  const RedisClientOptions &options,
+                                                  ClockInterface &clock) {
   RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
-  auto context = std::make_shared<RedisContext>(io_service);
+  auto context = std::make_shared<RedisContext>(io_service, clock);
   RAY_CHECK_OK(context->Connect(options.ip,
                                 options.port,
                                 /*username=*/options.username,
@@ -132,11 +133,12 @@ std::shared_ptr<RedisContext> ConnectRedisContext(instrumented_io_context &io_se
 }
 
 RedisStoreClient::RedisStoreClient(instrumented_io_context &io_service,
-                                   const RedisClientOptions &options)
+                                   const RedisClientOptions &options,
+                                   ClockInterface &clock)
     : io_service_(io_service),
       options_(options),
       external_storage_namespace_(::RayConfig::instance().external_storage_namespace()),
-      primary_context_(ConnectRedisContext(io_service, options)) {
+      primary_context_(ConnectRedisContext(io_service, options, clock)) {
   RAY_CHECK(!absl::StrContains(external_storage_namespace_, kClusterSeparator))
       << "Storage namespace (" << external_storage_namespace_ << ") shouldn't contain "
       << kClusterSeparator << ".";
@@ -526,7 +528,8 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   instrumented_io_context io_service{/*enable_lag_probe=*/false,
                                      /*running_on_single_thread=*/true};
   RedisClientOptions options{host, port, username, password, use_ssl};
-  std::shared_ptr<RedisContext> context = ConnectRedisContext(io_service, options);
+  Clock real_clock;
+  std::shared_ptr<RedisContext> context = ConnectRedisContext(io_service, options, real_clock);
 
   auto thread = std::make_unique<std::thread>([&]() {
     boost::asio::executor_work_guard<boost::asio::io_context::executor_type> work(
