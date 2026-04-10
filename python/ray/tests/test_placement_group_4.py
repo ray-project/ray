@@ -455,5 +455,60 @@ def test_infeasible_pg(ray_start_cluster):
     assert ray.get(pg.ready(), timeout=10)
 
 
+def test_infeasible_pg_scheduled_after_pg_killed(ray_start_cluster):
+    """Test that killing a placement group frees resources,
+    allowing an infeasible placement group to be scheduled."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    pg1_nodes = []
+    for _ in range(5):
+        pg1_nodes.append(cluster.add_node(num_cpus=1))
+
+    # Create a PG that consumes all CPUs.
+    pg1 = ray.util.placement_group([{"CPU": 1}] * 5)
+    ray.get(pg1.ready(), timeout=30)
+    assert ray.util.placement_group_table(pg1)["state"] == "CREATED"
+
+    # Kill a node, now should be infeasible
+    for node in pg1_nodes:
+        cluster.remove_node(node)
+
+    # PG1 infeasible now
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg1.ready(), timeout=10)
+
+    assert ray.util.placement_group_table(pg1)["state"] == "RESCHEDULING"
+
+    # Cluster adds four more nodes to schedule pg2, pg1 still infeasible
+    pg2_nodes = []
+    for _ in range(4):
+        pg2_nodes.append(cluster.add_node(num_cpus=1))
+
+    # PG1 still infeasible
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg1.ready(), timeout=10)
+
+    assert ray.util.placement_group_table(pg1)["state"] == "RESCHEDULING"
+
+    # Create a second PG that needs right amount of resources.
+    pg2 = ray.util.placement_group([{"CPU": 1}] * 4)
+    ray.get(pg2.ready(), timeout=30)
+    assert ray.util.placement_group_table(pg2)["state"] == "CREATED"
+
+    # Create new node, PG1 cannot be scheduled, but PENDING
+    cluster.add_node(num_cpus=1)
+
+    # Kill (remove) the PG2, freeing resources.
+    ray.util.remove_placement_group(pg2)
+    wait_for_condition(lambda: is_placement_group_removed(pg2))
+
+    # The previously-infeasible PG should now be scheduled.
+    assert ray.get(pg1.ready(), timeout=10)
+
+    placement_group_assert_no_leak([pg1])
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
