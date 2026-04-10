@@ -29,7 +29,6 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/util/container_util.h"
 #include "ray/util/logging.h"
-#include "ray/util/time.h"
 
 namespace {
 /// The error message constructed from below methods is user-facing, so please avoid

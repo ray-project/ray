@@ -26,7 +26,6 @@
 #include "ray/observability/ray_node_definition_event.h"
 #include "ray/observability/ray_node_lifecycle_event.h"
 #include "ray/util/logging.h"
-#include "ray/util/time.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {

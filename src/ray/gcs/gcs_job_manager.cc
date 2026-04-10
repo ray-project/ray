@@ -26,7 +26,6 @@
 #include "ray/observability/ray_driver_job_definition_event.h"
 #include "ray/observability/ray_driver_job_lifecycle_event.h"
 #include "ray/stats/metric.h"
-#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {

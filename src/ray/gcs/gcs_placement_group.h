@@ -26,7 +26,6 @@
 #include "ray/common/metrics.h"
 #include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
-#include "ray/util/time.h"
 #include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
