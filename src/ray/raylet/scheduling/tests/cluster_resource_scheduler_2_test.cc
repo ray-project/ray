@@ -20,7 +20,6 @@
 #include "gtest/gtest.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/util/clock.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_options.h"
 #include "ray/util/clock.h"

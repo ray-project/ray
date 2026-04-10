@@ -24,7 +24,6 @@
 #include "ray/common/scheduling/cluster_resource_data.h"
 #include "ray/common/scheduling/fixed_point.h"
 #include "ray/observability/metric_interface.h"
-#include "ray/util/clock.h"
 #include "ray/ray_syncer/ray_syncer.h"
 #include "ray/util/clock.h"
 #include "src/ray/protobuf/gcs.pb.h"
