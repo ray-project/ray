@@ -1841,7 +1841,7 @@ cdef void execute_task(
             _km_task_counter[_km_pid] = _km_task_counter.get(_km_pid, 0) + 1
             _km_task_num = _km_task_counter[_km_pid]
             _km_memray_path = (
-                f"/tmp/memray_pid{_km_pid}"
+                f"/mnt/shared_storage/karticam/memray_pid{_km_pid}"
                 f"_task{_km_task_num}.bin"
             )
             _km_tracker = None
@@ -2155,7 +2155,7 @@ cdef void execute_task(
                 f"Shared={_km_shared:.1f}MB"
             )
 
-            # (karticam) stop memray tracker
+            # (karticam) stop memray tracker (.bin only, analyze locally)
             if _km_tracker is not None:
                 _km_tracker.__exit__(None, None, None)
                 _km_rss, _km_uss, _km_shared = _km_get_mem()
