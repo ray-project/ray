@@ -95,6 +95,8 @@ class SchedulingPhase(str, Enum):
                 return (S.SUBMITTED_TO_WORKER, S.RUNNING)
             case SchedulingPhase.TOTAL_OVERHEAD_MS:
                 return (S.PENDING_ARGS_AVAIL, S.RUNNING)
+            case _:
+                raise ValueError(f"Unknown scheduling phase: {self}")
 
     @property
     def start_name(self) -> str:
@@ -202,8 +204,9 @@ def collect_scheduling_overhead(
         return {}
     all_tasks.sort(key=lambda t: t.creation_time_ms)
 
-    min_ts: int = all_tasks[0].creation_time_ms
-    max_ts: int = all_tasks[-1].creation_time_ms
+    min_ts = all_tasks[0].creation_time_ms
+    max_ts = all_tasks[-1].creation_time_ms
+    assert min_ts is not None and max_ts is not None
     bucket_width = (max_ts - min_ts) / num_buckets if num_buckets > 0 else 0
 
     # 2. Build bucket boundaries.
@@ -223,8 +226,10 @@ def collect_scheduling_overhead(
     ]
 
     # 3. Single pass: assign each sorted task to its bucket.
-    def _in_bucket(t: TaskStatus, bucket: Tuple[int, int]) -> bool:
-        return bucket[0] <= t.creation_time_ms < bucket[1]
+    def _in_bucket(t: TaskState, bucket: Tuple[float, float]) -> bool:
+        ts = t.creation_time_ms
+        assert ts is not None
+        return bucket[0] <= ts < bucket[1]
 
     bucket_idx = 0
     for t in all_tasks:
