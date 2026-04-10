@@ -516,9 +516,8 @@ void GcsJobManager::RecordMetrics() {
   finished_job_counter_.Record(finished_jobs_count_);
 
   for (const auto &[job_id, start_time] : running_job_start_times_) {
-    job_duration_in_seconds_gauge_.Record(
-        (clock_.NowUnixMillis() - start_time) / 1000.0,
-        {{"JobId", job_id.Hex()}});
+    job_duration_in_seconds_gauge_.Record((clock_.NowUnixMillis() - start_time) / 1000.0,
+                                          {{"JobId", job_id.Hex()}});
   }
 }
 

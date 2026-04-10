@@ -176,10 +176,8 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
   NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO).WithField(node_id).WithField("grpc_peer", grpc_peer)
       << "HandleUnregisterNode() for node";
-  auto node = RemoveNodeFromCache(node_id,
-                                  request.node_death_info(),
-                                  rpc::GcsNodeInfo::DEAD,
-                                  clock_.NowUnixMillis());
+  auto node = RemoveNodeFromCache(
+      node_id, request.node_death_info(), rpc::GcsNodeInfo::DEAD, clock_.NowUnixMillis());
   if (!node) {
     RAY_LOG(INFO).WithField(node_id) << "Node is already removed";
     return;
