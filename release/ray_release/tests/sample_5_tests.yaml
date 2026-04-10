@@ -4,6 +4,7 @@
   frequency: nightly
   working_dir: hello_world_tests
   cluster:
+    anyscale_sdk_2026: true
     byod: {}
     cluster_compute: hello_world_compute_config.yaml
   run:
@@ -18,6 +19,7 @@
   frequency: nightly
   working_dir: hello_world_tests
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_hello_world.sh
@@ -34,6 +36,7 @@
   frequency: nightly
   working_dir: hello_world_tests
   cluster:
+    anyscale_sdk_2026: true
     byod: {}
     cluster_compute: hello_world_compute_config.yaml
   run:
@@ -48,6 +51,7 @@
   frequency: nightly
   working_dir: hello_world_tests
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_hello_world.sh
@@ -64,6 +68,7 @@
   frequency: nightly
   working_dir: hello_world_tests
   cluster:
+    anyscale_sdk_2026: true
     byod: {}
     cluster_compute: hello_world_compute_config.yaml
   run:

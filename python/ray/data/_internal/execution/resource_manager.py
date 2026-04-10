@@ -25,7 +25,6 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.util import GiB
 from ray.data.context import DataContext
 from ray.util.debug import log_once
 
@@ -101,6 +100,10 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
+        # Executor sink (DAG root: unique op with no output_dependencies).
+        # Iterator/streaming_split prefetch bytes are charged on this
+        # operator's output usage.
+        self._output_operator = self._terminal_operator_from_topology(topology)
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
@@ -116,39 +119,35 @@ class ResourceManager:
             )
         )
 
-        self._warn_about_object_store_memory_if_needed()
+    def _terminal_operator_from_topology(
+        self, topology: "Topology"
+    ) -> PhysicalOperator:
+        """Return the executor sink: the unique op with no in-DAG downstream consumers.
 
-    def _warn_about_object_store_memory_if_needed(self):
-        """Warn if object store memory is configured below 50% of total memory."""
-        import ray
-        from ray.data.context import WARN_PREFIX
-        from ray.util.debug import log_once
-
-        if not ray.is_initialized():
-            return
-
-        cluster_resources = ray.cluster_resources()
-        total_memory = cluster_resources.get("memory", 0)
-        object_store_memory = cluster_resources.get("object_store_memory", 0)
-
-        # Check if we have actual numeric values (not mocks or None)
-        if total_memory > 0:
-            object_store_fraction = object_store_memory / total_memory
-
-            if object_store_fraction < 0.5 and log_once(
-                "ray_data_object_store_memory_warning"
-            ):
-                logger.warning(
-                    f"{WARN_PREFIX} Ray's object store is configured to use only "
-                    f"{object_store_fraction:.1%} of available memory ({object_store_memory / GiB:.1f}GiB "
-                    f"out of {total_memory / GiB:.1f}GiB total). For optimal Ray Data performance, "
-                    f"we recommend setting the object store to at least 50% of available memory. "
-                    f"You can do this by setting the 'object_store_memory' parameter when calling "
-                    f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
-                )
+        ``build_streaming_topology`` is rooted at the same node passed to
+        ``StreamingExecutor``; that root is the only operator whose
+        ``output_dependencies`` is empty.
+        """
+        if not topology:
+            raise ValueError("topology must be non-empty")
+        sinks = [op for op in topology if not op.output_dependencies]
+        if len(sinks) == 1:
+            return sinks[0]
+        if not sinks:
+            raise ValueError(
+                "No terminal operator found in topology (expected exactly one "
+                "operator with empty output_dependencies)"
+            )
+        raise ValueError(
+            "Expected exactly one terminal operator in topology, found "
+            f"{len(sinks)}: {sinks!r}"
+        )
 
     def set_external_consumer_bytes(self, num_bytes: int) -> None:
         """Set the bytes buffered by external consumers."""
+        assert (
+            num_bytes >= 0
+        ), f"external consumer bytes must be non-negative, got {num_bytes}"
         self._external_consumer_bytes = num_bytes
 
     def get_external_consumer_bytes(self) -> int:
@@ -161,6 +160,10 @@ class ResourceManager:
         # Don't count input refs towards dynamic memory usage, as they have been
         # pre-created already outside this execution.
         if isinstance(op, InputDataBuffer):
+            if op is self._output_operator:
+                self._mem_op_internal[op] = 0
+                self._mem_op_outputs[op] = self._external_consumer_bytes
+                return self._external_consumer_bytes
             return 0
 
         # Operator's internal Object Store usage
@@ -191,6 +194,10 @@ class ResourceManager:
 
         self._mem_op_internal[op] = mem_op_internal
         self._mem_op_outputs[op] = op_outputs_bytes + used_op_outputs_bytes
+
+        # Attribute iterator / streaming_split prefetch to the executor sink only.
+        if op is self._output_operator:
+            self._mem_op_outputs[op] += self._external_consumer_bytes
 
         return self._mem_op_outputs[op] + self._mem_op_internal[op]
 
@@ -297,10 +304,14 @@ class ResourceManager:
             object_store_memory=total_resources.object_store_memory
             * default_mem_fraction
         )
-        self._global_limits = default_limits.min(total_resources).subtract(exclude)
-        assert (
-            self._global_limits.is_non_negative()
-        ), f"Global limits should be non-negative, got {self._global_limits}"
+        # Clamp to non-negative because exclude_resources (e.g., training worker
+        # CPUs) can exceed the total resources reported by the cluster autoscaler,
+        # such as when Ray Train reserves more CPUs than are visible to Ray Data.
+        self._global_limits = (
+            default_limits.min(total_resources)
+            .subtract(exclude)
+            .max(ExecutionResources.zero())
+        )
         return self._global_limits
 
     def get_op_usage(

@@ -681,6 +681,13 @@ message PlacementGroupTableData {
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 16;
+  // Tracks the selected label domain values for label-domain-aware scheduling.
+  // Key is the node label key (e.g. "ray.io/gpu-domain"), value is the selected
+  // domain value (e.g. "rack-1").
+  map<string, string> label_domain_assignments = 17;
+  // The node label key that identifies the label domain for this placement group
+  // (e.g. "ray.io/gpu-domain"). Empty if the PG does not use label-domain scheduling.
+  string label_domain_key = 18;
 }
 
 message JobTableData {
