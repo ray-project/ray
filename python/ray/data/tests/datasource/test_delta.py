@@ -121,7 +121,7 @@ def test_delta_read_schema_evolution(tmp_path):
         path,
         pa.table({"x": [3, 4], "y": ["a", "b"]}),
         mode="append",
-        schema_mode="merge",
+        schema_mode="merge",  # pyrefly: ignore[unexpected-keyword]
     )
 
     ds = ray.data.read_delta(path)
