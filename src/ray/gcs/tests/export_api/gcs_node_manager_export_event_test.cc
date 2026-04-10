@@ -27,6 +27,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 #include "ray/util/event.h"
 #include "ray/util/string_utils.h"
 
@@ -77,6 +78,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
   }
 
  protected:
+  Clock clock_;
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
@@ -93,7 +95,8 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    /*ray_event_recorder=*/fake_ray_event_recorder,
-                                   /*session_name=*/"");
+                                   /*session_name=*/"",
+                                   clock_);
   auto node = GenNodeInfo();
 
   rpc::RegisterNodeRequest register_request;
@@ -121,7 +124,8 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    /*ray_event_recorder=*/fake_ray_event_recorder,
-                                   /*session_name=*/"");
+                                   /*session_name=*/"",
+                                   clock_);
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   node_manager.AddNode(node);
