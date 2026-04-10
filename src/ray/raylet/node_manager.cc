@@ -190,7 +190,9 @@ NodeManager::NodeManager(
     PlacementGroupResourceManager &placement_group_resource_manager,
     boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
     local_stream_socket socket,
-    ray::observability::MetricInterface &memory_manager_worker_eviction_total_count)
+    ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
+    ray::observability::MetricInterface
+        &node_manager_unexpected_worker_failure_total_count)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -232,6 +234,8 @@ NodeManager::NodeManager(
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       memory_manager_worker_eviction_total_count_(
           memory_manager_worker_eviction_total_count),
+      node_manager_unexpected_worker_failure_total_count_(
+          node_manager_unexpected_worker_failure_total_count),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       local_lease_manager_(local_lease_manager),
       cluster_lease_manager_(cluster_lease_manager),
@@ -1421,6 +1425,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         << "Disconnecting driver, graceful=" << std::boolalpha << graceful
         << ", disconnect_type=" << disconnect_type;
   } else {
+    if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+      node_manager_unexpected_worker_failure_total_count_.Record(
+          1, {{"Type", "Raylet.UnexpectedIdleWorkerFailure.Total"}, {"Name", ""}});
+    }
+
     RAY_LOG(INFO) << "Got disconnect message from an unregistered client, ignoring.";
     return;
   }
@@ -1493,6 +1502,19 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         auto error_data = gcs::CreateErrorTableData(
             type, error_message_str, absl::FromUnixMillis(current_time_ms()), job_id);
         gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
+
+        const RayLease &ray_lease = worker->GetGrantedLease();
+        if (worker->GetActorId().IsNil()) {
+          node_manager_unexpected_worker_failure_total_count_.Record(
+              1,
+              {{"Type", "Raylet.UnexpectedTaskFailure.Total"},
+               {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+        } else {
+          node_manager_unexpected_worker_failure_total_count_.Record(
+              1,
+              {{"Type", "Raylet.UnexpectedActorFailure.Total"},
+               {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+        }
       }
     }
 
@@ -1556,6 +1578,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
           << " died. Address: " << BuildAddress(worker->IpAddress(), worker->Port())
           << ", Pid: " << worker->GetProcess().GetId()
           << ", JobId: " << worker->GetAssignedJobId();
+
+      node_manager_unexpected_worker_failure_total_count_.Record(
+          1, {{"Type", "Raylet.UnexpectedDriverFailure.Total"}, {"Name", ""}});
     }
   }
 
@@ -3032,9 +3057,9 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 
 // Picks the workers and kills the process if the memory usage is above the threshold.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
-  return [this](const SystemMemorySnapshot &system_memory_snapshot) {
+  return [this](SystemMemorySnapshot system_memory_snapshot) {
     io_service_.post(
-        [this, system_memory = system_memory_snapshot]() {
+        [this, system_memory = std::move(system_memory_snapshot)]() {
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           std::vector<std::shared_ptr<WorkerInterface>> workers =
