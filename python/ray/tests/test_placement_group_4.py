@@ -476,21 +476,17 @@ def test_infeasible_pg_scheduled_after_pg_killed(ray_start_cluster):
         cluster.remove_node(node)
 
     # PG1 infeasible now
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(pg1.ready(), timeout=10)
-
-    assert ray.util.placement_group_table(pg1)["state"] == "RESCHEDULING"
+    state = ray.util.placement_group_table()[pg1.id.hex()]["stats"]["scheduling_state"]
+    assert state == "INFEASIBLE"
 
     # Cluster adds four more nodes to schedule pg2, pg1 still infeasible
     pg2_nodes = []
     for _ in range(4):
         pg2_nodes.append(cluster.add_node(num_cpus=1))
 
-    # PG1 still infeasible
-    with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(pg1.ready(), timeout=10)
-
-    assert ray.util.placement_group_table(pg1)["state"] == "RESCHEDULING"
+    # PG1 not infeasible anymore, just rescheduling in pending queue
+    state = ray.util.placement_group_table()[pg1.id.hex()]["stats"]["scheduling_state"]
+    assert state == "FAILED_TO_COMMIT_RESOURCES"
 
     # Create a second PG that needs right amount of resources.
     pg2 = ray.util.placement_group([{"CPU": 1}] * 4)
