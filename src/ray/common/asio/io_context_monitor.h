@@ -84,11 +84,11 @@ class IOContextMonitorThread {
  public:
   /// @param monitor The monitor to drive. Takes ownership.
   /// @param probe_interval How often to call monitor->Tick().
-  /// @param health_callback Called from the monitor thread after each tick with the
-  ///   health status. Useful for updating gRPC SetServingStatus.
+  /// @param health_status_callback Called from the monitor thread after each tick with the
+  ///   health status.
   IOContextMonitorThread(std::unique_ptr<IOContextMonitor> monitor,
                          absl::Duration probe_interval,
-                         std::function<void(bool healthy)> health_callback);
+                         std::function<void(bool healthy)> health_status_callback);
   ~IOContextMonitorThread();
 
   IOContextMonitorThread(const IOContextMonitorThread &) = delete;
@@ -102,7 +102,7 @@ class IOContextMonitorThread {
 
   std::unique_ptr<IOContextMonitor> monitor_;
   absl::Duration probe_interval_;
-  std::function<void(bool)> health_callback_;
+  std::function<void(bool)> health_status_callback_;
   absl::Mutex mutex_;
   std::atomic<bool> running_{false};
   std::thread thread_;

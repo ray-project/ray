@@ -14,15 +14,11 @@
 
 #include "ray/common/asio/io_context_monitor.h"
 
-#include "absl/time/clock.h"
 #include "ray/util/logging.h"
+#include "ray/util/clock.h"
 #include "ray/util/thread_utils.h"
 
 namespace ray {
-
-// ---------------------------------------------------------------------------
-// IOContextMonitor
-// ---------------------------------------------------------------------------
 
 IOContextMonitor::IOContextMonitor(
     std::string component_name,
@@ -105,17 +101,13 @@ bool IOContextMonitor::ProcessProbe(ProbeState &probe) {
   return probe.healthy;
 }
 
-// ---------------------------------------------------------------------------
-// IOContextMonitorThread
-// ---------------------------------------------------------------------------
-
 IOContextMonitorThread::IOContextMonitorThread(
     std::unique_ptr<IOContextMonitor> monitor,
     absl::Duration probe_interval,
-    std::function<void(bool healthy)> health_callback)
+    std::function<void(bool healthy)> health_status_callback)
     : monitor_(std::move(monitor)),
       probe_interval_(probe_interval),
-      health_callback_(std::move(health_callback)) {}
+      health_status_callback_(std::move(health_status_callback)) {}
 
 IOContextMonitorThread::~IOContextMonitorThread() { Stop(); }
 
@@ -145,8 +137,8 @@ void IOContextMonitorThread::Run() {
 
   while (running_.load(std::memory_order_relaxed)) {
     bool healthy = monitor_->Tick();
-    if (health_callback_) {
-      health_callback_(healthy);
+    if (health_status_callback_) {
+      health_status_callback_(healthy);
     }
 
     absl::MutexLock lock(&mutex_);
