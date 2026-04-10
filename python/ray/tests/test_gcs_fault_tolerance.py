@@ -1,4 +1,5 @@
 import asyncio
+import base64
 import json
 import os
 import signal
@@ -56,6 +57,18 @@ def cluster_kill_gcs_wait(cluster):
     # Wait to prevent the gcs server process becoming zombie.
     gcs_server_process.wait()
     wait_for_pid_to_exit(gcs_server_pid, 300)
+
+
+def get_raylet_startup_config(node) -> dict[str, Any]:
+    raylet_pid = node.all_processes["raylet"][0].process.pid
+    raylet_cmdline = psutil.Process(raylet_pid).cmdline()
+    config_list_arg = next(
+        (arg for arg in raylet_cmdline if arg.startswith("--config_list=")),
+        None,
+    )
+    assert config_list_arg is not None, raylet_cmdline
+    config_blob = config_list_arg.split("=", 1)[1]
+    return json.loads(base64.b64decode(config_blob).decode("utf-8"))
 
 
 def test_gcs_server_restart(ray_start_regular_with_external_redis):
@@ -1390,6 +1403,43 @@ def test_raylet_respects_reconnect_timeout_config(
     # The task must complete now that GCS is back.
     result = ray.get(future, timeout=30)
     assert result == 99, f"Expected 99, got {result}"
+
+
+@pytest.mark.skipif(
+    not external_redis_test_enabled(),
+    reason="Only runs when external Redis is enabled (TEST_EXTERNAL_REDIS=1)",
+)
+@pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis",
+    [
+        {
+            **generate_system_config_map(
+                gcs_rpc_server_reconnect_timeout_s=10,
+            ),
+        }
+    ],
+    indirect=True,
+)
+def test_worker_raylet_startup_uses_gcs_system_config(
+    ray_start_cluster_head_with_external_redis,
+):
+    """Worker raylets should receive the GCS-fetched system config at startup.
+
+    The head node injects ``_system_config`` via ``--config_list`` before the
+    raylet makes its first GCS connection. Non-head nodes must then fetch the
+    same config from GCS and pass it to their own raylet startup command, or
+    they will silently fall back to the 60 s default reconnect timeout.
+    """
+
+    cluster = ray_start_cluster_head_with_external_redis
+    worker = cluster.add_node()
+    cluster.wait_for_nodes()
+
+    head_config = get_raylet_startup_config(cluster.head_node)
+    worker_config = get_raylet_startup_config(worker)
+
+    assert head_config["gcs_rpc_server_reconnect_timeout_s"] == 10
+    assert worker_config["gcs_rpc_server_reconnect_timeout_s"] == 10
 
 
 if __name__ == "__main__":
