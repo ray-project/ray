@@ -2,10 +2,10 @@ name: "core$BUILD_VARIANT-py$PYTHON"
 froms: ["cr.ray.io/rayproject/oss-ci-base_$BASE_TYPE-py$PYTHON"]
 dockerfile: ci/docker/core.build.Dockerfile
 srcs:
-  - python/deplocks/ci/core$BUILD_VARIANT-ci_depset_py$PYTHON.lock
+  - python/deplocks/ci/core-$BUILD_VARIANT-ci_depset_py$PYTHON.lock
 build_args:
   - DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_$BASE_TYPE-py$PYTHON
   - PYTHON=$PYTHON
-  - BUILD_VARIANT=
+  - BUILD_VARIANT=build
 tags:
   - cr.ray.io/rayproject/core$BUILD_VARIANT-py$PYTHON
