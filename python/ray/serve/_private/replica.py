@@ -1979,7 +1979,15 @@ class Replica:
         async def start_http_server(port):
             options = configure_http_middlewares(
                 configure_http_options_with_defaults(
-                    HTTPOptions(**{**self._http_options.model_dump(), "port": port})
+                    HTTPOptions(
+                        **{
+                            **self._http_options.model_dump(),
+                            "port": port,
+                            # Direct ingress ports must bind to all interfaces
+                            # so HAProxy can reach replicas cross-node.
+                            "host": "0.0.0.0",
+                        }
+                    )
                 )
             )
 
