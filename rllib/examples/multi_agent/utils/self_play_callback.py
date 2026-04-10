@@ -73,20 +73,8 @@ class SelfPlayCallback(RLlibCallback):
             algorithm.add_module(
                 module_id=new_module_id,
                 module_spec=RLModuleSpec.from_module(main_module),
+                module_state=main_module.get_state(),
                 new_agent_to_module_mapping_fn=agent_to_module_mapping_fn,
-            )
-            # TODO (sven): Maybe we should move this convenience step back into
-            #  `Algorithm.add_module()`? Would be less explicit, but also easier.
-            algorithm.set_state(
-                {
-                    "learner_group": {
-                        "learner": {
-                            "rl_module": {
-                                new_module_id: main_module.get_state(),
-                            }
-                        }
-                    }
-                }
             )
         else:
             print("not good enough; will keep learning ...")

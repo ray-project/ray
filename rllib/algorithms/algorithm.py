@@ -2391,6 +2391,7 @@ class Algorithm(Checkpointable, Trainable):
         module_id: ModuleID,
         module_spec: RLModuleSpec,
         *,
+        module_state: Optional[Dict] = None,
         config_overrides: Optional[Dict] = None,
         new_agent_to_module_mapping_fn: Optional[AgentToModuleMappingFn] = None,
         new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
@@ -2412,6 +2413,8 @@ class Algorithm(Checkpointable, Trainable):
                 or a dot, space or backslash at the end of the ID.
             module_spec: The SingleAgentRLModuleSpec to use for constructing the new
                 RLModule.
+            module_state: Optional state dict to apply to the new RLModule on the
+                LearnerGroup before syncing weights to EnvRunners.
             config_overrides: The `AlgorithmConfig` overrides that should apply to
                 the new Module, if any.
             new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
@@ -2461,6 +2464,16 @@ class Algorithm(Checkpointable, Trainable):
                 config_overrides=config_overrides,
                 new_should_module_be_updated=new_should_module_be_updated,
             )
+            if module_state is not None:
+                self.learner_group.set_state(
+                    {
+                        COMPONENT_LEARNER: {
+                            COMPONENT_RL_MODULE: {
+                                module_id: module_state,
+                            }
+                        }
+                    }
+                )
 
         # Change our config (AlgorithmConfig) to contain the new Module.
         # TODO (sven): This is a hack to manipulate the AlgorithmConfig directly,
