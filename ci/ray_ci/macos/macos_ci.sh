@@ -135,7 +135,7 @@ _prelude() {
   ./ci/env/env_info.sh
 
   # Install locked dependencies to ensure consistent package versions
-  pip install -r python/deplocks/ci/macos_depset_py3.10.lock --no-deps
+  pip install -r python/deplocks/ci/macos_depset_py3.10.lock --no-deps --no-verify-hashes
 }
 
 _epilogue() {
