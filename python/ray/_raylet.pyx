@@ -1710,6 +1710,9 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                     "See https://github.com/ray-project/ray/issues/28688.")
 
 
+# (karticam) module-level task counter for memray file naming
+_km_task_counter = {}
+
 cdef void execute_task(
         const CAddress &caller_address,
         CTaskType task_type,
@@ -1834,13 +1837,9 @@ cdef void execute_task(
                 return _i.rss / 1e6, _i.uss / 1e6, (_i.rss - _i.uss) / 1e6
 
             # (karticam) memray tracking per task invocation
-            if not hasattr(execute_task, "_km_task_counter"):
-                execute_task._km_task_counter = {}
             _km_pid = os.getpid()
-            execute_task._km_task_counter[_km_pid] = (
-                execute_task._km_task_counter.get(_km_pid, 0) + 1
-            )
-            _km_task_num = execute_task._km_task_counter[_km_pid]
+            _km_task_counter[_km_pid] = _km_task_counter.get(_km_pid, 0) + 1
+            _km_task_num = _km_task_counter[_km_pid]
             _km_memray_path = (
                 f"/tmp/memray_pid{_km_pid}"
                 f"_task{_km_task_num}.bin"
