@@ -28,12 +28,12 @@ websockets==15.0.1
 joblib==1.2.0
 jsonpatch==1.32
 kubernetes==24.2.0
-llvmlite==0.45.1
+llvmlite==0.44.0
 lxml>=6.0.2
 moto[s3,server]==5.1.18
 mypy==1.7.0
 pyright==1.1.408
-numba==0.62.1
+numba==0.61.2
 openpyxl==3.0.10
 opentelemetry-api==1.39.0
 opentelemetry-sdk==1.39.0

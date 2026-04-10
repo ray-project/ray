@@ -1029,7 +1029,7 @@ linear-operator==0.6
     #   gpytorch
 linkify-it-py==2.0.3
     # via markdown-it-py
-llvmlite==0.45.1
+llvmlite==0.44.0
     # via numba
 locket==1.0.0
     # via
@@ -1233,7 +1233,7 @@ notebook-shim==0.2.3
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk
     # via vsphere-automation-sdk
-numba==0.62.1
+numba==0.61.2
     # via
     #   -r python/requirements/test-requirements.txt
     #   statsforecast
