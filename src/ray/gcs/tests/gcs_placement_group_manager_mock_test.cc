@@ -26,6 +26,7 @@
 #include "ray/gcs/gcs_placement_group_manager.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 
 using namespace ::testing;  // NOLINT
@@ -56,10 +57,12 @@ class GcsPlacementGroupManagerMockTest : public Test {
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
         fake_placement_group_scheduling_latency_in_ms_histogram_,
-        fake_placement_group_count_gauge_);
+        fake_placement_group_count_gauge_,
+        clock_);
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   }
 
+  Clock clock_;
   instrumented_io_context io_context_;
   std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   std::shared_ptr<MockGcsPlacementGroupSchedulerInterface> gcs_placement_group_scheduler_;

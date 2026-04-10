@@ -37,6 +37,7 @@
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 #include "ray/util/event.h"
 
 namespace ray {
@@ -179,7 +180,8 @@ class GcsActorManagerTest : public ::testing::Test {
         /*ray_event_recorder=*/fake_ray_event_recorder_,
         /*session_name=*/"",
         actor_by_state_gauge_,
-        gcs_actor_by_state_gauge_);
+        gcs_actor_by_state_gauge_,
+        clock_);
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -260,6 +262,7 @@ class GcsActorManagerTest : public ::testing::Test {
     return promise.get_future().get();
   }
 
+  Clock clock_;
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
