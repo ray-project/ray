@@ -29,7 +29,8 @@ namespace observability {
 /// from Python with pre-serialized protobuf event data.
 ///
 /// This class is used by Cython bindings to create events from Python that can
-/// be submitted to the RayEventRecorder.
+/// be submitted to the RayEventRecorder. eg: will be used by PlatoformEvents,
+/// JobSubmissionEvents and ray library events.
 class PythonRayEvent : public RayEventInterface {
  public:
   /// Create a PythonRayEvent from serialized event data.

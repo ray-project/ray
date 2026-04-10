@@ -1,3 +1,4 @@
+import logging
 from typing import Dict, List, Optional
 from urllib.parse import urlparse
 
@@ -9,11 +10,15 @@ from ray._private.authentication.http_token_authentication import (
     get_auth_headers_if_auth_enabled,
 )
 from ray._raylet import RayEvent, serialize_events_to_ray_events_data_json
+from ray.util.annotations import DeveloperAPI
+
+logger = logging.getLogger(__name__)
 
 _DEFAULT_TIMEOUT_S = 1
 _EXTERNAL_RAY_EVENTS_PATH = "/api/v0/external/ray_events"
 
 
+@DeveloperAPI
 class DashboardHeadRayEventPublisher:
     """Publish structured RayEvents to the dashboard head HTTP API."""
 
@@ -50,7 +55,18 @@ class DashboardHeadRayEventPublisher:
     def publish_batch(self, events: List[RayEvent]) -> None:
         if not events:
             return
+        try:
+            self._do_publish(events)
+        except requests.ConnectionError:
+            logger.warning(
+                "Connection to dashboard failed (url=%s). "
+                "Clearing cached URL and retrying.",
+                self._dashboard_url,
+            )
+            self._dashboard_url = None
+            self._do_publish(events)
 
+    def _do_publish(self, events: List[RayEvent]) -> None:
         response = self._session.post(
             f"{self._get_dashboard_url()}{_EXTERNAL_RAY_EVENTS_PATH}",
             data=serialize_events_to_ray_events_data_json(events),

@@ -172,12 +172,12 @@ ray_cc_library(
         "python_event_interface.h",
     ],
     deps = [
-        ":metrics",
         ":ray_event_interface",
         "//src/ray/common:grpc_util",
         "//src/ray/common:id",
         "//src/ray/protobuf/public:events_base_event_cc_proto",
         "//src/ray/util:logging",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/time",
         "@com_google_protobuf//:protobuf",
     ],

@@ -16,6 +16,9 @@
 
 #include <google/protobuf/util/json_util.h>
 
+#include "absl/status/status.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "ray/common/grpc_util.h"
@@ -65,17 +68,24 @@ rpc::events::RayEvent PythonRayEvent::Serialize() && {
 
   // Use protobuf reflection to set the nested event message by field number.
   // this way, adding new Python event types will not require C++ changes.
-  const auto *descriptor = event.GetDescriptor();
-  const auto *field = descriptor->FindFieldByNumber(nested_event_field_number_);
+  const google::protobuf::Descriptor *descriptor = event.GetDescriptor();
+  const google::protobuf::FieldDescriptor *field =
+      descriptor->FindFieldByNumber(nested_event_field_number_);
   if (field != nullptr &&
       field->type() == google::protobuf::FieldDescriptor::TYPE_MESSAGE) {
-    auto *nested = event.GetReflection()->MutableMessage(&event, field);
+    google::protobuf::Message *nested =
+        event.GetReflection()->MutableMessage(&event, field);
     if (!nested->ParseFromString(serialized_event_data_)) {
       RAY_LOG(ERROR) << "Failed to parse nested event data for field " << field->name();
       event.GetReflection()->ClearField(&event, field);
     }
+  } else if (field == nullptr) {
+    RAY_LOG(ERROR) << "No field found for nested event field number: "
+                   << nested_event_field_number_;
   } else {
-    RAY_LOG(ERROR) << "Invalid nested event field number: " << nested_event_field_number_;
+    RAY_LOG(ERROR) << "Field " << field->name() << " (number "
+                   << nested_event_field_number_
+                   << ") is not a message type, actual type: " << field->type_name();
   }
 
   return event;
@@ -109,25 +119,19 @@ std::string SerializeEventsToRayEventsDataJson(
     std::vector<std::unique_ptr<RayEventInterface>> &&events) {
   google::protobuf::util::JsonPrintOptions options;
   options.always_print_primitive_fields = true;
-  // preserve_proto_field_names defaults to false → camelCase output,
-  // Enums print as strings by default
+  options.preserve_proto_field_names = true;
 
-  std::string result = "[";
-  bool first = true;
-  for (auto &event : events) {
-    auto serialized_event = std::move(*event).Serialize();
+  std::vector<std::string> json_parts;
+  json_parts.reserve(events.size());
+  for (std::unique_ptr<RayEventInterface> &event : events) {
+    rpc::events::RayEvent serialized_event = std::move(*event).Serialize();
     std::string json_str;
-    auto status =
+    absl::Status status =
         google::protobuf::util::MessageToJsonString(serialized_event, &json_str, options);
     RAY_CHECK(status.ok()) << "Failed to serialize event to JSON: " << status.message();
-    if (!first) {
-      result += ",";
-    }
-    result += json_str;
-    first = false;
+    json_parts.push_back(std::move(json_str));
   }
-  result += "]";
-  return result;
+  return absl::StrCat("[", absl::StrJoin(json_parts, ","), "]");
 }
 
 }  // namespace observability
