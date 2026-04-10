@@ -54,14 +54,15 @@ def _estimate_batch_size_from_metadata(
     if metadata is None or metadata.num_row_groups == 0:
         return None
 
-    row_group_idx: int = fragment.row_groups[0].id
-    row_group_meta: pq.RowGroupMetaData = fragment.metadata.row_group(row_group_idx)
+    row_group_idx: int = (
+        fragment.row_groups[0].id if fragment.row_groups is not None else 0
+    )
+    row_group_meta: pq.RowGroupMetaData = metadata.row_group(row_group_idx)
     row_group_num_rows: int = row_group_meta.num_rows
 
     if row_group_num_rows == 0:
         return None
 
-    # Sum uncompressed sizes for projected columns
     if columns is not None:
         projected_columns = tuple(columns)
         target_column_indices = []
@@ -78,7 +79,13 @@ def _estimate_batch_size_from_metadata(
             for col_idx in target_column_indices
         )
     else:
-        row_group_uncompressed_size = row_group_meta.total_byte_size
+        # Sum per-column uncompressed sizes instead of using
+        # row_group_meta.total_byte_size, which can return the *compressed* size
+        # for some files (apache/arrow#48138).
+        row_group_uncompressed_size = sum(
+            row_group_meta.column(col_idx).total_uncompressed_size
+            for col_idx in range(row_group_meta.num_columns)
+        )
 
     # Estimate the in-memory size of the row group
     estimated_in_mem_row_group_size = (
@@ -173,10 +180,10 @@ class ParquetFileReader(FileReader):
             return self._sampled_batch_size
 
         if self._target_block_size is not None:
-            fragments = list(dataset.get_fragments())
-            if fragments:
+            first_fragment = next(dataset.get_fragments(), None)
+            if first_fragment is not None:
                 estimated = _estimate_batch_size_from_metadata(
-                    fragments[0], self._columns, self._target_block_size
+                    first_fragment, self._columns, self._target_block_size
                 )
                 if estimated is not None:
                     logger.debug(
