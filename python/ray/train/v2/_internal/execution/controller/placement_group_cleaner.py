@@ -21,7 +21,7 @@ class PlacementGroupCleaner:
     def __init__(
         self,
         controller_actor_id: str,
-        check_interval_s: float = 1.0,
+        check_interval_s: float = 5.0,
     ):
         self._controller_actor_id = controller_actor_id
         self._check_interval_s = check_interval_s
