@@ -1833,6 +1833,37 @@ cdef void execute_task(
                 _i = _p.memory_full_info()
                 return _i.rss / 1e6, _i.uss / 1e6, (_i.rss - _i.uss) / 1e6
 
+            # (karticam) memray tracking per task invocation
+            if not hasattr(execute_task, "_km_task_counter"):
+                execute_task._km_task_counter = {}
+            _km_pid = os.getpid()
+            execute_task._km_task_counter[_km_pid] = (
+                execute_task._km_task_counter.get(_km_pid, 0) + 1
+            )
+            _km_task_num = execute_task._km_task_counter[_km_pid]
+            _km_memray_path = (
+                f"/tmp/memray_pid{_km_pid}"
+                f"_task{_km_task_num}.bin"
+            )
+            _km_tracker = None
+            try:
+                import memray as _km_memray
+                _km_tracker = _km_memray.Tracker(
+                    _km_memray_path,
+                    native_traces=True,
+                )
+                _km_tracker.__enter__()
+                print(
+                    f"(karticam) [MEMRAY-START] PID={_km_pid} "
+                    f"task={title} task_num={_km_task_num} "
+                    f"file={_km_memray_path}"
+                )
+            except ImportError:
+                print(
+                    f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
+                    f"memray not installed"
+                )
+
             _km_rss, _km_uss, _km_shared = _km_get_mem()
             print(
                 f"(karticam) [BEFORE-DESER] PID={os.getpid()} "
@@ -2124,6 +2155,18 @@ cdef void execute_task(
                 f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
                 f"Shared={_km_shared:.1f}MB"
             )
+
+            # (karticam) stop memray tracker
+            if _km_tracker is not None:
+                _km_tracker.__exit__(None, None, None)
+                _km_rss, _km_uss, _km_shared = _km_get_mem()
+                print(
+                    f"(karticam) [MEMRAY-STOP] PID={_km_pid} "
+                    f"task={title} task_num={_km_task_num} "
+                    f"file={_km_memray_path} | "
+                    f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                    f"Shared={_km_shared:.1f}MB"
+                )
 
         except (KeyboardInterrupt, SystemExit):
             # Special casing these two because Ray can raise them
