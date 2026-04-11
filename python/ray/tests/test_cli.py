@@ -1606,5 +1606,54 @@ def test_ray_serve_help():
     assert "run" in result.output
 
 
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only agent cleanup test")
+def test_ray_stop_terminates_agents_on_windows(cleanup_ray):
+    """Verify that `ray stop` terminates dashboard and runtime_env agent
+    processes on Windows, where setproctitle does not change the process
+    name or command line visible to psutil.
+
+    See https://github.com/ray-project/ray/issues/61452
+    """
+    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+
+    # Start a Ray head node with the dashboard enabled.
+    result = runner.invoke(
+        scripts.start,
+        ["--head", "--include-dashboard=true"],
+    )
+    _die_on_error(result)
+
+    agent_keywords = [
+        os.path.join("dashboard", "agent.py"),
+        os.path.join("runtime_env", "agent", "main.py"),
+    ]
+
+    def _find_agent_procs():
+        """Return agent processes whose cmdline contains one of the keywords."""
+        agents = []
+        for proc in psutil.process_iter(["pid", "cmdline"]):
+            try:
+                cmdline_str = " ".join(proc.cmdline())
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+            if any(kw in cmdline_str for kw in agent_keywords):
+                agents.append(proc)
+        return agents
+
+    # Wait for both agents to be running.
+    wait_for_condition(lambda: len(_find_agent_procs()) >= 2, timeout=30)
+
+    # Stop Ray.
+    stop_result = runner.invoke(scripts.stop)
+    _die_on_error(stop_result)
+
+    # Verify that all agent processes have exited.
+    def _agents_gone():
+        remaining = _find_agent_procs()
+        return len(remaining) == 0
+
+    wait_for_condition(_agents_gone, timeout=30)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))
