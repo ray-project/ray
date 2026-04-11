@@ -962,7 +962,6 @@ class AsyncioRouter:
                     and not replica.is_cross_language
                 )
                 result = replica.try_send_request(pr, with_rejection=with_rejection)
-                # [Added now:Decouple routing]:The queue length is updated here after sending the request
                 # Proactively update the queue length cache.
                 self.request_router.on_send_request(replica.replica_id)
 
