@@ -1625,6 +1625,9 @@ grpcio==1.76.0 \
 #   ray
 #   tensorboard
 #   tensorflow
+grpcio-status==1.62.3 \
+    --hash=sha256:289bdd7b2459794a12cf95dc0cb727bd4a1742c37bd823f760236c937e53a485 \
+    --hash=sha256:f9049b762ba8de6b1086789d8315846e094edac2c50beaf462338b301a8fd4b8
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   google-api-core

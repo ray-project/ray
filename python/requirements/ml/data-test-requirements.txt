@@ -2,7 +2,7 @@
 # https://github.com/ray-project/ray/pull/29448#discussion_r1006256498
 
 python-snappy
-tensorflow-datasets==4.9.6
+tensorflow-datasets==4.9.3
 datasets>=3.0.2
 pytest-repeat
 soundfile
@@ -15,7 +15,7 @@ webdataset
 raydp==1.7.0b20250423.dev0
 pylance==1.0.3
 delta-sharing
-deltalake==0.9.0
+deltalake==1.5.0
 pytest-mock
 decord
 snowflake-connector-python>=3.15.0

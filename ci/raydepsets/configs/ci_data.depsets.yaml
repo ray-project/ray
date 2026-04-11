@@ -2,6 +2,9 @@ build_arg_sets:
   py310:
     PYTHON_VERSION: "3.10"
     PYTHON_SHORT: "310"
+  py311:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
   py312:
     PYTHON_VERSION: "3.12"
     PYTHON_SHORT: "312"
@@ -26,6 +29,7 @@ depsets:
       - --unsafe-package ray
     build_arg_sets:
       - py310
+      - py311
       - py312
     pre_hooks:
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
@@ -134,10 +138,10 @@ depsets:
       - multiprocess
       - tensorboard
       - ml-dtypes
-      - grpcio-status
+      - cudf-cu12
     output: python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
-      - py310
+      - py311
 
   - name: data_tfxbsl_depset_${PYTHON_SHORT}
     operation: expand
@@ -151,4 +155,4 @@ depsets:
       - --python-platform=linux
       - --unsafe-package ray
     build_arg_sets:
-      - py310
+      - py311
