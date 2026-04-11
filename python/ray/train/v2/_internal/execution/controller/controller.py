@@ -313,6 +313,9 @@ class TrainController:
 
         for rg_index in failing_rg_indices:
             # TODO: parallelize this.
+            # TODO: also ensure that if earlier replacements succeed and later replacements fail,
+            # we don't redo the earlier replacements.
+            # See https://github.com/ray-project/ray/pull/61475#discussion_r3055217289
             self._worker_group.replace_replica_group(rg_index)
 
     def _get_retry_state(
