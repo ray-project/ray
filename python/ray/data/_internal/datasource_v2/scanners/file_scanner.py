@@ -13,8 +13,8 @@ class FileScanner(Scanner[FileManifest]):
     Provides a default plan() implementation that splits FileManifest by files.
     Subclasses implement format-specific read_schema() and create_reader().
 
-    This is the recommended base class for file-based datasources like
-    Parquet, CSV, JSON, etc.
+    PyArrow Dataset-based scanners should subclass ``ArrowFileScanner``; use
+    ``FileScanner`` directly for non-Arrow file formats that only share splitting.
     """
 
     def plan(

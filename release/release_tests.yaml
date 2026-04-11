@@ -224,10 +224,13 @@
 
   variations:
     - __suffix__: aws
+      cluster:
+        anyscale_sdk_2026: true
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
     - __suffix__: kuberay
       env: kuberay
