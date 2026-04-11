@@ -5,6 +5,7 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 
 import dataclasses
 import logging
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -188,8 +189,10 @@ class OpState:
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
         # Tracks consumers blocked in get_output_blocking().
-        # Used to detect consumer starvation.
+        # Used to detect consumer starvation. Guarded by
+        # _waiting_consumers_lock since += is not atomic.
         self._num_waiting_consumers: int = 0
+        self._waiting_consumers_lock = threading.Lock()
 
     @property
     def num_waiting_consumers(self) -> int:
@@ -315,6 +318,8 @@ class OpState:
     def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
+        This method must be thread-safe.
+
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.
 
@@ -343,12 +348,14 @@ class OpState:
                     return ref
                 if not starving:
                     # Queue is empty — mark this consumer as starving.
-                    self._num_waiting_consumers += 1
+                    with self._waiting_consumers_lock:
+                        self._num_waiting_consumers += 1
                     starving = True
                 time.sleep(0.01)
         finally:
             if starving:
-                self._num_waiting_consumers -= 1
+                with self._waiting_consumers_lock:
+                    self._num_waiting_consumers -= 1
 
     def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""
