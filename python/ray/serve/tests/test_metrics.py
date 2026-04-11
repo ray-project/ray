@@ -1551,7 +1551,7 @@ def test_objref_resolution_latency_metric(metrics_start_shutdown):
 
     def check_objref_resolution_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_objref_resolution_latency_ms_count",
+            "ray_serve_router_args_resolution_latency_ms_count",
             timeseries=timeseries,
             wait=False,
         )
@@ -1572,7 +1572,7 @@ def test_objref_resolution_latency_metric(metrics_start_shutdown):
 
     def check_objref_resolution_metric_value():
         value = get_metric_float(
-            "ray_serve_objref_resolution_latency_ms_sum",
+            "ray_serve_router_args_resolution_latency_ms_sum",
             timeseries=timeseries,
             expected_tags={"deployment": "Downstream", "application": "app1"},
         )

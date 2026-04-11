@@ -633,7 +633,7 @@ class AsyncioRouter:
         )
 
         self._objref_resolution_latency_ms = metrics.Histogram(
-            "serve_objref_resolution_latency_ms",
+            "serve_router_args_resolution_latency_ms",
             description=(
                 "Time in milliseconds spent resolving upstream ObjectRef or "
                 "DeploymentResponse arguments before a request enters the "
@@ -646,7 +646,7 @@ class AsyncioRouter:
                 "deployment": deployment_id.name,
                 "application": deployment_id.app_name,
                 "handle": handle_id,
-                "actor_id": self_actor_id if self_actor_id else "",
+                "actor_id": self_actor_id,
             }
         )
 
@@ -962,7 +962,7 @@ class AsyncioRouter:
                     and not replica.is_cross_language
                 )
                 result = replica.try_send_request(pr, with_rejection=with_rejection)
-
+                # [Added now:Decouple routing]:The queue length is updated here after sending the request
                 # Proactively update the queue length cache.
                 self.request_router.on_send_request(replica.replica_id)
 
