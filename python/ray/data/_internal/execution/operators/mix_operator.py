@@ -19,10 +19,10 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
     into a single output stream, respecting target row ratios specified
     by weights.
 
-    Uses a deficit-adjusted algorithm: tracks cumulative row counts per
-    input and always pulls from whichever input has fallen furthest behind
-    its target ratio. This ensures the output row ratio converges to the
-    target weights regardless of input block size variance.
+    Tracks cumulative row counts per input and always pulls from whichever
+    input has fallen furthest behind its target ratio. This ensures the
+    output row ratio converges to the target weights regardless of input
+    block size variance.
     """
 
     def __init__(
@@ -34,8 +34,9 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
     ):
         assert len(input_ops) >= 1
         assert len(weights) == len(input_ops)
+        if any(w <= 0 for w in weights):
+            raise ValueError("Weights must be positive.")
 
-        # Normalize weights to sum to 1.
         total_weight = sum(weights)
         self._weights = [w / total_weight for w in weights]
 
