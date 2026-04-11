@@ -322,10 +322,11 @@ class OpState:
             StopIteration: If all outputs are already consumed.
             Exception: If there was an exception raised during execution.
         """
-        self._num_waiting_consumers += 1
+        starving = False
         try:
             while True:
-                # Check if StreamingExecutor has caught an exception or is done execution.
+                # Check if StreamingExecutor has caught an exception or is done
+                # execution.
                 if self._exception is not None:
                     raise self._exception
                 elif self._finished and not self.output_queue.has_next(
@@ -334,15 +335,20 @@ class OpState:
                     raise StopIteration()
                 ref = self.output_queue.pop(output_split_idx)
                 if ref is not None:
-                    # Update outqueue metrics when blocks are removed from this
-                    # operator's outqueue.
+                    # Update outqueue metrics when blocks are removed from
+                    # this operator's outqueue.
                     # TODO: Abstract queue-releated metrics to queue.
                     self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
                     self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
                     return ref
+                if not starving:
+                    # Queue is empty — mark this consumer as starving.
+                    self._num_waiting_consumers += 1
+                    starving = True
                 time.sleep(0.01)
         finally:
-            self._num_waiting_consumers -= 1
+            if starving:
+                self._num_waiting_consumers -= 1
 
     def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""
