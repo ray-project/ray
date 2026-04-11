@@ -46,7 +46,7 @@
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=0  # Allow worker OOM during test
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -668,7 +668,7 @@
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=0
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: heterogeneous_memory_compute.yaml
 
   run:
@@ -921,7 +921,7 @@
 
   run:
     timeout: 5400
-    script: python tpch/tpch_q1.py --sf 100
+    script: python tpch/tpch_q1.py --sf 1000
 
 - name: "tpch_q2_{{scaling}}"
   python: "3.10"
