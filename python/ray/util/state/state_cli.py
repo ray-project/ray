@@ -2,7 +2,7 @@ import json
 import logging
 from datetime import datetime
 from enum import Enum, unique
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import click
 import yaml
@@ -10,6 +10,7 @@ import yaml
 import ray._private.services as services
 from ray._common.network_utils import parse_address
 from ray._private.thirdparty.tabulate.tabulate import tabulate
+from ray.dashboard.modules.job.cli_utils import BoolOrStringParam, parse_headers
 from ray.util.annotations import PublicAPI
 from ray.util.state import (
     StateApiClient,
@@ -338,6 +339,33 @@ address_option = click.option(
         "automatically from querying the GCS server."
     ),
 )
+verify_option = click.option(
+    "--verify",
+    default=True,
+    show_default=True,
+    type=BoolOrStringParam(),
+    help=(
+        "Boolean indication to verify the server's TLS certificate or a path to "
+        "a file or directory of trusted certificates."
+    ),
+)
+headers_option = click.option(
+    "--headers",
+    required=False,
+    type=str,
+    default=None,
+    help=(
+        "Used to pass headers through http/s to the Ray Cluster. "
+        'Please use JSON formatting, e.g. {"key": "value"}'
+    ),
+)
+
+
+def _handle_headers(headers: Optional[str]) -> Optional[Dict[str, Any]]:
+    try:
+        return parse_headers(headers, env_var="RAY_STATE_HEADERS")
+    except ValueError as exc:
+        raise click.UsageError(str(exc))
 
 
 @click.command()
@@ -355,12 +383,16 @@ address_option = click.option(
     type=str,
     required=False,
 )
+@headers_option
+@verify_option
 @address_option
 @timeout_option
 @PublicAPI(stability="stable")
 def ray_get(
     resource: str,
     id: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
     address: Optional[str],
     timeout: float,
 ):
@@ -394,6 +426,10 @@ def ray_get(
     Args:
         resource: The type of the resource to query.
         id: The id of the resource.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
+        address: The address of Ray API server.
+        timeout: Timeout in seconds for the API requests.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -409,7 +445,9 @@ def ray_get(
 
     # Create the State API server and put it into context
     logger.debug(f"Create StateApiClient to ray instance at: {address}...")
-    client = StateApiClient(address=address)
+    client = StateApiClient(
+        address=address, headers=_handle_headers(headers), verify=verify
+    )
     options = GetApiOptions(timeout=timeout)
 
     # If errors occur, exceptions will be thrown.
@@ -473,6 +511,8 @@ def ray_get(
 )
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @PublicAPI(stability="stable")
 def ray_list(
     resource: str,
@@ -482,6 +522,8 @@ def ray_list(
     detail: bool,
     timeout: float,
     address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """List all states of a given resource.
 
@@ -539,6 +581,14 @@ def ray_list(
 
     Args:
         resource: The type of the resource to query.
+        format: Output format.
+        filter: Filters in key=value or key!=value form.
+        limit: Maximum number of entries to return.
+        detail: Whether to include detailed columns.
+        timeout: Timeout in seconds for the API requests.
+        address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -553,7 +603,9 @@ def ray_list(
     format = AvailableFormat(format)
 
     # Create the State API server and put it into context
-    client = StateApiClient(address=address)
+    client = StateApiClient(
+        address=address, headers=_handle_headers(headers), verify=verify
+    )
 
     filter = [_parse_filter(f) for f in filter]
 
@@ -601,9 +653,17 @@ def summary_state_cli_group(ctx):
 @summary_state_cli_group.command(name="tasks")
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
-def task_summary(ctx, timeout: float, address: str):
+def task_summary(
+    ctx,
+    timeout: float,
+    address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Summarize the task state of the cluster.
 
     By default, the output contains the information grouped by
@@ -611,6 +671,13 @@ def task_summary(ctx, timeout: float, address: str):
 
     The output schema is
     :class:`~ray.util.state.common.TaskSummaries`.
+
+    Args:
+        ctx: Click context.
+        timeout: Timeout in seconds for the API requests.
+        address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -623,6 +690,8 @@ def task_summary(ctx, timeout: float, address: str):
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
+                headers=_handle_headers(headers),
+                verify=verify,
             ),
             resource=StateResource.TASKS,
         )
@@ -632,9 +701,17 @@ def task_summary(ctx, timeout: float, address: str):
 @summary_state_cli_group.command(name="actors")
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
-def actor_summary(ctx, timeout: float, address: str):
+def actor_summary(
+    ctx,
+    timeout: float,
+    address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Summarize the actor state of the cluster.
 
     By default, the output contains the information grouped by
@@ -643,6 +720,13 @@ def actor_summary(ctx, timeout: float, address: str):
     The output schema is
     :class:`ray.util.state.common.ActorSummaries
     <ray.util.state.common.ActorSummaries>`.
+
+    Args:
+        ctx: Click context.
+        timeout: Timeout in seconds for the API requests.
+        address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -655,6 +739,8 @@ def actor_summary(ctx, timeout: float, address: str):
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
+                headers=_handle_headers(headers),
+                verify=verify,
             ),
             resource=StateResource.ACTORS,
         )
@@ -664,9 +750,17 @@ def actor_summary(ctx, timeout: float, address: str):
 @summary_state_cli_group.command(name="objects")
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
-def object_summary(ctx, timeout: float, address: str):
+def object_summary(
+    ctx,
+    timeout: float,
+    address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
+):
     """Summarize the object state of the cluster.
 
     The API is recommended when debugging memory leaks.
@@ -695,6 +789,13 @@ def object_summary(ctx, timeout: float, address: str):
     :class:`ray.util.state.common.ObjectSummaries
     <ray.util.state.common.ObjectSummaries>`.
 
+    Args:
+        ctx: Click context.
+        timeout: Timeout in seconds for the API requests.
+        address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
+
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
@@ -706,6 +807,8 @@ def object_summary(ctx, timeout: float, address: str):
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
+                headers=_handle_headers(headers),
+                verify=verify,
             ),
         )
     )
@@ -831,6 +934,8 @@ def _print_log(
     task_id: Optional[str] = None,
     attempt_number: int = 0,
     submission_id: Optional[str] = None,
+    headers: Optional[Dict[str, Any]] = None,
+    verify: Union[bool, str] = True,
 ):
     """Wrapper around `get_log()` that prints the preamble and the log lines"""
     if tail > 0:
@@ -860,6 +965,8 @@ def _print_log(
         task_id=task_id,
         attempt_number=attempt_number,
         submission_id=submission_id,
+        headers=headers,
+        verify=verify,
     ):
         print(chunk, end="", flush=True)
 
@@ -938,6 +1045,8 @@ logs_state_cli_group = LogCommandGroup(help=LOG_CLI_HELP_MSG)
     default="*",
 )
 @address_option
+@headers_option
+@verify_option
 @log_node_id_option
 @log_node_ip_option
 @log_follow_option
@@ -952,6 +1061,8 @@ def log_cluster(
     ctx,
     glob_filter: str,
     address: Optional[str],
+    headers: Optional[str],
+    verify: Union[bool, str],
     node_id: Optional[str],
     node_ip: Optional[str],
     follow: bool,
@@ -992,10 +1103,26 @@ def log_cluster(
         ray logs [cluster] raylet.out --tail 100 -f
         ```
 
+    Args:
+        ctx: Click context.
+        glob_filter: Glob pattern to match log files.
+        address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
+        node_id: Filter logs by node id.
+        node_ip: Filter logs by node IP.
+        follow: Stream logs as they are updated.
+        tail: Number of lines to tail.
+        interval: Polling interval for streaming logs.
+        timeout: Timeout in seconds for the API requests.
+        encoding: Encoding used to decode log files.
+        encoding_errors: Error handling scheme for decoding.
+
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>` if the CLI
             is failed to query the data.
     """  # noqa: E501
+    parsed_headers = _handle_headers(headers)
 
     if node_id is None and node_ip is None:
         node_ip = _get_head_node_ip(address)
@@ -1006,6 +1133,8 @@ def log_cluster(
         node_ip=node_ip,
         glob_filter=glob_filter,
         timeout=timeout,
+        headers=parsed_headers,
+        verify=verify,
     )
 
     log_files_found = []
@@ -1036,6 +1165,8 @@ def log_cluster(
         timeout=timeout,
         encoding=encoding,
         encoding_errors=encoding_errors,
+        headers=parsed_headers,
+        verify=verify,
     )
 
 
@@ -1057,6 +1188,8 @@ def log_cluster(
     help="Retrieves the logs from the actor with this pid.",
 )
 @address_option
+@headers_option
+@verify_option
 @log_node_id_option
 @log_node_ip_option
 @log_follow_option
@@ -1071,6 +1204,8 @@ def log_actor(
     id: Optional[str],
     pid: Optional[str],
     address: Optional[str],
+    headers: Optional[str],
+    verify: Union[bool, str],
     node_id: Optional[str],
     node_ip: Optional[str],
     follow: bool,
@@ -1103,6 +1238,21 @@ def log_actor(
         ray logs actor --id ABCDEFG --err
         ```
 
+    Args:
+        ctx: Click context.
+        id: Actor id.
+        pid: Actor pid.
+        address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
+        node_id: Filter logs by node id.
+        node_ip: Filter logs by node IP.
+        follow: Stream logs as they are updated.
+        tail: Number of lines to tail.
+        interval: Polling interval for streaming logs.
+        timeout: Timeout in seconds for the API requests.
+        err: Whether to fetch stderr instead of stdout.
+
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
@@ -1126,6 +1276,8 @@ def log_actor(
         interval=interval,
         timeout=timeout,
         suffix="err" if err else "out",
+        headers=_handle_headers(headers),
+        verify=verify,
     )
 
 
@@ -1139,6 +1291,8 @@ def log_actor(
     help="Retrieves the logs from the worker with this pid.",
 )
 @address_option
+@headers_option
+@verify_option
 @log_node_id_option
 @log_node_ip_option
 @log_follow_option
@@ -1152,6 +1306,8 @@ def log_worker(
     ctx,
     pid: Optional[str],
     address: Optional[str],
+    headers: Optional[str],
+    verify: Union[bool, str],
     node_id: Optional[str],
     node_ip: Optional[str],
     follow: bool,
@@ -1176,6 +1332,20 @@ def log_worker(
         ray logs worker --pid 123 --err
         ```
 
+    Args:
+        ctx: Click context.
+        pid: Worker pid.
+        address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
+        node_id: Filter logs by node id.
+        node_ip: Filter logs by node IP.
+        follow: Stream logs as they are updated.
+        tail: Number of lines to tail.
+        interval: Polling interval for streaming logs.
+        timeout: Timeout in seconds for the API requests.
+        err: Whether to fetch stderr instead of stdout.
+
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
@@ -1192,6 +1362,8 @@ def log_worker(
         interval=interval,
         timeout=timeout,
         suffix="err" if err else "out",
+        headers=_handle_headers(headers),
+        verify=verify,
     )
 
 
@@ -1207,6 +1379,8 @@ def log_worker(
     ),
 )
 @address_option
+@headers_option
+@verify_option
 @log_follow_option
 @log_tail_option
 @log_interval_option
@@ -1217,6 +1391,8 @@ def log_job(
     ctx,
     submission_id: Optional[str],
     address: Optional[str],
+    headers: Optional[str],
+    verify: Union[bool, str],
     follow: bool,
     tail: int,
     interval: float,
@@ -1239,6 +1415,17 @@ def log_job(
 
         ```
 
+    Args:
+        ctx: Click context.
+        submission_id: Job submission id.
+        address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
+        follow: Stream logs as they are updated.
+        tail: Number of lines to tail.
+        interval: Polling interval for streaming logs.
+        timeout: Timeout in seconds for the API requests.
+
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
@@ -1252,6 +1439,8 @@ def log_job(
         interval=interval,
         timeout=timeout,
         submission_id=submission_id,
+        headers=_handle_headers(headers),
+        verify=verify,
     )
 
 
@@ -1272,6 +1461,8 @@ def log_job(
     help="Retrieves the logs from the attempt, default to 0",
 )
 @address_option
+@headers_option
+@verify_option
 @log_follow_option
 @log_interval_option
 @log_tail_option
@@ -1284,6 +1475,8 @@ def log_task(
     task_id: Optional[str],
     attempt_number: int,
     address: Optional[str],
+    headers: Optional[str],
+    verify: Union[bool, str],
     follow: bool,
     interval: float,
     tail: int,
@@ -1310,6 +1503,19 @@ def log_task(
     a threaded actor), the log of the tasks are expected to be interleaved.
     Please use `ray logs actor --id <actor_id>` for the entire actor log.
 
+    Args:
+        ctx: Click context.
+        task_id: Task id.
+        attempt_number: Task attempt number.
+        address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
+        follow: Stream logs as they are updated.
+        interval: Polling interval for streaming logs.
+        tail: Number of lines to tail.
+        timeout: Timeout in seconds for the API requests.
+        err: Whether to fetch stderr instead of stdout.
+
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
             if the CLI is failed to query the data.
@@ -1325,4 +1531,6 @@ def log_task(
         interval=interval,
         timeout=timeout,
         suffix="err" if err else "out",
+        headers=_handle_headers(headers),
+        verify=verify,
     )
