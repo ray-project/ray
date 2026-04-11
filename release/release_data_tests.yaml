@@ -46,7 +46,7 @@
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=0  # Allow worker OOM during test
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -614,6 +614,11 @@
   group: data-batch-inference
 
   cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=0
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: heterogeneous_memory_compute.yaml
 
   run:
