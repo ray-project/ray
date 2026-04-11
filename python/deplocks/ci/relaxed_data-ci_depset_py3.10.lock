@@ -4484,6 +4484,7 @@ tf-keras==2.20.0 \
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/ml/py313/data-test-requirements.txt
 #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
+#   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 threadpoolctl==3.1.0 \
     --hash=sha256:8b99adda265feb6773280df41eece7b2e6561b772d21ffd52e372f999024907b \
     --hash=sha256:a335baacfaa4400ae1f0d8e3a58d6674d2f8828e3716bb2802c44955ad391380
