@@ -83,6 +83,8 @@ void InternalPubSubGrpcService::InitServerCallFactories(
     std::shared_ptr<const AuthenticationToken> auth_token) {
   RPC_SERVICE_HANDLER(InternalPubSubGcsService, GcsPublish, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
+      InternalPubSubGcsService, ReportJobError, max_active_rpcs_per_handler_);
+  RPC_SERVICE_HANDLER(
       InternalPubSubGcsService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
       InternalPubSubGcsService, GcsSubscriberCommandBatch, max_active_rpcs_per_handler_);
@@ -96,7 +98,6 @@ void JobInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(JobInfoGcsService, AddJob, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, MarkJobFinished, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, GetAllJobInfo, max_active_rpcs_per_handler_)
-  RPC_SERVICE_HANDLER(JobInfoGcsService, ReportJobError, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, GetNextJobID, max_active_rpcs_per_handler_)
 }
 

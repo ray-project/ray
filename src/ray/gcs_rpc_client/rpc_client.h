@@ -267,12 +267,6 @@ class GcsRpcClient {
                              job_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Report job error to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
-                             ReportJobError,
-                             job_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
   /// Get next job id from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
                              GetNextJobID,
@@ -521,6 +515,10 @@ class GcsRpcClient {
   /// Operations for pubsub
   VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
                              GcsPublish,
+                             internal_pubsub_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+                             ReportJobError,
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
