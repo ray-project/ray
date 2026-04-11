@@ -118,8 +118,12 @@ class JoiningAggregation(ShuffleAggregation):
             JoinType.RIGHT_ANTI,
         ):
             left_cols = set(left_table.schema.names)
-            right_cols = set(right_table.schema.names)
-            collisions = (left_cols & right_cols) - set(left_on) - set(right_on)
+            # PyArrow drops right key columns from output (coalescing them into
+            # the left keys), so only right non-key columns can collide with
+            # left columns. Subtracting only right_on (not left_on) correctly
+            # handles asymmetric key names (left_on != right_on).
+            right_output_cols = set(right_table.schema.names) - set(right_on)
+            collisions = left_cols & right_output_cols
             if (
                 self._left_columns_suffix is None
                 and self._right_columns_suffix is None
