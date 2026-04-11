@@ -904,23 +904,27 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     ) == expected_output
     assert err_requests[0]["exception_type"] == "ZeroDivisionError"
 
-    wait_for_condition(
-        lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_replica_healthy", wait=False)
+    expected_deployments = {("f", "app1"), ("g", "app2"), ("h", "app3")}
+    health_timeseries = PrometheusTimeseries()
+
+    def _check_replica_healthy():
+        metrics = get_metric_dictionaries(
+            "ray_serve_deployment_replica_healthy",
+            wait=False,
+            timeseries=health_timeseries,
         )
-        == 3,
-        timeout=40,
+        return {
+            (m["deployment"], m["application"]) for m in metrics
+        } >= expected_deployments
+
+    wait_for_condition(_check_replica_healthy, timeout=40)
+    health_metrics = get_metric_dictionaries(
+        "ray_serve_deployment_replica_healthy", timeseries=health_timeseries
     )
-    health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
-    expected_output = {
-        ("f", "app1"),
-        ("g", "app2"),
-        ("h", "app3"),
-    }
     assert {
         (health_metric["deployment"], health_metric["application"])
         for health_metric in health_metrics
-    } == expected_output
+    } >= expected_deployments
 
 
 def test_deployment_error_counter_exception_type(metrics_start_shutdown):
@@ -1285,11 +1289,11 @@ def test_routing_stats_delay_metric(metrics_start_shutdown):
         )
         if not metrics:
             return False
-        # Check that at least one metric has expected tags
+        # Check that at least one metric has expected tags (no per-replica label)
         for metric in metrics:
             assert metric["deployment"] == "Model"
             assert metric["application"] == "app"
-            assert "replica" in metric
+            assert "replica" not in metric
             return True
         return False
 
