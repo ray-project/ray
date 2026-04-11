@@ -123,7 +123,7 @@ def test_fit(ray_start_4_cpus):
     assert validation_scores[0]["error"] == pytest.approx(
         validation_scores[1]["error"], abs=1e-6
     )
-    with pytest.raises(DeprecationWarning):
+    with pytest.raises(RuntimeError):
         XGBoostTrainer.get_model(result.checkpoint)
 
 

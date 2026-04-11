@@ -1793,16 +1793,16 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
 # TODO(justinvyu): [Deprecated] Remove this test once the configs are removed.
 def test_local_dir_deprecation(ray_start_2_cpus, tmp_path, monkeypatch):
     monkeypatch.setenv("RAY_AIR_LOCAL_CACHE_DIR", str(tmp_path))
-    with pytest.raises(DeprecationWarning):
+    with pytest.raises(ValueError):
         ray.tune.Tuner(lambda _: None).fit()
     monkeypatch.delenv("RAY_AIR_LOCAL_CACHE_DIR")
 
     monkeypatch.setenv("TUNE_RESULT_DIR", str(tmp_path))
-    with pytest.raises(DeprecationWarning):
+    with pytest.raises(ValueError):
         ray.tune.Tuner(lambda _: None).fit()
     monkeypatch.delenv("TUNE_RESULT_DIR")
 
-    with pytest.raises(DeprecationWarning):
+    with pytest.raises(ValueError):
         ray.tune.Tuner(
             lambda _: None, run_config=ray.tune.RunConfig(local_dir=str(tmp_path))
         )

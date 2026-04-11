@@ -443,7 +443,7 @@ class RayParams:
             )
 
         if self.redirect_output is not None:
-            raise DeprecationWarning("The redirect_output argument is deprecated.")
+            raise ValueError("The redirect_output argument is deprecated.")
 
         if self.temp_dir is not None and not os.path.isabs(self.temp_dir):
             raise ValueError("temp_dir must be absolute path or None.")

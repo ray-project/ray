@@ -419,7 +419,7 @@ def _test_no_chdir(runner_type, runtime_env, use_deprecated_config=False):
 
 def test_tuner_no_chdir_to_trial_dir_deprecated(shutdown_only, chdir_tmpdir):
     """Test the deprecated `chdir_to_trial_dir` config."""
-    with pytest.raises(DeprecationWarning):
+    with pytest.raises(ValueError):
         _test_no_chdir("tuner", {}, use_deprecated_config=True)
 
 

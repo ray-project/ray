@@ -51,7 +51,7 @@ class Resources(
         extra_custom_resources: Optional[dict] = None,
         has_placement_group: bool = False,
     ):
-        raise DeprecationWarning(
+        raise RuntimeError(
             "tune.Resources is depracted. Use tune.PlacementGroupFactory instead."
         )
 
@@ -87,6 +87,6 @@ def json_to_resources(data: Optional[str]) -> Optional[PlacementGroupFactory]:
 
 @Deprecated
 def resources_to_json(*args, **kwargs):
-    raise DeprecationWarning(
+    raise RuntimeError(
         "tune.Resources is depracted. Use tune.PlacementGroupFactory instead."
     )

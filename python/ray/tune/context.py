@@ -51,7 +51,7 @@ class TuneContext(TrainV1Context):
 
     @Deprecated
     def get_metadata(self) -> Dict[str, Any]:
-        raise DeprecationWarning(
+        raise RuntimeError(
             "`get_metadata` is deprecated for Ray Tune, as it has never been usable."
         )
 

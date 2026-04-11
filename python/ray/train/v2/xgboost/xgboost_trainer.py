@@ -136,7 +136,7 @@ class XGBoostTrainer(DataParallelTrainer):
             or params is not None
             or num_boost_round is not None
         ):
-            raise DeprecationWarning(
+            raise ValueError(
                 "The legacy XGBoostTrainer API is deprecated. "
                 "Please switch to passing in a custom `train_loop_per_worker` "
                 "function instead. "
@@ -163,7 +163,7 @@ class XGBoostTrainer(DataParallelTrainer):
     @Deprecated
     def get_model(cls, checkpoint: Checkpoint):
         """[Deprecated] Retrieve the XGBoost model stored in this checkpoint."""
-        raise DeprecationWarning(
+        raise RuntimeError(
             "`XGBoostTrainer.get_model` is deprecated. "
             "Use `RayTrainReportCallback.get_model` instead."
         )

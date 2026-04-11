@@ -87,7 +87,7 @@ class ScalingConfig(ScalingConfigV1):
 
     def __post_init__(self):
         if self.trainer_resources is not None:
-            raise DeprecationWarning(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
+            raise ValueError(TRAINER_RESOURCES_DEPRECATION_MESSAGE)
 
         is_fixed = isinstance(self.num_workers, int)
         is_elastic = (
@@ -295,14 +295,14 @@ class CheckpointConfig:
 
     def __post_init__(self):
         if self.checkpoint_frequency != _DEPRECATED:
-            raise DeprecationWarning(
+            raise ValueError(
                 "`checkpoint_frequency` is deprecated since it does not "
                 "apply to user-defined training functions. "
                 "Please remove this argument from your CheckpointConfig."
             )
 
         if self.checkpoint_at_end != _DEPRECATED:
-            raise DeprecationWarning(
+            raise ValueError(
                 "`checkpoint_at_end` is deprecated since it does not "
                 "apply to user-defined training functions. "
                 "Please remove this argument from your CheckpointConfig."
@@ -340,7 +340,7 @@ class FailureConfig(FailureConfigV1):
 
     def __post_init__(self):
         if self.fail_fast != _DEPRECATED:
-            raise DeprecationWarning(FAIL_FAST_DEPRECATION_MESSAGE)
+            raise ValueError(FAIL_FAST_DEPRECATION_MESSAGE)
 
 
 @dataclass
@@ -415,7 +415,7 @@ class RunConfig:
         ]
         for param in unsupported_params:
             if getattr(self, param) != _DEPRECATED:
-                raise DeprecationWarning(run_config_deprecation_message.format(param))
+                raise ValueError(run_config_deprecation_message.format(param))
 
         if not self.name:
             self.name = f"ray_train_run-{date_str()}"
