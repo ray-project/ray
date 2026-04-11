@@ -602,6 +602,9 @@ class ASGIAppReplicaWrapper:
     # NOTE: __del__ must be async so that we can run ASGI shutdown
     # in the same event loop.
     async def __del__(self):
+        if not hasattr(self, "_serve_asgi_lifespan"):
+            return
+
         # LifespanOn's logger logs in INFO level thus becomes spammy.
         # Within this block we temporarily uplevel for cleaner logging.
         from ray.serve._private.logging_utils import LoggingContext
