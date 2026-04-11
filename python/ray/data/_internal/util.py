@@ -1862,6 +1862,7 @@ def merge_resources_to_ray_remote_args(
     num_gpus: Optional[int],
     memory: Optional[int],
     ray_remote_args: Dict[str, Any],
+    label_selector: Optional[Dict[str, str]] = None,
 ) -> Dict[str, Any]:
     """Convert the given resources to Ray remote args.
 
@@ -1870,6 +1871,7 @@ def merge_resources_to_ray_remote_args(
         num_gpus: The number of GPUs to be added to the Ray remote args.
         memory: The memory to be added to the Ray remote args.
         ray_remote_args: The Ray remote args to be merged.
+        label_selector: The label requirements to be added to the remote args.
 
     Returns:
         The converted arguments.
@@ -1881,6 +1883,8 @@ def merge_resources_to_ray_remote_args(
         ray_remote_args["num_gpus"] = num_gpus
     if memory is not None:
         ray_remote_args["memory"] = memory
+    if label_selector is not None:
+        ray_remote_args["label_selector"] = label_selector
     return ray_remote_args
 
 

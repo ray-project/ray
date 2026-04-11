@@ -397,6 +397,7 @@ def read_datasource(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     compute: Optional[ComputeStrategy] = None,
@@ -413,6 +414,8 @@ def read_datasource(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -475,6 +478,7 @@ def read_datasource(
         num_gpus,
         memory,
         ray_remote_args,
+        label_selector=label_selector,
     )
 
     if not datasource.supports_distributed_reads:
@@ -553,6 +557,7 @@ def read_audio(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from audio files.
@@ -609,6 +614,8 @@ def read_audio(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
 
     Returns:
@@ -632,6 +639,7 @@ def read_audio(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -655,6 +663,7 @@ def read_videos(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
     """Creates a :class:`~ray.data.Dataset` from video files.
@@ -714,6 +723,8 @@ def read_videos(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
     Returns:
         A :class:`~ray.data.Dataset` containing video frames from the video files.
@@ -736,6 +747,7 @@ def read_videos(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -753,6 +765,7 @@ def read_mongo(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -811,6 +824,8 @@ def read_mongo(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -845,6 +860,7 @@ def read_mongo(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -862,6 +878,7 @@ def read_bigquery(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -913,6 +930,8 @@ def read_bigquery(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -934,6 +953,7 @@ def read_bigquery(
         num_gpus=num_gpus,
         memory=memory,
         parallelism=parallelism,
+        label_selector=label_selector,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
@@ -950,6 +970,7 @@ def read_parquet(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Dict[str, Any] = None,
     tensor_column_schema: Optional[TensorColumnSchema] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -1051,6 +1072,8 @@ def read_parquet(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
@@ -1124,6 +1147,7 @@ def read_parquet(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1140,6 +1164,7 @@ def read_images(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_file_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -1217,6 +1242,8 @@ def read_images(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1283,6 +1310,7 @@ def read_images(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1300,6 +1328,7 @@ def read_json(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -1375,6 +1404,8 @@ def read_json(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1457,6 +1488,7 @@ def read_json(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1473,6 +1505,7 @@ def read_csv(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -1571,6 +1604,8 @@ def read_csv(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -1627,6 +1662,7 @@ def read_csv(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1645,6 +1681,7 @@ def read_text(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -1694,6 +1731,8 @@ def read_text(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks and
             in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
@@ -1748,6 +1787,7 @@ def read_text(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1764,6 +1804,7 @@ def read_avro(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -1808,6 +1849,8 @@ def read_avro(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks and
             in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
@@ -1859,6 +1902,7 @@ def read_avro(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -1967,6 +2011,7 @@ def read_tfrecords(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -2028,6 +2073,8 @@ def read_tfrecords(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -2105,6 +2152,7 @@ def read_tfrecords(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -2137,6 +2185,7 @@ def read_mcap(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Partitioning = None,
@@ -2214,6 +2263,8 @@ def read_mcap(
         num_gpus: The number of GPUs to reserve for each parallel read worker. For
             example, specify `num_gpus=1` to request 1 GPU for each parallel read worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         partition_filter: A :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a dataset.
@@ -2275,6 +2326,7 @@ def read_mcap(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
@@ -2382,6 +2434,7 @@ def read_binary_files(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Dict[str, Any] = None,
     arrow_open_stream_args: Optional[Dict[str, Any]] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
@@ -2436,6 +2489,8 @@ def read_binary_files(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -2484,6 +2539,7 @@ def read_binary_files(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -2503,6 +2559,7 @@ def read_sql(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2586,6 +2643,8 @@ def read_sql(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2621,6 +2680,7 @@ def read_sql(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         parallelism=parallelism,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
@@ -2638,6 +2698,7 @@ def read_snowflake(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Dict[str, Any] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2672,6 +2733,8 @@ def read_snowflake(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2700,6 +2763,7 @@ def read_snowflake(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
@@ -2719,6 +2783,7 @@ def read_databricks_tables(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2814,6 +2879,8 @@ def read_databricks_tables(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2872,6 +2939,7 @@ def read_databricks_tables(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
@@ -2889,6 +2957,7 @@ def read_hudi(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -2932,6 +3001,8 @@ def read_hudi(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -2959,6 +3030,7 @@ def read_hudi(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -3533,6 +3605,7 @@ def read_delta_sharing_tables(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
@@ -3581,6 +3654,8 @@ def read_delta_sharing_tables(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control the number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -3613,6 +3688,7 @@ def read_delta_sharing_tables(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -3908,6 +3984,7 @@ def read_iceberg(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from an Iceberg table.
@@ -3961,6 +4038,8 @@ def read_iceberg(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources, and capped at the number of
@@ -4008,6 +4087,7 @@ def read_iceberg(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         override_num_blocks=override_num_blocks,
         ray_remote_args=ray_remote_args,
     )
@@ -4028,6 +4108,7 @@ def read_lance(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
@@ -4067,6 +4148,8 @@ def read_lance(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -4104,6 +4187,7 @@ def read_lance(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -4123,6 +4207,7 @@ def read_clickhouse(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
 ) -> Dataset:
@@ -4169,6 +4254,8 @@ def read_clickhouse(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -4197,6 +4284,7 @@ def read_clickhouse(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
@@ -4309,6 +4397,7 @@ def read_delta(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
@@ -4381,6 +4470,8 @@ def read_delta(
             example, specify `num_gpus=1` to request 1 GPU for each parallel read
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
@@ -4463,6 +4554,7 @@ def read_kafka(
     num_cpus: Optional[float] = None,
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
+    label_selector: Optional[Dict[str, str]] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
     override_num_blocks: Optional[int] = None,
     timeout_ms: Optional[int] = None,
@@ -4549,6 +4641,8 @@ def read_kafka(
         num_cpus: The number of CPUs to reserve for each parallel read worker.
         num_gpus: The number of GPUs to reserve for each parallel read worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
+        label_selector: The label selector requirements for each node that runs a
+            parallel read worker.
         ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
@@ -4591,6 +4685,7 @@ def read_kafka(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         ray_remote_args=ray_remote_args,
         override_num_blocks=override_num_blocks,
     )
