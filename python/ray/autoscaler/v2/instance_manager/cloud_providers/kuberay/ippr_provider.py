@@ -1,4 +1,5 @@
 import json
+import logging
 from typing import Any, Dict, Optional, Union
 
 import jsonschema
@@ -12,6 +13,8 @@ from ray.autoscaler.v2.schema import (
     IPPRSpecsSchema,
     IPPRStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 class KubeRayIPPRProvider:
@@ -183,9 +186,82 @@ class KubeRayIPPRProvider:
 
         self._ippr_specs = IPPRSpecs(groups=groups)
 
+    def sync_with_raylets(self) -> None:
+        """Propagate completed K8s resizes to Raylets via GCS.
+
+        For any pod whose K8s resize has completed, update the corresponding Raylet's local resource
+        instances via GCS gRPC and clear the pending timestamp on the pod's
+        ``ray.io/ippr-status`` annotation.
+
+
+        Three situations we can have exceptions are:
+        1. K8s API is not available.
+        2. GCS is not available.
+        3. Raylet is not available.
+        If a raylet is truly dead, its pod will also be deleted eventually.
+        All of the above exceptions can only be resolved in the future reconcile loops.
+        """
+        for ippr_status in self._ippr_statuses.values():
+            if not ippr_status.need_sync_with_raylet():
+                continue
+            try:
+                self._gcs_client.resize_raylet_resource_instances(
+                    ippr_status.raylet_id,
+                    {
+                        "CPU": ippr_status.current_cpu,
+                        "memory": ippr_status.current_memory,
+                    },
+                )
+                self._patch_ippr_status(ippr_status, resizing_at=None)
+                ippr_status.resizing_at = None
+                logger.info(f"Pod {ippr_status.cloud_instance_id} resized successfully")
+            except Exception as e:
+                logger.error(
+                    f"Failed to resize pod {ippr_status.cloud_instance_id}: {e}. "
+                    "If this persists, check GCS (e.g. Head/GCS logs and Raylet reachability) "
+                    "and Kubernetes (e.g. API errors, pod events, ray.io/ippr-status) for "
+                    "related request failures."
+                )
+
     def get_ippr_specs(self) -> IPPRSpecs:
         """Return the current validated IPPR specs."""
         return self._ippr_specs
+
+    def get_ippr_statuses(self) -> Dict[str, IPPRStatus]:
+        """Return the latest per-pod IPPR statuses keyed by pod name."""
+        return self._ippr_statuses
+
+    def _patch_ippr_status(
+        self, resize: IPPRStatus, resizing_at: Optional[int]
+    ) -> None:
+        """Save the IPPR status to the pod annotation ``ray.io/ippr-status``.
+        The annotation is used to track the IPPR status of the pod across reconcile loops.
+
+        Args:
+            resize: The IPPR status to save.
+            resizing_at: Timestamp while a resize is in progress; pass ``None``
+                to clear after the resize completes (e.g. from ``sync_with_raylets``).
+        """
+        self._k8s_api_client.patch(
+            "pods/{}".format(resize.cloud_instance_id),
+            {
+                "metadata": {
+                    "annotations": {
+                        "ray.io/ippr-status": json.dumps(
+                            {
+                                "raylet-id": resize.raylet_id,
+                                "resizing-at": resizing_at,
+                                "suggested-max-cpu": resize.suggested_max_cpu,
+                                "suggested-max-memory": resize.suggested_max_memory,
+                                "last-failed-at": resize.last_failed_at,
+                                "last-failed-reason": resize.last_failed_reason,
+                            }
+                        )
+                    }
+                }
+            },
+            content_type="application/strategic-merge-patch+json",
+        )
 
 
 def _build_ippr_group_spec(

@@ -1,5 +1,6 @@
 import collections
 import logging
+import sys
 import time
 from dataclasses import dataclass, field, fields
 from enum import Enum
@@ -23,6 +24,7 @@ import pyarrow as pa
 
 import ray
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
@@ -129,7 +131,14 @@ DEFAULT_BATCH_FORMAT = "numpy"
 
 
 def _is_cudf_dataframe(obj: Any) -> bool:
-    """Check if the object is a cudf.DataFrame (lazy import)."""
+    """Check if the object is a cudf.DataFrame (lazy import).
+
+    Checks ``sys.modules`` first to avoid importing cudf (which loads CUDA
+    and ~1.5 GiB of RSS) when it hasn't been imported yet.  If cudf is not
+    in ``sys.modules``, no object in the process can be a cudf DataFrame.
+    """
+    if "cudf" not in sys.modules:
+        return False
     try:
         import cudf
 
@@ -515,6 +524,7 @@ class BlockAccessor:
         block_type: Optional[BlockType] = None,
     ) -> Block:
         """Create a block from user-facing data formats."""
+        import pandas
 
         if isinstance(batch, np.ndarray):
             raise ValueError(
@@ -529,6 +539,14 @@ class BlockAccessor:
         # to_arrow() instead of the slow column-by-column Mapping path.
         elif _is_cudf_dataframe(batch):
             return batch.to_arrow()
+
+        elif isinstance(batch, pandas.DataFrame):
+            if (block_type == BlockType.ARROW) or (
+                block_type is None
+                and DataContext.get_current().batch_to_block_arrow_format
+            ):
+                return cls.for_block(batch).to_arrow()
+            return batch
 
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
