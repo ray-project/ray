@@ -90,11 +90,11 @@ steps:
     tags:
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build(*)
       - raycpubaseextra-testdeps
 
   - name: ray-anyscale-cuda-build
-    label: "wanda: ray-anyscale py{{matrix.python}} cu{{matrix.cuda}}"
+    label: "wanda: ray-anyscale py{{matrix.python}} {{matrix.gpu}}"
     wanda: ci/docker/ray-anyscale-cuda.wanda.yaml
     env_file: rayci.env
     matrix:
@@ -106,23 +106,23 @@ steps:
           - "3.11"
           - "3.12"
           - "3.13"
-        cuda:
-          - "12.3.2-cudnn9"
+        gpu:
+          - "cu12.3.2-cudnn9"
       adjustments:
         - with:
             python: "3.12"
-            cuda: "13.0.0-cudnn"
+            gpu: "cu13.0.0-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      GPU: "{{matrix.gpu}}"
       ARCH_SUFFIX: ""
     tags:
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build(*)
       - raycudabaseextra-testdeps
 
-  - label: ":crane: publish: ray-anyscale py{{matrix.python}} {{matrix.platform}}"
+  - label: ":crane: publish: ray-anyscale py{{matrix.python}} {{matrix.gpu}}"
     key: anyscalebuild
     instance_type: release-medium
     mount_buildkite_agent: true
@@ -131,7 +131,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci/automation:push_release_test_image --
         --python-version {{matrix.python}}
-        --platform {{matrix.platform}}
+        --platform {{matrix.gpu}}
         --image-type ray
         --upload
     depends_on:
@@ -144,39 +144,39 @@ steps:
           - "3.11"
           - "3.12"
           - "3.13"
-        platform:
+        gpu:
           - cu12.3.2-cudnn9
           - cpu
       adjustments:
         - with:
             python: "3.12"
-            platform: cu13.0.0-cudnn
+            gpu: cu13.0.0-cudnn
 
   - name: ray-llm-anyscale-cuda-build
-    label: "wanda: ray-llm-anyscale py{{matrix.python}} cu{{matrix.cuda}}"
+    label: "wanda: ray-llm-anyscale py{{matrix.python}} {{matrix.gpu}}"
     wanda: ci/docker/ray-llm-anyscale-cuda.wanda.yaml
     env_file: rayci.env
     matrix:
       setup:
         python:
           - "3.12"
-        cuda:
-          - "13.0.0-cudnn"
+        gpu:
+          - "cu13.0.0-cudnn"
       adjustments:
         - with:
             python: "3.11"
-            cuda: "12.8.1-cudnn"
+            gpu: "cu12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      GPU: "{{matrix.gpu}}"
       ARCH_SUFFIX: ""
     tags:
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build(*)
       - ray-llmbaseextra-testdeps
 
-  - label: ":crane: publish: ray-llm-anyscale py{{matrix.python}} {{matrix.platform}}"
+  - label: ":crane: publish: ray-llm-anyscale py{{matrix.python}} {{matrix.gpu}}"
     key: anyscalellmbuild
     instance_type: release-medium
     mount_buildkite_agent: true
@@ -185,7 +185,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci/automation:push_release_test_image --
         --python-version {{matrix.python}}
-        --platform {{matrix.platform}}
+        --platform {{matrix.gpu}}
         --image-type ray-llm
         --upload
     depends_on:
@@ -194,15 +194,15 @@ steps:
       setup:
         python:
           - "3.12"
-        platform:
+        gpu:
           - cu13.0.0-cudnn
       adjustments:
         - with:
             python: "3.11"
-            platform: "cu12.8.1-cudnn"
+            gpu: "cu12.8.1-cudnn"
 
   - name: ray-ml-anyscale-cuda-build
-    label: "wanda: ray-ml-anyscale py{{matrix.python}} cu{{matrix.cuda}}"
+    label: "wanda: ray-ml-anyscale py{{matrix.python}} {{matrix.gpu}}"
     wanda: ci/docker/ray-ml-anyscale-cuda.wanda.yaml
     env_file: rayci.env
     matrix:
@@ -211,16 +211,16 @@ steps:
           # This list should be kept in sync with the list of supported Python in
           # release test suite
           - "3.10"
-        cuda:
-          - "12.1.1-cudnn8"
+        gpu:
+          - "cu12.1.1-cudnn8"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
-      CUDA_VERSION: "{{matrix.cuda}}"
+      GPU: "{{matrix.gpu}}"
       ARCH_SUFFIX: ""
     tags:
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build(*)
       - ray-mlcudabaseextra-testdeps
 
   - label: ":crane: publish: ray-ml-anyscale py{{matrix}} cu12.1.1-cudnn8"
