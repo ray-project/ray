@@ -1775,6 +1775,8 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         # Fail the test if a worker OOMs
         - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -1806,6 +1808,8 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         # Fail the test if a worker OOMs
         - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
