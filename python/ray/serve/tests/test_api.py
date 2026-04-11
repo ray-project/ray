@@ -27,7 +27,7 @@ from ray.serve._private.request_router.replica_wrapper import (
 from ray.serve._private.request_router.request_router import (
     RequestRouter,
 )
-from ray.serve._private.test_utils import get_application_url
+from ray.serve._private.test_utils import SharedCounter, get_application_url
 from ray.serve.config import GangSchedulingConfig, RequestRouterConfig
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
@@ -500,19 +500,8 @@ def test_delete_application(serve_instance):
 async def test_delete_while_initializing(serve_instance):
     """Test that __del__ runs when a replica terminates while initializing."""
 
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.count = 0
-
-        def incr(self):
-            self.count += 1
-
-        def get_count(self) -> int:
-            return self.count
-
     signal = SignalActor.remote()
-    counter = Counter.remote()
+    counter = SharedCounter.remote()
 
     @serve.deployment(graceful_shutdown_timeout_s=0.01)
     class HangingStart:
@@ -527,7 +516,7 @@ async def test_delete_while_initializing(serve_instance):
 
         async def __del__(self):
             print("Running __del__")
-            await self.counter.incr.remote()
+            await self.counter.inc.remote()
 
     serve._run(HangingStart.bind(signal, counter), _blocking=False)
 
@@ -539,7 +528,7 @@ async def test_delete_while_initializing(serve_instance):
 
     # Ensure that __del__ ran once, even though the deployment terminated
     # during initialization.
-    assert (await counter.get_count.remote()) == 1
+    assert (await counter.get.remote()) == 1
 
 
 def test_deployment_name_with_app_name(serve_instance):

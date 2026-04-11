@@ -1080,7 +1080,93 @@ def get_deployment_details(
     return details["applications"][app_name]["deployments"][deployment_name]
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
+class Barrier:
+    """Block until n participants have called wait()."""
+
+    def __init__(self, n: int):
+        self.n = n
+        self.count = 0
+        self.event = asyncio.Event()
+
+    async def wait(self):
+        self.count += 1
+        if self.count >= self.n:
+            self.event.set()
+        else:
+            await self.event.wait()
+
+    def get_count(self) -> int:
+        return self.count
+
+
+@ray.remote(num_cpus=0)
+class Accumulator:
+    """Collect items from multiple actors/replicas."""
+
+    def __init__(self):
+        self.items = []
+
+    def add(self, item):
+        self.items.append(item)
+
+    def get(self) -> list:
+        return list(self.items)
+
+    def count(self) -> int:
+        return len(self.items)
+
+
+@ray.remote(num_cpus=0)
+class FailedReplicaStore:
+    """Stores the first replica ID that failed, for constructor failure tests."""
+
+    def __init__(self):
+        self.failed_replica_id = None
+
+    def set_if_first(self, replica_id: str) -> bool:
+        if self.failed_replica_id is None:
+            self.failed_replica_id = replica_id
+            return True
+        return False
+
+    def get(self):
+        return self.failed_replica_id
+
+
+@ray.remote(num_cpus=0)
+class SharedFlag:
+    """Non-blocking boolean flag shared across actors."""
+
+    def __init__(self):
+        self.value = False
+
+    def set(self):
+        self.value = True
+
+    def clear(self):
+        self.value = False
+
+    def is_set(self) -> bool:
+        return self.value
+
+
+@ray.remote(num_cpus=0)
+class SharedCounter:
+    """Simple shared counter for cross-actor coordination."""
+
+    def __init__(self):
+        self.count = 0
+
+    def inc(self) -> int:
+        self.count += 1
+        return self.count
+
+    def get(self) -> int:
+        return self.count
+
+
+@ray.remote(num_cpus=0)
 class Counter:
     def __init__(self, target: int):
         self.count = 0
