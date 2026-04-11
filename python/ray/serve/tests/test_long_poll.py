@@ -7,6 +7,7 @@ from typing import Dict
 import pytest
 
 import ray
+import ray.serve._private.long_poll as long_poll_module
 from ray._common.test_utils import async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import (
@@ -303,8 +304,6 @@ def test_get_metric_namespace_tag(monkeypatch):
     cardinality for workloads with many deployments.
     See https://github.com/ray-project/ray/issues/62299.
     """
-    import ray.serve._private.long_poll as long_poll_module
-
     # --- Default mode (compact=False): str(key) is used ---
     monkeypatch.setattr(
         long_poll_module, "RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", False
@@ -429,6 +428,82 @@ async def test_pending_clients_gauge_aggregates_across_keys(serve_instance):
     # Counter should be 0 now (both events cleaned up: one by notify_changed,
     # one by the not_done cleanup in listen_for_change)
     assert counter_after == 0, f"Expected 0 pending clients, got {counter_after}"
+
+
+@pytest.mark.asyncio
+async def test_pending_clients_gauge_non_compact_mode(serve_instance):
+    """Test pending_clients bookkeeping when RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS=0.
+
+    In non-compact mode, each key maps to its own namespace tag via str(key).
+    Verify that pending client counts are correctly incremented, decremented,
+    and cleaned up for each per-key tag, with no regressions in the new
+    bookkeeping logic.
+    See https://github.com/ray-project/ray/issues/62299.
+    """
+    host = (
+        ray.remote(LongPollHost)
+        .options(
+            runtime_env={"env_vars": {"RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS": "0"}}
+        )
+        .remote(listen_for_change_request_timeout_s=(0.5, 0.5))
+    )
+
+    key_a = (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deploy1")
+    key_b = (LongPollNamespace.DEPLOYMENT_CONFIG, "app2:deploy2")
+
+    # Notify initial values so the keys exist
+    ray.get(host.notify_changed.remote({key_a: "v1", key_b: "v2"}))
+
+    # Get initial snapshots
+    ref = host.listen_for_change.remote({key_a: -1, key_b: -1})
+    result = ray.get(ref)
+    assert key_a in result and key_b in result
+
+    # Subscribe with up-to-date snapshot IDs so we block (pending)
+    snapshot_ids = {k: v.snapshot_id for k, v in result.items()}
+    ref = host.listen_for_change.remote(snapshot_ids)
+
+    # In non-compact mode, each key has its own namespace tag (str(key)),
+    # so each should have exactly 1 pending client.
+    tag_a = str(key_a)
+    tag_b = str(key_b)
+    counter_a = ray.get(host._get_pending_clients_by_namespace.remote(tag_a))
+    counter_b = ray.get(host._get_pending_clients_by_namespace.remote(tag_b))
+    assert counter_a == 1, f"Expected 1 pending client for {tag_a}, got {counter_a}"
+    assert counter_b == 1, f"Expected 1 pending client for {tag_b}, got {counter_b}"
+
+    # Notify key_a — its pending count should drop, key_b unaffected
+    ray.get(host.notify_changed.remote({key_a: "v1_updated"}))
+    result2 = ray.get(ref)
+    assert key_a in result2
+
+    # After notification + cleanup, both counters should be 0
+    counter_a_after = ray.get(host._get_pending_clients_by_namespace.remote(tag_a))
+    counter_b_after = ray.get(host._get_pending_clients_by_namespace.remote(tag_b))
+    assert counter_a_after == 0, (
+        f"Expected 0 pending clients for {tag_a}, got {counter_a_after}"
+    )
+    assert counter_b_after == 0, (
+        f"Expected 0 pending clients for {tag_b}, got {counter_b_after}"
+    )
+
+    # Verify cleanup with timeout: subscribe and let it time out
+    snapshot_ids2 = {k: v.snapshot_id for k, v in result2.items()}
+    # Also include key_b's latest snapshot
+    snapshot_ids2[key_b] = result[key_b].snapshot_id
+    ref2 = host.listen_for_change.remote(snapshot_ids2)
+    timeout_result = ray.get(ref2)
+    assert timeout_result == LongPollState.TIME_OUT
+
+    # After timeout, all pending counters should be cleaned up to 0
+    counter_a_timeout = ray.get(host._get_pending_clients_by_namespace.remote(tag_a))
+    counter_b_timeout = ray.get(host._get_pending_clients_by_namespace.remote(tag_b))
+    assert counter_a_timeout == 0, (
+        f"Expected 0 after timeout for {tag_a}, got {counter_a_timeout}"
+    )
+    assert counter_b_timeout == 0, (
+        f"Expected 0 after timeout for {tag_b}, got {counter_b_timeout}"
+    )
 
 
 if __name__ == "__main__":
