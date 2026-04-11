@@ -1229,7 +1229,13 @@ class HTTPProxy(GenericProxy):
             "_client": format_client_address(proxy_request.client),
         }
         for key, value in proxy_request.headers:
-            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+            # Normalize the header key: lowercase and replace hyphens with
+            # underscores so that both "serve_multiplexed_model_id" and
+            # "serve-multiplexed-model-id" (the form produced by proxies such
+            # as nginx / AWS API Gateway that convert underscores to hyphens)
+            # are recognised correctly.
+            normalized_key = key.decode().lower().replace("-", "_")
+            if normalized_key == SERVE_MULTIPLEXED_MODEL_ID:
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
