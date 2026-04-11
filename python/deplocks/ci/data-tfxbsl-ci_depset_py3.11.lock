@@ -697,7 +697,6 @@ cloudpickle==2.2.1 \
     # via
     #   apache-beam
     #   gymnasium
-    #   pymars
     #   tensorflow-probability
 colorful==0.5.5 \
     --hash=sha256:62c187e27c1433db9463ff93b1451898d1e7e23a7e553583fd9daeb6325182e4 \
@@ -1160,9 +1159,7 @@ decord==0.6.0 \
 defusedxml==0.7.1 ; python_full_version < '3.12' \
     --hash=sha256:1bb3032db185915b62d7c6209c5a8792be6a32ab2fedacc84e01b52c51aa3e69 \
     --hash=sha256:a352e7e428770286cc899e2542b6cdaedb2b4953ff269a210103ec58f6198a61
-    # via
-    #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-    #   pymars
+    # via -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
 delta-sharing==1.0.5 \
     --hash=sha256:4141def6951fb0c3350b6c913fd3068b639ed7a978e9f9bc7328b6e25d25cc33 \
     --hash=sha256:c3be5f3d4d60f852793e28d94a1283ef52dda5e4523134f6b48b4dad6c6e7312
@@ -2846,9 +2843,7 @@ numexpr==2.14.1 ; python_full_version < '3.12' \
     --hash=sha256:edea2f20c2040df8b54ee8ca8ebda63de9545b2112872466118e9df4d0ae99f3 \
     --hash=sha256:eee6d4fbbbc368e6cdd0772734d6249128d957b3b8ad47a100789009f4de7083 \
     --hash=sha256:fdd886f4b7dbaf167633ee396478f0d0aa58ea2f9e7ccc3c6431019623e8d68f
-    # via
-    #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-    #   pymars
+    # via -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
 numpy==1.24.4 \
     --hash=sha256:04640dab83f7c6c85abf9cd729c5b65f1ebd0ccf9de90b270cd61935eef0197f \
     --hash=sha256:1452241c290f3e2a312c137a9999cdbf63f78864d63c79039bda65ee86943f61 \
@@ -2900,7 +2895,6 @@ numpy==1.24.4 \
     #   opt-einsum
     #   pandas
     #   pyarrow
-    #   pymars
     #   raydp
     #   rmm-cu12
     #   scikit-learn
@@ -3387,7 +3381,6 @@ pandas==1.5.3 \
     # via
     #   bokeh
     #   delta-sharing
-    #   pymars
     #   raydp
     #   tfx-bsl
 partd==1.4.1 \
@@ -3694,7 +3687,6 @@ psutil==5.9.6 \
     --hash=sha256:ff18b8d1a784b810df0b0fff3bcb50ab941c3b8e2c8de5726f9c71c601c611aa
     # via
     #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-    #   pymars
     #   raydp
     #   tensorflow-datasets
     #   torch-geometric
@@ -4175,31 +4167,6 @@ pylibcudf-cu12==26.4.0 ; sys_platform != 'darwin' \
     --hash=sha256:1d0b191096b574cff4d709bb0880d2f0a346120493090cc8103098de9abead71 \
     --hash=sha256:89d3d4e27a536e2ed5e409c96875e0d7e9dbad96b15f5f3df5db6ab94bfd22ca
     # via -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-pymars==0.10.0 ; python_full_version < '3.12' \
-    --hash=sha256:00457464432670a76e0691242f58ee6d7287bcb9051556565d222534a41860e1 \
-    --hash=sha256:017f8fffbc33a1323d20e1c975a479789bfe08970e532d7d2ab49f83d90c1542 \
-    --hash=sha256:0ca3b970a70e9b10ece343eed1d1950e40d666e1be9c594096be2456b8cf32c5 \
-    --hash=sha256:13fb46ae5c9a4321a8031fcf9488178cf64835e7f53ce7529caa1abba5ef9395 \
-    --hash=sha256:1c871284f36217566ebdb7fa47bc64deafb5a2fbcfdb98a868b06922ca214024 \
-    --hash=sha256:3fa21b672653fe187e137e5b257103772daedc0467d1c17be5e30bf1f550be27 \
-    --hash=sha256:4a7e96c8df22213614455e655cea47d1223f1967a6acb5eb2f53e54b1929e2eb \
-    --hash=sha256:4f95439dd3efbdab6861c7ccc384f2707258fb96eb65c22514613c4ae536732f \
-    --hash=sha256:5254d314a46e30028a2dbf4a1de789a60b94678d5d99e8f9f9fade99ec74e700 \
-    --hash=sha256:61068c9297d6ecca717b4eda29a22ac2f98b2c1d010b5f8e3f0e45a0dd41e8af \
-    --hash=sha256:6f9d7f1ae43e95f04018dcbf5901877105325715c40125715b00379f6b7aac55 \
-    --hash=sha256:73ddd897ff68de732d42b630ead0329229754bcf396b931b3e9c3f76678062c0 \
-    --hash=sha256:76eab5d8009b53fec9178b6c7cb59ffad33900ef89e6eaf3efac8187a0b651a5 \
-    --hash=sha256:7a97524f19b6f864f76818a1d2930fd86b56d949a2be736206d9ad94563063f7 \
-    --hash=sha256:7f338fe04998b352a4550bd419ed4c26888b6f31e08fe493fd72db1d8fa6eda6 \
-    --hash=sha256:8d77de3b49dd170d8a9bb2c5ca6ac5812a73673eed7559efdbb2259fd3958022 \
-    --hash=sha256:8f87a682de82eb0f073e865aadf685238d857c0413e276c3689fca081847ff30 \
-    --hash=sha256:94eca2a9cabd8a3c00253bf0ad06815b466ac7230bcac88b985dc1242d3163af \
-    --hash=sha256:9e2714d19f58160165e0d6b767e07f3195e375d3543037587712f34a4cc64b17 \
-    --hash=sha256:c1493f7042247fbf2b08f87d56e8d665f7048f104380018ee7e9f6885295fec0 \
-    --hash=sha256:c786871aa5e827e436186b80f616a75e4e98b058b2fe50be224ba4e5506d94c8 \
-    --hash=sha256:d7bba5df19403eac9cb6570ddda4527bd9a19086dbcd811708b3cd876ab37421 \
-    --hash=sha256:f0d68b2b3ffa9402c8411c18144b3067cfe0dd190a885f519816b712a8085c9e
-    # via -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
 pymongo==4.16.0 \
     --hash=sha256:03f42396c1b2c6f46f5401c5b185adc25f6113716e16d9503977ee5386fca0fb \
     --hash=sha256:12762e7cc0f8374a8cae3b9f9ed8dabb5d438c7b33329232dd9b7de783454033 \
@@ -4505,7 +4472,6 @@ pyyaml==6.0.3 \
     #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
     #   bokeh
     #   huggingface-hub
-    #   pymars
     #   ray
     #   webdataset
 rapids-logger==0.2.3 ; sys_platform != 'darwin' \
@@ -4832,7 +4798,6 @@ scikit-learn==1.5.2 \
     --hash=sha256:f932a02c3f4956dfb981391ab24bda1dbd90fe3d628e4b42caef3e041c67707a
     # via
     #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-    #   pymars
     #   torch-geometric
 scipy==1.14.1 \
     --hash=sha256:0c2f95de3b04e26f5f3ad5bb05e74ba7f68b837133a4492414b3afd79dfe540e \
@@ -4872,7 +4837,6 @@ scipy==1.14.1 \
     #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
     #   jax
     #   jaxlib
-    #   pymars
     #   scikit-learn
     #   torch-cluster
     #   torch-geometric
@@ -5058,9 +5022,7 @@ sqlalchemy==2.0.32 \
     --hash=sha256:c41a2b9ca80ee555decc605bd3c4520cc6fef9abde8fd66b1cf65126a6922d65 \
     --hash=sha256:c750987fc876813f27b60d619b987b057eb4896b81117f73bb8d9918c14f1cad \
     --hash=sha256:e567a8793a692451f706b363ccf3c45e056b67d90ead58c3bc9471af5d212202
-    # via
-    #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-    #   pymars
+    # via -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
 sqlparse==0.5.5 \
     --hash=sha256:12a08b3bf3eec877c519589833aed092e2444e68240a3577e8e26148acc7b1ba \
     --hash=sha256:e20d4a9b0b8585fdf63b10d30066c7c94c5d7a7ec47c889a2d83a3caa93ff28e
@@ -5316,7 +5278,6 @@ tornado==6.5.2 \
     # via
     #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
     #   bokeh
-    #   pymars
 tqdm==4.67.1 \
     --hash=sha256:26445eca388f82e72884e0d580d5464cd801a3ea01e63e5601bdff9ba6a48de2 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
@@ -5325,7 +5286,6 @@ tqdm==4.67.1 \
     #   etils
     #   getdaft
     #   huggingface-hub
-    #   pymars
     #   tensorflow-datasets
     #   torch-geometric
     #   torchtext
@@ -5456,9 +5416,7 @@ uvloop==0.21.0 ; (python_full_version < '3.12' and platform_python_implementatio
     --hash=sha256:f38b2e090258d051d68a5b14d1da7203a3c3677321cf32a95a6f4db4dd8b6f26 \
     --hash=sha256:f3df876acd7ec037a3d005b3ab85a7e4110422e4d9c1571d4fc89b0fc41b6816 \
     --hash=sha256:f7089d2dc73179ce5ac255bdf37c236a9f914b264825fdaacaded6990a7fb4c2
-    # via
-    #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-    #   pymars
+    # via -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
 vine==5.1.0 \
     --hash=sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc \
     --hash=sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0

@@ -139,6 +139,7 @@ depsets:
       - tensorboard
       - ml-dtypes
       - cudf-cu12
+      - pymars
     output: python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py311
