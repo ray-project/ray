@@ -480,12 +480,12 @@ async def test_pending_clients_gauge_non_compact_mode(serve_instance):
     # After notification + cleanup, both counters should be 0
     counter_a_after = ray.get(host._get_pending_clients_by_namespace.remote(tag_a))
     counter_b_after = ray.get(host._get_pending_clients_by_namespace.remote(tag_b))
-    assert counter_a_after == 0, (
-        f"Expected 0 pending clients for {tag_a}, got {counter_a_after}"
-    )
-    assert counter_b_after == 0, (
-        f"Expected 0 pending clients for {tag_b}, got {counter_b_after}"
-    )
+    assert (
+        counter_a_after == 0
+    ), f"Expected 0 pending clients for {tag_a}, got {counter_a_after}"
+    assert (
+        counter_b_after == 0
+    ), f"Expected 0 pending clients for {tag_b}, got {counter_b_after}"
 
     # Verify cleanup with timeout: subscribe and let it time out
     snapshot_ids2 = {k: v.snapshot_id for k, v in result2.items()}
@@ -498,12 +498,12 @@ async def test_pending_clients_gauge_non_compact_mode(serve_instance):
     # After timeout, all pending counters should be cleaned up to 0
     counter_a_timeout = ray.get(host._get_pending_clients_by_namespace.remote(tag_a))
     counter_b_timeout = ray.get(host._get_pending_clients_by_namespace.remote(tag_b))
-    assert counter_a_timeout == 0, (
-        f"Expected 0 after timeout for {tag_a}, got {counter_a_timeout}"
-    )
-    assert counter_b_timeout == 0, (
-        f"Expected 0 after timeout for {tag_b}, got {counter_b_timeout}"
-    )
+    assert (
+        counter_a_timeout == 0
+    ), f"Expected 0 after timeout for {tag_a}, got {counter_a_timeout}"
+    assert (
+        counter_b_timeout == 0
+    ), f"Expected 0 after timeout for {tag_b}, got {counter_b_timeout}"
 
 
 if __name__ == "__main__":
