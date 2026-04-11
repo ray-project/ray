@@ -832,12 +832,14 @@ class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
         # Register an external consumer (e.g., iter_batches or streaming_split).
         resource_manager.set_external_consumer_bytes(0)
 
+        dag_output_state = topo[o3]
+
         # No consumers waiting — should NOT unblock (prevents pileup).
+        dag_output_state._num_waiting_consumers = 0
         assert allocator._should_unblock_streaming_output_backpressure(o2) is False
 
         # Simulate a consumer blocked in get_output_blocking (starving).
         # The output node is o3 (LimitOperator), which tracks waiting consumers.
-        dag_output_state = topo[o3]
         dag_output_state._num_waiting_consumers = 1
         assert allocator._should_unblock_streaming_output_backpressure(o2) is True
 
