@@ -993,18 +993,19 @@ def _try_set_exception(fut: asyncio.Future, e: Exception):
 def _propagate_concurrent_future_state(
     source_fut: concurrent.futures.Future, dest_fut: asyncio.Future
 ):
+    if dest_fut.done():
+        return
+
     if source_fut.cancelled():
-        if not dest_fut.done():
-            dest_fut.cancel()
+        dest_fut.cancel()
         return
 
     exception = source_fut.exception()
     if exception is not None:
-        _try_set_exception(dest_fut, exception)
+        dest_fut.set_exception(exception)
         return
 
-    if not dest_fut.done():
-        dest_fut.set_result(source_fut.result())
+    dest_fut.set_result(source_fut.result())
 
 
 def wrap_as_future(ref: ObjectRef, timeout_s: Optional[float] = None) -> asyncio.Future:
