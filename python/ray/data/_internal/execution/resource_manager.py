@@ -725,6 +725,9 @@ class OpResourceAllocator(ABC):
         if not downstream_eligible_ops:
             if not self._resource_manager.has_external_consumer:
                 return True
+            # Check the DAG output rather than the last eligible op because consumers fetch
+            # blocks from the output op (e.g., OutputSplitter or LimitOperator).
+            # The output op state tracks the number of starving consumers.
             output_op_state = self._topology[self._resource_manager._output_operator]
             return output_op_state.num_waiting_consumers > 0
 
