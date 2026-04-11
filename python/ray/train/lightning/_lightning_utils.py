@@ -2,6 +2,7 @@ import logging
 import os
 import shutil
 import tempfile
+import uuid
 from pathlib import Path
 from typing import Any, Dict
 
@@ -284,13 +285,12 @@ class RayTrainReportCallback(pl.callbacks.Callback):
 
         job_id = ray.get_runtime_context().get_job_id()
         experiment_name = ray.train.get_context().get_experiment_name()
-        self.local_rank = ray.train.get_context().get_local_rank()
 
         self.tmpdir_prefix = Path(
             tempfile.gettempdir(),
-            f"lightning_checkpoints-job_id={job_id}-name={experiment_name}",
+            f"lightning_checkpoints-job_id={job_id}-name={experiment_name}-uuid={uuid.uuid4().hex}",
         ).as_posix()
-        if os.path.isdir(self.tmpdir_prefix) and self.local_rank == 0:
+        if os.path.isdir(self.tmpdir_prefix):
             shutil.rmtree(self.tmpdir_prefix)
 
         record_extra_usage_tag(TagKey.TRAIN_LIGHTNING_RAYTRAINREPORTCALLBACK, "1")
@@ -338,5 +338,4 @@ class RayTrainReportCallback(pl.callbacks.Callback):
             if self.checkpoint_upload_mode == CheckpointUploadMode.ASYNC:
                 return
 
-        if self.local_rank == 0:
-            shutil.rmtree(tmpdir)
+        shutil.rmtree(tmpdir)
