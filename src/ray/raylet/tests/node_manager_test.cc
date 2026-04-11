@@ -48,6 +48,7 @@
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/rpc/utils.h"
+#include "ray/util/clock.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -364,6 +365,7 @@ class NodeManagerTest : public ::testing::Test {
               NodeID::FromBinary(node_id.Binary()));
         },
         fake_resource_usage_gauge_,
+        clock_,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -453,7 +455,8 @@ class NodeManagerTest : public ::testing::Test {
         *placement_group_resource_manager_,
         boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),
         boost::asio::basic_stream_socket<local_stream_protocol>(io_service_),
-        fake_memory_manager_worker_eviction_total_count_);
+        fake_memory_manager_worker_eviction_total_count_,
+        fake_node_manager_unexpected_worker_failure_total_count_);
   }
 
   instrumented_io_context io_service_;
@@ -463,6 +466,7 @@ class NodeManagerTest : public ::testing::Test {
 
   NodeID raylet_node_id_;
   std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
+  ray::Clock clock_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
@@ -491,6 +495,8 @@ class NodeManagerTest : public ::testing::Test {
   ray::observability::FakeGauge fake_internal_num_spilled_tasks_gauge_;
   ray::observability::FakeGauge fake_internal_num_infeasible_scheduling_classes_gauge_;
   ray::observability::FakeCounter fake_memory_manager_worker_eviction_total_count_;
+  ray::observability::FakeCounter
+      fake_node_manager_unexpected_worker_failure_total_count_;
 };
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
