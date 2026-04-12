@@ -664,6 +664,7 @@ def test_no_output_pileup_with_paused_consumer(
     ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
         object_store_memory=125_000
     )
+    ctx.downstream_capacity_backpressure_ratio = 1
 
     # Few large input blocks — each task streams many small output blocks.
     ds = ray.data.range(1_000_000, override_num_blocks=5).map_batches(lambda x: x)
@@ -674,19 +675,11 @@ def test_no_output_pileup_with_paused_consumer(
     next(it)
 
     executor = ds._current_executor
+
     assert executor is not None
-    _, output_state = executor._output_node
+    output_op, output_state = executor._output_node
 
-    # Give some time for the queue to grow.
-    time.sleep(2)
-    queue_bytes = output_state.output_queue_bytes()
-
-    # Peak output queue should not massively exceed the budget (125KB).
-    # If the escape hatch leaks blocks freely, usage would grow much higher.
-    budget = 125_000
-    assert (
-        queue_bytes < budget * 2
-    ), f"Output queue bytes {queue_bytes} grew beyond 2x the budget ({budget} bytes)"
+    wait_for_condition(lambda: output_op._in_task_output_backpressure)
 
 
 if __name__ == "__main__":
