@@ -36,7 +36,7 @@ from ray.data.collate_fn import (
     is_tensor_batch_type,
 )
 from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI, RayDeprecationWarning
+from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
     import tensorflow as tf
@@ -616,6 +616,7 @@ class DataIterator(abc.ABC):
 
         return mapped_iterable
 
+    @Deprecated
     def to_torch(
         self,
         *,
@@ -724,6 +725,11 @@ class DataIterator(abc.ABC):
         Returns:
             A torch IterableDataset.
         """
+        warnings.warn(
+            "`DataIterator.to_torch` is deprecated and will be removed after "
+            "October 2026. Use `DataIterator.iter_torch_batches` instead.",
+            DeprecationWarning,
+        )
         import torch
 
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
