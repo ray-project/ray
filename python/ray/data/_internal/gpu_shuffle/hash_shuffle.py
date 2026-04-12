@@ -43,6 +43,8 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Arrow schema metadata key for the rapidsmpf partition ID.
+_GPU_PARTITION_ID_KEY = b"_gpu_partition_id"
 
 # ---------------------------------------------------------------------------
 # GPU shuffle actor
@@ -168,7 +170,7 @@ class GPUShuffleActor:
             block = cdf.to_arrow(preserve_index=False)
             existing_metadata = block.schema.metadata or {}
             tagged_schema = block.schema.with_metadata(
-                {**existing_metadata, b"_gpu_partition_id": str(partition_id).encode()}
+                {**existing_metadata, _GPU_PARTITION_ID_KEY: str(partition_id).encode()}
             )
             exec_stats = exec_stats_builder.build()
             stats = yield block
@@ -501,16 +503,16 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         def _on_bundle_ready(bundle: RefBundle) -> None:
             assert (
                 bundle.schema is not None
-                and b"_gpu_partition_id" in bundle.schema.metadata
+                and _GPU_PARTITION_ID_KEY in bundle.schema.metadata
             ), (
                 "Bundle is missing _gpu_partition_id in schema metadata. "
                 "Was finish_and_extract modified to skip tagging?"
             )
-            partition_id = int(bundle.schema.metadata[b"_gpu_partition_id"].decode())
+            partition_id = int(bundle.schema.metadata[_GPU_PARTITION_ID_KEY].decode())
             clean_meta = {
                 k: v
                 for k, v in bundle.schema.metadata.items()
-                if k != b"_gpu_partition_id"
+                if k != _GPU_PARTITION_ID_KEY
             }
             bundle = RefBundle(
                 bundle.blocks,
