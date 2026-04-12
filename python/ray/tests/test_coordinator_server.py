@@ -132,6 +132,36 @@ class OnPremCoordinatorServerTest(unittest.TestCase):
         all_workers = provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
         assert set(all_workers) == set(worker_ips)
 
+    def testNodesForTeardownExcludesAfterTerminateNode(self):
+        """nodes_for_teardown excludes nodes after terminate_node is called.
+
+        Once terminate_node sets teardown_complete, the node should no longer
+        appear in nodes_for_teardown so it is not targeted on subsequent
+        teardown passes.  Re-creating the node (via create_node) must clear
+        the flag so it can be torn down again in a future cycle.
+        """
+        worker_ips = ["10.0.0.1", "10.0.0.2"]
+        provider, head_ip, _, _ = self._make_local_provider(
+            worker_ips=worker_ips,
+        )
+
+        # Bring all nodes to running state.
+        record_local_head_state_if_needed(provider)
+        provider.create_node({}, {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, 2)
+        assert len(provider.non_terminated_nodes({})) == 3
+        assert set(provider.nodes_for_teardown({})) == {head_ip} | set(worker_ips)
+
+        # Terminate one worker — it should disappear from nodes_for_teardown.
+        provider.terminate_node("10.0.0.1")
+        assert set(provider.nodes_for_teardown({})) == {head_ip, "10.0.0.2"}
+        assert set(
+            provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        ) == {"10.0.0.2"}
+
+        # Re-create the terminated worker — teardown_complete should be cleared.
+        provider.create_node({}, {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}, 1)
+        assert set(provider.nodes_for_teardown({})) == {head_ip} | set(worker_ips)
+
     def testClusterStateInit(self):
         """Check ClusterState __init__ func generates correct state file.
 
