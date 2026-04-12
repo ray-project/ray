@@ -11,11 +11,57 @@ import {
   MenuItem,
   Select,
   TextField,
+  Tooltip,
   Typography,
 } from "@mui/material";
-import React, { PropsWithChildren, useState } from "react";
+import React, { PropsWithChildren, useEffect, useState } from "react";
 import { HelpInfo } from "../components/Tooltip";
 import { ClassNameProps } from "./props";
+
+let cachedProfilingEnabled: boolean | null = null;
+let fetchPromise: Promise<void> | null = null;
+
+const fetchProfilingEnabled = (): Promise<void> => {
+  if (cachedProfilingEnabled !== null) {
+    return Promise.resolve();
+  }
+  if (!fetchPromise) {
+    fetchPromise = fetch("/api/profiling_enabled")
+      .then((res) => res.json())
+      .then((data) => {
+        cachedProfilingEnabled = data.data.profilingEnabled;
+      })
+      .catch(() => {
+        cachedProfilingEnabled = false;
+      });
+  }
+  return fetchPromise;
+};
+
+const useProfilingEnabled = () => {
+  const [enabled, setEnabled] = useState(cachedProfilingEnabled ?? false);
+
+  useEffect(() => {
+    fetchProfilingEnabled().then(() =>
+      setEnabled(cachedProfilingEnabled ?? false),
+    );
+  }, []);
+
+  return enabled;
+};
+
+const PROFILING_DISABLED_TOOLTIP =
+  "Profiling is disabled by default for security. " +
+  "Set RAY_DASHBOARD_ENABLE_PROFILING=1 on the Ray head node to enable. " +
+  "See https://docs.ray.io/en/latest/ray-observability/user-guides/profiling.html#enabling-dashboard-profiling";
+
+const DisabledProfilingLabel = ({ children }: { children: React.ReactNode }) => (
+  <Tooltip title={PROFILING_DISABLED_TOOLTIP}>
+    <Typography component="span" color="text.disabled">
+      {children}
+    </Typography>
+  </Tooltip>
+);
 
 type CpuProfilingLinkProps = PropsWithChildren<
   {
@@ -55,8 +101,12 @@ export const TaskCpuProfilingLink = ({
   attemptNumber,
   nodeId,
 }: TaskProfilingStackTraceProps) => {
+  const profilingEnabled = useProfilingEnabled();
   if (!taskId) {
     return null;
+  }
+  if (!profilingEnabled) {
+    return <DisabledProfilingLabel>CPU&nbsp;Flame&nbsp;Graph</DisabledProfilingLabel>;
   }
   return (
     <Link
@@ -75,8 +125,12 @@ export const TaskCpuStackTraceLink = ({
   attemptNumber,
   nodeId,
 }: TaskProfilingStackTraceProps) => {
+  const profilingEnabled = useProfilingEnabled();
   if (!taskId) {
     return null;
+  }
+  if (!profilingEnabled) {
+    return <DisabledProfilingLabel>Stack&nbsp;Trace</DisabledProfilingLabel>;
   }
   return (
     <Link
@@ -95,6 +149,7 @@ export const CpuStackTraceLink = ({
   nodeId,
   type = "",
 }: CpuProfilingLinkProps) => {
+  const profilingEnabled = useProfilingEnabled();
   if (
     !pid ||
     !nodeId ||
@@ -102,6 +157,13 @@ export const CpuStackTraceLink = ({
     typeof nodeId === "undefined"
   ) {
     return <div></div>;
+  }
+  if (!profilingEnabled) {
+    return (
+      <DisabledProfilingLabel>
+        Stack&nbsp;Trace{type ? ` (${type})` : ""}
+      </DisabledProfilingLabel>
+    );
   }
   return (
     <Link
@@ -120,10 +182,17 @@ export const CpuProfilingLink = ({
   nodeId,
   type = "",
 }: CpuProfilingLinkProps) => {
+  const profilingEnabled = useProfilingEnabled();
   if (!pid || !nodeId) {
     return <div></div>;
   }
-
+  if (!profilingEnabled) {
+    return (
+      <DisabledProfilingLabel>
+        CPU&nbsp;Flame&nbsp;Graph{type ? ` (${type})` : ""}
+      </DisabledProfilingLabel>
+    );
+  }
   return (
     <Link
       href={`worker/cpu_profile?pid=${pid}&node_id=${nodeId}&duration=5&native=0`}
@@ -294,8 +363,16 @@ export const MemoryProfilingButton = ({
   nodeId,
   type = "",
 }: MemoryProfilingProps) => {
+  const profilingEnabled = useProfilingEnabled();
   if (!pid || !nodeId) {
     return <div></div>;
+  }
+  if (!profilingEnabled) {
+    return (
+      <DisabledProfilingLabel>
+        Memory&nbsp;Profiling{type ? ` (${type})` : ""}
+      </DisabledProfilingLabel>
+    );
   }
   const profilerUrl = `memory_profile?pid=${pid}&node_id=${nodeId}`;
 
@@ -307,8 +384,12 @@ export const TaskMemoryProfilingButton = ({
   attemptNumber,
   nodeId,
 }: TaskMemoryProfilingProps) => {
+  const profilingEnabled = useProfilingEnabled();
   if (!taskId) {
     return null;
+  }
+  if (!profilingEnabled) {
+    return <DisabledProfilingLabel>Memory&nbsp;Profiling</DisabledProfilingLabel>;
   }
   const profilerUrl = `memory_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`;
 
