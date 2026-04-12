@@ -71,6 +71,8 @@ class LocalLeaseManagerInterface {
 
   virtual void SetWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) = 0;
 
+  virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
+
   virtual const RayLease *AnyPendingLeasesForResourceAcquisition(
       int *num_pending_actor_creation, int *num_pending_leases) const = 0;
 

@@ -162,6 +162,8 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
 
   void SetWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) override;
 
+  void ClearWorkerBacklog(const WorkerID &worker_id) override;
+
   const absl::flat_hash_map<SchedulingClass, std::deque<std::shared_ptr<internal::Work>>>
       &GetLeasesToGrant() const override {
     return leases_to_grant_;

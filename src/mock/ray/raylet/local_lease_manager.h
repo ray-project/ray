@@ -50,6 +50,7 @@ class MockLocalLeaseManager : public LocalLeaseManagerInterface {
               SetWorkerBacklog,
               (const rpc::ReportWorkerBacklogRequest &request),
               (override));
+  MOCK_METHOD(void, ClearWorkerBacklog, (const WorkerID &worker_id), (override));
   MOCK_METHOD(const RayLease *,
               AnyPendingLeasesForResourceAcquisition,
               (int *num_pending_actor_creation, int *num_pending_leases),

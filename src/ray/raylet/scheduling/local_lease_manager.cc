@@ -1053,11 +1053,7 @@ void LocalLeaseManager::Grant(
   }
 }
 
-void LocalLeaseManager::SetWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) {
-  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-
-  // Clear all existing backlog entries for this worker, since the request
-  // contains a full snapshot rather than a delta.
+void LocalLeaseManager::ClearWorkerBacklog(const WorkerID &worker_id) {
   for (auto it = backlog_tracker_.begin(); it != backlog_tracker_.end();) {
     it->second.erase(worker_id);
     if (it->second.empty()) {
@@ -1066,6 +1062,12 @@ void LocalLeaseManager::SetWorkerBacklog(const rpc::ReportWorkerBacklogRequest &
       ++it;
     }
   }
+}
+
+void LocalLeaseManager::SetWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) {
+  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+
+  ClearWorkerBacklog(worker_id);
 
   for (const auto &backlog_report : request.backlog_reports()) {
     const SchedulingClass scheduling_class = backlog_report.scheduling_class();

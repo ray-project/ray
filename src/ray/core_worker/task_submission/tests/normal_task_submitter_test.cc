@@ -257,17 +257,14 @@ class MockRayletClient : public rpc::FakeRayletClient {
     return true;
   }
 
-  void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override {
+  void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) override {
     std::lock_guard<std::mutex> lock(mu_);
     reported_backlog_size = 0;
     reported_backlogs.clear();
-    for (const auto &backlog_report : backlog_reports) {
+    for (const auto &backlog_report : request.backlog_reports()) {
       reported_backlog_size += backlog_report.backlog_size();
-      const LeaseSpecification lease_spec(backlog_report.lease_spec());
-      const SchedulingClass scheduling_class = lease_spec.GetSchedulingClass();
-      reported_backlogs[scheduling_class] = backlog_report.backlog_size();
+      reported_backlogs[backlog_report.scheduling_class()] =
+          backlog_report.backlog_size();
     }
   }
 

@@ -1924,12 +1924,7 @@ TEST_F(ClusterLeaseManagerTest, BacklogReportTest) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   pool_.PushWorker(worker);
   lease_manager_.ScheduleAndGrantLeases();
-  {
-    // Clears the backlog for the worker.
-    rpc::ReportWorkerBacklogRequest backlog_request;
-    backlog_request.set_worker_id(worker_ids[0].Binary());
-    local_lease_manager_->SetWorkerBacklog(backlog_request);
-  }
+  local_lease_manager_->ClearWorkerBacklog(worker_ids[0]);
   pool_.TriggerCallbacks();
 
   {
@@ -1950,10 +1945,7 @@ TEST_F(ClusterLeaseManagerTest, BacklogReportTest) {
   }
 
   for (size_t i = 1; i < worker_ids.size(); ++i) {
-    // Clears the backlog for the worker.
-    rpc::ReportWorkerBacklogRequest backlog_request;
-    backlog_request.set_worker_id(worker_ids[i].Binary());
-    local_lease_manager_->SetWorkerBacklog(backlog_request);
+    local_lease_manager_->ClearWorkerBacklog(worker_ids[i]);
   }
 
   {
