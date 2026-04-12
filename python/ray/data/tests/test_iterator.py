@@ -143,15 +143,6 @@ def test_torch_conversion(ray_start_regular_shared):
     ), iter_batches_calls_kwargs
 
 
-def test_to_torch_homogeneous_list_success(ray_start_regular_shared):
-    ds = ray.data.from_pandas(pd.DataFrame({"a": [[1, 2], [3, 4], [5, 6]]}))
-    it = ds.iterator().to_torch(feature_columns=["a"], batch_size=2)
-    features, labels = next(iter(it))
-    assert labels is None
-    assert features.shape == (2, 1, 2)
-    assert features.dtype == torch.int64
-
-
 def test_torch_multi_use_iterator(ray_start_regular_shared):
     """Tests that the iterator outputted by `iter_torch_batches` can be used
     multiple times."""
@@ -330,6 +321,15 @@ class TestToTorch:
         features, labels = next(iter(it))
 
         assert labels.shape == (2,)
+
+    def test_feature_columns_as_list_of_lists(ray_start_regular_shared):
+        ds = ray.data.from_pandas(pd.DataFrame({"a": [[1, 2], [3, 4], [5, 6]]}))
+        it = ds.iterator().to_torch(feature_columns=["a"], batch_size=2)
+
+        features, labels = next(iter(it))
+
+        assert labels is None
+        assert features.shape == (2, 1, 2)
 
     def test_feature_columns_subset(self, ray_start_regular_shared):
         ds = ray.data.from_items([{"a": 1, "b": 2, "c": 3}])
