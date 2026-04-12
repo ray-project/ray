@@ -533,19 +533,27 @@ std::vector<bool> CheckForClientDisconnects(
 #if defined(_WIN32)
   return result;
 #else
-  // Poll for POLLHUP on all of the FDs in a single syscall.
+  // Poll for POLLHUP/POLLIN on all of the FDs in a single syscall.
+  // On macOS, POLLHUP may not be delivered for Unix domain sockets,
+  // so we also check POLLIN and use recv(MSG_PEEK) to detect EOF.
   std::vector<pollfd> poll_fds(conns.size());
   for (size_t i = 0; i < conns.size(); ++i) {
-    // POLLHUP is populated in revents, no need to specify it.
-    poll_fds[i] = {conns[i]->GetNativeHandle(), /*events=*/0, /*revents=*/0};
+    poll_fds[i] = {conns[i]->GetNativeHandle(), /*events=*/POLLIN, /*revents=*/0};
   }
 
   int ret = poll(poll_fds.data(), poll_fds.size(), /*timeout=*/0);
   if (ret > 0) {
     for (size_t i = 0; i < conns.size(); ++i) {
-      // Check if a POLLHUP event occurred on the FD.
-      if (poll_fds[i].revents & POLLHUP) {
+      if (poll_fds[i].revents & (POLLHUP | POLLERR)) {
         result[i] = true;
+      } else if (poll_fds[i].revents & POLLIN) {
+        // POLLIN could mean data or EOF. Use recv(MSG_PEEK) to check.
+        char buf;
+        ssize_t n = recv(poll_fds[i].fd, &buf, 1, MSG_PEEK | MSG_DONTWAIT);
+        if (n == 0) {
+          // EOF: peer has disconnected.
+          result[i] = true;
+        }
       }
     }
   } else if (ret < 0) {

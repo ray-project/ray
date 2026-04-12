@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <signal.h>
+#include <sys/wait.h>
 
 #include <chrono>
 #include <cstdlib>
@@ -36,6 +37,9 @@ void TestSendSignal(const std::string &test_name, int signal) {
   pid = fork();
   ASSERT_GE(pid, 0);
   if (pid == 0) {
+    // Put child in its own process group so signal handling
+    // doesn't propagate back to the parent on macOS.
+    setpgid(0, 0);
     while (true) {
       int n = 1000;
       while (n--) {
@@ -46,6 +50,8 @@ void TestSendSignal(const std::string &test_name, int signal) {
     RAY_LOG(ERROR) << test_name << ": kill pid " << pid
                    << " with return value=" << kill(pid, signal);
     Sleep();
+    // Reap the child to prevent zombies.
+    waitpid(pid, nullptr, WNOHANG);
   }
 }
 
@@ -58,6 +64,7 @@ TEST(SignalTest, SIGABRT_Test) {
   pid = fork();
   ASSERT_GE(pid, 0);
   if (pid == 0) {
+    setpgid(0, 0);
     // This code will cause SIGABRT sent.
     std::abort();
   } else {
@@ -65,6 +72,7 @@ TEST(SignalTest, SIGABRT_Test) {
     RAY_LOG(ERROR) << "SIGABRT_Test: kill pid " << pid
                    << " with return value=" << kill(pid, SIGKILL);
     Sleep();
+    waitpid(pid, nullptr, WNOHANG);
   }
 }
 
@@ -73,6 +81,7 @@ TEST(SignalTest, SIGSEGV_Test) {
   pid = fork();
   ASSERT_GE(pid, 0);
   if (pid == 0) {
+    setpgid(0, 0);
     int *pointer = reinterpret_cast<int *>(0x1237896);
     *pointer = 100;
   } else {
@@ -80,6 +89,7 @@ TEST(SignalTest, SIGSEGV_Test) {
     RAY_LOG(ERROR) << "SIGSEGV_Test: kill pid " << pid
                    << " with return value=" << kill(pid, SIGKILL);
     Sleep();
+    waitpid(pid, nullptr, WNOHANG);
   }
 }
 
@@ -88,12 +98,14 @@ TEST(SignalTest, SIGILL_Test) {
   pid = fork();
   ASSERT_GE(pid, 0);
   if (pid == 0) {
+    setpgid(0, 0);
     raise(SIGILL);
   } else {
     Sleep();
     RAY_LOG(ERROR) << "SIGILL_Test: kill pid " << pid
                    << " with return value=" << kill(pid, SIGKILL);
     Sleep();
+    waitpid(pid, nullptr, WNOHANG);
   }
 }
 
