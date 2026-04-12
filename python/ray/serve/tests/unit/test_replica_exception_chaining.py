@@ -39,3 +39,9 @@ def test_raise_user_exception_wrapped_exception_preserves_original_cause():
 
     assert exc_info.value is wrapped_exc
     assert exc_info.value.__cause__ is original_exc
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
