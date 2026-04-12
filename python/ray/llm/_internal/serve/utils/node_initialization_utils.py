@@ -1,4 +1,5 @@
 import asyncio
+import os
 from typing import Optional
 
 import ray
@@ -17,7 +18,10 @@ logger = get_logger(__name__)
 # Timeout for model file downloads on worker nodes. If downloads hang
 # (e.g., due to resource contention or scheduling issues), initialization
 # will fail with a clear error instead of hanging indefinitely.
-NODE_INITIALIZATION_TIMEOUT_S = 1800  # 30 minutes
+# Configurable via the RAY_LLM_NODE_INITIALIZATION_TIMEOUT_S environment variable.
+NODE_INITIALIZATION_TIMEOUT_S = int(
+    os.getenv("RAY_LLM_NODE_INITIALIZATION_TIMEOUT_S", "1800")
+)
 
 
 def initialize_remote_node(llm_config: LLMConfig) -> Optional[str]:
@@ -82,8 +86,8 @@ async def initialize_node(llm_config: LLMConfig):
             f"cannot schedule the download task due to resource contention "
             f"(e.g., insufficient CPU resources on the node after placement group "
             f"allocation). Check `ray status` to verify available resources on each "
-            f"node. You can also increase the timeout by setting "
-            f"NODE_INITIALIZATION_TIMEOUT_S in node_initialization_utils.py."
+            f"node. You can also increase the timeout by setting the "
+            f"RAY_LLM_NODE_INITIALIZATION_TIMEOUT_S environment variable."
         )
 
     # assume that all paths are the same
