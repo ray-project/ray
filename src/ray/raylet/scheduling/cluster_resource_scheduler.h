@@ -31,6 +31,7 @@
 #include "ray/raylet/scheduling/internal.h"
 #include "ray/raylet/scheduling/local_resource_manager.h"
 #include "ray/raylet/scheduling/policy/composite_scheduling_policy.h"
+#include "ray/util/clock.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -56,6 +57,7 @@ class ClusterResourceScheduler {
                            const NodeResources &local_node_resources,
                            std::function<bool(scheduling::NodeID)> is_node_available_fn,
                            ray::observability::MetricInterface &resource_usage_gauge,
+                           ClockInterface &clock,
                            bool is_local_node_with_raylet = true);
 
   ClusterResourceScheduler(
@@ -64,13 +66,14 @@ class ClusterResourceScheduler {
       const absl::flat_hash_map<std::string, double> &local_node_resources,
       std::function<bool(scheduling::NodeID)> is_node_available_fn,
       ray::observability::MetricInterface &resource_usage_gauge,
+      ClockInterface &clock,
       std::function<int64_t(void)> get_used_object_store_memory = nullptr,
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully =
           nullptr,
       const absl::flat_hash_map<std::string, std::string> &local_node_labels = {});
 
-  /// Schedule the specified resources to the cluster nodes.
+  /// Schedule a placement group with the specified resources to the cluster nodes.
   ///
   /// \param resource_request_list The resource request list we're attempting to schedule.
   /// \param options: scheduling options.
@@ -79,7 +82,7 @@ class ClusterResourceScheduler {
   /// \return `SchedulingResult`, including the
   /// selected nodes if schedule successful, otherwise, it will return an empty vector and
   /// a flag to indicate whether this request can be retry or not.
-  SchedulingResult Schedule(
+  SchedulingResult SchedulePlacementGroup(
       const std::vector<const ResourceRequest *> &resource_request_list,
       SchedulingOptions options);
 
@@ -144,7 +147,8 @@ class ClusterResourceScheduler {
             std::function<int64_t(void)> get_used_object_store_memory,
             std::function<bool(void)> get_pull_manager_at_capacity,
             std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
-            ray::observability::MetricInterface &resource_usage_gauge);
+            ray::observability::MetricInterface &resource_usage_gauge,
+            ClockInterface &clock);
 
   bool NodeAvailable(scheduling::NodeID node_id) const;
 

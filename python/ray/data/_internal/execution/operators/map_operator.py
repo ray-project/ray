@@ -238,23 +238,25 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # (e.g., schema evolution for Iceberg writes via on_write_start).
         self._on_start: Optional[Callable[[Optional["pa.Schema"]], None]] = on_start
         self._on_start_called = False
-        # _map_transformer_ref is lazily initialized on first access.
-        # This ensures on_start callback (if registered) can modify the transformer
-        # before serialization (e.g., for Iceberg schema evolution).
-        self.__map_transformer_ref = None
 
-    @property
-    def _map_transformer_ref(self):
+    @functools.cached_property
+    def _map_transformer_ref(self) -> ObjectRef[MapTransformer]:
         """Lazily serialize _map_transformer to object store on first access.
 
         Deferred until first task submission so that on_start callbacks
         (e.g., on_write_start for Iceberg) can modify the transformer state
         before serialization.
         """
-        if self.__map_transformer_ref is None:
-            self.__map_transformer_ref = ray.put(self._map_transformer)
-            self._warn_large_udf()
-        return self.__map_transformer_ref
+        # _map_transformer_ref is lazily initialized on first access.
+        # This ensures on_start callback (if registered) can modify the transformer
+        # before serialization (e.g., for Iceberg schema evolution).
+        ref = ray.put(self._map_transformer)
+        self._warn_large_udf(ref)
+        return ref
+
+    @functools.cached_property
+    def _data_context_ref(self) -> ObjectRef[DataContext]:
+        return ray.put(self.data_context)
 
     def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
         """Add a callback function that generates additional kwargs for the map tasks.
@@ -399,10 +401,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             )
 
         if isinstance(compute_strategy, TaskPoolStrategy):
-            from ray.data._internal.execution.operators.task_pool_map_operator import (
-                TaskPoolMapOperator,
+            from ray.data._internal.execution.operators import (
+                get_task_pool_map_operator_cls,
             )
 
+            TaskPoolMapOperator = get_task_pool_map_operator_cls()
             return TaskPoolMapOperator(
                 map_transformer,
                 input_op,
@@ -419,10 +422,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 on_start=on_start,
             )
         elif isinstance(compute_strategy, ActorPoolStrategy):
-            from ray.data._internal.execution.operators.actor_pool_map_operator import (
-                ActorPoolMapOperator,
+            from ray.data._internal.execution.operators import (
+                get_actor_pool_map_operator_cls,
             )
 
+            ActorPoolMapOperator = get_actor_pool_map_operator_cls()
             return ActorPoolMapOperator(
                 map_transformer,
                 input_op,
@@ -530,11 +534,11 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # This preserves override_num_blocks for small files that need explicit splits.
         return size_based_splits > 1
 
-    def _warn_large_udf(self):
+    def _warn_large_udf(self, udf: ObjectRef[MapTransformer]):
         """Print a warning if the UDF is too large."""
-        udf_size = ray.experimental.get_local_object_locations(
-            [self.__map_transformer_ref]
-        )[self.__map_transformer_ref]["object_size"]
+        udf_size = ray.experimental.get_local_object_locations([udf])[udf][
+            "object_size"
+        ]
         if udf_size > self.MAP_UDF_WARN_SIZE_THRESHOLD:
             logger.warning(
                 f"The UDF of operator {self.name} is too large "

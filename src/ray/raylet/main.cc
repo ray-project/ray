@@ -50,6 +50,7 @@
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
+#include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
@@ -356,6 +357,8 @@ int main(int argc, char *argv[]) {
       spill_manager_throughput_mb_gauge};
   ray::stats::Count memory_manager_worker_eviction_total_count =
       ray::raylet::GetMemoryManagerWorkerEvictionTotalCountMetric();
+  ray::stats::Count node_manager_unexpected_worker_failure_total_count =
+      ray::raylet::GetNodeManagerUnexpectedWorkerFailureTotalCountMetric();
   ray::stats::Gauge scheduler_tasks_gauge = ray::raylet::GetSchedulerTasksGaugeMetric();
   ray::stats::Gauge scheduler_unscheduleable_tasks_gauge =
       ray::raylet::GetSchedulerUnscheduleableTasksGaugeMetric();
@@ -405,6 +408,7 @@ int main(int argc, char *argv[]) {
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
   /// granting leases.
+  ray::Clock clock;
   std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
   std::unique_ptr<ray::raylet::LocalLeaseManagerInterface> local_lease_manager;
   std::unique_ptr<ray::raylet::ClusterLeaseManagerInterface> cluster_lease_manager;
@@ -907,6 +911,7 @@ int main(int argc, char *argv[]) {
           return gcs_client->Nodes().IsNodeAlive(ray::NodeID::FromBinary(id.Binary()));
         },
         resource_usage_gauge,
+        clock,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -1049,7 +1054,8 @@ int main(int argc, char *argv[]) {
         *placement_group_resource_manager,
         std::move(acceptor),
         std::move(socket),
-        memory_manager_worker_eviction_total_count);
+        memory_manager_worker_eviction_total_count,
+        node_manager_unexpected_worker_failure_total_count);
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is
