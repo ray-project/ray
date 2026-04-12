@@ -28,16 +28,11 @@ from ray.serve._private.request_router.common import (
 from ray.serve._private.request_router.replica_wrapper import (
     RunningReplica,
 )
-from ray.serve._private.request_router.request_router import (
-    LocalityMixin,
-    MultiplexMixin,
-    RequestRouter,
-)
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
+class PrefixCacheAffinityRouter(PowerOfTwoChoicesRequestRouter):
     """Extends the PowerOfTwoChoicesRequestRouter with prefix-matching capabilities.
 
     This request router optimizes replica selection by considering input text prefixes:
@@ -349,8 +344,7 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         """
         # Start Sphinx tag: __begin_pow2_router_base__
         # Get fallback replicas from PowerOfTwoChoicesRequestRouter
-        fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
-            self,
+        fallback_replicas = await super().choose_replicas(
             candidate_replicas=candidate_replicas,
             pending_request=pending_request,
         )

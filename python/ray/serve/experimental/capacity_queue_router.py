@@ -15,11 +15,8 @@ from ray.serve._private.request_router.pow_2_router import (
     PowerOfTwoChoicesRequestRouter,
 )
 from ray.serve.request_router import (
-    LocalityMixin,
-    MultiplexMixin,
     PendingRequest,
     ReplicaResult,
-    RequestRouter,
     RunningReplica,
 )
 
@@ -29,7 +26,7 @@ logger = logging.getLogger("ray.serve")
 DEFAULT_MAX_FAULT_RETRIES = 3
 
 
-class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
+class CapacityQueueRouter(PowerOfTwoChoicesRequestRouter):
     """Custom request router that uses a CapacityQueue deployment actor.
 
     Acquires capacity tokens from a centralized CapacityQueue before routing
@@ -253,8 +250,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         Only reached when _choose_replica_for_request falls back to the
         base class after MAX_FAULT_RETRIES consecutive CQ faults.
         """
-        return await PowerOfTwoChoicesRequestRouter.choose_replicas(
-            self,
+        return await super().choose_replicas(
             candidate_replicas=candidate_replicas,
             pending_request=pending_request,
         )
