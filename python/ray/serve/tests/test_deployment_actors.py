@@ -144,6 +144,25 @@ class FailingDeploymentActor:
             raise RuntimeError("Deployment actor init failed")
 
 
+@ray.remote
+class DeploymentMetadataActor:
+    """Records deployment metadata injected by Serve at actor startup."""
+
+    def __init__(
+        self,
+        deployment_id_name: str = "",
+        deployment_id_app: str = "",
+    ):
+        self._deployment_id_name = deployment_id_name
+        self._deployment_id_app = deployment_id_app
+
+    def get_metadata(self):
+        return {
+            "deployment_id_name": self._deployment_id_name,
+            "deployment_id_app": self._deployment_id_app,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -246,6 +265,34 @@ def test_imperative_deploy_with_string_import_path(serve_instance):
     resp = httpx.get(url)
     assert resp.status_code == 200
     assert resp.text == "0"
+
+
+def test_deployment_actor_receives_implicit_deployment_metadata(serve_instance):
+    """Serve injects deployment metadata without manual init_kwargs plumbing."""
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="metadata",
+                actor_class=DeploymentMetadataActor,
+            ),
+        ],
+    )
+    class MetadataDeployment:
+        def __call__(self):
+            metadata_actor = serve.get_deployment_actor("metadata")
+            metadata = ray.get(metadata_actor.get_metadata.remote())
+            return (
+                f"{metadata['deployment_id_name']}|" f"{metadata['deployment_id_app']}"
+            )
+
+    serve.run(
+        MetadataDeployment.bind(),
+        name="metadata-app",
+        route_prefix="/metadata",
+    )
+    url = get_application_url("HTTP", "metadata-app", use_localhost=True)
+    wait_for_condition(lambda: httpx.get(url).text == "MetadataDeployment|metadata-app")
 
 
 def test_deployment_actor_inherits_runtime_env(serve_instance):

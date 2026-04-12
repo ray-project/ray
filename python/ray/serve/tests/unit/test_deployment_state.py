@@ -549,6 +549,166 @@ class TestDeploymentActorWrapper:
         assert wrapper._handle is mock_handle
         assert wrapper._ready_ref is mock_ready_ref
 
+    def test_start_injects_implicit_deployment_metadata_for_named_kwargs(self):
+        """start() injects deployment metadata when ctor explicitly accepts it."""
+
+        class AcceptsMetadataActor:
+            def __init__(
+                self,
+                deployment_id_name=None,
+                deployment_id_app=None,
+            ):
+                pass
+
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.__ray_actor_class__ = AcceptsMetadataActor
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            success, err = wrapper.start()
+
+        assert success is True
+        assert err is None
+        mock_actor_cls.options.return_value.remote.assert_called_once_with(
+            deployment_id_name=TEST_DEPLOYMENT_ID.name,
+            deployment_id_app=TEST_DEPLOYMENT_ID.app_name,
+        )
+
+    def test_start_injects_implicit_deployment_metadata_for_var_kwargs(self):
+        """start() injects deployment metadata when ctor accepts **kwargs."""
+
+        class AcceptsVarKwargsActor:
+            def __init__(self, **kwargs):
+                pass
+
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.__ray_actor_class__ = AcceptsVarKwargsActor
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            success, err = wrapper.start()
+
+        assert success is True
+        assert err is None
+        mock_actor_cls.options.return_value.remote.assert_called_once_with(
+            deployment_id_name=TEST_DEPLOYMENT_ID.name,
+            deployment_id_app=TEST_DEPLOYMENT_ID.app_name,
+        )
+
+    def test_start_skips_implicit_deployment_metadata_for_unrelated_ctor(self):
+        """start() does not inject metadata into ctors that don't accept it."""
+
+        class NoMetadataActor:
+            def __init__(self, start=0):
+                pass
+
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.__ray_actor_class__ = NoMetadataActor
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        config = DeploymentActorConfig(
+            name="counter",
+            actor_class="builtins:object",
+            init_kwargs={"start": 3},
+        )
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            success, err = wrapper.start()
+
+        assert success is True
+        assert err is None
+        mock_actor_cls.options.return_value.remote.assert_called_once_with(start=3)
+
+    def test_start_keeps_explicit_deployment_metadata_values(self):
+        """Explicit init_kwargs win over implicit deployment metadata."""
+
+        class AcceptsMetadataActor:
+            def __init__(
+                self,
+                deployment_id_name=None,
+                deployment_id_app=None,
+            ):
+                pass
+
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.__ray_actor_class__ = AcceptsMetadataActor
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        config = DeploymentActorConfig(
+            name="counter",
+            actor_class="builtins:object",
+            init_kwargs={
+                "deployment_id_name": "custom-name",
+                "deployment_id_app": "custom-app",
+            },
+        )
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            success, err = wrapper.start()
+
+        assert success is True
+        assert err is None
+        mock_actor_cls.options.return_value.remote.assert_called_once_with(
+            deployment_id_name="custom-name",
+            deployment_id_app="custom-app",
+        )
+
     def test_start_failure(self):
         """Test start() returns (False, error_msg) when actor creation fails."""
         mock_actor_cls = MagicMock()
