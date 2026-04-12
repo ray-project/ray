@@ -575,6 +575,28 @@ def teardown_cluster(
             stale_terminated -= set(
                 provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
             )
+        if keep_min_workers:
+            min_workers = config.get("min_workers", 0)
+            stale_terminated_workers = stale_terminated & set(
+                provider.nodes_for_teardown(
+                    {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
+                )
+            )
+            # Count non-terminated workers already kept out of A.
+            non_terminated_workers = set(
+                provider.non_terminated_nodes(
+                    {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
+                )
+            )
+            kept_workers = len(non_terminated_workers - set(A))
+            if kept_workers < min_workers and stale_terminated_workers:
+                to_keep = min(
+                    min_workers - kept_workers, len(stale_terminated_workers)
+                )
+                stale_to_keep = set(
+                    random.sample(list(stale_terminated_workers), to_keep)
+                )
+                stale_terminated -= stale_to_keep
         docker_stop_nodes = list(set(A) | stale_terminated)
 
         # This is to ensure that the parallel SSH calls below do not mess with
