@@ -473,7 +473,7 @@ service NodeManagerService {
   // send.
   rpc PrestartWorkers(PrestartWorkersRequest) returns (PrestartWorkersReply);
   // Report task backlog information from a worker to the raylet. This is used to tell the
-  // autoscaler about resources needed by tasks who haven't had their dependencies
+  // GCS + Autoscaler about resources needed by tasks who haven't had their dependencies
   // resolved yet.
   // Failure: Doesn't need to be retried since it will keep getting
   // periodically called, and is not critical.
