@@ -362,6 +362,10 @@ class NormalTaskSubmitter {
   // should be retried or permanently failed.
   absl::flat_hash_set<TaskID> failed_tasks_pending_failure_cause_ ABSL_GUARDED_BY(mu_);
 
+  // True if the last backlog report sent to the raylet was non-empty.
+  // Used to ensure we send one final empty report to clear stale backlog.
+  bool last_backlog_report_nonempty_ = false;
+
   // Ratelimiter controls the num of pending lease requests.
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter_;
 

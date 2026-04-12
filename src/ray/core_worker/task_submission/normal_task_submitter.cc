@@ -249,9 +249,11 @@ void NormalTaskSubmitter::ReportWorkerBacklog() {
     report->set_scheduling_class(scheduling_class);
     report->set_backlog_size(backlog_size);
   }
-  if (!request.backlog_reports().empty()) {
+  bool has_backlog = !request.backlog_reports().empty();
+  if (has_backlog || last_backlog_report_nonempty_) {
     local_raylet_client_->ReportWorkerBacklog(request);
   }
+  last_backlog_report_nonempty_ = has_backlog;
 }
 
 void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduling_key,
