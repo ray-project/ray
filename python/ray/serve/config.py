@@ -551,6 +551,8 @@ class AutoscalingPolicy(BaseModel):
 class AutoscalingConfig(BaseModel):
     """Config for the Serve Autoscaler."""
 
+    model_config = ConfigDict(extra="forbid")
+
     # Please keep these options in sync with those in
     # `src/ray/protobuf/serve.proto`.
 
