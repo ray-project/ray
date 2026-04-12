@@ -14,6 +14,11 @@ transformers = try_import("transformers")
 
 logger = get_logger(__name__)
 
+# Timeout for model file downloads on worker nodes. If downloads hang
+# (e.g., due to resource contention or scheduling issues), initialization
+# will fail with a clear error instead of hanging indefinitely.
+NODE_INITIALIZATION_TIMEOUT_S = 1800  # 30 minutes
+
 
 def initialize_remote_node(llm_config: LLMConfig) -> Optional[str]:
 
@@ -63,9 +68,23 @@ async def initialize_node(llm_config: LLMConfig):
         )
 
     logger.info("Running tasks to download model files on worker nodes")
-    paths = await asyncio.gather(
-        *[download_task.remote(llm_config) for download_task in download_tasks]
-    )
+    try:
+        paths = await asyncio.wait_for(
+            asyncio.gather(
+                *[download_task.remote(llm_config) for download_task in download_tasks]
+            ),
+            timeout=NODE_INITIALIZATION_TIMEOUT_S,
+        )
+    except asyncio.TimeoutError:
+        raise RuntimeError(
+            f"Model file download on worker nodes timed out after "
+            f"{NODE_INITIALIZATION_TIMEOUT_S}s. This can happen when worker nodes "
+            f"cannot schedule the download task due to resource contention "
+            f"(e.g., insufficient CPU resources on the node after placement group "
+            f"allocation). Check `ray status` to verify available resources on each "
+            f"node. You can also increase the timeout by setting "
+            f"NODE_INITIALIZATION_TIMEOUT_S in node_initialization_utils.py."
+        )
 
     # assume that all paths are the same
     assert paths, "No paths returned from download_model_files"
