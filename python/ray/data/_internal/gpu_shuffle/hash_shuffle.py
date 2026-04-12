@@ -516,7 +516,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             }
             bundle = RefBundle(
                 bundle.blocks,
-                schema=bundle.schema.with_metadata(clean_meta),
+                schema=bundle.schema.with_metadata(clean_meta or None),
                 owns_blocks=bundle.owns_blocks,
             )
             self._num_partitions_reduced += 1
