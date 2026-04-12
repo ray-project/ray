@@ -1,6 +1,5 @@
 import logging
 import re
-import uuid
 
 import pytest
 
@@ -135,11 +134,9 @@ async def test_non_grpc_exception_no_self_cause(serve_instance):
             self._processed = False
             self._cycle_detected = False
 
-        def mark_processed(self):
+        def record_result(self, cycle_detected: bool):
             self._processed = True
-
-        def mark_cycle_detected(self):
-            self._cycle_detected = True
+            self._cycle_detected = cycle_detected
 
         def processed(self):
             return self._processed
@@ -147,8 +144,7 @@ async def test_non_grpc_exception_no_self_cause(serve_instance):
         def cycle_detected(self):
             return self._cycle_detected
 
-    detector_name = f"exception_chain_detector_{uuid.uuid4().hex}"
-    detector = _ExceptionChainDetector.options(name=detector_name).remote()
+    detector = _ExceptionChainDetector.remote()
 
     class CauseWalker(logging.Handler):
         """Walk the exception chain to catch self-referential causes."""
@@ -165,28 +161,28 @@ async def test_non_grpc_exception_no_self_cause(serve_instance):
             if not isinstance(exc, ValueError) or str(exc) != "user code exception":
                 return
 
+            cycle_detected = False
             try:
                 seen = set()
                 while exc.__cause__ is not None:
                     if id(exc) in seen:
-                        self._detector.mark_cycle_detected.remote()
+                        cycle_detected = True
                         return
 
                     seen.add(id(exc))
                     exc = exc.__cause__
             finally:
-                self._detector.mark_processed.remote()
+                self._detector.record_result.remote(cycle_detected)
 
     @serve.deployment
     class App:
-        def __init__(self):
-            detector_handle = ray.get_actor(detector_name)
+        def __init__(self, detector_handle):
             logging.getLogger("ray.serve").addHandler(CauseWalker(detector_handle))
 
         async def fail(self):
             raise ValueError("user code exception")
 
-    handle = serve.run(App.bind())
+    handle = serve.run(App.bind(detector))
 
     with pytest.raises(ValueError, match="user code exception"):
         await handle.fail.remote()
