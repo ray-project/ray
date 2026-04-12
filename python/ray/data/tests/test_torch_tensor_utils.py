@@ -2,85 +2,81 @@ import sys
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
 import pytest
 import torch
 
 import ray
 from ray.data.util.torch_utils import (
     concat_tensors_to_device,
-    convert_pandas_to_torch_tensor,
+    convert_table_to_torch_tensor,
     move_tensors_to_device,
 )
 from ray.util.debug import _test_some_code_for_memory_leaks
 
-data_batch = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+data_batch_pd = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
+data_batch = pa.Table.from_pandas(data_batch_pd, preserve_index=False)
 
 
-class TestConvertPandasToTorch:
+class TestConvertTableToTorch:
     def test_invalid_args(self):
         with pytest.raises(TypeError):
-            convert_pandas_to_torch_tensor(
+            convert_table_to_torch_tensor(
                 data_batch, columns=["A", "B"], column_dtypes=[torch.float, torch.float]
             )
 
     def test_single_tensor(self):
-        tensor = convert_pandas_to_torch_tensor(data_batch)
-        assert tensor.size() == (len(data_batch), len(data_batch.columns))
-        assert np.array_equal(tensor.numpy(), data_batch.to_numpy())
+        tensor = convert_table_to_torch_tensor(data_batch)
+        assert tensor.size() == (data_batch.num_rows, data_batch.num_columns)
+        assert np.array_equal(tensor.numpy(), data_batch_pd.to_numpy())
 
     def test_single_tensor_dtype(self):
-        tensor = convert_pandas_to_torch_tensor(data_batch, column_dtypes=torch.float)
-        assert tensor.size() == (len(data_batch), len(data_batch.columns))
+        tensor = convert_table_to_torch_tensor(data_batch, column_dtypes=torch.float)
+        assert tensor.size() == (data_batch.num_rows, data_batch.num_columns)
         assert tensor.dtype == torch.float
-        assert np.array_equal(tensor.numpy(), data_batch.to_numpy())
+        assert np.array_equal(tensor.numpy(), data_batch_pd.to_numpy())
 
     def test_single_tensor_columns(self):
-        tensor = convert_pandas_to_torch_tensor(data_batch, columns=["A"])
-        assert tensor.size() == (len(data_batch), len(data_batch.columns) - 1)
-        assert np.array_equal(tensor.numpy(), data_batch[["A"]].to_numpy())
+        tensor = convert_table_to_torch_tensor(data_batch, columns=["A"])
+        assert tensor.size() == (data_batch.num_rows, 1)
+        assert np.array_equal(tensor.numpy(), data_batch_pd[["A"]].to_numpy())
 
     def test_multi_input(self):
-        tensors = convert_pandas_to_torch_tensor(data_batch, columns=[["A"], ["B"]])
+        tensors = convert_table_to_torch_tensor(data_batch, columns=[["A"], ["B"]])
         assert len(tensors) == 2
 
-        for i in range(len(tensors)):
+        for i, col_name in enumerate(data_batch.column_names):
             tensor = tensors[i]
-            assert tensor.size() == (len(data_batch), 1)
-            assert np.array_equal(
-                tensor.numpy(), data_batch[[data_batch.columns[i]]].to_numpy()
-            )
+            assert tensor.size() == (data_batch.num_rows, 1)
+            assert np.array_equal(tensor.numpy(), data_batch_pd[[col_name]].to_numpy())
 
     def test_multi_input_single_dtype(self):
-        tensors = convert_pandas_to_torch_tensor(
+        tensors = convert_table_to_torch_tensor(
             data_batch, columns=[["A"], ["B"]], column_dtypes=torch.float
         )
         assert len(tensors) == 2
 
-        for i in range(len(tensors)):
+        for i, col_name in enumerate(data_batch.column_names):
             tensor = tensors[i]
             assert tensor.dtype == torch.float
-            assert tensor.size() == (len(data_batch), 1)
-            assert np.array_equal(
-                tensor.numpy(), data_batch[[data_batch.columns[i]]].to_numpy()
-            )
+            assert tensor.size() == (data_batch.num_rows, 1)
+            assert np.array_equal(tensor.numpy(), data_batch_pd[[col_name]].to_numpy())
 
     def test_multi_input_multi_dtype(self):
         column_dtypes = [torch.long, torch.float]
-        tensors = convert_pandas_to_torch_tensor(
+        tensors = convert_table_to_torch_tensor(
             data_batch, columns=[["A"], ["B"]], column_dtypes=column_dtypes
         )
         assert len(tensors) == 2
 
-        for i in range(len(tensors)):
+        for i, col_name in enumerate(data_batch.column_names):
             tensor = tensors[i]
             assert tensor.dtype == column_dtypes[i]
-            assert tensor.size() == (len(data_batch), 1)
-            assert np.array_equal(
-                tensor.numpy(), data_batch[[data_batch.columns[i]]].to_numpy()
-            )
+            assert tensor.size() == (data_batch.num_rows, 1)
+            assert np.array_equal(tensor.numpy(), data_batch_pd[[col_name]].to_numpy())
 
     def test_tensor_column_no_memory_leak(self):
-        # Test that converting a Pandas DataFrame containing an object-dtyped tensor
+        # Test that converting a table containing an object-dtyped tensor
         # column (e.g. post-casting from extension type) doesn't leak memory. Casting
         # these tensors directly with torch.as_tensor() currently leaks memory; see
         # https://github.com/ray-project/ray/issues/30629#issuecomment-1330954556
@@ -88,12 +84,13 @@ class TestConvertPandasToTorch:
             col = np.empty(1000, dtype=object)
             col[:] = [np.ones((100, 100)) for _ in range(1000)]
             df = pd.DataFrame({"a": col})
-            convert_pandas_to_torch_tensor(
-                df, columns=[["a"]], column_dtypes=[torch.int]
+            table = pa.Table.from_pandas(df, preserve_index=False)
+            convert_table_to_torch_tensor(
+                table, columns=[["a"]], column_dtypes=[torch.int]
             )
 
         suspicious_stats = _test_some_code_for_memory_leaks(
-            desc="Testing convert_pandas_to_torch_tensor for memory leaks.",
+            desc="Testing convert_table_to_torch_tensor for memory leaks.",
             init=None,
             code=code,
             repeats=10,
@@ -234,4 +231,10 @@ def test_concat_tensors_to_device_no_copy():
 
 
 if __name__ == "__main__":
+    import sys
+
+    if sys.version_info >= (3, 12):
+        # Skip this test for Python 3.12+ due to to incompatibility tensorflow
+        sys.exit(0)
+
     sys.exit(pytest.main(["-v", __file__]))
