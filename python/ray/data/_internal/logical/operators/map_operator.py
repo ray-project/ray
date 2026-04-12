@@ -486,7 +486,7 @@ class FlatMap(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class StreamingRepartition(AbstractMap):
+class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for streaming repartition operation.
 
     Args:
@@ -540,3 +540,8 @@ class StreamingRepartition(AbstractMap):
         else:
             target = replace(self, input_op=transformed_input)
         return transform(target)
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # StreamingRepartition only re-bundles rows into different block sizes.
+        # It doesn't modify schema or filter rows, so filters can safely pass through.
+        return PredicatePassThroughBehavior.PASSTHROUGH

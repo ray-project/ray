@@ -1328,7 +1328,7 @@ while True:
             check_job_stopped,
             job_manager=job_manager,
             job_id=job_id,
-            timeout=stop_timeout - 1,
+            timeout=stop_timeout / 2,
         )
 
     await async_wait_for_condition(
