@@ -472,9 +472,11 @@ service NodeManagerService {
   // Failure: Shouldn't fail because always sends to local raylet. Has a log on failure to
   // send.
   rpc PrestartWorkers(PrestartWorkersRequest) returns (PrestartWorkersReply);
-  // Report task backlog information from a worker to the raylet
-  // Failure: Doesn't need to be retried since it will keep getting periodically called,
-  // and is not critical.
+  // Report task backlog information from a worker to the raylet. This is used to tell the
+  // autoscaler about resources needed by tasks who haven't had their dependencies
+  // resolved yet.
+  // Failure: Doesn't need to be retried since it will keep getting
+  // periodically called, and is not critical.
   rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
   // Return a worker lease back to its raylet.
   // Failure: Retries, it's idempotent.
