@@ -1431,6 +1431,85 @@ class TestDataOpTask:
         assert bp_time == pytest.approx(4.0)
 
 
+def test_process_completed_tasks_detects_orphaned_streaming_task(
+    ray_start_regular_shared,
+):
+    """Test that process_completed_tasks detects tasks whose underlying Ray task
+    has completed but whose output stream wasn't properly terminated.
+
+    This simulates the deadlock scenario where Ray Data thinks tasks are running
+    (they're in _data_tasks) but Ray Core no longer has them registered.
+    """
+
+    # Ray requires num_returns="streaming" only on generator callables; use an
+    # unreachable yield so we never emit stream chunks but still block forever.
+    @ray.remote(num_returns="streaming")
+    def blocking_gen():
+        import time as _time
+
+        if False:  # pragma: no cover
+            yield None
+        _time.sleep(999)
+
+    streaming_gen = blocking_gen.remote()
+
+    # Track the callback invocation
+    callback_called = {}
+
+    def task_done_callback(exc, worker_stats, driver_stats):
+        callback_called["exc"] = exc
+        callback_called["driver_stats"] = driver_stats
+
+    data_op_task = DataOpTask(
+        0,
+        streaming_gen,
+        task_done_callback=task_done_callback,
+    )
+
+    # Set up a minimal topology with the orphaned task
+    inputs = make_ref_bundles([[x] for x in range(5)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = MapOperator.create(
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
+    )
+    topo = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
+
+    # Inject the orphaned DataOpTask as an active task on o2
+    o2.get_active_tasks = MagicMock(return_value=[data_op_task])
+
+    # Before cancellation: task is not ready, process_completed_tasks is a no-op
+    # for the data task.
+    process_completed_tasks(topo, [], 0)
+    assert not data_op_task.has_finished
+    assert "exc" not in callback_called
+
+    # Cancel the underlying task — this resolves the completion ref with an error
+    # but may not properly end the stream in all edge cases.
+    ray.cancel(streaming_gen.completed(), force=True)
+
+    # Wait for the cancellation to propagate
+    try:
+        ray.get(streaming_gen.completed(), timeout=5)
+    except Exception:
+        pass
+
+    # Use max_errored_blocks=-1 so task errors don't abort the scheduler tick.
+    process_completed_tasks(topo, [], -1)
+
+    assert data_op_task.has_finished, (
+        "DataOpTask should finish after the Ray task is cancelled: either via "
+        "orphan completion-ref handling or via the streaming generator error path."
+    )
+    assert "exc" in callback_called
+    assert callback_called["exc"] is not None
+    # Orphan force-finish passes TaskExecDriverStats; if the generator waitable
+    # becomes ready first, on_data_ready may finish the task with driver_stats=None.
+    if callback_called["driver_stats"] is not None:
+        assert hasattr(callback_called["driver_stats"], "task_output_backpressure_s")
+
+
 if __name__ == "__main__":
     import sys
 
