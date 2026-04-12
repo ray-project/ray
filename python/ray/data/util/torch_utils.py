@@ -3,7 +3,6 @@ from concurrent.futures import ThreadPoolExecutor
 from typing import Any, Dict, List, Optional, Sequence, Tuple, Union
 
 import numpy as np
-import pandas as pd
 import pyarrow
 import torch
 
@@ -34,35 +33,28 @@ def convert_table_to_torch_tensor(
 ) -> Union[torch.Tensor, List[torch.Tensor]]:
     """Converts a PyArrow table to a torch Tensor or list of torch Tensors.
 
-    The format of the return type will match the format of ``columns``. If a
-    list of columns is provided, the return type will be a single tensor. If
-    ``columns`` is a list of lists, then the return type will be a list of
-    tensors.
+    The return type matches the format of ``columns``: a flat list of column
+    names produces a single tensor; a list of lists produces a list of tensors
+    (one per group). If ``columns`` is None, all columns are used.
 
     Args:
-        data_batch: The pyarrow table to convert to a
-            torch tensor.
-        columns:
-            The names of the columns in the dataframe to include in the
-            torch tensor. If this arg is a List[List[str]], then the return
-            type will be a List of tensors. This is useful for multi-input
-            models. If None, then use all columns in the ``data_batch``.
-        column_dtypes: The
-            torch dtype to use for the tensor. If set to None,
-            then automatically infer the dtype.
-        unsqueeze: If set to True, the tensors
-            will be unsqueezed (reshaped to (N, 1)) before being concatenated into
-            the final tensor. Otherwise, they will be left as is, that is
-            (N, ). Defaults to True.
+        data_batch: The PyArrow table to convert.
+        columns: Column names to include. A list of lists returns one tensor
+            per group (useful for multi-input models). None uses all columns.
+        column_dtypes: Torch dtype(s) for the output. A single dtype applies
+            to all columns/groups. A list must match the number of groups when
+            ``columns`` is a list of lists.
+        unsqueeze: If True, reshape each per-column tensor from (N,) to (N, 1)
+            before concatenating. Defaults to True.
 
     Returns:
-        Either a torch tensor of size (N, len(columns)) where N is the
-        number of rows in the ``data_batch`` Dataframe, or a list of
-        tensors, where the size of item i is (N, len(columns[i])).
-
+        A single tensor of shape (N, len(columns)), or a list of tensors when
+        ``columns`` is a list of lists.
     """
+    multi_input = columns and isinstance(columns[0], (list, tuple))
 
-    multi_input = columns and (isinstance(columns[0], (list, tuple)))
+    if columns is None:
+        columns = data_batch.column_names
 
     if not multi_input and column_dtypes and not isinstance(column_dtypes, torch.dtype):
         raise TypeError(
@@ -71,63 +63,45 @@ def convert_table_to_torch_tensor(
             f"Got {type(column_dtypes)} instead."
         )
 
-    columns = columns if columns else []
+    if multi_input:
+        if not isinstance(column_dtypes, (list, tuple)):
+            column_dtypes = [column_dtypes] * len(columns)
 
+        return [
+            _columns_to_tensor(data_batch, group, dtype, unsqueeze)
+            for group, dtype in zip(columns, column_dtypes)
+        ]
+
+    return _columns_to_tensor(data_batch, columns, column_dtypes, unsqueeze)
+
+
+def _columns_to_tensor(
+    table: pyarrow.Table,
+    column_names: List[str],
+    dtype: Optional[torch.dtype],
+    unsqueeze: bool,
+) -> torch.Tensor:
+    """Convert selected columns from a PyArrow table into a single tensor."""
     from ray.data._internal.arrow_block import ArrowBlockAccessor
 
-    def get_tensor_for_columns(columns, dtype):
-        feature_tensors = []
+    numpy_batch = ArrowBlockAccessor(table).to_numpy(columns=column_names)
 
-        if columns:
-            column_names = columns
-        else:
-            column_names = data_batch.column_names
+    tensors = []
+    for col in column_names:
+        try:
+            t = convert_ndarray_to_torch_tensor(numpy_batch[col], dtype)
+        except Exception as e:
+            raise ValueError(
+                f"Failed to convert column {col} to a Torch Tensor of dtype "
+                f"{dtype}. See above exception chain for the exact failure."
+            ) from e
 
-        numpy_batch = ArrowBlockAccessor(data_batch).to_numpy(columns=column_names)
+        if unsqueeze:
+            t = t.unsqueeze(1)
 
-        for col in column_names:
-            col_vals = numpy_batch[col]
-            try:
-                t = _tensorize_column_values(col_vals, dtype)
-            except Exception as e:
-                raise ValueError(
-                    f"Failed to convert column {col} to a Torch Tensor of dtype "
-                    f"{dtype}. See above exception chain for the exact failure."
-                ) from e
-            if unsqueeze:
-                t = t.unsqueeze(1)
-            feature_tensors.append(t)
+        tensors.append(t)
 
-        if len(feature_tensors) > 1:
-            feature_tensor = torch.cat(feature_tensors, dim=1)
-        else:
-            feature_tensor = feature_tensors[0]
-        return feature_tensor
-
-    if multi_input:
-        if type(column_dtypes) not in [list, tuple]:
-            column_dtypes = [column_dtypes] * len(columns)
-        return [
-            get_tensor_for_columns(columns=subcolumns, dtype=dtype)
-            for subcolumns, dtype in zip(columns, column_dtypes)
-        ]
-    else:
-        return get_tensor_for_columns(columns=columns, dtype=column_dtypes)
-
-
-def _tensorize_column_values(vals: Any, dtype: Optional[torch.dtype]) -> torch.Tensor:
-    if isinstance(vals, pd.api.extensions.ExtensionArray):
-        vals = vals.to_numpy()
-    if isinstance(vals, np.ndarray):
-        vals = _unwrap_ndarray_object_type_if_needed(vals)
-        if vals.dtype.type is np.object_:
-            tensors = [_tensorize_column_values(np.asarray(x), dtype) for x in vals]
-            try:
-                return torch.stack(tensors)
-            except RuntimeError:
-                return torch.nested_tensor(tensors)
-        return convert_ndarray_to_torch_tensor(vals, dtype=dtype)
-    return torch.as_tensor(vals, dtype=dtype)
+    return torch.cat(tensors, dim=-1)
 
 
 def convert_ndarray_to_torch_tensor(
