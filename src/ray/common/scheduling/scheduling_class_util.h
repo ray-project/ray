@@ -62,7 +62,7 @@ H AbslHashValue(H h, const SchedulingClassDescriptor &sched_cls) {
                     sched_cls.fallback_strategy);
 }
 
-using SchedulingClass = int;
+using SchedulingClass = int64_t;
 
 struct SchedulingClassToIds {
   /// Below static fields could be mutated in `ComputeResources` concurrently due to

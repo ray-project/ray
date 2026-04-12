@@ -19,7 +19,7 @@
 
 namespace ray {
 
-using SchedulingClass = int;
+using SchedulingClass = int64_t;
 
 LeaseSpecification::LeaseSpecification(const rpc::TaskSpec &task_spec)
     : MessageWrapper(std::make_shared<rpc::LeaseSpec>()) {

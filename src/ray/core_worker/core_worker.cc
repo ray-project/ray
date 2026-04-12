@@ -818,9 +818,7 @@ void CoreWorker::InternalHeartbeat() {
   }
 
   // Check timeout tasks that are waiting for death info.
-  if (actor_task_submitter_ != nullptr) {
-    actor_task_submitter_->CheckTimeoutTasks();
-  }
+  actor_task_submitter_->CheckTimeoutTasks();
 
   // Periodically report the latest backlog so that
   // local raylet will have the eventually consistent view of worker backlogs
