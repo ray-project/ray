@@ -147,7 +147,7 @@ def test_v2_enabled_error(monkeypatch):
 
     monkeypatch.setenv(V2_ENABLED_ENV_VAR, "1")
 
-    with pytest.raises(DeprecationWarning, match="Detected use of a deprecated"):
+    with pytest.raises(RuntimeError, match="Detected use of a deprecated"):
         DataParallelTrainer(
             lambda _: None,
             scaling_config=ray.train.ScalingConfig(num_workers=1),

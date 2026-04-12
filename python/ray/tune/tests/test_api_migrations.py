@@ -34,7 +34,7 @@ def test_trainable_fn_utils(tmp_path, monkeypatch, v2_enabled):
     dummy_checkpoint_dir.mkdir()
 
     asserting_context = (
-        functools.partial(pytest.raises, DeprecationWarning)
+        functools.partial(pytest.raises, RuntimeError)
         if v2_enabled
         else functools.partial(pytest.warns, RayDeprecationWarning)
     )

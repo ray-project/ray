@@ -691,8 +691,7 @@ def run(
             "`chdir_to_trial_dir` is deprecated. "
             f"Use the {RAY_CHDIR_TO_TRIAL_DIR} environment variable instead. "
             "Set it to 0 to disable the default behavior of changing the "
-            "working directory.",
-            DeprecationWarning,
+            "working directory."
         )
 
     if num_samples == -1:

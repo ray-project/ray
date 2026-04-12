@@ -9,19 +9,19 @@ from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 
 
 @pytest.mark.parametrize(
-    "operation, raise_error",
+    "operation, raise_error, expected_error",
     [
-        (lambda: FailureConfig(fail_fast=True), True),
-        (lambda: RunConfig(verbose=0), True),
-        (lambda: FailureConfig(), False),
-        (lambda: RunConfig(), False),
-        (lambda: ScalingConfig(trainer_resources={"CPU": 1}), True),
-        (lambda: ScalingConfig(), False),
+        (lambda: FailureConfig(fail_fast=True), True, ValueError),
+        (lambda: RunConfig(verbose=0), True, ValueError),
+        (lambda: FailureConfig(), False, None),
+        (lambda: RunConfig(), False, None),
+        (lambda: ScalingConfig(trainer_resources={"CPU": 1}), True, ValueError),
+        (lambda: ScalingConfig(), False, None),
     ],
 )
-def test_api_configs(operation, raise_error):
+def test_api_configs(operation, raise_error, expected_error):
     if raise_error:
-        with pytest.raises((ValueError, RuntimeError)):
+        with pytest.raises(expected_error):
             operation()
     else:
         try:
