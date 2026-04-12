@@ -597,3 +597,6 @@ RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = env_bool(
 NIXL_REMOTE_AGENT_CACHE_MAXSIZE = env_integer(
     "RAY_NIXL_REMOTE_AGENT_CACHE_MAXSIZE", 1000
 )
+
+# Name of the environment variable for the Redis password.
+RAY_REDIS_PASSWORD_ENV = "RAY_REDIS_PASSWORD"
