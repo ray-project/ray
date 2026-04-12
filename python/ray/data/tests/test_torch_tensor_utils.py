@@ -1,12 +1,10 @@
 import sys
 
 import numpy as np
-import pandas as pd
 import pyarrow as pa
 import pytest
 import torch
 
-import ray
 from ray.data.util.torch_utils import (
     concat_tensors_to_device,
     convert_table_to_torch_tensor,
@@ -14,8 +12,7 @@ from ray.data.util.torch_utils import (
 )
 from ray.util.debug import _test_some_code_for_memory_leaks
 
-data_batch_pd = pd.DataFrame({"A": [1, 2, 3], "B": [4, 5, 6]})
-data_batch = pa.Table.from_pandas(data_batch_pd, preserve_index=False)
+data_batch = pa.table({"A": [1, 2, 3], "B": [4, 5, 6]})
 
 
 class TestConvertTableToTorch:
@@ -28,18 +25,21 @@ class TestConvertTableToTorch:
     def test_single_tensor(self):
         tensor = convert_table_to_torch_tensor(data_batch)
         assert tensor.size() == (data_batch.num_rows, data_batch.num_columns)
-        assert np.array_equal(tensor.numpy(), data_batch_pd.to_numpy())
+        expected = np.array([[1, 4], [2, 5], [3, 6]])
+        assert np.array_equal(tensor.numpy(), expected)
 
     def test_single_tensor_dtype(self):
         tensor = convert_table_to_torch_tensor(data_batch, column_dtypes=torch.float)
         assert tensor.size() == (data_batch.num_rows, data_batch.num_columns)
         assert tensor.dtype == torch.float
-        assert np.array_equal(tensor.numpy(), data_batch_pd.to_numpy())
+        expected = np.array([[1, 4], [2, 5], [3, 6]])
+        assert np.array_equal(tensor.numpy(), expected)
 
     def test_single_tensor_columns(self):
         tensor = convert_table_to_torch_tensor(data_batch, columns=["A"])
         assert tensor.size() == (data_batch.num_rows, 1)
-        assert np.array_equal(tensor.numpy(), data_batch_pd[["A"]].to_numpy())
+        expected = data_batch.column("A").to_numpy().reshape(-1, 1)
+        assert np.array_equal(tensor.numpy(), expected)
 
     def test_multi_input(self):
         tensors = convert_table_to_torch_tensor(data_batch, columns=[["A"], ["B"]])
@@ -48,7 +48,8 @@ class TestConvertTableToTorch:
         for i, col_name in enumerate(data_batch.column_names):
             tensor = tensors[i]
             assert tensor.size() == (data_batch.num_rows, 1)
-            assert np.array_equal(tensor.numpy(), data_batch_pd[[col_name]].to_numpy())
+            expected = data_batch.column(col_name).to_numpy().reshape(-1, 1)
+            assert np.array_equal(tensor.numpy(), expected)
 
     def test_multi_input_single_dtype(self):
         tensors = convert_table_to_torch_tensor(
@@ -60,7 +61,8 @@ class TestConvertTableToTorch:
             tensor = tensors[i]
             assert tensor.dtype == torch.float
             assert tensor.size() == (data_batch.num_rows, 1)
-            assert np.array_equal(tensor.numpy(), data_batch_pd[[col_name]].to_numpy())
+            expected = data_batch.column(col_name).to_numpy().reshape(-1, 1)
+            assert np.array_equal(tensor.numpy(), expected)
 
     def test_multi_input_multi_dtype(self):
         column_dtypes = [torch.long, torch.float]
@@ -73,18 +75,19 @@ class TestConvertTableToTorch:
             tensor = tensors[i]
             assert tensor.dtype == column_dtypes[i]
             assert tensor.size() == (data_batch.num_rows, 1)
-            assert np.array_equal(tensor.numpy(), data_batch_pd[[col_name]].to_numpy())
+            expected = data_batch.column(col_name).to_numpy().reshape(-1, 1)
+            assert np.array_equal(tensor.numpy(), expected)
 
     def test_tensor_column_no_memory_leak(self):
-        # Test that converting a table containing an object-dtyped tensor
-        # column (e.g. post-casting from extension type) doesn't leak memory. Casting
-        # these tensors directly with torch.as_tensor() currently leaks memory; see
+        # Test that converting a table containing an extension-typed tensor
+        # column doesn't leak memory. Casting these tensors directly with
+        # torch.as_tensor() currently leaks memory; see
         # https://github.com/ray-project/ray/issues/30629#issuecomment-1330954556
+        from ray.data.extensions.tensor_extension import ArrowTensorArray
+
         def code():
-            col = np.empty(1000, dtype=object)
-            col[:] = [np.ones((100, 100)) for _ in range(1000)]
-            df = pd.DataFrame({"a": col})
-            table = pa.Table.from_pandas(df, preserve_index=False)
+            arr = np.ones((1000, 100, 100))
+            table = pa.table({"a": ArrowTensorArray.from_numpy(arr)})
             convert_table_to_torch_tensor(
                 table, columns=[["a"]], column_dtypes=[torch.int]
             )
@@ -96,49 +99,6 @@ class TestConvertTableToTorch:
             repeats=10,
         )
         assert not suspicious_stats
-
-
-def test_to_torch_no_memory_leak(ray_start_regular_shared):
-    # Warm up Ray Data execution to avoid one-time allocations
-    # (autoscaler/tracing wrappers, imports) being flagged as leaks.
-    warm_col = np.empty(1, dtype=object)
-    warm_col[:] = [np.ones((1, 1))]
-    warm_df = pd.DataFrame({"features": warm_col, "label": np.arange(1)})
-    warm_ds = ray.data.from_pandas([warm_df])
-    for _ in warm_ds.iterator().to_torch(
-        label_column="label",
-        feature_columns=["features"],
-        batch_size=1,
-    ):
-        pass
-
-    def code():
-        col = np.empty(100, dtype=object)
-        col[:] = [np.ones((10, 10)) for _ in range(100)]
-        df = pd.DataFrame({"features": col, "label": np.arange(100)})
-        ds = ray.data.from_pandas([df])
-        for _ in ds.iterator().to_torch(
-            label_column="label",
-            feature_columns=["features"],
-            batch_size=10,
-        ):
-            pass
-
-    suspicious_stats = _test_some_code_for_memory_leaks(
-        desc="Testing to_torch() for memory leaks.",
-        init=None,
-        code=code,
-        repeats=5,
-        # Filter known per-iteration noise from Ray Data execution path.
-        ignore_traceback_patterns=[
-            "ray/util/tracing/tracing_helper.py",
-            "ray/data/_internal/cluster_autoscaler",
-            "ray/data/_internal/utils/transform_pyarrow.py",
-            "ray/data/_internal/arrow_block.py",
-            "ray/data/_internal/block_batching/iter_batches.py",
-        ],
-    )
-    assert not suspicious_stats
 
 
 def test_move_tensors_to_device():

@@ -1,6 +1,8 @@
 import hashlib
+import json
 import os
-from typing import Dict, List, Optional, Tuple
+import re
+from typing import Dict, List, Optional, Set, Tuple
 
 import yaml
 
@@ -53,8 +55,18 @@ def get_images_from_tests(
 def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
     """Create a yaml file for building custom BYOD images"""
     config = get_global_config()
-    if not config or not config.get("byod_ecr_region") or not config.get("byod_ecr"):
-        raise ValueError("byod_ecr_region and byod_ecr must be set in the config")
+    if (
+        not config
+        or not config.get("byod_ecr_region")
+        or not config.get("byod_ecr")
+        or not config.get("aws2gce_credentials")
+    ):
+        raise ValueError(
+            "byod_ecr_region, byod_ecr, and aws2gce_credentials must be set in the config"
+        )
+    byod_ecr_region = config.get("byod_ecr_region")
+    byod_ecr = config.get("byod_ecr")
+    aws2gce_credentials = config.get("aws2gce_credentials")
     custom_byod_images, custom_image_test_names_map = get_images_from_tests(
         tests, "$$RAYCI_BUILD_ID"
     )
@@ -101,11 +113,11 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
             "mount_buildkite_agent": True,
             "commands": [
                 f"export RAY_WANT_COMMIT_IN_IMAGE={ray_want_commit}",
-                "bash release/gcloud_docker_login.sh release/aws2gce_iam.json",
+                f"bash release/gcloud_docker_login.sh {aws2gce_credentials}",
                 "export PATH=$(pwd)/google-cloud-sdk/bin:$$PATH",
                 "bash release/azure_docker_login.sh",
                 f"az acr login --name {AZURE_REGISTRY_NAME}",
-                f"aws ecr get-login-password --region {config['byod_ecr_region']} | docker login --username AWS --password-stdin {config['byod_ecr']}",
+                f"aws ecr get-login-password --region {byod_ecr_region} | docker login --username AWS --password-stdin {byod_ecr}",
                 build_cmd,
             ],
         }
@@ -114,6 +126,48 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
 
     with open(destination_file, "w") as f:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
+
+
+def _short_tag(gpu: str) -> str:
+    """Derive the short gpu tag from a full gpu string.
+
+    Examples: "cu12.3.2-cudnn9" → "cu123", "cpu" → "cpu".
+    """
+    if gpu in ("cpu", "tpu"):
+        return gpu
+    base = gpu.split("-", 1)[0]  # "cu12.3.2"
+    parts = base.split(".")  # ["cu12", "3", "2"]
+    return f"{parts[0]}{parts[1]}" if len(parts) >= 2 else base
+
+
+def build_short_gpu_map(ray_images_path: str) -> Dict[str, str]:
+    """Build short-tag → full-gpu map from ray-images.json."""
+    if not os.path.exists(ray_images_path):
+        raise FileNotFoundError(f"ray-images.json not found at {ray_images_path}")
+    with open(ray_images_path) as f:
+        images = json.load(f)
+    gpus: Set[str] = set()
+    for cfg in images.values():
+        gpus.update(
+            cfg.get("platforms", [])
+        )  # ray-images.json uses platforms instead of gpu.
+    result: Dict[str, str] = {}
+    for g in gpus:
+        short = _short_tag(g)
+        if short == "tpu":
+            continue  # tpu is not used in release build steps
+        if short in result:
+            raise ValueError(
+                f"Collision detected for short tag '{short}': "
+                f"'{result[short]}' and '{g}' both map to the same tag."
+            )
+        result[short] = g
+    return result
+
+
+def _sanitize_array_value(value: str) -> str:
+    """Strip non-alphanumeric characters, matching rayci's array key logic."""
+    return re.sub(r"[^a-zA-Z0-9]", "", value)
 
 
 def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:

@@ -34,6 +34,7 @@ from ray.autoscaler.v2.event_logger import AutoscalerEventLogger
 from ray.autoscaler.v2.instance_manager.config import (
     FileConfigReader,
     IConfigReader,
+    Provider,
     ReadOnlyProviderConfigReader,
 )
 from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
@@ -95,7 +96,11 @@ class AutoscalerMonitor:
                 ray_event_logger = get_event_logger(
                     RayEvent.SourceType.AUTOSCALER, log_dir
                 )
-                self.event_logger = AutoscalerEventLogger(ray_event_logger)
+                self.event_logger = AutoscalerEventLogger(
+                    ray_event_logger,
+                    log_cluster_shape=config_reader.get_cached_autoscaling_config().provider
+                    != Provider.READ_ONLY,
+                )
             except Exception:
                 self.event_logger = None
         else:

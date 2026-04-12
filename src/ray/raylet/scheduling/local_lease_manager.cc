@@ -292,8 +292,12 @@ void LocalLeaseManager::GrantScheduledLeasesToWorkers() {
           int64_t wait_time = sched_cls_cap_interval_ms_ * (1L << exp);
           if (wait_time > sched_cls_cap_max_ms_) {
             wait_time = sched_cls_cap_max_ms_;
-            RAY_LOG(WARNING) << "Starting too many worker processes for a single type of "
-                                "task. Worker process startup is being throttled.";
+            RAY_LOG(WARNING)
+                << "Starting too many worker processes for a single type of task. "
+                   "Worker process startup is being throttled (wait_time="
+                << wait_time << "ms). This limit prevents deadlocks for nested tasks. "
+                << "If your workload does not use nested tasks, consider setting "
+                   "RAY_worker_cap_enabled=false for faster worker startup.";
           }
 
           int64_t target_time = get_time_ms_() + wait_time;
@@ -651,11 +655,29 @@ bool LocalLeaseManager::PoppedWorkerHandler(
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
       } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
+        work->IncrementPopWorkerRetries();
       } else {
         RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
                        << status;
       }
-      work->SetStateWaiting(cause);
+
+      auto max_retries = RayConfig::instance().pop_worker_max_retries();
+      if (max_retries >= 0 && work->GetPopWorkerRetries() > max_retries) {
+        // In case of too many retries, we cancel this task
+        // directly and raise a `RaySystemError` exception to user
+        // eventually. The task will be removed from dispatch queue in
+        // `CancelTask`.
+        CancelLeases(
+            [lease_id](const auto &w) {
+              return lease_id == w->lease_.GetLeaseSpecification().LeaseId();
+            },
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED,
+            absl::StrCat("Failed to startup worker after retrying ",
+                         RayConfig::instance().pop_worker_max_retries(),
+                         " times."));
+      } else {
+        work->SetStateWaiting(cause);
+      }
     }
   } else {
     // A worker has successfully popped for a valid lease. Grant the lease to
@@ -1146,37 +1168,6 @@ bool LocalLeaseManager::ReturnCpuResourcesToUnblockedWorker(
   } else {
     return false;
   }
-}
-
-ResourceSet LocalLeaseManager::CalcNormalTaskResources() const {
-  ResourceSet total_normal_task_resources;
-  for (auto &entry : leased_workers_) {
-    std::shared_ptr<WorkerInterface> worker = entry.second;
-    auto &lease_spec = worker->GetGrantedLease().GetLeaseSpecification();
-    if (!lease_spec.PlacementGroupBundleId().first.IsNil()) {
-      continue;
-    }
-
-    auto actor_id = worker->GetActorId();
-    if (!actor_id.IsNil() && lease_spec.IsActorCreationTask()) {
-      // This task ID corresponds to an actor creation task.
-      continue;
-    }
-
-    if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto resource_set = allocated_instances->ToResourceSet();
-      // Blocked normal task workers have temporarily released its allocated CPU.
-      if (worker->IsBlocked()) {
-        for (const auto &resource_id : allocated_instances->ResourceIds()) {
-          if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
-            resource_set.Set(resource_id, 0);
-          }
-        }
-      }
-      total_normal_task_resources += resource_set;
-    }
-  }
-  return total_normal_task_resources;
 }
 
 uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(

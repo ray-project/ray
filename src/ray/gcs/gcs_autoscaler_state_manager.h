@@ -70,7 +70,13 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
 
   void HandleDrainNode(rpc::autoscaler::DrainNodeRequest request,
                        rpc::autoscaler::DrainNodeReply *reply,
-                       rpc::SendReplyCallback send_reply_callback) override;
+                       rpc::SendReplyCallback send_reply_callback,
+                       const std::string &grpc_peer) override;
+
+  void HandleResizeRayletResourceInstances(
+      rpc::autoscaler::ResizeRayletResourceInstancesRequest request,
+      rpc::autoscaler::ResizeRayletResourceInstancesReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   void HandleReportClusterConfig(rpc::autoscaler::ReportClusterConfigRequest request,
                                  rpc::autoscaler::ReportClusterConfigReply *reply,

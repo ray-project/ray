@@ -31,7 +31,6 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray._common.network_utils import is_ipv6
-from ray._common.pydantic_compat import IS_PYDANTIC_2
 from ray.exceptions import RayActorError, RayTaskError
 from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import (
@@ -504,19 +503,6 @@ def make_fastapi_class_based_view(fastapi_app, cls: Type) -> None:
         if not isinstance(route, (APIRoute, APIWebSocketRoute)):
             continue
 
-        # If there is a response model, FastAPI creates a copy of the fields.
-        # But FastAPI creates the field incorrectly by missing the outer_type_.
-        if (
-            # TODO(edoakes): I don't think this check is complete because we need
-            # to support v1 models in v2 (from pydantic.v1 import *).
-            not IS_PYDANTIC_2
-            and isinstance(route, APIRoute)
-            and route.response_model
-        ):
-            route.secure_cloned_response_field.outer_type_ = (
-                route.response_field.outer_type_
-            )
-
         # Remove endpoints that belong to other class based views.
         serve_cls = getattr(route.endpoint, "_serve_cls", None)
         if serve_cls is not None and serve_cls != cls:
@@ -616,6 +602,9 @@ class ASGIAppReplicaWrapper:
     # NOTE: __del__ must be async so that we can run ASGI shutdown
     # in the same event loop.
     async def __del__(self):
+        if not hasattr(self, "_serve_asgi_lifespan"):
+            return
+
         # LifespanOn's logger logs in INFO level thus becomes spammy.
         # Within this block we temporarily uplevel for cleaner logging.
         from ray.serve._private.logging_utils import LoggingContext

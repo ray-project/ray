@@ -8,7 +8,7 @@ import re
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 from jinja2 import Environment
 
@@ -18,6 +18,7 @@ from ray.serve._private.common import (
     NodeId,
     ReplicaID,
     RequestMetadata,
+    RequestProtocol,
 )
 from ray.serve._private.constants import (
     DRAINING_MESSAGE,
@@ -26,6 +27,7 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -40,6 +42,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
     RAY_SERVE_HAPROXY_SYSLOG_PORT,
+    RAY_SERVE_HAPROXY_TCP_NODELAY,
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_CONNECT_S,
     RAY_SERVE_HAPROXY_TIMEOUT_SERVER_S,
@@ -54,6 +57,7 @@ from ray.serve._private.haproxy_templates import (
 from ray.serve._private.logging_utils import get_component_logger_file_path
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.proxy import ProxyActorInterface
+from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import (
     LoggingConfig,
@@ -247,6 +251,9 @@ class BackendConfig:
     # List of servers in this backend
     servers: List[ServerConfig] = field(default_factory=list)
 
+    # The fallback server for this backend.
+    fallback_server: Optional[ServerConfig] = None
+
     # The app name for this backend.
     app_name: str = field(default_factory=str)
 
@@ -317,7 +324,7 @@ class BackendConfig:
         }
 
     def __str__(self) -> str:
-        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers})"
+        return f"BackendConfig(app_name='{self.app_name}', name='{self.name}', path_prefix='{self.path_prefix}', servers={self.servers}, fallback_server={self.fallback_server})"
 
     def __repr__(self) -> str:
         return str(self)
@@ -350,6 +357,7 @@ class HAProxyConfig:
     custom_defaults: Dict[str, str] = field(default_factory=dict)
     inject_process_id_header: bool = False
     reload_id: Optional[str] = None  # Unique ID for each reload
+    tcp_nodelay: bool = RAY_SERVE_HAPROXY_TCP_NODELAY
     enable_so_reuseport: bool = (
         os.environ.get("SERVE_SOCKET_REUSE_PORT_ENABLED", "0") == "1"
     )
@@ -379,6 +387,10 @@ class HAProxyConfig:
 
     syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
 
+    balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
+
+    is_head: bool = False
+
     @property
     def frontend_host(self) -> str:
         if self.http_options.host is None or self.http_options.host == "0.0.0.0":
@@ -398,12 +410,12 @@ class HAProxyConfig:
         if not self.has_received_routes:
             router_ready_for_traffic = False
             router_message = NO_ROUTES_MESSAGE
-        elif not self.has_received_servers:
-            router_ready_for_traffic = False
-            router_message = NO_REPLICAS_MESSAGE
-        else:
+        elif self.is_head or self.has_received_servers:
             router_ready_for_traffic = True
             router_message = ""
+        else:
+            router_ready_for_traffic = False
+            router_message = NO_REPLICAS_MESSAGE
 
         if not self.pass_health_checks:
             healthy = False
@@ -550,7 +562,7 @@ class HAProxyApi(ProxyApi):
         )
 
         try:
-            await self._wait_for_hap_availability(proc)
+            await self._wait_for_hap_availability(proc, timeout_s=timeout_s)
         except Exception:
             # If startup fails, ensure the process is killed to avoid orphaned processes
             if proc.returncode is None:
@@ -675,14 +687,16 @@ class HAProxyApi(ProxyApi):
             # Use file locking to prevent concurrent writes from multiple processes
             # This is important in test environments where multiple nodes may run
             # on the same machine
-            with open(self.config_file_path, "w") as f:
-                import fcntl
+            import fcntl
 
-                fcntl.flock(f.fileno(), fcntl.LOCK_EX)
+            lock_file_path = self.config_file_path + ".lock"
+            with open(lock_file_path, "w") as lock_f:
+                fcntl.flock(lock_f.fileno(), fcntl.LOCK_EX)
                 try:
-                    f.write(config_content)
+                    with open(self.config_file_path, "w") as f:
+                        f.write(config_content)
                 finally:
-                    fcntl.flock(f.fileno(), fcntl.LOCK_UN)
+                    fcntl.flock(lock_f.fileno(), fcntl.LOCK_UN)
 
             logger.debug(
                 f"Succesfully generated HAProxy configuration: {self.config_file_path}."
@@ -945,6 +959,10 @@ class HAProxyManager(ProxyActorInterface):
 
         self._target_groups: List[TargetGroup] = []
 
+        # Fallback targets.
+        self._http_fallback_target: Optional[Target] = None
+        self._grpc_fallback_target: Optional[Target] = None
+
         # Lock to serialize HAProxy reloads and prevent concurrent reload operations
         # which can cause race conditions with SO_REUSEPORT
         self._reload_lock = asyncio.Lock()
@@ -954,9 +972,12 @@ class HAProxyManager(ProxyActorInterface):
             {
                 LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
                 LongPollNamespace.TARGET_GROUPS: self.update_target_groups,
+                LongPollNamespace.FALLBACK_TARGETS: self.update_fallback_targets,
             },
             call_in_event_loop=self.event_loop,
         )
+
+        is_head = self._node_id == get_head_node_id()
 
         startup_msg = f"HAProxy starting on node {self._node_id} (HTTP port: {self._http_options.port})."
         logger.info(startup_msg)
@@ -965,7 +986,9 @@ class HAProxyManager(ProxyActorInterface):
             f"logger with logging config: {logging_config}"
         )
 
-        self._haproxy = HAProxyApi(cfg=HAProxyConfig(http_options=http_options))
+        self._haproxy = HAProxyApi(
+            cfg=HAProxyConfig(http_options=http_options, is_head=is_head)
+        )
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
     async def shutdown(self) -> None:
@@ -1015,6 +1038,9 @@ class HAProxyManager(ProxyActorInterface):
 
         ready_to_serve = False
         while not ready_to_serve:
+            if self._is_draining():
+                return
+
             try:
                 all_backends = set()
                 ready_backends = set()
@@ -1095,6 +1121,11 @@ class HAProxyManager(ProxyActorInterface):
     async def receive_asgi_messages(self, request_metadata: RequestMetadata) -> bytes:
         raise NotImplementedError("Receive is handled by the ingress replicas.")
 
+    async def receive_grpc_messages(
+        self, session_id: str
+    ) -> Tuple[bool, Optional[Any], bool]:
+        raise NotImplementedError("Receive is handled by the ingress replicas.")
+
     def _get_http_options(self) -> HTTPOptions:
         return self._http_options
 
@@ -1107,36 +1138,43 @@ class HAProxyManager(ProxyActorInterface):
 
         return log_file_path
 
-    def _targets_to_servers(self, targets: List[Target]) -> List[ServerConfig]:
-        """Convert a list of targets to a list of servers."""
-        # The server name is derived from the replica's actor name, with the
-        # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
-        # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
-        # Special characters in the names are converted to comply with haproxy
-        # config's allowed characters, e.g. `#` -> `-`.
-        return [
-            ServerConfig(
-                name=self.get_safe_name(target.name),
-                # Use localhost if target is on the same node as HAProxy
-                host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
-                port=target.port,
-            )
-            for target in targets
-        ]
+    def _target_to_server(self, target: Target) -> ServerConfig:
+        """Convert a target to a server."""
+        return ServerConfig(
+            # The server name is derived from the replica's actor name, with the
+            # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
+            # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
+            # Special characters in the names are converted to comply with haproxy
+            # config's allowed characters, e.g. `#` -> `-`.
+            name=self.get_safe_name(target.name),
+            # Use localhost if target is on the same node as HAProxy
+            host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
+            port=target.port,
+        )
 
-    def _target_group_to_backend(self, target_group: TargetGroup) -> BackendConfig:
-        """Convert a target group to a backend name."""
-        servers = self._targets_to_servers(target_group.targets)
-        # The name is lowercased and formatted as <protocol>-<app_name>. Special
-        # characters in the name are converted to comply with haproxy config's
-        # allowed characters, e.g. `#` -> `-`.
+    def _create_backend_config(
+        self,
+        target_group: TargetGroup,
+        fallback_target: Optional[Target],
+    ) -> BackendConfig:
+        """Create a backend configuration from a target group and fallback target."""
+        servers = [self._target_to_server(target) for target in target_group.targets]
+
+        fallback_server = None
+        if fallback_target is not None:
+            fallback_server = self._target_to_server(fallback_target)
+
         return BackendConfig(
+            # The name is lowercased and formatted as <protocol>-<app_name>. Special
+            # characters in the name are converted to comply with haproxy config's
+            # allowed characters, e.g. `#` -> `-`.
             name=self.get_safe_name(
                 f"{target_group.protocol.value.lower()}-{target_group.app_name}"
             ),
             path_prefix=target_group.route_prefix,
             servers=servers,
             app_name=target_group.app_name,
+            fallback_server=fallback_server,
         )
 
     async def _reload_haproxy(self) -> None:
@@ -1147,13 +1185,17 @@ class HAProxyManager(ProxyActorInterface):
             await self._haproxy_start_task
             await self._haproxy.reload()
 
-    def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
-        self._target_groups = target_groups
+    def _update_haproxy_backends(self) -> None:
+        backend_configs = []
+        for target_group in self._target_groups:
+            fallback_target = None
+            if target_group.protocol == RequestProtocol.HTTP:
+                fallback_target = self._http_fallback_target
+            elif target_group.protocol == RequestProtocol.GRPC:
+                fallback_target = self._grpc_fallback_target
 
-        backend_configs = [
-            self._target_group_to_backend(target_group)
-            for target_group in target_groups
-        ]
+            backend_config = self._create_backend_config(target_group, fallback_target)
+            backend_configs.append(backend_config)
 
         logger.info(
             f"Got updated backend configs: {backend_configs}.",
@@ -1166,6 +1208,26 @@ class HAProxyManager(ProxyActorInterface):
 
         self._haproxy.set_backend_configs(name_to_backend_configs)
         self.event_loop.create_task(self._reload_haproxy())
+
+    def update_target_groups(self, target_groups: List[TargetGroup]) -> None:
+        self._target_groups = target_groups
+        self._update_haproxy_backends()
+
+    def update_fallback_targets(
+        self,
+        fallback_targets: Dict[RequestProtocol, Target],
+    ) -> None:
+        # Reset so that fallbacks are repopulated from LongPoll.
+        self._http_fallback_target = None
+        self._grpc_fallback_target = None
+
+        for protocol, target in fallback_targets.items():
+            if protocol == RequestProtocol.HTTP:
+                self._http_fallback_target = target
+            elif protocol == RequestProtocol.GRPC:
+                self._grpc_fallback_target = target
+
+        self._update_haproxy_backends()
 
     def get_target_groups(self) -> List[TargetGroup]:
         """Get current target groups."""

@@ -148,6 +148,7 @@ ray_cc_library(
         "//src/ray/pubsub:gcs_publisher",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -278,6 +279,7 @@ ray_cc_library(
         "//src/ray/common:bundle_spec",
         "//src/ray/common:id",
         "//src/ray/common:metrics",
+        "//src/ray/common/scheduling:label_selector",
         "//src/ray/protobuf:gcs_service_cc_proto",
         "//src/ray/stats:stats_lib",
         "//src/ray/util:counter_map",
@@ -349,7 +351,9 @@ ray_cc_library(
     hdrs = [
         "grpc_services.h",
     ],
-    visibility = ["//visibility:private"],
+    visibility = [
+        "//src/ray/gcs/tests:__pkg__",
+    ],
     deps = [
         ":grpc_service_interfaces",
         "//src/ray/common:asio",
@@ -360,6 +364,7 @@ ray_cc_library(
         "//src/ray/rpc:rpc_callback_types",
         "//src/ray/rpc/authentication:authentication_token",
         "@com_github_grpc_grpc//:grpc++",
+        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
     ],
 )
 
@@ -390,6 +395,7 @@ ray_cc_library(
         "//src/ray/util:thread_checker",
         "//src/ray/util:time",
         "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -433,6 +439,7 @@ ray_cc_library(
         ":grpc_service_interfaces",
         ":grpc_services",
         ":metrics",
+        "//src/ray/util:clock",
         "//src/ray/core_worker_rpc_client:core_worker_client",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs/store_client",

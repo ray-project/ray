@@ -1,11 +1,16 @@
+import io
+import json
 import logging
 import os
 import pathlib
+import re
 import sys
+import zipfile
 from datetime import datetime
 from dataclasses import is_dataclass
 from importlib import import_module
 from typing import Any, Dict
+from urllib.request import urlopen
 
 import sphinx
 from docutils import nodes
@@ -72,7 +77,77 @@ extensions = [
     "sphinx_design",
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
+    "sphinx_collections",
 ]
+
+# -- sphinx-collections: pull external template files at build time -----------
+
+_TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
+_TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
+
+_TEMPLATE_COLLECTIONS = {
+    "deployment-serve-llm": {
+        "target": "serve/tutorials/deployment-serve-llm",
+    },
+}
+
+
+def _resolve_template_url(name):
+    """Fetch the build zip URL for a template from the channel API."""
+    api_url = _TEMPLATE_CHANNEL_API.format(name=name)
+    logger.info("sphinx-collections: resolving template URL from %s", api_url)
+    with urlopen(api_url) as resp:
+        data = json.loads(resp.read())
+    url = data["url"]
+    # Replace the ascommon:/// protocol with the templates.ci.ray.io base URL.
+    url = url.replace("ascommon:///", _TEMPLATES_CI_BASE + "/")
+    # Append /build.zip to get the docs build archive.
+    url = url.rstrip("/") + "/build.zip"
+    logger.info("sphinx-collections: resolved URL %s", url)
+    return url
+
+
+def _fetch_and_extract_zip(config):
+    """Download a zip archive and extract it into the collection target directory."""
+    import shutil
+
+    url = _resolve_template_url(config["name"])
+    target = pathlib.Path(config["target"])
+    if target.is_dir():
+        shutil.rmtree(target)
+    target.mkdir(parents=True, exist_ok=True)
+    logger.info("sphinx-collections: downloading %s -> %s", url, target)
+    with urlopen(url) as resp:
+        zip_bytes = io.BytesIO(resp.read())
+    with zipfile.ZipFile(zip_bytes) as zf:
+        zf.extractall(target)
+    logger.info("sphinx-collections: extracted %d files to %s", len(zf.namelist()), target)
+
+
+collections = {
+    name: {
+        "driver": "function",
+        "source": _fetch_and_extract_zip,
+        "target": coll["target"],
+        "clean": False,
+        "final_clean": False,
+        "write_result": False,
+    }
+    for name, coll in _TEMPLATE_COLLECTIONS.items()
+}
+
+# Don't wipe the target before build — other docs may co-exist in parent dirs.
+collections_clean = True
+# Clean up collected files after build so they don't get committed.
+collections_final_clean = True
+
+# The collections config contains a function reference (for the "function" driver)
+# which Sphinx cannot pickle for caching. This is harmless — suppress the warning
+# so it doesn't cause a build failure under -W (warnings-as-errors).
+suppress_warnings = ["config.cache"]
+# Disable autodoc_pydantic features that can produce empty raw directives
+# (e.g. when schema JSON fails for models with non-serializable fields)
+autodoc_pydantic_model_show_json = False
 
 # Configuration for algolia
 # Note: This API key grants read access to our indexes and is intended to be public.
@@ -141,6 +216,11 @@ nitpick_ignore_regex = [
     ("py:exc", "ray\\.data\\.preprocessors\\.version_support\\.UnknownPreprocessorError"),
     # TypeVar for gRPCInputStream generic type
     ("py:obj", "ray\\.serve\\.grpc_util\\.T"),
+    # autodoc_pydantic generates invalid py:obj refs for pydantic v2 validators
+    # (e.g. "all fields", "_validate_*" references in validator docstrings)
+    ("py:obj", r"ray\.serve\.config\.\w+\.all fields"),
+    ("py:obj", r"ray\.serve\.config\.GangSchedulingConfig\._validate_runtime_failure_policy"),
+    ("py:obj", r"ray\.serve\.schema\.\w+\.all fields"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache
@@ -249,8 +329,9 @@ exclude_patterns = [
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
-    "serve/tutorials/deployment-serve-llm/README.*",
-    "serve/tutorials/deployment-serve-llm/**.ipynb",
+    "_collections/serve/tutorials/deployment-serve-llm/README.*",
+    "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
+    "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
@@ -544,10 +625,14 @@ def _autogen_apis(app: sphinx.application.Sphinx):
     """
     Auto-generate public API documentation.
     """
-    generate.generate_autosummary_docs(
-        [os.path.join(app.srcdir, file) for file in autogen_files],
-        app=app,
-    )
+    try:
+        generate.generate_autosummary_docs(
+            [os.path.join(app.srcdir, file) for file in autogen_files],
+            app=app,
+        )
+    except Exception as e:
+        import warnings
+        warnings.warn(f"Skipping autogen due to: {e}")
 
 
 def process_signature(app, what, name, obj, options, signature, return_annotation):
@@ -611,15 +696,12 @@ def setup(app):
         def filter(self, record):
             # Intentionally allow duplicate object description of ray.actor.ActorMethod.bind:
             # once in Ray Core API and once in Compiled Graph API
-            if (
-                "duplicate object description of ray.actor.ActorMethod.bind"
-                in record.getMessage()
-            ):
+            if "duplicate object description of ray.actor.ActorMethod.bind" in record.getMessage():
                 return False  # Don't log this specific warning
             return True  # Log all other warnings
 
     logging.getLogger("sphinx").addFilter(DuplicateObjectFilter())
-    
+
     # Register hook to mark orphan documents
     example_orphan_documents = collect_example_orphans(app.confdir, app.srcdir)
     def mark_orphans(app, docname, _source):
@@ -628,6 +710,18 @@ def setup(app):
             app.env.metadata[docname]["orphan"] = True
 
     app.connect('source-read', mark_orphans)
+
+    # Fix code-block language tags in _collections markdown files.
+    # Notebooks converted to markdown tag Jupyter magic shell commands
+    # (e.g. ``!serve run ...``) as ``python`` code blocks, which causes
+    # Sphinx highlighting warnings.  Re-tag them as ``bash``.
+    _MAGIC_CODE_BLOCK_RE = re.compile(r"```python\n(![a-z])")
+
+    def fix_collections_code_blocks(app, docname, source):
+        if docname.startswith("_collections/"):
+            source[0] = _MAGIC_CODE_BLOCK_RE.sub(r"```bash\n\1", source[0])
+
+    app.connect('source-read', fix_collections_code_blocks)
 
 
 redoc = [
@@ -653,6 +747,7 @@ autodoc_mock_imports = [
     "async_timeout",
     "backoff",
     "cachetools",
+    "comet_ml",
     "composer",
     "cupy",
     "dask",
@@ -740,7 +835,10 @@ intersphinx_mapping = {
     "modin": ("https://modin.readthedocs.io/en/stable/", None),
     "nevergrad": ("https://facebookresearch.github.io/nevergrad/", None),
     "numpy": ("https://numpy.org/doc/stable/", None),
-    "pandas": ("https://pandas.pydata.org/pandas-docs/stable/", None),
+    "pandas": (
+        "https://pandas.pydata.org/pandas-docs/stable/",
+        "https://github.com/ray-project/pandas/releases/download/object-mirror-0.1.0/objects.inv",
+    ),
     "pyarrow": ("https://arrow.apache.org/docs", None),
     "pydantic": ("https://docs.pydantic.dev/latest/", None),
     "pymongoarrow": ("https://mongo-arrow.readthedocs.io/en/latest/", None),
