@@ -4,7 +4,7 @@ import re
 import time
 import tracemalloc
 from collections import defaultdict, namedtuple
-from typing import Callable, List, Optional, Sequence
+from typing import Callable, List, Optional
 
 from ray.util.annotations import DeveloperAPI
 
@@ -105,7 +105,6 @@ def _test_some_code_for_memory_leaks(
     code: Callable[[], None],
     repeats: int,
     max_num_trials: int = 1,
-    ignore_traceback_patterns: Optional[Sequence[str]] = None,
 ) -> List[Suspect]:
     """Runs given code (and init code) n times and checks for memory leaks.
 
@@ -118,9 +117,6 @@ def _test_some_code_for_memory_leaks(
             run, if the previous one produced a memory leak. For all non-1st trials,
             `repeats` calculates as: actual_repeats = `repeats` * (trial + 1), where
             the first trial is 0.
-        ignore_traceback_patterns: Optional list of substring patterns. If any frame
-            in a traceback matches one of these patterns, the traceback is ignored as
-            a known noise source.
 
     Returns:
         A list of Suspect objects, describing possible memory leaks. If list
@@ -166,9 +162,7 @@ def _test_some_code_for_memory_leaks(
         suspicious.clear()
         suspicious_stats.clear()
         # Suspicious memory allocation found?
-        suspects = _find_memory_leaks_in_table(
-            table, ignore_traceback_patterns=ignore_traceback_patterns
-        )
+        suspects = _find_memory_leaks_in_table(table)
         for suspect in sorted(suspects, key=lambda s: s.memory_increase, reverse=True):
             # Only print out the biggest offender:
             if len(suspicious) == 0:
@@ -216,20 +210,7 @@ def _take_snapshot(table, suspicious=None):
             table[stat.traceback].append(stat.size)
 
 
-def _traceback_matches_any(traceback, patterns: Optional[Sequence[str]]) -> bool:
-    if not patterns:
-        return False
-    for frame in traceback:
-        frame_str = str(frame).replace("\\", "/")
-        for pattern in patterns:
-            if pattern in frame_str:
-                return True
-    return False
-
-
-def _find_memory_leaks_in_table(
-    table, *, ignore_traceback_patterns: Optional[Sequence[str]] = None
-):
+def _find_memory_leaks_in_table(table):
     import numpy as np
     import scipy.stats
 
@@ -256,9 +237,6 @@ def _find_memory_leaks_in_table(
                 re.sub("\\.", drive_separator, __name__) + ".py",
             ]
         ):
-            continue
-
-        if _traceback_matches_any(traceback, ignore_traceback_patterns):
             continue
 
         # Do a linear regression to get the slope and R-value.
