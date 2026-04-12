@@ -83,26 +83,13 @@ def convert_table_to_torch_tensor(
         else:
             column_names = data_batch.column_names
 
-        try:
-            numpy_batch = ArrowBlockAccessor(data_batch).to_numpy(columns=column_names)
-        except ValueError as e:
-            raise ValueError(
-                "Failed to convert Arrow columns to NumPy. "
-                f"Requested: {column_names}. "
-                f"Available: {data_batch.column_names}."
-            ) from e
+        numpy_batch = ArrowBlockAccessor(data_batch).to_numpy(columns=column_names)
 
         for col in column_names:
             col_vals = numpy_batch[col]
             try:
                 t = _tensorize_column_values(col_vals, dtype)
             except Exception as e:
-                if _column_has_list_like_values(col_vals):
-                    raise ValueError(
-                        f"Failed to convert column {col} to a Torch Tensor of dtype "
-                        f"{dtype}. Column contains nested or ragged list-like values. "
-                        "See above exception chain for the exact failure."
-                    ) from e
                 raise ValueError(
                     f"Failed to convert column {col} to a Torch Tensor of dtype "
                     f"{dtype}. See above exception chain for the exact failure."
@@ -112,7 +99,6 @@ def convert_table_to_torch_tensor(
             feature_tensors.append(t)
 
         if len(feature_tensors) > 1:
-            _validate_feature_tensors_for_concat(feature_tensors, column_names)
             feature_tensor = torch.cat(feature_tensors, dim=1)
         else:
             feature_tensor = feature_tensors[0]
@@ -532,52 +518,3 @@ def move_tensors_to_device(
             "Dict[str, torch.Tensor], "
             "Mapping[str, List/Tuple[torch.Tensor]]"
         )
-
-
-def _validate_feature_tensors_for_concat(
-    tensors: List[torch.Tensor],
-    column_names: List[str],
-) -> None:
-    if len(tensors) <= 1:
-        return
-    for col_name, tensor in zip(column_names, tensors):
-        if getattr(tensor, "is_nested", False):
-            raise ValueError(
-                "Failed to concatenate feature tensors: "
-                f"column {col_name} produced a nested tensor; ragged or "
-                "mixed-length lists are not supported for concatenated features."
-            )
-    if not all(tensor.dim() >= 2 for tensor in tensors):
-        return
-    ref_tensor = tensors[0]
-    ref_name = column_names[0] if column_names else "<unknown>"
-    ref_shape = tuple(ref_tensor.shape)
-    ref_ndim = ref_tensor.dim()
-    ref_other_dims = ref_shape[:1] + ref_shape[2:]
-    for col_name, tensor in zip(column_names[1:], tensors[1:]):
-        if tensor.dim() != ref_ndim:
-            raise ValueError(
-                "Failed to concatenate feature tensors: "
-                f"column {col_name} has {tensor.dim()} dims, "
-                f"expected {ref_ndim} dims to match column {ref_name}."
-            )
-        tensor_shape = tuple(tensor.shape)
-        tensor_other_dims = tensor_shape[:1] + tensor_shape[2:]
-        if tensor_other_dims != ref_other_dims:
-            raise ValueError(
-                "Failed to concatenate feature tensors: "
-                f"column {col_name} has shape {tensor_shape}, "
-                f"expected compatible with column {ref_name} shape {ref_shape} "
-                "for concatenation along dim=1."
-            )
-
-
-def _column_has_list_like_values(vals: Any) -> bool:
-    if not isinstance(vals, np.ndarray):
-        return False
-    if vals.dtype.type is not np.object_:
-        return False
-    for item in vals:
-        if isinstance(item, (list, tuple, np.ndarray)):
-            return True
-    return False

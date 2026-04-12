@@ -729,26 +729,6 @@ class DataIterator(abc.ABC):
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
         from ray.data.util.torch_utils import convert_table_to_torch_tensor
 
-        def _validate_columns_exist(
-            requested_columns: List[str],
-            available_columns: List[str],
-        ) -> None:
-            if not requested_columns:
-                return
-            available_set = set(available_columns)
-            missing = [col for col in requested_columns if col not in available_set]
-            if not missing:
-                return
-            if len(missing) == len(requested_columns):
-                raise KeyError(
-                    f"None of the requested columns {missing} exist in the batch. "
-                    f"Available columns: {available_columns}"
-                )
-            raise KeyError(
-                f"Columns {missing} not found in batch. "
-                f"Available columns: {available_columns}"
-            )
-
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
             feature_columns = None
@@ -784,7 +764,6 @@ class DataIterator(abc.ABC):
                     raise ValueError("column list may not be empty")
 
         def make_generator():
-            validated = False
             for batch in self._iter_batches(
                 batch_size=batch_size,
                 batch_format="pyarrow",
@@ -793,33 +772,6 @@ class DataIterator(abc.ABC):
                 local_shuffle_buffer_size=local_shuffle_buffer_size,
                 local_shuffle_seed=local_shuffle_seed,
             ):
-                if not validated:
-                    available_columns = list(batch.column_names)
-                    if label_column:
-                        _validate_columns_exist([label_column], available_columns)
-                        feature_available_columns = [
-                            col for col in available_columns if col != label_column
-                        ]
-                    else:
-                        feature_available_columns = available_columns
-
-                    if isinstance(feature_columns, dict):
-                        for subcolumns in feature_columns.values():
-                            _validate_columns_exist(
-                                list(subcolumns), feature_available_columns
-                            )
-                    elif feature_columns:
-                        if isinstance(feature_columns[0], (list, tuple)):
-                            for subcolumns in feature_columns:
-                                _validate_columns_exist(
-                                    list(subcolumns), feature_available_columns
-                                )
-                        else:
-                            _validate_columns_exist(
-                                list(feature_columns), feature_available_columns
-                            )
-                    validated = True
-
                 if label_column:
                     feature_batch = batch.select(
                         [col for col in batch.column_names if col != label_column]
