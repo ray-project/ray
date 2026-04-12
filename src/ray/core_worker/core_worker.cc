@@ -499,6 +499,16 @@ CoreWorker::CoreWorker(
       "CoreWorker.InternalHeartbeat");
 
   periodical_runner_->RunFnPeriodically(
+      [this] {
+        // Periodically report the backlog so that the local raylet can report the
+        // resources needed for tasks that haven't had their dependencies resolved yet to
+        // the GCS + Autoscaler.
+        normal_task_submitter_->ReportWorkerBacklog();
+      },
+      RayConfig::instance().report_worker_backlog_interval_ms(),
+      "CoreWorker.ReportWorkerBacklog");
+
+  periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
       RayConfig::instance().metrics_report_interval_ms() / 2,
       "CoreWorker.RecordMetrics");
@@ -819,12 +829,6 @@ void CoreWorker::InternalHeartbeat() {
 
   // Check timeout tasks that are waiting for death info.
   actor_task_submitter_->CheckTimeoutTasks();
-
-  // Periodically report the latest backlog so that
-  // local raylet will have the eventually consistent view of worker backlogs
-  // even in cases where backlog reports from normal_task_submitter
-  // are lost or reordered.
-  normal_task_submitter_->ReportWorkerBacklog();
 
   // Check for unhandled exceptions to raise after a timeout on the driver.
   // Only do this for TTY, since shells like IPython sometimes save references
