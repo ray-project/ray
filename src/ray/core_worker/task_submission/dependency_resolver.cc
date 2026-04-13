@@ -133,42 +133,41 @@ void LocalDependencyResolver::ResolveDependencies(
   for (const auto &obj_id : local_dependency_ids) {
     auto resolve_object_dependency =
         [this, task_id, obj_id](std::shared_ptr<RayObject> obj) {
-          RAY_CHECK(obj != nullptr);
+      RAY_CHECK(obj != nullptr);
 
-          std::unique_ptr<TaskState> resolved_task_state = nullptr;
-          std::vector<ObjectID> inlined_dependency_ids;
-          std::vector<ObjectID> contained_ids;
-          {
-            absl::MutexLock lock(&mu_);
+      std::unique_ptr<TaskState> resolved_task_state = nullptr;
+      std::vector<ObjectID> inlined_dependency_ids;
+      std::vector<ObjectID> contained_ids;
+      {
+        absl::MutexLock lock(&mu_);
 
-            auto it = pending_tasks_.find(task_id);
-            // The dependency resolution for the task has been cancelled.
-            if (it == pending_tasks_.end()) {
-              return;
-            }
-            auto &state = it->second;
-            state->local_dependencies[obj_id] = std::move(obj);
-            if (--state->obj_dependencies_remaining == 0) {
-              InlineDependencies(state->local_dependencies,
-                                 state->task,
-                                 &inlined_dependency_ids,
-                                 &contained_ids,
-                                 tensor_transport_getter_);
-              if (state->actor_dependencies_remaining == 0) {
-                resolved_task_state = std::move(state);
-                pending_tasks_.erase(it);
-              }
-            }
+        auto it = pending_tasks_.find(task_id);
+        // The dependency resolution for the task has been cancelled.
+        if (it == pending_tasks_.end()) {
+          return;
+        }
+        auto &state = it->second;
+        state->local_dependencies[obj_id] = std::move(obj);
+        if (--state->obj_dependencies_remaining == 0) {
+          InlineDependencies(state->local_dependencies,
+                             state->task,
+                             &inlined_dependency_ids,
+                             &contained_ids,
+                             tensor_transport_getter_);
+          if (state->actor_dependencies_remaining == 0) {
+            resolved_task_state = std::move(state);
+            pending_tasks_.erase(it);
           }
+        }
+      }
 
-          if (!inlined_dependency_ids.empty()) {
-            task_manager_.OnTaskDependenciesInlined(inlined_dependency_ids,
-                                                    contained_ids);
-          }
-          if (resolved_task_state) {
-            resolved_task_state->on_dependencies_resolved_(resolved_task_state->status);
-          }
-        };
+      if (!inlined_dependency_ids.empty()) {
+        task_manager_.OnTaskDependenciesInlined(inlined_dependency_ids, contained_ids);
+      }
+      if (resolved_task_state) {
+        resolved_task_state->on_dependencies_resolved_(resolved_task_state->status);
+      }
+    };
 
     // GetAsync always posts a callback to the I/O event queue even when the
     // object already exists (see https://github.com/ray-project/ray/pull/47833
