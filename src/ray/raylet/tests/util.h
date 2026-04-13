@@ -64,7 +64,7 @@ class MockWorker : public WorkerInterface {
 
   void GrantLeaseId(const LeaseID &lease_id) override { lease_id_ = lease_id; }
 
-  const RayLease &GetGrantedLease() const override { return lease_; }
+  const RayLease &GetGrantedLease() const override { return lease_.value(); }
 
   absl::Time GetGrantedLeaseTime() const override { return lease_grant_time_; };
 
@@ -141,7 +141,7 @@ class MockWorker : public WorkerInterface {
   }
 
   bool IsDetachedActor() const override {
-    return lease_.GetLeaseSpecification().IsDetachedActor();
+    return lease_->GetLeaseSpecification().IsDetachedActor();
   }
 
   const std::shared_ptr<ClientConnection> Connection() const override { return nullptr; }
@@ -166,7 +166,7 @@ class MockWorker : public WorkerInterface {
 
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
 
-  RayLease &GetGrantedLease() override { return lease_; }
+  RayLease &GetGrantedLease() override { return lease_.value(); }
 
   bool IsRegistered() override {
     RAY_CHECK(false) << "Method unused";
@@ -197,7 +197,7 @@ class MockWorker : public WorkerInterface {
   std::optional<bool> is_actor_worker_;
   BundleID bundle_id_;
   bool blocked_ = false;
-  RayLease lease_;
+  std::optional<RayLease> lease_;
   absl::Time lease_grant_time_;
   int runtime_env_hash_;
   LeaseID lease_id_;
