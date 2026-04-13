@@ -145,21 +145,16 @@ class FailingDeploymentActor:
 
 
 @ray.remote
-class DeploymentMetadataActor:
-    """Records deployment metadata injected by Serve at actor startup."""
+class DeploymentContextActor:
+    """Reads deployment actor runtime context for testing."""
 
-    def __init__(
-        self,
-        deployment_id_name: str = "",
-        deployment_id_app: str = "",
-    ):
-        self._deployment_id_name = deployment_id_name
-        self._deployment_id_app = deployment_id_app
-
-    def get_metadata(self):
+    def get_context(self):
+        ctx = serve.get_deployment_actor_context()
         return {
-            "deployment_id_name": self._deployment_id_name,
-            "deployment_id_app": self._deployment_id_app,
+            "deployment": ctx.deployment,
+            "app_name": ctx.app_name,
+            "actor_name": ctx.actor_name,
+            "code_version": ctx.code_version,
         }
 
 
@@ -265,34 +260,6 @@ def test_imperative_deploy_with_string_import_path(serve_instance):
     resp = httpx.get(url)
     assert resp.status_code == 200
     assert resp.text == "0"
-
-
-def test_deployment_actor_receives_implicit_deployment_metadata(serve_instance):
-    """Serve injects deployment metadata without manual init_kwargs plumbing."""
-
-    @serve.deployment(
-        deployment_actors=[
-            DeploymentActorConfig(
-                name="metadata",
-                actor_class=DeploymentMetadataActor,
-            ),
-        ],
-    )
-    class MetadataDeployment:
-        def __call__(self):
-            metadata_actor = serve.get_deployment_actor("metadata")
-            metadata = ray.get(metadata_actor.get_metadata.remote())
-            return (
-                f"{metadata['deployment_id_name']}|" f"{metadata['deployment_id_app']}"
-            )
-
-    serve.run(
-        MetadataDeployment.bind(),
-        name="metadata-app",
-        route_prefix="/metadata",
-    )
-    url = get_application_url("HTTP", "metadata-app", use_localhost=True)
-    wait_for_condition(lambda: httpx.get(url).text == "MetadataDeployment|metadata-app")
 
 
 def test_deployment_actor_inherits_runtime_env(serve_instance):
@@ -1330,6 +1297,37 @@ def test_get_deployment_actor_outside_replica_raises(serve_instance):
     """get_deployment_actor called outside replica raises RayServeException."""
     with pytest.raises(RayServeException, match="may only be called from within"):
         serve.get_deployment_actor("counter")
+
+
+def test_get_deployment_actor_context_outside_actor_raises(serve_instance):
+    """get_deployment_actor_context called outside actor raises RayServeException."""
+    with pytest.raises(RayServeException, match="may only be called from within"):
+        serve.get_deployment_actor_context()
+
+
+def test_get_deployment_actor_context_returns_runtime_metadata(serve_instance):
+    """Deployment actors can read deployment metadata via context API."""
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="ctx_actor",
+                actor_class=DeploymentContextActor,
+            ),
+        ],
+    )
+    class MyDeployment:
+        def __call__(self):
+            actor = serve.get_deployment_actor("ctx_actor")
+            return ray.get(actor.get_context.remote())
+
+    handle = serve.run(MyDeployment.bind(), name="metadata-app")
+    result = handle.remote().result()
+
+    assert result["deployment"] == "MyDeployment"
+    assert result["app_name"] == "metadata-app"
+    assert result["actor_name"] == "ctx_actor"
+    assert result["code_version"]
 
 
 def test_deploy_from_yaml_config_file_with_deployment_actors(serve_instance):

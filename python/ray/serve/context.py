@@ -6,6 +6,7 @@ can use this state to access metadata or the Serve controller.
 import asyncio
 import contextvars
 import logging
+import os
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
@@ -30,7 +31,19 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
+_INTERNAL_DEPLOYMENT_ACTOR_CONTEXT: "DeploymentActorContext" = None
 _global_client: ServeControllerClient = None
+
+RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR = "RAY_SERVE_INTERNAL_DEPLOYMENT_NAME"
+RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION"
+)
 
 
 @DeveloperAPI
@@ -69,6 +82,24 @@ class ReplicaContext:
     @property
     def replica_tag(self) -> str:
         return self.replica_id.unique_id
+
+
+@DeveloperAPI
+@dataclass
+class DeploymentActorContext:
+    """Stores runtime context info for deployment-scoped actors."""
+
+    deployment_id: DeploymentID
+    actor_name: str
+    code_version: Optional[str] = None
+
+    @property
+    def app_name(self) -> str:
+        return self.deployment_id.app_name
+
+    @property
+    def deployment(self) -> str:
+        return self.deployment_id.name
 
 
 def _get_global_client(
@@ -130,6 +161,27 @@ def _set_global_client(client):
 
 def _get_internal_replica_context():
     return _INTERNAL_REPLICA_CONTEXT
+
+
+def _get_internal_deployment_actor_context():
+    global _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT
+
+    if _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT is not None:
+        return _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT
+
+    app_name = os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR)
+    deployment_name = os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR)
+    actor_name = os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR)
+
+    if app_name is None or deployment_name is None or actor_name is None:
+        return None
+
+    _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT = DeploymentActorContext(
+        deployment_id=DeploymentID(name=deployment_name, app_name=app_name),
+        actor_name=actor_name,
+        code_version=os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR),
+    )
+    return _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT
 
 
 def _get_deployment_actor(actor_name: str):

@@ -1,4 +1,3 @@
-import inspect
 import itertools
 import json
 import logging
@@ -102,6 +101,37 @@ from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR = "RAY_SERVE_INTERNAL_DEPLOYMENT_NAME"
+RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION"
+)
+
+
+def _inject_internal_deployment_context_env_vars(
+    runtime_env: Optional[Dict[str, Any]],
+    deployment_id: DeploymentID,
+    actor_name: str,
+    code_version: str,
+) -> Dict[str, Any]:
+    runtime_env = copy(runtime_env) if runtime_env else {}
+    env_vars = dict(runtime_env.get("env_vars", {}))
+    env_vars.update(
+        {
+            RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR: deployment_id.app_name,
+            RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR: deployment_id.name,
+            RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR: actor_name,
+            RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR: code_version,
+        }
+    )
+    runtime_env["env_vars"] = env_vars
+    return runtime_env
+
 
 class DeploymentActorState(Enum):
     STARTING = 1
@@ -150,41 +180,6 @@ class DeploymentActorWrapper:
     def code_version(self) -> str:
         return self._code_version
 
-    def _get_implicit_init_kwargs(self, actor_cls: Any) -> Dict[str, Any]:
-        """Infer deployment metadata kwargs accepted by the actor constructor."""
-        explicit_init_kwargs = self._config.init_kwargs or {}
-        candidate_kwargs = {
-            "deployment_id_name": self._deployment_id.name,
-            "deployment_id_app": self._deployment_id.app_name,
-        }
-        missing_candidates = {
-            key: value
-            for key, value in candidate_kwargs.items()
-            if key not in explicit_init_kwargs
-        }
-        if not missing_candidates:
-            return {}
-
-        try:
-            init_signature = inspect.signature(actor_cls.__ray_actor_class__.__init__)
-        except (AttributeError, TypeError, ValueError):
-            return {}
-
-        accepts_var_kwargs = any(
-            parameter.kind == inspect.Parameter.VAR_KEYWORD
-            for parameter in init_signature.parameters.values()
-        )
-        if accepts_var_kwargs:
-            return missing_candidates
-
-        accepted_names = set(init_signature.parameters)
-        accepted_names.discard("self")
-        return {
-            key: value
-            for key, value in missing_candidates.items()
-            if key in accepted_names
-        }
-
     def start(
         self, deployment_runtime_env: Optional[Dict[str, Any]] = None
     ) -> Tuple[bool, Optional[str]]:
@@ -215,6 +210,12 @@ class DeploymentActorWrapper:
             merged_runtime_env = override_runtime_envs_except_env_vars(
                 deployment_runtime_env, actor_runtime_env
             )
+            merged_runtime_env = _inject_internal_deployment_context_env_vars(
+                merged_runtime_env,
+                deployment_id=self._deployment_id,
+                actor_name=self._config.name,
+                code_version=self._code_version,
+            )
             if merged_runtime_env:
                 actor_options["runtime_env"] = merged_runtime_env
             # Serve recreates deployment actors after failed health checks instead
@@ -223,10 +224,6 @@ class DeploymentActorWrapper:
             # Match controller's max_concurrency so deployment actors can handle
             # concurrent calls (e.g. from multiple replicas) without blocking.
             actor_options.setdefault("max_concurrency", CONTROLLER_MAX_CONCURRENCY)
-            init_kwargs = {
-                **self._get_implicit_init_kwargs(actor_cls),
-                **(self._config.init_kwargs or {}),
-            }
             self._handle = actor_cls.options(
                 name=self._actor_name,
                 namespace=SERVE_NAMESPACE,
@@ -235,7 +232,7 @@ class DeploymentActorWrapper:
                 **actor_options,
             ).remote(
                 *(self._config.init_args or ()),
-                **init_kwargs,
+                **(self._config.init_kwargs or {}),
             )
             # Keep both handle and __ray_ready__ ref so pending creation can be
             # cancelled on delete while still waiting for resources.
