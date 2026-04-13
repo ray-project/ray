@@ -558,7 +558,7 @@ class BlockAccessor:
                     return cls.batch_to_arrow_block(batch)
                 except ArrowConversionError as e:
                     if log_once("_fallback_to_pandas_block_warning"):
-                        logger.warning(
+                        logger.debug(
                             f"Failed to convert batch to Arrow due to: {e}; "
                             f"falling back to Pandas block"
                         )
