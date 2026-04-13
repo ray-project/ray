@@ -795,7 +795,7 @@ class TestActorPool(unittest.TestCase):
         pool.on_task_completed(assigned2)
         assert pool.can_schedule_task()
 
-    def test_actor_pool_info_utilization_metrics(self):
+    def test_actor_pool_info_metrics(self):
         """Test that ActorPoolInfo includes utilization metrics."""
         # Test default values for backward compatibility
         info = ActorPoolInfo(running=5, pending=2, restarting=1)
@@ -817,13 +817,16 @@ class TestActorPool(unittest.TestCase):
             pool_utilization=0.75,
             tasks_in_flight=30,
         )
+        assert info_full.running == 10
+        assert info_full.pending == 3
+        assert info_full.restarting == 1
         assert info_full.active == 7
         assert info_full.idle == 3
         assert info_full.pool_utilization == 0.75
         assert info_full.tasks_in_flight == 30
 
-    def test_actor_pool_info_str_representation(self):
-        """Test ActorPoolInfo string representation includes utilization."""
+    def test_actor_pool_info_str_representation_includes_all_fields(self):
+        """Test ActorPoolInfo string representation includes all fields."""
         # Normal utilization
         info = ActorPoolInfo(
             running=5,
@@ -841,6 +844,7 @@ class TestActorPool(unittest.TestCase):
         assert "active=3" in s
         assert "idle=2" in s
         assert "util=0.625" in s
+        assert "tasks_in_flight=10" in s
 
     def test_get_actor_info_returns_utilization_metrics(self):
         """Test that get_actor_info() returns correct utilization metrics."""
