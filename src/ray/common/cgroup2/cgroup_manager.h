@@ -114,6 +114,35 @@ class CgroupManager : public CgroupManagerInterface {
   Status AddProcessToSystemCgroup(const std::string &pid) override;
 
   /**
+    @return the path to the user cgroup.
+  */
+  std::string GetUserCgroupPath() const override;
+
+  /**
+    Gets the constraint value within the system cgroup for a given constraint name.
+
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint cannot be fetched.
+    @return Status::InvalidArgument if the constraint does not exist.
+  */
+  StatusOr<std::string> GetSystemCgroupConstraintValue(
+      const std::string &constraint_name) const override;
+
+  /**
+    Gets the constraint value within the user cgroup for a given constraint name.
+
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint cannot be fetched.
+    @return Status::InvalidArgument if the constraint does not exist.
+  */
+  StatusOr<std::string> GetUserCgroupConstraintValue(
+      const std::string &constraint_name) const override;
+
+  /**
     Performs cleanup in reverse order from the Initialize function:
       1. remove resource constraints to the system, and user cgroups.
       2. disable controllers on the base, system, and user cgroups respectively.

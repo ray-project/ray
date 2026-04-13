@@ -21,7 +21,9 @@
 namespace ray {
 
 std::unique_ptr<MemoryMonitorInterface> MemoryMonitorFactory::Create(
-    KillWorkersCallback _) {
+    KillWorkersCallback kill_workers_callback,
+    bool resource_isolation_enabled,
+    const CgroupManagerInterface &cgroup_manager) {
   return std::make_unique<NoopMemoryMonitor>();
 }
 
