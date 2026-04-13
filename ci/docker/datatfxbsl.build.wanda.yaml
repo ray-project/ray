@@ -4,6 +4,6 @@ dockerfile: ci/docker/data-tfxbsl.build.Dockerfile
 srcs:
   - python/deplocks/ci/data-tfxbsl-ci_depset_py$PYTHON.lock
 build_args:
-  - ARROW_VERSION=14.*
+  - PYTHON
 tags:
   - cr.ray.io/rayproject/datatfxbslbuild-py$PYTHON
