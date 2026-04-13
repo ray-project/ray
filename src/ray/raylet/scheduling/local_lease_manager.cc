@@ -1070,8 +1070,8 @@ void LocalLeaseManager::SetWorkerBacklog(rpc::ReportWorkerBacklogRequest request
   ClearWorkerBacklog(worker_id);
 
   for (auto &backlog_report : *request.mutable_backlog_reports()) {
-    // Have to recreate the LeaseSpecification create a the raylet-side scheduling class
-    // because the worker-side scheduling class int is local to the worker.
+    // Have to recreate the LeaseSpecification to create the raylet-side scheduling
+    // class because the worker-side scheduling class int is local to the worker.
     const SchedulingClass scheduling_class =
         LeaseSpecification(std::move(*backlog_report.mutable_lease_spec()))
             .GetSchedulingClass();
