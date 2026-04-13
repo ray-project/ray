@@ -131,8 +131,8 @@ void LocalDependencyResolver::ResolveDependencies(
   }
 
   for (const auto &obj_id : local_dependency_ids) {
-    auto resolve_object_dependency =
-        [this, task_id, obj_id](std::shared_ptr<RayObject> obj) {
+    auto resolve_object_dependency = [this, task_id, obj_id](
+                                         std::shared_ptr<RayObject> obj) {
       RAY_CHECK(obj != nullptr);
 
       std::unique_ptr<TaskState> resolved_task_state = nullptr;
