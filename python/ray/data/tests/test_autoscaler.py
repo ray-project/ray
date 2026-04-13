@@ -25,8 +25,8 @@ from ray.data.context import (
 
 
 def test_actor_pool_scaling():
-    """Test `_actor_pool_should_scale_up` and `_actor_pool_should_scale_down`
-    in `DefaultAutoscaler`"""
+    """Test scaling decisions in `DefaultActorAutoscaler._derive_target_scaling_config`,
+    covering utilization-based scaling and resource-budget enforcement."""
 
     resource_manager = MagicMock(
         spec=ResourceManager, get_budget=MagicMock(return_value=None)
@@ -82,8 +82,10 @@ def test_actor_pool_scaling():
         if is_method:
             value = MagicMock(return_value=value)
         setattr(mock, attr, value)
-        yield
-        setattr(mock, attr, original)
+        try:
+            yield
+        finally:
+            setattr(mock, attr, original)
 
     def assert_autoscaling_action(
         *, delta: int, expected_reason: Optional[str], force: bool = False
@@ -231,82 +233,9 @@ def test_actor_pool_scaling():
             expected_reason="no inputs received",
         )
 
-
-def test_actor_pool_scaling_over_budget():
-    """Test that actor pools downscale when over their resource allocation,
-    regardless of utilization."""
-
-    resource_manager = MagicMock(
-        spec=ResourceManager, get_budget=MagicMock(return_value=None)
-    )
-    autoscaler = DefaultActorAutoscaler(
-        topology=MagicMock(),
-        resource_manager=resource_manager,
-        config=AutoscalingConfig(
-            actor_pool_util_upscaling_threshold=1.0,
-            actor_pool_util_downscaling_threshold=0.5,
-            actor_pool_max_upscaling_delta=None,
-        ),
-    )
-
-    actor_pool: _ActorPool = MagicMock(
-        spec=_ActorPool,
-        min_size=MagicMock(return_value=5),
-        max_size=MagicMock(return_value=15),
-        current_size=MagicMock(return_value=10),
-        num_active_actors=MagicMock(return_value=10),
-        num_running_actors=MagicMock(return_value=10),
-        num_pending_actors=MagicMock(return_value=0),
-        num_tasks_in_flight=MagicMock(return_value=15),
-        per_actor_resource_usage=MagicMock(return_value=ExecutionResources(cpu=1)),
-        max_tasks_in_flight_per_actor=MagicMock(return_value=2),
-        max_actor_concurrency=MagicMock(return_value=1),
-        get_pool_util=MagicMock(
-            side_effect=lambda: MethodType(_ActorPool.get_pool_util, actor_pool)()
-        ),
-    )
-
-    op = MagicMock(
-        spec=InternalQueueOperatorMixin,
-        has_completed=MagicMock(return_value=False),
-        _inputs_complete=False,
-        input_dependencies=[MagicMock()],
-        internal_input_queue_num_blocks=MagicMock(return_value=1),
-        metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
-        num_output_splits=MagicMock(return_value=1),
-    )
-    op_state = OpState(
-        op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
-    )
-    op_state._scheduling_status = MagicMock(under_resource_limits=True)
-
-    @contextmanager
-    def patch(mock, attr, value, is_method=True):
-        original = getattr(mock, attr)
-        if is_method:
-            value = MagicMock(return_value=value)
-        setattr(mock, attr, value)
-        yield
-        setattr(mock, attr, original)
-
-    def assert_autoscaling_action(
-        *, delta: int, expected_reason: Optional[str], force: bool = False
-    ):
-        nonlocal actor_pool, op, op_state
-
-        assert autoscaler._derive_target_scaling_config(
-            actor_pool=actor_pool,
-            op=op,
-            op_state=op_state,
-        ) == ActorPoolScalingRequest(delta=delta, force=force, reason=expected_reason)
-
-    # Baseline: pool utilization is 1.5 (high), no budget constraint.
-    # Should scale up normally.
-    assert actor_pool.get_pool_util() == 1.5
-    assert_autoscaling_action(
-        delta=5,
-        expected_reason="utilization of 1.5 >= 1.0",
-    )
+    # --- Resource budget enforcement ---
+    # The over-budget check runs before utilization logic. Even at 150% utilization
+    # (which would normally trigger a scale-up), a negative budget forces downscaling.
 
     # Over budget by 2 CPUs: should downscale by 2 despite high utilization.
     with patch(resource_manager, "get_budget", ExecutionResources(cpu=-2)):
@@ -315,7 +244,7 @@ def test_actor_pool_scaling_over_budget():
             expected_reason="actor pool exceeds resource allocation",
         )
 
-    # Over budget by 2 CPUs but pool at min_size + 1: capped to 1.
+    # Over budget by 2 CPUs but pool at min_size + 1: delta capped to 1.
     with patch(resource_manager, "get_budget", ExecutionResources(cpu=-2)):
         with patch(actor_pool, "current_size", 6):
             assert_autoscaling_action(
@@ -332,7 +261,7 @@ def test_actor_pool_scaling_over_budget():
                 "but cannot scale below min size",
             )
 
-    # Over budget with pending actors: no-op.
+    # Over budget with pending actors: no-op (wait for pending actors to settle).
     with patch(resource_manager, "get_budget", ExecutionResources(cpu=-2)):
         with patch(actor_pool, "num_pending_actors", 1):
             assert_autoscaling_action(
@@ -340,20 +269,14 @@ def test_actor_pool_scaling_over_budget():
                 expected_reason="no downscaling while actors are pending",
             )
 
-    # Within budget (positive): normal utilization-based behavior.
+    # Within budget (positive): over-budget check is skipped, normal util logic runs.
     with patch(resource_manager, "get_budget", ExecutionResources(cpu=5)):
         assert_autoscaling_action(
             delta=5,
             expected_reason="utilization of 1.5 >= 1.0",
         )
 
-    # No budget (unlimited): normal utilization-based behavior.
-    assert_autoscaling_action(
-        delta=5,
-        expected_reason="utilization of 1.5 >= 1.0",
-    )
-
-    # GPU over-budget: should downscale by 3.
+    # GPU over-budget: same logic applies for GPU-backed pools.
     with patch(actor_pool, "per_actor_resource_usage", ExecutionResources(gpu=1)):
         with patch(resource_manager, "get_budget", ExecutionResources(gpu=-3)):
             assert_autoscaling_action(

@@ -17,6 +17,9 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Small epsilon value to avoid triggering downscaling on phantom deficits.
+_BUDGET_EPSILON = 1e-9
+
 
 class DefaultActorAutoscaler(ActorAutoscaler):
     def __init__(
@@ -118,8 +121,17 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 )
 
             budget = self._resource_manager.get_budget(op)
+            # Clamp to zero: budget can be negative if the operator is over-allocated
+            # on a resource this pool doesn't use (e.g. CPU-over-budget but pool is
+            # GPU-only). _get_max_scale_up asserts non-negative inputs, so we clamp
+            # here before passing it in.
+            budget_for_scale_up = (
+                budget.max(ExecutionResources.zero()) if budget else None
+            )
             budget_max_scale_up = (
-                _get_max_scale_up(actor_pool, budget) if budget else sys.maxsize
+                _get_max_scale_up(actor_pool, budget_for_scale_up)
+                if budget_for_scale_up
+                else sys.maxsize
             )
 
             # Determine maximum available scale up based on
@@ -324,12 +336,14 @@ def _get_required_scale_down(
     num_cpus_per_actor = actor_pool.per_actor_resource_usage().cpu
     num_gpus_per_actor = actor_pool.per_actor_resource_usage().gpu
 
+    # Use a small epsilon to avoid triggering downscaling on phantom deficits
+    # caused by floating-point rounding in the budget arithmetic.
     required_cpu_scale_down = 0
-    if num_cpus_per_actor > 0 and budget.cpu < 0:
+    if num_cpus_per_actor > 0 and budget.cpu < -_BUDGET_EPSILON:
         required_cpu_scale_down = math.ceil(abs(budget.cpu) / num_cpus_per_actor)
 
     required_gpu_scale_down = 0
-    if num_gpus_per_actor > 0 and budget.gpu < 0:
+    if num_gpus_per_actor > 0 and budget.gpu < -_BUDGET_EPSILON:
         required_gpu_scale_down = math.ceil(abs(budget.gpu) / num_gpus_per_actor)
 
     return max(required_cpu_scale_down, required_gpu_scale_down)
