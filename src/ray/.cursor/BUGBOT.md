@@ -47,3 +47,12 @@
 - Look at the list of changed files in PR.
 - If there are ANY changes under `python/ray/data/tests/`, apply the checks below.
 - If no files under `python/ray/data/tests/` are changed, do not post this message.
+
+### How to tell if a test is an unit test
+Unit tests must live in `python/ray/data/tests/unit/` and must **only** test pure
+Python logic. A unit test must NOT:
+- Call any `ray.*` API during runtime (imports of ray modules are fine).
+  - This includes `ray.init()`, `ray.data.*()`, `ray.put()`, `ray.get()`, and any other runtime call into ray package.
+- Use fixtures that starts ray cluster.
+  - This any fixtures that starts with `ray_start_`.
+- Use `time.sleep()`.
