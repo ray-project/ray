@@ -2017,6 +2017,7 @@ fsspec==2023.12.1 \
     #   getdaft
     #   gradio-client
     #   huggingface-hub
+    #   lightning
     #   modin
     #   pytorch-lightning
     #   ray
@@ -3168,11 +3169,16 @@ lightgbm==4.6.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/core-requirements.txt
+lightning==2.6.1 \
+    --hash=sha256:30e1adac23004c713663928541bd72ecb1371b7abc9aff9f46b7fd2644988d30 \
+    --hash=sha256:859104b98c61add6fe60d0c623abf749baf25f2950a66ebdfb4bd18aa7decba9
+    # via -r python/requirements/ml/py313/tune-test-requirements.txt
 lightning-utilities==0.11.2 \
     --hash=sha256:541f471ed94e18a28d72879338c8c52e873bb46f4c47644d89228faeb6751159 \
     --hash=sha256:adf4cf9c5d912fe505db4729e51d1369c6927f3a8ac55a9dff895ce5c0da08d9
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   lightning
     #   pytorch-lightning
 linear-operator==0.6 \
     --hash=sha256:a9e2663879f1a2b28631bf7ef34892c4e5749893e711c8ef0ab0a39aff70a654 \
@@ -4964,6 +4970,7 @@ packaging==24.2 \
     #   keras
     #   knack
     #   kombu
+    #   lightning
     #   lightning-utilities
     #   matplotlib
     #   mlflow-skinny
@@ -6272,7 +6279,7 @@ pytorch-lightning==2.4.0 \
     --hash=sha256:9ac7935229ac022ef06994c928217ed37f525ac6700f7d4fc57009624570e655
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/tune-test-requirements.txt
+    #   lightning
 pytorch-ranger==0.1.1 ; python_full_version < '3.12' \
     --hash=sha256:1e69156c9cc8439185cb8ba4725b18c91947fbe72743e25aca937da8aeb0c8ec \
     --hash=sha256:aa7115431cef11b57d7dd7bc86e7302a911dae467f62ec5d0b10e1ff744875db
@@ -6378,6 +6385,7 @@ pyyaml==6.0.3 \
     #   jupytext
     #   knack
     #   kubernetes
+    #   lightning
     #   ml-collections
     #   mlflow-skinny
     #   mosaicml
@@ -7977,6 +7985,7 @@ torch==2.7.0+cu128 \
     #   botorch
     #   deepspeed
     #   fairscale
+    #   lightning
     #   linear-operator
     #   mosaicml
     #   nixl
@@ -8033,6 +8042,7 @@ torchmetrics==0.10.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
+    #   lightning
     #   mosaicml
     #   pytorch-lightning
 torchtext==0.18.0+cpu \
@@ -8107,6 +8117,7 @@ tqdm==4.67.1 \
     #   getdaft
     #   huggingface-hub
     #   hyperopt
+    #   lightning
     #   mosaicml
     #   moviepy
     #   optuna
@@ -8208,6 +8219,7 @@ typing-extensions==4.15.0 \
     #   grpcio
     #   gymnasium
     #   huggingface-hub
+    #   lightning
     #   lightning-utilities
     #   mlflow-skinny
     #   modin

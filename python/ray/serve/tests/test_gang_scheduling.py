@@ -11,6 +11,8 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import GANG_PG_NAME_PREFIX, DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import (
+    Accumulator,
+    FailedReplicaStore,
     check_apps_running,
     check_num_replicas_eq,
 )
@@ -20,36 +22,6 @@ from ray.serve.context import _get_global_client
 from ray.tests.conftest import *  # noqa
 from ray.util.placement_group import get_current_placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-
-
-@ray.remote
-class Collector:
-    def __init__(self):
-        self.items = []
-
-    def add(self, item):
-        self.items.append(item)
-
-    def get(self):
-        return self.items
-
-
-@ray.remote(num_cpus=0)
-class FailedReplicaStore:
-    """Stores the first replica ID that failed, for gang startup failure tests."""
-
-    def __init__(self):
-        self._failed_replica_id = None
-
-    def set_if_first(self, replica_id: str) -> bool:
-        """Atomically set failed replica if none set. Returns True if we're the first."""
-        if self._failed_replica_id is None:
-            self._failed_replica_id = replica_id
-            return True
-        return False
-
-    def get(self):
-        return self._failed_replica_id
 
 
 class TestGangScheduling:
@@ -870,7 +842,7 @@ class TestGangFailureRecovery:
         """Single health check failure tears down and restarts the entire gang."""
         ray.init(num_cpus=1)
         serve.start()
-        target_replica_collector = Collector.remote()
+        target_replica_collector = Accumulator.remote()
 
         @serve.deployment(
             num_replicas=4,
