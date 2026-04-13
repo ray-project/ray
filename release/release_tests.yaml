@@ -85,6 +85,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: hello_world_compute_config.yaml
 
   run:
@@ -97,10 +98,12 @@
     - __suffix__: gce
       env: gce
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: azure
       env: azure
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: hello_world_compute_config_azure.yaml
     - __suffix__: released
       cluster:
@@ -114,6 +117,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       post_build_script: byod_hello_world.sh
       python_depset: emoji.lock
@@ -128,9 +132,11 @@
     - __suffix__: gce
       env: gce
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: hello_world_compute_config_gce.yaml
     - __suffix__: released
       cluster:
+        anyscale_sdk_2026: true
         ray_version: 2.50.0
 
 - name: hello_world_custom_runtime_env
@@ -141,6 +147,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - HELLO_WORLD_TEST=1
@@ -161,6 +168,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       python_depset: emoji.lock
@@ -181,6 +189,7 @@
   working_dir: hello_world_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod: {}
     cluster_compute: hello_world_compute_config.yaml
 
@@ -215,10 +224,13 @@
 
   variations:
     - __suffix__: aws
+      cluster:
+        anyscale_sdk_2026: true
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
     - __suffix__: kuberay
       env: kuberay
@@ -1607,6 +1619,8 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -1649,6 +1663,10 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu=True --skip_train_step=True --skip_validation_step=True --num_epochs=5 --max_failures=4 --image_classification_data_format=parquet
         prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
       cluster:
+        byod:
+          runtime_env:
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=0  # Workers are intentionally killed
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
 
     - __suffix__: skip_training.parquet.fault_tolerance.preserve_order
@@ -1657,6 +1675,10 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu=True --skip_train_step=True --skip_validation_step=True --num_epochs=5 --max_failures=4 --image_classification_data_format=parquet --preserve_order=True
         prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
       cluster:
+        byod:
+          runtime_env:
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=0  # Workers are intentionally killed
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
 
     - __suffix__: full_training.s3_url
@@ -1754,6 +1776,10 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -1783,6 +1809,10 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -1810,6 +1840,9 @@
 
   cluster:
     byod:
+      runtime_env:
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
       type: gpu
       post_build_script: byod_install_torchrec.sh
     cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
@@ -2401,38 +2434,6 @@
       cluster:
         cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template_gce.yaml
 
-
-- name: dask_on_ray_large_scale_test_spilling
-  group: core-daily-test
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: data
-
-  cluster:
-    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
-
-  run:
-    timeout: 7200
-    script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
-      70 --error_rate 0  --data_save_path /tmp/ray
-
-    wait_for_nodes:
-      num_nodes: 21
-
-
-  smoke_test:
-    frequency: manual # was nightly
-    cluster:
-      cluster_compute: dask_on_ray/large_scale_dask_on_ray_compute_template.yaml
-
-    run:
-      timeout: 7200
-      script: python dask_on_ray/large_scale_test.py --num_workers 32 --worker_obj_store_size_in_gb
-        70 --error_rate 0  --data_save_path /tmp/ray
-
-      wait_for_nodes:
-        num_nodes: 5
 
 - name: stress_test_state_api_scale
   python: "3.10"
@@ -3546,67 +3547,6 @@
       frequency: manual
       cluster:
         cluster_compute: chaos_test/compute_template_gce.yaml
-
-- name: chaos_dask_on_ray_large_scale_test_no_spilling
-  python: "3.10"
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: data
-
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-    cluster_compute: dask_on_ray/chaos_dask_on_ray_stress_compute.yaml
-
-  run:
-    timeout: 7200
-    wait_for_nodes:
-      num_nodes: 21
-    prepare: python setup_chaos.py --kill-interval 100
-    script: python dask_on_ray/large_scale_test.py --num_workers 20 --worker_obj_store_size_in_gb
-      20 --error_rate 0  --data_save_path /tmp/ray
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
-
-- name: chaos_dask_on_ray_large_scale_test_spilling
-  python: "3.10"
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: manual # was nightly
-  team: data
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_lineage_pinning_enabled=1
-    cluster_compute: dask_on_ray/dask_on_ray_stress_compute.yaml
-
-  run:
-    timeout: 7200
-    wait_for_nodes:
-      num_nodes: 21
-    prepare: python setup_chaos.py --kill-interval 100
-    script: python dask_on_ray/large_scale_test.py --num_workers 150 --worker_obj_store_size_in_gb
-      70 --error_rate 0  --data_save_path /tmp/ray
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
 
 #####################
 # Observability tests
@@ -4754,7 +4694,7 @@
 
 
 - name: tensor_parallel_autotp  # do not use dashes (regex sensitive)
-  python: "3.10"
+  python: "3.11"
   frequency: weekly
   group: ray-examples
   team: ml
@@ -4762,7 +4702,8 @@
 
   cluster:
     byod:
-      type: gpu
+      type: llm-cu128
+      post_build_script: byod_tensor_parallel_autotp.sh
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
@@ -4788,6 +4729,31 @@
   cluster:
     byod:
       type: gpu
+    cluster_compute: ci/aws.yaml  # relative to working_dir
+
+  run:
+    timeout: 3600
+    script: bash ci/tests.sh  # relative to working_dir
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: ci/gce.yaml  # relative to working_dir
+
+- name: transformers_reinforcement_learning  # do not use dashes (regex sensitive)
+  python: "3.10"
+  frequency: weekly
+  group: ray-examples
+  team: ml
+  working_dir: //doc/source/train/examples/transformers/transformer_reinforcement_learning
+
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_huggingface_trl.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
   run:
