@@ -19,6 +19,7 @@ from ray.data._internal.logical.operators import (
     Project,
     RandomShuffle,
     Repartition,
+    Union,
 )
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
@@ -355,6 +356,8 @@ class PredicatePushdown(Rule):
                 partition_size_hint=op.partition_size_hint,
                 aggregator_ray_remote_args=op.aggregator_ray_remote_args,
             )
+        if isinstance(op, Union) and is_dataclass(op):
+            return Union(*new_inputs)
         new_op = copy.copy(op)
         new_op.input_dependencies = new_inputs
         return new_op
