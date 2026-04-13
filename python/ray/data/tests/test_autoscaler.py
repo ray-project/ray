@@ -284,6 +284,22 @@ def test_actor_pool_scaling():
                 expected_reason="actor pool exceeds resource allocation",
             )
 
+    # Memory over-budget: same logic applies for memory-reserved actors.
+    with patch(
+        actor_pool,
+        "per_actor_resource_usage",
+        ExecutionResources(cpu=1, memory=500_000_000),
+    ):
+        with patch(
+            resource_manager,
+            "get_budget",
+            ExecutionResources(cpu=5, memory=-1_500_000_000),
+        ):
+            assert_autoscaling_action(
+                delta=-3,
+                expected_reason="actor pool exceeds resource allocation",
+            )
+
 
 @pytest.fixture
 def autoscaler_max_upscaling_delta_setup():

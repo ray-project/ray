@@ -17,9 +17,6 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-# Small epsilon value to avoid triggering downscaling on phantom deficits.
-_BUDGET_EPSILON = 1e-9
-
 
 class DefaultActorAutoscaler(ActorAutoscaler):
     def __init__(
@@ -120,7 +117,6 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     reason="operator exceeding resource quota"
                 )
 
-            budget = self._resource_manager.get_budget(op)
             # Clamp to zero: budget can be negative if the operator is over-allocated
             # on a resource this pool doesn't use (e.g. CPU-over-budget but pool is
             # GPU-only). _get_max_scale_up asserts non-negative inputs, so we clamp
@@ -292,11 +288,13 @@ def _get_max_scale_up(
         The maximum number of actors that can be scaled up, or `None` if you can
         scale up infinitely.
     """
-    assert budget.cpu >= 0 and budget.gpu >= 0
+    assert budget.cpu >= 0 and budget.gpu >= 0 and budget.memory >= 0
 
-    num_cpus_per_actor = actor_pool.per_actor_resource_usage().cpu
-    num_gpus_per_actor = actor_pool.per_actor_resource_usage().gpu
-    assert num_cpus_per_actor >= 0 and num_gpus_per_actor >= 0
+    per_actor = actor_pool.per_actor_resource_usage()
+    num_cpus_per_actor = per_actor.cpu
+    num_gpus_per_actor = per_actor.gpu
+    memory_per_actor = per_actor.memory
+    assert num_cpus_per_actor >= 0 and num_gpus_per_actor >= 0 and memory_per_actor >= 0
 
     max_cpu_scale_up: float = float("inf")
     if num_cpus_per_actor > 0 and not math.isinf(budget.cpu):
@@ -306,7 +304,11 @@ def _get_max_scale_up(
     if num_gpus_per_actor > 0 and not math.isinf(budget.gpu):
         max_gpu_scale_up = budget.gpu // num_gpus_per_actor
 
-    max_scale_up = min(max_cpu_scale_up, max_gpu_scale_up)
+    max_memory_scale_up: float = float("inf")
+    if memory_per_actor > 0 and not math.isinf(budget.memory):
+        max_memory_scale_up = budget.memory // memory_per_actor
+
+    max_scale_up = min(max_cpu_scale_up, max_gpu_scale_up, max_memory_scale_up)
     if math.isinf(max_scale_up):
         return sys.maxsize
     else:
@@ -314,6 +316,7 @@ def _get_max_scale_up(
             budget,
             num_cpus_per_actor,
             num_gpus_per_actor,
+            memory_per_actor,
         )
         return int(max_scale_up)
 
@@ -333,17 +336,23 @@ def _get_required_scale_down(
         The number of actors that need to be removed, or 0 if the pool
         is within budget.
     """
-    num_cpus_per_actor = actor_pool.per_actor_resource_usage().cpu
-    num_gpus_per_actor = actor_pool.per_actor_resource_usage().gpu
+    per_actor = actor_pool.per_actor_resource_usage()
+    num_cpus_per_actor = per_actor.cpu
+    num_gpus_per_actor = per_actor.gpu
+    memory_per_actor = per_actor.memory
 
-    # Use a small epsilon to avoid triggering downscaling on phantom deficits
-    # caused by floating-point rounding in the budget arithmetic.
     required_cpu_scale_down = 0
-    if num_cpus_per_actor > 0 and budget.cpu < -_BUDGET_EPSILON:
+    if num_cpus_per_actor > 0 and budget.cpu < 0:
         required_cpu_scale_down = math.ceil(abs(budget.cpu) / num_cpus_per_actor)
 
     required_gpu_scale_down = 0
-    if num_gpus_per_actor > 0 and budget.gpu < -_BUDGET_EPSILON:
+    if num_gpus_per_actor > 0 and budget.gpu < 0:
         required_gpu_scale_down = math.ceil(abs(budget.gpu) / num_gpus_per_actor)
 
-    return max(required_cpu_scale_down, required_gpu_scale_down)
+    required_memory_scale_down = 0
+    if memory_per_actor > 0 and budget.memory < 0:
+        required_memory_scale_down = math.ceil(abs(budget.memory) / memory_per_actor)
+
+    return max(
+        required_cpu_scale_down, required_gpu_scale_down, required_memory_scale_down
+    )
