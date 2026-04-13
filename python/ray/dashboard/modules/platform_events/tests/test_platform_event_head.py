@@ -7,6 +7,8 @@ directly to keep them fast and hermetic.
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
+import pytest
+
 from ray.core.generated.events_base_event_pb2 import RayEvent
 from ray.core.generated.platform_event_pb2 import Source
 from ray.dashboard.modules.platform_events.platform_event_head import (
@@ -67,13 +69,47 @@ def _make_k8s_event(
     return evt
 
 
+@pytest.mark.asyncio
+async def test_init_k8s_client_missing_cluster_name():
+    head = _make_head()
+    result = await head._init_k8s_client()
+    assert result is False
+    assert head._k8s_v1_api is None
+
+
+def test_k8s_event_update():
+    head = _make_head()
+    evt = _make_k8s_event(message="some message")
+    evt.metadata.uid = "test_uid"
+    evt.count = 1
+
+    head._process_k8s_event_callback(evt)
+    assert len(head._events) == 1
+
+    ray_event = next(iter(head._events.values()))
+    assert ray_event.message == "some message"
+    assert "count" not in ray_event.platform_event.custom_fields
+
+    evt2 = _make_k8s_event()
+    evt2.metadata.uid = "test_uid"
+    evt2.count = 5
+    evt2.message = "updated message"
+
+    head._process_k8s_event_callback(evt2)
+    assert len(head._events) == 1
+
+    ray_event_updated = next(iter(head._events.values()))
+    assert ray_event_updated.message == "updated message"
+    assert ray_event_updated.platform_event.custom_fields["count"] == "5"
+
+
 def test_proto_event_type_and_source_type():
     head = _make_head()
     evt = _make_k8s_event()
     head._process_k8s_event_callback(evt)
 
     assert len(head._events) == 1
-    ray_event = head._events[0]
+    ray_event = next(iter(head._events.values()))
     assert ray_event.event_type == RayEvent.EventType.PLATFORM_EVENT
     assert ray_event.source_type == RayEvent.SourceType.CLUSTER_LIFECYCLE
 
@@ -83,7 +119,7 @@ def test_platform_source_is_kubernetes():
     evt = _make_k8s_event(component="kubelet")
     head._process_k8s_event_callback(evt)
 
-    source = head._events[0].platform_event.source
+    source = next(iter(head._events.values())).platform_event.source
     assert source.platform == Source.Platform.KUBERNETES
     assert source.component == "kubelet"
     assert source.metadata["namespace"] == "default"
@@ -100,7 +136,7 @@ def test_platform_event_object_fields():
     )
     head._process_k8s_event_callback(evt)
 
-    ray_event = head._events[0]
+    ray_event = next(iter(head._events.values()))
     assert ray_event.event_id == b"uid-abc-123"
 
     pe = ray_event.platform_event
@@ -111,25 +147,19 @@ def test_platform_event_object_fields():
     assert pe.source.metadata["ray_cluster_name"] == "prod-cluster"
 
 
-def test_severity_warning_for_warning_type():
+@pytest.mark.parametrize(
+    "event_type,expected_severity",
+    [
+        ("Warning", RayEvent.Severity.WARNING),
+        ("Normal", RayEvent.Severity.INFO),
+        (None, RayEvent.Severity.INFO),
+    ],
+)
+def test_severity_mapping(event_type, expected_severity):
     head = _make_head()
-    evt = _make_k8s_event(event_type="Warning")
+    evt = _make_k8s_event(event_type=event_type)
     head._process_k8s_event_callback(evt)
-    assert head._events[0].severity == RayEvent.Severity.WARNING
-
-
-def test_severity_info_for_normal_type():
-    head = _make_head()
-    evt = _make_k8s_event(event_type="Normal")
-    head._process_k8s_event_callback(evt)
-    assert head._events[0].severity == RayEvent.Severity.INFO
-
-
-def test_severity_info_when_type_is_none():
-    head = _make_head()
-    evt = _make_k8s_event(event_type=None)
-    head._process_k8s_event_callback(evt)
-    assert head._events[0].severity == RayEvent.Severity.INFO
+    assert next(iter(head._events.values())).severity == expected_severity
 
 
 def test_timestamp_uses_last_timestamp():
@@ -140,7 +170,7 @@ def test_timestamp_uses_last_timestamp():
     )
     head._process_k8s_event_callback(evt)
 
-    ray_event = head._events[0]
+    ray_event = next(iter(head._events.values()))
     assert ray_event.timestamp.seconds == int(ts.timestamp())
 
 
@@ -150,7 +180,7 @@ def test_timestamp_falls_back_to_first_timestamp():
     evt = _make_k8s_event(last_timestamp=None, first_timestamp=ts)
     head._process_k8s_event_callback(evt)
 
-    ray_event = head._events[0]
+    ray_event = next(iter(head._events.values()))
     assert ray_event.timestamp.seconds == int(ts.timestamp())
 
 
@@ -164,20 +194,20 @@ def test_dedup_suppresses_repeated_uid():
 
 
 def test_dedup_uid_eviction_keeps_recent():
-    """After crossing the 2× threshold, the oldest half is evicted."""
+    """Verify that cache size does not exceed MAX_EVENTS_TO_CACHE and keeps recent items."""
     head = _make_head()
-    total = MAX_EVENTS_TO_CACHE * 2 + 1
+    total = MAX_EVENTS_TO_CACHE + 10
     for i in range(total):
         head._process_k8s_event_callback(_make_k8s_event(uid=f"uid-{i}"))
 
-    # Oldest UIDs should be gone; newest should still be deduped.
-    assert "uid-0" not in head._event_uids
-    assert f"uid-{total - 1}" in head._event_uids
+    assert len(head._events) == MAX_EVENTS_TO_CACHE
+    # Oldest UIDs should be gone
+    assert "uid-0" not in head._events
+    # Newest should still be there
+    assert f"uid-{total - 1}" in head._events
 
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

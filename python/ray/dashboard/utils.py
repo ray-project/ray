@@ -205,6 +205,13 @@ class DashboardHeadModule(abc.ABC):
         dependencies.
         """
 
+    @classmethod
+    def is_enabled(cls) -> bool:
+        """
+        Return True if the module is enabled and should be loaded.
+        """
+        return True
+
 
 class RateLimitedModule(abc.ABC):
     """Simple rate limiter
