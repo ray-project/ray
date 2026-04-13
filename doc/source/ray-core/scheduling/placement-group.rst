@@ -805,6 +805,17 @@ fault tolerance:
 - **Total failure** (all nodes in the domain die): Ray clears the domain assignment and
   reschedules the entire placement group onto a different domain.
 
+Observability
+~~~~~~~~~~~~~
+
+You can inspect label locality placement groups using the existing placement group
+observability tools:
+
+- **Dashboard**: The placement group table shows a ``Label Domain`` column, which displays the
+  selected label key and domain for the placement group (for example, ``ray.io/gpu-domain: rack-1``).
+- **State API**: Using ``ray list placement-groups --detail`` you can also retrieve the label key 
+  and domain assignment for the placement group using a cli command.
+
 API Reference
 -------------
 :ref:`Placement Group API reference <ray-placement-group-ref>`
