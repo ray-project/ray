@@ -69,8 +69,8 @@ cdef extern from * namespace "ray::gcs" nogil:
     #include <thread>
     #include "ray/gcs/store_client_kv.h"
     #include "ray/gcs/store_client/redis_store_client.h"
-    #include "ray/util/raii.h"
     #include "ray/util/clock.h"
+    #include "ray/util/raii.h"
     namespace ray {
     namespace gcs {
 
