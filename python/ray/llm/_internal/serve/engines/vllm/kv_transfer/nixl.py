@@ -62,9 +62,5 @@ class NixlConnectorBackend(BaseConnectorBackend):
         # We need to overwrite the engine_id to make it unique across replicas.
         engine_id = self.kv_transfer_config.get("engine_id", self._get_unique_suffix())
         host = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_HOST
-        base_port = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_PORT
-        dp_rank = self.llm_config.engine_kwargs.get("data_parallel_rank", 0)
-        actual_port = base_port + dp_rank
-        self.kv_transfer_config["engine_id"] = "-".join(
-            [engine_id, host, str(actual_port)]
-        )
+        port = vllm_envs.VLLM_NIXL_SIDE_CHANNEL_PORT
+        self.kv_transfer_config["engine_id"] = "-".join([engine_id, host, str(port)])
