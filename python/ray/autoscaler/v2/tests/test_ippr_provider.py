@@ -476,7 +476,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         st.raylet_id = "abc"
-        # Desired upsize: from (cpu:2, mem:4Gi) to (cpu:4, mem:8Gi)
+        # Desired upsize: from (cpu:1.5, mem:2Gi) to (cpu:4, mem:8Gi)
         st.queue_resize_request(desired_cpu=4.0, desired_memory=8 * Gi)
 
         self.provider.do_ippr_requests([st])
