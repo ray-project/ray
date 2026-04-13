@@ -1,12 +1,17 @@
 import gc
 import json
+import logging
+import math
 import os
 import time
 from enum import Enum
-from typing import Any, Callable, Dict, Union
+from typing import Any, Callable, Dict, List, Union
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
+from ray.util.state import list_runtime_envs
+
+logger = logging.getLogger(__name__)
 
 
 def _get_spilled_bytes_total() -> float:
@@ -19,6 +24,68 @@ def _get_spilled_bytes_total() -> float:
 
 def _bytes_to_gb(b: float) -> float:
     return round(b / (1024**3), 4)
+
+
+def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
+    """Collect execution stats from a Dataset as a JSON-serializable dict.
+    This is a subset from `get_stats_summary`, because we are only adding the ones
+    we care about for the release tests."""
+    summary = ds.get_stats_summary()
+    return {
+        "operators": [
+            {
+                "operator_name": op.operator_name,
+                "earliest_start_time": op.earliest_start_time,
+                "latest_end_time": op.latest_end_time,
+            }
+            for op in summary.operators_stats
+        ],
+    }
+
+
+class RuntimeEnvSetupTracker:
+    """Collects runtime environment creation times across the cluster.
+
+    Queries the Ray State API for all runtime environments and reports
+    aggregate statistics (mean, stdev) for creation time.
+
+    Usage::
+
+        # After a pipeline or job completes:
+        stats = RuntimeEnvSetupTracker.collect()
+    """
+
+    @staticmethod
+    def collect() -> List[Dict[str, Any]]:
+        try:
+            groups: Dict[str, List[float]] = {}
+            for env in list_runtime_envs(limit=1000):
+                if env.creation_time_ms is None:
+                    continue
+                label = "+".join(sorted(env.runtime_env.keys()))
+                groups.setdefault(label, []).append(env.creation_time_ms)
+        except Exception:
+            logger.warning("Failed to query runtime env creation times.", exc_info=True)
+            return []
+
+        results: List[Dict[str, Any]] = []
+        for label, times in groups.items():
+            mean = sum(times) / len(times)
+            variance = sum((t - mean) ** 2 for t in times) / len(times)
+            results.append(
+                {
+                    "runtime_env_type": label,
+                    "count": len(times),
+                    "mean_creation_time_ms": round(mean, 2),
+                    "stdev_creation_time_ms": round(math.sqrt(variance), 2),
+                }
+            )
+        return results
+
+
+def benchmark_py_modules() -> List[str]:
+    """Return a list containing the absolute path to benchmark.py for use in runtime_env py_modules."""
+    return [os.path.abspath(__file__)]
 
 
 class BenchmarkMetric(Enum):
