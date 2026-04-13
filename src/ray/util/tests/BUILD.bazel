@@ -121,7 +121,6 @@ ray_cc_test(
     # own logging setup and checks stderr output directly.
     use_ray_gtest_main = False,
     deps = [
-        "@com_google_googletest//:gtest_main",
         "//src/ray/common:status",
         "//src/ray/util:env",
         "//src/ray/util:filesystem",
@@ -129,6 +128,7 @@ ray_cc_test(
         "//src/ray/util:time",
         "@boost//:asio",
         "@com_google_absl//absl/strings:str_format",
+        "@com_google_googletest//:gtest_main",
         "@nlohmann_json",
     ],
 )
