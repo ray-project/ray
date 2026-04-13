@@ -43,16 +43,29 @@
 >
 > Only include these targets if you need to override the default logic in `ray_gtest_main`. To do so, set `use_ray_gtest_main = False` in the `ray_cc_test` target. You probably don't need to do this.
 
-## Rule: Ray Data Unit vs. Integration Test Placements
-- Look at the list of changed files in PR.
+## Rule: Ray Data Unit vs. Integration Test Placement
+- Look at the list of changed files in the PR.
 - If there are ANY changes under `python/ray/data/tests/`, apply the checks below.
 - If no files under `python/ray/data/tests/` are changed, do not post this message.
 
-### How to tell if a test is an unit test
+### How to tell if a test is a unit test
 Unit tests must live in `python/ray/data/tests/unit/` and must **only** test pure
 Python logic. A unit test must NOT:
 - Call any `ray.*` API during runtime (imports of ray modules are fine).
-  - This includes `ray.init()`, `ray.data.*()`, `ray.put()`, `ray.get()`, and any other runtime call into ray package.
-- Use fixtures that starts ray cluster.
-  - This any fixtures that starts with `ray_start_`.
+  - This includes `ray.init()`, `ray.data.*()`, `ray.put()`, `ray.get()`, and any other runtime call into the ray package.
+- Use fixtures that start ray clusters.
+  - This includes any fixture that starts with `ray_start_`.
 - Use `time.sleep()`.
+
+Everything else - initiating ray clusters during runtime, using fixtures that start ray clusters, and using `time.sleep()` - is an **integration test** and should belong in the top-level files under `python/ray/data/tests/` (e.g., `test_dataset.py`, `test_map.py`)
+
+### Checks
+1. **Test added to `python/ray/data/tests/unit/` that violates the unit test rules**: If a new or modified test in `unit/` calls any `ray.*` API at runtime, uses a cluster-starting fixture, or uses `time.sleep()`, post:
+
+> ⚠️ This test requires a ray cluster or uses `time.sleep()` during runtime, which means it is an integration test.
+> Unit tests in `python/ray/data/tests/unit/` must only test pure Python logic without initiating ray clusters.
+> Please move it to the appropriate top-level test file under `python/ray/data/tests/`.
+
+2. **Test added to a top-level file under `python/ray/data/tests/` that qualifies as a unit test**: If a new test function makes no runtime `ray.*` calls, uses no cluster-starting fixture, and does not use `time.sleep()`, post:
+
+> 💡 This test does not appear to call any `ray.*` APIs at runtime. Consider moving it to the corresponding file in `python/ray/data/tests/unit/` to keep unit tests separate from the integration tests.
