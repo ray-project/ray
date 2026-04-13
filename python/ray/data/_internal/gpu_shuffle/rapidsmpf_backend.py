@@ -242,9 +242,12 @@ def lazy_load() -> type[Any]:
             """
             Extract shuffled partitions as they become ready.
 
+            Partitions are yielded in completion order (via ``wait_any()``),
+            not partition order. Callers are responsible for reordering.
+
             Returns
             -------
-                An iterator over the shuffled partitions.
+                An iterator over (partition_id, partition) tuples.
             """
             from rmm.pylibrmm.stream import DEFAULT_STREAM
 
