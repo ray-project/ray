@@ -181,11 +181,6 @@ class NormalTaskSubmitter {
   /// Report worker backlog information to the local raylet
   void ReportWorkerBacklogInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
-  /// Report backlog if the backlog size is changed for this scheduling key
-  /// since last report
-  void ReportWorkerBacklogIfNeeded(const SchedulingKey &scheduling_key)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight and there are tasks queued. If a raylet address is provided, then
   /// the worker should be requested from the raylet at that address. Else, the
@@ -321,7 +316,6 @@ class NormalTaskSubmitter {
     absl::flat_hash_set<rpc::Address> active_workers;
     // Keep track of how many workers have tasks to do.
     uint32_t num_busy_workers = 0;
-    int64_t last_reported_backlog_size = 0;
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
