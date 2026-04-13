@@ -190,10 +190,11 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
-    EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
+
+    EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(nullptr));
-    EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
+    EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
         .Times(1)
         .WillOnce(Return(nullptr));
     EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_)).Times(0);
@@ -231,9 +232,6 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
-    EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
-        .Times(1)
-        .WillOnce(Return(nullptr));
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(driver));
@@ -269,10 +267,10 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
+    EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id)).Times(0);
     EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
         .Times(1)
         .WillOnce(Return(worker));
-    EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id)).Times(0);
 
     EXPECT_CALL(local_lease_manager, SetWorkerBacklog(request)).Times(1);
 
