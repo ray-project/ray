@@ -1,4 +1,4 @@
-import copy
+from dataclasses import replace
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
 from ray.data._internal.logical.operators import AbstractAllToAll, MapBatches
@@ -34,9 +34,16 @@ class InheritBatchFormatRule(Rule):
             upstream_op = node.input_dependencies[0]
             while upstream_op.input_dependencies:
                 if isinstance(upstream_op, MapBatches) and upstream_op.batch_format:
-                    new_op = copy.copy(node)
-                    new_op.batch_format = upstream_op.batch_format
-                    return new_op
+                    if not hasattr(node, "batch_format"):
+                        return node
+                    if isinstance(node, AbstractAllToAll) and hasattr(
+                        node, "__dataclass_fields__"
+                    ):
+                        return replace(
+                            node,
+                            input_op=node.input_dependencies[0],
+                            batch_format=upstream_op.batch_format,
+                        )
                 upstream_op = upstream_op.input_dependencies[0]
 
             return node
