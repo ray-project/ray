@@ -56,6 +56,7 @@
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
@@ -63,7 +64,6 @@
 #include "ray/util/process.h"
 #include "ray/util/process_utils.h"
 #include "ray/util/string_utils.h"
-#include "ray/util/clock.h"
 
 namespace ray::raylet {
 
@@ -1502,8 +1502,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                 .WithField("node_id", self_node_id_.Hex())
                 .WithField("job_id", worker->GetAssignedJobId().Hex())
             << error_message_str;
-        auto error_data = gcs::CreateErrorTableData(
-            type, error_message_str, clock_.Now(), job_id);
+        auto error_data =
+            gcs::CreateErrorTableData(type, error_message_str, clock_.Now(), job_id);
         gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
 
         const RayLease &ray_lease = worker->GetGrantedLease();
@@ -2312,8 +2312,8 @@ void NodeManager::MarkObjectsAsFailed(
              << " object may hang forever.";
       std::string error_message = stream.str();
       RAY_LOG(ERROR) << error_message;
-      auto error_data = gcs::CreateErrorTableData(
-          "task", error_message, clock_.Now(), job_id);
+      auto error_data =
+          gcs::CreateErrorTableData("task", error_message, clock_.Now(), job_id);
       gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
     }
   }
@@ -2911,8 +2911,7 @@ void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
 
   // Trigger local GC if needed.
   const bool local_gc_trigger =
-      clock_.NowUnixNanos() - local_gc_throttler_.LastRunTime() >
-      local_gc_interval_ns_;
+      clock_.NowUnixNanos() - local_gc_throttler_.LastRunTime() > local_gc_interval_ns_;
   if ((local_gc_triggered_by_global_gc_ || local_gc_trigger) &&
       local_gc_throttler_.CheckAndUpdateIfPossible()) {
     auto all_workers = worker_pool_.GetAllRegisteredWorkers();

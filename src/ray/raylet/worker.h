@@ -20,12 +20,12 @@
 
 #include "absl/time/time.h"
 #include "ray/common/id.h"
-#include "ray/util/clock.h"
 #include "ray/common/lease/lease.h"
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
+#include "ray/util/clock.h"
 #include "ray/util/process_interface.h"
 
 namespace ray {

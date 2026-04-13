@@ -32,8 +32,8 @@
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
-#include "ray/util/clock.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/util/clock.h"
 #include "ray/util/env.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
