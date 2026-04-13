@@ -240,16 +240,13 @@ void NormalTaskSubmitter::ReportWorkerBacklog() {
 void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
   absl::flat_hash_map<SchedulingClass, std::pair<LeaseSpecification, int64_t>> backlogs;
   for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
-    const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
-    if (backlogs.find(scheduling_class) == backlogs.end()) {
-      RAY_CHECK(scheduling_key_and_entry.second.lease_spec.has_value());
-      backlogs[scheduling_class].first = *scheduling_key_and_entry.second.lease_spec;
-      backlogs[scheduling_class].second = 0;
-    }
     // We report backlog size per scheduling class not per scheduling key
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
-    backlogs[scheduling_class].second += scheduling_key_and_entry.second.BacklogSize();
+    const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
+    auto [it, inserted] = backlogs.try_emplace(
+        scheduling_class, *scheduling_key_and_entry.second.lease_spec, 0);
+    it->second.second += scheduling_key_and_entry.second.BacklogSize();
   }
 
   std::vector<rpc::WorkerBacklogReport> backlog_reports;
