@@ -145,8 +145,8 @@ def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility =
     )
 
 def ray_cc_test(name, deps = [], linkopts = [], copts = [], use_ray_gtest_main = True, **kwargs):
-    # Allow skipping the default `ray_gtest_main` function for tests that need bespoke
-    # setup logic.
+    # By default, all `ray_cc_test` targets use `ray_gtest_main`.
+    # Some tests might need bespoke setup logic, so let them skip this dependency.
     if use_ray_gtest_main:
       deps = deps + ["//src/ray/common:ray_gtest_main"]
 
