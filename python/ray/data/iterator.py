@@ -728,7 +728,8 @@ class DataIterator(abc.ABC):
         warnings.warn(
             "`DataIterator.to_torch` is deprecated and will be removed after "
             "October 2026. Use `DataIterator.iter_torch_batches` instead.",
-            DeprecationWarning,
+            RayDeprecationWarning,
+            stacklevel=2,
         )
         import torch
 
