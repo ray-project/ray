@@ -764,7 +764,7 @@ RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
 /// Interval at which workers report their backlog of tasks with unresolved dependencies
 /// to the local raylet, used for autoscaling decisions.
-RAY_CONFIG(int64_t, report_worker_backlog_interval_ms, 3000)
+RAY_CONFIG(int64_t, report_worker_backlog_interval_ms, 1000)
 
 /// Starting timeout for core worker grpc server reconnection (will
 /// exponentially increase until the maximum timeout).
