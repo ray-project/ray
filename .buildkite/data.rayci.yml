@@ -37,10 +37,10 @@ steps:
     tags: cibase
 
   - name: datatfxbslbuild-multipy
-    label: "wanda: datatfxbslbuild-py3.10"
+    label: "wanda: datatfxbslbuild-py3.11"
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
     env:
-      PYTHON: "3.10"
+      PYTHON: "3.11"
     tags: cibase
 
   - name: datatfdsbuild-multipy
@@ -244,7 +244,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datatfxbslbuild-py3.10 --python-version 3.10
+        --build-name datatfxbslbuild-py3.11 --python-version 3.11
         --only-tags tfxbsl
     depends_on: datatfxbslbuild-multipy
 
