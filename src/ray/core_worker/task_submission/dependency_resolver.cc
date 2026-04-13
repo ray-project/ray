@@ -131,8 +131,8 @@ void LocalDependencyResolver::ResolveDependencies(
   }
 
   for (const auto &obj_id : local_dependency_ids) {
-    in_memory_store_.GetAsync(
-        obj_id, [this, task_id, obj_id](std::shared_ptr<RayObject> obj) {
+    auto resolve_object_dependency =
+        [this, task_id, obj_id](std::shared_ptr<RayObject> obj) {
           RAY_CHECK(obj != nullptr);
 
           std::unique_ptr<TaskState> resolved_task_state = nullptr;
@@ -168,7 +168,18 @@ void LocalDependencyResolver::ResolveDependencies(
           if (resolved_task_state) {
             resolved_task_state->on_dependencies_resolved_(resolved_task_state->status);
           }
-        });
+        };
+
+    // GetAsync always posts a callback to the I/O event queue even when the
+    // object already exists (see #47833 for why). In workloads like Data shuffle, all map outputs
+    // are ready before reduce tasks are submitted, so checking synchronously
+    // first avoids flooding the I/O context with callbacks.
+    auto existing = in_memory_store_.GetIfExists(obj_id);
+    if (existing != nullptr) {
+      resolve_object_dependency(std::move(existing));
+    } else {
+      in_memory_store_.GetAsync(obj_id, std::move(resolve_object_dependency));
+    }
   }
 
   for (const auto &actor_id : actor_dependency_ids) {
