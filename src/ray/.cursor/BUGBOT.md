@@ -36,9 +36,9 @@
 > - https://github.com/ray-project/ray/pull/52622
 
 ## Rule: Use ray_gtest_main for ray_cc_test targets
-- Look at any changes in ray_cc_test targets in BUILD.bazel files.
+- Look at changes to ray_cc_test targets in BUILD.bazel files.
 - If the ray_cc_test target contains gtest or gtest_main as dependencies, post the following message:
 
 > ⚠️ `gtest` and `gtest_main` are included by default as part of `ray_gtest_main` in `ray_cc_test` targets.
 >
-> Only include these targets if you need to override the default logic in `ray_gtest_main`. To do so, set `use_ray_gtest_main = False` in the `ray_cc_test` target.
+> Only include these targets if you need to override the default logic in `ray_gtest_main`. To do so, set `use_ray_gtest_main = False` in the `ray_cc_test` target. You probably don't need to do this.
