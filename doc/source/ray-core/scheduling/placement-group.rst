@@ -729,6 +729,82 @@ Fault Tolerance of Actors and Tasks that Use the Bundle
 
 Ray reschedules Actors and tasks that use the bundle (reserved resources) based on their :ref:`fault tolerant policy <fault-tolerance>` once Ray recovers the bundle.
 
+.. _pgroup-label-locality:
+
+[Alpha] Label locality scheduling
+---------------------------------
+
+.. warning::
+
+  Label locality scheduling is an **alpha** feature. It's actively being iterated on and
+  the API surface may change. It only supports GB200 and GB300 accelerator types with
+  STRICT_PACK at the domain level.
+
+Why label locality?
+~~~~~~~~~~~~~~~~~~~
+
+The placement strategies above (PACK, STRICT_PACK, SPREAD, STRICT_SPREAD) operate purely on a
+per-node basis. For multi-node GPU domains such as GB200 or GB300 NVL racks where nodes share
+fast interconnects, there's no native way to ensure all bundles land within the same GPU
+domain.
+
+For example, consider a cluster with 2 racks of 18 nodes each, where each node has
+``{"GPU": 4, "CPU": 2}``. You want to schedule ``[{"GPU": 4, "CPU": 2}] * 18`` within a single rack:
+
+- **STRICT_PACK** tries to place all 18 bundles onto a single *node*, which is infeasible because
+  a single node only has 4 GPUs and 2 CPUs.
+- **PACK** spreads bundles across nodes but it has no concept of racks and bundles may land on nodes
+  across *both* racks.
+
+You could work around this with static :ref:`label selectors <labels>` (such as
+``bundle_label_selector=[{"my_custom_gpu_domain_label": "rack-1"}] * 18``), but that approach doesn't support
+fault tolerance. If all nodes in ``rack-1`` go down, the placement group can't automatically move
+to a different rack. Furthermore, you have to manually specify a domain when you really just want
+any domain and this becomes cumbersome if you have many GPU domains. 
+
+Label locality scheduling solves this by adding a **domain-level** scheduling layer on top of
+node-level strategies. It STRICT_PACKs all bundles within a single domain (a group of nodes
+sharing the same ``ray.io/gpu-domain`` label value), while the node-level strategy you specify
+still applies within that domain.
+
+How it works
+~~~~~~~~~~~~
+
+When **all** bundles in a placement group have ``bundle_label_selector`` containing
+``ray.io/accelerator-type`` set to ``GB200`` or ``GB300``, Ray automatically enables
+label-domain scheduling. Ray:
+
+1. Groups candidate nodes by their ``ray.io/gpu-domain`` label value.
+2. Selects a domain that can satisfy all bundles.
+3. Applies the node-level scheduling strategy within the selected domain.
+
+.. literalinclude:: ../doc_code/placement_group_example.py
+    :language: python
+    :start-after: __label_locality_start__
+    :end-before: __label_locality_end__
+
+.. note::
+
+  Ray doesn't automatically set the ``ray.io/gpu-domain`` label on nodes.
+  Configure this label through ``ray start --labels`` or your cluster configuration.
+  For example:
+
+  .. code-block:: bash
+
+    ray start --labels="ray.io/gpu-domain=rack-1"
+
+Fault tolerance
+~~~~~~~~~~~~~~~
+
+Label locality scheduling improves on static label selectors by providing automatic domain-level
+fault tolerance:
+
+- **Partial failure** (some nodes in the domain die): Ray reschedules the lost bundles onto
+  surviving nodes **within the same domain**. Actors and tasks on the remaining bundles continue
+  running.
+- **Total failure** (all nodes in the domain die): Ray clears the domain assignment and
+  reschedules the entire placement group onto a different domain.
+
 API Reference
 -------------
 :ref:`Placement Group API reference <ray-placement-group-ref>`
