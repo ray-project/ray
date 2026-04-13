@@ -63,8 +63,6 @@ def test_background_tasks_with_max_calls(shutdown_only):
 
 def test_actor_killing(shutdown_only):
     # This is to test create and kill an actor immediately
-    import ray
-
     ray.init(num_cpus=1)
 
     @ray.remote(num_cpus=1)

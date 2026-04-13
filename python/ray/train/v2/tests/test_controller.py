@@ -14,6 +14,7 @@ from ray.train.v2._internal.execution.controller import TrainController
 from ray.train.v2._internal.execution.controller.state import (
     AbortedState,
     ErroredState,
+    FinishedState,
     InitializingState,
     ReschedulingState,
     ResizingState,
@@ -258,7 +259,7 @@ async def test_poll_frequency(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_controller_callback():
+async def test_controller_callback(monkeypatch):
     """Check that all controller callback hooks are called."""
 
     class AssertCallback(ControllerCallback):
@@ -268,6 +269,7 @@ async def test_controller_callback():
             self.failure_decision_called = False
             self.resize_decision_called = False
             self.shutdown_called = False
+            self.before_abort_called = False
 
         def after_controller_start(self, train_run_context: TrainRunContext):
             self.start_called = True
@@ -291,8 +293,11 @@ async def test_controller_callback():
         ):
             self.resize_decision_called = True
 
-        def before_controller_shutdown(self):
+        async def before_controller_shutdown(self):
             self.shutdown_called = True
+
+        def before_controller_abort(self):
+            self.before_abort_called = True
 
     callback = AssertCallback()
 
@@ -308,8 +313,17 @@ async def test_controller_callback():
         callbacks=[callback],
     )
 
-    controller._start()
     assert callback.start_called
+
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
+
+    await controller.abort()
+    assert callback.before_abort_called
+    assert isinstance(callback.latest_state_update[1], AbortedState)
+
+    # Reset the state to InitializingState to test the control loop
+    controller._set_state(InitializingState())
 
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
@@ -359,52 +373,135 @@ async def test_controller_abort(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_controller_callback_error_during_state_update_is_handled():
-    """A controller callback hook failure is surfaced via CallbackManager.
+async def test_shutdown_failure_on_finished_path():
+    """Shutdown failure on the finished path transitions to ErroredState."""
 
-    This should not crash the control loop; it should transition into shutdown and
-    eventually into an errored terminal state. Callback failures during terminal
-    state transitions should not cause the controller to loop indefinitely.
-    """
-
-    class FailingStateUpdateCallback(ControllerCallback):
-        def after_controller_state_update(
-            self,
-            previous_state: TrainControllerState,
-            current_state: TrainControllerState,
-        ):
-            raise ValueError("Intentional error in state update callback")
+    def failing_shutdown():
+        raise RuntimeError("Simulated shutdown failure")
 
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
-    train_run_context = create_dummy_run_context()
-
     controller = TrainController(
         train_fn_ref=DummyObjectRefWrapper(lambda: None),
-        train_run_context=train_run_context,
+        train_run_context=create_dummy_run_context(),
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
-        callbacks=[FailingStateUpdateCallback()],
     )
-
-    # When the state-update callback raises, the controller should surface the error
-    # via the failure policy and transition into shutdown -> errored.
-    failure_policy.queue_decision(FailureDecision.RAISE)
-
     scaling_policy.queue_recovery_decision(
         ResizeDecision(num_workers=2, resources_per_worker={})
     )
+    await controller._run_control_loop_iteration()  # Init -> Scheduling
+    await controller._run_control_loop_iteration()  # Scheduling -> Running
 
-    await controller._run_control_loop_iteration()
-    assert isinstance(controller.get_state(), ShuttingDownState)
-    assert isinstance(controller.get_state().next_state, ErroredState)
-    assert isinstance(
-        controller.get_state().next_state.training_failed_error, ControllerError
-    )
+    for i in range(2):
+        controller.get_worker_group().finish_worker(i)
+    await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Finished)
+    assert isinstance(controller.get_state().next_state, FinishedState)
 
+    controller.get_worker_group().shutdown = failing_shutdown
     await controller._run_control_loop_iteration()
     assert isinstance(controller.get_state(), ErroredState)
     assert isinstance(controller.get_state().training_failed_error, ControllerError)
+
+
+@pytest.mark.asyncio
+async def test_shutdown_failure_on_errored_path():
+    """Shutdown failure on the errored path preserves the original training error."""
+
+    def failing_shutdown():
+        raise RuntimeError("Simulated shutdown failure")
+
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+    )
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()  # Init -> Scheduling
+    await controller._run_control_loop_iteration()  # Scheduling -> Running
+
+    controller.get_worker_group().error_worker(0)
+    failure_policy.queue_decision(FailureDecision.RAISE)
+    await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Errored)
+    original_error = controller.get_state().next_state.training_failed_error
+
+    controller.get_worker_group().shutdown = failing_shutdown
+    await controller._run_control_loop_iteration()
+    assert isinstance(controller.get_state(), ErroredState)
+    assert controller.get_state().training_failed_error is original_error
+
+
+@pytest.mark.asyncio
+async def test_shutdown_and_callback_both_fail_on_finished_path():
+    """When both worker group shutdown and shutdown callback fail on the finished
+    path, the shutdown error takes precedence (callback error is logged)."""
+
+    def failing_shutdown():
+        raise RuntimeError("Simulated shutdown failure")
+
+    class FailingShutdownHookCallback(ControllerCallback):
+        async def before_controller_shutdown(self):
+            raise ValueError("Intentional error in shutdown callback")
+
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+        callbacks=[FailingShutdownHookCallback()],
+    )
+    scaling_policy.queue_recovery_decision(
+        ResizeDecision(num_workers=2, resources_per_worker={})
+    )
+    await controller._run_control_loop_iteration()  # Init -> Scheduling
+    await controller._run_control_loop_iteration()  # Scheduling -> Running
+
+    for i in range(2):
+        controller.get_worker_group().finish_worker(i)
+    await controller._run_control_loop_iteration()  # Running -> ShuttingDown(Finished)
+    assert isinstance(controller.get_state().next_state, FinishedState)
+
+    controller.get_worker_group().shutdown = failing_shutdown
+    await controller._run_control_loop_iteration()
+    # Shutdown error takes precedence over callback error.
+    assert isinstance(controller.get_state(), ErroredState)
+    assert isinstance(controller.get_state().training_failed_error, ControllerError)
+    assert (
+        "shutdown"
+        in str(controller.get_state().training_failed_error.controller_failure).lower()
+    )
+
+
+@pytest.mark.asyncio
+async def test_abort_resilient_to_callback_failure(monkeypatch):
+    """abort() completes even when a callback raises."""
+
+    class FailingAbortCallback(ControllerCallback):
+        def before_controller_abort(self):
+            raise ValueError("Intentional error in abort callback")
+
+    mock_exit_actor = create_autospec(ray.actor.exit_actor)
+    monkeypatch.setattr("ray.actor.exit_actor", mock_exit_actor)
+
+    scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    failure_policy = MockFailurePolicy(failure_config=None)
+    controller = TrainController(
+        train_fn_ref=DummyObjectRefWrapper(lambda: None),
+        train_run_context=create_dummy_run_context(),
+        scaling_policy=scaling_policy,
+        failure_policy=failure_policy,
+        callbacks=[FailingAbortCallback()],
+    )
+    await controller.abort()
+    assert mock_exit_actor.call_count == 1
+    assert isinstance(controller.get_state(), AbortedState)
 
 
 if __name__ == "__main__":

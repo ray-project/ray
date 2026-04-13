@@ -1,3 +1,5 @@
+common --noenable_bzlmod
+
 # Must be first. Enables build:windows, build:linux, build:macos, build:freebsd, build:openbsd
 build --enable_platform_specific_config
 
@@ -237,5 +239,23 @@ try-import %workspace%/.user.bazelrc
 # Work around for https://github.com/bazelbuild/bazel/issues/8053
 build:macos --sandbox_block_path=/usr/local/
 build:macos --copt="-Wno-error=deprecated-declarations"
+# Disable build_bazel_apple_support's Apple CC toolchain on macOS CI machines
+# that only have Xcode CLT (no full Xcode.app). With BAZEL_NO_APPLE_CPP_TOOLCHAIN=1,
+# apple_cc_configure's _apple_cc_autoconf generates an empty local_config_apple_cc,
+# and Bazel falls back to the generic @local_config_cc (CLT clang), which worked
+# fine with Bazel 6.5. Without this, apple_cc_toolchain fails at analysis time with
+# "Xcode version must be specified to use an Apple CROSSTOOL" on CLT-only machines.
+build:macos --repo_env=BAZEL_NO_APPLE_CPP_TOOLCHAIN=1
+# The generic @local_config_cc CC toolchain (CLT-based, used when
+# BAZEL_NO_APPLE_CPP_TOOLCHAIN=1) defaults to -mmacosx-version-min=10.11 from
+# Bazel's built-in template. That's too old for std::filesystem (10.15+) and
+# std::visit/std::variant (10.13+) used by Ray and opentelemetry. Override to
+# 12.0 which matches the arm64 CI machines (Apple Silicon requires macOS 11+).
+build:macos --copt=-mmacosx-version-min=12.0
+build:macos --linkopt=-mmacosx-version-min=12.0
+# Host/exec-configuration builds (e.g. flatc, protoc built as tools) also need
+# the deployment target override; --host_copt applies to the exec configuration.
+build:macos --host_copt=-mmacosx-version-min=12.0
+build:macos --host_linkopt=-mmacosx-version-min=12.0
 # This option controls whether javac checks for missing direct dependencies.
 build --experimental_strict_java_deps=off

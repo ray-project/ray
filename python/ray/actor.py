@@ -689,6 +689,13 @@ def method(*args, **kwargs):
 
     def annotate_method(method: Callable[_P, _Ret]):
         if "num_returns" in kwargs:
+            # Validate num_returns using centralized validation logic
+            is_generator_callable = inspect.isgeneratorfunction(
+                method
+            ) or inspect.isasyncgenfunction(method)
+            ray_option_utils.validate_num_returns(
+                is_generator_callable, kwargs["num_returns"]
+            )
             method.__ray_num_returns__ = kwargs["num_returns"]
         if "max_task_retries" in kwargs:
             method.__ray_max_task_retries__ = kwargs["max_task_retries"]
@@ -921,8 +928,6 @@ class ActorMethod:
             >>> actor.my_method.options(name="foo", num_returns=2).remote(x, y)
         """
 
-        func_cls = self
-
         tensor_transport = options.get("tensor_transport", None)
         if tensor_transport is not None:
             from ray.experimental.rdt.util import (
@@ -932,15 +937,7 @@ class ActorMethod:
             tensor_transport = normalize_and_validate_tensor_transport(tensor_transport)
             options["tensor_transport"] = tensor_transport
 
-        class FuncWrapper:
-            def remote(self, *args, **kwargs):
-                return func_cls._remote(args=args, kwargs=kwargs, **options)
-
-            @DeveloperAPI
-            def bind(self, *args, **kwargs):
-                return func_cls._bind(args=args, kwargs=kwargs, **options)
-
-        return FuncWrapper()
+        return _ActorMethodOptionsWrapper(self, options)
 
     @wrap_auto_init
     @_tracing_actor_method_invocation
@@ -1036,6 +1033,7 @@ class ActorMethod:
         _generator_backpressure_num_objects=None,
         enable_task_events=None,
         tensor_transport: Optional[str] = None,
+        _labels: Optional[Dict[str, str]] = None,
     ):
         if num_returns is None:
             num_returns = self._num_returns
@@ -1106,6 +1104,7 @@ class ActorMethod:
                 ),
                 enable_task_events=enable_task_events,
                 tensor_transport=tensor_transport,
+                labels=_labels,
             )
 
         # Apply the decorator if there is one.
@@ -1149,6 +1148,27 @@ class ActorMethod:
             state["decorator"],
             state["_tensor_transport"],
         )
+
+
+class _ActorMethodOptionsWrapper:
+    """Wraps an ActorMethod with pre-set options for .remote() and .bind().
+
+    Defined at module scope to avoid the reference cycle that occurs when a
+    class is defined inside a closure (CPython's implicit __class__ cell keeps
+    the closure alive, which keeps the ActorMethod and its ActorHandle alive).
+    See https://github.com/ray-project/ray/issues/61922.
+    """
+
+    def __init__(self, actor_method, options):
+        self._actor_method = actor_method
+        self._options = options
+
+    def remote(self, *args, **kwargs):
+        return self._actor_method._remote(args=args, kwargs=kwargs, **self._options)
+
+    @DeveloperAPI
+    def bind(self, *args, **kwargs):
+        return self._actor_method._bind(args=args, kwargs=kwargs, **self._options)
 
 
 class _ActorClassMethodMetadata(object):
@@ -2314,6 +2334,7 @@ class ActorHandle(Generic[T]):
         generator_backpressure_num_objects: Optional[int] = None,
         enable_task_events: Optional[bool] = None,
         tensor_transport: Optional[str] = None,
+        labels: Optional[Dict[str, str]] = None,
     ):
         """Method execution stub for an actor handle.
 
@@ -2337,6 +2358,7 @@ class ActorHandle(Generic[T]):
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported.
             tensor_transport: The tensor transport protocol to use for the actor method.
+            labels: Optional key-value labels to attach to this actor method task.
 
         Returns:
             object_refs: A list of object refs returned by the remote actor
@@ -2401,6 +2423,7 @@ class ActorHandle(Generic[T]):
             generator_backpressure_num_objects,
             enable_task_events,
             tensor_transport,
+            labels,
         )
 
         if num_returns == STREAMING_GENERATOR_RETURN:
@@ -2493,10 +2516,20 @@ class ActorHandle(Generic[T]):
         )
 
     def __hash__(self):
-        return hash(self._actor_id)
+        # Look up directly in __dict__ to avoid __getattr__, which for
+        # cross-language actors returns an ActorMethod instead of raising
+        # AttributeError.
+        try:
+            return self.__dict__["_ray_cached_hash"]
+        except KeyError:
+            h = hash(self._ray_actor_id)
+            self._ray_cached_hash = h
+            return h
 
-    def __eq__(self, __value):
-        return hash(self) == hash(__value)
+    def __eq__(self, other):
+        if not isinstance(other, ActorHandle):
+            return NotImplemented
+        return self._ray_actor_id == other._ray_actor_id
 
     @property
     def _actor_id(self):

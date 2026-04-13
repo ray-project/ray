@@ -51,7 +51,9 @@ class PrometheusClient:
 
 
 # Metrics here mirror what we have in Grafana.
-async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
+async def _get_prometheus_metrics(
+    start_time: float, end_time: float, session_name: Optional[str] = None
+) -> dict:
     client = PrometheusClient()
     kwargs = {
         "query_type": "query_range",
@@ -59,44 +61,66 @@ async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
         "end": int(end_time),
         "step": 15,
     }
+    sf = f'{{SessionName="{session_name}"}}' if session_name else ""
     metrics = {
         "cpu_utilization": client.query_prometheus(
-            query="ray_node_cpu_utilization * ray_node_cpu_count / 100", **kwargs
+            query=f"ray_node_cpu_utilization{sf} * ray_node_cpu_count{sf} / 100",
+            **kwargs,
         ),
-        "cpu_count": client.query_prometheus(query="ray_node_cpu_count", **kwargs),
+        "cpu_count": client.query_prometheus(query=f"ray_node_cpu_count{sf}", **kwargs),
         "gpu_utilization": client.query_prometheus(
-            query="ray_node_gpus_utilization / 100", **kwargs
+            query=f"ray_node_gpus_utilization{sf} / 100", **kwargs
         ),
-        "gpu_count": client.query_prometheus(query="ray_node_gpus_available", **kwargs),
-        "disk_usage": client.query_prometheus(query="ray_node_disk_usage", **kwargs),
+        "gpu_count": client.query_prometheus(
+            query=f"ray_node_gpus_available{sf}", **kwargs
+        ),
+        "disk_usage": client.query_prometheus(
+            query=f"ray_node_disk_usage{sf}", **kwargs
+        ),
         "disk_space": client.query_prometheus(
-            query="sum(ray_node_disk_free) + sum(ray_node_disk_usage)", **kwargs
+            query=f"sum(ray_node_disk_free{sf}) + sum(ray_node_disk_usage{sf})",
+            **kwargs,
         ),
-        "memory_usage": client.query_prometheus(query="ray_node_mem_used", **kwargs),
-        "total_memory": client.query_prometheus(query="ray_node_mem_total", **kwargs),
+        "memory_usage": client.query_prometheus(
+            query=f"ray_node_mem_used{sf}", **kwargs
+        ),
+        "total_memory": client.query_prometheus(
+            query=f"ray_node_mem_total{sf}", **kwargs
+        ),
         "gpu_memory_usage": client.query_prometheus(
-            query="ray_node_gram_used * 1024 * 1024", **kwargs
+            query=f"ray_node_gram_used{sf} * 1024 * 1024", **kwargs
         ),
         "gpu_total_memory": client.query_prometheus(
             query=(
-                "(sum(ray_node_gram_available) + sum(ray_node_gram_used)) * 1024 * 1024"
+                f"(sum(ray_node_gram_available{sf}) + sum(ray_node_gram_used{sf}))"
+                " * 1024 * 1024"
             ),
             **kwargs,
         ),
         "network_receive_speed": client.query_prometheus(
-            query="ray_node_network_receive_speed", **kwargs
+            query=f"ray_node_network_receive_speed{sf}", **kwargs
         ),
         "network_send_speed": client.query_prometheus(
-            query="ray_node_network_send_speed", **kwargs
+            query=f"ray_node_network_send_speed{sf}", **kwargs
         ),
         "cluster_active_nodes": client.query_prometheus(
-            query="ray_cluster_active_nodes", **kwargs
+            query=f"ray_cluster_active_nodes{sf}", **kwargs
         ),
         "cluster_failed_nodes": client.query_prometheus(
-            query="ray_cluster_failed_nodes", **kwargs
+            query=f"ray_cluster_failed_nodes{sf}", **kwargs
         ),
         "cluster_pending_nodes": client.query_prometheus(
-            query="ray_cluster_pending_nodes", **kwargs
+            query=f"ray_cluster_pending_nodes{sf}", **kwargs
+        ),
+        "worker_oom_kills": client.query_prometheus(
+            query=(
+                f"sum(ray_memory_manager_worker_eviction_total{sf}) by (Type, Name)"
+            ),
+            **kwargs,
+        ),
+        "unexpected_worker_failures": client.query_prometheus(
+            query=f"sum(ray_node_manager_unexpected_worker_failure_total{sf}) by (Type, Name)",
+            **kwargs,
         ),
     }
     metrics = {k: await v for k, v in metrics.items()}
@@ -105,8 +129,20 @@ async def _get_prometheus_metrics(start_time: float, end_time: float) -> dict:
 
 
 def get_prometheus_metrics(start_time: float, end_time: float) -> dict:
+    session_name = None
     try:
-        return asyncio.run(_get_prometheus_metrics(start_time, end_time))
+        import ray
+
+        if not ray.is_initialized():
+            ray.init("auto")
+        session_name = ray.get_runtime_context().get_session_name()
+    except Exception:
+        logger.warning(
+            "Couldn't obtain Ray session name for Prometheus query filtering. "
+            f"Exception below:\n{traceback.format_exc()}"
+        )
+    try:
+        return asyncio.run(_get_prometheus_metrics(start_time, end_time, session_name))
     except Exception:
         logger.error(
             "Couldn't obtain Prometheus metrics. "

@@ -123,6 +123,8 @@ class NormalTaskSubmitter {
   /// Schedule a task for direct submission to a worker.
   void SubmitTask(TaskSpecification task_spec);
 
+  void FlushMetrics() { scheduler_placement_time_ms_histogram_.Flush(); }
+
   /// Either remove a pending task or send an RPC to kill a running task
   ///
   /// \param[in] task_spec The task to kill.
@@ -178,11 +180,6 @@ class NormalTaskSubmitter {
 
   /// Report worker backlog information to the local raylet
   void ReportWorkerBacklogInternal() ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
-
-  /// Report backlog if the backlog size is changed for this scheduling key
-  /// since last report
-  void ReportWorkerBacklogIfNeeded(const SchedulingKey &scheduling_key)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   /// Request a new worker from the raylet if no such requests are currently in
   /// flight and there are tasks queued. If a raylet address is provided, then
@@ -319,7 +316,6 @@ class NormalTaskSubmitter {
     absl::flat_hash_set<rpc::Address> active_workers;
     // Keep track of how many workers have tasks to do.
     uint32_t num_busy_workers = 0;
-    int64_t last_reported_backlog_size = 0;
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.

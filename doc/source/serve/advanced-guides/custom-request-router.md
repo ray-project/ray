@@ -20,6 +20,7 @@ cover the following:
 - Utility mixins for request routing
 - Define a complex throughput-aware request router
 - Deploy an app with the throughput-aware request router
+- Experimental: Define a centralized capacity queue request router
 
 
 (simple-uniform-request-router)=
@@ -157,6 +158,124 @@ in the definition of the deployment class. The custom request router can then ge
 updated routing stats by looking up the `routing_stats` attribute of the running
 replicas and use it in the routing policy.
 
+
+(capacity-queue-request-router)=
+## Experimental: Define a centralized capacity queue request router
+
+In the previous examples, the routing decisions are based on the locally visible state of the target replicas from the perspective of the router
+replica. This view is **eventually consistent** not strongly because the serve controller frequently broadcasts the replica information to the router.
+Under high concurrency with multiple routers, this information can drift from reality and can cause several routers to simultaneously pick the same
+replica, causing transient load imbalance or triggering rejections and retries. For some applications this can result in lower throughput. A
+**centralized** approach avoids this: a single actor tracks per-replica in-flight counts, and every router acquires a *capacity token*
+before forwarding a request. This way, each token guarantees the target replica has room, eliminating the rejection protocol entirely.
+
+This example demonstrates how we can implement such routing policy. The example has three pieces:
+
+1. An importable **`CapacityQueue`** actor that tracks per-replica capacity and hands out
+   tokens using a least-loaded selection strategy.
+2. An importable **`CapacityQueueRouter`** custom request router that acquires a token before
+   routing and releases it when the request completes. In a real application, we can have multiple
+   replicas of `CapacityQueueRouter` each one keeping tracking their own view of state of replicas.
+   The centralized `CapacityQueue` actor is meant to keep their local information synchronized with
+   reality.
+3. A **deployment** that ties them together using a
+   [deployment actor](../api/doc/ray.serve.config.DeploymentActorConfig.rst) for the queue and a
+   [`RequestRouterConfig`](../api/doc/ray.serve.config.RequestRouterConfig.rst) for the router.
+
+(deploy-app-with-capacity-queue-router)=
+### Deploy an app with the capacity queue router
+
+The deployment wires the pieces together: a `DeploymentActorConfig` for the capacity queue
+and a `RequestRouterConfig` pointing at the custom router:
+
+```{literalinclude} ../doc_code/capacity_queue_request_router_app.py
+:start-after: __begin_deploy_app_with_capacity_queue_router__
+:end-before: __end_deploy_app_with_capacity_queue_router__
+:language: python
+```
+
+When the app starts:
+
+1. The Serve controller creates the `CapacityQueue` deployment actor **before**
+   any replicas start. `CapacityQueue` subscribes to replica updates via long poll.
+2. As the controller starts replicas, it sends deployment-target updates. The
+   queue's long-poll callback automatically registers each replica with its
+   `max_ongoing_requests` capacity and unregisters replicas that are removed
+   during scale-down or crash recovery.
+3. The `CapacityQueueRouter` running in each proxy discovers the singleton `CapacityQueue`
+   deployment actor, acquires a token for every incoming request, and routes to the replica
+   identified by the token.
+4. When the request completes, `CapacityQueueRouter.on_request_completed` fires and the token is
+   released back to the queue.
+
+Because the queue is a deployment actor, the controller handles its lifecycle
+automatically — health checks, cleanup on app deletion, and versioning during
+rolling updates.
+
+### Fault tolerance
+
+The `CapacityQueueRouter` handles failures gracefully:
+
+- **Queue unavailable** — if the queue actor is dead, not yet discovered, or
+  errors, the router retries with exponential backoff and falls back to
+  power-of-two-choices after `MAX_FAULT_RETRIES` consecutive failures.
+  Requests never raise exceptions due to queue issues.
+- **Capacity exhausted** — when all replicas are at capacity, the router
+  backs off and retries until capacity frees up.
+- **Queue restart** — a restarted queue has no knowledge of pre-crash
+  in-flight counts and may temporarily over-provision. This self-heals:
+  replicas reject excess requests, and the router does not release rejected
+  tokens intentionally, ratcheting up `in_flight` on the queue until it
+  matches reality. `token_ttl_s` (if configured) auto-reclaims any
+  remaining leaked tokens.
+- **Replica death** — the controller sends a long-poll update, the queue
+  unregisters the dead replica, and tokens are only issued for live replicas.
+
+### Usage
+The centralized capacity queue request router could bring performance benefits particularly in a constrained supply deployment, i.e. `max_ongoing_request=1` or `2`.
+
+### Benchmark
+
+#### Benchmark Setup
+- Deployment topology: Client -> `ParentDeployment` -> `ChildDeployment`. Request router selection is applied to both deployments,
+  controlling how parent replicas are selected by the HTTP proxy and how child replicas are selected by parent's `DeploymentHandle`.
+- Scale: small (8 replicas), medium (32 replicas), large (128 replicas), xlarge (512 replicas).
+- Workload: Replica processing latency is drawn from an exponential distribution with mean 1s and capped at 10s.
+- `max_ongoing_request` is set to `2`.
+- Load generation: Applies closed-loop load generation where the load consistently keeps replicas saturated at `max_ongoing_request` concurrency.
+- Warmup: 10s; metrics within the warmup window are discarded entirely.
+
+#### Benchmark Metrics
+- Throughput: Requests per second, i.e. `num_requests / duration`.
+- Utilization: Measures what fraction of a replica's total processing capacity was consumed by actual work during the experiment.
+  Concretely, `sum(replica_processing_latency_s) / (duration_s * max_ongoing_requests)`. For GPU deployments, utilization serves as
+  an assessment proxy for GPU utilization.
+- Latency: Measures the client-side end-to-end latency, covering the full round-trip --
+  client -> `ParentDeployment` -> `ChildDeployment` -> `ParentDeployment` -> client.
+
+#### Normal Situation
+Under normal (success) situations, `CapacityQueueRouter` yields higher throughput and utilization and lower latency.
+
+```{image} ../images/capacity-queue-router-normal.png
+:align: center
+:width: 800px
+```
+
+#### Fault Situation
+A fault is simulated by killing the `CapacityQueue` router, and upon recovery, `CapacityQueue` converges towards its pre-fault performance.
+
+```{image} ../images/capacity-queue-router-fault.png
+:align: center
+:width: 800px
+```
+
+:::{note}
+If you experience the following error when the `CapacityQueue` actor experiences faults and routing decisions fall back to the power-of-two-choices router,
+set `RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` to a higher value.
+
+> Failed to get queue length from Replica(id='...', deployment='ParentDeployment', app='...') within 0.1s.
+
+:::
 
 :::{warning}
 ## Gotchas and limitations
