@@ -640,27 +640,6 @@ void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
   buffer_pool_.FreeObjects(object_ids);
-  if (!local_only) {
-    std::vector<std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
-        rpc_clients;
-    // TODO(#56414): optimize this so we don't have to send a free objects request for
-    // every object to every node
-    const auto &node_info_map = gcs_client_.Nodes().GetAllNodeAddressAndLiveness();
-    for (const auto &[node_id, _] : node_info_map) {
-      if (node_id == self_node_id_) {
-        continue;
-      }
-      auto rpc_client = GetRpcClient(node_id);
-      if (rpc_client != nullptr) {
-        rpc_clients.emplace_back(node_id, std::move(rpc_client));
-      }
-    }
-    rpc_service_.post(
-        [this, object_ids, rpc_clients = std::move(rpc_clients)]() {
-          SpreadFreeObjectsRequest(object_ids, rpc_clients);
-        },
-        "ObjectManager.FreeObjects");
-  }
 }
 
 void ObjectManager::SpreadFreeObjectsRequest(
