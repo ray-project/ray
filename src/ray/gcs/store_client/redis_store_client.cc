@@ -523,10 +523,10 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   RedisContext context(io_service);
   RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
   RAY_CHECK_OK(context.Connect(options.ip,
-                                options.port,
-                                /*username=*/options.username,
-                                /*password=*/options.password,
-                                /*enable_ssl=*/options.enable_ssl))
+                               options.port,
+                               /*username=*/options.username,
+                               /*password=*/options.password,
+                               /*enable_ssl=*/options.enable_ssl))
       << "Failed to connect to Redis.";
 
   auto thread = std::make_unique<std::thread>([&]() {
@@ -571,9 +571,9 @@ bool RedisDelKeyPrefixSync(const std::string &host,
     auto del_cmd = std::vector<std::string>{"DEL", key};
     std::promise<std::shared_ptr<CallbackReply>> prom;
     context.RunArgvAsync(del_cmd,
-                          [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
-                            prom.set_value(callback_reply);
-                          });
+                         [&prom](const std::shared_ptr<CallbackReply> &callback_reply) {
+                           prom.set_value(callback_reply);
+                         });
     auto del_reply = prom.get_future().get();
     return del_reply->ReadAsInteger() > 0;
   };
