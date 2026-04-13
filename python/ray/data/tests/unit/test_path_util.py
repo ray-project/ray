@@ -1,10 +1,12 @@
 from unittest import mock
 
 import pyarrow
+import pyarrow.fs
 import pytest
 from fsspec.implementations.http import HTTPFileSystem
 from pyarrow.fs import FSSpecHandler, PyFileSystem
 
+from ray.data._internal.util import RetryingPyFileSystem
 from ray.data.datasource.path_util import (
     _has_file_extension,
     _is_filesystem_compatible_with_scheme,
@@ -79,51 +81,48 @@ def test_weird_local_paths(path):
 
 
 class TestIsFilesystemCompatibleWithScheme:
-    """Tests for _is_filesystem_compatible_with_scheme with fsspec-wrapped filesystems."""
-
-    def _make_mock_fsspec_fs(self, protocol):
-        """Create a PyFileSystem wrapping a mock fsspec filesystem with the given protocol."""
-        mock_fsspec_fs = mock.MagicMock()
-        mock_fsspec_fs.protocol = protocol
-        return PyFileSystem(FSSpecHandler(mock_fsspec_fs))
-
-    def test_native_s3_filesystem(self):
-        """Native PyArrow S3FileSystem should be compatible with s3 scheme."""
-        mock_fs = mock.MagicMock()
-        mock_fs.type_name = "s3"
-        assert _is_filesystem_compatible_with_scheme(mock_fs, "s3") is True
-        assert _is_filesystem_compatible_with_scheme(mock_fs, "") is False
+    """Tests for _is_filesystem_compatible_with_scheme with real filesystem implementations."""
 
     def test_native_local_filesystem(self):
         """Native PyArrow LocalFileSystem should be compatible with empty scheme."""
-        mock_fs = mock.MagicMock()
-        mock_fs.type_name = "local"
-        assert _is_filesystem_compatible_with_scheme(mock_fs, "") is True
-        assert _is_filesystem_compatible_with_scheme(mock_fs, "s3") is False
+        fs = pyarrow.fs.LocalFileSystem()
+        assert _is_filesystem_compatible_with_scheme(fs, "") is True
+        assert _is_filesystem_compatible_with_scheme(fs, "s3") is False
+
+    def test_native_s3_filesystem(self):
+        """Native PyArrow S3FileSystem should be compatible with s3 scheme."""
+        fs = pyarrow.fs.S3FileSystem(anonymous=True, region="us-east-1")
+        assert _is_filesystem_compatible_with_scheme(fs, "s3") is True
+        assert _is_filesystem_compatible_with_scheme(fs, "") is False
 
     def test_fsspec_s3_filesystem_with_s3_scheme(self):
         """fsspec S3FileSystem wrapped in PyFileSystem should be compatible with s3 scheme."""
-        wrapped_fs = self._make_mock_fsspec_fs("s3")
+        s3fs = pytest.importorskip("s3fs")
+        wrapped_fs = PyFileSystem(FSSpecHandler(s3fs.S3FileSystem(anon=True)))
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "s3") is True
 
     def test_fsspec_s3_filesystem_with_bare_paths(self):
         """fsspec S3FileSystem wrapped in PyFileSystem should be compatible with bare paths."""
-        wrapped_fs = self._make_mock_fsspec_fs("s3")
+        s3fs = pytest.importorskip("s3fs")
+        wrapped_fs = PyFileSystem(FSSpecHandler(s3fs.S3FileSystem(anon=True)))
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "") is True
 
     def test_fsspec_s3_filesystem_with_s3a_scheme(self):
-        """fsspec S3FileSystem with tuple protocol should match s3a scheme."""
-        wrapped_fs = self._make_mock_fsspec_fs(("s3", "s3a"))
+        """Real s3fs has protocol=('s3', 's3a'), so it should match s3a scheme."""
+        s3fs = pytest.importorskip("s3fs")
+        wrapped_fs = PyFileSystem(FSSpecHandler(s3fs.S3FileSystem(anon=True)))
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "s3a") is True
 
     def test_fsspec_gcs_filesystem_with_gs_scheme(self):
         """fsspec GCS filesystem should be compatible with gs scheme."""
-        wrapped_fs = self._make_mock_fsspec_fs("gs")
+        gcsfs = pytest.importorskip("gcsfs")
+        wrapped_fs = PyFileSystem(FSSpecHandler(gcsfs.GCSFileSystem(token="anon")))
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "gs") is True
 
     def test_fsspec_gcs_filesystem_with_gcs_scheme(self):
-        """fsspec GCS filesystem with tuple protocol should match gcs scheme."""
-        wrapped_fs = self._make_mock_fsspec_fs(("gs", "gcs"))
+        """Real gcsfs has protocol=('gcs', 'gs'), so it should match gcs scheme."""
+        gcsfs = pytest.importorskip("gcsfs")
+        wrapped_fs = PyFileSystem(FSSpecHandler(gcsfs.GCSFileSystem(token="anon")))
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "gcs") is True
 
     def test_fsspec_http_filesystem(self):
@@ -134,29 +133,28 @@ class TestIsFilesystemCompatibleWithScheme:
 
     def test_fsspec_s3_not_compatible_with_gs(self):
         """fsspec S3FileSystem should NOT be compatible with gs scheme."""
-        wrapped_fs = self._make_mock_fsspec_fs("s3")
+        s3fs = pytest.importorskip("s3fs")
+        wrapped_fs = PyFileSystem(FSSpecHandler(s3fs.S3FileSystem(anon=True)))
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "gs") is False
 
     def test_fsspec_s3_not_compatible_with_http(self):
         """fsspec S3FileSystem should NOT be compatible with http/https schemes."""
-        wrapped_fs = self._make_mock_fsspec_fs("s3")
+        s3fs = pytest.importorskip("s3fs")
+        wrapped_fs = PyFileSystem(FSSpecHandler(s3fs.S3FileSystem(anon=True)))
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "http") is False
         assert _is_filesystem_compatible_with_scheme(wrapped_fs, "https") is False
 
     def test_retrying_wrapper_around_native_s3(self):
         """RetryingPyFileSystem wrapping a native S3FileSystem should be compatible with s3."""
-        from ray.data._internal.util import RetryingPyFileSystem
-
-        mock_native_s3 = mock.MagicMock()
-        mock_native_s3.type_name = "s3"
-        retrying_fs = RetryingPyFileSystem(mock_native_s3)
+        s3_fs = pyarrow.fs.S3FileSystem(anonymous=True)
+        retrying_fs = RetryingPyFileSystem.wrap(s3_fs, retryable_errors=["AWS Error"])
         assert _is_filesystem_compatible_with_scheme(retrying_fs, "s3") is True
         assert _is_filesystem_compatible_with_scheme(retrying_fs, "gs") is False
 
     def test_unknown_scheme_trusts_filesystem(self):
         """Unknown schemes should always return True (trust user's filesystem)."""
-        wrapped_fs = self._make_mock_fsspec_fs("s3")
-        assert _is_filesystem_compatible_with_scheme(wrapped_fs, "custom") is True
+        fs = pyarrow.fs.LocalFileSystem()
+        assert _is_filesystem_compatible_with_scheme(fs, "custom") is True
 
 
 if __name__ == "__main__":
