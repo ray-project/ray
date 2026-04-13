@@ -28,7 +28,7 @@ class PlacementGroupCleanerCallback(ControllerCallback, WorkerGroupCallback):
 
     def __init__(
         self,
-        check_interval_s: float = 5.0,
+        check_interval_s: float = 1.0,
         get_actor_timeout_s: float = GET_ACTOR_TIMEOUT_S,
         stop_timeout: Optional[float] = None,
     ):
