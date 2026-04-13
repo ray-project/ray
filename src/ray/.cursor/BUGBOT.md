@@ -57,7 +57,7 @@ Python logic. A unit test must NOT:
   - This includes any fixture that starts with `ray_start_`.
 - Use `time.sleep()`.
 
-Everything else - initiating ray clusters during runtime, using fixtures that start ray clusters, and using `time.sleep()` - is an **integration test** and should belong in the top-level files under `python/ray/data/tests/` (e.g., `test_dataset.py`, `test_map.py`)
+Everything else - calling ray.* APIs at runtime, using fixtures that start ray clusters, or using `time.sleep()` - is an **integration test** and should belong in the top-level files under `python/ray/data/tests/` (e.g., `test_dataset.py`, `test_map.py`)
 
 ### Checks
 1. **Test added to `python/ray/data/tests/unit/` that violates the unit test rules**: If a new or modified test in `unit/` calls any `ray.*` API at runtime, uses a cluster-starting fixture, or uses `time.sleep()`, post:
