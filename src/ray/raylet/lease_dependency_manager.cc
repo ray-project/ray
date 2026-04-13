@@ -254,10 +254,7 @@ bool LeaseDependencyManager::RequestLeaseDependencies(
 void LeaseDependencyManager::RemoveLeaseDependencies(const LeaseID &lease_id) {
   RAY_LOG(DEBUG) << "Removing dependencies for lease " << lease_id;
   auto lease_entry = queued_lease_requests_.find(lease_id);
-  if (lease_entry == queued_lease_requests_.end()) {
-    // Lease had no dependencies.
-    return;
-  }
+  RAY_CHECK(lease_entry != queued_lease_requests_.end());
 
   if (lease_entry->second->pull_request_id_ > 0) {
     RAY_LOG(DEBUG) << "Canceling pull for dependencies of lease " << lease_id

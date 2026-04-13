@@ -573,8 +573,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
   // Erases the work from lease_to_grant_ queue, also removes the lease dependencies.
   auto erase_from_leases_to_grant_queue_fn =
       [this](const std::shared_ptr<internal::Work> &work_to_erase,
-             const SchedulingClass &_scheduling_class,
-             const LeaseID &lease_id) {
+             const SchedulingClass &_scheduling_class) {
         auto shapes_it = leases_to_grant_.find(_scheduling_class);
         RAY_CHECK(shapes_it != leases_to_grant_.end());
         auto &leases_to_grant_queue = shapes_it->second;
@@ -592,7 +591,10 @@ bool LocalLeaseManager::PoppedWorkerHandler(
           leases_to_grant_.erase(shapes_it);
         }
         RAY_CHECK(erased);
-        lease_dependency_manager_.RemoveLeaseDependencies(lease_id);
+        const auto &lease_spec = work_to_erase->lease_.GetLeaseSpecification();
+        if (lease_spec.GetDependencies().empty()) {
+          lease_dependency_manager_.RemoveLeaseDependencies(lease_spec.LeaseId());
+        }
       };
 
   if (canceled) {
@@ -634,7 +636,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
       // The task job finished.
       // Just remove the task from dispatch queue.
       RAY_LOG(DEBUG) << "Call back to a job finished lease, lease id = " << lease_id;
-      erase_from_leases_to_grant_queue_fn(work, scheduling_class, lease_id);
+      erase_from_leases_to_grant_queue_fn(work, scheduling_class);
     } else {
       // In other cases, set the work status `WAITING` to make this task
       // could be re-dispatched.
@@ -675,7 +677,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
                    << worker->WorkerId();
 
     Grant(worker, leased_workers_, work->allocated_instances_, lease, reply_callbacks);
-    erase_from_leases_to_grant_queue_fn(work, scheduling_class, lease_id);
+    erase_from_leases_to_grant_queue_fn(work, scheduling_class);
     granted = true;
   }
 
