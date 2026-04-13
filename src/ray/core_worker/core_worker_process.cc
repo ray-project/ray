@@ -713,7 +713,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
                                    std::move(task_event_buffer),
                                    pid,
                                    *task_by_state_gauge_,
-                                   *actor_by_state_gauge_);
+                                   *actor_by_state_gauge_,
+                                   pubsub_io.stats());
 
   core_worker->InitializeShutdownExecutor();
 

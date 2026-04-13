@@ -317,13 +317,15 @@ CoreWorker::CoreWorker(
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
     uint32_t pid,
     ray::observability::MetricInterface &task_by_state_gauge,
-    ray::observability::MetricInterface &actor_by_state_gauge)
+    ray::observability::MetricInterface &actor_by_state_gauge,
+    std::shared_ptr<EventTracker> pubsub_event_stats)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
       worker_context_(std::move(worker_context)),
       io_service_(io_service),
+      pubsub_event_stats_(std::move(pubsub_event_stats)),
       core_worker_client_pool_(std::move(core_worker_client_pool)),
       raylet_client_pool_(std::move(raylet_client_pool)),
       periodical_runner_(std::move(periodical_runner)),
@@ -454,14 +456,20 @@ CoreWorker::CoreWorker(
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_->RunFnPeriodically(
         [this] {
-          RAY_LOG(INFO) << "Event stats:\n\n"
-                        << io_service_.stats()->StatsString() << "\n\n"
-                        << "-----------------\n"
-                        << "Task execution event stats:\n"
-                        << task_execution_service_.stats()->StatsString() << "\n\n"
-                        << "-----------------\n"
-                        << "Task Event stats:\n"
-                        << task_event_buffer_->DebugString() << "\n";
+          std::ostringstream ss;
+          ss << "Event stats:\n\n" << io_service_.stats()->StatsString() << "\n\n";
+          if (pubsub_event_stats_) {
+            ss << "-----------------\n"
+               << "Pubsub io_context event stats:\n"
+               << pubsub_event_stats_->StatsString() << "\n\n";
+          }
+          ss << "-----------------\n"
+             << "Task execution event stats:\n"
+             << task_execution_service_.stats()->StatsString() << "\n\n"
+             << "-----------------\n"
+             << "Task Event stats:\n"
+             << task_event_buffer_->DebugString() << "\n";
+          RAY_LOG(INFO) << ss.str();
         },
         event_stats_print_interval_ms,
         "CoreWorker.PrintEventStats");
