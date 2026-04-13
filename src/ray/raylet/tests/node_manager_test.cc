@@ -48,6 +48,7 @@
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/rpc/utils.h"
+#include "ray/util/clock.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -349,6 +350,7 @@ class NodeManagerTest : public ::testing::Test {
               NodeID::FromBinary(node_id.Binary()));
         },
         fake_resource_usage_gauge_,
+        clock_,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -449,6 +451,7 @@ class NodeManagerTest : public ::testing::Test {
 
   NodeID raylet_node_id_;
   std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
+  ray::Clock clock_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;

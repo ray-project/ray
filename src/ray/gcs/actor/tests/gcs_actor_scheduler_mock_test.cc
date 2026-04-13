@@ -29,6 +29,7 @@
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 
 using namespace ::testing;  // NOLINT
@@ -66,6 +67,7 @@ class GcsActorSchedulerMockTest : public Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         fake_resource_usage_gauge_,
+        clock_,
         /*is_local_node_with_raylet=*/false);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
@@ -99,6 +101,7 @@ class GcsActorSchedulerMockTest : public Test {
   std::unique_ptr<rpc::RayletClientPool> client_pool;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
+  ray::Clock clock_;
   observability::FakeHistogram fake_scheduler_placement_time_ms_histogram_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
       counter;

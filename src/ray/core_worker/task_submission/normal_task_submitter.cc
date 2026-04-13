@@ -239,10 +239,9 @@ void NormalTaskSubmitter::ReportWorkerBacklog() {
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
     const auto scheduling_class = std::get<0>(scheduling_key);
-    auto &[lease_spec, backlog_size] = backlogs[scheduling_class];
-    if (backlog_size == 0) {
-      lease_spec = scheduling_key_entry.lease_spec.GetMessage();
-    }
+    auto [it, inserted] = backlogs.try_emplace(
+        scheduling_class, scheduling_key_entry.lease_spec.GetMessage(), 0);
+    int64_t &backlog_size = it->second.second;
     backlog_size += scheduling_key_entry.BacklogSize();
   }
 

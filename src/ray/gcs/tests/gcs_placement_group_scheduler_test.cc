@@ -34,6 +34,7 @@
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 #include "ray/util/counter_map.h"
 
 namespace ray {
@@ -67,6 +68,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         fake_resource_usage_gauge_,
+        clock_,
         /*is_local_node_with_raylet=*/false);
     gcs_node_manager_ =
         std::make_shared<GcsNodeManager>(gcs_publisher_.get(),
@@ -300,6 +302,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
 
   std::vector<std::shared_ptr<rpc::FakeRayletClient>> raylet_clients_;
   std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  ray::Clock clock_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<GcsNodeManager> gcs_node_manager_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
