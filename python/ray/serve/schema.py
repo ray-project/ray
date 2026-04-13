@@ -1004,6 +1004,16 @@ class ServeDeploySchema(BaseModel):
         ..., description="The set of applications to run on the Ray cluster."
     )
     target_capacity: Optional[float] = TARGET_CAPACITY_FIELD
+    dns_aid_enabled: bool = Field(
+        default=False,
+        description=(
+            "When True, ServeController publishes a DNS-AID SVCB record "
+            "(RFC 9460) for each deployment in HEALTHY state so that external "
+            "agents can discover Serve deployments via DNS without dashboard or "
+            "GCS access.  Requires the optional `dns-aid` package and the "
+            "DNS_AID_ZONE environment variable (or DnsAidConfig.zone)."
+        ),
+    )
 
     @field_validator("applications")
     @classmethod
