@@ -256,6 +256,7 @@ def _make_endpoint_user_class(
     host_url: str,
     token: str,
     payload: Any,
+    user_class_name_prefix: str = "",
 ) -> type:
     """Create a locust HttpUser subclass for one endpoint."""
     from locust import HttpUser, between, task
@@ -276,17 +277,24 @@ def _make_endpoint_user_class(
         self.client.post(route, json=payload, name=name, timeout=0.5)
 
     _User.predict = task(predict)
-    _User.__name__ = name.replace("-", "_") + "_User"
+    prefix = f"{user_class_name_prefix}_" if user_class_name_prefix else ""
+    _User.__name__ = prefix + name.replace("-", "_") + "_User"
     _User.__qualname__ = _User.__name__
     return _User
 
 
 def _build_user_classes(
-    endpoints: List[Tuple], host_url: str, token: str, payload: Any
+    endpoints: List[Tuple],
+    host_url: str,
+    token: str,
+    payload: Any,
+    user_class_name_prefix: str = "",
 ) -> List[type]:
     """Build locust user classes from endpoint configs."""
     return [
-        _make_endpoint_user_class(n, r, w, host_url, token, payload)
+        _make_endpoint_user_class(
+            n, r, w, host_url, token, payload, user_class_name_prefix
+        )
         for n, r, w in endpoints
     ]
 
@@ -319,8 +327,12 @@ def run_multi_endpoint_worker(
     from locust.log import setup_logging
 
     setup_logging("INFO")
-    warmup_classes = _build_user_classes(warmup_endpoints, host_url, token, payload)
-    ramp_classes = _build_user_classes(ramp_endpoints, host_url, token, payload)
+    warmup_classes = _build_user_classes(
+        warmup_endpoints, host_url, token, payload, user_class_name_prefix="warmup"
+    )
+    ramp_classes = _build_user_classes(
+        ramp_endpoints, host_url, token, payload, user_class_name_prefix="ramp"
+    )
     all_classes = warmup_classes + ramp_classes
 
     env = Environment(user_classes=all_classes, events=locust.events)
@@ -358,8 +370,12 @@ def run_multi_endpoint_master(
         stats_printer,
     )
 
-    warmup_classes = _build_user_classes(warmup_endpoints, host_url, token, payload)
-    ramp_classes = _build_user_classes(ramp_endpoints, host_url, token, payload)
+    warmup_classes = _build_user_classes(
+        warmup_endpoints, host_url, token, payload, user_class_name_prefix="warmup"
+    )
+    ramp_classes = _build_user_classes(
+        ramp_endpoints, host_url, token, payload, user_class_name_prefix="ramp"
+    )
     all_classes = warmup_classes + ramp_classes
 
     stage_stats = []
