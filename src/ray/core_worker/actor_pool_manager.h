@@ -340,6 +340,8 @@ class ActorPoolManager {
   FRIEND_TEST(ActorPoolManagerLocalityTest, EqualRankSelectionsRotateAcrossActors);
   FRIEND_TEST(ActorPoolManagerLocalityTest, LargerDataNodeWins);
   FRIEND_TEST(ActorPoolManagerLocalityTest, NullProviderFallsBackToLoad);
+  FRIEND_TEST(ActorPoolManagerLocalityTest,
+              DrainQueuedWorkUsesLocalActorWhenActorsBecomeAvailable);
   FRIEND_TEST(ActorPoolManagerTest, GetOccupiedTaskSlots);
   FRIEND_TEST(ActorPoolManagerTest, GetNumActiveActors);
   FRIEND_TEST(ActorPoolManagerTest, UnregisterPoolCleansTrackedWorkItems);

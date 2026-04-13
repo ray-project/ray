@@ -187,28 +187,6 @@ class ActorPool:
         logger.info(
             f"Created ActorPool {self._pool_id.hex()} with {initial_size} actors"
         )
-        self._log_debug("created", initial_size=initial_size)
-
-    def _log_debug(self, event: str, **fields: Any) -> None:
-        stats = None
-        try:
-            if hasattr(self, "_core_worker") and hasattr(self, "_pool_id"):
-                stats = self._core_worker.get_pool_stats(self._pool_id)
-        except Exception:
-            stats = None
-
-        logger.warning(
-            "ActorPoolDebugPy %s",
-            {
-                "event": event,
-                "pool_id": self._pool_id.hex() if hasattr(self, "_pool_id") else None,
-                "size": len(getattr(self, "_actor_handles", [])),
-                "logical_ids": len(getattr(self, "_actor_to_logical_id", {})),
-                "is_shutdown": getattr(self, "_is_shutdown", None),
-                "stats": stats,
-                **fields,
-            },
-        )
 
     def _create_and_add_actor(self) -> ray.actor.ActorHandle:
         """Create a new actor and add it to the pool."""
@@ -251,11 +229,6 @@ class ActorPool:
         actor_id = actor._actor_id
         # TODO: Get actual node location for locality-aware scheduling
         self._core_worker.add_actor_to_pool(self._pool_id, actor_id)
-        self._log_debug(
-            "create_and_add_actor",
-            actor_id=actor_id.hex(),
-            logical_id=logical_id,
-        )
 
         return actor
 
@@ -414,7 +387,6 @@ class ActorPool:
             for _ in range(delta):
                 self._create_and_add_actor()
             logger.info(f"Scaled pool {self._pool_id.hex()} up by {delta} actors")
-            self._log_debug("scale_up", delta=delta)
             return delta
         elif delta < 0:
             # Remove actors from the end, but never go below min_size.
@@ -429,7 +401,6 @@ class ActorPool:
             logger.info(
                 f"Scaled pool {self._pool_id.hex()} down by {num_to_remove} actors"
             )
-            self._log_debug("scale_down", delta=-num_to_remove)
             return -num_to_remove
         return 0
 
@@ -454,11 +425,6 @@ class ActorPool:
         self._core_worker.remove_actor_from_pool(self._pool_id, actor._actor_id)
         if kill:
             ray.kill(actor)
-        self._log_debug(
-            "remove_actor",
-            actor_id=actor._actor_id.hex(),
-            kill=kill,
-        )
         return True
 
     def shutdown(self, force: bool = False, grace_period_s: float = 30.0) -> None:
@@ -473,7 +439,6 @@ class ActorPool:
             return
 
         logger.info(f"Shutting down pool {self._pool_id.hex()}")
-        self._log_debug("shutdown_begin", force=force, grace_period_s=grace_period_s)
 
         # Kill all actors
         for actor in self._actor_handles:
@@ -488,7 +453,6 @@ class ActorPool:
         # Unregister the pool
         self._core_worker.unregister_actor_pool(self._pool_id)
         self._is_shutdown = True
-        self._log_debug("shutdown_end", force=force)
 
     def __del__(self):
         """Cleanup when the pool is garbage collected."""
@@ -498,7 +462,6 @@ class ActorPool:
                 and hasattr(self, "_pool_id")
                 and hasattr(self, "_core_worker")
             ):
-                self._log_debug("gc_unregister")
                 self._core_worker.unregister_actor_pool(self._pool_id)
         except Exception:
             # Ignore errors during cleanup (worker may have shut down)

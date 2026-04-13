@@ -270,20 +270,6 @@ class DataOpTask(OpTask):
                     f"Will retry next iteration. "
                     f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
                 )
-                if "FaultInjectableIncrementBatch" in self._operator_name:
-                    logger.warning(
-                        "RayDataActorPoolDebug %s",
-                        {
-                            "event": "metadata_timeout",
-                            "operator_name": self._operator_name,
-                            "operator_id": self._operator_id,
-                            "task_index": self.task_index(),
-                            "task_id": self.get_task_id().hex(),
-                            "pending_block_ref": self._pending_block_ref.hex(),
-                            "pending_meta_ref": self._pending_meta_ref.hex(),
-                            "has_finished": self._has_finished,
-                        },
-                    )
                 break
 
             meta = meta_with_schema.metadata
@@ -419,7 +405,6 @@ class PhysicalOperator(Operator):
         self._logical_operators: List[LogicalOperator] = []
         self._data_context = data_context
         self._id = str(uuid.uuid4())
-        self._logged_has_completed = False
         # Initialize metrics after data_context is set
         self._metrics = OpRuntimeMetrics(self)
 
@@ -595,25 +580,12 @@ class PhysicalOperator(Operator):
         # (not self.has_next()) because ReorderingBundleQueue can
         # return False for self.has_next(), but have a non-empty queue size.
         # Draining the internal output queue is important to free object refs.
-        completed = (
+        return (
             self.has_execution_finished()
             and internal_output_queue_num_blocks == 0
             # TODO following check is redundant; remove
             and not self.has_next()
         )
-        if completed and not self._logged_has_completed:
-            logger.warning(
-                "RayDataActorPoolDebug %s",
-                {
-                    "event": "operator_has_completed",
-                    "operator_id": self.id,
-                    "operator_name": self.name,
-                    "num_active_tasks": self.num_active_tasks(),
-                    "inputs_complete": self._inputs_complete,
-                },
-            )
-            self._logged_has_completed = True
-        return completed
 
     def get_stats(self) -> StatsDict:
         """Return recorded execution stats for use with DatasetStats."""
@@ -839,15 +811,6 @@ class PhysicalOperator(Operator):
 
         # Mark operator as shut down
         self._shutdown = True
-        logger.warning(
-            "RayDataActorPoolDebug %s",
-            {
-                "event": "physical_operator_shutdown",
-                "operator_id": self.id,
-                "operator_name": self.name,
-                "force": force,
-            },
-        )
         # Time shutdown sequence duration
         with timer.timer():
             self._do_shutdown(force)

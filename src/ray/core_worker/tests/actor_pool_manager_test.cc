@@ -23,6 +23,7 @@
 #include "gtest/gtest.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs_client/accessors/actor_info_accessor.h"
+#include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/lease_policy.h"
@@ -878,6 +879,58 @@ TEST_F(ActorPoolManagerLocalityTest, NullProviderFallsBackToLoad) {
   auto selected = pool_manager_->SelectActorForTask(pool_id, {obj});
   // Should not crash, should select actor2 (less loaded)
   EXPECT_EQ(selected, actor2);
+}
+
+TEST_F(ActorPoolManagerLocalityTest,
+       DrainQueuedWorkUsesLocalActorWhenActorsBecomeAvailable) {
+  NodeID node1 = NodeID::FromRandom();
+  NodeID node2 = NodeID::FromRandom();
+
+  ObjectID obj = ObjectID::FromRandom();
+  LocalityData data;
+  data.object_size = 1000;
+  data.nodes_containing_object = {node2};
+
+  locality_provider_ = std::make_unique<MockLocalityDataProvider>(
+      absl::flat_hash_map<ObjectID, LocalityData>{{obj, data}});
+
+  pool_manager_ = std::make_unique<ActorPoolManager>(
+      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_->locality_data_provider_ = locality_provider_.get();
+
+  auto pool_id = CreateTestPool(/*max_tasks_in_flight=*/1);
+  auto actor1 = CreateActorID();
+  auto actor2 = CreateActorID();
+
+  pool_manager_->AddActorToPool(pool_id, actor1, node1);
+  pool_manager_->AddActorToPool(pool_id, actor2, node2);
+  pool_manager_->OnActorDead(actor1);
+  pool_manager_->OnActorDead(actor2);
+
+  RayFunction function;
+  std::vector<std::unique_ptr<TaskArg>> args;
+  args.push_back(std::make_unique<TaskArgByReference>(
+      obj, rpc::Address(), "DrainQueuedWorkUsesLocalActorWhenActorsBecomeAvailable"));
+  TaskOptions options;
+  pool_manager_->SubmitTaskToPool(pool_id, function, std::move(args), options);
+
+  auto stats = pool_manager_->GetPoolStats(pool_id);
+  EXPECT_EQ(stats.backlog_size, 1);
+  EXPECT_EQ(stats.total_in_flight, 0);
+
+  {
+    absl::MutexLock lock(&pool_manager_->mu_);
+    pool_manager_->pools_[pool_id].actor_states[actor1].is_alive = true;
+    pool_manager_->pools_[pool_id].actor_states[actor2].is_alive = true;
+  }
+
+  pool_manager_->DrainWorkQueue(pool_id);
+
+  stats = pool_manager_->GetPoolStats(pool_id);
+  EXPECT_EQ(stats.backlog_size, 0);
+  EXPECT_EQ(stats.total_in_flight, 1);
+  EXPECT_EQ(pool_manager_->GetActorTasksInFlight(pool_id, actor1), 0);
+  EXPECT_EQ(pool_manager_->GetActorTasksInFlight(pool_id, actor2), 1);
 }
 
 // =========================================================================

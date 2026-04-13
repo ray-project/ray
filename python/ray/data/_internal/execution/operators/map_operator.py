@@ -78,83 +78,6 @@ from ray.data.context import DataContext
 logger = logging.getLogger(__name__)
 
 
-def _should_log_actor_pool_fault_debug(operator_name: str) -> bool:
-    return "FaultInjectableIncrementBatch" in operator_name
-
-
-def _maybe_get_actor_pool_debug_value(
-    actor_pool: Any, method_name: str
-) -> Optional[Any]:
-    method = getattr(actor_pool, method_name, None)
-    if method is None:
-        return None
-    return method()
-
-
-def _log_actor_pool_fault_debug(op: "MapOperator", event: str, **fields) -> None:
-    if not _should_log_actor_pool_fault_debug(op.name):
-        return
-
-    actor_pool = getattr(op, "_actor_pool", None)
-    bundle_queue = getattr(op, "_bundle_queue", None)
-    payload = {
-        "event": event,
-        "operator_name": op.name,
-        "operator_id": op.id,
-        "active_data_tasks": len(getattr(op, "_data_tasks", {})),
-        "active_metadata_tasks": len(getattr(op, "_metadata_tasks", {})),
-        "output_queue_blocks": op._output_queue.num_blocks(),
-        "bundle_queue_blocks": None
-        if bundle_queue is None
-        else bundle_queue.num_blocks(),
-        "bundle_queue_bundles": None
-        if bundle_queue is None
-        else bundle_queue.num_bundles(),
-    }
-    if actor_pool is not None:
-        pool_tasks_in_flight = _maybe_get_actor_pool_debug_value(
-            actor_pool, "num_tasks_in_flight"
-        )
-        pool_running_actors = _maybe_get_actor_pool_debug_value(
-            actor_pool, "num_running_actors"
-        )
-        pool_alive_actors = _maybe_get_actor_pool_debug_value(
-            actor_pool, "num_alive_actors"
-        )
-        pool_active_actors = _maybe_get_actor_pool_debug_value(
-            actor_pool, "num_active_actors"
-        )
-        pool_restarting_actors = _maybe_get_actor_pool_debug_value(
-            actor_pool, "num_restarting_actors"
-        )
-        pool_free_slots = _maybe_get_actor_pool_debug_value(
-            actor_pool, "num_free_task_slots"
-        )
-        if pool_free_slots is None:
-            max_tasks_in_flight_per_actor = _maybe_get_actor_pool_debug_value(
-                actor_pool, "max_tasks_in_flight_per_actor"
-            )
-            if (
-                pool_tasks_in_flight is not None
-                and pool_running_actors is not None
-                and max_tasks_in_flight_per_actor is not None
-            ):
-                capacity = max_tasks_in_flight_per_actor * pool_running_actors
-                pool_free_slots = max(0, capacity - pool_tasks_in_flight)
-        payload.update(
-            {
-                "pool_tasks_in_flight": pool_tasks_in_flight,
-                "pool_free_slots": pool_free_slots,
-                "pool_running_actors": pool_running_actors,
-                "pool_alive_actors": pool_alive_actors,
-                "pool_active_actors": pool_active_actors,
-                "pool_restarting_actors": pool_restarting_actors,
-            }
-        )
-    payload.update(fields)
-    logger.warning("RayDataActorPoolDebug %s", payload)
-
-
 @ray.remote(num_cpus=0)
 def _get_arrow_schema_from_block(block: Block) -> "pa.Schema":
     """Extract PyArrow schema from a block by converting a 1-row sample.
@@ -650,12 +573,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._metrics.on_output_queued(output)
             if task_index not in first_output_logged:
                 first_output_logged.add(task_index)
-                _log_actor_pool_fault_debug(
-                    self,
-                    "first_output",
-                    task_index=task_index,
-                    output_num_rows=output.num_rows(),
-                )
 
         def _task_done_callback(
             task_index: int,
@@ -687,15 +604,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
             self._output_queue.finalize(key=task_index)
-            _log_actor_pool_fault_debug(
-                self,
-                "task_done",
-                task_index=task_index,
-                exception=None if exception is None else type(exception).__name__,
-                output_backpressure_s=None
-                if task_exec_driver_stats is None
-                else task_exec_driver_stats.task_output_backpressure_s,
-            )
             if task_done_callback:
                 task_done_callback()
 
@@ -712,13 +620,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             task_index, inputs, task_id=data_task.get_task_id()
         )
         self._data_tasks[task_index] = data_task
-        _log_actor_pool_fault_debug(
-            self,
-            "task_submitted",
-            task_index=task_index,
-            task_id=data_task.get_task_id().hex(),
-            input_blocks=len(inputs.blocks),
-        )
 
     def _submit_metadata_task(
         self, result_ref: ObjectRef, task_done_callback: Callable[[], None]

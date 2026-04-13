@@ -75,7 +75,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         actor_kwargs: Optional[Dict[str, Any]] = None,
         actor_options: Optional[Dict[str, Any]] = None,
         operator_id: Optional[str] = None,
-        operator_name: Optional[str] = None,
         _enable_actor_pool_on_exit_hook: bool = False,
     ):
         """Initialize the adapter.
@@ -91,7 +90,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
             actor_kwargs: Keyword arguments for actor constructor.
             actor_options: Options for ray.remote() (num_cpus, num_gpus, etc.).
             operator_id: Operator ID for labeling actors.
-            operator_name: Operator name for debugging.
             _enable_actor_pool_on_exit_hook: Enable actor cleanup hook.
         """
         from ray.experimental.actor_pool import ActorPool
@@ -104,7 +102,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         self._per_actor_resource_usage = per_actor_resource_usage
         self._enable_actor_pool_on_exit_hook = _enable_actor_pool_on_exit_hook
         self._operator_id = operator_id
-        self._operator_name = operator_name or actor_cls.__name__
 
         if self._min_size < 1:
             raise ValueError(f"min_size must be >= 1, got {self._min_size}")
@@ -157,38 +154,9 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         # Cached counts
         self._num_restarting_actors: int = 0
         self._num_active_data_tasks: int = 0
-        self._is_shutting_down: bool = False
 
         # Cache worker reference for C++ pool queries
         self._worker = None
-
-    def _log_debug(self, event: str, **fields: Any) -> None:
-        try:
-            pool_tasks_in_flight = self.num_tasks_in_flight()
-        except Exception:
-            pool_tasks_in_flight = None
-
-        pool = getattr(self, "_pool", None)
-        pool_id = None
-        if pool is not None:
-            try:
-                pool_id = pool.pool_id.hex()
-            except Exception:
-                pool_id = None
-        logger.warning(
-            "RayDataActorPoolDebug %s",
-            {
-                "event": event,
-                "operator_id": getattr(self, "_operator_id", None),
-                "operator_name": getattr(self, "_operator_name", None),
-                "pool_id": pool_id,
-                "running_actors": len(getattr(self, "_running_actors", {})),
-                "pending_actors": len(getattr(self, "_pending_actors", {})),
-                "restarting_actors": getattr(self, "_num_restarting_actors", None),
-                "pool_tasks_in_flight": pool_tasks_in_flight,
-                **fields,
-            },
-        )
 
     # =========================================================================
     # AutoscalingActorPool Interface Implementation
@@ -284,11 +252,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
             for actor in self._pool.actors[-target_num_actors:]:
                 ready_ref = actor.get_location.remote()
                 self._pending_actors[ready_ref] = actor
-            self._log_debug(
-                "scale_up_submitted",
-                delta=target_num_actors,
-                reason=req.reason,
-            )
 
             self._last_upscaled_at = time.time()
             return target_num_actors
@@ -359,11 +322,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
                 self._ACTOR_STARTUP_TIMEOUT_S,
             )
             self._pending_actors[ready_ref] = actor
-            self._log_debug(
-                "pending_actor_startup_timeout",
-                ready_ref=ready_ref.hex(),
-                actor_id=actor._actor_id.hex(),
-            )
             return False
 
         actor_location = ray.get(ready[0])
@@ -388,13 +346,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
                 actor._actor_id,
                 location=node_id,
             )
-
-        self._log_debug(
-            "pending_to_running",
-            ready_ref=ready_ref.hex(),
-            actor_id=actor._actor_id.hex(),
-            actor_location=actor_location,
-        )
 
         return True
 
@@ -610,25 +561,13 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
 
     def shutdown(self, force: bool = False):
         """Shutdown the pool."""
-        self._is_shutting_down = True
-        self._log_debug("shutdown_begin", force=force)
-        try:
-            self._release_pending_actors(force=force)
-            self._release_running_actors(force=force)
-            # Shutdown the underlying ActorPool
-            self._pool.shutdown(force=force)
-        finally:
-            self._log_debug("shutdown_end", force=force)
-            self._is_shutting_down = False
+        self._release_pending_actors(force=force)
+        self._release_running_actors(force=force)
+        # Shutdown the underlying ActorPool
+        self._pool.shutdown(force=force)
 
     def _release_pending_actors(self, force: bool):
         """Release all pending actors."""
-        if self._pending_actors:
-            self._log_debug(
-                "release_pending_actors",
-                force=force,
-                ready_refs=[ready_ref.hex() for ready_ref in self._pending_actors],
-            )
         for ready_ref in self._pending_actors:
             self._cancel_pending_ready_ref(ready_ref)
         self._pending_actors.clear()
@@ -637,13 +576,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         """Release all running actors."""
         running = list(self._running_actors.keys())
         on_exit_refs = []
-        if running:
-            self._log_debug(
-                "release_running_actors",
-                force=force,
-                actor_ids=[actor._actor_id.hex() for actor in running],
-            )
-
         for actor in running:
             ref = self._release_running_actor(actor)
             if ref:
@@ -683,14 +615,6 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
                 pass
 
         del self._running_actors[actor]
-        self._log_debug(
-            "release_running_actor",
-            actor_id=actor._actor_id.hex(),
-            actor_location=actor_state.actor_location,
-            is_restarting=actor_state.is_restarting,
-        )
-        if self.current_size() == 0 and not self._is_shutting_down:
-            self._log_debug("pool_drained_to_zero")
         return ref
 
     def _cancel_pending_ready_ref(self, ready_ref: ObjectRef) -> None:
