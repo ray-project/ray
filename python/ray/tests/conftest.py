@@ -416,8 +416,6 @@ def kill_all_redis_server():
           when the python Subprocess tracking the
           underlying process is garbage collected.
     """
-    import psutil
-
     # Find Redis server processes
     redis_procs = []
     for proc in psutil.process_iter(["name", "cmdline"]):
@@ -1554,6 +1552,27 @@ def cleanup_auth_token_env():
         reset_auth_token_state()
         yield
         reset_auth_token_state()
+
+
+@pytest.fixture(autouse=False)
+def clean_token_sources(cleanup_auth_token_env):
+    """Ensure authentication-related state is clean around each test."""
+    clear_auth_token_sources(remove_default=True)
+    reset_auth_token_state()
+
+    yield
+
+    if ray.is_initialized():
+        ray.shutdown()
+
+    subprocess.run(
+        ["ray", "stop", "--force"],
+        capture_output=True,
+        timeout=60,
+        check=False,
+    )
+
+    reset_auth_token_state()
 
 
 @pytest.fixture
