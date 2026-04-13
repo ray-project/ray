@@ -101,7 +101,10 @@ def _columns_to_tensor(
 
         tensors.append(t)
 
-    return torch.cat(tensors, dim=-1)
+    if len(tensors) > 1:
+        return torch.cat(tensors, dim=1)
+
+    return tensors[0]
 
 
 def convert_ndarray_to_torch_tensor(
