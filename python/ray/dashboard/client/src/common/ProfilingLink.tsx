@@ -52,10 +52,14 @@ const useProfilingEnabled = () => {
 
 const PROFILING_DISABLED_TOOLTIP =
   "Profiling is disabled by default for security. " +
-  "Set RAY_DASHBOARD_ENABLE_PROFILING=1 on the Ray head node to enable. " +
+  "Set RAY_DASHBOARD_ENABLE_PROFILING=1 environment variable on the Ray head node to enable. " +
   "See https://docs.ray.io/en/latest/ray-observability/user-guides/profiling.html#enabling-dashboard-profiling";
 
-const DisabledProfilingLabel = ({ children }: { children: React.ReactNode }) => (
+const DisabledProfilingLabel = ({
+  children,
+}: {
+  children: React.ReactNode;
+}) => (
   <Tooltip title={PROFILING_DISABLED_TOOLTIP}>
     <Typography component="span" color="text.disabled">
       {children}
@@ -106,7 +110,9 @@ export const TaskCpuProfilingLink = ({
     return null;
   }
   if (!profilingEnabled) {
-    return <DisabledProfilingLabel>CPU&nbsp;Flame&nbsp;Graph</DisabledProfilingLabel>;
+    return (
+      <DisabledProfilingLabel>CPU&nbsp;Flame&nbsp;Graph</DisabledProfilingLabel>
+    );
   }
   return (
     <Link
@@ -389,7 +395,9 @@ export const TaskMemoryProfilingButton = ({
     return null;
   }
   if (!profilingEnabled) {
-    return <DisabledProfilingLabel>Memory&nbsp;Profiling</DisabledProfilingLabel>;
+    return (
+      <DisabledProfilingLabel>Memory&nbsp;Profiling</DisabledProfilingLabel>
+    );
   }
   const profilerUrl = `memory_profile?task_id=${taskId}&attempt_number=${attemptNumber}&node_id=${nodeId}`;
 
