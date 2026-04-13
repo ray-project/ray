@@ -756,7 +756,9 @@ class Expr(ABC):
             ...         pa.field("age", pa.int32())
             ...     ]))
             ... }))
-            >>> ds = ds.with_column("age", col("user").struct["age"])  # doctest: +SKIP
+            >>> ds = ds.with_column("age", col("user").struct["age"])  # by name  # doctest: +SKIP
+            >>> ds = ds.with_column("name", col("user").struct.field_by_index(0))  # by index  # doctest: +SKIP
+            >>> ds = ds.with_column("name2", col("user").struct[0])  # bracket by index  # doctest: +SKIP
         """
         from ray.data.namespace_expressions.struct_namespace import _StructNamespace
 

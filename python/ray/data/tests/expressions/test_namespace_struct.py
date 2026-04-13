@@ -109,6 +109,80 @@ class TestStructNamespace:
         )
         assert rows_same(result, expected)
 
+    def test_struct_field_by_index(self, ray_start_regular_shared, dataset_format):
+        """Test struct.field_by_index() extracts field by position."""
+        if dataset_format == "pandas":
+            pytest.skip(
+                "Index-based struct access requires stable Arrow struct field ordering."
+            )
+        arrow_table = pa.table(
+            {
+                "user": pa.array(
+                    [
+                        {"name": "Alice", "age": 30},
+                        {"name": "Bob", "age": 25},
+                    ],
+                    type=pa.struct(
+                        [
+                            pa.field("name", pa.string()),
+                            pa.field("age", pa.int32()),
+                        ]
+                    ),
+                )
+            }
+        )
+        items_data = [
+            {"user": {"name": "Alice", "age": 30}},
+            {"user": {"name": "Bob", "age": 25}},
+        ]
+        ds = _create_dataset(items_data, dataset_format, arrow_table)
+
+        result = ds.with_column("age", col("user").struct.field_by_index(1)).to_pandas()
+        expected = pd.DataFrame(
+            {
+                "user": [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}],
+                "age": [30, 25],
+            }
+        )
+        assert rows_same(result, expected)
+
+    def test_struct_bracket_with_index(self, ray_start_regular_shared, dataset_format):
+        """Test struct[index] bracket notation."""
+        if dataset_format == "pandas":
+            pytest.skip(
+                "Index-based struct access requires stable Arrow struct field ordering."
+            )
+        arrow_table = pa.table(
+            {
+                "user": pa.array(
+                    [
+                        {"name": "Alice", "age": 30},
+                        {"name": "Bob", "age": 25},
+                    ],
+                    type=pa.struct(
+                        [
+                            pa.field("name", pa.string()),
+                            pa.field("age", pa.int32()),
+                        ]
+                    ),
+                )
+            }
+        )
+        items_data = [
+            {"user": {"name": "Alice", "age": 30}},
+            {"user": {"name": "Bob", "age": 25}},
+        ]
+        ds = _create_dataset(items_data, dataset_format, arrow_table)
+
+        result = ds.with_column("name", col("user").struct[0]).to_pandas()
+        expected = pd.DataFrame(
+            {
+                "user": [{"name": "Alice", "age": 30}, {"name": "Bob", "age": 25}],
+                "name": ["Alice", "Bob"],
+            }
+        )
+        assert rows_same(result, expected)
+
     def test_struct_nested_field(self, ray_start_regular_shared, dataset_format):
         """Test nested struct field access with .field()."""
         arrow_table = pa.table(
