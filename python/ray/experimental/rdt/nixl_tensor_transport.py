@@ -1,3 +1,6 @@
+import functools
+import glob
+import logging
 import threading
 import time
 import traceback
@@ -15,6 +18,14 @@ from ray.experimental.rdt.tensor_transport_manager import (
 
 if TYPE_CHECKING:
     import torch
+
+logger = logging.getLogger(__name__)
+
+
+@functools.lru_cache(maxsize=1)
+def _is_efa_available() -> bool:
+    """Detect whether AWS EFA (Elastic Fabric Adapter) devices are present."""
+    return bool(glob.glob("/sys/class/net/efa*"))
 
 
 @dataclass
@@ -48,6 +59,17 @@ class TensorDesc:
     metadata_count: int  # tracks the number of NIXL metadata containing the tensor
 
 
+@dataclass
+class NixlTransferStats:
+    """Stats from the most recent NIXL transfer."""
+
+    total_bytes: int = 0
+    xfer_time_ms: float = 0.0
+    throughput_gbps: float = 0.0
+    backend: str = ""
+    transfer_count: int = 0
+
+
 class NixlTensorTransport(TensorTransportManager):
     def __init__(self):
         # This is lazily initialized because it requires NIXL to actually be installed and we want to allow an owner that is just coordinating to not need to have NIXL installed.
@@ -68,6 +90,11 @@ class NixlTensorTransport(TensorTransportManager):
         self._remote_agents: OrderedDict = OrderedDict()
         # Increment the version whenever memory is deregistered.
         self._nixl_agent_meta_version = 0
+        self._transfer_stats = NixlTransferStats()
+
+    def get_transfer_stats(self) -> NixlTransferStats:
+        """Return stats from the most recent NIXL transfer on this worker."""
+        return self._transfer_stats
 
     def tensor_transport_backend(self) -> str:
         return "NIXL"
@@ -84,16 +111,22 @@ class NixlTensorTransport(TensorTransportManager):
         """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered."""
         self._add_tensor_descs([tensor])
 
+    def select_backend(self) -> str:
+        """Uses LIBFABRIC backend on AWS instances with EFA, UCX otherwise."""
+        return "LIBFABRIC" if _is_efa_available() else "UCX"
+
     def get_nixl_agent(self):
         """
-        Creates a NIXL agent with UCX backend if not already created.
+        Creates a NIXL agent if not already created.
         """
         if self._nixl_agent is not None:
             return self._nixl_agent
 
         from nixl._api import nixl_agent, nixl_agent_config
 
-        agent_config = nixl_agent_config(backends=["UCX"])
+        backend = self.select_backend()
+        logger.info("Using NIXL backend: %s", backend)
+        agent_config = nixl_agent_config(backends=[backend])
         ctx = ray.get_runtime_context()
         actor_id = ctx.get_actor_id()
         if actor_id is None:
@@ -253,6 +286,8 @@ class NixlTensorTransport(TensorTransportManager):
 
             nixl_agent.add_remote_agent(remote_nixl_agent_meta)
 
+            t_setup_done = time.perf_counter()
+
             xfer_handle = nixl_agent.initialize_xfer(
                 # "UUID" here is just a placeholder, can be any bytes, but without it,
                 # nixl will fail to transfer multiple times.
@@ -282,6 +317,31 @@ class NixlTensorTransport(TensorTransportManager):
                     time.sleep(0.001)  # Avoid busy waiting
                 elif state == "DONE":
                     break
+
+            t_xfer_done = time.perf_counter()
+            total_bytes = sum(t.untyped_storage().nbytes() for t in tensors)
+            xfer_time_s = t_xfer_done - t_setup_done
+            xfer_time_ms = xfer_time_s * 1000
+            throughput_gbps = (
+                (total_bytes * 8) / xfer_time_s / 1e9 if xfer_time_s > 0 else 0
+            )
+            backend = list(nixl_agent.backends.keys())
+            self._transfer_stats = NixlTransferStats(
+                total_bytes=total_bytes,
+                xfer_time_ms=xfer_time_ms,
+                throughput_gbps=throughput_gbps,
+                backend=backend[0] if backend else "unknown",
+                transfer_count=self._transfer_stats.transfer_count + 1,
+            )
+            logger.debug(
+                "NIXL recv complete: obj_id=%s, backend=%s, "
+                "size=%d bytes, xfer_time=%.3f ms, throughput=%.2f Gbps",
+                obj_id,
+                backend,
+                total_bytes,
+                xfer_time_ms,
+                throughput_gbps,
+            )
         except Exception:
             from ray.exceptions import RayDirectTransportError
 
@@ -403,6 +463,13 @@ class NixlTensorTransport(TensorTransportManager):
                             mem_type=mem_type,
                         )
                     except Exception as e:
+                        backend = self.select_backend()
+                        if backend == "LIBFABRIC":
+                            backend_hint = "Set FI_LOG_LEVEL=Debug for detailed libfabric diagnostics."
+                        else:
+                            backend_hint = (
+                                "Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
+                            )
                         raise RuntimeError(
                             f"Failed to register {mem_type} memory with NIXL "
                             f"(size={tensor.untyped_storage().nbytes()} bytes, "
@@ -413,6 +480,6 @@ class NixlTensorTransport(TensorTransportManager):
                             f"  - gdrcopy not installed: check 'lsmod | grep gdrdrv'\n"
                             f"  - IOMMU enabled without passthrough mode\n"
                             f"  - Container cgroup memory restrictions\n"
-                            f"Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
+                            f"{backend_hint}"
                         ) from e
                     self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
