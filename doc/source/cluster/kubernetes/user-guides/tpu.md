@@ -133,8 +133,8 @@ tasks = [
         scheduling_strategy=PlacementGroupSchedulingStrategy(
             placement_group=slice_pg,
         )
-    ).remote(world_size=slice_handle.num_workers, rank=i)
-    for i in range(slice_handle.num_workers)
+    ).remote(world_size=slice_handle.num_hosts, rank=i)
+    for i in range(slice_handle.num_hosts)
 ]
 
 results = ray.get(tasks)

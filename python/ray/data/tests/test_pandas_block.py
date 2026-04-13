@@ -6,6 +6,7 @@ import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 import ray
 import ray.data
@@ -15,6 +16,7 @@ from ray.data._internal.pandas_block import (
     PandasBlockColumnAccessor,
 )
 from ray.data._internal.util import is_null
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 
 # Set seed for the test for size as it related to sampling
@@ -437,6 +439,10 @@ class TestSizeBytes:
         true_size = block.memory_usage(index=True, deep=True).sum()
         assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
+    @pytest.mark.skipif(
+        get_pyarrow_version() < parse_version("10.0.1"),
+        reason="ArrowDtype requires pyarrow>=10.0.1",
+    )
     def test_arrow(ray_start_regular_shared):
         data = [
             random.choice(["alligator", "crocodile", "flamingo"]) for _ in range(50_000)
