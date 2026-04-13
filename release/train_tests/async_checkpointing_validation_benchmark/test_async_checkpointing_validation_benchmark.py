@@ -14,8 +14,6 @@ from torch.optim import Adam
 from torchvision import transforms
 from torchvision.models import VisionTransformer
 from torchvision.transforms import ToTensor, Normalize
-from s3torchconnector.dcp import S3StorageReader, S3StorageWriter
-
 import ray
 import ray.train
 import ray.train.torch
@@ -33,11 +31,11 @@ class ValidationType(Enum):
 
 
 class CheckpointSaveMode(Enum):
-    # save to disk with torch.save then upload to S3
+    # save to disk with torch.save
     TORCH_SAVE = "torch_save"
-    # synchronous save to S3 via Torch DCP
+    # synchronous save via Torch DCP
     TORCH_DCP_SYNC = "torch_dcp_sync"
-    # asynchronous save to S3, Ray Train's background thread waits for completion.
+    # asynchronous save, Ray Train's background thread waits for completion.
     TORCH_DCP_ASYNC = "torch_dcp_async"
 
 
@@ -84,20 +82,17 @@ class Predictor:
     def __init__(self, checkpoint):
         self.model = create_model()
 
-        checkpoint_path = str(checkpoint.path)
-        if checkpoint_path.startswith("s3://"):
-            reader = S3StorageReader(
-                region=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
-                path=checkpoint_path,
-            )
-            state_dict = {"model": self.model.state_dict()}
-            dist_cp.load(state_dict, storage_reader=reader)
-            self.model.load_state_dict(state_dict["model"])
-        else:
-            with checkpoint.as_directory() as checkpoint_dir:
-                self.model.load_state_dict(
-                    torch.load(os.path.join(checkpoint_dir, "model.pt"))
+        with checkpoint.as_directory() as checkpoint_dir:
+            model_pt = os.path.join(checkpoint_dir, "model.pt")
+            if os.path.exists(model_pt):
+                self.model.load_state_dict(torch.load(model_pt))
+            else:
+                state_dict = {"model": self.model.state_dict()}
+                dist_cp.load(
+                    state_dict,
+                    storage_reader=dist_cp.FileSystemReader(checkpoint_dir),
                 )
+                self.model.load_state_dict(state_dict["model"])
 
         self.model.cuda().eval()
 
@@ -134,18 +129,17 @@ def eval_only_train_func(config_dict):
     model = create_model()
 
     checkpoint = config_dict["checkpoint"]
-    checkpoint_path = str(checkpoint.path)
-    if checkpoint_path.startswith("s3://"):
-        reader = S3StorageReader(
-            region=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
-            path=checkpoint_path,
-        )
-        state_dict = {"model": model.state_dict()}
-        dist_cp.load(state_dict, storage_reader=reader)
-        model.load_state_dict(state_dict["model"])
-    else:
-        with checkpoint.as_directory() as checkpoint_dir:
-            model.load_state_dict(torch.load(os.path.join(checkpoint_dir, "model.pt")))
+    with checkpoint.as_directory() as checkpoint_dir:
+        model_pt = os.path.join(checkpoint_dir, "model.pt")
+        if os.path.exists(model_pt):
+            model.load_state_dict(torch.load(model_pt))
+        else:
+            state_dict = {"model": model.state_dict()}
+            dist_cp.load(
+                state_dict,
+                storage_reader=dist_cp.FileSystemReader(checkpoint_dir),
+            )
+            model.load_state_dict(state_dict["model"])
 
     model.cuda().eval()
 
@@ -161,7 +155,7 @@ def eval_only_train_func(config_dict):
             outputs = model(images)
             mean_acc(outputs.argmax(1), labels)
 
-    # TODO - UPDATE TO `return {"score": mean_acc.compute().item()}`
+    # TODO - Replace with `return {"score": mean_acc.compute().item()}`
     ray.train.report(
         metrics={"score": mean_acc.compute().item()},
         checkpoint=ray.train.Checkpoint(
@@ -234,31 +228,39 @@ def validate_and_report(
     if validate_within_trainer and epoch == num_epochs - 1:
         metrics["score"] = mean_acc.compute().item()
 
+    # Record how long the upload process takes
     start_time = time.time()
 
     # DCP save is a distributed collective so all ranks must call it together.
-    ckpt_ref = None
-    checkpoint_path = None
+    ckpt_ref = None  # Only used by TORCH_DCP_ASYNC
     if checkpoint_save_mode in (
         CheckpointSaveMode.TORCH_DCP_SYNC,
         CheckpointSaveMode.TORCH_DCP_ASYNC,
     ):
-        # The STORAGE_PATH is a S3 bucket associated with a job and workspace.
-        checkpoint_path = f"{STORAGE_PATH}/checkpoints/epoch={epoch}_batch={batch_idx}"
-        storage_writer = S3StorageWriter(
-            region=os.environ.get("AWS_DEFAULT_REGION", "us-west-2"),
-            path=checkpoint_path,
+        # For DCP, all workers write shards to the same shared storage path so that
+        # the full checkpoint is available without any upload step.
+        iteration_checkpoint_dir = (
+            ray.train.get_context()
+            .get_storage()
+            .build_checkpoint_path_from_name(f"dcp_epoch_{epoch}_batch_{batch_idx}")
         )
+
+        storage_writer = dist_cp.FileSystemWriter(iteration_checkpoint_dir)
         model_dict, _ = get_state_dict(model=model, optimizers=())
 
         if checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_SYNC:
-            # Upload directly to S3 via Torch DCP (skipping the local disk)
+            # Save via Torch DCP
             dist_cp.save({"model": model_dict}, storage_writer=storage_writer)
         elif checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_ASYNC:
-            # Initiate async upload to S3; rank 0 will wait via checkpoint_upload_fn
+            # Initiate async save; rank 0 will wait via checkpoint_upload_fn
             ckpt_ref = async_save({"model": model_dict}, storage_writer=storage_writer)
         else:
             raise NotImplementedError
+    elif checkpoint_save_mode == CheckpointSaveMode.TORCH_SAVE:
+        # For torch.save, a local temp dir is used and Ray Train handles the upload.
+        iteration_checkpoint_dir = tempfile.mkdtemp()
+    else:
+        raise NotImplementedError
 
     if ray.train.get_context().get_world_rank() == 0:
         if val_elapsed_time:
@@ -278,9 +280,6 @@ def validate_and_report(
             validation = False
 
         if checkpoint_save_mode == CheckpointSaveMode.TORCH_SAVE:
-            # the model weights are saved to an intermediate temporary file
-            # before uploading to the storage path
-            iteration_checkpoint_dir = tempfile.mkdtemp()
             torch.save(
                 model.module.state_dict(),
                 os.path.join(iteration_checkpoint_dir, "model.pt"),
@@ -295,25 +294,41 @@ def validate_and_report(
                 validation=validation,
             )
         elif checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_SYNC:
+            # Shards are already in shared storage; no upload needed.
             ray.train.report(
                 metrics,
-                checkpoint=ray.train.Checkpoint(checkpoint_path),
+                checkpoint=ray.train.Checkpoint.from_directory(
+                    iteration_checkpoint_dir
+                ),
                 checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
                 validation=validation,
             )
         elif checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_ASYNC:
-
+            # Shards are being written directly to shared storage.
+            # Wait for the async save to finish in a background thread before
+            # marking the checkpoint as ready, but don't upload anything.
             def wait_async_save(
                 checkpoint, checkpoint_dir_name, upload_complete_ref=ckpt_ref
             ):
                 upload_complete_ref.result()
-                return checkpoint
+                # todo (mark): this might be unnecessary as the data isn't moving so should be able to use `return checkpoint`
+                path = (
+                    ray.train.get_context()
+                    .get_storage()
+                    .build_checkpoint_path_from_name(checkpoint_dir_name)
+                )
+                return ray.train.Checkpoint.from_directory(path)
 
             ray.train.report(
                 metrics,
-                checkpoint=ray.train.Checkpoint(checkpoint_path),
+                checkpoint=ray.train.Checkpoint.from_directory(
+                    iteration_checkpoint_dir
+                ),
                 checkpoint_upload_fn=wait_async_save,
+                checkpoint_dir_name=f"dcp_epoch_{epoch}_batch_{batch_idx}",
                 checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+                # iteration_checkpoint_dir is already in shared storage so don't delete it.
+                delete_local_checkpoint_after_upload=False,
                 validation=validation,
             )
         else:
@@ -357,6 +372,7 @@ def train_func(config):
 
     # Report train_func metrics with dummy checkpoint since that is the only way to
     # return metrics
+    # TODO - Replace with `return metrics`
     if ray.train.get_context().get_world_rank() == 0:
         with tempfile.TemporaryDirectory() as temp_dir:
             ray.train.report(
@@ -404,9 +420,8 @@ def run_training_with_validation(
     if validate_within_trainer:
         datasets["test"] = validation_dataset
 
-    # Both DCP modes upload directly to S3, so storage_path must be the S3 URI.
     # async_save additionally requires a CPU process group alongside the GPU one
-    # because it runs collectives in a background thread.
+    #   because it runs collectives in a background thread.
     if checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_ASYNC:
         torch_config = ray.train.torch.TorchConfig(backend="cpu:gloo,cuda:nccl")
     else:
@@ -505,6 +520,8 @@ def main():
     )
     logger.info(consolidated_metrics)
     safe_write_to_results_json(consolidated_metrics)
+    for run_name, metrics in consolidated_metrics.items():
+        print(f"{run_name}={metrics}")
 
     # Assert final scores aren't too far off, which would imply an inaccurate comparison
     # Example value: 0.55
@@ -521,20 +538,26 @@ def main():
     async_dcp_final_score = consolidated_metrics["async_dcp_map_batches_val_metrics"][
         "final_score"
     ]
+    print(
+        "Validation metrics order=",
+        dict(
+            sorted(
+                ((k, v["final_score"]) for k, v in consolidated_metrics.items()),
+                key=lambda a: a[1],
+            )
+        ),
+    )
+
     assert (
         abs(sync_final_score - async_torchtrainer_final_score)
         < MAXIMUM_ALLOWED_ACCURACY_DIFF
-    ), f"{sync_final_score=}, {async_torchtrainer_final_score}"
+    )
     assert (
         abs(sync_final_score - async_map_batches_final_score)
         < MAXIMUM_ALLOWED_ACCURACY_DIFF
-    ), f"{sync_final_score=}, {async_map_batches_final_score=}"
-    assert (
-        abs(sync_final_score - sync_dcp_final_score) < MAXIMUM_ALLOWED_ACCURACY_DIFF
-    ), f"{sync_final_score=}, {sync_dcp_final_score=}"
-    assert (
-        abs(sync_final_score - async_dcp_final_score) < MAXIMUM_ALLOWED_ACCURACY_DIFF
-    ), f"{sync_final_score=}, {async_dcp_final_score=}"
+    )
+    assert abs(sync_final_score - sync_dcp_final_score) < MAXIMUM_ALLOWED_ACCURACY_DIFF
+    assert abs(sync_final_score - async_dcp_final_score) < MAXIMUM_ALLOWED_ACCURACY_DIFF
 
     # Assert async checkpointing/validation e2e time is faster; add multipler to account for training time variance
     # Example values: 1385s vs 1317s vs 1304s
@@ -551,6 +574,16 @@ def main():
     async_dcp_e2e_time = consolidated_metrics["async_dcp_map_batches_val_metrics"][
         "e2e_time"
     ]
+    print(
+        "Total end-to-end time order=",
+        dict(
+            sorted(
+                ((k, v["e2e_time"]) for k, v in consolidated_metrics.items()),
+                key=lambda a: a[1],
+            )
+        ),
+    )
+
     assert (
         async_torchtrainer_e2e_time
         < sync_e2e_time * MAXIMUM_ALLOWED_E2E_TIME_MULTIPLIER
@@ -571,12 +604,6 @@ def main():
         "total_validation_time"
     ]
 
-    # Assert report blocking time is less than with async checkpointing.
-    # DCP sync: blocked_times includes dist_cp.save() (the S3 upload) so it measures
-    # the full checkpoint blocking time but skips the local disk write → faster than
-    # TORCH_SAVE+SYNC (which writes to disk first, then uploads inside report()).
-    # DCP async: report() barely blocks since async_save runs concurrently → fastest.
-    # Example values: 3.66s vs 0.033s vs 0.028s vs X.XXs vs 0.XXXs
     sync_report_blocked_time = consolidated_metrics["sync_cp_inline_val_metrics"][
         "total_report_blocked_time"
     ]
@@ -592,20 +619,25 @@ def main():
     async_dcp_report_blocked_time = consolidated_metrics[
         "async_dcp_map_batches_val_metrics"
     ]["total_report_blocked_time"]
-    assert (
-        async_torchtrainer_report_blocked_time < sync_report_blocked_time
-    ), f"{async_torchtrainer_report_blocked_time=}, {sync_report_blocked_time=}"
-    assert (
-        async_map_batches_report_blocked_time < sync_report_blocked_time
-    ), f"{async_map_batches_report_blocked_time=}, {sync_report_blocked_time=}"
-    # DCP sync skips local disk write so upload time alone is less than disk+upload
-    assert (
-        sync_dcp_report_blocked_time < sync_report_blocked_time
-    ), f"{sync_dcp_report_blocked_time=}, {sync_report_blocked_time=}"
-    # DCP async barely blocks report(); must be faster than DCP sync's blocking upload
-    assert (
-        async_dcp_report_blocked_time < sync_dcp_report_blocked_time
-    ), f"{async_dcp_report_blocked_time=}, {sync_dcp_report_blocked_time=}"
+    print(
+        "Total report blocked time order=",
+        dict(
+            sorted(
+                (
+                    (k, v["total_report_blocked_time"])
+                    for k, v in consolidated_metrics.items()
+                ),
+                key=lambda a: a[1],
+            )
+        ),
+    )
+
+    # Assert report blocking time is less than with async checkpointing.
+    # Example values: 3.66s vs 0.033s vs 0.028s
+    assert async_torchtrainer_report_blocked_time < sync_report_blocked_time
+    assert async_map_batches_report_blocked_time < sync_report_blocked_time
+    assert sync_dcp_report_blocked_time < sync_report_blocked_time
+    assert async_dcp_report_blocked_time < sync_dcp_report_blocked_time
 
     # Assert sync blocking time (report + validation + final validation) is less than async blocking time (report + final validation)
     # Example values of final validation blocking time: 40s vs 26s
@@ -643,6 +675,23 @@ def main():
     async_dcp_blocking_time = (
         async_dcp_report_blocked_time + async_dcp_final_validation_blocking_time
     )
+    print(
+        "Total validation blocking time order=",
+        dict(
+            sorted(
+                (
+                    (
+                        k,
+                        v["total_report_blocked_time"]
+                        + v["final_validation_waiting_time"],
+                    )
+                    for k, v in consolidated_metrics.items()
+                ),
+                key=lambda a: a[1],
+            )
+        ),
+    )
+
     assert sync_blocking_time > async_torchtrainer_blocking_time
     assert sync_blocking_time > async_map_batches_blocking_time
     assert sync_blocking_time > sync_dcp_blocking_time
@@ -650,7 +699,7 @@ def main():
 
     # TODO: consider correctness checks like validating that local checkpoints get deleted
     # TODO: track validation startup metrics: schedule validation task, autoscale nodes,
-    # start TorchTrainer/map_batches, load checkpoint.
+    #   start TorchTrainer/map_batches, load checkpoint.
 
 
 if __name__ == "__main__":
