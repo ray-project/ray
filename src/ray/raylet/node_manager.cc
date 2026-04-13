@@ -2398,11 +2398,9 @@ bool NodeManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
     worker->GrantLeaseId(LeaseID::Nil());
     worker->SetOwnerAddress(rpc::Address());
   }
-  // Actors will be assigned tasks via the core worker and therefore are not idle.
-  const bool is_actor_creation_task = !lease_spec.IsActorCreationTask();
-
   local_lease_manager_.CleanupLease(worker);
-  return !is_actor_creation_task;
+  // Actors will be assigned tasks via the core worker and therefore are not idle.
+  return !lease_spec.IsActorCreationTask();
 }
 
 void NodeManager::ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,

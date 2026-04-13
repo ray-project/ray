@@ -592,7 +592,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
         }
         RAY_CHECK(erased);
         const auto &lease_spec = work_to_erase->lease_.GetLeaseSpecification();
-        if (lease_spec.GetDependencies().empty()) {
+        if (!lease_spec.GetDependencies().empty()) {
           lease_dependency_manager_.RemoveLeaseDependencies(lease_spec.LeaseId());
         }
       };
