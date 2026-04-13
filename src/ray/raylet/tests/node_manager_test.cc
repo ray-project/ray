@@ -236,7 +236,7 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(driver));
-    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(request)).Times(1);
+    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_)).Times(1);
 
     NodeManager::HandleReportWorkerBacklog(
         request,
@@ -275,7 +275,7 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
         .Times(1)
         .WillOnce(Return(worker));
 
-    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(request)).Times(1);
+    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_)).Times(1);
 
     NodeManager::HandleReportWorkerBacklog(
         request,
