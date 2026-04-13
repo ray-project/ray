@@ -36,6 +36,7 @@ from ray.data.collate_fn import (
     is_tensor_batch_type,
 )
 from ray.data.context import DataContext
+from ray.data.util.jax_util import jax_sync_generator
 from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
@@ -631,7 +632,7 @@ class DataIterator(abc.ABC):
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         synchronize_batches: bool = False,
-        pad_token_ids: Optional[
+        paddings: Optional[
             Union[int, float, bool, Dict[str, Union[int, float, bool]]]
         ] = None,
     ) -> Iterable[Any]:
@@ -684,7 +685,7 @@ class DataIterator(abc.ABC):
                 hosts produce identical batch shapes and counts beforehand.
                 Setting this to True can help catch bugs where different hosts
                 produce different batch shapes.
-            pad_token_ids: The value to use for padding the last batch to `batch_size`.
+            paddings: The value to use for padding the last batch to `batch_size`.
                 If a dictionary is provided, it must map column names to padding values.
                 If not None, uneven batches will be padded with this value.
                 Must be castable to the dtypes of the created arrays.
@@ -726,14 +727,12 @@ class DataIterator(abc.ABC):
             _collate_fn=collate_fn,
         )
 
-        from ray.data.util.jax_util import jax_sync_generator
-
         # Use prefetch_batches as the lookahead size for synchronization.
         return jax_sync_generator(
             batch_iterable,
             drop_last,
             batch_size=batch_size,
-            pad_token_ids=pad_token_ids,
+            paddings=paddings,
             dtypes=dtypes,
             synchronize_batches=synchronize_batches,
             synchronize_lookahead=max(prefetch_batches, 1),

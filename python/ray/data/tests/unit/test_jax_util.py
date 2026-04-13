@@ -6,13 +6,10 @@ import pytest
 
 from ray.data.util.jax_util import jax_sync_generator
 
+pytest.importorskip("jax")
+
 
 def test_jax_sync_generator_empty_batch(ray_start_regular_shared):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
-
     def empty_batch_iterable():
         yield {"a": np.array([1, 2, 3])}
         yield {}  # Empty dict batch
@@ -27,11 +24,6 @@ def test_jax_sync_generator_empty_batch(ray_start_regular_shared):
 
 
 def test_jax_sync_generator_empty_column(ray_start_regular_shared):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
-
     def empty_column_iterable():
         yield {"a": np.array([1, 2, 3])}
         yield {"a": np.array([])}  # Dict with empty column
@@ -46,11 +38,6 @@ def test_jax_sync_generator_empty_column(ray_start_regular_shared):
 
 
 def test_jax_sync_generator_no_sync(ray_start_regular_shared):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
-
     def batches():
         yield {"a": np.array([1, 2, 3])}
         yield {"a": np.array([4, 5, 6])}
@@ -64,11 +51,6 @@ def test_jax_sync_generator_no_sync(ray_start_regular_shared):
 
 
 def test_jax_sync_generator_padding(ray_start_regular_shared):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
-
     def batches():
         yield {"a": np.array([1, 2, 3])}
         yield {"a": np.array([4, 5])}
@@ -78,7 +60,7 @@ def test_jax_sync_generator_padding(ray_start_regular_shared):
         batches(),
         drop_last=False,
         batch_size=3,
-        pad_token_ids=-1,
+        paddings=-1,
         synchronize_batches=False,
     )
     results = list(gen)
@@ -90,16 +72,11 @@ def test_jax_sync_generator_padding(ray_start_regular_shared):
 
 
 def test_jax_sync_generator_drop_last(ray_start_regular_shared):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
-
     def batches():
         yield {"a": np.array([1, 2, 3])}
         yield {"a": np.array([4, 5])}
 
-    # Should drop the second batch because it's not size 3 and pad_token_id=None
+    # Should drop the second batch because it's not size 3 and padding=None
     # Note: in single host, it doesn't drop unless we use _iter_batches(drop_last=True)
     # But jax_sync_generator with drop_last=True will raise error if sizes don't match min.
     # Actually, jax_sync_generator logic for single host just passes through if not sync.
@@ -109,7 +86,7 @@ def test_jax_sync_generator_drop_last(ray_start_regular_shared):
         batches(),
         drop_last=False,
         batch_size=3,
-        pad_token_ids=None,
+        paddings=None,
         synchronize_batches=False,
     )
     results = list(gen)
@@ -123,7 +100,7 @@ def test_jax_sync_generator_drop_last(ray_start_regular_shared):
             batches(),
             drop_last=True,
             batch_size=3,
-            pad_token_ids=None,
+            paddings=None,
             synchronize_batches=False,
         )
         with pytest.raises(
@@ -136,10 +113,6 @@ def test_jax_sync_generator_drop_last(ray_start_regular_shared):
 def test_jax_sync_generator_multi_host_uneven_batches_with_padding(
     ray_start_regular_shared,
 ):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
 
     from unittest.mock import patch
 
@@ -181,7 +154,7 @@ def test_jax_sync_generator_multi_host_uneven_batches_with_padding(
                 batches(),
                 drop_last=False,
                 batch_size=3,
-                pad_token_ids=-1,
+                paddings=-1,
                 synchronize_batches=True,
             )
             # Should yield 2 batches: one real, one dummy
@@ -194,10 +167,6 @@ def test_jax_sync_generator_multi_host_uneven_batches_with_padding(
 def test_jax_sync_generator_multi_host_uneven_batches_drop_last(
     ray_start_regular_shared,
 ):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
 
     from unittest.mock import patch
 
@@ -241,10 +210,6 @@ def test_jax_sync_generator_multi_host_uneven_batches_drop_last(
 def test_jax_sync_generator_multi_host_uneven_batch_sizes_fail(
     ray_start_regular_shared,
 ):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
 
     from unittest.mock import patch
 
@@ -286,10 +251,6 @@ def test_jax_sync_generator_multi_host_uneven_batch_sizes_fail(
 def test_jax_sync_generator_multi_host_uneven_num_batches_fail(
     ray_start_regular_shared,
 ):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
 
     from unittest.mock import patch
 
@@ -332,11 +293,6 @@ def test_jax_sync_generator_multi_host_uneven_num_batches_fail(
 
 
 def test_jax_sync_generator_with_dtypes(ray_start_regular_shared):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
-
     def batches():
         yield {"a": np.array([1, 2, 3])}
 

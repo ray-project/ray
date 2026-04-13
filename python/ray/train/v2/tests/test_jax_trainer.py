@@ -533,7 +533,7 @@ def test_single_host_data_iterator_padding(ray_tpu_single_host, tmp_path):
 
     # Create 44 rows. Batch size 16.
     # 44 / 16 = 2 batches of 16, and 1 batch of 12.
-    # With pad_token_ids, we expect 3 batches of 16.
+    # With paddings, we expect 3 batches of 16.
     ds = ray.data.from_items([{"features": np.ones((8,))} for _ in range(44)])
 
     def train_func():
@@ -543,7 +543,7 @@ def test_single_host_data_iterator_padding(ray_tpu_single_host, tmp_path):
         batches = []
         for batch in ds_shard.iter_jax_batches(
             batch_size=16,
-            pad_token_ids=-1,
+            paddings=-1,
         ):
             batches.append(batch["features"].shape)
         train.report({"batches": batches})

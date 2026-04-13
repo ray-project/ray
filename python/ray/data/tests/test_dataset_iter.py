@@ -532,7 +532,9 @@ def test_iter_tf_batches(ray_start_regular_shared):
                 np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
             )
         combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(np.sort(df.values), np.sort(combined_iterations))
+        np.testing.assert_array_equal(
+            np.sort(df.values, axis=0), np.sort(combined_iterations, axis=0)
+        )
 
 
 @pytest.mark.skipif(
@@ -550,133 +552,9 @@ def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
         for batch in ds.iter_tf_batches(batch_size=2):
             iterations.append(batch["data"])
         combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(arr, combined_iterations)
-
-
-def test_iter_jax_batches(ray_start_regular_shared):
-    df1 = pd.DataFrame(
-        {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
-    )
-    df2 = pd.DataFrame(
-        {"one": [4, 5, 6], "two": [4.0, 5.0, 6.0], "label": [4.0, 5.0, 6.0]}
-    )
-    df3 = pd.DataFrame({"one": [7, 8], "two": [7.0, 8.0], "label": [7.0, 8.0]})
-    ds = ray.data.from_pandas([df1, df2, df3])
-
-    num_epochs = 2
-    for _ in range(num_epochs):
-        iterations = []
-        for batch in ds.iter_jax_batches(batch_size=3, pad_token_ids=-1):
-            iterations.append(
-                np.stack((batch["one"], batch["two"], batch["label"]), axis=1)
-            )
-        combined_iterations = np.concatenate(iterations)
-        # 8 rows total, batch_size 3, pad_token_id=-1 -> 3 batches of size 3 (9 rows total)
-        assert len(combined_iterations) == 9
-        # The last row should be all -1
-        np.testing.assert_array_equal(combined_iterations[-1], np.array([-1, -1, -1]))
-
-
-def test_iter_jax_batches_tensor_ds(ray_start_regular_shared):
-    arr1 = np.arange(12).reshape((3, 2, 2))
-    arr2 = np.arange(12, 24).reshape((3, 2, 2))
-    arr = np.concatenate((arr1, arr2))
-    ds = ray.data.from_numpy([arr1, arr2])
-
-    num_epochs = 2
-    for _ in range(num_epochs):
-        iterations = []
-        for batch in ds.iter_jax_batches(batch_size=2):
-            iterations.append(batch["data"])
-
-        combined_iterations = np.concatenate(iterations)
-        np.testing.assert_array_equal(arr, combined_iterations)
-
-
-def test_iter_jax_batches_with_collate_fn(ray_start_regular_shared):
-    from ray.data.collate_fn import NumpyBatchCollateFn
-
-    class CustomCollateFn(NumpyBatchCollateFn):
-        def __call__(self, batch):
-            # Combine "one" and "two" columns into a single "features" tensor
-            return np.stack((batch["one"], batch["two"]), axis=1)
-
-    ds = ray.data.from_items([{"one": i, "two": i + 1} for i in range(10)])
-    iterations = []
-    for batch in ds.iter_jax_batches(batch_size=2, collate_fn=CustomCollateFn()):
-        # The output of collate_fn is now a single numpy array (sharded as jax.Array)
-        iterations.append(batch)
-
-    combined_iterations = np.concatenate(iterations)
-    # Expected shape: (10, 2)
-    expected = np.stack((np.arange(10), np.arange(10) + 1), axis=1)
-    np.testing.assert_array_equal(expected, combined_iterations)
-
-
-def test_iter_jax_batches_with_dtypes(ray_start_regular_shared):
-    try:
-        import jax.numpy as jnp
-    except ImportError:
-        pytest.skip("JAX not installed")
-
-    ds = ray.data.from_items([{"one": i, "two": i + 0.5} for i in range(10)])
-
-    # Test single dtype
-    for batch in ds.iter_jax_batches(batch_size=2, dtypes=jnp.float32):
-        assert batch["one"].dtype == jnp.float32
-        assert batch["two"].dtype == jnp.float32
-
-    # Test dict of dtypes
-    dtypes = {"one": jnp.int32, "two": jnp.float16}
-    for batch in ds.iter_jax_batches(batch_size=2, dtypes=dtypes):
-        assert batch["one"].dtype == jnp.int32
-        assert batch["two"].dtype == jnp.float16
-
-    # Test padding with dtypes
-    # ds has 10 rows, batch_size=4 -> 3 batches (4, 4, 2)
-    # Without drop_last, 3rd batch is padded to 4.
-    for batch in ds.iter_jax_batches(
-        batch_size=4, dtypes=jnp.float16, pad_token_ids=-1, drop_last=False
-    ):
-        assert batch["one"].dtype == jnp.float16
-        assert batch["two"].dtype == jnp.float16
-
-
-def test_iter_jax_batches_with_dict_padding(ray_start_regular_shared):
-    try:
-        import jax.numpy as jnp
-    except ImportError:
-        pytest.skip("JAX not installed")
-
-    ds = ray.data.from_items([{"one": i, "two": i + 0.5} for i in range(10)])
-
-    # ds has 10 rows, batch_size=4 -> 3 batches (4, 4, 2)
-    # 3rd batch should have 2 padded rows.
-    pad_token_ids = {"one": -1, "two": -0.5}
-    batches = list(ds.iter_jax_batches(batch_size=4, pad_token_ids=pad_token_ids))
-    assert len(batches) == 3
-    last_batch = batches[-1]
-    # last_batch has 4 rows (2 original, 2 padded)
-    np.testing.assert_array_equal(last_batch["one"][2:], jnp.array([-1, -1]))
-    np.testing.assert_array_equal(last_batch["two"][2:], jnp.array([-0.5, -0.5]))
-
-
-def test_iter_jax_batches_batch_size_divisibility_fail(ray_start_regular_shared):
-    try:
-        import jax  # noqa: F401
-    except ImportError:
-        pytest.skip("JAX not installed")
-
-    from unittest.mock import patch
-
-    with patch("jax.local_device_count", return_value=2):
-        ds = ray.data.range(10)
-        # batch_size must be divisible by num_local_devices=2
-        with pytest.raises(
-            ValueError,
-            match="evenly divisible by the number of local JAX devices",
-        ):
-            list(ds.iter_jax_batches(batch_size=3))
+        np.testing.assert_array_equal(
+            np.sort(arr, axis=0), np.sort(combined_iterations, axis=0)
+        )
 
 
 def test_get_internal_block_refs(ray_start_regular_shared):

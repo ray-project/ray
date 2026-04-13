@@ -6017,7 +6017,7 @@ class Dataset:
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
         synchronize_batches: bool = False,
-        pad_token_ids: Optional[
+        paddings: Optional[
             Union[int, float, bool, Dict[str, Union[int, float, bool]]]
         ] = None,
     ) -> Iterable[Any]:
@@ -6093,7 +6093,7 @@ class Dataset:
                 hosts produce identical batch shapes and counts beforehand.
                 Setting this to True can help catch bugs where different hosts
                 produce different batch shapes.
-            pad_token_ids: The value to use for padding the last batch to `batch_size`.
+            paddings: The value to use for padding the last batch to `batch_size`.
                 If a dictionary is provided, it must map column names to padding values.
                 If not None, uneven batches will be padded with this value.
                 Must be castable to the user-provided dtypes.
@@ -6111,7 +6111,7 @@ class Dataset:
             local_shuffle_buffer_size=local_shuffle_buffer_size,
             local_shuffle_seed=local_shuffle_seed,
             synchronize_batches=synchronize_batches,
-            pad_token_ids=pad_token_ids,
+            paddings=paddings,
         )
 
     @ConsumptionAPI

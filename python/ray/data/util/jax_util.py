@@ -24,7 +24,7 @@ NumpyBatch = Union[np.ndarray, Dict[str, np.ndarray]]
 JaxBatch = Union["jax.Array", Dict[str, "jax.Array"]]
 DTypeLikeSpec = Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
 Scalar = Union[int, float, bool]
-PadTokenIdsSpec = Union[Scalar, Dict[str, Scalar]]
+PaddingsSpec = Union[Scalar, Dict[str, Scalar]]
 
 
 def _get_column_value(mapping_or_value: Any, key: str) -> Any:
@@ -159,38 +159,38 @@ def _dummy_array(arr: np.ndarray, target_size: int, pad_value: Scalar) -> np.nda
 def _pad_batch(
     batch: NumpyBatch,
     target_size: int,
-    pad_token_ids: PadTokenIdsSpec,
+    paddings: PaddingsSpec,
 ) -> NumpyBatch:
-    """Pad a batch to target_size using pad_token_ids."""
+    """Pad a batch to target_size using paddings."""
 
     if isinstance(batch, dict):
         return {
-            k: _pad_array(v, target_size, _get_column_value(pad_token_ids, k))
+            k: _pad_array(v, target_size, _get_column_value(paddings, k))
             for k, v in batch.items()
         }
     return _pad_array(
         batch,
         target_size,
-        _unwrap_single_column_value(pad_token_ids, "pad_token_id"),
+        _unwrap_single_column_value(paddings, "padding"),
     )
 
 
 def _create_dummy_batch(
     template_batch: NumpyBatch,
     target_size: int,
-    pad_token_ids: PadTokenIdsSpec,
+    paddings: PaddingsSpec,
 ) -> NumpyBatch:
-    """Create a dummy batch of target_size filled with pad_token_ids."""
+    """Create a dummy batch of target_size filled with paddings."""
 
     if isinstance(template_batch, dict):
         return {
-            k: _dummy_array(v, target_size, _get_column_value(pad_token_ids, k))
+            k: _dummy_array(v, target_size, _get_column_value(paddings, k))
             for k, v in template_batch.items()
         }
     return _dummy_array(
         template_batch,
         target_size,
-        _unwrap_single_column_value(pad_token_ids, "pad_token_id"),
+        _unwrap_single_column_value(paddings, "padding"),
     )
 
 
@@ -199,7 +199,7 @@ def _yield_batches_no_sync(
     sharding: "jax.sharding.Sharding",
     num_local_devices: int,
     batch_size: int,
-    pad_token_ids: Optional[PadTokenIdsSpec],
+    paddings: Optional[PaddingsSpec],
     dtypes: Optional[DTypeLikeSpec] = None,
 ) -> Iterator[JaxBatch]:
     """Yield batches without multi-host synchronization."""
@@ -209,9 +209,9 @@ def _yield_batches_no_sync(
         if local_batch_size == 0:
             continue
 
-        if pad_token_ids is not None:
+        if paddings is not None:
             if local_batch_size < batch_size:
-                batch = _pad_batch(batch, batch_size, pad_token_ids)
+                batch = _pad_batch(batch, batch_size, paddings)
         elif local_batch_size % num_local_devices != 0:
             # Without padding, batch size must be divisible by num_local_devices
             raise ValueError(
@@ -219,7 +219,7 @@ def _yield_batches_no_sync(
                 f"divisible by the number of local JAX devices "
                 f"({num_local_devices}) on this host. "
                 f"To safely truncate or pad the batch, "
-                f"set `drop_last=True` or provide a `pad_token_ids` in `iter_jax_batches()`."
+                f"set `drop_last=True` or provide a `paddings` in `iter_jax_batches()`."
             )
 
         yield _convert_batch(batch, sharding, dtypes=dtypes)
@@ -258,7 +258,7 @@ def _yield_batches_with_sync(
     num_local_devices: int,
     drop_last: bool,
     batch_size: int,
-    pad_token_ids: Optional[PadTokenIdsSpec],
+    paddings: Optional[PaddingsSpec],
     synchronize_lookahead: int,
     dtypes: Optional[DTypeLikeSpec] = None,
 ) -> Iterator[JaxBatch]:
@@ -298,18 +298,18 @@ def _yield_batches_with_sync(
                 if drop_last:
                     # If drop_last=True, we stop as soon as any worker is exhausted.
                     return
-                elif pad_token_ids is not None:
-                    # If pad_token_ids is set, we continue until all workers are exhausted.
+                elif paddings is not None:
+                    # If paddings is set, we continue until all workers are exhausted.
                     # Workers that are already exhausted will yield dummy batches.
                     pass
                 else:
                     raise ValueError(
                         "Uneven number of batches detected across JAX workers. "
                         "To safely drop orphaned batches without hanging, "
-                        "set `drop_last=True` or provide a `pad_token_ids` in `iter_jax_batches()`."
+                        "set `drop_last=True` or provide a `paddings` in `iter_jax_batches()`."
                     )
 
-            if pad_token_ids is not None:
+            if paddings is not None:
                 batch = local_batches[i]
                 if batch is None:
                     if template_batch is None:
@@ -321,13 +321,11 @@ def _yield_batches_with_sync(
                             "Ensure that all JAX hosts have at least one batch of data, "
                             "or use `drop_last=True` to avoid yielding dummy batches."
                         )
-                    batch = _create_dummy_batch(
-                        template_batch, batch_size, pad_token_ids
-                    )
+                    batch = _create_dummy_batch(template_batch, batch_size, paddings)
                 else:
                     local_batch_size = _get_batch_size(batch)
                     if local_batch_size < batch_size:
-                        batch = _pad_batch(batch, batch_size, pad_token_ids)
+                        batch = _pad_batch(batch, batch_size, paddings)
                 assert batch is not None
                 yield _convert_batch(batch, sharding, dtypes=dtypes)
             else:
@@ -335,7 +333,7 @@ def _yield_batches_with_sync(
                     raise ValueError(
                         "Uneven batch sizes detected across JAX workers. "
                         f"Host batch sizes range from {min_batch_size} to {max_batch_size}. "
-                        "To handle uneven batch sizes, provide a `pad_token_ids` in `iter_jax_batches()`."
+                        "To handle uneven batch sizes, provide a `paddings` in `iter_jax_batches()`."
                     )
 
                 if min_batch_size % num_local_devices != 0:
@@ -344,7 +342,7 @@ def _yield_batches_with_sync(
                         f"divisible by the number of local JAX devices "
                         f"({num_local_devices}) on this host. "
                         f"To safely truncate or pad the batch, "
-                        f"set `drop_last=True` or provide a `pad_token_ids` in `iter_jax_batches()`."
+                        f"set `drop_last=True` or provide a `paddings` in `iter_jax_batches()`."
                     )
 
                 batch = local_batches[i]
@@ -356,7 +354,7 @@ def jax_sync_generator(
     batch_iterable: Iterable[NumpyBatch],
     drop_last: bool,
     batch_size: int = 256,
-    pad_token_ids: Optional[PadTokenIdsSpec] = None,
+    paddings: Optional[PaddingsSpec] = None,
     dtypes: Optional[DTypeLikeSpec] = None,
     synchronize_batches: bool = False,
     synchronize_lookahead: int = 10,
@@ -372,7 +370,7 @@ def jax_sync_generator(
             or a dictionary of NumPy ndarrays).
         drop_last: Whether to drop partial or uneven batches.
         batch_size: The target batch size for each host.
-        pad_token_ids: The value to use for padding uneven batches to `batch_size`.
+        paddings: The value to use for padding uneven batches to `batch_size`.
             If a dictionary is provided, it must map column names to padding values.
             If None, padding is disabled.
         dtypes: A single JAX dtype or dictionary of JAX dtypes for the created arrays.
@@ -402,7 +400,7 @@ def jax_sync_generator(
             sharding,
             num_local_devices,
             batch_size,
-            pad_token_ids,
+            paddings,
             dtypes=dtypes,
         )
     else:
@@ -412,7 +410,7 @@ def jax_sync_generator(
             num_local_devices,
             drop_last,
             batch_size,
-            pad_token_ids,
+            paddings,
             synchronize_lookahead,
             dtypes=dtypes,
         )

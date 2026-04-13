@@ -2119,9 +2119,9 @@ py_test(
 )
 
 py_test(
-    name = "test_jax_util",
+    name = "test_iter_jax",
     size = "small",
-    srcs = ["tests/test_jax_util.py"],
+    srcs = ["tests/test_iter_jax.py"],
     tags = [
         "exclusive",
         "team:data",
