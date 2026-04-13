@@ -1675,8 +1675,7 @@ TEST_F(NormalTaskSubmitterTest, TestBacklogReport) {
   wait_for_io_ctx_empty.get_future().get();
 
   submitter.ReportWorkerBacklog();
-  ASSERT_EQ(raylet_client->reported_backlogs.size(), 3);
-  ASSERT_EQ(raylet_client->reported_backlogs[task1.GetSchedulingClass()], 0);
+  ASSERT_EQ(raylet_client->reported_backlogs.size(), 2);
   ASSERT_EQ(raylet_client->reported_backlogs[task2.GetSchedulingClass()], 2);
   ASSERT_EQ(raylet_client->reported_backlogs[task4.GetSchedulingClass()], 1);
 }
