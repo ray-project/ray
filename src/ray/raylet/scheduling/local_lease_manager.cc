@@ -545,7 +545,7 @@ bool LocalLeaseManager::TrySpillback(const std::shared_ptr<internal::Work> &work
 }
 
 bool LocalLeaseManager::PoppedWorkerHandler(
-    const std::shared_ptr<WorkerInterface> worker,
+    const std::shared_ptr<WorkerInterface> &worker,
     PopWorkerStatus status,
     const LeaseID &lease_id,
     SchedulingClass scheduling_class,
@@ -571,16 +571,10 @@ bool LocalLeaseManager::PoppedWorkerHandler(
   }
 
   // Erases the work from lease_to_grant_ queue, also removes the lease dependencies.
-  //
-  // IDEA(ryw): Make an RAII class to wrap the a shared_ptr<internal::Work> and
-  // requests lease dependency upon ctor, and remove lease dependency upon dtor.
-  // I tried this, it works, but we expose the map via GetLeasesToGrant() used in
-  // scheduler_resource_reporter.cc. Maybe we can use `boost::any_range` to only expose
-  // a view of the Work ptrs, but I got dependency issues
-  // (can't include boost/range/any_range.hpp).
   auto erase_from_leases_to_grant_queue_fn =
       [this](const std::shared_ptr<internal::Work> &work_to_erase,
-             const SchedulingClass &_scheduling_class) {
+             const SchedulingClass &_scheduling_class,
+             const LeaseID &lease_id) {
         auto shapes_it = leases_to_grant_.find(_scheduling_class);
         RAY_CHECK(shapes_it != leases_to_grant_.end());
         auto &leases_to_grant_queue = shapes_it->second;
@@ -598,12 +592,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
           leases_to_grant_.erase(shapes_it);
         }
         RAY_CHECK(erased);
-
-        const auto &_lease = work_to_erase->lease_;
-        if (!_lease.GetLeaseSpecification().GetDependencies().empty()) {
-          lease_dependency_manager_.RemoveLeaseDependencies(
-              _lease.GetLeaseSpecification().LeaseId());
-        }
+        lease_dependency_manager_.RemoveLeaseDependencies(lease_id);
       };
 
   if (canceled) {
@@ -645,7 +634,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
       // The task job finished.
       // Just remove the task from dispatch queue.
       RAY_LOG(DEBUG) << "Call back to a job finished lease, lease id = " << lease_id;
-      erase_from_leases_to_grant_queue_fn(work, scheduling_class);
+      erase_from_leases_to_grant_queue_fn(work, scheduling_class, lease_id);
     } else {
       // In other cases, set the work status `WAITING` to make this task
       // could be re-dispatched.
@@ -686,7 +675,7 @@ bool LocalLeaseManager::PoppedWorkerHandler(
                    << worker->WorkerId();
 
     Grant(worker, leased_workers_, work->allocated_instances_, lease, reply_callbacks);
-    erase_from_leases_to_grant_queue_fn(work, scheduling_class);
+    erase_from_leases_to_grant_queue_fn(work, scheduling_class, lease_id);
     granted = true;
   }
 
@@ -766,13 +755,12 @@ void LocalLeaseManager::RemoveFromGrantedLeasesIfExists(const RayLease &lease) {
   }
 }
 
-void LocalLeaseManager::CleanupLease(std::shared_ptr<WorkerInterface> worker,
-                                     RayLease *lease) {
-  RAY_CHECK(worker != nullptr && lease != nullptr);
-  *lease = worker->GetGrantedLease();
-  RemoveFromGrantedLeasesIfExists(*lease);
+void LocalLeaseManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
+  RAY_CHECK(worker != nullptr);
+  const auto &lease = worker->GetGrantedLease();
+  RemoveFromGrantedLeasesIfExists(lease);
 
-  ReleaseLeaseArgs(lease->GetLeaseSpecification().LeaseId());
+  ReleaseLeaseArgs(lease.GetLeaseSpecification().LeaseId());
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
   }
@@ -991,7 +979,7 @@ const RayLease *LocalLeaseManager::AnyPendingLeasesForResourceAcquisition(
 }
 
 void LocalLeaseManager::Grant(
-    std::shared_ptr<WorkerInterface> worker,
+    const std::shared_ptr<WorkerInterface> &worker,
     absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayLease &lease,
@@ -1004,6 +992,7 @@ void LocalLeaseManager::Grant(
   } else {
     worker->SetAllocatedInstances(allocated_instances);
   }
+
   worker->GrantLease(lease);
 
   // Pass the contact info of the worker to use.
@@ -1047,6 +1036,7 @@ void LocalLeaseManager::Grant(
       }
     }
   }
+
   // Send the result back to the clients.
   for (const auto &reply_callback : reply_callbacks) {
     reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);

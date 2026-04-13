@@ -50,11 +50,11 @@ class FakeWorker : public WorkerInterface {
   void SetOwnerAddress(const rpc::Address &address) override {}
   void GrantLease(const RayLease &granted_lease) override {}
   void GrantLeaseId(const LeaseID &lease_id) override { lease_id_ = lease_id; }
-  const RayLease &GetGrantedLease() const override { return granted_lease_; }
+  const RayLease &GetGrantedLease() const override { return *granted_lease_; }
   absl::Time GetGrantedLeaseTime() const override { return absl::InfiniteFuture(); }
   std::optional<bool> GetIsGpu() const override { return std::nullopt; }
   std::optional<bool> GetIsActorWorker() const override { return std::nullopt; }
-  const std::string IpAddress() const override { return "127.0.0.1"; }
+  std::string IpAddress() const override { return "127.0.0.1"; }
   void AsyncNotifyGCSRestart() override {}
   void SetAllocatedInstances(
       const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {}
@@ -97,7 +97,6 @@ class FakeWorker : public WorkerInterface {
   void ClearLifetimeAllocatedInstances() override {}
   const BundleID &GetBundleId() const override { return bundle_id_; }
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
-  RayLease &GetGrantedLease() override { return granted_lease_; }
   bool IsRegistered() override { return false; }
   rpc::CoreWorkerClientInterface *rpc_client() override { return nullptr; }
   bool IsAvailableForScheduling() const override { return true; }

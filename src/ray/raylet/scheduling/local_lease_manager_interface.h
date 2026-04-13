@@ -80,7 +80,7 @@ class LocalLeaseManagerInterface {
 
   virtual void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) = 0;
 
-  virtual void CleanupLease(std::shared_ptr<WorkerInterface> worker, RayLease *lease) = 0;
+  virtual void CleanupLease(const std::shared_ptr<WorkerInterface> &worker) = 0;
 
   virtual void ReleaseWorkerResources(std::shared_ptr<WorkerInterface> worker) = 0;
 
