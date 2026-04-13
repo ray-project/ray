@@ -3313,8 +3313,9 @@ void NodeManager::SetWorkerFailureReason(const LeaseID &lease_id,
 
 void NodeManager::GCWorkerFailureReason() {
   for (const auto &entry : worker_failure_reasons_) {
-    int64_t duration_ms =
-        absl::ToInt64Milliseconds(clock_.Now() - entry.second.creation_time_);
+    auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            clock_.SteadyNow() - entry.second.creation_time_)
+                            .count();
     if (duration_ms > RayConfig::instance().task_failure_entry_ttl_ms()) {
       RAY_LOG(INFO).WithField(entry.first)
           << "Removing worker failure reason since it expired";

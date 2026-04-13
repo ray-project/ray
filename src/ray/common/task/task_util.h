@@ -37,7 +37,7 @@ struct TaskFailureEntry {
   rpc::RayErrorInfo ray_error_info_;
 
   /// The creation time of this entry.
-  absl::Time creation_time_;
+  SteadyTimePoint creation_time_;
 
   /// Whether this task should be retried.
   bool should_retry_;
@@ -45,7 +45,7 @@ struct TaskFailureEntry {
                    bool should_retry,
                    ClockInterface &clock)
       : ray_error_info_(ray_error_info),
-        creation_time_(clock.Now()),
+        creation_time_(clock.SteadyNow()),
         should_retry_(should_retry) {}
 };
 

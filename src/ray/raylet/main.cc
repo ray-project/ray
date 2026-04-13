@@ -727,7 +727,7 @@ int main(int argc, char *argv[]) {
         /*starting_worker_timeout_callback=*/
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
-        /*get_time=*/[&clock]() { return clock.Now(); },
+        /*clock=*/clock,
         worker_pool_metrics,
         std::move(add_process_to_workers_cgroup_hook));
 

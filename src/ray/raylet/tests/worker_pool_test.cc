@@ -145,7 +145,8 @@ class WorkerPoolMock : public WorkerPool {
                           gcs::GcsClient &gcs_client,
                           absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
                               &mock_worker_rpc_clients,
-                          WorkerPoolMetrics &worker_pool_metrics)
+                          WorkerPoolMetrics &worker_pool_metrics,
+                          ClockInterface &clock)
       : WorkerPool(
             io_service,
             NodeID::FromRandom(),
@@ -161,7 +162,7 @@ class WorkerPoolMock : public WorkerPool {
             "",
             []() {},
             0,
-            [this]() { return absl::FromUnixMillis(current_time_ms_); },
+            clock,
             worker_pool_metrics),
         last_worker_pid_(-1),
         instrumented_io_service_(io_service),
@@ -263,8 +264,6 @@ class WorkerPoolMock : public WorkerPool {
 
   void ClearProcesses() { worker_commands_by_proc_.clear(); }
 
-  void SetCurrentTimeMs(double current_time) { current_time_ms_ = current_time; }
-
   size_t GetIdleWorkerSize() { return idle_of_all_languages_.size(); }
 
   std::list<IdleWorkerEntry> &GetIdleWorkers() { return idle_of_all_languages_; }
@@ -299,7 +298,7 @@ class WorkerPoolMock : public WorkerPool {
                                                                "127.0.0.1",
                                                                conn,
                                                                client_call_manager_,
-                                                               fake_clock_);
+                                                               clock_);
     if (proc != nullptr) {
       worker_->SetProcess(std::move(proc));
     }
@@ -411,8 +410,6 @@ class WorkerPoolMock : public WorkerPool {
   absl::flat_hash_map<pid_t, std::vector<std::string>> worker_commands_by_proc_;
   // Maps process to the WorkerID assigned when the process was started.
   absl::flat_hash_map<pid_t, WorkerID> worker_ids_by_proc_;
-  double current_time_ms_ = 0;
-  FakeClock fake_clock_;
   absl::flat_hash_map<pid_t, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
   rpc::ClientCallManager client_call_manager_;
@@ -489,7 +486,8 @@ class WorkerPoolTest : public ::testing::Test {
                                                     worker_commands,
                                                     *mock_gcs_client_,
                                                     mock_worker_rpc_clients_,
-                                                    worker_pool_metrics_);
+                                                    worker_pool_metrics_,
+                                                    fake_clock_);
   }
 
   void TestStartupWorkerProcessCount(Language language, int num_workers_per_process) {
@@ -520,6 +518,7 @@ class WorkerPoolTest : public ::testing::Test {
       mock_worker_rpc_clients_;
 
  protected:
+  FakeClock fake_clock_{absl::FromUnixMillis(1)};
   instrumented_io_context io_service_;
   std::unique_ptr<std::thread> thread_io_service_;
   std::unique_ptr<WorkerPoolMock> worker_pool_;
@@ -884,12 +883,12 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerStartupKeepAliveDuration) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT + 2);
 
   // Time passes. The worker is not killed because it's protected by keep-alive.
-  worker_pool_->SetCurrentTimeMs(2000);
+  fake_clock_.SetTime(absl::FromUnixMillis(2000));
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT + 2);
 
   // After the keep-alive expires, the worker is killed.
-  worker_pool_->SetCurrentTimeMs(2000 + absl::ToDoubleMilliseconds(keep_alive_duration));
+  fake_clock_.SetTime(absl::FromUnixMillis(2000) + keep_alive_duration);
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
 
@@ -1623,7 +1622,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), num_workers);
 
   // 2000 ms has passed, so idle workers should be killed.
-  worker_pool_->SetCurrentTimeMs(2000);
+  fake_clock_.SetTime(absl::FromUnixMillis(2000));
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
 
@@ -1695,7 +1694,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
     worker_pool_->PushRestoreWorker(worker);
   }
   // All workers still alive.
-  worker_pool_->SetCurrentTimeMs(10000);
+  fake_clock_.SetTime(absl::FromUnixMillis(10000));
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
   for (auto &entry : worker_pool_->GetIdleWorkers()) {
@@ -1743,7 +1742,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
 
   // 1000 ms has passed, so idle workers should be killed.
-  worker_pool_->SetCurrentTimeMs(1000);
+  fake_clock_.SetTime(absl::FromUnixMillis(1000));
   worker_pool_->TryKillingIdleWorkers();
 
   // Let's assume that all workers own objects, so they won't be killed.
@@ -1769,7 +1768,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay) {
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), workers.size());
 
   // The second round of killing starts.
-  worker_pool_->SetCurrentTimeMs(2000);
+  fake_clock_.SetTime(absl::FromUnixMillis(2000));
   worker_pool_->TryKillingIdleWorkers();
 
   // Delayed workers reply first, then all workers reply the second time.
@@ -1903,7 +1902,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker) {
   auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker->WorkerId());
   std::shared_ptr<MockWorkerClient> mock_rpc_client = mock_rpc_client_it->second;
 
-  worker_pool_->SetCurrentTimeMs(2000);
+  fake_clock_.SetTime(absl::FromUnixMillis(2000));
 
   // Won't kill the worker since job hasn't finished and we are under
   // the soft limit (5).
@@ -1963,7 +1962,7 @@ TEST_F(WorkerPoolDriverRegisteredTest,
   auto mock_rpc_client_it = mock_worker_rpc_clients_.find(worker_to_kill->WorkerId());
   std::shared_ptr<MockWorkerClient> mock_rpc_client = mock_rpc_client_it->second;
 
-  worker_pool_->SetCurrentTimeMs(2000);
+  fake_clock_.SetTime(absl::FromUnixMillis(2000));
 
   // Won't kill the workers since neither job has finished.
   worker_pool_->TryKillingIdleWorkers();
