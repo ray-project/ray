@@ -7,7 +7,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:asio",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -18,7 +18,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:event_stats",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -30,7 +30,7 @@ ray_cc_test(
     deps = [
         "//src/ray/common:grpc_util",
         "//src/ray/common:ray_config",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -41,8 +41,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:id",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/protobuf:common_cc_proto",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -51,9 +51,9 @@ ray_cc_test(
     srcs = ["task_spec_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common/scheduling:scheduling_class_util",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -65,7 +65,7 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:bundle_location_index",
-        "@com_google_googletest//:gtest_main",
+        "//src/ray/common:ray_gtest_main",
     ],
 )
 
@@ -85,9 +85,9 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:grpc_util",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:status",
         "@com_github_grpc_grpc//:grpc++",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -98,8 +98,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":testing",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:status_or",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -120,11 +120,11 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/common:memory_monitor_test_fixture",
         "//src/ray/common:memory_monitor_utils",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/cgroup2:cgroup_test_utils",
         "//src/ray/util:process",
         "@boost//:filesystem",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -144,9 +144,31 @@ ray_cc_test(
     deps = [
         "//src/ray/common:memory_monitor_interface",
         "//src/ray/common:memory_monitor_test_fixture",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:threshold_memory_monitor",
         "@boost//:thread",
-        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "event_memory_monitor_test",
+    size = "small",
+    srcs = [
+        "event_memory_monitor_test.cc",
+    ],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        "//src/ray/common:event_memory_monitor",
+        "//src/ray/common:ray_gtest_main",
+        "//src/ray/common/cgroup2:cgroup_test_utils",
+        "//src/ray/util:logging",
+        "@boost//:thread",
     ],
 )
 
@@ -165,10 +187,10 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common:pressure_memory_monitor",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/cgroup2:cgroup_test_utils",
         "//src/ray/util:logging",
         "@boost//:thread",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -181,8 +203,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:grpc_util",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/protobuf:common_cc_proto",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -192,7 +214,7 @@ ray_cc_test(
     srcs = ["source_location_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:source_location",
-        "@com_google_googletest//:gtest_main",
     ],
 )
