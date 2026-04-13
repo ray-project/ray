@@ -322,7 +322,7 @@ class TestToTorch:
 
         assert labels.shape == (2,)
 
-    def test_feature_columns_as_list_of_lists(ray_start_regular_shared):
+    def test_feature_columns_as_list_of_lists(self, ray_start_regular_shared):
         ds = ray.data.from_pandas(pd.DataFrame({"a": [[1, 2], [3, 4], [5, 6]]}))
         it = ds.iterator().to_torch(feature_columns=["a"], batch_size=2)
 
