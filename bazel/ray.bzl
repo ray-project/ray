@@ -148,7 +148,7 @@ def ray_cc_test(name, deps = [], linkopts = [], copts = [], use_ray_gtest_main =
     # Allow skipping the default `ray_gtest_main` function for tests that need bespoke
     # setup logic.
     if use_ray_gtest_main:
-      deps.append("//src/ray/common:ray_gtest_main")
+      deps = deps + ["//src/ray/common:ray_gtest_main"]
 
     cc_test(
         name = name,
