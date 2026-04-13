@@ -779,10 +779,12 @@ class _ActorPool(AutoscalingActorPool):
         self._pending_actors: Dict[ObjectRef, ActorHandle] = {}
         # Map from actor handle to its logical ID.
         self._actor_to_logical_id: Dict[ActorHandle, LogicalActorId] = {}
-        self._total_usage = ExecutionResources.zero()
-        self._pending_usage = ExecutionResources.zero()
+        # Per-actor resource usage, needed because ray_remote_args_fn can
+        # produce different resources for each actor.
         self._actor_resource_usage: Dict[ActorHandle, ExecutionResources] = {}
-        self._actor_is_pending: Dict[ActorHandle, bool] = {}
+        # Cached aggregate resource counters.
+        self._total_usage = ExecutionResources.zero()
+        self._pending_or_restarting_usage = ExecutionResources.zero()
         # Cached values for actor / task counts
         self._num_restarting_actors: int = 0
         self._num_active_actors: int = 0
@@ -932,7 +934,11 @@ class _ActorPool(AutoscalingActorPool):
             # Actor init failed - clean up the actor from _actor_to_logical_id
             # This must happen for all exceptions, not just RayError, to prevent
             # memory leaks where dead actor handles remain in _actor_to_logical_id.
-            self._remove_actor_usage(actor)
+            usage = self._actor_resource_usage.pop(actor)
+            self._total_usage = self._total_usage.subtract(usage)
+            self._pending_or_restarting_usage = (
+                self._pending_or_restarting_usage.subtract(usage)
+            )
             self._actor_to_logical_id.pop(actor, None)
             raise
         self._running_actors[actor] = _ActorState(
@@ -940,7 +946,10 @@ class _ActorPool(AutoscalingActorPool):
             actor_location=actor_location,
             is_restarting=False,
         )
-        self._set_actor_is_pending(actor, False)
+        # Actor is no longer pending — subtract from pending usage.
+        self._pending_or_restarting_usage = self._pending_or_restarting_usage.subtract(
+            self._actor_resource_usage[actor]
+        )
         # NOTE: We assume any actor that goes from pending to running is ALIVE
         self._alive_actors_to_in_flight_tasks_heap[actor] = _ActorRank(0)
         self._alive_node_to_actor_map[actor_location].add(actor)
@@ -1059,47 +1068,6 @@ class _ActorPool(AutoscalingActorPool):
         self._actor_to_logical_id[actor] = logical_actor_id
         return actor, ready_ref, resource_usage
 
-    def running_actors(self) -> Dict[ActorHandle, _ActorState]:
-        return self._running_actors
-
-    def _register_actor_usage(
-        self,
-        actor: ActorHandle,
-        usage: ExecutionResources,
-        *,
-        is_pending: bool,
-    ) -> None:
-        """Register a new actor and add its usage to aggregate totals."""
-        assert actor not in self._actor_resource_usage
-        self._actor_resource_usage[actor] = usage
-        self._actor_is_pending[actor] = is_pending
-        self._total_usage = self._total_usage.add(usage)
-        if is_pending:
-            self._pending_usage = self._pending_usage.add(usage)
-
-    def _set_actor_is_pending(self, actor: ActorHandle, is_pending: bool) -> None:
-        """Update whether an actor contributes to pending logical usage."""
-        assert actor in self._actor_resource_usage
-        if self._actor_is_pending[actor] == is_pending:
-            return
-
-        usage = self._actor_resource_usage[actor]
-        if is_pending:
-            self._pending_usage = self._pending_usage.add(usage)
-        else:
-            self._pending_usage = self._pending_usage.subtract(usage)
-        self._actor_is_pending[actor] = is_pending
-
-    def _remove_actor_usage(self, actor: ActorHandle) -> None:
-        """Remove an actor and subtract its usage from aggregate totals."""
-        usage = self._actor_resource_usage.pop(actor, None)
-        if usage is None:
-            return
-
-        self._total_usage = self._total_usage.subtract(usage)
-        if self._actor_is_pending.pop(actor):
-            self._pending_usage = self._pending_usage.subtract(usage)
-
     def _update_running_actor_state(self, actor: ActorHandle):
         """Update running actor state. This is called for every actor
         in `refresh_actor_state`.
@@ -1122,12 +1090,20 @@ class _ActorPool(AutoscalingActorPool):
             assert actor_state == _ACTOR_STATE_RESTARTING, actor_state
             if not running_actor_state.is_restarting:
                 self._num_restarting_actors += 1
-                self._set_actor_is_pending(actor, True)
+                self._pending_or_restarting_usage = (
+                    self._pending_or_restarting_usage.add(
+                        self._actor_resource_usage[actor]
+                    )
+                )
                 running_actor_state.is_restarting = True
         else:
             if running_actor_state.is_restarting:
                 self._num_restarting_actors -= 1
-                self._set_actor_is_pending(actor, False)
+                self._pending_or_restarting_usage = (
+                    self._pending_or_restarting_usage.subtract(
+                        self._actor_resource_usage[actor]
+                    )
+                )
                 running_actor_state.is_restarting = False
 
         self._update_rank(actor=actor, state=running_actor_state, died=died)
@@ -1167,7 +1143,11 @@ class _ActorPool(AutoscalingActorPool):
             resource_usage: The actual resource usage for this actor.
         """
         self._pending_actors[ready_ref] = actor
-        self._register_actor_usage(actor, resource_usage, is_pending=True)
+        self._actor_resource_usage[actor] = resource_usage
+        self._total_usage = self._total_usage.add(resource_usage)
+        self._pending_or_restarting_usage = self._pending_or_restarting_usage.add(
+            resource_usage
+        )
 
     def _get_logical_ids(self) -> List[LogicalActorId]:
         """Get the logical IDs for pending and running actors in the actor pool.
@@ -1196,7 +1176,11 @@ class _ActorPool(AutoscalingActorPool):
             # At least one pending actor, so kill first one.
             ready_ref = next(iter(self._pending_actors.keys()))
             actor = self._pending_actors.pop(ready_ref)
-            self._remove_actor_usage(actor)
+            usage = self._actor_resource_usage.pop(actor)
+            self._total_usage = self._total_usage.subtract(usage)
+            self._pending_or_restarting_usage = (
+                self._pending_or_restarting_usage.subtract(usage)
+            )
             del self._actor_to_logical_id[actor]
             return True
         # No pending actors, so indicate to the caller that no actors were killed.
@@ -1217,7 +1201,11 @@ class _ActorPool(AutoscalingActorPool):
         pending = dict(self._pending_actors)
         self._pending_actors.clear()
         for actor in pending.values():
-            self._remove_actor_usage(actor)
+            usage = self._actor_resource_usage.pop(actor)
+            self._total_usage = self._total_usage.subtract(usage)
+            self._pending_or_restarting_usage = (
+                self._pending_or_restarting_usage.subtract(usage)
+            )
             self._actor_to_logical_id.pop(actor, None)
 
         if force:
@@ -1271,7 +1259,13 @@ class _ActorPool(AutoscalingActorPool):
 
         del self._running_actors[actor]
         del self._actor_to_logical_id[actor]
-        self._remove_actor_usage(actor)
+
+        usage = self._actor_resource_usage.pop(actor)
+        self._total_usage = self._total_usage.subtract(usage)
+        if actor_state.is_restarting:
+            self._pending_or_restarting_usage = (
+                self._pending_or_restarting_usage.subtract(usage)
+            )
 
     def _find_actor_with_locality(self, bundle: RefBundle) -> Optional[ActorHandle]:
         """Exhaustively search all alive actors on preferred nodes for the best match.
@@ -1319,7 +1313,7 @@ class _ActorPool(AutoscalingActorPool):
         return min(actor_ranks, key=lambda x: (x[1], x[2]))[0]
 
     def current_logical_usage(self) -> ExecutionResources:
-        return self._total_usage.copy()
+        return self._total_usage
 
     def pending_logical_usage(self) -> ExecutionResources:
-        return self._pending_usage.copy()
+        return self._pending_or_restarting_usage
