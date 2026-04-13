@@ -361,58 +361,76 @@ def test_out_of_band_checkpointing(tmp_path):
         with open(file_path, "w") as f:
             f.write(content)
 
-    def train_fn():
-        # save in-band
-        write_file(tmp_path / "epoch-1" / "results.txt", "1")
-        ray.train.report(
-            metrics={"score": 1},
-            checkpoint=Checkpoint(tmp_path / "epoch-1"),
-        )
-        # save in-band with checkpoint dir name
-        write_file(tmp_path / "epoch-2" / "test" / "results.txt", "2")
-        ray.train.report(
-            metrics={"score": 2},
-            checkpoint=Checkpoint(tmp_path / "epoch-2"),
-            checkpoint_dir_name="test",
-        )
-
-        # save out of band with NO_UPLOAD
-        write_file(tmp_path / "epoch-3" / "results.txt", "3")
-        ray.train.report(
-            metrics={"score": 3},
-            checkpoint=Checkpoint(tmp_path / "epoch-3"),
-            checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
-        )
-
-        # save out of band with custom checkpoint_upload_fn
-        write_file(tmp_path / "epoch-4" / "results.txt", "4")
-        ray.train.report(
-            metrics={"score": 4},
-            checkpoint=Checkpoint(tmp_path / "epoch-4"),
-            checkpoint_upload_fn=lambda checkpoint, name: checkpoint,
-        )
-        write_file(tmp_path / "test" / "epoch-5" / "results.txt", "5")
-        ray.train.report(
-            metrics={"score": 5},
-            checkpoint=Checkpoint(tmp_path / "test" / "epoch-5"),
-            checkpoint_dir_name="test",
-            checkpoint_upload_fn=lambda checkpoint, name: checkpoint,
-        )
-
-        # ensures that all the ray.train.report have finished.
-        reported_checkpoints = ray.train.get_all_reported_checkpoints()
-        assert len(reported_checkpoints) == 5
-
     with tempfile.TemporaryDirectory() as _experiment_dir:
         # For MacOS, the tempfile can be resolved differently, therefore, we force it
         experiment_dir = Path(_experiment_dir).resolve()
 
         expected_checkpoint_paths = [
-            Path(experiment_dir) / "test-out-of-band-checkpointing" / "test",
-            tmp_path / "epoch-3",
+            # this doesn't use a checkpoint_dir_name therefore we can't determine the saved checkpoint name
+            # experiment_dir / "test-out-of-band-checkpointing",
+            experiment_dir / "test-out-of-band-checkpointing" / "test",
+            experiment_dir / "epoch-3",
             tmp_path / "epoch-4",
-            tmp_path / "test" / "epoch-5",
+            experiment_dir / "epoch-5",
+            tmp_path / "epoch-6",
+            tmp_path / "test" / "epoch-7",
         ]
+
+        def train_fn():
+            # save
+            write_file(tmp_path / "epoch-1" / "results.txt", "1")
+            ray.train.report(
+                metrics={"score": 1},
+                checkpoint=Checkpoint(tmp_path / "epoch-1"),
+            )
+            # save with checkpoint dir name
+            write_file(tmp_path / "epoch-2" / "test" / "results.txt", "2")
+            ray.train.report(
+                metrics={"score": 2},
+                checkpoint=Checkpoint(tmp_path / "epoch-2"),
+                checkpoint_dir_name="test",
+            )
+
+            # Save in-band with NO_UPLOAD
+            write_file(experiment_dir / "epoch-3" / "test" / "results.txt", "3")
+            ray.train.report(
+                metrics={"score": 3},
+                checkpoint=Checkpoint(experiment_dir / "epoch-3"),
+                checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
+            )
+            # save out of band with NO_UPLOAD
+            write_file(tmp_path / "epoch-4" / "results.txt", "4")
+            ray.train.report(
+                metrics={"score": 4},
+                checkpoint=Checkpoint(tmp_path / "epoch-4"),
+                checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
+            )
+
+            # save in-band with custom checkpoint_upload_fn
+            write_file(experiment_dir / "epoch-5" / "results.txt", "5")
+            ray.train.report(
+                metrics={"score": 5},
+                checkpoint=Checkpoint(experiment_dir / "epoch-5"),
+                checkpoint_upload_fn=lambda ckpt, name: ckpt,
+            )
+            # save out of band with custom checkpoint_upload_fn
+            write_file(tmp_path / "epoch-6" / "results.txt", "6")
+            ray.train.report(
+                metrics={"score": 6},
+                checkpoint=Checkpoint(tmp_path / "epoch-6"),
+                checkpoint_upload_fn=lambda ckpt, name: ckpt,
+            )
+            write_file(tmp_path / "test" / "epoch-7" / "results.txt", "7")
+            ray.train.report(
+                metrics={"score": 7},
+                checkpoint=Checkpoint(tmp_path / "test" / "epoch-7"),
+                checkpoint_dir_name="test",
+                checkpoint_upload_fn=lambda ckpt, name: ckpt,
+            )
+
+            # ensures that all the ray.train.report have finished.
+            reported_checkpoints = ray.train.get_all_reported_checkpoints()
+            assert len(reported_checkpoints) == 7
 
         data_trainer = DataParallelTrainer(
             train_fn,
@@ -425,7 +443,7 @@ def test_out_of_band_checkpointing(tmp_path):
         results: Result = data_trainer.fit()
         result_checkpoints = results.best_checkpoints
 
-        assert result_checkpoints is not None and len(result_checkpoints) == 5
+        assert result_checkpoints is not None and len(result_checkpoints) == 7
         # The checkpoint manager add the final folder meaning that you can't
         #   a priori know the final checkpoint path if no checkpoint dir name is used.
         assert (
@@ -434,7 +452,7 @@ def test_out_of_band_checkpointing(tmp_path):
         )
         # Check the rest of the checkpoint paths
         for checkpoint, score, expected_path in zip(
-            result_checkpoints[1:], range(2, 6), expected_checkpoint_paths, strict=True
+            result_checkpoints[1:], range(2, 8), expected_checkpoint_paths, strict=True
         ):
             assert checkpoint == (Checkpoint(expected_path), {"score": score})
 
@@ -442,7 +460,7 @@ def test_out_of_band_checkpointing(tmp_path):
         #   checkpoints that the checkpoint paths are all correct still.
         def restored_train_fn():
             reported_checkpoints = ray.train.get_all_reported_checkpoints()
-            assert len(reported_checkpoints) == 5
+            assert len(reported_checkpoints) == 7
             for (checkpoint, metric), reported_checkpoint in zip(
                 result_checkpoints, reported_checkpoints, strict=True
             ):
@@ -458,7 +476,7 @@ def test_out_of_band_checkpointing(tmp_path):
         )
         restored_results = restored_data_trainer.fit()
         restored_checkpoints = restored_results.best_checkpoints
-        assert restored_checkpoints is not None and len(restored_checkpoints) == 5
+        assert restored_checkpoints is not None and len(restored_checkpoints) == 7
 
 
 if __name__ == "__main__":
