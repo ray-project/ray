@@ -31,7 +31,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data._internal.util import rows_same
+from ray.data._internal.util import explain_plan, rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -559,7 +559,7 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
     # Test projection pushed down into read op
     ds = ray.data.read_parquet(path).select_columns("variety")
 
-    assert ds._plan.explain().strip() == (
+    assert explain_plan(ds._logical_plan).strip() == (
         "-------- Logical Plan --------\n"
         "Project[Project]\n"
         "+- Read[ReadParquet]\n"
