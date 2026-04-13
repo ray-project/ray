@@ -529,6 +529,8 @@ bool RedisDelKeyPrefixSync(const std::string &host,
                                      /*running_on_single_thread=*/true};
   RedisClientOptions options{host, port, username, password, use_ssl};
   Clock real_clock;
+  // The RedisContext lifetime is scoped to this function, so it's ok to take references
+  // to the above stack-allocated objects.
   std::shared_ptr<RedisContext> context =
       ConnectRedisContext(io_service, options, real_clock);
 
