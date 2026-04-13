@@ -98,7 +98,7 @@ bool IOContextMonitor::ProcessProbe(ProbeState &probe) {
   ClockInterface &clock = clock_;
   probe.io_context->post(
       [probe_shared, &clock]() {
-        int64_t complete_ns = absl::ToUnixNanos(clock.Now());
+        int64_t complete_ns = clock.NowUnixNanos();
         probe_shared->probe_complete_time_ns.store(complete_ns,
                                                    std::memory_order_release);
         probe_shared->last_probe_completed.store(true, std::memory_order_release);
@@ -119,20 +119,24 @@ IOContextMonitorThread::IOContextMonitorThread(
 IOContextMonitorThread::~IOContextMonitorThread() { Stop(); }
 
 void IOContextMonitorThread::Start() {
-  bool expected = false;
-  if (!running_.compare_exchange_strong(expected, true)) {
+  absl::MutexLock lock(&mutex_);
+  if (running_) {
     return;
   }
+  if (thread_.joinable()) {
+    thread_.join();
+  }
+  running_ = true;
   thread_ = std::thread([this] { Run(); });
 }
 
 void IOContextMonitorThread::Stop() {
   {
     absl::MutexLock lock(&mutex_);
-    bool expected = true;
-    if (!running_.compare_exchange_strong(expected, false)) {
+    if (!running_) {
       return;
     }
+    running_ = false;
   }
   if (thread_.joinable()) {
     thread_.join();

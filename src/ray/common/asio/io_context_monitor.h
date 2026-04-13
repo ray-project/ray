@@ -57,7 +57,7 @@ class IOContextMonitor {
   bool Tick();
 
  private:
-  struct ProbeState {
+  struct ProbeState : std::enable_shared_from_this<ProbeState> {
     std::string name;
     instrumented_io_context *io_context;
     std::atomic<bool> last_probe_completed{true};

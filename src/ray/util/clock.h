@@ -24,6 +24,7 @@ class ClockInterface {
  public:
   virtual ~ClockInterface() = default;
   virtual absl::Time Now() const = 0;
+  virtual int64_t NowUnixNanos() const { return absl::ToUnixNanos(Now()); }
 };
 
 /// Real clock that delegates to absl::Now().
