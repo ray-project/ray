@@ -1,6 +1,7 @@
 import os
 import sys
 import tempfile
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -10,6 +11,8 @@ from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import get_global_config, init_global_config
 from ray_release.custom_byod_build_init_helper import (
     _get_step_name,
+    _short_tag,
+    build_short_gpu_map,
     create_custom_build_yaml,
     generate_custom_build_step_key,
     get_prerequisite_step,
@@ -211,6 +214,35 @@ def test_get_prerequisite_step():
         get_prerequisite_step("anyscale/ray:abc123-custom", "anyscale/ray:abc123-base")
         == "forge"
     )
+
+
+@pytest.mark.parametrize(
+    "gpu, expected",
+    [
+        ("cpu", "cpu"),
+        ("tpu", "tpu"),
+        ("cu12.3.2-cudnn9", "cu123"),
+        ("cu11.8.0-cudnn8", "cu118"),
+        ("cu12-cudnn9", "cu12"),
+    ],
+)
+def test_short_tag(gpu, expected):
+    assert _short_tag(gpu) == expected
+
+
+def test_short_gpu_map_built_from_ray_images_json():
+    """The map built from ray-images.json has no short-tag collisions."""
+    ray_images_path = str(Path(bazel_runfile("ray-images.json")))
+    gpu_map = build_short_gpu_map(ray_images_path)
+    assert "cpu" in gpu_map
+    # Verify at least one CUDA gpu is present.
+    cuda_entries = {k: v for k, v in gpu_map.items() if k.startswith("cu")}
+    assert len(cuda_entries) > 0
+    # Verify round-trip: _short_tag(full) maps back to the same key.
+    for short, full in gpu_map.items():
+        assert (
+            _short_tag(full) == short
+        ), f"_short_tag({full!r}) = {_short_tag(full)!r}, expected {short!r}"
 
 
 def test_get_step_name():
