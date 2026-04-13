@@ -222,7 +222,7 @@ def prepare_model(
     if parallel_strategy and world_size > 1:
         if parallel_strategy == "ddp":
             DataParallel = DistributedDataParallel
-            if torch.cuda.is_available():
+            if torch.cuda.is_available() and device.type != "cpu":
                 parallel_strategy_kwargs = {
                     "device_ids": [device],
                     "output_device": device,
