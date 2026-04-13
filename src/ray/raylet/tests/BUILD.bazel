@@ -23,7 +23,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/raylet:wait_manager",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -45,7 +44,6 @@ ray_cc_test(
         "//src/ray/util:process",
         "//src/ray/util:process_interface",
         "//src/ray/util:raii",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -70,7 +68,6 @@ ray_cc_test(
         "//src/ray/raylet:local_object_manager",
         "//src/ray/raylet:worker_pool",
         "//src/ray/rpc:grpc_client",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -86,7 +83,6 @@ ray_cc_test(
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet:placement_group_resource_manager",
         "//src/ray/util:clock",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -105,7 +101,6 @@ ray_cc_test(
         "@boost//:asio",
         "@boost//:beast",
         "@boost//:thread",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -119,7 +114,6 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet:lease_dependency_manager",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -137,7 +131,6 @@ ray_cc_test(
         "//src/ray/common:lease",
         "//src/ray/raylet:worker_killing_policy_group_by_owner",
         "//src/ray/util:fake_process",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -154,7 +147,6 @@ ray_cc_test(
         "//src/ray/common:lease",
         "//src/ray/common:memory_monitor_interface",
         "//src/ray/raylet:worker_killing_policy_by_time",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -187,7 +179,6 @@ ray_cc_test(
         "//src/ray/rpc:utils",
         "//src/ray/util:clock",
         "//src/ray/util:macros",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -199,6 +190,5 @@ ray_cc_test(
     deps = [
         "//src/ray/raylet:throttler",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_main",
     ],
 )
