@@ -206,6 +206,56 @@ def test_batching_pyarrow_table_with_many_chunks():
     assert duration < 30
 
 
+def test_batcher_combines_chunks_with_few_chunks():
+    """Test that the Batcher combines chunked columns even when the number of chunks
+    is below the default MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS (10).
+
+    This is important for map_batches and local shuffle performance when the buffer
+    size is small.
+    """
+    # Create a block with 3 chunks per column (well below the default threshold of 10).
+    arrays = [pa.table({"a": list(range(i * 10, (i + 1) * 10))}) for i in range(3)]
+    block = pa.concat_tables(arrays)
+    assert block.column("a").num_chunks == 3
+
+    batch_size = 15
+    batcher = Batcher(batch_size, ensure_copy=False)
+    batcher.add(block)
+    batcher.done_adding()
+
+    # The first batch takes only part of the block, which triggers
+    # try_combine_chunked_columns in the slicing path.
+    batch = batcher.next_batch()
+    assert len(batch) == batch_size
+    # The returned batch should have combined chunks (1 chunk).
+    assert batch.column("a").num_chunks == 1
+
+
+def test_shuffling_batcher_combines_chunks_with_few_chunks():
+    """Test that the ShufflingBatcher combines chunked columns even when the number
+    of chunks is below the default MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS (10).
+    """
+    # Create a block with 3 chunks per column.
+    arrays = [pa.table({"a": list(range(i * 10, (i + 1) * 10))}) for i in range(3)]
+    block = pa.concat_tables(arrays)
+    assert block.column("a").num_chunks == 3
+
+    batch_size = 10
+    batcher = ShufflingBatcher(
+        batch_size=batch_size,
+        shuffle_buffer_min_size=batch_size,
+        shuffle_seed=42,
+    )
+    batcher.add(block)
+    batcher.done_adding()
+
+    # After compaction, the internal shuffle buffer should have combined chunks.
+    batch = batcher.next_batch()
+    assert len(batch) == batch_size
+    # The shuffle buffer should have been defragmented to 1 chunk.
+    assert batcher._shuffle_buffer.column("a").num_chunks == 1
+
+
 @pytest.mark.parametrize(
     "batch_size,local_shuffle_buffer_size",
     [(1, 1), (10, 1), (1, 10), (10, 1000), (1000, 10)],

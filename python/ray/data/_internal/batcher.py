@@ -135,7 +135,9 @@ class Batcher(BatcherInterface):
                 # subsequent slicing operation)
                 if isinstance(accessor, ArrowBlockAccessor):
                     accessor = BlockAccessor.for_block(
-                        transform_pyarrow.try_combine_chunked_columns(block)
+                        transform_pyarrow.try_combine_chunked_columns(
+                            block, min_num_chunks=1
+                        )
                     )
 
                 # We only need part of the block to fill out a batch.
@@ -351,7 +353,9 @@ class ShufflingBatcher(BatcherInterface):
             if isinstance(
                 BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
             ):
-                self._shuffle_buffer = try_combine_chunked_columns(self._shuffle_buffer)
+                self._shuffle_buffer = try_combine_chunked_columns(
+                    self._shuffle_buffer, min_num_chunks=1
+                )
 
             # Reset the builder.
             self._builder = DelegatingBlockBuilder()

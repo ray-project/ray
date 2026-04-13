@@ -1094,16 +1094,29 @@ def to_numpy(
         )
 
 
-def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
+def try_combine_chunked_columns(
+    table: "pyarrow.Table",
+    min_num_chunks: Optional[int] = None,
+) -> "pyarrow.Table":
     """This method attempts to coalesce table by combining any of its
-    columns exceeding threshold of `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
-    chunks in its `ChunkedArray`.
+    columns exceeding threshold of `min_num_chunks` (defaulting to
+    `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`) chunks in its `ChunkedArray`.
 
     This is necessary to improve performance for some operations (like `take`, etc)
     when dealing with `ChunkedArrays` w/ large number of chunks
 
     For more details check out https://github.com/apache/arrow/issues/35126
+
+    Args:
+        table: The PyArrow table to combine chunks for.
+        min_num_chunks: Minimum number of chunks in a column to trigger
+            combining. Defaults to MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS.
+
+    Returns:
+        A new table with chunked columns combined where applicable.
     """
+    if min_num_chunks is None:
+        min_num_chunks = MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
 
     if table.num_columns == 0:
         return table
@@ -1111,7 +1124,7 @@ def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
     new_column_values_arrays = []
 
     for col in table.columns:
-        if col.num_chunks >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS:
+        if col.num_chunks >= min_num_chunks:
             new_col = combine_chunked_array(col)
         else:
             new_col = col
