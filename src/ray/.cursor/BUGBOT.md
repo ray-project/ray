@@ -42,3 +42,8 @@
 > ⚠️ `gtest` and `gtest_main` are included by default as part of `ray_gtest_main` in `ray_cc_test` targets.
 >
 > Only include these targets if you need to override the default logic in `ray_gtest_main`. To do so, set `use_ray_gtest_main = False` in the `ray_cc_test` target. You probably don't need to do this.
+
+## Rule: Ray Data Unit vs. Integration Test Placements
+- Look at the list of changed files in PR.
+- If there are ANY changes under `python/ray/data/tests/`, apply the checks below.
+- If no files under `python/ray/data/tests/` are changed, do not post this message.
