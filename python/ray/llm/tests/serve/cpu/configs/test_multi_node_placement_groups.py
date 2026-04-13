@@ -98,9 +98,9 @@ def test_llm_serve_default_placement_strategy(tp_size, pp_size):
 def test_llm_serve_placement_group_validation():
     """Test validation of placement group configurations."""
 
-    # Test missing bundles
+    # Test missing both bundle_per_worker and bundles
     with pytest.raises(
-        ValueError, match="placement_group_config must contain 'bundles'"
+        ValueError, match="must specify either 'bundle_per_worker' or 'bundles'"
     ):
         llm_config = get_llm_config_with_placement_group(
             placement_group_config={"strategy": "PACK"}
@@ -279,6 +279,212 @@ def test_fractional_gpu_env_var_override_preserved():
     runtime_env = engine_config.get_runtime_env_with_local_env_vars()
 
     assert runtime_env["env_vars"]["VLLM_RAY_PER_WORKER_GPUS"] == "0.6"
+
+
+@pytest.mark.parametrize(
+    "tp_size,pp_size",
+    [
+        (2, 1),
+        (1, 2),
+        (2, 2),
+        (4, 2),
+    ],
+)
+def test_bundle_per_worker_expands_correctly(tp_size, pp_size):
+    """Test that bundle_per_worker is auto-replicated based on tp*pp."""
+    expected_bundles = tp_size * pp_size
+
+    llm_config = get_llm_config_with_placement_group(
+        tensor_parallel_size=tp_size,
+        pipeline_parallel_size=pp_size,
+        placement_group_config={"bundle_per_worker": {"GPU": 1, "CPU": 2}},
+    )
+
+    # Verify the configuration is properly set
+    assert llm_config.placement_group_config == {
+        "bundle_per_worker": {"GPU": 1, "CPU": 2}
+    }
+
+    # Test that serve options are generated correctly
+    serve_options = LLMServer.get_deployment_options(llm_config)
+    assert "placement_group_bundles" in serve_options
+    assert len(serve_options["placement_group_bundles"]) == expected_bundles
+
+    # Each bundle should have the specified resources (plus accelerator hint injection)
+    for i, bundle in enumerate(serve_options["placement_group_bundles"]):
+        # First bundle gets merged with replica actor resources
+        if i == 0:
+            assert bundle["GPU"] >= 1
+            assert bundle["CPU"] >= 2
+        else:
+            assert bundle["GPU"] == 1
+            assert bundle["CPU"] == 2
+
+
+def test_bundle_per_worker_conflict_with_bundles():
+    """Test that specifying both bundle_per_worker and bundles raises error."""
+    with pytest.raises(ValueError, match="Cannot specify both"):
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(
+                model_id="test_model",
+                model_source="facebook/opt-125m",
+            ),
+            placement_group_config={
+                "bundle_per_worker": {"GPU": 1, "CPU": 1},
+                "bundles": [{"GPU": 1}],
+            },
+        )
+        # Validation happens when VLLMEngineConfig is created
+        VLLMEngineConfig.from_llm_config(llm_config)
+
+
+def test_bundle_per_worker_uses_pack_strategy():
+    """Test that bundle_per_worker defaults to PACK strategy."""
+    llm_config = get_llm_config_with_placement_group(
+        tensor_parallel_size=2,
+        pipeline_parallel_size=1,
+        placement_group_config={"bundle_per_worker": {"GPU": 1}},
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+    assert serve_options["placement_group_strategy"] == "PACK"
+
+
+def test_bundle_per_worker_injects_accelerator_type():
+    """Test that bundle_per_worker bundles get accelerator type hint injected."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        engine_kwargs=dict(
+            tensor_parallel_size=2,
+            pipeline_parallel_size=1,
+            distributed_executor_backend="ray",
+        ),
+        accelerator_type="L4",
+        placement_group_config={"bundle_per_worker": {"GPU": 1, "CPU": 2}},
+    )
+
+    serve_options = LLMServer.get_deployment_options(llm_config)
+
+    # All bundles should have accelerator type hint injected
+    for bundle in serve_options["placement_group_bundles"]:
+        assert "accelerator_type:L4" in bundle
+        assert bundle["accelerator_type:L4"] == 0.001
+
+
+def test_bundle_per_worker_fractional_gpu_env_var():
+    """Test that fractional GPU in bundle_per_worker injects VLLM_RAY_PER_WORKER_GPUS."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        placement_group_config={"bundle_per_worker": {"GPU": 0.5, "CPU": 1}},
+    )
+
+    engine_config = VLLMEngineConfig.from_llm_config(llm_config)
+    runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
+    assert runtime_env["env_vars"]["VLLM_RAY_PER_WORKER_GPUS"] == "0.5"
+
+
+def test_bundle_per_worker_non_fractional_gpu_no_env_var():
+    """Test that non-fractional GPU in bundle_per_worker does not inject env var."""
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(
+            model_id="test_model",
+            model_source="facebook/opt-125m",
+        ),
+        placement_group_config={"bundle_per_worker": {"GPU": 1, "CPU": 1}},
+    )
+
+    engine_config = VLLMEngineConfig.from_llm_config(llm_config)
+    runtime_env = engine_config.get_runtime_env_with_local_env_vars()
+
+    assert "VLLM_RAY_PER_WORKER_GPUS" not in runtime_env.get("env_vars", {})
+
+
+class TestAcceleratorTypeValidation:
+    """Test accelerator_type validation with CPU-only configurations."""
+
+    def test_vllm_engine_config_accelerator_type_with_use_cpu_raises_error(self):
+        """VLLMEngineConfig raises error with accelerator_type and use_cpu=True."""
+        with pytest.raises(
+            ValueError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            VLLMEngineConfig(
+                model_id="test_model",
+                accelerator_type="L4",
+                use_cpu=True,
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_cpu_only_bundles_raises_error(
+        self,
+    ):
+        """VLLMEngineConfig raises error with accelerator_type and CPU-only bundles."""
+        with pytest.raises(
+            ValueError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            VLLMEngineConfig(
+                model_id="test_model",
+                accelerator_type="L4",
+                placement_group_config={"bundles": [{"CPU": 4}]},
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_empty_bundles_raises_error(
+        self,
+    ):
+        """VLLMEngineConfig raises error with accelerator_type and empty bundles."""
+        with pytest.raises(
+            ValueError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            VLLMEngineConfig(
+                model_id="test_model",
+                accelerator_type="L4",
+                placement_group_config={"bundles": []},
+            )
+
+    def test_vllm_engine_config_accelerator_type_with_gpu_bundles_succeeds(self):
+        """Test that VLLMEngineConfig succeeds when accelerator_type is set with GPU bundles."""
+        config = VLLMEngineConfig(
+            model_id="test_model",
+            accelerator_type="L4",
+            placement_group_config={"bundles": [{"GPU": 1, "CPU": 4}]},
+        )
+        assert config.accelerator_type == "L4"
+        assert config.use_gpu is True
+
+    def test_vllm_engine_config_accelerator_type_default_uses_gpu(self):
+        """Test that VLLMEngineConfig with accelerator_type and no use_cpu defaults to GPU."""
+        config = VLLMEngineConfig(
+            model_id="test_model",
+            accelerator_type="L4",
+        )
+        assert config.accelerator_type == "L4"
+        assert config.use_gpu is True
+
+    def test_llm_config_accelerator_type_validation_propagates_to_engine_config(self):
+        """Test that LLMConfig's validation catches the error before VLLMEngineConfig."""
+        # This should raise at LLMConfig level, not at VLLMEngineConfig level
+        import pydantic
+
+        with pytest.raises(pydantic.ValidationError) as exc_info:
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(
+                    model_id="test_model",
+                ),
+                accelerator_type="L4",
+                use_cpu=True,
+            )
+        assert (
+            "accelerator_type='L4' cannot be used with CPU-only configurations"
+            in str(exc_info.value)
+        )
 
 
 if __name__ == "__main__":

@@ -29,7 +29,10 @@ import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
-from ray.data._internal.dataset_repr import _build_dataset_ascii_repr
+from ray.data._internal.dataset_repr import (
+    build_dataset_ascii_repr,
+    build_dataset_summary_repr,
+)
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
@@ -93,6 +96,7 @@ from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
     _validate_rows_per_file_args,
+    explain_plan,
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
 )
@@ -115,6 +119,7 @@ from ray.data.block import (
     U,
     UserDefinedFunction,
     _apply_batch_format,
+    _take_first_non_empty_schema,
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
@@ -3952,6 +3957,42 @@ class Dataset:
         # from calculating `sum()` from numpy batches.
         return int(count)
 
+    def _base_schema(
+        self, fetch_if_missing: bool = True
+    ) -> Optional[Union[type, "pyarrow.lib.Schema"]]:
+        """Gets the underlying raw schema value not wrapped in Schema class."""
+        base_schema = self._plan._cache.get_schema(self._logical_plan.dag)
+        if base_schema is None:
+            base_schema = self._logical_plan.dag.infer_schema()
+        if base_schema is None and fetch_if_missing:
+            # Lazily execute only the first block to minimize computation.
+            # We achieve this by appending a Limit[1] operation to a copy of
+            # this plan, which we then execute to get its schema.
+            dag = self._logical_plan.dag
+            if isinstance(dag, StreamingSplit):
+                # Unwrap StreamingSplit since it is a terminal operator
+                # that cannot be wrapped into other ops like Limit.
+                dag = dag.input_dependencies[0]
+                limited_ds = Dataset(
+                    ExecutionPlan(
+                        DatasetStats(metadata={}, parent=None),
+                        self._plan._context,
+                    ),
+                    LogicalPlan(dag, self._plan._context),
+                ).limit(1)
+            else:
+                limited_ds = self.limit(1)
+            iter_ref_bundles, _, executor = limited_ds._execute_to_iterator()
+            if executor is not None:
+                # Make sure executor is fully shutdown upon exiting
+                with executor:
+                    base_schema = _take_first_non_empty_schema(
+                        bundle.schema for bundle in iter_ref_bundles
+                    )
+        if base_schema is not None:
+            self._plan._cache.set_schema(self._logical_plan.dag, base_schema)
+        return base_schema
+
     @ConsumptionAPI(
         if_more_than_read=True,
         datasource_metadata="schema",
@@ -3981,7 +4022,7 @@ class Dataset:
             The :class:`ray.data.Schema` class of the records, or None if the
             schema is not known and fetch_if_missing is False.
         """
-        base_schema = self._plan.schema(fetch_if_missing=fetch_if_missing)
+        base_schema = self._base_schema(fetch_if_missing=fetch_if_missing)
         if base_schema is not None:
             return Schema(base_schema, data_context=self._plan._context)
         return None
@@ -4078,7 +4119,7 @@ class Dataset:
             The list of input files used to create the dataset, or an empty
             list if the input files is not known.
         """
-        return self._plan.input_files() or []
+        return self._logical_plan.input_files() or []
 
     @ConsumptionAPI
     @PublicAPI(api_group=IOC_API_GROUP)
@@ -5532,11 +5573,14 @@ class Dataset:
         path: str,
         *,
         schema: Optional["pyarrow.Schema"] = None,
-        mode: Literal["create", "append", "overwrite"] = "create",
+        mode: SaveMode = SaveMode.CREATE,
         min_rows_per_file: int = 1024 * 1024,
         max_rows_per_file: int = 64 * 1024 * 1024,
         data_storage_version: Optional[str] = None,
         storage_options: Optional[Dict[str, Any]] = None,
+        table_id: Optional[List[str]] = None,
+        namespace_impl: Optional[str] = None,
+        namespace_properties: Optional[Dict[str, str]] = None,
         ray_remote_args: Dict[str, Any] = None,
         concurrency: Optional[int] = None,
     ) -> None:
@@ -5552,9 +5596,12 @@ class Dataset:
                 ds.write_lance("/tmp/data/")
 
         Args:
-            path: The path to the destination Lance dataset.
+            path: The path to the destination Lance dataset. Ignored when namespace
+                parameters are provided; the namespace-resolved location is used.
             schema: The schema of the dataset. If not provided, it is inferred from the data.
-            mode: The write mode. Can be "create", "append", or "overwrite".
+            mode: The write mode using SaveMode enum:
+                SaveMode.CREATE, SaveMode.APPEND, or SaveMode.OVERWRITE.
+                Namespace-backed writes currently support only SaveMode.CREATE.
             min_rows_per_file: The minimum number of rows per file.
             max_rows_per_file: The maximum number of rows per file.
             data_storage_version: The version of the data storage format to use. Newer versions are more
@@ -5562,6 +5609,11 @@ class Dataset:
                 "legacy" which will use the legacy v1 version.  See the user guide
                 for more details.
             storage_options: The storage options for the writer. Default is None.
+            table_id: The table identifier as a list of strings, used with namespace params.
+            namespace_impl: The namespace implementation type (e.g., "rest", "dir").
+            namespace_properties: Properties for connecting to the namespace.
+                When namespace params are provided, only SaveMode.CREATE is
+                currently supported.
             ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -5576,6 +5628,9 @@ class Dataset:
             max_rows_per_file=max_rows_per_file,
             data_storage_version=data_storage_version,
             storage_options=storage_options,
+            table_id=table_id,
+            namespace_impl=namespace_impl,
+            namespace_properties=namespace_properties,
         )
 
         self.write_datasink(
@@ -6705,11 +6760,7 @@ class Dataset:
             A string containing execution timing information, or an empty string if
             the dataset has not been executed.
         """
-        if self._current_executor:
-            return self._current_executor.get_stats().to_summary().to_string()
-        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
-            return self._write_ds.stats()
-        return self._get_stats_summary().to_string()
+        return self.get_stats_summary().to_string()
 
     @PublicAPI(api_group=IM_API_GROUP, stability="alpha")
     def explain(self):
@@ -6746,9 +6797,26 @@ class Dataset:
             +- InputDataBuffer[Input]
             <BLANKLINE>
         """
-        print(self._plan.explain())
+        print(explain_plan(self._logical_plan))
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
+        return self._plan.stats().to_summary()
+
+    @DeveloperAPI
+    def get_stats_summary(self) -> DatasetStatsSummary:
+        """Get stats summary from dataset, handling both streaming and plan stats.
+
+        After materialize() with streaming execution, stats are stored in
+        _current_executor. This method returns the correct stats summary
+        regardless of execution mode.
+
+        Returns:
+            DatasetStatsSummary object containing execution statistics.
+        """
+        if self._current_executor:
+            return self._current_executor.get_stats().to_summary()
+        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
+            return self._write_ds.get_stats_summary()
         return self._plan.stats().to_summary()
 
     @ConsumptionAPI(pattern="Examples:")
@@ -7085,10 +7153,10 @@ class Dataset:
     def _tabular_repr(self) -> str:
         schema = self.schema(fetch_if_missing=False)
         if schema is None or not isinstance(schema, Schema):
-            return self._plan.get_plan_as_string(self.__class__)
+            return build_dataset_summary_repr(self)
 
         is_materialized = isinstance(self, MaterializedDataset)
-        return _build_dataset_ascii_repr(self, schema, is_materialized)
+        return build_dataset_ascii_repr(self, schema, is_materialized)
 
     def __str__(self) -> str:
         return repr(self)
@@ -7120,7 +7188,18 @@ class Dataset:
         return ray.get(num_rows)
 
     def _meta_count(self) -> Optional[int]:
-        return self._plan.meta_count()
+        """Get the number of rows after applying all plan optimizations, if possible.
+
+        This method will never trigger any computation.
+
+        Returns:
+            The number of records of the result Dataset, or None.
+        """
+        dag = self._logical_plan.dag
+        num_rows = self._plan._cache.get_num_rows(dag)
+        if num_rows is None:
+            num_rows = dag.infer_metadata().num_rows
+        return num_rows
 
     def _get_uuid(self) -> str:
         return self._uuid
