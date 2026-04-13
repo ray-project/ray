@@ -4661,7 +4661,6 @@ tensorflow-datasets==4.9.3 \
 # via
 #   -r python/requirements/ml/py313/data-test-requirements.txt
 #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
-#   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 tensorflow-io-gcs-filesystem==0.31.0; python_full_version < "3.12" \
     --hash=sha256:20e3ee5df01f2bd81d37fc715816c329b7533ccca967c47946eb458a5b7a7280 \
     --hash=sha256:359134ecbd3bf938bb0cf65be4526106c30da461b2e2ce05446a229ed35f6832 \
