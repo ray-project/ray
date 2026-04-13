@@ -29,9 +29,9 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/util/clock.h"
 #include "ray/util/logging.h"
 #include "ray/util/process_utils.h"
-#include "ray/util/time.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 namespace beast = boost::beast;  // from <boost/beast.hpp>
@@ -278,6 +278,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       std::function<std::shared_ptr<boost::asio::deadline_timer>(
           std::function<void()>, uint32_t delay_ms)> delay_executor,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+      ClockInterface &clock,
       uint32_t agent_register_timeout_ms,
       uint32_t agent_manager_retry_interval_ms,
       uint32_t session_pool_size = 10)
@@ -287,6 +288,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         port_str_(absl::StrFormat("%d", port)),
         delay_executor_(delay_executor),
         shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
+        clock_(clock),
         agent_register_timeout_ms_(agent_register_timeout_ms),
         agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
   ~HttpRuntimeEnvAgentClient() override = default;
@@ -341,7 +343,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       if ((!status.IsNotFound()) && (!status.IsDisconnected())) {
         // Non retryable errors, invoke fail_callback
         fail_callback(status);
-      } else if (current_time_ms() > deadline_ms) {
+      } else if (clock_.NowUnixMillis() > deadline_ms) {
         RAY_LOG(ERROR) << "Runtime Env Agent timed out in " << agent_register_timeout_ms_
                        << "ms. Status: " << status << ", address: " << this->address_
                        << ", port: " << this->port_str_ << ", existing immediately...";
@@ -409,7 +411,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                          << serialized_runtime_env;
           callback(false, "", error_message);
         },
-        current_time_ms() + agent_register_timeout_ms_);
+        clock_.NowUnixMillis() + agent_register_timeout_ms_);
   }
 
   // Does the real work of calling HTTP.
@@ -480,7 +482,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           RAY_LOG(DEBUG) << "Serialized runtime env: " << serialized_runtime_env;
           callback(false);
         },
-        current_time_ms() + agent_register_timeout_ms_);
+        clock_.NowUnixMillis() + agent_register_timeout_ms_);
   }
 
   // Invokes `succ_callback` with server reply (which may be OK or application errors),
@@ -524,6 +526,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                                                              uint32_t delay_ms)>
       delay_executor_;
   std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
+  ClockInterface &clock_;
   const uint32_t agent_register_timeout_ms_;
   const uint32_t agent_manager_retry_interval_ms_;
 };
@@ -536,6 +539,7 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     std::function<std::shared_ptr<boost::asio::deadline_timer>(
         std::function<void()>, uint32_t delay_ms)> delay_executor,
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+    ClockInterface &clock,
     uint32_t agent_register_timeout_ms,
     uint32_t agent_manager_retry_interval_ms) {
   return std::make_unique<HttpRuntimeEnvAgentClient>(io_context,
@@ -543,6 +547,7 @@ std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
                                                      port,
                                                      delay_executor,
                                                      shutdown_raylet_gracefully,
+                                                     clock,
                                                      agent_register_timeout_ms,
                                                      agent_manager_retry_interval_ms);
 }

@@ -37,6 +37,7 @@
 #include "ray/observability/fake_metric.h"
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet/worker.h"
+#include "ray/util/clock.h"
 #include "ray/util/fake_process.h"
 #include "ray/util/path_utils.h"
 #include "ray/util/process.h"
@@ -297,7 +298,8 @@ class WorkerPoolMock : public WorkerPool {
                                                                worker_type,
                                                                "127.0.0.1",
                                                                conn,
-                                                               client_call_manager_);
+                                                               client_call_manager_,
+                                                               fake_clock_);
     if (proc != nullptr) {
       worker_->SetProcess(std::move(proc));
     }
@@ -410,6 +412,7 @@ class WorkerPoolMock : public WorkerPool {
   // Maps process to the WorkerID assigned when the process was started.
   absl::flat_hash_map<pid_t, WorkerID> worker_ids_by_proc_;
   double current_time_ms_ = 0;
+  FakeClock fake_clock_;
   absl::flat_hash_map<pid_t, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
   rpc::ClientCallManager client_call_manager_;

@@ -58,7 +58,6 @@
 #include "ray/util/stream_redirection.h"
 #include "ray/util/stream_redirection_options.h"
 #include "ray/util/subreaper.h"
-#include "ray/util/time.h"
 #include "scheduling/cluster_lease_manager.h"
 #if !defined(_WIN32)
 #include <unistd.h>
@@ -728,7 +727,7 @@ int main(int argc, char *argv[]) {
         /*starting_worker_timeout_callback=*/
         [&] { cluster_lease_manager->ScheduleAndGrantLeases(); },
         node_manager_config.ray_debugger_external,
-        /*get_time=*/[]() { return absl::Now(); },
+        /*get_time=*/[&clock]() { return clock.Now(); },
         worker_pool_metrics,
         std::move(add_process_to_workers_cgroup_hook));
 
@@ -897,7 +896,8 @@ int main(int argc, char *argv[]) {
         /*core_worker_subscriber_=*/core_worker_subscriber.get(),
         object_directory.get(),
         object_store_memory_gauge,
-        spill_manager_metrics);
+        spill_manager_metrics,
+        clock);
 
     lease_dependency_manager = std::make_unique<ray::raylet::LeaseDependencyManager>(
         *object_manager, task_by_state_counter);
@@ -1055,7 +1055,8 @@ int main(int argc, char *argv[]) {
         std::move(acceptor),
         std::move(socket),
         memory_manager_worker_eviction_total_count,
-        node_manager_unexpected_worker_failure_total_count);
+        node_manager_unexpected_worker_failure_total_count,
+        clock);
 
     // Initializing stats should be done after the node manager is initialized because
     // <explain why>. Metrics exported before this call will be buffered until `Init` is
@@ -1124,7 +1125,7 @@ int main(int argc, char *argv[]) {
     auto resource_map = node_manager_config.resource_config.GetResourceMap();
     self_node_info.mutable_resources_total()->insert(resource_map.begin(),
                                                      resource_map.end());
-    self_node_info.set_start_time_ms(ray::current_sys_time_ms());
+    self_node_info.set_start_time_ms(clock.NowUnixMillis());
     self_node_info.set_is_head_node(is_head_node);
     self_node_info.mutable_labels()->insert(node_manager_config.labels.begin(),
                                             node_manager_config.labels.end());
@@ -1141,7 +1142,7 @@ int main(int argc, char *argv[]) {
     node_manager->Start(std::move(self_node_info));
   });
 
-  auto signal_handler = [&node_manager, shutdown_raylet_gracefully](
+  auto signal_handler = [&node_manager, shutdown_raylet_gracefully, &clock](
                             const boost::system::error_code &error, int signal_number) {
     ray::rpc::NodeDeathInfo node_death_info;
     std::optional<ray::rpc::DrainRayletRequest> drain_request =
@@ -1152,7 +1153,7 @@ int main(int argc, char *argv[]) {
         drain_request->reason() ==
             ray::rpc::autoscaler::DrainNodeReason::DRAIN_NODE_REASON_PREEMPTION &&
         drain_request->deadline_timestamp_ms() != 0 &&
-        drain_request->deadline_timestamp_ms() < ray::current_sys_time_ms()) {
+        drain_request->deadline_timestamp_ms() < clock.NowUnixMillis()) {
       node_death_info.set_reason(ray::rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
       node_death_info.set_reason_message(drain_request->reason_message());
     } else {

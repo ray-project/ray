@@ -641,7 +641,7 @@ class WorkerPool : public WorkerPoolInterface {
     /// The worker process instance.
     std::unique_ptr<ProcessInterface> proc;
     /// The worker process start time.
-    std::chrono::high_resolution_clock::time_point start_time;
+    absl::Time start_time;
     /// The runtime env Info.
     rpc::RuntimeEnvInfo runtime_env_info;
     /// The dynamic_options.
@@ -825,7 +825,7 @@ class WorkerPool : public WorkerPoolInterface {
       const WorkerID &worker_id,
       rpc::WorkerType worker_type,
       std::unique_ptr<ProcessInterface> proc,
-      const std::chrono::high_resolution_clock::time_point &start,
+      absl::Time start,
       const rpc::RuntimeEnvInfo &runtime_env_info,
       const std::vector<std::string> &dynamic_options,
       std::optional<absl::Duration> worker_startup_keep_alive_duration);

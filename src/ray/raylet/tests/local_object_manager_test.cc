@@ -36,6 +36,7 @@
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/util/clock.h"
 #include "ray/rpc/grpc_client.h"
 #include "src/ray/protobuf/core_worker.grpc.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
@@ -355,7 +356,8 @@ class LocalObjectManagerTestWithMinSpillingSize {
             /*core_worker_subscriber=*/subscriber_.get(),
             object_directory_.get(),
             /*object_store_memory_gauge=*/fake_object_store_memory_gauge_,
-            /*spill_manager_metrics=*/spill_manager_metrics_),
+            /*spill_manager_metrics=*/spill_manager_metrics_,
+            /*clock=*/fake_clock_),
         unpins(std::make_shared<absl::flat_hash_map<ObjectID, int>>()) {
     RayConfig::instance().initialize(R"({"object_spilling_config": "dummy"})");
     manager.min_spilling_size_ = min_spilling_size;
@@ -421,6 +423,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
       fake_spill_manager_objects_bytes_gauge_,
       fake_spill_manager_request_total_gauge_,
       fake_spill_manager_throughput_mb_gauge_};
+  FakeClock fake_clock_;
   LocalObjectManager manager;
 
   std::unordered_set<ObjectID> freed;

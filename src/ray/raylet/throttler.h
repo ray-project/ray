@@ -17,21 +17,20 @@
 #include <functional>
 #include <utility>
 
-#include "absl/time/clock.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
 class Throttler {
  public:
-  explicit Throttler(int64_t interval_ns, std::function<int64_t()> now = nullptr)
-      : now_(now == nullptr ? []() { return absl::GetCurrentTimeNanos(); }
-                            : std::move(now)),
+  explicit Throttler(int64_t interval_ns, ClockInterface &clock)
+      : clock_(clock),
         interval_ns_(interval_ns),
         // Subtracting interval so the first run is possible.
-        last_run_ns_(now_() - interval_ns) {}
+        last_run_ns_(clock_.NowUnixNanos() - interval_ns) {}
 
   bool CheckAndUpdateIfPossible() {
-    auto now = now_();
+    auto now = clock_.NowUnixNanos();
     if (now - last_run_ns_ >= interval_ns_) {
       last_run_ns_ = now;
       return true;
@@ -42,7 +41,7 @@ class Throttler {
   uint64_t LastRunTime() const { return last_run_ns_; }
 
  private:
-  std::function<int64_t()> now_;
+  ClockInterface &clock_;
   uint64_t interval_ns_;
   uint64_t last_run_ns_;
 };

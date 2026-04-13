@@ -159,7 +159,7 @@ void LocalObjectManager::FlushFreeObjects() {
     objects_pending_deletion_.clear();
   }
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
-  last_free_objects_at_ms_ = current_time_ms();
+  last_free_objects_at_ms_ = clock_.NowUnixMillis();
 }
 
 bool LocalObjectManager::ObjectPendingDeletion(const ObjectID &object_id) {
@@ -230,14 +230,14 @@ bool LocalObjectManager::TryToSpillObjects() {
   }
   RAY_LOG(DEBUG) << "Spilling objects of total size " << bytes_to_spill << " num objects "
                  << objects_to_spill.size();
-  auto start_time = absl::GetCurrentTimeNanos();
+  auto start_time = clock_.NowUnixNanos();
   SpillObjectsInternal(
       objects_to_spill,
       [this, bytes_to_spill, objects_to_spill, start_time](const Status &status) {
         if (!status.ok()) {
           RAY_LOG(DEBUG) << "Failed to spill objects: " << status.ToString();
         } else {
-          auto now = absl::GetCurrentTimeNanos();
+          auto now = clock_.NowUnixNanos();
           RAY_LOG(DEBUG) << "Spilled " << bytes_to_spill << " bytes in "
                          << (now - start_time) / 1e6 << "ms";
           // Adjust throughput timing to account for concurrent spill operations.
@@ -476,7 +476,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
   num_bytes_pending_restore_ += object_size;
   io_worker_pool_.PopRestoreWorker([this, object_id, object_size, object_url, callback](
                                        std::shared_ptr<WorkerInterface> io_worker) {
-    auto start_time = absl::GetCurrentTimeNanos();
+    auto start_time = clock_.NowUnixNanos();
     RAY_LOG(DEBUG) << "Sending restore spilled object request";
     rpc::RestoreSpilledObjectsRequest request;
     request.add_spilled_objects_url(object_url);
@@ -492,7 +492,7 @@ void LocalObjectManager::AsyncRestoreSpilledObject(
             RAY_LOG(ERROR) << "Failed to send restore spilled object request: "
                            << status.ToString();
           } else {
-            auto now = absl::GetCurrentTimeNanos();
+            auto now = clock_.NowUnixNanos();
             auto restored_bytes = r.bytes_restored_total();
             RAY_LOG(DEBUG) << "Restored " << restored_bytes << " in "
                            << (now - start_time) / 1e6 << "ms. Object id:" << object_id;

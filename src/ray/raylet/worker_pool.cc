@@ -40,7 +40,6 @@
 #include "ray/util/logging.h"
 #include "ray/util/network_util.h"
 #include "ray/util/process_utils.h"
-#include "ray/util/time.h"
 
 namespace ray {
 
@@ -242,7 +241,7 @@ const ProcessInterface &WorkerPool::AddWorkerProcess(
     const WorkerID &worker_id,
     rpc::WorkerType worker_type,
     std::unique_ptr<ProcessInterface> proc,
-    const std::chrono::high_resolution_clock::time_point &start,
+    absl::Time start,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     const std::vector<std::string> &dynamic_options,
     std::optional<absl::Duration> worker_startup_keep_alive_duration) {
@@ -363,7 +362,7 @@ WorkerPool::BuildProcessCommandArgs(const Language &language,
   if (language == Language::PYTHON) {
     worker_command_args.push_back("--worker-id=" + worker_id.Hex());
     worker_command_args.push_back("--worker-launch-time-ms=" +
-                                  std::to_string(current_sys_time_ms()));
+                                  std::to_string(absl::ToUnixMillis(get_time_())));
     worker_command_args.push_back("--node-id=" + node_id_.Hex());
     worker_command_args.push_back("--runtime-env-hash=" +
                                   std::to_string(runtime_env_hash));
@@ -523,7 +522,7 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
                               serialized_runtime_env_context,
                               state);
 
-  auto start = std::chrono::high_resolution_clock::now();
+  absl::Time start = get_time_();
   // Start a process and measure the startup time.
   std::unique_ptr<ProcessInterface> proc =
       StartProcess(worker_command_args, env, worker_id);
@@ -832,13 +831,12 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
   auto &starting_process_info = it->second;
-  auto end = std::chrono::high_resolution_clock::now();
-  auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(
-      end - starting_process_info.start_time);
-  worker_pool_metrics_.worker_register_time_ms_histogram.Record(duration.count());
+  int64_t duration_ms =
+      absl::ToInt64Milliseconds(get_time_() - starting_process_info.start_time);
+  worker_pool_metrics_.worker_register_time_ms_histogram.Record(duration_ms);
   RAY_LOG(DEBUG).WithField(worker_id)
       << "Registering worker with pid " << pid << ", port: " << port
-      << ", register cost: " << duration.count()
+      << ", register cost: " << duration_ms
       << ", worker_type: " << rpc::WorkerType_Name(worker->GetWorkerType());
   worker->SetAssignedPort(port);
 

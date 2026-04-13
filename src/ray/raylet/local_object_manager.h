@@ -31,8 +31,8 @@
 #include "ray/raylet/local_object_manager_interface.h"
 #include "ray/raylet/metrics.h"
 #include "ray/raylet/worker_pool.h"
+#include "ray/util/clock.h"
 #include "ray/util/logging.h"
-#include "ray/util/time.h"
 
 namespace ray {
 
@@ -62,7 +62,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
       pubsub::SubscriberInterface *core_worker_subscriber,
       IObjectDirectory *object_directory,
       ray::observability::MetricInterface &object_store_memory_gauge,
-      ray::raylet::SpillManagerMetrics &spill_manager_metrics)
+      ray::raylet::SpillManagerMetrics &spill_manager_metrics,
+      ClockInterface &clock)
       : self_node_id_(node_id),
         self_node_address_(std::move(self_node_address)),
         self_node_port_(self_node_port),
@@ -72,7 +73,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         io_worker_pool_(io_worker_pool),
         owner_client_pool_(owner_client_pool),
         on_objects_freed_(std::move(on_objects_freed)),
-        last_free_objects_at_ms_(current_time_ms()),
+        last_free_objects_at_ms_(clock.NowUnixMillis()),
         min_spilling_size_(RayConfig::instance().min_spilling_size()),
         max_spilling_file_size_bytes_(
             RayConfig::instance().max_spilling_file_size_bytes()),
@@ -85,7 +86,8 @@ class LocalObjectManager : public LocalObjectManagerInterface {
         core_worker_subscriber_(core_worker_subscriber),
         object_directory_(object_directory),
         object_store_memory_gauge_(object_store_memory_gauge),
-        spill_manager_metrics_(spill_manager_metrics) {
+        spill_manager_metrics_(spill_manager_metrics),
+        clock_(clock) {
     if (max_spilling_file_size_bytes_ > 0) {
       RAY_CHECK_GE(max_spilling_file_size_bytes_, min_spilling_size_) << absl::StrFormat(
           "Misconfiguration: max_spilling_file_size_bytes (%lld) must be >= "
@@ -426,6 +428,9 @@ class LocalObjectManager : public LocalObjectManagerInterface {
 
   ray::observability::MetricInterface &object_store_memory_gauge_;
   ray::raylet::SpillManagerMetrics &spill_manager_metrics_;
+
+  /// Clock used for timing.
+  ClockInterface &clock_;
 
   friend class LocalObjectManagerTestWithMinSpillingSize;
 };

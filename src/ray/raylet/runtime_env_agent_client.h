@@ -24,6 +24,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/public/runtime_environment.pb.h"
 
@@ -54,6 +55,7 @@ class RuntimeEnvAgentClient {
       std::function<std::shared_ptr<boost::asio::deadline_timer>(
           std::function<void()>, uint32_t delay_ms)> delay_executor,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
+      ClockInterface &clock,
       uint32_t agent_register_timeout_ms =
           RayConfig::instance().agent_register_timeout_ms(),
       uint32_t agent_manager_retry_interval_ms =
