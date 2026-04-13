@@ -453,7 +453,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
                 raise CheckpointManagerInitializationError(
                     "The run snapshot contains a reference to a checkpoint "
                     f"that does not exist anymore ({checkpoint}). You are "
-                    "running in a corrupted run directory `experiment_fs_path`."
+                    "running in a corrupted run directory `experiment_fs_path`. "
                     "Please configure a new, unique `RunConfig(name)` "
                     "or delete the existing folder at "
                     f"`{self._storage_context.experiment_fs_path}`."
