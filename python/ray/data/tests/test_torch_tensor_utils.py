@@ -97,6 +97,10 @@ class TestConvertTableToTorch:
             init=None,
             code=code,
             repeats=10,
+            # Ignore small increases (<100KB) from internal caches and
+            # allocator artifacts. The real leak this guards against
+            # (torch.as_tensor on extension arrays) leaks tens of MB.
+            min_memory_increase=100_000,
         )
         assert not suspicious_stats
 
