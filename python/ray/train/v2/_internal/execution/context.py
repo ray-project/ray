@@ -399,9 +399,16 @@ class TrainContext:
             )
 
         if delete_local_checkpoint_after_upload and checkpoint:
-            experiment_path = Path(self.storage_context.experiment_fs_path)
-            checkpoint_path = Path(checkpoint.path)
-            if experiment_path.is_relative_to(checkpoint_path):
+            experiment_path = Path(self.storage_context.experiment_fs_path).resolve()
+            checkpoint_path = Path(checkpoint.path).resolve()
+
+            try:
+                # is_relative_to raises a ValueError if one path is absolute and the other is relative
+                is_relative = experiment_path.is_relative_to(checkpoint_path)
+            except Exception:
+                is_relative = False
+
+            if is_relative:
                 raise ValueError(
                     f"Ray Train's experiment directory ({self.storage_context.experiment_fs_path}) "
                     f"is contained within the checkpoint path ({checkpoint.path}) "

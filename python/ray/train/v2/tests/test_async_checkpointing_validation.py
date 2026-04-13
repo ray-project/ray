@@ -240,16 +240,20 @@ def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
 
 def test_report_checkpoint_delete_storage_path(tmp_path):
     """Test that the trainer raises an error if the Checkpoint path is below the storage_path."""
+    # Test in `tmp_path` in case the test fails which means that the tmp_path.parent might be deleted
+    base_dir = tmp_path / "test_base"
+    storage_dir = base_dir / "storage"
+    os.makedirs(storage_dir, exist_ok=True)
 
     def train_fn_equal_storage_path():
         ray.train.report(
             {},
-            Checkpoint(str(tmp_path)),  # equal to storage_path
+            Checkpoint(str(storage_dir)),  # equal to storage_path
             delete_local_checkpoint_after_upload=True,
         )
 
     trainer = DataParallelTrainer(
-        train_fn_equal_storage_path, run_config=RunConfig(storage_path=str(tmp_path))
+        train_fn_equal_storage_path, run_config=RunConfig(storage_path=str(storage_dir))
     )
     with pytest.raises(WorkerGroupError, match="error") as exc_info:
         trainer.fit()
@@ -258,12 +262,13 @@ def test_report_checkpoint_delete_storage_path(tmp_path):
     def train_fn_within_storage_path():
         ray.train.report(
             {},
-            Checkpoint(str(tmp_path.parent)),
+            Checkpoint(str(storage_dir.parent)),  # equal to storage_path (base_dir)
             delete_local_checkpoint_after_upload=True,
         )
 
     trainer = DataParallelTrainer(
-        train_fn_within_storage_path, run_config=RunConfig(storage_path=str(tmp_path))
+        train_fn_within_storage_path,
+        run_config=RunConfig(storage_path=str(storage_dir)),
     )
     with pytest.raises(WorkerGroupError, match="error") as exc_info:
         trainer.fit()
