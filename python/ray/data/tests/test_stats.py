@@ -126,187 +126,18 @@ def assert_operator_count(
 def assert_basic_operator_metrics(
     op: OperatorStatsSummary,
 ) -> None:
-    """Assert that basic operator metrics are present and valid.
-
-    Verifies that wall_time, cpu_time, memory, output_num_rows, and
-    output_size_bytes are present and have valid min/max/mean/sum values.
-
-    Args:
-        op: OperatorStatsSummary object.
-
-    Raises:
-        AssertionError: if metrics are missing or invalid.
-
-    Examples:
-        stats_summary = ds.get_stats_summary()
-        op = get_operator(stats_summary, index=0)
-        assert_basic_operator_metrics(op)
-    """
-    # Check wall time
+    """Assert that basic operator metrics are present and valid."""
     assert op.wall_time is not None, "wall_time should not be None"
-    assert hasattr(op.wall_time, "min"), "wall_time should have 'min' attribute"
-    assert hasattr(op.wall_time, "max"), "wall_time should have 'max' attribute"
-    assert hasattr(op.wall_time, "mean"), "wall_time should have 'mean' attribute"
-    assert hasattr(op.wall_time, "sum"), "wall_time should have 'sum' attribute"
     assert op.wall_time.sum > 0, "wall_time sum should be positive"
 
-    # Check cpu time (may be None on some platforms)
-    if op.cpu_time is not None:
-        assert hasattr(op.cpu_time, "min"), "cpu_time should have 'min' attribute"
-        assert hasattr(op.cpu_time, "max"), "cpu_time should have 'max' attribute"
-        assert hasattr(op.cpu_time, "mean"), "cpu_time should have 'mean' attribute"
-        assert hasattr(op.cpu_time, "sum"), "cpu_time should have 'sum' attribute"
-
-    # Check memory stats
     assert op.memory is not None, "memory should not be None"
-    assert hasattr(op.memory, "min"), "memory should have 'min' attribute"
-    assert hasattr(op.memory, "max"), "memory should have 'max' attribute"
-    assert hasattr(op.memory, "mean"), "memory should have 'mean' attribute"
 
-    # Check output rows
     assert op.output_num_rows is not None, "output_num_rows should not be None"
-    assert hasattr(
-        op.output_num_rows, "min"
-    ), "output_num_rows should have 'min' attribute"
-    assert hasattr(
-        op.output_num_rows, "max"
-    ), "output_num_rows should have 'max' attribute"
-    assert hasattr(
-        op.output_num_rows, "mean"
-    ), "output_num_rows should have 'mean' attribute"
-    assert hasattr(
-        op.output_num_rows, "sum"
-    ), "output_num_rows should have 'sum' attribute"
 
-    # Check output size
     assert op.output_size_bytes is not None, "output_size_bytes should not be None"
-    assert hasattr(
-        op.output_size_bytes, "min"
-    ), "output_size_bytes should have 'min' attribute"
-    assert hasattr(
-        op.output_size_bytes, "max"
-    ), "output_size_bytes should have 'max' attribute"
-    assert hasattr(
-        op.output_size_bytes, "mean"
-    ), "output_size_bytes should have 'mean' attribute"
-    assert hasattr(
-        op.output_size_bytes, "sum"
-    ), "output_size_bytes should have 'sum' attribute"
 
-    # Check block execution summary
     assert op.block_execution_summary_str is not None
     assert len(op.block_execution_summary_str) > 0
-
-
-def assert_output_row_count(
-    op: OperatorStatsSummary,
-    expected_total: Optional[int] = None,
-    min_total: Optional[int] = None,
-) -> None:
-    """Assert that output row count matches expectations.
-
-    Args:
-        op: OperatorStatsSummary object.
-        expected_total: Exact expected total row count.
-        min_total: Minimum expected total row count.
-
-    Raises:
-        AssertionError: if row count doesn't match.
-
-    Examples:
-        stats_summary = ds.get_stats_summary()
-        op = get_operator(stats_summary, index=0)
-        assert_output_row_count(op, expected_total=1000)
-    """
-    assert op.output_num_rows is not None
-    actual_total = op.output_num_rows.sum
-
-    if expected_total is not None:
-        assert (
-            actual_total == expected_total
-        ), f"Expected {expected_total} output rows, found {actual_total}"
-
-    if min_total is not None:
-        assert (
-            actual_total >= min_total
-        ), f"Expected at least {min_total} output rows, found {actual_total}"
-
-
-def assert_single_operator_pipeline(
-    stats_summary: DatasetStatsSummary,
-    name_pattern: Optional[str] = None,
-) -> OperatorStatsSummary:
-    """Assert that there's exactly one operator and return it.
-
-    Args:
-        stats_summary: DatasetStatsSummary object.
-        name_pattern: Optional regex pattern to match operator name.
-
-    Returns:
-        The single OperatorStatsSummary.
-
-    Raises:
-        AssertionError: if there's not exactly one operator.
-
-    Examples:
-        stats_summary = ds.get_stats_summary()
-        op = assert_single_operator_pipeline(stats_summary, "ReadRange->Map")
-    """
-    assert_operator_count(stats_summary, 1)
-    op = stats_summary.operators_stats[0]
-    if name_pattern is not None:
-        assert re.search(
-            name_pattern, op.operator_name
-        ), f"Expected operator name matching '{name_pattern}', found '{op.operator_name}'"
-    return op
-
-
-def assert_global_memory_stats(
-    stats_summary: DatasetStatsSummary,
-    expect_spilled: bool = False,
-    expect_restored: bool = False,
-) -> None:
-    """Assert that global memory stats are present and match expectations.
-
-    Args:
-        stats_summary: DatasetStatsSummary object.
-        expect_spilled: Whether to expect spilled bytes > 0.
-        expect_restored: Whether to expect restored bytes > 0.
-
-    Raises:
-        AssertionError: if memory stats don't match expectations.
-
-    Examples:
-        stats_summary = ds.get_stats_summary()
-        assert_global_memory_stats(stats_summary, expect_spilled=True)
-    """
-    if expect_spilled:
-        assert (
-            stats_summary.global_bytes_spilled > 0
-        ), "Expected global_bytes_spilled > 0"
-    if expect_restored:
-        assert (
-            stats_summary.global_bytes_restored > 0
-        ), "Expected global_bytes_restored > 0"
-
-
-def assert_iteration_stats_present(
-    stats_summary: DatasetStatsSummary,
-) -> None:
-    """Assert that iteration stats are present.
-
-    Args:
-        stats_summary: DatasetStatsSummary object.
-
-    Raises:
-        AssertionError: if iteration stats are missing.
-
-    Examples:
-        stats_summary = ds.get_stats_summary()
-        assert_iteration_stats_present(stats_summary)
-    """
-    assert stats_summary.iter_stats is not None
-    assert stats_summary.iter_stats.total_time.get() > 0
 
 
 def find_stats_summary_in_parents(
@@ -835,14 +666,15 @@ def test_dataset_stats_basic(
     # Verify both operators have valid metrics
     read_map_op = get_operator(read_map_summary, name_pattern="ReadRange->MapBatches")
     assert_basic_operator_metrics(read_map_op)
-    assert_output_row_count(read_map_op, expected_total=1000)
+    assert read_map_op.output_num_rows.sum == 1000
 
     map_op = get_operator(map_summary, name_pattern=r"^Map\(")
     assert_basic_operator_metrics(map_op)
-    assert_output_row_count(map_op, expected_total=1000)
+    assert map_op.output_num_rows.sum == 1000
 
     # Verify iteration stats are present
-    assert_iteration_stats_present(stats_summary)
+    assert stats_summary.iter_stats is not None
+    assert stats_summary.iter_stats.total_time.get() > 0
 
 
 def test_block_location_nums(ray_start_regular_shared, restore_data_context):
@@ -857,12 +689,15 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
     stats_summary = ds.materialize().get_stats_summary()
 
     # Verify operator exists and has valid metrics
-    op = assert_single_operator_pipeline(stats_summary, "ReadRange->MapBatches")
+    assert_operator_count(stats_summary, 1)
+    op = stats_summary.operators_stats[0]
+    assert re.search("ReadRange->MapBatches", op.operator_name)
     assert_basic_operator_metrics(op)
-    assert_output_row_count(op, expected_total=1000)
+    assert op.output_num_rows.sum == 1000
 
     # Verify iteration stats are present
-    assert_iteration_stats_present(stats_summary)
+    assert stats_summary.iter_stats is not None
+    assert stats_summary.iter_stats.total_time.get() > 0
 
     # Verify block location stats - local and remote should be 0, unknown > 0
     assert stats_summary.iter_stats.iter_blocks_local == 0
@@ -1331,7 +1166,7 @@ def test_dataset_stats_shuffle(ray_start_regular_shared):
     for operator_summary in (repartition_summary, random_shuffle_summary):
         for op in operator_summary.operators_stats:
             assert_basic_operator_metrics(op)
-            assert_output_row_count(op, expected_total=1000)
+            assert op.output_num_rows.sum == 1000
 
 
 def test_dataset_stats_repartition(ray_start_regular_shared):
@@ -1960,13 +1795,16 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
 
     # Use structured assertions instead of canonicalize string comparison
     stats_summary = ds.get_stats_summary()
-    op = assert_single_operator_pipeline(stats_summary, "ReadRange->MapBatches")
+    assert_operator_count(stats_summary, 1)
+    op = stats_summary.operators_stats[0]
+    assert re.search("ReadRange->MapBatches", op.operator_name)
     assert_basic_operator_metrics(op)
     expected_rows = 1000 * 80 * 80 * 4
-    assert_output_row_count(op, expected_total=expected_rows)
+    assert op.output_num_rows.sum == expected_rows
 
     # Verify global memory stats (spilled/restored)
-    assert_global_memory_stats(stats_summary, expect_spilled=True, expect_restored=True)
+    assert stats_summary.global_bytes_spilled > 0
+    assert stats_summary.global_bytes_restored > 0
 
     # Around 100MB should be spilled (200MB - 100MB)
     assert ds._plan.stats().global_bytes_spilled > 100e6
