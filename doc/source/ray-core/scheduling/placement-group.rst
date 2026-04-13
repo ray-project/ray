@@ -737,7 +737,7 @@ Ray reschedules Actors and tasks that use the bundle (reserved resources) based 
 .. warning::
 
   Label locality scheduling is an **alpha** feature. It's actively being iterated on and
-  the API surface may change. It only supports GB200 and GB300 accelerator types with
+  the API surface may change. It only supports GB200 or GB300 accelerator types with
   STRICT_PACK at the domain level.
 
 Why label locality?
