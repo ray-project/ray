@@ -15,7 +15,7 @@ from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.annotations import Deprecated
 
 try:
     import pyarrow as pa
@@ -32,7 +32,6 @@ logger = logging.getLogger(__name__)
     message="`RandomAccessDataset` is unmaintained and will be removed in a future release.",
     warning=False,
 )
-@PublicAPI(stability="alpha")
 class RandomAccessDataset:
     """A class that provides distributed, random access to a Dataset.
 
