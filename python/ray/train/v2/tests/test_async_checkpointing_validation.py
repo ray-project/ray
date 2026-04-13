@@ -238,6 +238,38 @@ def test_report_checkpoint_upload_error(monkeypatch, tmp_path):
     assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
+def test_report_checkpoint_delete_storage_path(tmp_path):
+    """Test that the trainer raises an error if the Checkpoint path is below the storage_path."""
+
+    def train_fn_equal_storage_path():
+        ray.train.report(
+            {},
+            Checkpoint(str(tmp_path)),  # equal to storage_path
+            delete_local_checkpoint_after_upload=True,
+        )
+
+    trainer = DataParallelTrainer(
+        train_fn_equal_storage_path, run_config=RunConfig(storage_path=str(tmp_path))
+    )
+    with pytest.raises(WorkerGroupError, match="error") as exc_info:
+        trainer.fit()
+    assert isinstance(exc_info.value.worker_failures[0], ValueError)
+
+    def train_fn_within_storage_path():
+        ray.train.report(
+            {},
+            Checkpoint(str(tmp_path.parent)),
+            delete_local_checkpoint_after_upload=True,
+        )
+
+    trainer = DataParallelTrainer(
+        train_fn_within_storage_path, run_config=RunConfig(storage_path=str(tmp_path))
+    )
+    with pytest.raises(WorkerGroupError, match="error") as exc_info:
+        trainer.fit()
+    assert isinstance(exc_info.value.worker_failures[0], ValueError)
+
+
 def test_report_validation_without_validation_fn():
     def train_fn():
         with create_dict_checkpoint({}) as checkpoint:

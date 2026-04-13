@@ -4,6 +4,7 @@ import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
+from pathlib import Path
 from queue import Queue
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
 
@@ -376,16 +377,16 @@ class TrainContext:
         result on the result queue of this worker process.
 
         TODO: the report function should be implemented in the worker instead
-        of in the train context. The train context should only keep the train
-        related information and not the worker related actions. This refactor
-        would also require the `TrainContextCallback` to be updated as well.
+          of in the train context. The train context should only keep the train
+          related information and not the worker related actions. This refactor
+          would also require the `TrainContextCallback` to be updated as well.
         """
         if "torch" in sys.modules:
             from ray.air._internal.torch_utils import contains_tensor
 
             if contains_tensor(metrics):
                 raise ValueError(
-                    "Passing objects containg Torch tensors as metrics "
+                    "Passing objects containing Torch tensors as metrics "
                     "is not supported as it will throw an exception on "
                     "deserialization. You can either convert the tensors "
                     "to Python objects (ex: `.numpy()`, `.item()`, etc.) "
@@ -396,6 +397,19 @@ class TrainContext:
             raise ValueError(
                 "`validation_config` was not set on the trainer, but a validation was requested."
             )
+
+        if delete_local_checkpoint_after_upload and checkpoint:
+            experiment_path = Path(self.storage_context.experiment_fs_path)
+            checkpoint_path = Path(checkpoint.path)
+            if experiment_path.is_relative_to(checkpoint_path):
+                raise ValueError(
+                    f"Ray Train's experiment directory ({self.storage_context.experiment_fs_path}) "
+                    f"is contained within the checkpoint path ({checkpoint.path}) "
+                    f"and `ray.train.report(delete_local_checkpoint_after_upload=True)`. "
+                    "As a result, this would delete the experiment directory. "
+                    "Please write the checkpoint to a subdirectory of the "
+                    "experiment directory or use `delete_local_checkpoint_after_upload=False`."
+                )
 
         with invoke_context_managers(
             [
