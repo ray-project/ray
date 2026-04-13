@@ -16,7 +16,8 @@ tf-keras==2.20.0
 
 torch==2.7.0
 torchmetrics==0.10.3
-torchtext==0.18.0
+# torchtext 0.18.0 has no cp313 wheels on PyPI.
+torchtext==0.18.0; python_version < "3.13"
 torchvision==0.22.0
 
 torch-scatter==2.1.2
