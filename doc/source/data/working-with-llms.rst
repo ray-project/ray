@@ -583,12 +583,54 @@ With ``max_tasks_in_flight_per_actor`` < ``max_concurrent_batches``, Ray Data ac
 Serve deployments
 ~~~~~~~~~~~~~~~~~
 
-For multi-turn conversations or complex agentic workflows, share a vLLM engine across multiple processors using :ref:`Ray Serve <serving-llms>`:
+:class:`~ray.data.llm.ServeDeploymentProcessorConfig` lets multiple Ray Data processors share a single vLLM engine deployed through :ref:`Ray Serve <serving-llms>`. This is useful for multi-turn pipelines and agentic workflows.
 
-.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+Deploy an LLM with :func:`~ray.serve.llm.build_llm_deployment` and point one or more processors at it:
+
+.. literalinclude:: doc_code/working-with-llms/serve_deployment_example.py
     :language: python
-    :start-after: __shared_vllm_engine_config_example_start__
-    :end-before: __shared_vllm_engine_config_example_end__
+    :start-after: __serve_deploy_start__
+    :end-before: __serve_deploy_end__
+
+Create a :class:`~ray.data.llm.ServeDeploymentProcessorConfig` that connects to the running Ray Serve deployment.
+
+.. literalinclude:: doc_code/working-with-llms/serve_deployment_example.py
+    :language: python
+    :start-after: __serve_processor_config_start__
+    :end-before: __serve_processor_config_end__
+
+Multi-turn pipelines
+^^^^^^^^^^^^^^^^^^^^
+
+Chain processors to build multi-turn conversations. Each processor reads the output of the previous one and feeds it back to the same deployment:
+
+.. literalinclude:: doc_code/working-with-llms/serve_deployment_example.py
+    :language: python
+    :start-after: __serve_multi_turn_start__
+    :end-before: __serve_multi_turn_end__
+
+Multimodal batch inference
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When multimodal data (images, audio, video) is referenced by URL, :class:`~ray.data.llm.ServeDeploymentProcessorConfig` is a good fit.
+With :class:`~ray.data.llm.vLLMEngineProcessorConfig`, the ``PrepareMultimodalStage`` downloads multimodal data and decodes it into in-memory objects
+(PIL images, numpy arrays), which are then serialized through Ray's object store between stages. With a Serve deployment, the preprocess
+passes only lightweight URLs — vLLM downloads and processes multimodal data in-engine, skipping the inter-stage serialization cost.
+
+Use :class:`~ray.data.llm.vLLMEngineProcessorConfig` with :ref:`PrepareMultimodalStage <multimodal>` instead when you need CPU/GPU pipeline
+overlap or CPU/GPU stage independent scaling.
+
+.. literalinclude:: doc_code/working-with-llms/serve_multimodal_example.py
+    :language: python
+    :start-after: __serve_multimodal_deploy_start__
+    :end-before: __serve_multimodal_deploy_end__
+
+The ``preprocess`` function formats each row into an OpenAI-compatible chat request with ``image_url`` content:
+
+.. literalinclude:: doc_code/working-with-llms/serve_multimodal_example.py
+    :language: python
+    :start-after: __serve_multimodal_processor_start__
+    :end-before: __serve_multimodal_processor_end__
 
 ----
 
