@@ -1787,7 +1787,7 @@ void NodeManager::HandleReportWorkerBacklog(
   if (worker_pool.GetRegisteredDriver(worker_id) != nullptr ||
       worker_pool.GetRegisteredWorker(worker_id) != nullptr) {
     // Worker is still alive according to the raylet.
-    local_lease_manager.SetWorkerBacklog(request);
+    local_lease_manager.SetWorkerBacklog(std::move(request));
   }
 
   send_reply_callback(Status::OK(), nullptr, nullptr);

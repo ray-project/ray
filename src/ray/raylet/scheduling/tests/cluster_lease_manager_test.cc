@@ -1892,7 +1892,7 @@ TEST_F(ClusterLeaseManagerTest, BacklogReportTest) {
       rpc::ReportWorkerBacklogRequest backlog_request;
       backlog_request.set_worker_id(worker_ids.back().Binary());
       auto *report = backlog_request.add_backlog_reports();
-      report->set_scheduling_class(lease.GetLeaseSpecification().GetSchedulingClass());
+      report->mutable_lease_spec()->CopyFrom(lease.GetLeaseSpecification().GetMessage());
       report->set_backlog_size(10 - i);
       local_lease_manager_->SetWorkerBacklog(backlog_request);
     }

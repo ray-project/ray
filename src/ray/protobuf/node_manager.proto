@@ -22,8 +22,10 @@ import "src/ray/protobuf/autoscaler.proto";
 import "src/ray/protobuf/public/runtime_environment.proto";
 
 message WorkerBacklogReport {
-  // Scheduling class - this is local per worker process.
-  int64 scheduling_class = 1;
+  // LeaseSpec with which the raylet will derive the scheduling class.
+  // Cannot send scheduling class directly since it's local
+  // to each worker process.
+  LeaseSpec lease_spec = 1;
   // Size of the backlog for the above scheduling class.
   int64 backlog_size = 2;
 }

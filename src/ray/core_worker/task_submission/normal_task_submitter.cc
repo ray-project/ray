@@ -233,24 +233,28 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
 
 void NormalTaskSubmitter::ReportWorkerBacklog() {
   absl::MutexLock lock(&mu_);
-  absl::flat_hash_map<SchedulingClass, int64_t> backlogs;
+  absl::flat_hash_map<SchedulingClass, std::pair<rpc::LeaseSpec, int64_t>> backlogs;
   for (const auto &[scheduling_key, scheduling_key_entry] : scheduling_key_entries_) {
     // We report backlog size per scheduling class not per scheduling key
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
     const auto scheduling_class = std::get<0>(scheduling_key);
-    const auto backlog_size = scheduling_key_entry.BacklogSize();
-    if (backlog_size > 0) {
-      backlogs[scheduling_class] += backlog_size;
+    auto &[lease_spec, backlog_size] = backlogs[scheduling_class];
+    if (backlog_size == 0) {
+      lease_spec = scheduling_key_entry.lease_spec.GetMessage();
     }
+    backlog_size += scheduling_key_entry.BacklogSize();
   }
 
   rpc::ReportWorkerBacklogRequest request;
   request.set_worker_id(worker_id_.Binary());
-  for (const auto &[scheduling_class, backlog_size] : backlogs) {
-    auto *report = request.add_backlog_reports();
-    report->set_scheduling_class(scheduling_class);
-    report->set_backlog_size(backlog_size);
+  for (auto &[scheduling_class, spec_and_size] : backlogs) {
+    auto &[lease_spec, backlog_size] = spec_and_size;
+    if (backlog_size > 0) {
+      auto *report = request.add_backlog_reports();
+      *report->mutable_lease_spec() = std::move(lease_spec);
+      report->set_backlog_size(backlog_size);
+    }
   }
   bool has_backlog = !request.backlog_reports().empty();
   if (has_backlog || last_backlog_report_nonempty_) {
