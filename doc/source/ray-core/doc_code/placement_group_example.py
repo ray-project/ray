@@ -139,18 +139,3 @@ ray.get(pg.ready())
 # Start Ray or connect to a Ray cluster using: ray.init(namespace="pg_namespace")
 pg = ray.util.get_placement_group("pg_name")
 # __get_pg_end__
-
-# __label_locality_start__
-# Create a placement group with label locality scheduling.
-#
-
-bundles = [{"GPU": 4, "CPU": 2}] * 18
-label_selector = [{"ray.io/accelerator-type": "GB300"}] * 18
-
-pg = placement_group(
-    bundles=bundles,
-    bundle_label_selector=label_selector
-)
-
-ray.get(pg.ready())
-# __label_locality_end__

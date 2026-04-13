@@ -778,10 +778,17 @@ label-domain scheduling. Ray:
 2. Selects a domain that can satisfy all bundles.
 3. Applies the node-level scheduling strategy within the selected domain.
 
-.. literalinclude:: ../doc_code/placement_group_example.py
-    :language: python
-    :start-after: __label_locality_start__
-    :end-before: __label_locality_end__
+.. code-block:: python
+
+  bundles = [{"GPU": 4, "CPU": 2}] * 18
+  label_selector = [{"ray.io/accelerator-type": "GB300"}] * 18
+
+  pg = placement_group(
+      bundles=bundles,
+      bundle_label_selector=label_selector
+  )
+
+  ray.get(pg.ready())
 
 .. note::
 
