@@ -112,19 +112,6 @@ This transport doesn't need any communicator metadata, so ``ShmCommunicatorMetad
    :start-after: __custom_metadata_start__
    :end-before: __custom_metadata_end__
 
-Transport properties
---------------------
-
-Define your ``TensorTransportManager`` subclass and implement the property methods.
-``tensor_transport_backend`` returns the name that users pass to ``@ray.method(tensor_transport=...)``.
-``is_one_sided`` and ``can_abort_transport`` tell Ray how to orchestrate transfers and handle errors.
-``actor_has_tensor_transport`` lets Ray check whether a given actor can use this transport.
-
-.. literalinclude:: ../doc_code/direct_transport_custom.py
-   :language: python
-   :start-after: __custom_properties_start__
-   :end-before: __custom_properties_end__
-
 Extract tensor transport metadata
 ---------------------------------
 
@@ -148,6 +135,19 @@ For one-sided transports such as shared memory, an empty metadata object is fine
    :language: python
    :start-after: __custom_communicator_start__
    :end-before: __custom_communicator_end__
+
+Transport properties
+--------------------
+
+Define your ``TensorTransportManager`` subclass and implement the property methods.
+``tensor_transport_backend`` returns the name that users pass to ``@ray.method(tensor_transport=...)``.
+``is_one_sided`` and ``can_abort_transport`` tell Ray how to orchestrate transfers and handle errors.
+``actor_has_tensor_transport`` lets Ray check whether a given actor can use this transport.
+
+.. literalinclude:: ../doc_code/direct_transport_custom.py
+   :language: python
+   :start-after: __custom_properties_start__
+   :end-before: __custom_properties_end__
 
 Send and receive
 ----------------
