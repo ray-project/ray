@@ -49,7 +49,9 @@ class VPGTorchLearner(TorchLearner):
         loss = -torch.mean(log_probs * batch[Columns.RETURNS_TO_GO])
 
         # Just for exercise, log the average return to go per discrete action.
-        for act, ret_to_go in zip(batch[Columns.ACTIONS], batch[Columns.RETURNS_TO_GO]):
+        for act, ret_to_go in zip(
+            batch[Columns.ACTIONS], batch[Columns.RETURNS_TO_GO], strict=False
+        ):
             self.metrics.log_value(
                 key=(module_id, f"action_{act}_return_to_go_mean"),
                 value=ret_to_go,

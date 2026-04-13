@@ -46,7 +46,7 @@ def test_gather(init):
     tasks = gen_tasks()
     futures = [obj_ref.as_future() for obj_ref in tasks]
     results = loop.run_until_complete(asyncio.gather(*futures))
-    assert all(a[0] == b[0] for a, b in zip(results, ray.get(tasks)))
+    assert all(a[0] == b[0] for a, b in zip(results, ray.get(tasks), strict=False))
 
 
 def test_wait(init):

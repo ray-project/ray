@@ -2195,7 +2195,7 @@ class MultiAgentEpisode:
                 )
 
         # Step through all observations and interpret these as the (global) env steps.
-        for data_idx, (obs, inf) in enumerate(zip(observations, infos)):
+        for data_idx, (obs, inf) in enumerate(zip(observations, infos, strict=False)):
             # If we do have actions/extra outs/rewards for this timestep, use the data.
             # It may be that these lists have the same length as the observations list,
             # in which case the data will be cached (agent did step/send an action,

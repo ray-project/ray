@@ -568,7 +568,7 @@ class SerializationContext:
             self._thread_local.object_ref_stack = []
         results = []
         for object_ref, (data, metadata, _transport) in zip(
-            object_refs, serialized_ray_objects
+            object_refs, serialized_ray_objects, strict=False
         ):
             try:
                 # Push the object ref to the stack, so the object under

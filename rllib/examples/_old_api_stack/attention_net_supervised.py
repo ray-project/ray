@@ -59,7 +59,7 @@ def train_bit_shift(seq_length, num_iterations, print_every_n):
             lambda: train_loss(targets, model_out), lambda: model.trainable_variables
         )
 
-    for i, (inputs, targets) in zip(range(num_iterations), data_gen):
+    for i, (inputs, targets) in zip(range(num_iterations), data_gen, strict=False):
         inputs_in = np.reshape(inputs, [-1, 1])
         targets_in = np.reshape(targets, [-1])
         update_step(tf.convert_to_tensor(inputs_in), tf.convert_to_tensor(targets_in))

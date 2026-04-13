@@ -17,7 +17,7 @@ from ray.rllib.utils.spaces.simplex import Simplex
 
 
 def _assert_array_equal(eq, a1, a2, margin=None):
-    for a in zip(a1, a2):
+    for a in zip(a1, a2, strict=False):
         eq(a[0], a[1], margin)
 
 

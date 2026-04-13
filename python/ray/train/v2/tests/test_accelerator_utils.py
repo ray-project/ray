@@ -61,7 +61,9 @@ def test_get_visible_accelerator_ids_per_worker(
             pid=0,
             accelerator_ids={"GPU": accelerator_ids},
         )
-        for node_id, accelerator_ids in zip(node_ids, accelerator_ids_per_worker)
+        for node_id, accelerator_ids in zip(
+            node_ids, accelerator_ids_per_worker, strict=False
+        )
     ]
 
     assert (

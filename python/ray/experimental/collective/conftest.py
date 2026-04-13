@@ -124,7 +124,7 @@ class MockNcclGroupSet:
                 actors,
                 custom_nccl_group,
             )
-            for rank, actor in zip(ranks, actors)
+            for rank, actor in zip(ranks, actors, strict=False)
         ]
         ray.get(init_tasks, timeout=30)
 

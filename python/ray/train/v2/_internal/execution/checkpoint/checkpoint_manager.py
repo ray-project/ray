@@ -353,7 +353,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self._checkpoint_to_report_index = {
             checkpoint_result.checkpoint: report_index
             for checkpoint_result, report_index in zip(
-                self._checkpoint_results, manager_snapshot.checkpoint_report_indices
+                self._checkpoint_results,
+                manager_snapshot.checkpoint_report_indices,
+                strict=False,
             )
         }
 
@@ -371,6 +373,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         for training_result_state, validation_spec in zip(
             manager_snapshot.pending_training_results,
             manager_snapshot.pending_validation_specs,
+            strict=False,
         ):
             training_result = checkpoint_dir_name_to_checkpoint_result[
                 training_result_state.checkpoint_dir_name

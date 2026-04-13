@@ -1649,7 +1649,7 @@ def is_null(value: Any) -> bool:
 def keys_equal(keys1, keys2):
     if len(keys1) != len(keys2):
         return False
-    for k1, k2 in zip(keys1, keys2):
+    for k1, k2 in zip(keys1, keys2, strict=False):
         if not ((is_nan(k1) and is_nan(k2)) or k1 == k2):
             return False
     return True
@@ -1798,7 +1798,7 @@ def unzip(data: List[Tuple[Any, ...]]) -> Tuple[List[Any], ...]:
         A tuple of lists, where each list corresponds to one element of the tuples in
         the input list.
     """
-    return tuple(map(list, zip(*data)))
+    return tuple(map(list, zip(*data, strict=False)))
 
 
 def _sort_df(df: pd.DataFrame) -> pd.DataFrame:

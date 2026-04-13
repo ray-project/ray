@@ -671,7 +671,7 @@ class PrioritizedEpisodeReplayBuffer(EpisodeReplayBuffer):
         """
         assert len(priorities) == len(self._last_sampled_indices)
 
-        for idx, priority in zip(self._last_sampled_indices, priorities):
+        for idx, priority in zip(self._last_sampled_indices, priorities, strict=False):
             # Note, TD-errors come in as absolute values or results from
             # cross-entropy loss calculations.
             # assert priority > 0, f"priority was {priority}"

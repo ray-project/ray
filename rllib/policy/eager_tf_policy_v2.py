@@ -632,6 +632,7 @@ class EagerTFPolicyV2(Policy):
                         for g in gradients
                     ],
                     self.model.trainable_variables(),
+                    strict=False,
                 )
             )
         )
@@ -647,7 +648,7 @@ class EagerTFPolicyV2(Policy):
     def set_weights(self, weights):
         variables = self.variables()
         assert len(weights) == len(variables), (len(weights), len(variables))
-        for v, w in zip(variables, weights):
+        for v, w in zip(variables, weights, strict=False):
             v.assign(w)
 
     @override(Policy)
@@ -703,7 +704,9 @@ class EagerTFPolicyV2(Policy):
                     "tf.compat.v1.train) since they aren't compatible with "
                     "checkpoints."
                 )
-            for opt_var, value in zip(self._optimizer.variables(), optimizer_vars):
+            for opt_var, value in zip(
+                self._optimizer.variables(), optimizer_vars, strict=False
+            ):
                 opt_var.assign(value)
         # Set exploration's state.
         if hasattr(self, "exploration") and "_exploration_state" in state:
@@ -901,7 +904,8 @@ class EagerTFPolicyV2(Policy):
         # Default: Compute gradients using the above tape.
         else:
             grads_and_vars = [
-                list(zip(tape.gradient(loss, variables), variables)) for loss in losses
+                list(zip(tape.gradient(loss, variables), variables, strict=False))
+                for loss in losses
             ]
 
         if log_once("grad_vars"):

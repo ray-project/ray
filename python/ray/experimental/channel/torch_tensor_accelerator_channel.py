@@ -779,7 +779,7 @@ def _init_communicator(
     has_accelerators = ray.get(
         [actor.__ray_call__.remote(_do_check_has_accelerators) for actor in actors]
     )
-    for has_accelerator, actor in zip(has_accelerators, actors):
+    for has_accelerator, actor in zip(has_accelerators, actors, strict=False):
         if not has_accelerator and not is_cpu_communicator:
             raise ValueError(
                 f"Actor {actor} returns a tensor with type hint "
@@ -819,7 +819,7 @@ def _init_communicator(
             use_communication_streams,
             custom_communicator,
         )
-        for rank, actor in zip(ranks, actors)
+        for rank, actor in zip(ranks, actors, strict=False)
     ]
     try:
         ray.get(init_tasks, timeout=30)

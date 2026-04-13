@@ -64,7 +64,7 @@ class SortKey:
     def to_arrow_sort_args(self) -> List[Tuple[str, str]]:
         return [
             (key, "descending" if desc else "ascending")
-            for key, desc in zip(self._columns, self._descending)
+            for key, desc in zip(self._columns, self._descending, strict=False)
         ]
 
     def to_pandas_sort_args(self) -> Tuple[List[str], List[bool]]:
@@ -204,7 +204,7 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples_table = builder.build()
         samples_dict = BlockAccessor.for_block(samples_table).to_numpy(columns=columns)
         # This zip does the transposition from list of column values to list of tuples.
-        samples_list = list(zip(*samples_dict.values()))
+        samples_list = list(zip(*samples_dict.values(), strict=False))
 
         def is_na(x):
             # Check if x is None or NaN. Type casting to np.array first to avoid

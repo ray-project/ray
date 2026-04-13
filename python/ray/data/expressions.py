@@ -1156,7 +1156,10 @@ class UDFExpr(Expr):
 
         return (
             len(self.args) == len(other.args)
-            and all(a.structurally_equals(b) for a, b in zip(self.args, other.args))
+            and all(
+                a.structurally_equals(b)
+                for a, b in zip(self.args, other.args, strict=False)
+            )
             and self.kwargs.keys() == other.kwargs.keys()
             and all(
                 self.kwargs[k].structurally_equals(other.kwargs[k])

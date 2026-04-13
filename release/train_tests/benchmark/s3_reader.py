@@ -171,7 +171,7 @@ class S3Reader:
                 break
 
             # Process batch results
-            batch_urls, batch_sizes = zip(*batch_results)
+            batch_urls, batch_sizes = zip(*batch_results, strict=False)
             file_urls.extend(batch_urls)
             file_sizes.extend(batch_sizes)
 
@@ -211,7 +211,7 @@ class S3Reader:
         """
         # Sort files by weight
         files_with_weights = sorted(
-            zip(file_urls, file_weights), key=lambda x: x[1], reverse=True
+            zip(file_urls, file_weights, strict=False), key=lambda x: x[1], reverse=True
         )
         file_urls = [f[0] for f in files_with_weights]
         file_weights = [f[1] for f in files_with_weights]
@@ -238,7 +238,7 @@ class S3Reader:
         worker_weights = [0] * num_workers
 
         # Distribute files using greedy algorithm
-        for file_url, weight in zip(file_urls, file_weights):
+        for file_url, weight in zip(file_urls, file_weights, strict=False):
             min_weight_worker = min(range(num_workers), key=lambda w: worker_weights[w])
             worker_files[min_weight_worker].append(file_url)
             worker_weights[min_weight_worker] += weight

@@ -178,7 +178,9 @@ class SimpleImputer(SerializablePreprocessorBase):
         return self
 
     def _transform_pandas(self, df: pd.DataFrame):
-        for column, output_column in zip(self._columns, self._output_columns):
+        for column, output_column in zip(
+            self._columns, self._output_columns, strict=False
+        ):
             value = self._get_fill_value(column)
 
             if value is None:

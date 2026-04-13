@@ -188,7 +188,8 @@ class FileBasedDatasource(Datasource):
                     self._filesystem,
                     partitioning,
                     ignore_missing_paths=ignore_missing_paths,
-                )
+                ),
+                strict=False,
             ),
         )
 
@@ -200,7 +201,7 @@ class FileBasedDatasource(Datasource):
 
         if self._partition_filter is not None:
             # Use partition filter to skip files which are not needed.
-            path_to_size = dict(zip(paths, file_sizes))
+            path_to_size = dict(zip(paths, file_sizes, strict=False))
             paths = self._partition_filter(paths)
             file_sizes = [path_to_size[p] for p in paths]
             if len(paths) == 0:
@@ -210,7 +211,7 @@ class FileBasedDatasource(Datasource):
                 )
 
         if file_extensions is not None:
-            path_to_size = dict(zip(paths, file_sizes))
+            path_to_size = dict(zip(paths, file_sizes, strict=False))
             paths = [p for p in paths if _has_file_extension(p, file_extensions)]
             file_sizes = [path_to_size[p] for p in paths]
             if len(paths) == 0:
@@ -336,7 +337,7 @@ class FileBasedDatasource(Datasource):
         split_paths = [p.tolist() for p in np.array_split(paths, parallelism)]
         split_file_sizes = [s.tolist() for s in np.array_split(file_sizes, parallelism)]
 
-        for read_paths, file_sizes in zip(split_paths, split_file_sizes):
+        for read_paths, file_sizes in zip(split_paths, split_file_sizes, strict=False):
             if len(read_paths) <= 0:
                 continue
 
@@ -620,6 +621,6 @@ def _shuffle_file_metadata(
 
     file_metadata_shuffler = np.random.default_rng(seed)
 
-    files_metadata = list(zip(paths, file_metadata))
+    files_metadata = list(zip(paths, file_metadata, strict=False))
     file_metadata_shuffler.shuffle(files_metadata)
-    return list(map(list, zip(*files_metadata)))
+    return list(map(list, zip(*files_metadata, strict=False)))

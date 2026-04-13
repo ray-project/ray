@@ -403,7 +403,8 @@ def test_zip_e2e(
     )
     ds = ds1.zip(ds2, ds3)
     assert ds.take() == named_values(
-        ["id", "id_1", "id_2"], zip(range(n), range(1, n + 1), range(2, n + 2))
+        ["id", "id_1", "id_2"],
+        zip(range(n), range(1, n + 1), range(2, n + 2), strict=False),
     )
     _check_usage_record(["ReadRange", "Zip"])
 

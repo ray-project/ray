@@ -226,7 +226,7 @@ class Result:
             latest_checkpoint = checkpoints[-1]
             # TODO(justinvyu): These are ordered by checkpoint index, since we don't
             # know the metric to order these with.
-            best_checkpoints = list(zip(checkpoints, metrics))
+            best_checkpoints = list(zip(checkpoints, metrics, strict=False))
         else:
             best_checkpoints = latest_checkpoint = None
 

@@ -144,6 +144,7 @@ class TestLearner(unittest.TestCase):
         for proc_grad, grad in zip(
             convert_to_numpy(processed_grads),
             convert_to_numpy(list(grads.values())),
+            strict=False,
         ):
             l2_norm = np.sqrt(np.sum(grad**2.0))
             if l2_norm > config.grad_clip:
@@ -170,6 +171,7 @@ class TestLearner(unittest.TestCase):
             for proc_grad, grad in zip(
                 convert_to_numpy(processed_grads),
                 grads.values(),
+                strict=False,
             ):
                 check(proc_grad, grad * (config.grad_clip / global_norm))
 
@@ -302,7 +304,7 @@ class TestLearner(unittest.TestCase):
             results = learner.update(batch)
             # Lifetime steps are aggregated at the root, so the return value in the results will contain only the last step.
             for module_id, sa_batch_count in zip(
-                ["mod1", "mod2"], [batch1.count, batch2.count]
+                ["mod1", "mod2"], [batch1.count, batch2.count], strict=False
             ):
                 self.assertEqual(
                     sa_batch_count,

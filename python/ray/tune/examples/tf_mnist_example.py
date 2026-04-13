@@ -81,7 +81,7 @@ class MNISTTrainable(tune.Trainable):
                 loss = self.loss_object(labels, predictions)
             gradients = tape.gradient(loss, self.model.trainable_variables)
             self.optimizer.apply_gradients(
-                zip(gradients, self.model.trainable_variables)
+                zip(gradients, self.model.trainable_variables, strict=False)
             )
 
             self.train_loss(loss)

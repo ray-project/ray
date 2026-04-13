@@ -73,7 +73,9 @@ def test_write(ray_start_regular_shared, temp_table, connection_parameters):
     """
     execute(create_table_sql, connection_parameters)
 
-    items = [dict(zip(expected_column_names, row)) for row in expected_rows]
+    items = [
+        dict(zip(expected_column_names, row, strict=False)) for row in expected_rows
+    ]
     dataset = ray.data.from_items(items)
 
     dataset.write_snowflake(temp_table, connection_parameters)

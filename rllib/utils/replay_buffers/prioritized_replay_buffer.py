@@ -180,7 +180,7 @@ class PrioritizedReplayBuffer(ReplayBuffer):
             type(idxes).__name__
         )
         assert len(idxes) == len(priorities)
-        for idx, priority in zip(idxes, priorities):
+        for idx, priority in zip(idxes, priorities, strict=False):
             assert priority > 0
             assert 0 <= idx < len(self._storage)
             delta = priority**self._alpha - self._it_sum[idx]

@@ -444,7 +444,9 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._shuffle_metrics.on_input_received(bundle)
         self._shuffled_blocks_stats.extend(to_stats(bundle.metadata))
 
-        for block_ref, metadata in zip(bundle.block_refs, bundle.metadata):
+        for block_ref, metadata in zip(
+            bundle.block_refs, bundle.metadata, strict=False
+        ):
             actor = self._rank_pool.get_actor_for_block(self._next_block_idx)
             insert_ref = actor.insert_batch.remote(block_ref)
             task_idx = self._next_block_idx

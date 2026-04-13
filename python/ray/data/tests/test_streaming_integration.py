@@ -383,7 +383,9 @@ def test_streaming_split_error_propagation(
             return "ok"
 
     consumers = [Consumer.remote() for _ in range(num_splits)]
-    res = ray.get([c.consume.remote(split) for c, split in zip(consumers, splits)])
+    res = ray.get(
+        [c.consume.remote(split) for c, split in zip(consumers, splits, strict=False)]
+    )
     assert res == ["ok"] * num_splits
 
 

@@ -155,7 +155,7 @@ class StandardScaler(SerializablePreprocessorBase):
         input_columns = [table.column(input_col) for input_col in self._columns]
 
         for input_col, output_col, column in zip(
-            self._columns, self._output_columns, input_columns
+            self._columns, self._output_columns, input_columns, strict=False
         ):
             s_mean = self.stats_[f"mean({input_col})"]
             s_std = self.stats_[f"std({input_col})"]

@@ -227,7 +227,7 @@ class ExecutionPlan:
             schema_str = str(schema)
         else:
             schema_str = []
-            for n, t in zip(schema.names, schema.types):
+            for n, t in zip(schema.names, schema.types, strict=False):
                 if hasattr(t, "__name__"):
                     t = t.__name__
                 schema_str.append(f"{n}: {t}")
@@ -273,7 +273,7 @@ class ExecutionPlan:
                 # If the schema cannot fit on a single line, break up each field
                 # into its own line.
                 schema_str = []
-                for n, t in zip(schema.names, schema.types):
+                for n, t in zip(schema.names, schema.types, strict=False):
                     if hasattr(t, "__name__"):
                         t = t.__name__
                     col_str = f"{trailing_space}{INDENT_STR * 2}{n}: {t}"

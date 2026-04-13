@@ -132,7 +132,9 @@ class TestLSTMContainingRLModuleWithTargetNetwork(unittest.TestCase):
         ]
 
         # Initially, parameters should be equal (target is copied from main)
-        for main_param, target_param in zip(main_lstm_params, target_lstm_params):
+        for main_param, target_param in zip(
+            main_lstm_params, target_lstm_params, strict=False
+        ):
             self.assertTrue(torch.allclose(main_param, target_param))
 
         # Create input batch
@@ -150,13 +152,15 @@ class TestLSTMContainingRLModuleWithTargetNetwork(unittest.TestCase):
 
         # Target network parameters should remain unchanged
         for target_param, original_target_param in zip(
-            self.module._old_lstm.parameters(), target_lstm_params
+            self.module._old_lstm.parameters(), target_lstm_params, strict=False
         ):
             self.assertTrue(torch.allclose(target_param, original_target_param))
 
         # Verify that main and target networks now have different parameters
         for main_param, target_param in zip(
-            self.module._lstm.parameters(), self.module._old_lstm.parameters()
+            self.module._lstm.parameters(),
+            self.module._old_lstm.parameters(),
+            strict=False,
         ):
             self.assertFalse(torch.allclose(main_param, target_param))
 

@@ -89,7 +89,7 @@ def create_actors_with_options(
 def run_commands_on_actors(actors: List[ray.actor.ActorHandle], cmds: List[List[str]]):
     assert len(actors) == len(cmds)
     futures = []
-    for actor, cmd in zip(actors, cmds):
+    for actor, cmd in zip(actors, cmds, strict=False):
         futures.append(actor.run_command.remote(cmd))
     return ray.get(futures)
 
@@ -129,7 +129,7 @@ def map_ips_to_gpus(ips: List[str], gpus: List[List[int]]):
     assert len(ips) == len(gpus)
 
     map = defaultdict(set)
-    for ip, gpu in zip(ips, gpus):
+    for ip, gpu in zip(ips, gpus, strict=False):
         map[ip].update(set(gpu))
     return {ip: sorted(gpus) for ip, gpus in map.items()}
 
@@ -145,7 +145,7 @@ def set_cuda_visible_devices(
         os.environ[key] = val
 
     futures = []
-    for actor, ip in zip(actors, actor_ips):
+    for actor, ip in zip(actors, actor_ips, strict=False):
         assert ip in ip_to_gpus
 
         gpu_str = ",".join([str(device) for device in sorted(ip_to_gpus[ip])])

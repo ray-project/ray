@@ -112,7 +112,9 @@ def test_mlp_encoder_config_layernorm(config):
 
     positions = get_layernorm_positions(encoder.net.mlp)
     assert len(positions) == len(config["expected_positions"])
-    for (_, shape), expected_shape in zip(positions, config["expected_positions"]):
+    for (_, shape), expected_shape in zip(
+        positions, config["expected_positions"], strict=False
+    ):
         assert shape == expected_shape
 
 

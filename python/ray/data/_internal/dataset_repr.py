@@ -139,7 +139,9 @@ def _collect_materialized_rows_for_repr(
     """Collect head/tail rows for preview and whether to show a gap row."""
     block_entries: List[Tuple[ObjectRef, BlockMetadata]] = []
     for ref_bundle in dataset.iter_internal_ref_bundles():
-        block_entries.extend(zip(ref_bundle.block_refs, ref_bundle.metadata))
+        block_entries.extend(
+            zip(ref_bundle.block_refs, ref_bundle.metadata, strict=False)
+        )
 
     if not block_entries:
         return [], [], False

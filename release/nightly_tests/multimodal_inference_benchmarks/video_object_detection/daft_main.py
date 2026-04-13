@@ -44,7 +44,7 @@ class ExtractImageFeatures:
                 "bbox": bbox.tolist(),
             }
             for label, confidence, bbox in zip(
-                res.names, res.boxes.conf, res.boxes.xyxy
+                res.names, res.boxes.conf, res.boxes.xyxy, strict=False
             )
         ]
 

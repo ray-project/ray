@@ -435,7 +435,7 @@ def _dtype_aggregators_for_dataset(
     # Generate aggregators for each column
     column_to_dtype = {}
     all_aggs = []
-    name_to_type = dict(zip(schema.names, schema.types))
+    name_to_type = dict(zip(schema.names, schema.types, strict=False))
 
     for name in columns:
         pa_type = name_to_type[name]
@@ -494,7 +494,7 @@ def _format_stats(
             labels = [str(idx) for idx in range(len(value))]
             return {
                 f"{agg_name}[{label}]": (list_val, scalar_type)
-                for label, list_val in zip(labels, value)
+                for label, list_val in zip(labels, value, strict=False)
             }
 
     # Fallback to scalar result for non-list values or unexpandable Nones

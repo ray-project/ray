@@ -68,7 +68,9 @@ def _checkpoint_managers_equal(cm1: CheckpointManager, cm2: CheckpointManager) -
         return False
     if len(cm1.best_checkpoint_results) != len(cm2.best_checkpoint_results):
         return False
-    for tr1, tr2 in zip(cm1.best_checkpoint_results, cm2.best_checkpoint_results):
+    for tr1, tr2 in zip(
+        cm1.best_checkpoint_results, cm2.best_checkpoint_results, strict=False
+    ):
         if not _training_results_equal(tr1, tr2):
             return False
     if cm1._current_report_index != cm2._current_report_index:

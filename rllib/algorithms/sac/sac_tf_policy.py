@@ -460,24 +460,30 @@ def compute_and_clip_gradients(
         tape = optimizer.tape
         pol_weights = policy.model.policy_variables()
         actor_grads_and_vars = list(
-            zip(tape.gradient(policy.actor_loss, pol_weights), pol_weights)
+            zip(
+                tape.gradient(policy.actor_loss, pol_weights), pol_weights, strict=False
+            )
         )
         q_weights = policy.model.q_variables()
         if policy.config["twin_q"]:
             half_cutoff = len(q_weights) // 2
             grads_1 = tape.gradient(policy.critic_loss[0], q_weights[:half_cutoff])
             grads_2 = tape.gradient(policy.critic_loss[1], q_weights[half_cutoff:])
-            critic_grads_and_vars = list(zip(grads_1, q_weights[:half_cutoff])) + list(
-                zip(grads_2, q_weights[half_cutoff:])
-            )
+            critic_grads_and_vars = list(
+                zip(grads_1, q_weights[:half_cutoff], strict=False)
+            ) + list(zip(grads_2, q_weights[half_cutoff:], strict=False))
         else:
             critic_grads_and_vars = list(
-                zip(tape.gradient(policy.critic_loss[0], q_weights), q_weights)
+                zip(
+                    tape.gradient(policy.critic_loss[0], q_weights),
+                    q_weights,
+                    strict=False,
+                )
             )
 
         alpha_vars = [policy.model.log_alpha]
         alpha_grads_and_vars = list(
-            zip(tape.gradient(policy.alpha_loss, alpha_vars), alpha_vars)
+            zip(tape.gradient(policy.alpha_loss, alpha_vars), alpha_vars, strict=False)
         )
     # Tf1.x: Use optimizer.compute_gradients()
     else:

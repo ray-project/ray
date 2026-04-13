@@ -167,13 +167,13 @@ def test_torch_prepare_dataloader(ray_start_4_cpus_2_gpus, dataset):
         # Case where the dataset returns a dict from __getitem__.
         elif isinstance(dataset, LinearDatasetDict):
             for batch in wrapped_data_loader:
-                for x, y in zip(batch["x"], batch["y"]):
+                for x, y in zip(batch["x"], batch["y"], strict=False):
                     # Make sure the data is on the correct device.
                     assert x.is_cuda and y.is_cuda
 
         elif isinstance(dataset, NonTensorDataset):
             for batch in wrapped_data_loader:
-                for x, y in zip(batch["x"], batch["y"]):
+                for x, y in zip(batch["x"], batch["y"], strict=False):
                     # Make sure the data is on the correct device.
                     assert x.is_cuda and y == 2
 

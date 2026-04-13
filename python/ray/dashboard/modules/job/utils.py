@@ -300,7 +300,9 @@ async def find_jobs_by_job_ids(
                 driver_info=submission_job_drivers.get(submission_id),
                 type=JobType.SUBMISSION,
             )
-            for job_info, submission_id in zip(job_infos, job_submission_ids)
+            for job_info, submission_id in zip(
+                job_infos, job_submission_ids, strict=False
+            )
         },
     }
 

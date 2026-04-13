@@ -97,7 +97,9 @@ class PartitionActor:
         # This is some fancy Python code to compute the file size of each row.
         row_sizes = [
             sum(file_sizes_in_row)
-            for file_sizes_in_row in zip(*sampled_file_sizes_by_column.values())
+            for file_sizes_in_row in zip(
+                *sampled_file_sizes_by_column.values(), strict=False
+            )
         ]
 
         target_nbytes_per_partition = self._data_context.target_max_block_size
@@ -264,7 +266,7 @@ class AsyncPartitionActor(PartitionActor):
 
         async def _head_all() -> List[int]:
             sizes = await asyncio.gather(*[_head_one(u) for u in uris])
-            failed = [uri for uri, size in zip(uris, sizes) if size == 0]
+            failed = [uri for uri, size in zip(uris, sizes, strict=False) if size == 0]
             if failed:
                 logger.debug(
                     "obstore HEAD failed for %d URIs: %s",

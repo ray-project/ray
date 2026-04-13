@@ -752,7 +752,7 @@ class BlockAccessor:
 
         boundaries = self._get_group_boundaries_sorted(key_col_names)
 
-        for start, end in zip(boundaries[:-1], boundaries[1:]):
+        for start, end in zip(boundaries[:-1], boundaries[1:], strict=False):
             # Fetch tuple of key values from the first row
             row = self._get_row(start)
 

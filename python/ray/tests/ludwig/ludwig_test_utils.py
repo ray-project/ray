@@ -491,7 +491,9 @@ def run_api_experiment(input_features, output_features, data_csv):
 
         model_weights = model.model.get_weights()
         loaded_weights = loaded_model.model.get_weights()
-        for model_weight, loaded_weight in zip(model_weights, loaded_weights):
+        for model_weight, loaded_weight in zip(
+            model_weights, loaded_weights, strict=False
+        ):
             assert np.allclose(model_weight, loaded_weight)
     finally:
         # Remove results/intermediate data saved to disk

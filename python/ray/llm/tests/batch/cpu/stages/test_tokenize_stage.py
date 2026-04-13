@@ -43,7 +43,7 @@ async def test_tokenize_udf_basic(mock_tokenizer_setup):
     assert all(result["tokenized_prompt"] == [1, 2, 3] for result in results)
     assert all(
         original["prompt"] == result["prompt"]
-        for original, result in zip(batch, results)
+        for original, result in zip(batch, results, strict=False)
     )
 
 

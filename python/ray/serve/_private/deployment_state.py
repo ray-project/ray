@@ -3802,7 +3802,9 @@ class DeploymentState:
             f"(gang_size={gang_size}, {num_gangs} gang(s))."
         )
 
-        for gang_pg, gang_id, pg_name in zip(gang_pgs, gang_ids, gang_pg_names):
+        for gang_pg, gang_id, pg_name in zip(
+            gang_pgs, gang_ids, gang_pg_names, strict=False
+        ):
             member_replica_ids = [
                 ReplicaID(get_random_string(), deployment_id=self._id)
                 for _ in range(gang_size)

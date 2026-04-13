@@ -24,7 +24,7 @@ class SelfPlayCallbackOldAPIStack(RLlibCallback):
         opponent_rew = list(result[ENV_RUNNER_RESULTS]["hist_stats"].values())[0]
         assert len(main_rew) == len(opponent_rew)
         won = 0
-        for r_main, r_opponent in zip(main_rew, opponent_rew):
+        for r_main, r_opponent in zip(main_rew, opponent_rew, strict=False):
             if r_main > r_opponent:
                 won += 1
         win_rate = won / len(main_rew)

@@ -282,11 +282,11 @@ def test_torch_conversion_default_collate_fn_threading(
 
     # Verify results are the same
     assert len(batches_with_threading) == len(batches_no_threading)
-    for b1, b2 in zip(batches_with_threading, batches_no_threading):
+    for b1, b2 in zip(batches_with_threading, batches_no_threading, strict=False):
         assert set(b1.keys()) == set(b2.keys())
         for col in b1.keys():
             assert len(b1[col]) == len(b2[col])
-            for t1, t2 in zip(b1[col], b2[col]):
+            for t1, t2 in zip(b1[col], b2[col], strict=False):
                 assert torch.equal(t1, t2)
 
 

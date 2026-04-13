@@ -78,7 +78,7 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             blocks_with_metadata, indices, input_owned_by_consumer
         )
         split_block_refs, split_metadata = [], []
-        for b, m in zip(*split_return):
+        for b, m in zip(*split_return, strict=False):
             split_block_refs.append(b)
             split_metadata.extend(m)
 
@@ -140,7 +140,8 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
                 *[
                     (ray.put(empty_block), empty_meta_with_schema)
                     for _ in range(num_empty_blocks)
-                ]
+                ],
+                strict=False,
             )
             reduce_block_refs.extend(empty_block_refs)
             reduce_metadata_schema.extend(empty_metadata)
@@ -150,7 +151,9 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             len(reduce_block_refs),
             len(reduce_metadata_schema),
         )
-        for block, meta_with_schema in zip(reduce_block_refs, reduce_metadata_schema):
+        for block, meta_with_schema in zip(
+            reduce_block_refs, reduce_metadata_schema, strict=False
+        ):
             output.append(
                 RefBundle(
                     [(block, meta_with_schema.metadata)],

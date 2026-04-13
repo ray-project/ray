@@ -207,7 +207,7 @@ def _convert_batch_type_to_numpy(
         ):
             return column_values_ndarrays[0]
 
-        return dict(zip(data.column_names, column_values_ndarrays))
+        return dict(zip(data.column_names, column_values_ndarrays, strict=False))
     elif isinstance(data, pd.DataFrame):
         return _convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:

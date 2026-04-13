@@ -110,7 +110,10 @@ class TestPandasBlockColumnAccessor:
         expected = arr.to_list()
 
         assert all(
-            [a == b or is_null(a) and is_null(b) for a, b in zip(expected, result)]
+            [
+                a == b or is_null(a) and is_null(b)
+                for a, b in zip(expected, result, strict=False)
+            ]
         )
 
 
@@ -196,7 +199,7 @@ def test_pandas_block_timestamp_ns(ray_start_regular_shared):
     assert pd.api.types.is_datetime64_ns_dtype(pandas_block["col2"])
 
     for original_row, result_row in zip(
-        data_rows, pandas_block.to_dict(orient="records")
+        data_rows, pandas_block.to_dict(orient="records"), strict=False
     ):
         assert (
             original_row["col2"] == result_row["col2"]

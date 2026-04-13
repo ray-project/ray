@@ -331,7 +331,7 @@ class OpState:
     def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""
         total = 0
-        for op, inq in zip(self.op.input_dependencies, self.input_queues):
+        for op, inq in zip(self.op.input_dependencies, self.input_queues, strict=False):
             # Exclude existing input data items from dynamic memory usage.
             if not isinstance(op, InputDataBuffer):
                 total += inq.memory_usage
@@ -661,7 +661,7 @@ def select_operator_to_run(
 
     assert len(eligible_ops) == len(ranks), (eligible_ops, ranks)
 
-    next_op, _ = min(zip(eligible_ops, ranks), key=lambda t: t[1])
+    next_op, _ = min(zip(eligible_ops, ranks, strict=False), key=lambda t: t[1])
 
     return next_op
 
@@ -708,7 +708,8 @@ def _build_schemas_mismatch_warning(
 
     if _is_empty_schema(new_schema):
         old_fields_info = [
-            f"{name}: {str(t)}" for name, t in zip(old_schema.names, old_schema.types)
+            f"{name}: {str(t)}"
+            for name, t in zip(old_schema.names, old_schema.types, strict=False)
         ]
         is_empty_message = _format_schema_mismatch_section(
             "Operator produced a RefBundle with an empty/unknown schema.",
@@ -719,8 +720,14 @@ def _build_schemas_mismatch_warning(
 
     # We assume old_schema and new_schema have the same underlying type
     # and can only either be PyArrow schemas or PandasBlockSchema
-    old_fields = {name: str(t) for name, t in zip(old_schema.names, old_schema.types)}
-    new_fields = {name: str(t) for name, t in zip(new_schema.names, new_schema.types)}
+    old_fields = {
+        name: str(t)
+        for name, t in zip(old_schema.names, old_schema.types, strict=False)
+    }
+    new_fields = {
+        name: str(t)
+        for name, t in zip(new_schema.names, new_schema.types, strict=False)
+    }
 
     new_exclusive_fields = [name for name in new_fields if name not in old_fields]
     old_exclusive_fields = [name for name in old_fields if name not in new_fields]

@@ -351,7 +351,7 @@ class TestLogarithmicOperations:
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, sample_data)
         expected = [0.0, 1.0, math.log(10), math.log(100)]
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
     def test_log10(self, sample_data):
@@ -360,7 +360,7 @@ class TestLogarithmicOperations:
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, sample_data)
         expected = [0.0, math.log10(math.e), 1.0, 2.0]
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
     def test_log2(self):
@@ -370,7 +370,7 @@ class TestLogarithmicOperations:
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, data)
         expected = [0.0, 1.0, 2.0, 3.0]
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
     def test_exp(self):
@@ -380,7 +380,7 @@ class TestLogarithmicOperations:
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, data)
         expected = [1.0, math.e, math.e**2]
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
 
@@ -407,7 +407,7 @@ class TestTrigonometricOperations:
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, sample_data)
         expected = [0.0, 0.5, math.sqrt(2) / 2, math.sqrt(3) / 2, 1.0]
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
     def test_cos(self, sample_data):
@@ -416,7 +416,7 @@ class TestTrigonometricOperations:
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, sample_data)
         expected = [1.0, math.sqrt(3) / 2, math.sqrt(2) / 2, 0.5, 0.0]
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
     def test_tan(self):
@@ -426,7 +426,7 @@ class TestTrigonometricOperations:
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, data)
         expected = [0.0, 1.0]
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
     def test_asin(self):
@@ -436,7 +436,7 @@ class TestTrigonometricOperations:
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, data)
         expected = [0.0, math.pi / 6, math.pi / 2]
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
     def test_acos(self):
@@ -446,7 +446,7 @@ class TestTrigonometricOperations:
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, data)
         expected = [0.0, math.pi / 3, math.pi / 2]
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
     def test_atan(self):
@@ -456,7 +456,7 @@ class TestTrigonometricOperations:
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, data)
         expected = [0.0, math.pi / 4]
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
 
@@ -516,7 +516,7 @@ class TestArithmeticHelpers:
         expr = col("value").power(exponent)
         assert isinstance(expr, UDFExpr)
         result = eval_expr(expr, data)
-        for r, e in zip(result.tolist(), expected):
+        for r, e in zip(result.tolist(), expected, strict=False):
             assert abs(r - e) < 1e-10
 
 

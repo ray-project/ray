@@ -165,7 +165,10 @@ def verify_load_metrics(monitor, expected_resource_usage=None, timeout=30):
         if expected_resource_usage is None:
             if all(x for x in resource_usage[0:]):
                 break
-        elif all(x == y for x, y in zip(resource_usage, expected_resource_usage)):
+        elif all(
+            x == y
+            for x, y in zip(resource_usage, expected_resource_usage, strict=False)
+        ):
             break
         else:
             timeout -= 1

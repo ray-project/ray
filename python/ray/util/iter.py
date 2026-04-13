@@ -505,7 +505,7 @@ class ParallelIterator(Generic[T]):
                 except StopIteration:
                     # Find and remove the actor that produced StopIteration.
                     results = []
-                    for a, f in zip(list(active), futures):
+                    for a, f in zip(list(active), futures, strict=False):
                         try:
                             results.append(ray.get(f))
                         except StopIteration:
@@ -1101,7 +1101,7 @@ class LocalIterator(Generic[T]):
                     timeout=timeouts[i],
                 )
             )
-        active = list(zip(round_robin_weights, active))
+        active = list(zip(round_robin_weights, active, strict=False))
 
         def build_union(timeout=None):
             while True:

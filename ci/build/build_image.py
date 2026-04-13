@@ -433,7 +433,7 @@ def _build_examples() -> str:
     cmds = [cmd_prefix + args for args, _ in examples]
     max_cmd = max(len(c) for c in cmds)
     lines = []
-    for cmd, (_, comment) in zip(cmds, examples):
+    for cmd, (_, comment) in zip(cmds, examples, strict=False):
         lines.append(f"{cmd:<{max_cmd}}  # {comment}")
     return "\n".join(lines)
 

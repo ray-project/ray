@@ -66,7 +66,7 @@ class TestBatchBlocks:
         )
 
         assert len(batches) == len(expected_values)
-        for batch, expected in zip(batches, expected_values):
+        for batch, expected in zip(batches, expected_values, strict=False):
             np.testing.assert_array_equal(batch["foo"], np.array(expected))
 
     def test_collate_fn(self):

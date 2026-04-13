@@ -100,7 +100,7 @@ class S3ParquetReader(S3Reader):
         results = ray.get(tasks)
 
         # Process results
-        file_urls, file_rows = zip(*results) if results else ([], [])
+        file_urls, file_rows = zip(*results, strict=False) if results else ([], [])
 
         logger.info(
             f"Worker {worker_rank}: Collected metadata for {len(file_urls)} files"

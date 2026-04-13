@@ -98,7 +98,9 @@ def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
         arrays.append(arr)
         fields.append(pa.field(col_name, arr.type))
 
-    return pa.table(dict(zip(df.columns, arrays)), schema=pa.schema(fields))
+    return pa.table(
+        dict(zip(df.columns, arrays, strict=False)), schema=pa.schema(fields)
+    )
 
 
 class PandasRow(Mapping):
@@ -510,7 +512,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         if should_be_single_ndarray:
             arrays = arrays[0]
         else:
-            arrays = dict(zip(columns, arrays))
+            arrays = dict(zip(columns, arrays, strict=False))
         return arrays
 
     def to_arrow(self) -> "pyarrow.Table":

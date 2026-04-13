@@ -602,7 +602,9 @@ def _multi_action_dist_partial_helper(
 
     logit_lens = [
         int(dist_cls.required_input_dim(space))
-        for dist_cls, space in zip(flat_distribution_clses, flat_action_space)
+        for dist_cls, space in zip(
+            flat_distribution_clses, flat_action_space, strict=False
+        )
     ]
 
     if framework == "torch":
