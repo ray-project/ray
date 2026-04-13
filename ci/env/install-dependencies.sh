@@ -270,7 +270,7 @@ install_pip_packages() {
     requirements_files+=("${WORKSPACE_DIR}/python/requirements/ml/rllib-test-requirements.txt")
 
     # Install MuJoCo.
-    sudo apt-get install -y libosmesa6-dev libgl1-mesa-glx libglfw3 patchelf
+    sudo apt-get install -y libosmesa6-dev libgl1 libglfw3 patchelf
     wget https://github.com/google-deepmind/mujoco/releases/download/2.1.1/mujoco-2.1.1-linux-x86_64.tar.gz
     mkdir -p /root/.mujoco
     mv mujoco-2.1.1-linux-x86_64.tar.gz /root/.mujoco/.
@@ -313,7 +313,7 @@ install_pip_packages() {
   fi
 
   # TODO(ray-ci): pin the dependencies.
-  CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt"
+  CC=gcc retry_pip_install pip install -Ur "${WORKSPACE_DIR}/python/requirements.txt" -c "${WORKSPACE_DIR}/python/requirements_compiled.txt"
 
   # Install deeplearning libraries (Torch + TensorFlow)
   if [[ -n "${TORCH_VERSION-}" || "${DL-}" == "1" || "${RLLIB_TESTING-}" == 1 || "${TRAIN_TESTING-}" == 1 || "${TUNE_TESTING-}" == 1 || "${DOC_TESTING-}" == 1 ]]; then
@@ -435,7 +435,7 @@ install_dependencies() {
     "${SCRIPT_DIR}"/install-hdfs.sh
   fi
 
-  if [[ "${MINIMAL_INSTALL:-}" != "1" && "${SKIP_PYTHON_PACKAGES:-}" != "1" ]]; then
+  if [[ "${MINIMAL_INSTALL:-}" != "1" && "${SKIP_PYTHON_PACKAGES:-}" != "1" && "${SKIP_PIP_INSTALL:-}" != "1" ]]; then
     install_pip_packages
   fi
 

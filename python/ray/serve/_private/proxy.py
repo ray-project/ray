@@ -63,6 +63,7 @@ from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
     configure_component_memory_profiler,
+    format_client_address,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -519,6 +520,7 @@ class GenericProxy(ABC):
                     route=request_context.route,
                     status=str(status.code),
                     latency_ms=latency_ms,
+                    client=format_client_address(proxy_request.client),
                 ),
                 extra=self._access_log_context,
             )
@@ -840,6 +842,7 @@ class gRPCProxy(GenericProxy):
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
+            "_client": proxy_request.client,
         }
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
@@ -1223,9 +1226,16 @@ class HTTPProxy(GenericProxy):
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
             "is_http_request": True,
+            "_client": format_client_address(proxy_request.client),
         }
         for key, value in proxy_request.headers:
-            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+            # Normalize the header key: lowercase and replace hyphens with
+            # underscores so that both "serve_multiplexed_model_id" and
+            # "serve-multiplexed-model-id" (the form produced by proxies such
+            # as nginx / AWS API Gateway that convert underscores to hyphens)
+            # are recognised correctly.
+            normalized_key = key.decode().lower().replace("-", "_")
+            if normalized_key == SERVE_MULTIPLEXED_MODEL_ID:
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
