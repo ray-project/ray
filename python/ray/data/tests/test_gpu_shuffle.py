@@ -25,6 +25,7 @@ from ray.data._internal.gpu_shuffle.hash_shuffle import (
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import Repartition
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
+from ray.data._internal.util import explain_plan
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 
@@ -944,7 +945,7 @@ class TestGPUHashShuffle:
 
         ds = ray.data.range(num_rows, parallelism=parallelism).materialize()
         ds = ds.repartition(keys=["id"], num_blocks=num_blocks)
-        assert "GPUShuffle" in ds._plan.explain()
+        assert "GPUShuffle" in explain_plan(ds._logical_plan)
         ds = ds.materialize()
         assert ds.num_blocks() == max(num_blocks, num_gpus)
         assert ds.count() == num_rows
