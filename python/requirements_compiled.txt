@@ -879,7 +879,6 @@ jaxtyping==0.3.7
     # via
     #   -r python/requirements/ml/tune-requirements.txt
     #   gpytorch
-    #   linear-operator
 jedi==0.19.1
     # via ipython
 jinja2==3.1.6
@@ -1025,7 +1024,7 @@ lightning-utilities==0.11.2
     # via
     #   lightning
     #   pytorch-lightning
-linear-operator==0.4.0
+linear-operator==0.6.1
     # via
     #   botorch
     #   gpytorch
@@ -1135,7 +1134,6 @@ moviepy==0.2.3.1
 mpmath==1.3.0
     # via
     #   gpytorch
-    #   linear-operator
     #   sympy
 msal==1.28.1
     # via
