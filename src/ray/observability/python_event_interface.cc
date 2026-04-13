@@ -66,11 +66,13 @@ rpc::events::RayEvent PythonRayEvent::Serialize() && {
 
   // Use protobuf reflection to set the nested event message by field number.
   // this way, adding new Python event types will not require C++ changes.
-  const auto *descriptor = event.GetDescriptor();
-  const auto *field = descriptor->FindFieldByNumber(nested_event_field_number_);
+  const google::protobuf::Descriptor *descriptor = event.GetDescriptor();
+  const google::protobuf::FieldDescriptor *field =
+      descriptor->FindFieldByNumber(nested_event_field_number_);
   if (field != nullptr &&
       field->type() == google::protobuf::FieldDescriptor::TYPE_MESSAGE) {
-    auto *nested = event.GetReflection()->MutableMessage(&event, field);
+    google::protobuf::Message *nested =
+        event.GetReflection()->MutableMessage(&event, field);
     if (!nested->ParseFromString(serialized_event_data_)) {
       RAY_LOG(ERROR) << "Failed to parse nested event data for field " << field->name();
       event.GetReflection()->ClearField(&event, field);

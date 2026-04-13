@@ -8,8 +8,10 @@ from abc import ABC, abstractmethod
 
 from ray._raylet import RayEvent
 from ray.core.generated.events_base_event_pb2 import RayEvent as RayEventProto
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class InternalEventBuilder(ABC):
     """Abstract base class for building internal Ray events.
 
