@@ -1304,13 +1304,10 @@ class _ActorPool(AutoscalingActorPool):
             if rank < max_tasks:
                 return actor
 
-        # Pick the best candidate: prefer highest locality (most data on-node),
-        # breaking ties by fewest tasks in flight.
-        return min(actor_ranks, key=lambda x: (x[1], x[2]))[0]
+        return None
 
     def current_logical_usage(self) -> ExecutionResources:
         return self._total_usage
 
     def pending_logical_usage(self) -> ExecutionResources:
         return self._pending_or_restarting_usage
-  
