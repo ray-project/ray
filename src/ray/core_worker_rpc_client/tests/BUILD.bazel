@@ -9,7 +9,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
     ],

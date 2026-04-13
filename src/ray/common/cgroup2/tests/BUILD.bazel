@@ -11,7 +11,6 @@ ray_cc_test(
         "@platforms//os:linux",
     ],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/common/cgroup2:cgroup_test_utils",
@@ -30,7 +29,6 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/common/cgroup2:cgroup_driver_interface",

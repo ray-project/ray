@@ -8,7 +8,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/rpc:rpc_chaos",
     ],
 )
@@ -32,7 +31,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":grpc_test_common",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/protobuf:test_service_cc_grpc",
         "//src/ray/rpc:grpc_client",
         "//src/ray/rpc:grpc_server",
@@ -47,7 +45,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/rpc:metrics_agent_client",
     ],
 )

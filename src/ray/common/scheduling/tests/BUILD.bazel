@@ -8,7 +8,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/scheduling:cluster_resource_data",
     ],
 )
@@ -21,7 +20,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/scheduling:resource_set",
     ],
 )
@@ -34,7 +32,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/scheduling:resource_instance_set",
     ],
 )
@@ -48,7 +45,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:ray_config",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/scheduling:scheduling_ids",
     ],
 )
@@ -61,7 +57,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/scheduling:label_selector",
     ],
 )
@@ -74,7 +69,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/scheduling:fallback_strategy",
     ],
 )

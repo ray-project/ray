@@ -6,7 +6,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/object_manager/plasma:plasma_allocator",
         "@com_google_absl//absl/strings:str_format",
     ],
@@ -17,7 +16,6 @@ ray_cc_test(
     srcs = ["object_store_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/object_manager/plasma:plasma_object_store",
         "@com_google_absl//absl/random",
         "@com_google_absl//absl/strings:str_format",
@@ -33,7 +31,6 @@ ray_cc_test(
     ],
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker:experimental_mutable_object_manager",
         "//src/ray/object_manager:object_manager_common",
     ],
@@ -47,7 +44,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/object_manager/plasma:obj_lifecycle_mgr",
         "@com_google_absl//absl/random",
     ],
@@ -58,7 +54,6 @@ ray_cc_test(
     srcs = ["eviction_policy_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/object_manager/plasma:plasma_eviction_policy",
         "//src/ray/object_manager/plasma:plasma_object_store",
     ],

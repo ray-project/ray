@@ -13,7 +13,6 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/common:id",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/tests:testing",
         "//src/ray/util:filesystem",
         "//src/ray/util/internal:stream_redirection_handle",

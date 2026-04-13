@@ -8,7 +8,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs_rpc_client:gcs_client",
     ],
@@ -34,7 +33,6 @@ ray_cc_test(
     }),
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_server_lib",
         "//src/ray/gcs_rpc_client:gcs_client",
@@ -69,7 +67,6 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_server_lib",
         "//src/ray/gcs_rpc_client:gcs_client",
@@ -98,7 +95,6 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_server_lib",
         "//src/ray/gcs_rpc_client:gcs_client",
@@ -117,7 +113,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs_rpc_client:gcs_client",
     ],
 )

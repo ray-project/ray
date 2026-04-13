@@ -7,7 +7,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker/actor_management:actor_creator",
         "//src/ray/gcs_rpc_client:gcs_client",
@@ -23,7 +22,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:reference_counter",
         "//src/ray/core_worker/actor_management:actor_manager",

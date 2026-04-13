@@ -1,5 +1,11 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
+# Default main function that configures the Ray logger and sets up failure signal
+# handling to aid with debugging.
+#
+# Included by default in ray_cc_test (see bazel/ray.bzl for ray_cc_test definition).
+# To use a custom main function instead (like `gtest_main`), set
+# `use_ray_gtest_main = False` in the `ray_cc_test` target.
 ray_cc_library(
     name = "ray_gtest_main",
     testonly = True,

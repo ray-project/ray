@@ -25,7 +25,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
@@ -56,7 +55,6 @@ ray_cc_test(
     ],
     deps = [
         ":store_client_test_lib",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
@@ -72,7 +70,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/store_client:in_memory_store_client",
     ],
 )
@@ -84,7 +81,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:observable_store_client",
         "//src/ray/observability:fake_metric",
@@ -97,7 +93,6 @@ ray_cc_test(
     srcs = ["redis_callback_reply_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/store_client:redis_store_client",
     ],
 )
@@ -116,7 +111,6 @@ ray_cc_test(
     },
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/util:raii",

@@ -6,7 +6,6 @@ ray_cc_test(
     srcs = ["raylet_client_pool_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs_rpc_client:gcs_client",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
         "//src/ray/raylet_rpc_client:raylet_client_pool",

@@ -6,7 +6,6 @@ ray_cc_test(
     srcs = ["core_worker_resubmit_queue_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker:core_worker_lib",
     ],
 )
@@ -17,7 +16,6 @@ ray_cc_test(
     srcs = ["shutdown_coordinator_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker:shutdown_coordinator",
         "@com_google_absl//absl/synchronization",
     ],
@@ -30,7 +28,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/common:test_utils",
@@ -47,7 +44,6 @@ ray_cc_test(
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
         "//src/ray/common:asio",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:ray_object",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:reference_counter",
@@ -69,7 +65,6 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:memory_store",
         "//src/ray/core_worker:object_recovery_manager",
@@ -89,7 +84,6 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:memory_store",
@@ -109,7 +103,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:task_event_buffer",
@@ -131,7 +124,6 @@ ray_cc_test(
     ],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:task_event_buffer",
         "//src/ray/gcs_rpc_client:gcs_client",
@@ -148,7 +140,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:common",
         "//src/ray/core_worker:generator_waiter",
@@ -162,7 +153,6 @@ ray_cc_test(
     srcs = ["lease_policy_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker:lease_policy",
     ],
 )
@@ -184,7 +174,6 @@ ray_cc_test(
     }),
     deps = [
         "//:ray_mock",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker:experimental_mutable_object_provider",
         "//src/ray/object_manager:object_manager_common",
         "//src/ray/object_manager/plasma:plasma_client",
@@ -204,7 +193,6 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:fake_periodical_runner",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker:core_worker_lib",
         "//src/ray/core_worker:grpc_service",
