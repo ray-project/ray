@@ -1,6 +1,19 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
 ray_cc_library(
+    name = "ray_gtest_main",
+    testonly = True,
+    srcs = ["ray_gtest_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/util:logging",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
 )
