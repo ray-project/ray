@@ -14,11 +14,11 @@ ray_cc_test(
         "@platforms//os:linux",
     ],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:status",
         "//src/ray/common:status_or",
         "//src/ray/common/cgroup2:cgroup_test_utils",
         "//src/ray/common/cgroup2:sysfs_cgroup_driver",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
     ],
 )

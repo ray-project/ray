@@ -14,23 +14,23 @@ ray_cc_test(
     name = "redis_store_client_test",
     size = "small",
     srcs = ["redis_store_client_test.cc"],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
         "@boost//:optional",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -38,15 +38,15 @@ ray_cc_test(
     name = "chaos_redis_store_client_test",
     size = "small",
     srcs = ["redis_store_client_test.cc"],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
-    env = {"REDIS_CHAOS": "1"},
+    env = {
+        "REDIS_CHAOS": "1",
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     tags = [
         "no_windows",
         "team:core",
@@ -56,12 +56,12 @@ ray_cc_test(
     ],
     deps = [
         ":store_client_test_lib",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/util:network_util",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
         "@boost//:optional",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -72,8 +72,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/store_client:in_memory_store_client",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -84,10 +84,10 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         ":store_client_test_lib",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:observable_store_client",
         "//src/ray/observability:fake_metric",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -97,8 +97,8 @@ ray_cc_test(
     srcs = ["redis_callback_reply_test.cc"],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/store_client:redis_store_client",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -106,19 +106,19 @@ ray_cc_test(
     name = "redis_async_context_test",
     size = "small",
     srcs = ["redis_async_context_test.cc"],
-    args = [
-        "$(location //:redis-server)",
-        "$(location //:redis-cli)",
-    ],
     data = [
         "//:redis-cli",
         "//:redis-server",
     ],
+    env = {
+        "TEST_REDIS_SERVER_EXEC_PATH": "$(rootpath //:redis-server)",
+        "TEST_REDIS_CLIENT_EXEC_PATH": "$(rootpath //:redis-cli)",
+    },
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs/store_client:redis_store_client",
         "//src/ray/util:raii",
-        "@com_google_googletest//:gtest_main",
     ],
 )
