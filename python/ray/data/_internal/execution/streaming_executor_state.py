@@ -49,6 +49,15 @@ logger = logging.getLogger(__name__)
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
 
+# Warn when a task has been running for this many seconds without producing any output.
+# Tasks that are stuck on workers (e.g. hung on argument fetching or user code) will
+# be surfaced after this threshold.
+_TASK_NO_OUTPUT_WARN_THRESHOLD_S = 60.0
+
+# Minimum interval between successive stall warnings for the same task, to avoid
+# log spam.
+_TASK_NO_OUTPUT_WARN_INTERVAL_S = 60.0
+
 
 class OpBufferQueue:
     """A FIFO queue to buffer RefBundles between upstream and downstream operators.
@@ -448,6 +457,43 @@ def process_completed_tasks(
             fetch_local=False,
             timeout=0.1,
         )
+
+        # Check for tasks that have been running for a long time without producing
+        # any output. This is a watchdog to surface hangs on Ray workers (e.g. the
+        # task is stuck fetching input arguments or inside user code before the first
+        # yield). Such tasks will never appear in `ready` because ray.wait on an
+        # ObjectRefGenerator only returns it when the next output object is available.
+        ready_set = set(ready)
+        now = time.monotonic()
+        for waitable, (state, task) in active_tasks.items():
+            if (
+                waitable not in ready_set
+                and isinstance(task, DataOpTask)
+                and not task._has_produced_output
+            ):
+                elapsed_s = now - task._submit_time
+                if (
+                    elapsed_s >= _TASK_NO_OUTPUT_WARN_THRESHOLD_S
+                    and now - task._last_stall_warn_time
+                    >= _TASK_NO_OUTPUT_WARN_INTERVAL_S
+                ):
+                    task._last_stall_warn_time = now
+                    try:
+                        task_id_hex = task.get_task_id().hex()
+                    except Exception:
+                        task_id_hex = "unknown"
+                    logger.warning(
+                        f"Task {task.task_index()} of operator "
+                        f'"{state.op.name}" has been running for '
+                        f"{elapsed_s:.0f}s without producing any output. "
+                        "This may indicate the task is stuck on a worker "
+                        "(e.g. hanging while fetching input arguments from "
+                        "the object store, or inside user code). "
+                        f"Ray task ID: {task_id_hex}. "
+                        "To investigate, check the Ray dashboard for this "
+                        "task or use 'ray list tasks' and 'py-spy dump "
+                        "--pid <worker_pid>' on the assigned worker.",
+                    )
 
         # Organize tasks by the operator they belong to, and sort them by task index.
         # So that we'll process them in a deterministic order.
