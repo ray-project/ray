@@ -1312,7 +1312,7 @@ def test_get_deployment_actor_context_returns_runtime_metadata(serve_instance):
         deployment_actors=[
             DeploymentActorConfig(
                 name="ctx_actor",
-                actor_class=DeploymentContextActor,
+                actor_class=DeploymentActorContextActor,
             ),
         ],
     )
