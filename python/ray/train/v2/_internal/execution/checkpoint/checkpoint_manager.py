@@ -142,9 +142,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             training_report: Training report to register.
         """
         if training_report.checkpoint is None:
-            raise ValueError(
-                "The training report must have a checkpoint to register."
-            )
+            raise ValueError("The training report must have a checkpoint to register.")
 
         checkpoint_result = _TrainingResult(
             checkpoint=training_report.checkpoint,
