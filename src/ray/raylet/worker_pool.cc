@@ -831,10 +831,9 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
   auto &starting_process_info = it->second;
-  int64_t duration_ms =
-      std::chrono::duration_cast<std::chrono::milliseconds>(
-          clock_.SteadyNow() - starting_process_info.start_time)
-          .count();
+  int64_t duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                            clock_.SteadyNow() - starting_process_info.start_time)
+                            .count();
   worker_pool_metrics_.worker_register_time_ms_histogram.Record(duration_ms);
   RAY_LOG(DEBUG).WithField(worker_id)
       << "Registering worker with pid " << pid << ", port: " << port

@@ -33,7 +33,6 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/time/time.h"
-#include "ray/util/clock.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/lease/lease.h"
@@ -44,6 +43,7 @@
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
+#include "ray/util/clock.h"
 #include "ray/util/process.h"
 #include "ray/util/process_interface.h"
 

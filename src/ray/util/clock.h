@@ -42,9 +42,7 @@ class ClockInterface {
 class Clock final : public ClockInterface {
  public:
   absl::Time Now() const override { return absl::Now(); }
-  SteadyTimePoint SteadyNow() const override {
-    return std::chrono::steady_clock::now();
-  }
+  SteadyTimePoint SteadyNow() const override { return std::chrono::steady_clock::now(); }
 };
 
 /// Fake clock for deterministic testing. Time only advances when you call
@@ -55,8 +53,7 @@ class FakeClock final : public ClockInterface {
 
   absl::Time Now() const override { return now_; }
   SteadyTimePoint SteadyNow() const override {
-    return SteadyTimePoint(
-        std::chrono::nanoseconds(absl::ToUnixNanos(now_)));
+    return SteadyTimePoint(std::chrono::nanoseconds(absl::ToUnixNanos(now_)));
   }
 
   void AdvanceTime(absl::Duration duration) { now_ += duration; }
