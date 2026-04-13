@@ -171,7 +171,8 @@ void LocalDependencyResolver::ResolveDependencies(
         };
 
     // GetAsync always posts a callback to the I/O event queue even when the
-    // object already exists (see #47833 for why). In workloads like Data shuffle, all map outputs
+    // object already exists (see https://github.com/ray-project/ray/pull/47833
+    // for why). In workloads like Data shuffle, all map outputs
     // are ready before reduce tasks are submitted, so checking synchronously
     // first avoids flooding the I/O context with callbacks.
     auto existing = in_memory_store_.GetIfExists(obj_id);
