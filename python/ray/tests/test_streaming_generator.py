@@ -431,7 +431,7 @@ def test_generator_slow_pinning_requests(monkeypatch, shutdown_only):
     with monkeypatch.context() as m:
         m.setenv(
             "RAY_testing_asio_delay_us",
-            "CoreWorkerService.grpc_server.PubsubLongPolling=1000000:1000000",
+            "CoreWorkerPubsubService.grpc_server.PubsubLongPolling=1000000:1000000",
         )
 
         @ray.remote

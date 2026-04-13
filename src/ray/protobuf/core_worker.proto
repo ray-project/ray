@@ -498,29 +498,11 @@ service CoreWorkerService {
   rpc WaitForActorRefDeleted(WaitForActorRefDeletedRequest)
       returns (WaitForActorRefDeletedReply);
 
-  // The long polling request sent to the core worker for pubsub operations.
-  // It is replied once there are batch of objects that need to be published to
-  // the caller (subscriber).
-  // Failure: Retries on failures, see pubsub/README.md for more details.
-  rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
-
   // The RPC to report the intermediate task return from the executor worker to the owner
   // worker.
   // Failure: Handles failures, TODO: Failure behavior needs more tests.
   rpc ReportGeneratorItemReturns(ReportGeneratorItemReturnsRequest)
       returns (ReportGeneratorItemReturnsReply);
-
-  // The pubsub command batch request used by the subscriber.
-  // Subscribe / unsubscribe commands to the publisher worker.
-  // Failure: Retries on failures, see pubsub/README.md for more details.
-  rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
-
-  // Update the batched object location information to the ownership-based object
-  // directory.
-  // Failure: Retries, it's idempotent. TODO: Add idempotency unit tests to assure it
-  // stays idempotent.
-  rpc UpdateObjectLocationBatch(UpdateObjectLocationBatchRequest)
-      returns (UpdateObjectLocationBatchReply);
 
   // Get object locations from the the owner worker.
   // Failure: TODO: Idempotent, should retry.
@@ -590,4 +572,19 @@ service CoreWorkerService {
   // Failure: TODO: Needs failure behavior.
   rpc RegisterMutableObjectReader(RegisterMutableObjectReaderRequest)
       returns (RegisterMutableObjectReaderReply);
+}
+
+// Pubsub-related RPCs on the core worker. This is a separate gRPC service so it
+// can be dispatched to a dedicated io_context (pubsub thread), following the same
+// pattern as GCS's InternalPubSubGcsService.
+service CoreWorkerPubsubService {
+  // Failure: Retries on failures, see pubsub/README.md for more details.
+  rpc PubsubLongPolling(PubsubLongPollingRequest) returns (PubsubLongPollingReply);
+
+  // Failure: Retries on failures, see pubsub/README.md for more details.
+  rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
+
+  // Failure: Retries, it's idempotent.
+  rpc UpdateObjectLocationBatch(UpdateObjectLocationBatchRequest)
+      returns (UpdateObjectLocationBatchReply);
 }

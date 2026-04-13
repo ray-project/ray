@@ -68,17 +68,6 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
                                             WaitForActorRefDeletedReply *reply,
                                             SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandlePubsubLongPolling(PubsubLongPollingRequest request,
-                                       PubsubLongPollingReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandlePubsubCommandBatch(PubsubCommandBatchRequest request,
-                                        PubsubCommandBatchReply *reply,
-                                        SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUpdateObjectLocationBatch(UpdateObjectLocationBatchRequest request,
-                                               UpdateObjectLocationBatchReply *reply,
-                                               SendReplyCallback send_reply_callback) = 0;
   virtual void HandleGetObjectLocationsOwner(GetObjectLocationsOwnerRequest request,
                                              GetObjectLocationsOwnerReply *reply,
                                              SendReplyCallback send_reply_callback) = 0;
@@ -167,6 +156,50 @@ class CoreWorkerGrpcService : public GrpcService {
  private:
   CoreWorkerService::AsyncService service_;
   CoreWorkerServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
+class CoreWorkerPubsubServiceHandler : public DelayedServiceHandler {
+ public:
+  /// Blocks until the service is ready to serve RPCs.
+  virtual void WaitUntilInitialized() = 0;
+
+  virtual void HandlePubsubLongPolling(PubsubLongPollingRequest request,
+                                       PubsubLongPollingReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePubsubCommandBatch(PubsubCommandBatchRequest request,
+                                        PubsubCommandBatchReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateObjectLocationBatch(UpdateObjectLocationBatchRequest request,
+                                               UpdateObjectLocationBatchReply *reply,
+                                               SendReplyCallback send_reply_callback) = 0;
+};
+
+/// Pubsub-related gRPC service for CoreWorker. Dispatched to a dedicated
+/// pubsub io_context, following the same pattern as GCS's InternalPubSubGrpcService.
+class CoreWorkerPubsubGrpcService : public GrpcService {
+ public:
+  CoreWorkerPubsubGrpcService(instrumented_io_context &pubsub_service,
+                              CoreWorkerPubsubServiceHandler &service_handler,
+                              int64_t max_active_rpcs_per_handler)
+      : GrpcService(pubsub_service),
+        service_handler_(service_handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler) {}
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id,
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
+
+ private:
+  CoreWorkerPubsubService::AsyncService service_;
+  CoreWorkerPubsubServiceHandler &service_handler_;
   int64_t max_active_rpcs_per_handler_;
 };
 

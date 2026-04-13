@@ -252,9 +252,18 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
   core_worker_server->RegisterService(
-      std::make_unique<rpc::CoreWorkerGrpcService>(
-          io_service_, *service_handler_, /*max_active_rpcs_per_handler_=*/-1),
+      std::make_unique<rpc::CoreWorkerGrpcService>(io_service_,
+                                                   *service_handler_,
+                                                   /*max_active_rpcs_per_handler_=*/-1),
       false /* token_auth */);
+  // Register pubsub service on a dedicated io_context, following the same pattern
+  // as GCS's InternalPubSubGrpcService on pubsub_io_context.
+  auto &pubsub_io = io_context_provider_.GetIOContext<core::CoreWorkerPubsubIOContext>();
+  core_worker_server->RegisterService(std::make_unique<rpc::CoreWorkerPubsubGrpcService>(
+                                          pubsub_io,
+                                          *pubsub_service_handler_,
+                                          /*max_active_rpcs_per_handler_=*/-1),
+                                      false /* token_auth */);
   core_worker_server->Run();
 
   // Set our own address.
@@ -720,7 +729,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
       client_call_manager_(std::make_unique<rpc::ClientCallManager>(
           io_service_, /*record_stats=*/false, options.node_ip_address)),
       task_execution_service_work_(task_execution_service_.get_executor()),
-      service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()) {
+      service_handler_(std::make_unique<CoreWorkerServiceHandlerProxy>()),
+      pubsub_service_handler_(std::make_unique<CoreWorkerPubsubServiceHandlerProxy>()) {
   if (options_.enable_logging) {
     // Setup logging for worker system logging.
     {
@@ -844,6 +854,7 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     // Notify that core worker is initialized.
     absl::Cleanup initialzed_scope_guard = [this] {
       service_handler_->SetCoreWorker(this->GetCoreWorker().get());
+      pubsub_service_handler_->SetCoreWorker(this->GetCoreWorker().get());
     };
     // Initialize global worker instance.
     auto worker = CreateCoreWorker(options_, worker_id_);
@@ -970,6 +981,9 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   core_worker->RunTaskExecutionLoop();
   RAY_LOG(INFO) << "Task execution loop terminated. Waiting for shutdown to complete...";
   core_worker->WaitForShutdownComplete();
+  // Stop dedicated io_contexts (e.g. pubsub) after shutdown is complete.
+  // At this point the gRPC server is shut down and no new RPCs are dispatched.
+  io_context_provider_.StopAllDedicatedIOContexts();
   RAY_LOG(INFO) << "Shutdown complete. Removing the global worker.";
   {
     auto write_locked = core_worker_.LockForWrite();
@@ -987,6 +1001,9 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   global_worker->Shutdown();
   RAY_LOG(INFO) << "Waiting for driver shutdown to complete...";
   global_worker->WaitForShutdownComplete();
+  // Stop dedicated io_contexts (e.g. pubsub) after shutdown is complete.
+  // At this point the gRPC server is shut down and no new RPCs are dispatched.
+  io_context_provider_.StopAllDedicatedIOContexts();
   RAY_LOG(INFO) << "Driver shutdown complete. Removing the global worker.";
   {
     auto write_locked = core_worker_.LockForWrite();

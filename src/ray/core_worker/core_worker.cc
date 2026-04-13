@@ -3609,37 +3609,6 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   }
 }
 
-StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
-    const rpc::SubMessage &sub_message,
-    rpc::ChannelType channel_type,
-    const std::string &key_id,
-    const NodeID &subscriber_id) {
-  StatusSet<StatusT::InvalidArgument> result =
-      object_info_publisher_->RegisterSubscription(channel_type, subscriber_id, key_id);
-  if (result.has_error()) {
-    return result;
-  }
-
-  if (!sub_message.has_worker_object_eviction_message() &&
-      !sub_message.has_worker_ref_removed_message() &&
-      !sub_message.has_worker_object_locations_message()) {
-    return StatusT::InvalidArgument(
-        absl::StrFormat("Unexpected subscribe command has been received: %s"
-                        "Expected worker_object_eviction, worker_ref_removed, or "
-                        "worker_object_locations message",
-                        sub_message.DebugString()));
-  }
-
-  if (sub_message.has_worker_object_eviction_message()) {
-    ProcessSubscribeForObjectEviction(sub_message.worker_object_eviction_message());
-  } else if (sub_message.has_worker_ref_removed_message()) {
-    ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
-  } else {  // worker_object_locations_message case
-    ProcessSubscribeObjectLocations(sub_message.worker_object_locations_message());
-  }
-  return StatusT::OK();
-}
-
 void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
@@ -3654,6 +3623,10 @@ void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
 void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                           rpc::PubsubCommandBatchReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
+  // This handler may run on a dedicated pubsub io_context thread.
+  // UnregisterSubscription runs directly here (Publisher is thread-safe).
+  // Subscribe commands are posted to io_service_ so that RegisterSubscription
+  // and ProcessSubscribe* callbacks (which write RC) execute atomically.
   const NodeID subscriber_id = NodeID::FromBinary(request.subscriber_id());
   for (const auto &command : request.commands()) {
     if (!command.has_unsubscribe_message() && !command.has_subscribe_message()) {
@@ -3667,23 +3640,55 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
     }
 
     if (command.has_unsubscribe_message()) {
+      // Publisher is thread-safe, can call from any thread.
       object_info_publisher_->UnregisterSubscription(
           command.channel_type(), subscriber_id, command.key_id());
     } else {  // subscribe_message case
-      StatusSet<StatusT::InvalidArgument> result =
-          ProcessSubscribeMessage(command.subscribe_message(),
-                                  command.channel_type(),
-                                  command.key_id(),
-                                  subscriber_id);
-      if (result.has_error()) {
-        // Terminate the worker if the subscribe message is invalid.
-        send_reply_callback(
-            Status::InvalidArgument(
-                std::get<StatusT::InvalidArgument>(result.error()).message()),
-            nullptr,
-            nullptr);
+      auto sub_message = command.subscribe_message();
+      if (!sub_message.has_worker_object_eviction_message() &&
+          !sub_message.has_worker_ref_removed_message() &&
+          !sub_message.has_worker_object_locations_message()) {
+        send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                                "Unexpected subscribe command has been received: %s"
+                                "Expected worker_object_eviction, worker_ref_removed, or "
+                                "worker_object_locations message",
+                                sub_message.DebugString())),
+                            nullptr,
+                            nullptr);
         return;
       }
+      // Post RegisterSubscription + ProcessSubscribe* together to io_service_
+      // so they execute atomically. This prevents a race where the subscriber
+      // receives updates (via Publish) before the initial snapshot is sent
+      // by ProcessSubscribeObjectLocations.
+      auto channel_type = command.channel_type();
+      auto key_id = command.key_id();
+      io_service_.post(
+          [this,
+           sub_message = std::move(sub_message),
+           channel_type,
+           key_id,
+           subscriber_id] {
+            StatusSet<StatusT::InvalidArgument> result =
+                object_info_publisher_->RegisterSubscription(
+                    channel_type, subscriber_id, key_id);
+            if (result.has_error()) {
+              RAY_LOG(WARNING)
+                  << "Failed to register subscription: "
+                  << std::get<StatusT::InvalidArgument>(result.error()).message();
+              return;
+            }
+            if (sub_message.has_worker_object_eviction_message()) {
+              ProcessSubscribeForObjectEviction(
+                  sub_message.worker_object_eviction_message());
+            } else if (sub_message.has_worker_ref_removed_message()) {
+              ProcessSubscribeForRefRemoved(sub_message.worker_ref_removed_message());
+            } else {
+              ProcessSubscribeObjectLocations(
+                  sub_message.worker_object_locations_message());
+            }
+          },
+          "CoreWorker.PubsubCommandBatch.PostSubscribeToIO");
     }
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3693,47 +3698,58 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
     rpc::UpdateObjectLocationBatchRequest request,
     rpc::UpdateObjectLocationBatchReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
+  // This handler may run on a dedicated pubsub io_context thread.
+  // HandleWrongRecipient only reads the immutable worker ID, safe from any thread.
   const auto &worker_id = request.intended_worker_id();
   if (HandleWrongRecipient(WorkerID::FromBinary(worker_id), send_reply_callback)) {
     return;
   }
-  const auto &node_id = NodeID::FromBinary(request.node_id());
-  const auto &object_location_updates = request.object_location_updates();
 
-  for (const auto &object_location_update : object_location_updates) {
-    const auto &object_id = ObjectID::FromBinary(object_location_update.object_id());
-
-    if (object_location_update.has_spilled_location_update()) {
-      AddSpilledObjectLocationOwner(
-          object_id,
-          object_location_update.spilled_location_update().spilled_url(),
-          object_location_update.spilled_location_update().spilled_to_local_storage()
-              ? node_id
-              : NodeID::Nil(),
-          object_location_update.has_generator_id()
-              ? std::optional<ObjectID>(
-                    ObjectID::FromBinary(object_location_update.generator_id()))
-              : std::nullopt);
-    }
-
-    if (object_location_update.has_plasma_location_update()) {
-      if (object_location_update.plasma_location_update() ==
-          rpc::ObjectPlasmaLocationUpdate::ADDED) {
-        AddObjectLocationOwner(object_id, node_id);
-      } else if (object_location_update.plasma_location_update() ==
-                 rpc::ObjectPlasmaLocationUpdate::REMOVED) {
-        RemoveObjectLocationOwner(object_id, node_id);
-      } else {
-        RAY_LOG(FATAL) << "Invalid object plasma location update "
-                       << object_location_update.plasma_location_update()
-                       << " has been received.";
-      }
-    }
-  }
-
+  // Reply immediately. Location updates are fire-and-forget: the worker doesn't
+  // depend on the reply content, and RC updates can be processed asynchronously.
   send_reply_callback(Status::OK(),
                       /*success_callback_on_reply=*/nullptr,
                       /*failure_callback_on_reply=*/nullptr);
+
+  // Post RC writes to io_service_ where ReferenceCounter lives.
+  // This keeps all RC writes on a single thread, avoiding write-write contention.
+  io_service_.post(
+      [this, request = std::move(request)] {
+        const auto &node_id = NodeID::FromBinary(request.node_id());
+        for (const auto &object_location_update : request.object_location_updates()) {
+          const auto &object_id =
+              ObjectID::FromBinary(object_location_update.object_id());
+
+          if (object_location_update.has_spilled_location_update()) {
+            AddSpilledObjectLocationOwner(
+                object_id,
+                object_location_update.spilled_location_update().spilled_url(),
+                object_location_update.spilled_location_update()
+                        .spilled_to_local_storage()
+                    ? node_id
+                    : NodeID::Nil(),
+                object_location_update.has_generator_id()
+                    ? std::optional<ObjectID>(
+                          ObjectID::FromBinary(object_location_update.generator_id()))
+                    : std::nullopt);
+          }
+
+          if (object_location_update.has_plasma_location_update()) {
+            if (object_location_update.plasma_location_update() ==
+                rpc::ObjectPlasmaLocationUpdate::ADDED) {
+              AddObjectLocationOwner(object_id, node_id);
+            } else if (object_location_update.plasma_location_update() ==
+                       rpc::ObjectPlasmaLocationUpdate::REMOVED) {
+              RemoveObjectLocationOwner(object_id, node_id);
+            } else {
+              RAY_LOG(FATAL) << "Invalid object plasma location update "
+                             << object_location_update.plasma_location_update()
+                             << " has been received.";
+            }
+          }
+        }
+      },
+      "CoreWorker.UpdateObjectLocationBatch.PostToIO");
 }
 
 void CoreWorker::AddSpilledObjectLocationOwner(
