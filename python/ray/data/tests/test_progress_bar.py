@@ -6,7 +6,7 @@ import pytest
 from pytest import fixture
 
 import ray
-from ray.data._internal.progress.progress_bar import ProgressBar
+from ray.data._internal.observability.progress.progress_bar import ProgressBar
 
 
 @fixture(params=[True, False])
@@ -118,7 +118,7 @@ def test_progress_bar_tqdm_not_installed(enable_tqdm_ray):
     """Test behavior when tqdm package is not installed."""
     with patch("sys.stdout.isatty", return_value=True):
         # Mock tqdm not being installed
-        with patch("ray.data._internal.progress.progress_bar.tqdm", None):
+        with patch("ray.data._internal.observability.progress.progress_bar.tqdm", None):
             pb = ProgressBar("test", 100, "unit", enabled=True)
             if enable_tqdm_ray:
                 # tqdm_ray still works (part of Ray, no tqdm dependency)

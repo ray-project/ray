@@ -6,7 +6,7 @@ from ray.data._internal.execution.execution_callback import (
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.issue_detection.issue_detector_manager import (
+from ray.data._internal.observability.diagnostics.issue_detector_manager import (
     IssueDetectorManager,
 )
 

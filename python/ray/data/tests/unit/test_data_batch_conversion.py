@@ -5,8 +5,8 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
-from ray.data._internal.tensor_extensions.pandas import TensorArray
+from ray.data._internal.blocks.tensor_extensions.arrow import ArrowTensorArray
+from ray.data._internal.blocks.tensor_extensions.pandas import TensorArray
 from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.util.data_batch_conversion import (
     BatchFormat,

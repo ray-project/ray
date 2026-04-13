@@ -5,8 +5,8 @@ import pytest
 from pkg_resources import parse_version
 
 import ray
-from ray.data._internal.util import rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.util import rows_same
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException
 from ray.data.expressions import col, lit, udf
@@ -794,7 +794,7 @@ def test_with_column_same_callable_class_different_constructor_args(
         }
     )
 
-    from ray.data._internal.util import rows_same
+    from ray.data._internal.utils.util import rows_same
 
     assert rows_same(result_df, expected_df)
 

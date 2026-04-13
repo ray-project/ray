@@ -28,33 +28,30 @@ import ray
 import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
-from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
-from ray.data._internal.dataset_repr import _build_dataset_ascii_repr
-from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
-from ray.data._internal.datasource.clickhouse_datasink import (
-    ClickHouseDatasink,
-    ClickHouseTableSettings,
-    SinkMode,
-)
-from ray.data._internal.datasource.csv_datasink import CSVDatasink
-from ray.data._internal.datasource.iceberg_datasink import IcebergDatasink
-from ray.data._internal.datasource.image_datasink import ImageDatasink
-from ray.data._internal.datasource.json_datasink import JSONDatasink
-from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
-from ray.data._internal.datasource.lance_datasink import LanceDatasink
-from ray.data._internal.datasource.mongo_datasink import MongoDatasink
-from ray.data._internal.datasource.numpy_datasink import NumpyDatasink
-from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
-from ray.data._internal.datasource.sql_datasink import SQLDatasink
-from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
-from ray.data._internal.datasource.turbopuffer_datasink import TurbopufferDatasink
-from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
-from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.io.datasource.bigquery_datasink import BigQueryDatasink
+from ray.data._internal.io.datasource.clickhouse_datasink import (
+    ClickHouseDatasink,
+    ClickHouseTableSettings,
+    SinkMode,
+)
+from ray.data._internal.io.datasource.csv_datasink import CSVDatasink
+from ray.data._internal.io.datasource.iceberg_datasink import IcebergDatasink
+from ray.data._internal.io.datasource.image_datasink import ImageDatasink
+from ray.data._internal.io.datasource.json_datasink import JSONDatasink
+from ray.data._internal.io.datasource.kafka_datasink import KafkaDatasink
+from ray.data._internal.io.datasource.lance_datasink import LanceDatasink
+from ray.data._internal.io.datasource.mongo_datasink import MongoDatasink
+from ray.data._internal.io.datasource.numpy_datasink import NumpyDatasink
+from ray.data._internal.io.datasource.parquet_datasink import ParquetDatasink
+from ray.data._internal.io.datasource.sql_datasink import SQLDatasink
+from ray.data._internal.io.datasource.tfrecords_datasink import TFRecordDatasink
+from ray.data._internal.io.datasource.turbopuffer_datasink import TurbopufferDatasink
+from ray.data._internal.io.datasource.webdataset_datasink import WebDatasetDatasink
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
@@ -78,18 +75,25 @@ from ray.data._internal.logical.operators import (
     Write,
     Zip,
 )
+from ray.data._internal.observability.dataset_repr import _build_dataset_ascii_repr
+from ray.data._internal.observability.stats import (
+    DatasetStats,
+    DatasetStatsSummary,
+    _StatsManager,
+)
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.random_config import RandomSeedConfig
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.split import _get_num_rows, _split_at_indices
-from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, _StatsManager
+from ray.data._internal.public_api.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data._internal.util import (
+from ray.data._internal.utils.equalize import _equalize
+from ray.data._internal.utils.random_config import RandomSeedConfig
+from ray.data._internal.utils.remote_fn import cached_remote_fn
+from ray.data._internal.utils.split import _get_num_rows, _split_at_indices
+from ray.data._internal.utils.util import (
     AllToAllAPI,
     ConsumptionAPI,
     _validate_rows_per_file_args,

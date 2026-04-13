@@ -13,7 +13,7 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data._internal.util import rows_same
+from ray.data._internal.utils.util import rows_same
 from ray.data.preprocessor import (
     PreprocessorNotFittedException,
     SerializablePreprocessorBase,

@@ -1,8 +1,8 @@
 from typing import List, Tuple, Union
 
+from ray.data._internal.blocks.table_block import TableBlockAccessor
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.aggregate import AggregateFn, AggregateFnV2, Count
 from ray.data.block import (
     Block,

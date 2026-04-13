@@ -8,7 +8,7 @@ import pytest
 import yaml
 
 import ray
-from ray.data._internal.logging import (
+from ray.data._internal.observability.logging import (
     SessionFileHandler,
     configure_logging,
     get_log_directory,
@@ -18,7 +18,7 @@ from ray.tests.conftest import *  # noqa
 
 @pytest.fixture(name="configure_logging")
 def configure_logging_fixture():
-    from ray.data._internal.logging import configure_logging
+    from ray.data._internal.observability.logging import configure_logging
 
     configure_logging()
     yield
@@ -44,7 +44,7 @@ def tmp_logger_fixture():
 
 @pytest.fixture(name="reset_logging")
 def reset_logging_fixture():
-    from ray.data._internal.logging import reset_logging
+    from ray.data._internal.observability.logging import reset_logging
 
     yield
     reset_logging()

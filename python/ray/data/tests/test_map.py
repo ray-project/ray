@@ -19,7 +19,7 @@ from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
-from ray.data._internal.arrow_ops.transform_pyarrow import (
+from ray.data._internal.blocks.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
 from ray.data._internal.planner.plan_udf_map_op import (
@@ -858,7 +858,7 @@ def test_warn_large_udfs(
     driver = """
 import ray
 import numpy as np
-from ray.data._internal.execution.operators.map_operator import MapOperator
+from ray.data._internal.physical.map_operator import MapOperator
 
 large_object = np.zeros(MapOperator.MAP_UDF_WARN_SIZE_THRESHOLD + 1, dtype=np.int8)
 

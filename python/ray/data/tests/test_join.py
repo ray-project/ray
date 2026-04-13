@@ -7,8 +7,8 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray.data._internal.logical.operators import JoinType
-from ray.data._internal.util import MiB, rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.util import MiB, rows_same
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.exceptions import RayTaskError
@@ -699,7 +699,7 @@ def test_join_with_predicate_pushdown(
     - Right outer: can push to right (preserved) side only
     """
     from ray.data._internal.logical.optimizers import LogicalOptimizer
-    from ray.data._internal.util import MiB
+    from ray.data._internal.utils.util import MiB
     from ray.data.expressions import col
 
     DataContext.get_current().target_max_block_size = 1 * MiB
@@ -795,7 +795,7 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     """
     from ray.data._internal.logical.operators import Filter, Join
     from ray.data._internal.logical.optimizers import LogicalOptimizer
-    from ray.data._internal.util import MiB
+    from ray.data._internal.utils.util import MiB
     from ray.data.expressions import col
     from ray.data.tests.test_util import plan_operator_comes_before
 

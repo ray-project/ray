@@ -18,7 +18,7 @@ from ray.data._internal.planner._obstore_download import (
 from ray.data._internal.planner.plan_download_op import (
     download_bytes_threaded,
 )
-from ray.data._internal.util import RetryingPyFileSystem
+from ray.data._internal.utils.util import RetryingPyFileSystem
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _split_uri
 

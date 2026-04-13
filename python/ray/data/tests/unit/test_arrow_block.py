@@ -5,14 +5,17 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.arrow_block import (
+from ray.data._internal.blocks.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
     ArrowBlockColumnAccessor,
     _get_max_chunk_size,
 )
-from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array, concat
-from ray.data._internal.tensor_extensions.arrow import (
+from ray.data._internal.blocks.arrow_ops.transform_pyarrow import (
+    combine_chunked_array,
+    concat,
+)
+from ray.data._internal.blocks.tensor_extensions.arrow import (
     ArrowTensorArray,
 )
 

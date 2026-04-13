@@ -19,7 +19,7 @@ from typing import (
 import numpy as np
 
 import ray
-from ray.data._internal.util import (
+from ray.data._internal.utils.util import (
     RetryingContextManager,
     RetryingPyFileSystem,
     _check_pyarrow_version,

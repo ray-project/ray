@@ -5,12 +5,12 @@ from collections import deque
 import pandas as pd
 import pytest
 
+from ray.data._internal.blocks.output_buffer import OutputBlockSizeOption
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.map_transformer import (
+from ray.data._internal.physical.map_transformer import (
     BatchMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_map_batches,
 )

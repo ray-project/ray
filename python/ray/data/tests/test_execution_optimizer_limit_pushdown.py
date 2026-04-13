@@ -9,7 +9,7 @@ from ray.data import Dataset
 from ray.data._internal.logical.interfaces import LogicalOperator, Plan
 from ray.data._internal.logical.operators import Download, Limit
 from ray.data._internal.logical.rules.limit_pushdown import LimitPushdownRule
-from ray.data._internal.util import rows_same
+from ray.data._internal.utils.util import rows_same
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
 from ray.data.datasource.datasource import ReadTask

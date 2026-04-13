@@ -12,12 +12,12 @@ from pyarrow import ArrowInvalid
 
 import ray
 from ray._common.test_utils import run_string_as_driver
-from ray.data._internal.arrow_block import (
+from ray.data._internal.blocks.arrow_block import (
     ArrowBlockAccessor,
     ArrowBlockBuilder,
 )
-from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
-from ray.data._internal.util import GiB, MiB
+from ray.data._internal.blocks.arrow_ops.transform_pyarrow import combine_chunked_array
+from ray.data._internal.utils.util import GiB, MiB
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 

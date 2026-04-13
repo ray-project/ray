@@ -6,9 +6,9 @@ import pytest
 
 import ray
 from ray.data import ActorPoolStrategy, TaskPoolStrategy
-from ray.data._internal.datasource.range_datasource import RangeDatasource
+from ray.data._internal.io.datasource.range_datasource import RangeDatasource
 from ray.data._internal.logical.operators.read_operator import Read
-from ray.data._internal.util import rows_same
+from ray.data._internal.utils.util import rows_same
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask

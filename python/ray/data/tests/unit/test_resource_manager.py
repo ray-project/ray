@@ -6,13 +6,13 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
-from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
 )
+from ray.data._internal.physical.union_operator import UnionOperator
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa

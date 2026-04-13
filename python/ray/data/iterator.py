@@ -18,12 +18,12 @@ from typing import (
 
 import numpy as np
 
-from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
+from ray.data._internal.iteration.batching.iter_batches import BatchIterator
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
-from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.observability.stats import DatasetStats
+from ray.data._internal.planner.plan import ExecutionPlan
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
     ArrowBatchCollateFn,
@@ -726,7 +726,9 @@ class DataIterator(abc.ABC):
         """
         import torch
 
-        from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
+        from ray.data._internal.iteration.torch_iterable_dataset import (
+            TorchIterableDataset,
+        )
         from ray.data.util.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None

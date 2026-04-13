@@ -8,19 +8,19 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.block_batching.interfaces import (
+from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
+from ray.data._internal.iteration.batching.interfaces import (
     Batch,
     BatchMetadata,
     BlockPrefetcher,
 )
-from ray.data._internal.block_batching.iter_batches import (
+from ray.data._internal.iteration.batching.iter_batches import (
     BatchIterator,
     prefetch_batches_locally,
     restore_original_order,
 )
-from ray.data._internal.block_batching.util import WaitBlockPrefetcher
-from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.iteration.batching.util import WaitBlockPrefetcher
+from ray.data._internal.observability.stats import DatasetStats
 from ray.data.block import Block, BlockMetadata
 from ray.types import ObjectRef
 

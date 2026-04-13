@@ -11,7 +11,7 @@ import pytest
 from packaging import version
 
 import ray
-from ray.data._internal.util import rows_same
+from ray.data._internal.utils.util import rows_same
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa

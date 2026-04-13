@@ -4,7 +4,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
+from ray.data._internal.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data.block import BlockAccessor
 

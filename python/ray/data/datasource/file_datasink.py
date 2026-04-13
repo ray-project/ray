@@ -4,15 +4,15 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
 from ray._common.retry import call_with_retry
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.blocks.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
-from ray.data._internal.savemode import SaveMode
-from ray.data._internal.util import (
+from ray.data._internal.public_api.savemode import SaveMode
+from ray.data._internal.utils.arrow_utils import add_creatable_buckets_param_if_s3_uri
+from ray.data._internal.utils.util import (
     RetryingPyFileSystem,
     _is_local_scheme,
 )
-from ray.data._internal.utils.arrow_utils import add_creatable_buckets_param_if_s3_uri
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult

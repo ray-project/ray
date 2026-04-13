@@ -7,7 +7,7 @@ import pytest
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.blocks.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor
 from ray.data.datasource.datasource import ReadTask
 from ray.data.datasource.file_based_datasource import (
@@ -417,7 +417,7 @@ def test_s3_filesystem_serialization(fs, wrap_with_retries):
     properly unwrapped.
     """
     import ray.cloudpickle as ray_pickle
-    from ray.data._internal.util import RetryingPyFileSystem
+    from ray.data._internal.utils.util import RetryingPyFileSystem
     from ray.data.datasource.file_based_datasource import (
         _unwrap_s3_serialization_workaround,
         _wrap_s3_serialization_workaround,

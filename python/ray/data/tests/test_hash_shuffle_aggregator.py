@@ -5,8 +5,8 @@ from typing import Dict, Iterator, List
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.arrow_ops import transform_pyarrow
-from ray.data._internal.execution.operators.hash_shuffle import (
+from ray.data._internal.blocks.arrow_ops import transform_pyarrow
+from ray.data._internal.physical.hash_shuffle import (
     HashShuffleAggregator,
     ShuffleAggregation,
 )

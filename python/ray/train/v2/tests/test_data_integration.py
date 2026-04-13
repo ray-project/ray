@@ -15,7 +15,7 @@ from ray.data import (
     ExecutionResources,
     FileShuffleConfig,
 )
-from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
+from ray.data._internal.iteration.stream_split_iterator import StreamSplitDataIterator
 from ray.data.tests.conftest import restore_data_context  # noqa: F401
 from ray.train.v2._internal.callbacks.datasets import DatasetsCallback
 from ray.train.v2._internal.data_integration.interfaces import DatasetShardMetadata
@@ -746,7 +746,7 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
 
     from freezegun import freeze_time
 
-    from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+    from ray.data._internal.autoscaling.cluster.default_autoscaling_coordinator import (
         ResourceRequestPriority,
     )
     from ray.train.v2._internal.execution.scaling_policy import (

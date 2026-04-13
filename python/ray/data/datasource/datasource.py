@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Callable, Dict, Generator, Iterable, List, Opt
 import numpy as np
 import pyarrow as pa
 
-from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.utils.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
 from ray.data.expressions import Expr

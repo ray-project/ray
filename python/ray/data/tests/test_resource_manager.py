@@ -9,23 +9,11 @@ import pytest
 from freezegun import freeze_time
 
 import ray
-from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
-from ray.data._internal.execution.interfaces.physical_operator import (
-    TaskExecDriverStats,
-)
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.join import JoinOperator
-from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.resource_manager import (
     OpResourceAllocator,
     ResourceManager,
@@ -35,6 +23,18 @@ from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.physical.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.join import JoinOperator
+from ray.data._internal.physical.limit_operator import LimitOperator
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.physical_operator import (
+    TaskExecDriverStats,
+)
+from ray.data._internal.physical.union_operator import UnionOperator
+from ray.data._internal.public_api.compute import ComputeStrategy
 from ray.data.block import TaskExecWorkerStats
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
@@ -72,7 +72,7 @@ def mock_join_op(left_input_op, right_input_op):
     right_input_op._logical_operators = [(MagicMock())]
 
     with patch(
-        "ray.data._internal.execution.operators.hash_shuffle._get_total_cluster_resources"
+        "ray.data._internal.physical.hash_shuffle._get_total_cluster_resources"
     ) as mock:
         mock.return_value = ExecutionResources(cpu=1)
 

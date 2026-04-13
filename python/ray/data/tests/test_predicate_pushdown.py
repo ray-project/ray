@@ -21,7 +21,7 @@ from ray.data._internal.logical.operators import (
     Sort,
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
-from ray.data._internal.util import rows_same
+from ray.data._internal.utils.util import rows_same
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa

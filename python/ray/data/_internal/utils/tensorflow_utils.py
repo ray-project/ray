@@ -4,11 +4,13 @@ import numpy as np
 import pyarrow
 import tensorflow as tf
 
-from ray.data._internal.tensor_extensions.arrow import get_arrow_extension_tensor_types
+from ray.data._internal.blocks.tensor_extensions.arrow import (
+    get_arrow_extension_tensor_types,
+)
 from ray.data.util.data_batch_conversion import _unwrap_ndarray_object_type_if_needed
 
 if TYPE_CHECKING:
-    from ray.data._internal.pandas_block import PandasBlockSchema
+    from ray.data._internal.blocks.pandas_block import PandasBlockSchema
 
 
 def convert_ndarray_to_tf_tensor(

@@ -1,9 +1,6 @@
 from typing import List
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
-)
 from ray.data._internal.logical.operators import (
     AbstractAllToAll,
     Aggregate,
@@ -11,6 +8,9 @@ from ray.data._internal.logical.operators import (
     RandomShuffle,
     Repartition,
     Sort,
+)
+from ray.data._internal.physical.base_physical_operator import (
+    AllToAllOperator,
 )
 from ray.data._internal.planner.aggregate import generate_aggregate_fn
 from ray.data._internal.planner.random_shuffle import generate_random_shuffle_fn
@@ -25,7 +25,7 @@ def _plan_gpu_shuffle_repartition(
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    from ray.data._internal.gpu_shuffle.hash_shuffle import GPUShuffleOperator
+    from ray.data._internal.physical.gpu_shuffle.hash_shuffle import GPUShuffleOperator
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 
     normalized_key_columns = SortKey(logical_op.keys).get_columns()
@@ -47,7 +47,7 @@ def _plan_hash_shuffle_repartition(
     logical_op: Repartition,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    from ray.data._internal.execution.operators.hash_shuffle import (
+    from ray.data._internal.physical.hash_shuffle import (
         HashShuffleOperator,
     )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
@@ -71,7 +71,7 @@ def _plan_hash_shuffle_aggregate(
     logical_op: Aggregate,
     input_physical_op: PhysicalOperator,
 ) -> PhysicalOperator:
-    from ray.data._internal.execution.operators.hash_aggregate import (
+    from ray.data._internal.physical.hash_aggregate import (
         HashAggregateOperator,
     )
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey

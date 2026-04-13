@@ -21,7 +21,7 @@ from typing import (
 import numpy as np
 import pyarrow.compute as pc
 
-from ray.data._internal.util import is_null
+from ray.data._internal.utils.util import is_null
 from ray.data.block import (
     Block,
     BlockAccessor,

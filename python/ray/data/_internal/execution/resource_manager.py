@@ -12,19 +12,19 @@ from ray.data._internal.execution.interfaces.execution_options import (
     ExecutionOptions,
     ExecutionResources,
 )
-from ray.data._internal.execution.interfaces.physical_operator import (
+from ray.data._internal.execution.util import memory_string
+from ray.data._internal.physical.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.physical.hash_shuffle import (
+    HashShufflingOperatorBase,
+)
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.physical_operator import (
     PhysicalOperator,
     ReportsExtraResourceUsage,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
-)
-from ray.data._internal.execution.operators.hash_shuffle import (
-    HashShufflingOperatorBase,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.zip_operator import ZipOperator
-from ray.data._internal.execution.util import memory_string
+from ray.data._internal.physical.zip_operator import ZipOperator
 from ray.data.context import DataContext
 from ray.util.debug import log_once
 

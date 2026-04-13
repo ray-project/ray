@@ -13,11 +13,11 @@ from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
     ConcurrencyCapBackpressurePolicy,
 )
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.task_pool_map_operator import (
+from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data.context import DataContext
 from ray.data.tests.conftest import mock_all_to_all_op
 

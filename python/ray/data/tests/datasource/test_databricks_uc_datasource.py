@@ -15,14 +15,14 @@ import pytest
 
 import ray
 import ray.cloudpickle as pickle
-from ray.data._internal.datasource.databricks_credentials import (
+from ray.data._internal.io.datasource.databricks_credentials import (
     DatabricksCredentialProvider,
     StaticCredentialProvider,
 )
-from ray.data._internal.datasource.databricks_uc_datasource import (
+from ray.data._internal.io.datasource.databricks_uc_datasource import (
     DatabricksUCDatasource,
 )
-from ray.data._internal.util import rows_same
+from ray.data._internal.utils.util import rows_same
 from ray.data.tests.datasource.databricks_test_utils import (
     MockResponse,
     RefreshableCredentialProvider,

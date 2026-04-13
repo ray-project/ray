@@ -4,7 +4,7 @@ import pytest
 from packaging import version
 
 import ray
-from ray.data._internal.util import rows_same
+from ray.data._internal.utils.util import rows_same
 from ray.data.expressions import col
 
 pytestmark = pytest.mark.skipif(

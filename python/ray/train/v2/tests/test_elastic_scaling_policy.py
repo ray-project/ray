@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from freezegun import freeze_time
 
-from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+from ray.data._internal.autoscaling.cluster.default_autoscaling_coordinator import (
     ResourceRequestPriority,
 )
 from ray.train.v2._internal.execution.callback import ControllerCallback

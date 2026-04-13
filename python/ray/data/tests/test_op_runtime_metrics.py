@@ -6,13 +6,13 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+from ray.data._internal.observability.op_runtime_metrics import (
     OpRuntimeMetrics,
 )
-from ray.data._internal.execution.interfaces.physical_operator import (
+from ray.data._internal.physical.physical_operator import (
     TaskExecDriverStats,
 )
-from ray.data._internal.util import KiB
+from ray.data._internal.utils.util import KiB
 from ray.data.block import BlockExecStats, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 

@@ -15,7 +15,7 @@ from ray.data._internal.planner._obstore_download import (
     _extract_credentials_from_filesystem,
     _is_obstore_supported_url,
 )
-from ray.data._internal.util import RetryingPyFileSystem, _arrow_batcher
+from ray.data._internal.utils.util import RetryingPyFileSystem, _arrow_batcher
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem, _split_uri

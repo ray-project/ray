@@ -4,8 +4,8 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import ExecutionResources
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.task_pool_map_operator import (
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 

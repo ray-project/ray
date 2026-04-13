@@ -9,13 +9,13 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     RefBundle,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
+from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.observability.progress.base_progress import NoopSubProgressBar
+from ray.data._internal.physical.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.progress.base_progress import NoopSubProgressBar
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.map_operator import MapOperator
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.tests.util import (

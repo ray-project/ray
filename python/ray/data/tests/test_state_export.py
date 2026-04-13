@@ -8,14 +8,14 @@ import pytest
 import ray
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.metadata_exporter import (
+from ray.data._internal.observability.metadata_exporter import (
     UNKNOWN,
     DataContextMetadata,
     Operator,
     Topology,
     sanitize_for_struct,
 )
-from ray.data._internal.stats import get_or_create_stats_actor
+from ray.data._internal.observability.stats import get_or_create_stats_actor
 from ray.data.context import DataContext
 from ray.tests.conftest import _ray_start
 

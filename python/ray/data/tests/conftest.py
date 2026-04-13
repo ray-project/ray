@@ -13,10 +13,10 @@ import pytest
 import ray
 from ray._common.test_utils import wait_for_condition
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
-from ray.data._internal.execution.operators.base_physical_operator import (
+from ray.data._internal.blocks.tensor_extensions.arrow import ArrowTensorArray
+from ray.data._internal.physical.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.tensor_extensions.arrow import ArrowTensorArray
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.constants import TENSOR_COLUMN_NAME
@@ -268,7 +268,7 @@ def _get_supported_tensor_formats():
     Returns V1, V2, and ARROW_NATIVE only if PyArrow >= 16 (which supports
     native FixedShapeTensorScalar, FixedShapeTensorType, FixedShapeTensorArray).
     """
-    from ray.data._internal.tensor_extensions.arrow import (
+    from ray.data._internal.blocks.tensor_extensions.arrow import (
         MIN_PYARROW_VERSION_FIXED_SHAPE_TENSOR_SCALAR,
         FixedShapeTensorFormat,
     )

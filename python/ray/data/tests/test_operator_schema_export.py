@@ -7,8 +7,8 @@ import pytest
 
 import ray
 from ray._private import ray_constants
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
 from ray.data.context import DataContext
 
 

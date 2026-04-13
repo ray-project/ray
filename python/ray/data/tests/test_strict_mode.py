@@ -6,7 +6,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.tensor_extensions.arrow import (
+from ray.data._internal.blocks.tensor_extensions.arrow import (
     create_arrow_fixed_shape_tensor_type,
 )
 from ray.data.context import DataContext
@@ -271,7 +271,7 @@ def test_schema_types_property(input_dtype, expected_arrow_type):
     Tests that the Schema.types property correctly converts pandas and numpy
     dtypes to pyarrow types, including BaseMaskedDtype subclasses.
     """
-    from ray.data._internal.pandas_block import PandasBlockSchema
+    from ray.data._internal.blocks.pandas_block import PandasBlockSchema
 
     schema = Schema(PandasBlockSchema(names=["a"], types=[input_dtype]))
     assert schema.types == [expected_arrow_type]

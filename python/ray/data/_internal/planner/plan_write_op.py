@@ -4,8 +4,8 @@ from typing import TYPE_CHECKING, Callable, Iterator, List, Optional, Union
 
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.map_transformer import (
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )

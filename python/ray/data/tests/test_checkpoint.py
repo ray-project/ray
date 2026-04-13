@@ -12,9 +12,9 @@ from pyarrow.fs import FileSelector, FileType, LocalFileSystem
 from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
-from ray.data._internal.datasource.csv_datasource import CSVDatasource
-from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.io.datasink.parquet_datasink import ParquetDatasink
+from ray.data._internal.io.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.logical.operators import Read, Write
 from ray.data._internal.logical.optimizers import get_execution_plan

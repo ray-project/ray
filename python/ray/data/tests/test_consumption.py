@@ -9,13 +9,13 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.datasource.csv_datasink import CSVDatasink
-from ray.data._internal.datasource.csv_datasource import CSVDatasource
-from ray.data._internal.datasource.range_datasource import RangeDatasource
+from ray.data._internal.blocks.block_builder import BlockBuilder
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.io.datasink.csv_datasink import CSVDatasink
+from ray.data._internal.io.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.io.datasource.range_datasource import RangeDatasource
 from ray.data.block import BlockAccessor
 from ray.data.dataset import Dataset, MaterializedDataset
 from ray.data.datasource.util import (

@@ -292,8 +292,8 @@ def arrow_batch_to_tensors(
         When combine_chunks=True: A dictionary of column name to single tensor.
         When combine_chunks=False: A dictionary of column name to list of tensors.
     """
-    from ray.data._internal.arrow_block import ArrowBlockAccessor
-    from ray.data._internal.arrow_ops import transform_pyarrow
+    from ray.data._internal.blocks.arrow_block import ArrowBlockAccessor
+    from ray.data._internal.blocks.arrow_ops import transform_pyarrow
 
     if combine_chunks:
         numpy_batch = ArrowBlockAccessor(batch).to_batch_format("numpy")

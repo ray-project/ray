@@ -10,9 +10,9 @@ import pytest
 
 import ray
 from ray.data import Schema
-from ray.data._internal.datasource.json_datasource import PandasJSONDatasource
-from ray.data._internal.pandas_block import PandasBlockBuilder
-from ray.data._internal.util import rows_same
+from ray.data._internal.blocks.pandas_block import PandasBlockBuilder
+from ray.data._internal.io.datasource.json_datasource import PandasJSONDatasource
+from ray.data._internal.utils.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.datasource.file_based_datasource import (
     FILE_SIZE_FETCH_PARALLELIZATION_THRESHOLD,

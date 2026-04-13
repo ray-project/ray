@@ -4,10 +4,10 @@ import time
 import typing
 from typing import Dict, List, Optional, Tuple
 
-from ray.data._internal.actor_autoscaler import (
+from ray.data._internal.autoscaling.actor import (
     create_actor_autoscaler,
 )
-from ray.data._internal.cluster_autoscaler import create_cluster_autoscaler
+from ray.data._internal.autoscaling.cluster import create_cluster_autoscaler
 from ray.data._internal.execution import create_ranker
 from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
@@ -21,10 +21,6 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.operators.base_physical_operator import (
-    InternalQueueOperatorMixin,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
@@ -37,27 +33,33 @@ from ray.data._internal.execution.streaming_executor_state import (
     select_operator_to_run,
     update_operator_states,
 )
-from ray.data._internal.logging import (
+from ray.data._internal.observability.logging import (
     get_log_directory,
     register_dataset_logger,
     unregister_dataset_logger,
 )
-from ray.data._internal.metadata_exporter import (
+from ray.data._internal.observability.metadata_exporter import (
     Topology as TopologyMetadata,
     sanitize_for_struct,
 )
-from ray.data._internal.operator_schema_exporter import (
+from ray.data._internal.observability.operator_schema_exporter import (
     OperatorSchema,
     get_operator_schema_exporter,
 )
-from ray.data._internal.progress import get_progress_manager
-from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
+from ray.data._internal.observability.progress import get_progress_manager
+from ray.data._internal.observability.stats import DatasetStats, Timer, _StatsManager
+from ray.data._internal.physical.base_physical_operator import (
+    InternalQueueOperatorMixin,
+)
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.debug import log_once
 from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
-    from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
+    from ray.data._internal.observability.progress.base_progress import (
+        BaseExecutionProgressManager,
+    )
     from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)

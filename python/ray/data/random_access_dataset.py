@@ -11,7 +11,7 @@ import ray
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
-from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.utils.remote_fn import cached_remote_fn
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.types import ObjectRef

@@ -7,18 +7,18 @@ from typing import Any, Callable, Iterable, List, Optional
 import pandas as pd
 
 import ray
-from ray.data._internal.execution.interfaces.physical_operator import (
+from ray.data._internal.blocks.output_buffer import OutputBlockSizeOption
+from ray.data._internal.physical.map_transformer import (
+    BlockMapTransformFn,
+    MapTransformCallable,
+    MapTransformer,
+)
+from ray.data._internal.physical.physical_operator import (
     DataOpTask,
     MetadataOpTask,
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.operators.map_transformer import (
-    BlockMapTransformFn,
-    MapTransformCallable,
-    MapTransformer,
-)
-from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data.block import Block
 
 

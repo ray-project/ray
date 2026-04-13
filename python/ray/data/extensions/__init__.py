@@ -1,4 +1,4 @@
-from ray.data._internal.tensor_extensions.arrow import (
+from ray.data._internal.blocks.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     FixedShapeTensorFormat,
     FixedShapeTensorType,

@@ -22,51 +22,50 @@ from packaging.version import parse as parse_version
 
 import ray
 from ray._private.auto_init_hook import wrap_auto_init
-from ray.data._internal.compute import ComputeStrategy
-from ray.data._internal.datasource.audio_datasource import AudioDatasource
-from ray.data._internal.datasource.avro_datasource import AvroDatasource
-from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
-from ray.data._internal.datasource.binary_datasource import BinaryDatasource
-from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
-from ray.data._internal.datasource.csv_datasource import CSVDatasource
-from ray.data._internal.datasource.databricks_credentials import (
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.io.datasource.audio_datasource import AudioDatasource
+from ray.data._internal.io.datasource.avro_datasource import AvroDatasource
+from ray.data._internal.io.datasource.bigquery_datasource import BigQueryDatasource
+from ray.data._internal.io.datasource.binary_datasource import BinaryDatasource
+from ray.data._internal.io.datasource.clickhouse_datasource import ClickHouseDatasource
+from ray.data._internal.io.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.io.datasource.databricks_credentials import (
     DatabricksCredentialProvider,
 )
-from ray.data._internal.datasource.delta_sharing_datasource import (
+from ray.data._internal.io.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
-from ray.data._internal.datasource.hudi_datasource import HudiDatasource
-from ray.data._internal.datasource.image_datasource import (
+from ray.data._internal.io.datasource.hudi_datasource import HudiDatasource
+from ray.data._internal.io.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
 )
-from ray.data._internal.datasource.json_datasource import (
+from ray.data._internal.io.datasource.json_datasource import (
     JSON_FILE_EXTENSIONS,
     ArrowJSONDatasource,
     PandasJSONDatasource,
 )
-from ray.data._internal.datasource.kafka_datasource import (
+from ray.data._internal.io.datasource.kafka_datasource import (
     KafkaAuthConfig,
     KafkaDatasource,
     PerPartitionOffsets,
 )
-from ray.data._internal.datasource.lance_datasource import LanceDatasource
-from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
-from ray.data._internal.datasource.mongo_datasource import MongoDatasource
-from ray.data._internal.datasource.numpy_datasource import NumpyDatasource
-from ray.data._internal.datasource.parquet_datasource import (
+from ray.data._internal.io.datasource.lance_datasource import LanceDatasource
+from ray.data._internal.io.datasource.mcap_datasource import MCAPDatasource, TimeRange
+from ray.data._internal.io.datasource.mongo_datasource import MongoDatasource
+from ray.data._internal.io.datasource.numpy_datasource import NumpyDatasource
+from ray.data._internal.io.datasource.parquet_datasource import (
     ParquetDatasource,
     TensorColumnSchema,
 )
-from ray.data._internal.datasource.range_datasource import RangeDatasource
-from ray.data._internal.datasource.sql_datasource import SQLDatasource
-from ray.data._internal.datasource.text_datasource import TextDatasource
-from ray.data._internal.datasource.tfrecords_datasource import TFRecordDatasource
-from ray.data._internal.datasource.torch_datasource import TorchDatasource
-from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
-from ray.data._internal.datasource.video_datasource import VideoDatasource
-from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.io.datasource.range_datasource import RangeDatasource
+from ray.data._internal.io.datasource.sql_datasource import SQLDatasource
+from ray.data._internal.io.datasource.text_datasource import TextDatasource
+from ray.data._internal.io.datasource.tfrecords_datasource import TFRecordDatasource
+from ray.data._internal.io.datasource.torch_datasource import TorchDatasource
+from ray.data._internal.io.datasource.uc_datasource import UnityCatalogConnector
+from ray.data._internal.io.datasource.video_datasource import VideoDatasource
+from ray.data._internal.io.datasource.webdataset_datasource import WebDatasetDatasource
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
     FromArrow,
@@ -76,11 +75,13 @@ from ray.data._internal.logical.operators import (
     FromPandas,
     Read,
 )
+from ray.data._internal.observability.stats import DatasetStats
 from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.public_api.compute import ComputeStrategy
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.util import (
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.remote_fn import cached_remote_fn
+from ray.data._internal.utils.util import (
     _autodetect_parallelism,
     get_compute_strategy_for_read_api,
     get_table_block_metadata_schema,
@@ -88,7 +89,6 @@ from ray.data._internal.util import (
     ndarray_to_block,
     pandas_df_to_arrow_block,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import (
     Block,
     BlockExecStats,
@@ -132,7 +132,7 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from tensorflow_metadata.proto.v0 import schema_pb2
 
-    from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
+    from ray.data._internal.io.datasource.tfrecords_datasource import TFXReadOptions
 
 T = TypeVar("T")
 
@@ -437,7 +437,7 @@ def read_datasource(
         Read using default task-based execution:
 
         >>> import ray
-        >>> from ray.data._internal.datasource.range_datasource import RangeDatasource
+        >>> from ray.data._internal.io.datasource.range_datasource import RangeDatasource
         >>> datasource = RangeDatasource(n=1000, block_format="arrow")
         >>> ds = ray.data.read_datasource(datasource) # doctest: +SKIP
 
@@ -2115,7 +2115,7 @@ def read_tfrecords(
         and tfx_read
         and not tf_schema
     ):
-        from ray.data._internal.datasource.tfrecords_datasource import (
+        from ray.data._internal.io.datasource.tfrecords_datasource import (
             _infer_schema_and_transform,
         )
 
@@ -2770,7 +2770,7 @@ def read_databricks_tables(
         .. testcode::
             :skipif: True
 
-            from ray.data._internal.datasource.databricks_credentials import (
+            from ray.data._internal.io.datasource.databricks_credentials import (
                 DatabricksCredentialProvider,
             )
 
@@ -2828,11 +2828,11 @@ def read_databricks_tables(
         A :class:`Dataset` containing the queried data.
     """  # noqa: E501
     # Resolve credential provider (single source of truth for token and host)
-    from ray.data._internal.datasource.databricks_credentials import (
+    from ray.data._internal.io.datasource.databricks_credentials import (
         DatabricksTableCredentialConfig,
         resolve_credential_provider,
     )
-    from ray.data._internal.datasource.databricks_uc_datasource import (
+    from ray.data._internal.io.datasource.databricks_uc_datasource import (
         DatabricksUCDatasource,
     )
 
@@ -3684,7 +3684,7 @@ def from_huggingface(
     import datasets
     from aiohttp.client_exceptions import ClientResponseError
 
-    from ray.data._internal.datasource.huggingface_datasource import (
+    from ray.data._internal.io.datasource.huggingface_datasource import (
         HuggingFaceDatasource,
     )
 
@@ -3970,7 +3970,7 @@ def read_iceberg(
     Returns:
         :class:`~ray.data.Dataset` with rows from the Iceberg table.
     """
-    from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
+    from ray.data._internal.io.datasource.iceberg_datasource import IcebergDatasource
 
     # Deprecation warning for row_filter parameter
     if row_filter is not None:
@@ -4240,7 +4240,7 @@ def read_unity_catalog(
 
         Read using a custom credential provider:
 
-        >>> from ray.data._internal.datasource.databricks_credentials import (  # doctest: +SKIP
+        >>> from ray.data._internal.io.datasource.databricks_credentials import (  # doctest: +SKIP
         ...     StaticCredentialProvider,
         ... )
         >>> provider = StaticCredentialProvider(  # doctest: +SKIP
@@ -4276,7 +4276,7 @@ def read_unity_catalog(
     Returns:
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
-    from ray.data._internal.datasource.databricks_credentials import (
+    from ray.data._internal.io.datasource.databricks_credentials import (
         UnityCatalogCredentialConfig,
         resolve_credential_provider,
     )
@@ -4372,7 +4372,7 @@ def read_delta(
         files.
 
     """
-    # Modified from ray.data._internal.util._check_import, which is meant for objects,
+    # Modified from ray.data._internal.utils.util._check_import, which is meant for objects,
     # not functions. Move to _check_import if moved to a DataSource object.
     import importlib
 

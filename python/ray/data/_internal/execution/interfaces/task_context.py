@@ -4,8 +4,8 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Iterator, Optional
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.operators.map_transformer import MapTransformer
-    from ray.data._internal.progress.base_progress import BaseProgressBar
+    from ray.data._internal.observability.progress.base_progress import BaseProgressBar
+    from ray.data._internal.physical.map_transformer import MapTransformer
 
 
 _thread_local = threading.local()

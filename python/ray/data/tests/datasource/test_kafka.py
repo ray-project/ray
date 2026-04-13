@@ -5,8 +5,8 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 import ray
-from ray.data._internal.datasource.kafka_datasink import KafkaDatasink
-from ray.data._internal.datasource.kafka_datasource import (
+from ray.data._internal.io.datasink.kafka_datasink import KafkaDatasink
+from ray.data._internal.io.datasource.kafka_datasource import (
     KafkaAuthConfig,
     _build_consumer_config_for_read,
     _datetime_to_ms,
@@ -854,7 +854,7 @@ def mock_write_env():
     with (
         patch("confluent_kafka.Producer", return_value=mock_producer),
         patch(
-            "ray.data._internal.datasource.kafka_datasink.BlockAccessor.for_block",
+            "ray.data._internal.io.datasink.kafka_datasink.BlockAccessor.for_block",
             return_value=mock_accessor,
         ),
     ):

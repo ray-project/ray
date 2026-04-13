@@ -12,7 +12,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.block_batching.block_batching import batch_blocks
+from ray.data._internal.iteration.batching.block_batching import batch_blocks
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 

@@ -3,13 +3,13 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from ray._private.ray_constants import CALLER_MEMORY_USAGE_PER_OBJECT_REF
 from ray.data._internal.execution.interfaces import RefBundle, TaskContext
+from ray.data._internal.observability.stats import StatsDict
 from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
     ExchangeTaskSpec,
 )
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import (
+from ray.data._internal.utils.remote_fn import cached_remote_fn
+from ray.data._internal.utils.util import (
     convert_bytes_to_human_readable_str,
     unzip,
 )

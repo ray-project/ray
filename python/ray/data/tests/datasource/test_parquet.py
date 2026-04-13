@@ -19,20 +19,20 @@ from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import FileShuffleConfig, Schema
-from ray.data._internal.datasource.parquet_datasource import (
+from ray.data._internal.blocks.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
+)
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
+from ray.data._internal.io.datasource.parquet_datasource import (
     _MAX_PYARROW_TO_BATCHES_BATCH_SIZE,
     ParquetDatasource,
     _coerce_pyarrow_fragment_batch_size,
     _read_batches_from,
 )
-from ray.data._internal.execution.interfaces.ref_bundle import (
-    _ref_bundles_iterator_to_block_refs_list,
-)
-from ray.data._internal.tensor_extensions.arrow import (
-    get_arrow_extension_fixed_shape_tensor_types,
-)
-from ray.data._internal.util import rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
@@ -2006,7 +2006,7 @@ ROW_GROUP_LIMIT_CASES = [
 )
 def test_choose_row_group_limits_parameterized(case):
     """Validate the helper across representative inputs."""
-    from ray.data._internal.datasource.parquet_datasink import choose_row_group_limits
+    from ray.data._internal.io.datasink.parquet_datasink import choose_row_group_limits
 
     result = choose_row_group_limits(
         case.row_group_size, case.min_rows_per_file, case.max_rows_per_file
@@ -2026,7 +2026,7 @@ def test_choose_row_group_limits_parameterized(case):
 def test_write_parquet_large_min_rows_per_file_exceeds_arrow_default(
     tmp_path, ray_start_regular_shared
 ):
-    from ray.data._internal.datasource.parquet_datasink import (
+    from ray.data._internal.io.datasink.parquet_datasink import (
         ARROW_DEFAULT_MAX_ROWS_PER_GROUP,
     )
 
@@ -2275,7 +2275,9 @@ def test_get_parquet_dataset_fs_serialization_fallback(
     # 4) Helper should succeed (fallback re-resolves to LocalFileSystem inside worker)
     @ray.remote
     def call_helper(paths, fs, kwargs):
-        from ray.data._internal.datasource.parquet_datasource import get_parquet_dataset
+        from ray.data._internal.io.datasource.parquet_datasource import (
+            get_parquet_dataset,
+        )
 
         return get_parquet_dataset(paths, filesystem=fs, dataset_kwargs=kwargs)
 
@@ -2776,7 +2778,7 @@ def test_get_safe_batch_size_skips_zero_uncompressed_row_groups(tmp_path):
     size (e.g. all-null nested data) should not cause ZeroDivisionError."""
     import pyarrow.parquet as pq
 
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.io.datasource.parquet_datasource import (
         _get_safe_batch_size_for_nested_types,
     )
 
@@ -2881,7 +2883,7 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     """
     from unittest.mock import patch
 
-    from ray.data._internal.datasource.parquet_datasource import (
+    from ray.data._internal.io.datasource.parquet_datasource import (
         _needs_nested_type_fallback,
     )
 
@@ -2898,7 +2900,7 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
     # End-to-end: reading only "id" should use the normal scanner path, not
     # the fallback.  Patch to detect whether fallback is invoked.
     with patch(
-        "ray.data._internal.datasource.parquet_datasource"
+        "ray.data._internal.io.datasource.parquet_datasource"
         "._get_safe_batch_size_for_nested_types"
     ) as mock_safe:
         ds = ray.data.read_parquet(data_dir, columns=["id"])

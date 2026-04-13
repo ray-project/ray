@@ -1,4 +1,4 @@
-from ray.data._internal.tensor_extensions.arrow import (  # noqa: F401
+from ray.data._internal.blocks.tensor_extensions.arrow import (  # noqa: F401
     ArrowConversionError,
     ArrowTensorArray,
     ArrowTensorType,
@@ -8,12 +8,12 @@ from ray.data._internal.tensor_extensions.arrow import (  # noqa: F401
     FixedShapeTensorArray,
     FixedShapeTensorType,
 )
-from ray.data._internal.tensor_extensions.pandas import (  # noqa: F401
+from ray.data._internal.blocks.tensor_extensions.pandas import (  # noqa: F401
     TensorArray,
     TensorArrayElement,
     TensorDtype,
     column_needs_tensor_extension,
 )
-from ray.data._internal.tensor_extensions.utils import (
+from ray.data._internal.blocks.tensor_extensions.utils import (
     create_ragged_ndarray,  # noqa: F401
 )

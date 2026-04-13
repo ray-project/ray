@@ -7,26 +7,26 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces.physical_operator import (
-    OpTask,
-    PhysicalOperator,
-    RefBundle,
-    TaskExecDriverStats,
-)
-from ray.data._internal.execution.operators.input_data_buffer import (
-    InputDataBuffer,
-)
-from ray.data._internal.execution.operators.task_pool_map_operator import (
-    MapOperator,
-)
-from ray.data._internal.issue_detection.detectors.hanging_detector import (
+from ray.data._internal.observability.diagnostics.detectors.hanging_detector import (
     DEFAULT_OP_TASK_STATS_MIN_COUNT,
     DEFAULT_OP_TASK_STATS_STD_FACTOR,
     HangingExecutionIssueDetector,
     HangingExecutionIssueDetectorConfig,
 )
-from ray.data._internal.issue_detection.detectors.high_memory_detector import (
+from ray.data._internal.observability.diagnostics.detectors.high_memory_detector import (
     HighMemoryIssueDetector,
+)
+from ray.data._internal.physical.input_data_buffer import (
+    InputDataBuffer,
+)
+from ray.data._internal.physical.physical_operator import (
+    OpTask,
+    PhysicalOperator,
+    RefBundle,
+    TaskExecDriverStats,
+)
+from ray.data._internal.physical.task_pool_map_operator import (
+    MapOperator,
 )
 from ray.data.block import BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
@@ -92,16 +92,14 @@ class TestHangingExecutionIssueDetector:
         assert detector._op_task_stats_min_count == min_count
         assert detector._op_task_stats_std_factor_threshold == std_factor
 
-    @patch(
-        "ray.data._internal.execution.interfaces.op_runtime_metrics.TaskDurationStats"
-    )
+    @patch("ray.data._internal.observability.op_runtime_metrics.TaskDurationStats")
     def test_basic_hanging_detection(
         self, mock_stats_cls, ray_start_regular_shared, restore_data_context
     ):
         # Set up logging capture
         log_capture = io.StringIO()
         handler = logging.StreamHandler(log_capture)
-        logger = logging.getLogger("ray.data._internal.issue_detection")
+        logger = logging.getLogger("ray.data._internal.observability.diagnostics")
         logger.addHandler(handler)
 
         # Set up mock stats to return values that will trigger adaptive threshold

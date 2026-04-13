@@ -16,14 +16,14 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.gpu_shuffle.hash_shuffle import (
+from ray.data._internal.logical.interfaces import LogicalOperator
+from ray.data._internal.logical.operators import Repartition
+from ray.data._internal.physical.gpu_shuffle.hash_shuffle import (
     GPURankPool,
     GPUShuffleActor,
     GPUShuffleOperator,
     _derive_num_gpu_ranks,
 )
-from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators import Repartition
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
@@ -105,7 +105,7 @@ class TestImportIsolation:
     def test_module_importable_without_rapidsmpf(self):
         """The gpu_shuffle module must not import rapidsmpf at module level."""
 
-        import ray.data._internal.gpu_shuffle.hash_shuffle as mod
+        import ray.data._internal.physical.gpu_shuffle.hash_shuffle as mod
 
         # If we got here the import succeeded on a CPU-only env.
         assert hasattr(mod, "GPUShuffleOperator")
@@ -132,7 +132,7 @@ class TestDeriveNumGpuRanks:
         ctx.gpu_shuffle_num_actors = None
 
         with patch(
-            "ray.data._internal.gpu_shuffle.hash_shuffle"
+            "ray.data._internal.physical.gpu_shuffle.hash_shuffle"
             "._get_total_cluster_resources"
         ) as mock_res:
             mock_res.return_value = ExecutionResources(cpu=8, gpu=4)
@@ -143,7 +143,7 @@ class TestDeriveNumGpuRanks:
         ctx.gpu_shuffle_num_actors = None
 
         with patch(
-            "ray.data._internal.gpu_shuffle.hash_shuffle"
+            "ray.data._internal.physical.gpu_shuffle.hash_shuffle"
             "._get_total_cluster_resources"
         ) as mock_res:
             mock_res.return_value = ExecutionResources(cpu=8, gpu=0)
@@ -156,7 +156,7 @@ class TestDeriveNumGpuRanks:
         ctx.gpu_shuffle_num_actors = None
 
         with patch(
-            "ray.data._internal.gpu_shuffle.hash_shuffle"
+            "ray.data._internal.physical.gpu_shuffle.hash_shuffle"
             "._get_total_cluster_resources"
         ) as mock_res:
             mock_res.return_value = ExecutionResources(cpu=4, gpu=3.9)
@@ -196,11 +196,11 @@ class TestGPURankPool:
             handle.setup_worker.remote.return_value = MagicMock()
 
         with patch(
-            "ray.data._internal.gpu_shuffle.hash_shuffle.GPUShuffleActor"
+            "ray.data._internal.physical.gpu_shuffle.hash_shuffle.GPUShuffleActor"
         ) as mock_actor_cls, patch(
-            "ray.data._internal.gpu_shuffle.hash_shuffle.ray.get"
+            "ray.data._internal.physical.gpu_shuffle.hash_shuffle.ray.get"
         ) as mock_ray_get, patch(
-            "ray.data._internal.gpu_shuffle.hash_shuffle.ray.wait"
+            "ray.data._internal.physical.gpu_shuffle.hash_shuffle.ray.wait"
         ) as mock_ray_wait:
             mock_actor_cls.options.return_value.remote.side_effect = mock_actor_handles
             # First ray.get returns (rank, root_address); second returns None list (setup done)
@@ -231,7 +231,9 @@ class TestGPURankPool:
         mock_actors = [MagicMock(), MagicMock()]
         pool._actors = mock_actors
 
-        with patch("ray.data._internal.gpu_shuffle.hash_shuffle.ray.kill") as mock_kill:
+        with patch(
+            "ray.data._internal.physical.gpu_shuffle.hash_shuffle.ray.kill"
+        ) as mock_kill:
             pool.shutdown(force=True)
 
         assert mock_kill.call_count == 2
@@ -241,7 +243,9 @@ class TestGPURankPool:
         pool = self._make_pool(nranks=2)
         pool._actors = [MagicMock(), MagicMock()]
 
-        with patch("ray.data._internal.gpu_shuffle.hash_shuffle.ray.kill") as mock_kill:
+        with patch(
+            "ray.data._internal.physical.gpu_shuffle.hash_shuffle.ray.kill"
+        ) as mock_kill:
             pool.shutdown(force=False)
 
         mock_kill.assert_not_called()
@@ -502,7 +506,7 @@ class TestGPUShuffleOperatorFinalization:
         expected_kill_count = len(mock_actors)
 
         with patch(
-            "ray.data._internal.gpu_shuffle.hash_shuffle.ray.kill"
+            "ray.data._internal.physical.gpu_shuffle.hash_shuffle.ray.kill"
         ) as mock_kill, patch.object(
             PhysicalOperator, "_do_shutdown", return_value=None
         ):
@@ -542,7 +546,7 @@ class TestPlanAllToAllOpRouting:
         assert isinstance(op, GPUShuffleOperator)
 
     def test_hash_shuffle_still_routes_to_hash_operator(self):
-        from ray.data._internal.execution.operators.hash_shuffle import (
+        from ray.data._internal.physical.hash_shuffle import (
             HashShuffleOperator,
         )
 
@@ -550,8 +554,7 @@ class TestPlanAllToAllOpRouting:
         ctx._shuffle_strategy = ShuffleStrategy.HASH_SHUFFLE
 
         with patch(
-            "ray.data._internal.execution.operators.hash_shuffle"
-            "._get_total_cluster_resources",
+            "ray.data._internal.physical.hash_shuffle" "._get_total_cluster_resources",
             return_value=ExecutionResources(cpu=4, gpu=0),
         ):
             logical_op = self._make_repartition_op(keys=["user_id"], num_outputs=8)
@@ -605,14 +608,14 @@ class TestGPUShuffleActorImportGuard:
     when rapidsmpf is not installed, not a generic ModuleNotFoundError."""
 
     def test_missing_rapidsmpf_raises_import_error(self):
-        from ray.data._internal.gpu_shuffle.hash_shuffle import GPUShuffleActor
+        from ray.data._internal.physical.gpu_shuffle.hash_shuffle import GPUShuffleActor
 
         # Access the underlying class (bypass Ray actor wrapper)
         ActorClass = GPUShuffleActor.__ray_actor_class__
 
         with patch.dict(
             "sys.modules",
-            {"ray.data._internal.gpu_shuffle.rapidsmpf_backend": None},
+            {"ray.data._internal.physical.gpu_shuffle.rapidsmpf_backend": None},
         ):
             with pytest.raises(ImportError, match="rapidsmpf"):
                 ActorClass(

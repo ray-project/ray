@@ -9,7 +9,10 @@ import numpy as np
 import pyarrow
 import pyarrow.compute as pc
 
-from ray.data._internal.arrow_utils import _combine_as_list_array, _counts_to_offsets
+from ray.data._internal.blocks.arrow_utils import (
+    _combine_as_list_array,
+    _counts_to_offsets,
+)
 from ray.data.datatype import DataType
 from ray.data.expressions import _create_pyarrow_compute_udf, pyarrow_udf
 

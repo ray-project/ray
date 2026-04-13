@@ -12,8 +12,8 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.interfaces.executor import OutputIterator
 from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
-from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.observability.stats import DatasetStats
+from ray.data._internal.planner.plan import ExecutionPlan
 
 logger = logging.getLogger(__name__)
 

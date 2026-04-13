@@ -3,7 +3,7 @@ from typing import List, Optional
 
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalOperator, SourceOperator
-from ray.data._internal.util import unify_schemas_with_validation
+from ray.data._internal.utils.util import unify_schemas_with_validation
 from ray.data.block import BlockMetadata
 
 __all__ = [

@@ -6,21 +6,21 @@ import pytest
 from ray.data._internal.execution.backpressure_policy.downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
-from ray.data._internal.execution.interfaces.physical_operator import (
+from ray.data._internal.execution.resource_manager import ResourceManager
+from ray.data._internal.execution.streaming_executor_state import OpState
+from ray.data._internal.physical.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
+from ray.data._internal.physical.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.physical.physical_operator import (
     OpRuntimeMetrics,
     PhysicalOperator,
 )
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
-)
-from ray.data._internal.execution.operators.task_pool_map_operator import (
+from ray.data._internal.physical.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.resource_manager import ResourceManager
-from ray.data._internal.execution.streaming_executor_state import OpState
 from ray.data.context import DataContext
 
 

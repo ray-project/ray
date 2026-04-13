@@ -10,18 +10,18 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional, Type, Union
 
 from ray._common.utils import env_bool, env_float, env_integer
-from ray.data._internal.logging import update_dataset_logger_for_worker
+from ray.data._internal.observability.logging import update_dataset_logger_for_worker
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.util.annotations import DeveloperAPI
 from ray.util.scheduling_strategies import SchedulingStrategyT
 
 if TYPE_CHECKING:
+    from ray.data._internal.blocks.tensor_extensions.arrow import FixedShapeTensorFormat
     from ray.data._internal.execution.execution_callback import ExecutionCallback
     from ray.data._internal.execution.interfaces import ExecutionOptions
-    from ray.data._internal.issue_detection.issue_detector_configuration import (
+    from ray.data._internal.observability.diagnostics.issue_detector_configuration import (
         IssueDetectorsConfiguration,
     )
-    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
 
 logger = logging.getLogger(__name__)
 
@@ -444,14 +444,14 @@ def _deduce_default_shuffle_algorithm() -> ShuffleStrategy:
 
 def _default_fixed_shape_tensor_format():
     """Factory function to avoid circular import."""
-    from ray.data._internal.tensor_extensions.arrow import FixedShapeTensorFormat
+    from ray.data._internal.blocks.tensor_extensions.arrow import FixedShapeTensorFormat
 
     return FixedShapeTensorFormat.V2
 
 
 def _issue_detectors_config_factory() -> "IssueDetectorsConfiguration":
     # Lazily import to avoid circular dependencies.
-    from ray.data._internal.issue_detection.issue_detector_configuration import (
+    from ray.data._internal.observability.diagnostics.issue_detector_configuration import (
         IssueDetectorsConfiguration,
     )
 
@@ -875,7 +875,7 @@ class DataContext:
                 "Configure `arrow_fixed_shape_tensor_format` instead. ",
                 DeprecationWarning,
             )
-            from ray.data._internal.tensor_extensions.arrow import (
+            from ray.data._internal.blocks.tensor_extensions.arrow import (
                 FixedShapeTensorFormat,
             )
 

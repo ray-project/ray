@@ -6,13 +6,13 @@ import pyarrow as pa
 import pytest
 from clickhouse_connect.driver.summary import QuerySummary
 
-from ray.data._internal.datasource.clickhouse_datasink import (
+from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.io.datasink.clickhouse_datasink import (
     ClickHouseDatasink,
     ClickHouseTableSettings,
     SinkMode,
 )
-from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
-from ray.data._internal.execution.interfaces.task_context import TaskContext
+from ray.data._internal.io.datasource.clickhouse_datasource import ClickHouseDatasource
 
 
 @pytest.fixture(autouse=True)

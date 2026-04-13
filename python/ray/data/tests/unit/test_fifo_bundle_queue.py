@@ -5,7 +5,7 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
+from ray.data._internal.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data.block import BlockAccessor
 

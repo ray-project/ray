@@ -1,7 +1,7 @@
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.arrow_ops.transform_pyarrow import (
+from ray.data._internal.blocks.arrow_ops.transform_pyarrow import (
     unify_schemas,
 )
 from ray.data.extensions import (

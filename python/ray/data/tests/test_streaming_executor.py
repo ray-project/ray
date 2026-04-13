@@ -13,9 +13,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
-from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.blocks.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
     ResourceBudgetBackpressurePolicy,
 )
@@ -24,17 +22,6 @@ from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
     PhysicalOperator,
-)
-from ray.data._internal.execution.interfaces.physical_operator import (
-    DataOpTask,
-    MetadataOpTask,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.map_transformer import (
-    BlockMapTransformFn,
-    MapTransformer,
 )
 from ray.data._internal.execution.ranker import DefaultRanker
 from ray.data._internal.execution.resource_manager import ResourceManager
@@ -53,8 +40,21 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.io.datasink.parquet_datasink import ParquetDatasink
+from ray.data._internal.io.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.operators import MapRows, Read, Write
-from ray.data._internal.util import MiB
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.limit_operator import LimitOperator
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.map_transformer import (
+    BlockMapTransformFn,
+    MapTransformer,
+)
+from ray.data._internal.physical.physical_operator import (
+    DataOpTask,
+    MetadataOpTask,
+)
+from ray.data._internal.utils.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
 from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
@@ -1032,7 +1032,9 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
 
 def test_create_topology_metadata():
     """Test that create_topology_metadata correctly serializes the DAG structure."""
-    from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+    from ray.data._internal.observability.metadata_exporter import (
+        Topology as TopologyMetadata,
+    )
 
     # Create a simple DAG with a few connected operators
     inputs = make_ref_bundles([[x] for x in range(10)])
@@ -1096,7 +1098,9 @@ def test_create_topology_metadata():
 
 def test_create_topology_metadata_with_sub_stages():
     """Test that _dump_dag_structure correctly handles sub-stages."""
-    from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
+    from ray.data._internal.observability.metadata_exporter import (
+        Topology as TopologyMetadata,
+    )
 
     inputs = make_ref_bundles([[x] for x in range(5)])
 

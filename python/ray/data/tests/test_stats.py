@@ -18,7 +18,6 @@ from ray._common.test_utils import (
     run_string_as_driver,
     wait_for_condition,
 )
-from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.backpressure_policy import (
     ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY,
 )
@@ -26,13 +25,13 @@ from ray.data._internal.execution.backpressure_policy.backpressure_policy import
     BackpressurePolicy,
 )
 from ray.data._internal.execution.dataset_state import DatasetState
-from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
-from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+from ray.data._internal.execution.streaming_executor import StreamingExecutor
+from ray.data._internal.iteration.batching.iter_batches import BatchIterator
+from ray.data._internal.observability.common import RuntimeMetricsHistogram
+from ray.data._internal.observability.op_runtime_metrics import (
     TaskDurationStats,
 )
-from ray.data._internal.execution.interfaces.physical_operator import PhysicalOperator
-from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.stats import (
+from ray.data._internal.observability.stats import (
     DatasetStats,
     DatasetStatsSummary,
     NodeMetrics,
@@ -41,7 +40,8 @@ from ray.data._internal.stats import (
     _StatsActor,
     get_or_create_stats_actor,
 )
-from ray.data._internal.util import MemoryProfiler
+from ray.data._internal.physical.physical_operator import PhysicalOperator
+from ray.data._internal.utils.util import MemoryProfiler
 from ray.data.block import BlockExecStats, BlockStats
 from ray.data.context import DataContext
 from ray.data.tests.util import column_udf
@@ -485,7 +485,7 @@ def dummy_map_batches_sleep(n):
 @contextmanager
 def patch_update_stats_actor():
     with patch(
-        "ray.data._internal.stats._StatsManager.update_execution_metrics"
+        "ray.data._internal.observability.stats._StatsManager.update_execution_metrics"
     ) as update_fn:
         yield update_fn
 
@@ -493,7 +493,7 @@ def patch_update_stats_actor():
 @contextmanager
 def patch_update_stats_actor_iter():
     with patch(
-        "ray.data._internal.stats._StatsManager.update_iteration_metrics"
+        "ray.data._internal.observability.stats._StatsManager.update_iteration_metrics"
     ) as update_fn:
         yield update_fn
 
@@ -1634,7 +1634,9 @@ def test_per_node_metrics_basic(ray_start_regular_shared, restore_data_context):
                 sum_metrics[metric] += value
         return sum_metrics
 
-    with patch("ray.data._internal.stats.get_or_create_stats_actor") as mock_get_actor:
+    with patch(
+        "ray.data._internal.observability.stats.get_or_create_stats_actor"
+    ) as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
@@ -1680,7 +1682,9 @@ def test_per_node_metrics_toggle(
     ctx = DataContext.get_current()
     ctx.enable_per_node_metrics = enable_metrics
 
-    with patch("ray.data._internal.stats.get_or_create_stats_actor") as mock_get_actor:
+    with patch(
+        "ray.data._internal.observability.stats.get_or_create_stats_actor"
+    ) as mock_get_actor:
         mock_actor_handle = MagicMock()
         mock_get_actor.return_value = mock_actor_handle
 
@@ -2096,7 +2100,7 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
     # Patch the function that retrieves the stats actor to return our
     # test-specific actor instance.
     with patch(
-        "ray.data._internal.stats.get_or_create_stats_actor",
+        "ray.data._internal.observability.stats.get_or_create_stats_actor",
         return_value=stats_actor,
     ):
 
@@ -2159,7 +2163,7 @@ def test_stats_actor_datasets_eviction(ray_start_cluster):
 # once (on cold start), and on shutdown.
 @patch.object(StreamingExecutor, "UPDATE_METRICS_INTERVAL_S", new=10000)
 @patch.object(BatchIterator, "UPDATE_METRICS_INTERVAL_S", new=10000)
-@patch("ray.data._internal.stats.get_or_create_stats_actor")
+@patch("ray.data._internal.observability.stats.get_or_create_stats_actor")
 def test_stats_manager(mock_get_or_create, shutdown_only):
 
     # Configure what get_or_create_stats_actor() returns

@@ -16,9 +16,9 @@ from typing import (
 
 import numpy as np
 
-from ray.data._internal.progress.progress_bar import ProgressBar
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.util import RetryingPyFileSystem
+from ray.data._internal.observability.progress.progress_bar import ProgressBar
+from ray.data._internal.utils.remote_fn import cached_remote_fn
+from ray.data._internal.utils.util import RetryingPyFileSystem
 from ray.data.block import BlockMetadata
 from ray.data.datasource.partitioning import Partitioning, PathPartitionFilter
 from ray.data.datasource.path_util import _has_file_extension

@@ -2,11 +2,6 @@ import itertools
 import logging
 from typing import Any, Dict, List, Optional
 
-from ray.data._internal.compute import (
-    ActorPoolStrategy,
-    ComputeStrategy,
-    TaskPoolStrategy,
-)
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
@@ -14,16 +9,6 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
-)
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    ActorPoolMapOperator,
-)
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
-)
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.task_pool_map_operator import (
-    TaskPoolMapOperator,
 )
 from ray.data._internal.logical.interfaces import PhysicalPlan, Rule
 from ray.data._internal.logical.operators import (
@@ -35,7 +20,24 @@ from ray.data._internal.logical.operators import (
     Repartition,
     StreamingRepartition,
 )
-from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
+from ray.data._internal.physical.actor_pool_map_operator import (
+    ActorPoolMapOperator,
+)
+from ray.data._internal.physical.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
+from ray.data._internal.public_api.compute import (
+    ActorPoolStrategy,
+    ComputeStrategy,
+    TaskPoolStrategy,
+)
+from ray.data._internal.utils.streaming_repartition import (
+    StreamingRepartitionRefBundler,
+)
 from ray.util.annotations import DeveloperAPI
 
 __all__ = [

@@ -7,22 +7,22 @@ import pytest
 
 import ray
 from ray._private import ray_constants
-from ray.data._internal.execution.operators.input_data_buffer import (
-    InputDataBuffer,
-)
-from ray.data._internal.execution.operators.task_pool_map_operator import (
-    MapOperator,
-)
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
-from ray.data._internal.issue_detection.issue_detector import (
+from ray.data._internal.observability.diagnostics.issue_detector import (
     Issue,
     IssueType,
 )
-from ray.data._internal.issue_detection.issue_detector_manager import (
+from ray.data._internal.observability.diagnostics.issue_detector_manager import (
     IssueDetectorManager,
 )
-from ray.data._internal.operator_event_exporter import (
+from ray.data._internal.observability.operator_event_exporter import (
     format_export_issue_event_name,
+)
+from ray.data._internal.physical.input_data_buffer import (
+    InputDataBuffer,
+)
+from ray.data._internal.physical.task_pool_map_operator import (
+    MapOperator,
 )
 from ray.data.context import DataContext
 

@@ -9,10 +9,10 @@ from ray.data._internal.execution.resource_manager import (
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces.physical_operator import (
+    from ray.data._internal.execution.streaming_executor_state import Topology
+    from ray.data._internal.physical.physical_operator import (
         PhysicalOperator,
     )
-    from ray.data._internal.execution.streaming_executor_state import Topology
 
 logger = logging.getLogger(__name__)
 

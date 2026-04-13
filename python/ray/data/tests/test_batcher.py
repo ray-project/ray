@@ -4,7 +4,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.batcher import Batcher, ShufflingBatcher
+from ray.data._internal.iteration.batcher import Batcher, ShufflingBatcher
 
 
 def gen_block(num_rows):

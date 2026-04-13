@@ -5,19 +5,19 @@ import pytest
 
 import ray
 from ray.core.generated import autoscaler_pb2
-from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
+from ray.data._internal.autoscaling.cluster.default_cluster_autoscaler_v2 import (
     DefaultClusterAutoscalerV2,
     _get_node_resource_spec_and_count,
     _NodeResourceSpec,
 )
-from ray.data._internal.cluster_autoscaler.fake_autoscaling_coordinator import (
+from ray.data._internal.autoscaling.cluster.fake_autoscaling_coordinator import (
     FakeAutoscalingCoordinator,
 )
-from ray.data._internal.cluster_autoscaler.resource_utilization_gauge import (
+from ray.data._internal.autoscaling.cluster.resource_utilization_gauge import (
     ResourceUtilizationGauge,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
-from ray.data._internal.util import GiB
+from ray.data._internal.utils.util import GiB
 
 
 class StubUtilizationGauge(ResourceUtilizationGauge):
@@ -32,7 +32,7 @@ class StubUtilizationGauge(ResourceUtilizationGauge):
 
 
 _IS_AUTOSCALING_ENABLED_PATH = (
-    "ray.data._internal.cluster_autoscaler."
+    "ray.data._internal.autoscaling.cluster."
     "default_cluster_autoscaler_v2.is_autoscaling_enabled"
 )
 

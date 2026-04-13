@@ -9,7 +9,7 @@ import pytest
 
 import ray
 from ray.data import Schema
-from ray.data._internal.util import _check_pyarrow_version
+from ray.data._internal.utils.util import _check_pyarrow_version
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
@@ -82,7 +82,7 @@ def test_nowarning_execute_with_cpu(ray_start_cluster):
     ray.shutdown()
     ray.init(ray_start_cluster.address)
 
-    logger = logging.getLogger("ray.data._internal.plan")
+    logger = logging.getLogger("ray.data._internal.planner.plan")
     with patch.object(
         logger,
         "warning",

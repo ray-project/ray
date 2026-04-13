@@ -91,7 +91,7 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
 
     @cached_property
     def _autoscaling_coordinator(self):
-        from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+        from ray.data._internal.autoscaling.cluster.default_autoscaling_coordinator import (
             get_or_create_autoscaling_coordinator,
         )
 
@@ -113,7 +113,7 @@ class ScalingPolicy(abc.ABC, ControllerCallback):
         resources_per_worker = self.scaling_config._resources_per_worker_not_none
         num_workers = self._get_num_workers_for_resource_request()
         try:
-            from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+            from ray.data._internal.autoscaling.cluster.default_autoscaling_coordinator import (
                 ResourceRequestPriority,
             )
 

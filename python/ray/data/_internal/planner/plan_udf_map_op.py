@@ -28,18 +28,10 @@ import pyarrow as pa
 
 import ray
 from ray._common.utils import env_integer, get_or_create_event_loop
-from ray.data._internal.compute import ActorPoolStrategy, ComputeStrategy, get_compute
+from ray.data._internal.blocks.numpy_support import _is_valid_column_values
+from ray.data._internal.blocks.output_buffer import OutputBlockSizeOption
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.map_transformer import (
-    BatchMapTransformFn,
-    BlockMapTransformFn,
-    MapTransformCallable,
-    MapTransformer,
-    Row,
-    RowMapTransformFn,
-)
 from ray.data._internal.execution.util import make_callable_class_single_threaded
 from ray.data._internal.logical.operators import (
     AbstractUDFMap,
@@ -50,10 +42,21 @@ from ray.data._internal.logical.operators import (
     Project,
     StreamingRepartition,
 )
-from ray.data._internal.numpy_support import _is_valid_column_values
-from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
-from ray.data._internal.util import _truncated_repr
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.map_transformer import (
+    BatchMapTransformFn,
+    BlockMapTransformFn,
+    MapTransformCallable,
+    MapTransformer,
+    Row,
+    RowMapTransformFn,
+)
+from ray.data._internal.public_api.compute import ActorPoolStrategy, ComputeStrategy
+from ray.data._internal.utils.compute import get_compute
+from ray.data._internal.utils.streaming_repartition import (
+    StreamingRepartitionRefBundler,
+)
+from ray.data._internal.utils.util import _truncated_repr
 from ray.data.block import (
     Block,
     BlockAccessor,

@@ -7,8 +7,8 @@ import pytest
 from typing_extensions import Hashable
 
 import ray
-from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.execution.interfaces import ExecutionResources
+from ray.data._internal.io.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators import Read
@@ -17,14 +17,14 @@ from ray.data._internal.logical.util import (
     _recorded_operators,
     _recorded_operators_lock,
 )
-from ray.data._internal.memory_tracing import (
+from ray.data._internal.observability.memory_tracing import (
     leak_report,
     trace_allocation,
     trace_deallocation,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
-from ray.data._internal.util import (
+from ray.data._internal.utils.remote_fn import _make_hashable, cached_remote_fn
+from ray.data._internal.utils.util import (
     NULL_SENTINEL,
     find_partition_index,
     get_max_task_capacity,

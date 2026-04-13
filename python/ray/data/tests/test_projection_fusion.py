@@ -14,7 +14,7 @@ from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules import (
     ProjectionPushdown,
 )
-from ray.data._internal.util import rows_same
+from ray.data._internal.utils.util import rows_same
 from ray.data.context import DataContext
 from ray.data.expressions import DataType, StarExpr, col, star, udf
 

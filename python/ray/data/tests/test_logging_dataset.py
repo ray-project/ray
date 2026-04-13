@@ -5,7 +5,7 @@ import time
 import pytest
 
 import ray
-from ray.data._internal.logging import get_log_directory, reset_logging
+from ray.data._internal.observability.logging import get_log_directory, reset_logging
 from ray.tests.conftest import *  # noqa
 
 

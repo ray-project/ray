@@ -8,7 +8,7 @@ import pytest
 from pyarrow import parquet as pq
 
 import ray
-from ray.data._internal.util import GiB, MiB
+from ray.data._internal.utils.util import GiB, MiB
 from ray.data.context import DataContext
 from ray.tests.conftest import _ray_start
 

@@ -9,9 +9,9 @@ from ray.data._internal.planner.exchange.interfaces import (
     ExchangeTaskScheduler,
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.split import _split_at_indices
-from ray.data._internal.util import unzip
+from ray.data._internal.utils.remote_fn import cached_remote_fn
+from ray.data._internal.utils.split import _split_at_indices
+from ray.data._internal.utils.util import unzip
 from ray.data.block import (
     Block,
     BlockMetadata,
@@ -110,8 +110,8 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
         if len(reduce_block_refs) < output_num_blocks:
             import pyarrow as pa
 
-            from ray.data._internal.arrow_block import ArrowBlockBuilder
-            from ray.data._internal.pandas_block import (
+            from ray.data._internal.blocks.arrow_block import ArrowBlockBuilder
+            from ray.data._internal.blocks.pandas_block import (
                 PandasBlockBuilder,
                 PandasBlockSchema,
             )

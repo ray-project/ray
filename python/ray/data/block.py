@@ -23,7 +23,7 @@ import numpy as np
 import pyarrow as pa
 
 import ray
-from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
+from ray.data._internal.utils.util import _check_pyarrow_version, _truncated_repr
 from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util import log_once
@@ -34,8 +34,8 @@ if TYPE_CHECKING:
     import pandas
     import pyarrow
 
-    from ray.data._internal.block_builder import BlockBuilder
-    from ray.data._internal.pandas_block import PandasBlockSchema
+    from ray.data._internal.blocks.block_builder import BlockBuilder
+    from ray.data._internal.blocks.pandas_block import PandasBlockSchema
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.aggregate import AggregateFn
 
@@ -148,7 +148,7 @@ def _is_cudf_dataframe(obj: Any) -> bool:
 
 
 def _is_empty_schema(schema: Optional[Schema]) -> bool:
-    from ray.data._internal.pandas_block import PandasBlockSchema
+    from ray.data._internal.blocks.pandas_block import PandasBlockSchema
 
     return schema is None or (
         not schema.names
@@ -550,7 +550,7 @@ class BlockAccessor:
 
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
-                from ray.data._internal.tensor_extensions.arrow import (
+                from ray.data._internal.blocks.tensor_extensions.arrow import (
                     ArrowConversionError,
                 )
 
@@ -576,14 +576,14 @@ class BlockAccessor:
     @classmethod
     def batch_to_arrow_block(cls, batch: Dict[str, Any]) -> Block:
         """Create an Arrow block from user-facing data formats."""
-        from ray.data._internal.arrow_block import ArrowBlockBuilder
+        from ray.data._internal.blocks.arrow_block import ArrowBlockBuilder
 
         return ArrowBlockBuilder._table_from_pydict(batch)
 
     @classmethod
     def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:
         """Create a Pandas block from user-facing data formats."""
-        from ray.data._internal.pandas_block import PandasBlockBuilder
+        from ray.data._internal.blocks.pandas_block import PandasBlockBuilder
 
         return PandasBlockBuilder._table_from_pydict(batch)
 
@@ -595,15 +595,15 @@ class BlockAccessor:
         import pyarrow
 
         if isinstance(block, (pyarrow.Table, pyarrow.RecordBatch)):
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
+            from ray.data._internal.blocks.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor(block)
         elif isinstance(block, pandas.DataFrame):
-            from ray.data._internal.pandas_block import PandasBlockAccessor
+            from ray.data._internal.blocks.pandas_block import PandasBlockAccessor
 
             return PandasBlockAccessor(block)
         elif isinstance(block, bytes):
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
+            from ray.data._internal.blocks.arrow_block import ArrowBlockAccessor
 
             return ArrowBlockAccessor.from_bytes(block)
         elif isinstance(block, list):
@@ -864,11 +864,11 @@ class BlockColumnAccessor:
         import pandas as pd
 
         if isinstance(col, pa.Array) or isinstance(col, pa.ChunkedArray):
-            from ray.data._internal.arrow_block import ArrowBlockColumnAccessor
+            from ray.data._internal.blocks.arrow_block import ArrowBlockColumnAccessor
 
             return ArrowBlockColumnAccessor(col)
         elif isinstance(col, pd.Series):
-            from ray.data._internal.pandas_block import PandasBlockColumnAccessor
+            from ray.data._internal.blocks.pandas_block import PandasBlockColumnAccessor
 
             return PandasBlockColumnAccessor(col)
         else:

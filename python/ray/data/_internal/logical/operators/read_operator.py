@@ -3,13 +3,13 @@ import functools
 import math
 from typing import Any, Dict, Optional, Union
 
-from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperatorSupportsPredicatePushdown,
     LogicalOperatorSupportsProjectionPushdown,
     SourceOperator,
 )
 from ray.data._internal.logical.operators.map_operator import AbstractMap
+from ray.data._internal.public_api.compute import ComputeStrategy
 from ray.data.block import (
     BlockMetadata,
     BlockMetadataWithSchema,
@@ -167,7 +167,7 @@ class Read(
         schemas = [
             read_task.schema for read_task in read_tasks if read_task.schema is not None
         ]
-        from ray.data._internal.util import unify_schemas_with_validation
+        from ray.data._internal.utils.util import unify_schemas_with_validation
 
         schema = None
         if schemas:

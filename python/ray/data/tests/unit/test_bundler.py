@@ -5,7 +5,9 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
-from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
+from ray.data._internal.utils.streaming_repartition import (
+    StreamingRepartitionRefBundler,
+)
 from ray.data.block import BlockAccessor
 
 

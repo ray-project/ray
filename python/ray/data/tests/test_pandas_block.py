@@ -10,13 +10,13 @@ from packaging.version import parse as parse_version
 
 import ray
 import ray.data
-from ray.data._internal.pandas_block import (
+from ray.data._internal.blocks.pandas_block import (
     PandasBlockAccessor,
     PandasBlockBuilder,
     PandasBlockColumnAccessor,
 )
-from ray.data._internal.util import is_null
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.util import is_null
 from ray.data.context import DataContext
 
 # Set seed for the test for size as it related to sampling
@@ -490,7 +490,7 @@ def test_empty_dataframe_with_object_columns(ray_start_regular_shared):
     block_accessor = PandasBlockAccessor.for_block(block)
 
     # Check that NO warning is logged after calling size_bytes
-    with patch("ray.data._internal.pandas_block.logger.warning") as mock_warning:
+    with patch("ray.data._internal.blocks.pandas_block.logger.warning") as mock_warning:
         bytes_size = block_accessor.size_bytes()
         mock_warning.assert_not_called()
 

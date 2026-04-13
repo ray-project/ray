@@ -1,7 +1,7 @@
 import logging
 from typing import Callable
 
-from ray.data._internal.logging import get_log_directory
+from ray.data._internal.observability.logging import get_log_directory
 from ray.data.context import DataContext
 from ray.exceptions import UserCodeException
 from ray.util import log_once

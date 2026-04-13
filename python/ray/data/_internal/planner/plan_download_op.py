@@ -3,18 +3,17 @@ from typing import Iterator, List, Optional
 
 import pyarrow as pa
 
-from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.blocks.output_buffer import OutputBlockSizeOption
 from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
+from ray.data._internal.logical.operators import Download
+from ray.data._internal.physical.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.map_transformer import (
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.logical.operators import Download
-from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner._obstore_download import (
     OBSTORE_AVAILABLE,
     _log_fallback_warning,
@@ -25,7 +24,8 @@ from ray.data._internal.planner.download_partition_actor import (
     AsyncPartitionActor,
     PartitionActor,
 )
-from ray.data._internal.util import (
+from ray.data._internal.public_api.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.utils.util import (
     RetryingPyFileSystem,
     _iter_arrow_table_for_target_max_block_size,
     make_async_gen,

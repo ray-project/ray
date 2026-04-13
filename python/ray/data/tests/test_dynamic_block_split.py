@@ -10,8 +10,8 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.arrow_block import ArrowBlockBuilder
-from ray.data._internal.datasource.csv_datasource import CSVDatasource
+from ray.data._internal.blocks.arrow_block import ArrowBlockBuilder
+from ray.data._internal.io.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockMetadata
 from ray.data.dataset import Dataset
 from ray.data.datasource import Datasource
@@ -174,7 +174,7 @@ def test_dataset(
     ctx.target_max_block_size = 1024 * 1024
 
     if compute == "tasks":
-        compute = ray.data._internal.compute.TaskPoolStrategy()
+        compute = ray.data._internal.utils.compute.TaskPoolStrategy()
         identity_func = identity_fn
         empty_func = empty_fn
         func_name = "identity_fn"

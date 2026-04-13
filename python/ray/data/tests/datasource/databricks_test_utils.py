@@ -3,7 +3,7 @@
 from dataclasses import dataclass, field
 from typing import Optional
 
-from ray.data._internal.datasource.databricks_credentials import (
+from ray.data._internal.io.datasource.databricks_credentials import (
     DatabricksCredentialProvider,
 )
 

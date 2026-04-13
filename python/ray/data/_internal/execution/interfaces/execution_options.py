@@ -3,8 +3,8 @@ import os
 import warnings
 from typing import Any, Dict, List, Optional, Union
 
-from .common import NodeIdStr
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.observability.common import NodeIdStr
 from ray.util.annotations import DeveloperAPI
 
 

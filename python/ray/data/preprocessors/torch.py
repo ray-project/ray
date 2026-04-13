@@ -2,7 +2,9 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, 
 
 import numpy as np
 
-from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
+from ray.data._internal.blocks.tensor_extensions.utils import (
+    _create_possibly_ragged_ndarray,
+)
 from ray.data.preprocessor import SerializablePreprocessorBase
 from ray.data.preprocessors.utils import _Computed, _PublicField, migrate_private_fields
 from ray.data.preprocessors.version_support import SerializablePreprocessor

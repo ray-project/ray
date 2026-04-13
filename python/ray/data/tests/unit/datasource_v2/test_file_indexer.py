@@ -4,10 +4,10 @@ import pyarrow as pa
 import pytest
 from pyarrow.fs import LocalFileSystem
 
-from ray.data._internal.datasource_v2.listing.file_indexer import (
+from ray.data._internal.io.datasource_v2.listing.file_indexer import (
     NonSamplingFileIndexer,
 )
-from ray.data._internal.datasource_v2.listing.file_pruners import FileExtensionPruner
+from ray.data._internal.io.datasource_v2.listing.file_pruners import FileExtensionPruner
 
 
 def _list_all(indexer, paths, **kwargs):

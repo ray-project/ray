@@ -3,7 +3,7 @@ from dataclasses import astuple, dataclass
 import pytest
 
 import ray
-from ray.data._internal.util import _autodetect_parallelism
+from ray.data._internal.utils.util import _autodetect_parallelism
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy

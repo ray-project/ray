@@ -7,17 +7,17 @@ import pytest
 from packaging.version import parse as parse_version
 
 from ray.data import DataContext
-from ray.data._internal.execution.util import memory_string
-from ray.data._internal.tensor_extensions.arrow import (
+from ray.data._internal.blocks.tensor_extensions.arrow import (
     ArrowConversionError,
     ArrowTensorArray,
     _convert_to_pyarrow_native_array,
     _infer_pyarrow_type,
     convert_to_pyarrow_array,
 )
-from ray.data._internal.tensor_extensions.utils import create_ragged_ndarray
-from ray.data._internal.util import MiB
+from ray.data._internal.blocks.tensor_extensions.utils import create_ragged_ndarray
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.utils.util import MiB
 from ray.tests.conftest import *  # noqa
 
 import psutil

@@ -2,12 +2,12 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, TypeVar, Union
 
 import numpy as np
 
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.blocks.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.blocks.table_block import TableBlockAccessor
+from ray.data._internal.observability.progress.progress_bar import ProgressBar
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
-from ray.data._internal.progress.progress_bar import ProgressBar
-from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data._internal.table_block import TableBlockAccessor
-from ray.data._internal.util import NULL_SENTINEL
+from ray.data._internal.utils.remote_fn import cached_remote_fn
+from ray.data._internal.utils.util import NULL_SENTINEL
 from ray.data.block import Block, BlockAccessor, BlockExecStats
 from ray.types import ObjectRef
 

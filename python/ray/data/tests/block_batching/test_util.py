@@ -10,8 +10,8 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.block_batching.interfaces import Batch, BatchMetadata
-from ray.data._internal.block_batching.util import (
+from ray.data._internal.iteration.batching.interfaces import Batch, BatchMetadata
+from ray.data._internal.iteration.batching.util import (
     _calculate_ref_hits,
     blocks_to_batches,
     collate,
@@ -19,7 +19,7 @@ from ray.data._internal.block_batching.util import (
     format_batches,
     resolve_block_refs,
 )
-from ray.data._internal.util import make_async_gen
+from ray.data._internal.utils.util import make_async_gen
 
 logger = logging.getLogger(__file__)
 

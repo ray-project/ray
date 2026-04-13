@@ -8,17 +8,6 @@ if TYPE_CHECKING:
 from ray import ObjectRef
 from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.operators.aggregate_num_rows import (
-    AggregateNumRows,
-)
-from ray.data._internal.execution.operators.input_data_buffer import (
-    InputDataBuffer,
-)
-from ray.data._internal.execution.operators.join import JoinOperator
-from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.output_splitter import OutputSplitter
-from ray.data._internal.execution.operators.union_operator import UnionOperator
-from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalPlan,
@@ -42,6 +31,17 @@ from ray.data._internal.logical.operators import (
     Write,
     Zip,
 )
+from ray.data._internal.physical.aggregate_num_rows import (
+    AggregateNumRows,
+)
+from ray.data._internal.physical.input_data_buffer import (
+    InputDataBuffer,
+)
+from ray.data._internal.physical.join import JoinOperator
+from ray.data._internal.physical.limit_operator import LimitOperator
+from ray.data._internal.physical.output_splitter import OutputSplitter
+from ray.data._internal.physical.union_operator import UnionOperator
+from ray.data._internal.physical.zip_operator import ZipOperator
 from ray.data._internal.planner.checkpoint import (
     plan_read_op_with_checkpoint_filter,
     plan_write_op_with_checkpoint_writer,

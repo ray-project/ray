@@ -12,15 +12,16 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
-from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.split import (
+from ray.data._internal.observability.stats import DatasetStats
+from ray.data._internal.planner.plan import ExecutionPlan
+from ray.data._internal.utils.equalize import _equalize
+from ray.data._internal.utils.split import (
     _drop_empty_block_split,
     _generate_global_split_results,
     _generate_per_block_split_indices,
@@ -28,7 +29,6 @@ from ray.data._internal.split import (
     _split_at_indices,
     _split_single_block,
 )
-from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset

@@ -4,18 +4,18 @@ from typing import Iterable, List
 
 import ray
 from ray import ObjectRef
+from ray.data._internal.blocks.output_buffer import OutputBlockSizeOption
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.map_transformer import (
+from ray.data._internal.execution.util import memory_string
+from ray.data._internal.logical.operators import Read
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
-from ray.data._internal.execution.util import memory_string
-from ray.data._internal.logical.operators import Read
-from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.util import _warn_on_high_parallelism
+from ray.data._internal.utils.util import _warn_on_high_parallelism
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource.datasource import ReadTask

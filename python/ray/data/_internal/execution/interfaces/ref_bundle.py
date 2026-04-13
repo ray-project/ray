@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 import ray
-from .common import NodeIdStr
-from ray.data._internal.memory_tracing import trace_deallocation
+from ray.data._internal.observability.common import NodeIdStr
+from ray.data._internal.observability.memory_tracing import trace_deallocation
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -81,7 +81,7 @@ class RefBundle:
         if self.schema is not None:
             import pyarrow as pa
 
-            from ray.data._internal.pandas_block import PandasBlockSchema
+            from ray.data._internal.blocks.pandas_block import PandasBlockSchema
 
             assert isinstance(
                 self.schema, (pa.lib.Schema, PandasBlockSchema)

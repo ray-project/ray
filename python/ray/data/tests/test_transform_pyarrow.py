@@ -6,10 +6,10 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.arrow_ops.transform_pyarrow import (
+from ray.data._internal.blocks.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
-from ray.data._internal.tensor_extensions.arrow import (
+from ray.data._internal.blocks.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     FixedShapeTensorFormat,
 )

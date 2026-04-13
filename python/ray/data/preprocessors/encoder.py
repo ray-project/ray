@@ -20,7 +20,7 @@ import pandas.api.types
 import pyarrow as pa
 import pyarrow.compute as pc
 
-from ray.data._internal.util import is_null
+from ray.data._internal.utils.util import is_null
 from ray.data.block import BlockAccessor
 from ray.data.preprocessor import (
     Preprocessor,

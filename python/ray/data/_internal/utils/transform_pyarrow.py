@@ -35,7 +35,7 @@ def _concatenate_extension_column(
     Returns:
         Array: the concatenate extension column.
     """
-    from ray.data._internal.tensor_extensions.arrow import (
+    from ray.data._internal.blocks.tensor_extensions.arrow import (
         concat_tensor_arrays,
         get_arrow_extension_tensor_types,
     )

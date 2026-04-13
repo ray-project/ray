@@ -79,7 +79,7 @@ def test_vllm_engine_processor(
     assert "env_vars" in runtime_env
     assert runtime_env["env_vars"]["RANDOM_ENV_VAR"] == "12345"
     compute = stage.map_batches_kwargs.pop("compute")
-    assert isinstance(compute, ray.data._internal.compute.ActorPoolStrategy)
+    assert isinstance(compute, ray.data._internal.utils.compute.ActorPoolStrategy)
 
     if expected_distributed_executor_backend == "ray":
         ray_remote_args_fn = stage.map_batches_kwargs.pop("ray_remote_args_fn")

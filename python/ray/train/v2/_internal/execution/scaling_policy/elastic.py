@@ -21,7 +21,7 @@ from ray.train.v2.api.config import ScalingConfig
 logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
-    from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+    from ray.data._internal.autoscaling.cluster.default_autoscaling_coordinator import (
         ResourceDict,
     )
 

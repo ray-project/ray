@@ -10,33 +10,33 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
-from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
-from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
-from ray.data._internal.execution.bundle_queue import (
+from ray.data._internal.autoscaling.actor.autoscaling_actor_pool import ActorPoolInfo
+from ray.data._internal.bundle_queue import (
     ThreadSafeBundleQueue,
     create_bundle_queue,
 )
+from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
     RefBundle,
 )
-from ray.data._internal.execution.interfaces.physical_operator import (
-    DataOpTask,
-    MetadataOpTask,
-    OpTask,
-    Waitable,
-)
-from ray.data._internal.execution.operators.base_physical_operator import (
-    InternalQueueOperatorMixin,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.ranker import Ranker
 from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.util import (
+from ray.data._internal.physical.base_physical_operator import (
+    InternalQueueOperatorMixin,
+)
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.physical_operator import (
+    DataOpTask,
+    MetadataOpTask,
+    OpTask,
+    Waitable,
+)
+from ray.data._internal.utils.util import (
     unify_schemas_with_validation,
 )
 

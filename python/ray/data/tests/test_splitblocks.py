@@ -3,7 +3,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.execution.operators.map_operator import (
+from ray.data._internal.physical.map_operator import (
     _split_blocks,
     _splitrange,
 )

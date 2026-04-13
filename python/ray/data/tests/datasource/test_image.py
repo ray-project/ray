@@ -8,12 +8,12 @@ from fsspec.implementations.local import LocalFileSystem
 from PIL import Image
 
 import ray
-from ray.data._internal.datasource.image_datasource import (
+from ray.data._internal.blocks.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
+)
+from ray.data._internal.io.datasource.image_datasource import (
     ImageDatasource,
     ImageFileMetadataProvider,
-)
-from ray.data._internal.tensor_extensions.arrow import (
-    get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -31,7 +31,7 @@ class TestReadImages:
     @pytest.mark.parametrize("num_threads", [-1, 0, 1, 2, 4])
     def test_multi_threading(self, ray_start_regular_shared, num_threads, monkeypatch):
         monkeypatch.setattr(
-            ray.data._internal.datasource.image_datasource.ImageDatasource,
+            ray.data._internal.io.datasource.image_datasource.ImageDatasource,
             "_NUM_THREADS_PER_TASK",
             num_threads,
         )

@@ -8,17 +8,17 @@ import pytest
 
 import ray
 from ray.data import ExecutionResources
-from ray.data._internal.actor_autoscaler import (
+from ray.data._internal.autoscaling.actor import (
     ActorPoolScalingRequest,
     DefaultActorAutoscaler,
 )
-from ray.data._internal.cluster_autoscaler import DefaultClusterAutoscaler
-from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
-from ray.data._internal.execution.operators.base_physical_operator import (
-    InternalQueueOperatorMixin,
-)
+from ray.data._internal.autoscaling.cluster import DefaultClusterAutoscaler
 from ray.data._internal.execution.resource_manager import ResourceManager
 from ray.data._internal.execution.streaming_executor_state import OpState
+from ray.data._internal.physical.actor_pool_map_operator import _ActorPool
+from ray.data._internal.physical.base_physical_operator import (
+    InternalQueueOperatorMixin,
+)
 from ray.data.context import (
     AutoscalingConfig,
 )
@@ -679,7 +679,7 @@ def test_autoscaling_config_validation_warnings(
     #   - max_tasks_in_flight / max_concurrency == 1
     #   - Default upscaling threshold (200%)
     with patch(
-        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+        "ray.data._internal.autoscaling.actor.default_actor_autoscaler.logger.warning"
     ) as mock_warning:
         ds = ray.data.range(2, override_num_blocks=2).map_batches(
             SimpleMapper,
@@ -707,7 +707,7 @@ def test_autoscaling_config_validation_warnings(
     #   - max_tasks_in_flight / max_concurrency == 2 (default)
     #   - Default upscaling threshold (200%)
     with patch(
-        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+        "ray.data._internal.autoscaling.actor.default_actor_autoscaler.logger.warning"
     ) as mock_warning:
         ds = ray.data.range(2, override_num_blocks=2).map_batches(
             SimpleMapper,
@@ -731,7 +731,7 @@ def test_autoscaling_config_validation_warnings(
     #   - max_tasks_in_flight / max_concurrency == 4 (default)
     #   - Default upscaling threshold (200%)
     with patch(
-        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+        "ray.data._internal.autoscaling.actor.default_actor_autoscaler.logger.warning"
     ) as mock_warning:
         ds = ray.data.range(2, override_num_blocks=2).map_batches(
             SimpleMapper, compute=ray.data.ActorPoolStrategy()
@@ -753,7 +753,7 @@ def test_autoscaling_config_validation_warnings(
     #   - Even though config would normally trigger warning, fixed-size pools
     #     don't scale up by design, so warning should not be emitted
     with patch(
-        "ray.data._internal.actor_autoscaler.default_actor_autoscaler.logger.warning"
+        "ray.data._internal.autoscaling.actor.default_actor_autoscaler.logger.warning"
     ) as mock_warning:
         ds = ray.data.range(2, override_num_blocks=2).map_batches(
             SimpleMapper,

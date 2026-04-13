@@ -4,7 +4,7 @@ import pytest
 
 import ray
 from ray.cluster_utils import Cluster
-from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+from ray.data._internal.autoscaling.cluster.default_autoscaling_coordinator import (
     HEAD_NODE_RESOURCE_LABEL,
     DefaultAutoscalingCoordinator,
     _AutoscalingCoordinatorActor,

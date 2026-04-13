@@ -8,16 +8,16 @@ from .downstream_capacity_backpressure_policy import (
     get_available_object_store_budget_fraction,
 )
 from ray._common.utils import env_float
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.task_pool_map_operator import (
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces.physical_operator import (
+    from ray.data._internal.physical.map_operator import MapOperator
+    from ray.data._internal.physical.physical_operator import (
         PhysicalOperator,
     )
-    from ray.data._internal.execution.operators.map_operator import MapOperator
 
 logger = logging.getLogger(__name__)
 

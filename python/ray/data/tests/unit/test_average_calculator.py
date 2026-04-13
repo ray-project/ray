@@ -2,7 +2,9 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.data._internal.average_calculator import TimeWindowAverageCalculator
+from ray.data._internal.observability.average_calculator import (
+    TimeWindowAverageCalculator,
+)
 
 
 @pytest.fixture

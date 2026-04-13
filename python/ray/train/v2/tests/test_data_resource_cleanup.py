@@ -5,10 +5,10 @@ from unittest.mock import MagicMock, create_autospec
 import pytest
 
 import ray
-from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator import (
+from ray.data._internal.autoscaling.cluster.default_autoscaling_coordinator import (
     get_or_create_autoscaling_coordinator,
 )
-from ray.data._internal.iterator.stream_split_iterator import (
+from ray.data._internal.iteration.stream_split_iterator import (
     SplitCoordinator,
 )
 from ray.train.v2._internal.callbacks.datasets import DatasetsCallback

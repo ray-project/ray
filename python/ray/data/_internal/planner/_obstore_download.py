@@ -9,7 +9,7 @@ if TYPE_CHECKING:
 import pyarrow as pa
 import pyarrow.fs
 
-from ray.data._internal.util import (
+from ray.data._internal.utils.util import (
     RetryingPyFileSystem,
     _iter_arrow_table_for_target_max_block_size,
 )

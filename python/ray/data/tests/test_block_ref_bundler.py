@@ -6,8 +6,8 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.execution.operators.map_operator import BlockRefBundler
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.physical.map_operator import BlockRefBundler
 from ray.data.block import BlockAccessor
 from ray.tests.conftest import *  # noqa
 

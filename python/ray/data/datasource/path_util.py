@@ -4,7 +4,7 @@ import sys
 from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 from urllib.parse import quote, unquote, urlparse
 
-from ray.data._internal.util import (
+from ray.data._internal.utils.util import (
     RetryingPyFileSystem,
     _normalize_paths_to_strings,
     _resolve_custom_scheme,
@@ -186,7 +186,7 @@ def _is_filesystem_compatible_with_scheme(
         return True
 
     # Unwrap RetryingPyFileSystem to get the underlying filesystem's type
-    from ray.data._internal.util import RetryingPyFileSystem
+    from ray.data._internal.utils.util import RetryingPyFileSystem
 
     unwrapped = (
         filesystem.unwrap()

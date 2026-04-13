@@ -5,13 +5,13 @@ from typing import Optional
 import pyarrow as pa
 import pytest
 
+from ray.data._internal.blocks.pandas_block import PandasBlockSchema
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     _build_schemas_mismatch_warning,
     dedupe_schemas_with_validation,
 )
-from ray.data._internal.pandas_block import PandasBlockSchema
 from ray.data.block import Schema, _is_empty_schema
 
 

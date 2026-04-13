@@ -7,24 +7,24 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray.data._internal.compute import ActorPoolStrategy, TaskPoolStrategy
+from ray.data._internal.blocks.output_buffer import OutputBlockSizeOption
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
 )
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
+from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.observability.stats import Timer
+from ray.data._internal.physical.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import (
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.map_operator import (
     MapOperator,
 )
-from ray.data._internal.execution.operators.task_pool_map_operator import (
+from ray.data._internal.physical.task_pool_map_operator import (
     TaskPoolMapOperator,
 )
-from ray.data._internal.execution.util import make_ref_bundles
-from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.stats import Timer
+from ray.data._internal.public_api.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data.block import Block
 from ray.data.context import (
     DataContext,

@@ -8,7 +8,8 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
 )
-from ray.data._internal.execution.operators.map_transformer import MapTransformer
+from ray.data._internal.observability.stats import StatsDict
+from ray.data._internal.physical.map_transformer import MapTransformer
 from ray.data._internal.planner.exchange.pull_based_shuffle_task_scheduler import (
     PullBasedShuffleTaskScheduler,
 )
@@ -19,7 +20,6 @@ from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpe
 from ray.data._internal.planner.exchange.split_repartition_task_scheduler import (
     SplitRepartitionTaskScheduler,
 )
-from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext, ShuffleStrategy
 
 

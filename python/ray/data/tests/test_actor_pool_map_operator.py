@@ -27,8 +27,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 from ray.data._internal.actor_autoscaler.default_actor_autoscaler import (
     _estimate_total_available_task_slots,
 )
-from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.bundle_queue import HashLinkedQueue
+from ray.data._internal.bundle_queue import HashLinkedQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -36,21 +35,22 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    _ActorPool,
-    _MapWorker,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.map_transformer import (
-    BlockMapTransformFn,
-    MapTransformer,
-)
 from ray.data._internal.execution.streaming_executor_state import (
     build_streaming_topology,
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data._internal.physical.actor_pool_map_operator import (
+    _ActorPool,
+    _MapWorker,
+)
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.map_transformer import (
+    BlockMapTransformFn,
+    MapTransformer,
+)
+from ray.data._internal.public_api.compute import ActorPoolStrategy
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import (
     DEFAULT_ACTOR_MAX_TASKS_IN_FLIGHT_TO_MAX_CONCURRENCY_FACTOR,
@@ -782,7 +782,7 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
     caplog, propagate_logs, ray_start_regular_shared
 ):
     """Test that scale-up and scale-down debug logs include the map worker class name."""
-    logger_name = "ray.data._internal.execution.operators.actor_pool_map_operator"
+    logger_name = "ray.data._internal.physical.actor_pool_map_operator"
 
     def create_actor_fn(
         labels: Dict[str, Any],

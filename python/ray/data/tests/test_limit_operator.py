@@ -6,12 +6,12 @@ import pytest
 
 import ray
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.limit_operator import LimitOperator
-from ray.data._internal.execution.operators.map_operator import _per_block_limit_fn
 from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.limit_operator import LimitOperator
+from ray.data._internal.physical.map_operator import _per_block_limit_fn
 from ray.data.context import DataContext
 from ray.data.tests.util import run_op_tasks_sync
 from ray.tests.conftest import *  # noqa

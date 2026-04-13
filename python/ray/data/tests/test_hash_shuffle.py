@@ -6,12 +6,12 @@ import pytest
 
 from ray.data import DataContext, ExecutionResources
 from ray.data._internal.execution.interfaces import PhysicalOperator
-from ray.data._internal.execution.operators.hash_aggregate import HashAggregateOperator
-from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOperator
-from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.logical.operators import JoinType
-from ray.data._internal.util import GiB, MiB
+from ray.data._internal.physical.hash_aggregate import HashAggregateOperator
+from ray.data._internal.physical.hash_shuffle import HashShuffleOperator
+from ray.data._internal.physical.join import JoinOperator
+from ray.data._internal.utils.util import GiB, MiB
 from ray.data.aggregate import Count, Sum
 from ray.data.block import BlockMetadata
 
@@ -213,7 +213,7 @@ def test_join_aggregator_remote_args(
 
     # Patch the total cluster resources
     with patch(
-        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        "ray.data._internal.physical.hash_shuffle.ray.cluster_resources",
         return_value={"CPU": tc.total_cpu, "memory": tc.total_memory},
     ):
         # Create the join operator
@@ -371,7 +371,7 @@ def test_hash_aggregate_operator_remote_args(
 
     # Patch the total cluster resources
     with patch(
-        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        "ray.data._internal.physical.hash_shuffle.ray.cluster_resources",
         return_value={"CPU": tc.total_cpu, "memory": tc.total_memory},
     ):
         # Create the hash aggregate operator
@@ -539,11 +539,11 @@ def test_hash_shuffle_operator_remote_args(
 
     # Patch the total cluster resources
     with patch(
-        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        "ray.data._internal.physical.hash_shuffle.ray.cluster_resources",
         return_value={"CPU": tc.total_cpu, "memory": tc.total_memory},
     ):
         with patch(
-            "ray.data._internal.execution.operators.hash_shuffle._get_total_cluster_resources"
+            "ray.data._internal.physical.hash_shuffle._get_total_cluster_resources"
         ) as mock_resources:
             mock_resources.return_value = ExecutionResources(
                 cpu=tc.total_cpu, memory=tc.total_memory
@@ -589,7 +589,7 @@ def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
 
     # Patch the total cluster resources
     with patch(
-        "ray.data._internal.execution.operators.hash_shuffle.ray.cluster_resources",
+        "ray.data._internal.physical.hash_shuffle.ray.cluster_resources",
         return_value={"CPU": 4.0, "memory": 32 * GiB},
     ):
         # Create operator with partial override (only num_cpus)

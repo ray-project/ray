@@ -2,9 +2,9 @@ import abc
 import copy
 from typing import Any, Dict, Optional
 
-from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.logical.interfaces import Rule
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
+from ray.data._internal.physical.map_operator import MapOperator
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 __all__ = [

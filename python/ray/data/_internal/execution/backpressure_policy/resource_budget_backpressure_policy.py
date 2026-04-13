@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Optional
 from .backpressure_policy import BackpressurePolicy
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces.physical_operator import (
+    from ray.data._internal.physical.physical_operator import (
         PhysicalOperator,
     )
 

@@ -3,8 +3,8 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import ray._private.worker
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.stats import StatsDict
-from ray.data._internal.util import convert_bytes_to_human_readable_str
+from ray.data._internal.observability.stats import StatsDict
+from ray.data._internal.utils.util import convert_bytes_to_human_readable_str
 from ray.data.block import Block, BlockType
 from ray.data.context import DataContext
 from ray.data.util.data_batch_conversion import BatchFormat

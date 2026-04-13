@@ -3,7 +3,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.block_batching.block_batching import batch_blocks
+from ray.data._internal.iteration.batching.block_batching import batch_blocks
 
 
 def block_generator(num_rows: int, num_blocks: int):

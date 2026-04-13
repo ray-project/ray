@@ -11,7 +11,7 @@ from pyarrow.fs import FileSelector, FileType
 
 import ray
 from ray._common.retry import call_with_retry
-from ray.data._internal.arrow_ops import transform_pyarrow
+from ray.data._internal.blocks.arrow_ops import transform_pyarrow
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block, BlockAccessor, BlockMetadata, DataBatch, Schema
 from ray.data.checkpoint import CheckpointConfig
@@ -137,7 +137,7 @@ def _combine_chunks(ckpt_block: pyarrow.Table) -> pyarrow.Table:
     Returns:
         The combined checkpoint block
     """
-    from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunks
+    from ray.data._internal.blocks.arrow_ops.transform_pyarrow import combine_chunks
 
     combined_ckpt_block = combine_chunks(ckpt_block)
     logger.debug(

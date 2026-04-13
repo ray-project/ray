@@ -12,7 +12,7 @@ import pyarrow.parquet as pq
 import pytest
 
 import ray
-from ray.data._internal.arrow_ops.transform_pyarrow import (
+from ray.data._internal.blocks.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version

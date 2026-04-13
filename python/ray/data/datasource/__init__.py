@@ -1,15 +1,15 @@
-from ray.data._internal.datasource.delta_sharing_datasource import (
+from ray.data._internal.io.datasink.turbopuffer_datasink import (
+    TurbopufferDatasink,
+)
+from ray.data._internal.io.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
-from ray.data._internal.datasource.mcap_datasource import (
+from ray.data._internal.io.datasource.mcap_datasource import (
     MCAPDatasource,
     TimeRange,
 )
-from ray.data._internal.datasource.sql_datasource import Connection
-from ray.data._internal.datasource.turbopuffer_datasink import (
-    TurbopufferDatasink,
-)
-from ray.data._internal.savemode import SaveMode
+from ray.data._internal.io.datasource.sql_datasource import Connection
+from ray.data._internal.public_api.savemode import SaveMode
 from ray.data.datasource.datasink import (
     Datasink,
     DummyOutputDatasink,

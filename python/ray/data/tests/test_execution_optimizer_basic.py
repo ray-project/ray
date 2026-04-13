@@ -9,11 +9,6 @@ import ray
 
 if TYPE_CHECKING:
     from ray.data.context import DataContext
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.task_pool_map_operator import (
-    TaskPoolMapOperator,
-)
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
     Filter,
@@ -27,6 +22,11 @@ from ray.data._internal.logical.operators import (
     Project,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
 from ray.data._internal.planner import create_planner
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext

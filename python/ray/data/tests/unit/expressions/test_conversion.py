@@ -29,7 +29,9 @@ from pyiceberg.expressions import (
     literal,
 )
 
-from ray.data._internal.datasource.iceberg_datasource import _IcebergExpressionVisitor
+from ray.data._internal.io.datasource.iceberg_datasource import (
+    _IcebergExpressionVisitor,
+)
 from ray.data.datatype import DataType
 from ray.data.expressions import (
     BinaryExpr,

@@ -1,6 +1,8 @@
 import pyarrow as pa
 
-from ray.data._internal.dataset_repr import _build_dataset_ascii_repr_from_rows
+from ray.data._internal.observability.dataset_repr import (
+    _build_dataset_ascii_repr_from_rows,
+)
 from ray.data.dataset import Schema
 
 

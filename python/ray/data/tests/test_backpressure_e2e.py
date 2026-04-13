@@ -8,7 +8,7 @@ import pytest
 import ray
 from ray._private.internal_api import memory_summary
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.util import MiB
+from ray.data._internal.utils.util import MiB
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource, ReadTask
 from ray.data.tests.conftest import (

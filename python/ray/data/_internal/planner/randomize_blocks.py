@@ -11,7 +11,7 @@ from ray.data._internal.execution.interfaces.transform_fn import (
     AllToAllTransformFnResult,
 )
 from ray.data._internal.logical.operators import RandomizeBlocks
-from ray.data._internal.random_config import get_single_integer_random_seed
+from ray.data._internal.utils.random_config import get_single_integer_random_seed
 from ray.data.context import DataContext
 
 

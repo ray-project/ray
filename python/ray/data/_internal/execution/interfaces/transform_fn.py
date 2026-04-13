@@ -2,7 +2,7 @@ from typing import Callable, List, Tuple
 
 from .ref_bundle import RefBundle
 from .task_context import TaskContext
-from ray.data._internal.stats import StatsDict
+from ray.data._internal.observability.stats import StatsDict
 
 # Result type of AllToAllTransformFn.
 AllToAllTransformFnResult = Tuple[List[RefBundle], StatsDict]

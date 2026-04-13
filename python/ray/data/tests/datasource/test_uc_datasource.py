@@ -4,12 +4,12 @@ from unittest import mock
 
 import pytest
 
-from ray.data._internal.datasource.databricks_credentials import (
+from ray.data._internal.io.datasource.databricks_credentials import (
     StaticCredentialProvider,
     build_headers,
     request_with_401_retry,
 )
-from ray.data._internal.datasource.uc_datasource import (
+from ray.data._internal.io.datasource.uc_datasource import (
     UnityCatalogConnector,
 )
 from ray.data.tests.datasource.databricks_test_utils import (

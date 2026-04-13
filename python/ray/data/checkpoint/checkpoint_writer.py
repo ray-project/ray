@@ -11,7 +11,7 @@ from pyarrow.fs import FileType
 if TYPE_CHECKING:
     import pyarrow
 
-from ray.data._internal.util import call_with_retry
+from ray.data._internal.utils.util import call_with_retry
 from ray.data.block import BlockAccessor
 from ray.data.checkpoint import CheckpointBackend, CheckpointConfig
 from ray.data.context import DataContext

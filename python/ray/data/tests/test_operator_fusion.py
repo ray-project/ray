@@ -5,12 +5,6 @@ import pandas as pd
 import pytest
 
 import ray
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.map_transformer import (
-    BatchMapTransformFn,
-    BlockMapTransformFn,
-)
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
     Filter,
@@ -22,10 +16,16 @@ from ray.data._internal.logical.operators import (
     Read,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
-from ray.data._internal.plan import ExecutionPlan
+from ray.data._internal.observability.stats import DatasetStats
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.map_transformer import (
+    BatchMapTransformFn,
+    BlockMapTransformFn,
+)
 from ray.data._internal.planner import create_planner
-from ray.data._internal.stats import DatasetStats
-from ray.data._internal.util import rows_same
+from ray.data._internal.planner.plan import ExecutionPlan
+from ray.data._internal.utils.util import rows_same
 from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.expressions import star

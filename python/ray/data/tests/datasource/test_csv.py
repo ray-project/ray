@@ -8,7 +8,7 @@ from packaging.version import Version
 
 import ray
 from ray.data import Schema
-from ray.data._internal.util import rows_same
+from ray.data._internal.utils.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa

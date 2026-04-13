@@ -1,13 +1,13 @@
 import warnings
 from typing import Iterable, List, Tuple
 
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data._internal.blocks.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data._internal.execution.operators.map_transformer import (
+from ray.data._internal.logical.operators import Write
+from ray.data._internal.physical.map_transformer import (
     BlockMapTransformFn,
 )
-from ray.data._internal.logical.operators import Write
 from ray.data._internal.planner.plan_write_op import (
     PENDING_CHECKPOINTS_KWARG_NAME,
     WRITE_UUID_KWARG_NAME,

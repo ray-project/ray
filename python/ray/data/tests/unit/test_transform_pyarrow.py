@@ -7,7 +7,7 @@ import pandas as pd
 import pyarrow as pa
 import pytest
 
-from ray.data._internal.arrow_ops.transform_pyarrow import (
+from ray.data._internal.blocks.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
     _align_struct_fields,
     concat,
@@ -16,7 +16,7 @@ from ray.data._internal.arrow_ops.transform_pyarrow import (
     try_combine_chunked_columns,
     unify_schemas,
 )
-from ray.data._internal.tensor_extensions.arrow import (
+from ray.data._internal.blocks.tensor_extensions.arrow import (
     ArrowTensorTypeV2,
     _extension_array_concat_supported,
     create_arrow_fixed_shape_tensor_type,
@@ -2658,7 +2658,7 @@ def struct_variable_shaped_tensor_expected():
 @pytest.fixture
 def unify_schemas_object_types_schemas():
     """Fixture for object types unify schemas test data."""
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data._internal.blocks.object_extensions.arrow import ArrowPythonObjectType
 
     schema1 = pa.schema([("obj_col", ArrowPythonObjectType())])
     schema2 = pa.schema([("obj_col", pa.int32())])
@@ -2684,7 +2684,7 @@ def unify_schemas_incompatible_tensor_schemas():
 @pytest.fixture
 def unify_schemas_objects_and_tensors_schemas():
     """Fixture for objects and tensors unify schemas test data."""
-    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+    from ray.data._internal.blocks.object_extensions.arrow import ArrowPythonObjectType
 
     schema1 = pa.schema([("col", ArrowPythonObjectType())])
     schema2 = pa.schema([("col", ArrowTensorType((2, 2), pa.int32()))])

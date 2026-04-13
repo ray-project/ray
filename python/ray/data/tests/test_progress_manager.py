@@ -4,17 +4,17 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 import ray
-from ray.data._internal.progress import get_progress_manager
-from ray.data._internal.progress.base_progress import (
+from ray.data._internal.observability.progress import get_progress_manager
+from ray.data._internal.observability.progress.base_progress import (
     NoopExecutionProgressManager,
 )
-from ray.data._internal.progress.logging_progress import (
+from ray.data._internal.observability.progress.logging_progress import (
     LoggingExecutionProgressManager,
 )
-from ray.data._internal.progress.rich_progress import (
+from ray.data._internal.observability.progress.rich_progress import (
     RichExecutionProgressManager,
 )
-from ray.data._internal.progress.tqdm_progress import (
+from ray.data._internal.observability.progress.tqdm_progress import (
     TqdmExecutionProgressManager,
 )
 from ray.data.context import DataContext
@@ -47,7 +47,7 @@ class TestGetProgressManager:
 
         assert isinstance(manager, NoopExecutionProgressManager)
 
-    @patch("ray.data._internal.progress.logger")
+    @patch("ray.data._internal.observability.progress.logger")
     def test_operator_progress_disabled_logs_warning(
         self, mock_logger, mock_topology, restore_data_context
     ):
@@ -131,7 +131,7 @@ class TestGetProgressManager:
         assert isinstance(manager, TqdmExecutionProgressManager)
 
     @patch("sys.stdout.isatty", return_value=True)
-    @patch("ray.data._internal.progress.logger")
+    @patch("ray.data._internal.observability.progress.logger")
     def test_rich_import_error_fallback(
         self, mock_logger, mock_isatty, mock_topology, restore_data_context
     ):
@@ -196,7 +196,7 @@ class TestLoggingProgressManager:
         return topology
 
     @patch("sys.stdout.isatty", return_value=False)
-    @patch("ray.data._internal.progress.logging_progress.logger")
+    @patch("ray.data._internal.observability.progress.logging_progress.logger")
     def test_logging_progress_manager_properly_logs_per_interval(
         self, mock_logger, mock_isatty, mock_topology, restore_data_context
     ):

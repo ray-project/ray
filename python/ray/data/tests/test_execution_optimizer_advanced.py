@@ -7,18 +7,7 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.compute import TaskPoolStrategy
-from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
-from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
-from ray.data._internal.execution.operators.base_physical_operator import (
-    AllToAllOperator,
-)
-from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
-from ray.data._internal.execution.operators.map_operator import MapOperator
-from ray.data._internal.execution.operators.task_pool_map_operator import (
-    TaskPoolMapOperator,
-)
-from ray.data._internal.execution.operators.zip_operator import ZipOperator
+from ray.data._internal.io.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.physical_plan import PhysicalPlan
 from ray.data._internal.logical.operators import (
@@ -32,10 +21,21 @@ from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.rules import (
     ConfigureMapTaskMemoryUsingOutputSize,
 )
+from ray.data._internal.observability.op_runtime_metrics import OpRuntimeMetrics
+from ray.data._internal.observability.stats import DatasetStats
+from ray.data._internal.physical.base_physical_operator import (
+    AllToAllOperator,
+)
+from ray.data._internal.physical.input_data_buffer import InputDataBuffer
+from ray.data._internal.physical.map_operator import MapOperator
+from ray.data._internal.physical.task_pool_map_operator import (
+    TaskPoolMapOperator,
+)
+from ray.data._internal.physical.zip_operator import ZipOperator
 from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.random_config import RandomSeedConfig
-from ray.data._internal.stats import DatasetStats
+from ray.data._internal.public_api.compute import TaskPoolStrategy
+from ray.data._internal.utils.random_config import RandomSeedConfig
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op

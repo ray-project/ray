@@ -4,11 +4,11 @@ from typing import TYPE_CHECKING, Optional
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
-    from ray.data._internal.execution.interfaces.physical_operator import (
-        PhysicalOperator,
-    )
     from ray.data._internal.execution.resource_manager import ResourceManager
     from ray.data._internal.execution.streaming_executor_state import Topology
+    from ray.data._internal.physical.physical_operator import (
+        PhysicalOperator,
+    )
 
 
 class BackpressurePolicy(ABC):

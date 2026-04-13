@@ -93,7 +93,7 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
         Returns a list of each unique SplitCoordinator actor handle given the iterators per rank.
         These handles will later be used to call shutdown on the actors.
         """
-        from ray.data._internal.iterator.stream_split_iterator import (
+        from ray.data._internal.iteration.stream_split_iterator import (
             StreamSplitDataIterator,
         )
 

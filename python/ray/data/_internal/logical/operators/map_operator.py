@@ -4,13 +4,13 @@ import logging
 from dataclasses import InitVar, dataclass, field, replace
 from typing import Any, Callable, Dict, Iterable, Optional
 
-from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
 from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
+from ray.data._internal.public_api.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data.block import UserDefinedFunction
 from ray.data.expressions import Expr, StarExpr
 from ray.data.preprocessor import Preprocessor
@@ -403,12 +403,12 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
             collector.visit(expr)
             if collector.get_callable_class_udfs():
                 # Found at least one callable class UDF - use actor semantics
-                from ray.data._internal.compute import ActorPoolStrategy
+                from ray.data._internal.public_api.compute import ActorPoolStrategy
 
                 return ActorPoolStrategy(min_size=1, max_size=None)
 
         # No callable class UDFs found - use task-based execution
-        from ray.data._internal.compute import TaskPoolStrategy
+        from ray.data._internal.public_api.compute import TaskPoolStrategy
 
         return TaskPoolStrategy()
 

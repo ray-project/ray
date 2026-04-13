@@ -18,7 +18,7 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey, SortTaskSpec
-from ray.data._internal.util import unify_ref_bundles_schema
+from ray.data._internal.utils.util import unify_ref_bundles_schema
 from ray.data.aggregate import AggregateFn
 from ray.data.context import DataContext, ShuffleStrategy
 
