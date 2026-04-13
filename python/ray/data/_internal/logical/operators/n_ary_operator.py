@@ -54,10 +54,6 @@ class Zip(NAry):
         object.__setattr__(self, "_input_dependencies", list(input_ops))
         object.__setattr__(self, "_num_outputs", None)
 
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
-
     def _apply_transform(
         self, transform: Callable[[LogicalOperator], LogicalOperator]
     ) -> LogicalOperator:
@@ -103,10 +99,6 @@ class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
         object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", list(input_ops))
         object.__setattr__(self, "_num_outputs", None)
-
-    @property
-    def num_outputs(self) -> Optional[int]:
-        return self._num_outputs
 
     def _apply_transform(
         self, transform: Callable[[LogicalOperator], LogicalOperator]
