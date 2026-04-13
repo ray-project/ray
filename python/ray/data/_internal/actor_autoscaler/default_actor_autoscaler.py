@@ -76,6 +76,28 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 reason="pool exceeding max size",
             )
 
+        # If the actor pool exceeds the resource allocation, scale down
+        # regardless of the actor pool utilization.
+        budget = self._resource_manager.get_budget(op)
+        if budget is not None:
+            over_budget_scale_down = _get_required_scale_down(actor_pool, budget)
+            if over_budget_scale_down > 0:
+                if actor_pool.num_pending_actors() > 0:
+                    return ActorPoolScalingRequest.no_op(
+                        reason="no downscaling while actors are pending"
+                    )
+                max_can_release = actor_pool.current_size() - actor_pool.min_size()
+                num_to_scale_down = min(over_budget_scale_down, max_can_release)
+                if num_to_scale_down > 0:
+                    return ActorPoolScalingRequest.downscale(
+                        delta=-num_to_scale_down,
+                        reason="actor pool exceeds resource allocation",
+                    )
+                return ActorPoolScalingRequest.no_op(
+                    reason="actor pool exceeds resource allocation "
+                    "but cannot scale below min size",
+                )
+
         # To prevent unexpected downscaling from the initial size, short-circuit if
         # the operator hasn't received any inputs.
         if op.metrics.num_inputs_received == 0:
@@ -282,3 +304,32 @@ def _get_max_scale_up(
             num_gpus_per_actor,
         )
         return int(max_scale_up)
+
+
+def _get_required_scale_down(
+    actor_pool: AutoscalingActorPool,
+    budget: ExecutionResources,
+) -> int:
+    """Get the number of actors that must be removed to fit within budget.
+
+    Args:
+        actor_pool: The actor pool to scale down.
+        budget: The remaining budget (allocation - usage). Negative values
+            indicate the operator is over its allocation.
+
+    Returns:
+        The number of actors that need to be removed, or 0 if the pool
+        is within budget.
+    """
+    num_cpus_per_actor = actor_pool.per_actor_resource_usage().cpu
+    num_gpus_per_actor = actor_pool.per_actor_resource_usage().gpu
+
+    required_cpu_scale_down = 0
+    if num_cpus_per_actor > 0 and budget.cpu < 0:
+        required_cpu_scale_down = math.ceil(abs(budget.cpu) / num_cpus_per_actor)
+
+    required_gpu_scale_down = 0
+    if num_gpus_per_actor > 0 and budget.gpu < 0:
+        required_gpu_scale_down = math.ceil(abs(budget.gpu) / num_gpus_per_actor)
+
+    return max(required_cpu_scale_down, required_gpu_scale_down)
