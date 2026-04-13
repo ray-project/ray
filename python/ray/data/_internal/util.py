@@ -1,6 +1,7 @@
 import functools
 import importlib
 import logging
+import math
 import os
 import pathlib
 import platform
@@ -50,6 +51,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.compute import ComputeStrategy
     from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
+    from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import (
         Block,
@@ -181,6 +183,9 @@ def _autodetect_parallelism(
         mem_size = datasource_or_legacy_reader.estimate_inmemory_data_size()
     if (
         mem_size is not None
+        # Guard against non-scalar types (e.g. numpy arrays) that would cause
+        # np.isnan() to raise TypeError in newer numpy versions.
+        and isinstance(mem_size, (int, float))
         and not np.isnan(mem_size)
         and target_max_block_size is not None
     ):
@@ -890,9 +895,15 @@ def find_partition_index(
         col_vals = table[col_name].to_numpy()[left:right]
         desired_val = desired[i]
 
-        # Handle null values - replace them with sentinel values
+        # Nulls sort last in Arrow, so they accumulate at the tail of col_vals.
+        # Stripping them before searching avoids a TypeError from np.searchsorted
+        # on None values — and if desired_val is also None, the answer is simply
+        # the end of the non-null region.
+        col_vals = col_vals[
+            ~pd.isna(col_vals)
+        ]  # remove nulls from the tail of col_vals
         if desired_val is None:
-            desired_val = NULL_SENTINEL
+            return left + len(col_vals)
 
         prevleft = left
         if descending[i] is True:
@@ -1008,6 +1019,36 @@ class _InterruptibleQueue(Queue):
                 return
             except Full:
                 pass
+
+
+def _arrow_batcher(table: "pyarrow.Table", output_batch_size: int):
+    """Batch a PyArrow table into smaller tables of size n using zero-copy slicing."""
+    num_rows = table.num_rows
+    for i in range(0, num_rows, output_batch_size):
+        end_idx = min(i + output_batch_size, num_rows)
+        # Use PyArrow's zero-copy slice operation
+        batch_table = table.slice(i, end_idx - i)
+        yield batch_table
+
+
+def _iter_arrow_table_for_target_max_block_size(
+    table: "pyarrow.Table",
+    target_max_block_size: Optional[int],
+) -> Iterator["pyarrow.Table"]:
+    """Yield *table* as one block, or row-split when it exceeds the byte budget.
+
+    Splits by estimating how many blocks are needed from ``table.nbytes`` vs
+    ``target_max_block_size``, then batches rows evenly via :func:`_arrow_batcher`.
+    Used by download paths so block sizing stays consistent.
+    """
+    output_block_size = table.nbytes
+    max_bytes = target_max_block_size
+    if max_bytes is not None and max_bytes > 0 and output_block_size > max_bytes:
+        num_blocks = math.ceil(output_block_size / max_bytes)
+        num_rows = table.num_rows
+        yield from _arrow_batcher(table, int(math.ceil(num_rows / num_blocks)))
+    else:
+        yield table
 
 
 def make_async_gen(
@@ -1874,3 +1915,33 @@ def get_max_task_capacity(
 
     capacity = allocated_resources.floordiv(min_scheduling_resources)
     return min(capacity.cpu, capacity.gpu, capacity.memory)
+
+
+def explain_plan(logical_plan: "LogicalPlan") -> str:
+    """Return a string representation of the logical and physical plan."""
+    from ray.data._internal.dataset_repr import _format_operator_dag
+    from ray.data._internal.logical.optimizers import (
+        LogicalOptimizer,
+        PhysicalOptimizer,
+    )
+    from ray.data._internal.planner import create_planner
+
+    sections = []
+
+    def _add_section(title, plan):
+        plan_str, _ = _format_operator_dag(plan.dag, show_op_repr=True)
+        banner = f"\n-------- {title} --------\n"
+        sections.append(f"{banner}{plan_str}")
+
+    _add_section("Logical Plan", logical_plan)
+
+    optimized_logical = LogicalOptimizer().optimize(logical_plan)
+    _add_section("Logical Plan (Optimized)", optimized_logical)
+
+    physical_plan, _ = create_planner().plan(optimized_logical)
+    _add_section("Physical Plan", physical_plan)
+
+    optimized_physical = PhysicalOptimizer().optimize(physical_plan)
+    _add_section("Physical Plan (Optimized)", optimized_physical)
+
+    return "".join(sections)
