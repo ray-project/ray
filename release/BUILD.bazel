@@ -692,6 +692,7 @@ py_test(
     srcs = ["ray_release/tests/test_custom_byod_build_init_helper.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
+        "//:ray-images.json",
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
