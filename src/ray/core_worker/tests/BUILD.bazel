@@ -7,7 +7,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/core_worker:core_worker_lib",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
