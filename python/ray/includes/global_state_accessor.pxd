@@ -99,10 +99,11 @@ cdef extern from * namespace "ray::gcs" nogil:
       instrumented_io_context io_service{/*enable_lag_probe=*/false, /*running_on_single_thread=*/true};
       RedisClientOptions options{host, port, username, password, use_ssl};
       Clock clock;
-      RedisStoreClient client(io_service, options, clock);
+      auto client = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<RedisStoreClient>(io_service, options, clock));
 
       bool ret_val = false;
-      client.Get("session", key, {[&](std::optional<std::string> result) {
+      client->Get("session", key, {[&](std::optional<std::string> result) {
         if (result.has_value()) {
           *data = result.value();
           ret_val = true;
