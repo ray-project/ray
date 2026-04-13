@@ -106,7 +106,7 @@ class WorkerInterface {
 
   virtual void ClearLifetimeAllocatedInstances() = 0;
 
-  virtual void GrantLease(RayLease &&granted_lease) = 0;
+  virtual void GrantLease(const RayLease &granted_lease) = 0;
 
   virtual bool IsRegistered() = 0;
 
