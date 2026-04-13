@@ -207,7 +207,7 @@ def prepare_model(
         if isinstance(device, list):
             device = device[0]
 
-    if torch.cuda.is_available():
+    if torch.cuda.is_available() and device.type == "cuda":
         torch.cuda.set_device(device)
 
     if move_to_device:
