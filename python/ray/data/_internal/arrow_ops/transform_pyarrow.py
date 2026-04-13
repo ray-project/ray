@@ -81,10 +81,9 @@ def _hash_partition(
 ) -> np.ndarray:
 
     partitions = np.zeros((table.num_rows,), dtype=np.int64)
-    i = 0
-    for _tuple in zip(*table.columns):
+
+    for i, _tuple in enumerate(zip(*table.columns)):
         partitions[i] = hash(_tuple) % num_partitions
-        i += 1
 
     # Convert to ndarray to compute hash partition indices
     # more efficiently
