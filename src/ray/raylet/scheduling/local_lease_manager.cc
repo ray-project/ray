@@ -1070,11 +1070,8 @@ void LocalLeaseManager::SetWorkerBacklog(const rpc::ReportWorkerBacklogRequest &
   ClearWorkerBacklog(worker_id);
 
   for (const auto &backlog_report : request.backlog_reports()) {
-    const SchedulingClass scheduling_class = backlog_report.scheduling_class();
-    int64_t backlog_size = backlog_report.backlog_size();
-    if (backlog_size > 0) {
-      backlog_tracker_[scheduling_class][worker_id] = backlog_size;
-    }
+    backlog_tracker_[backlog_report.scheduling_class()][worker_id] =
+        backlog_report.backlog_size();
   }
 }
 

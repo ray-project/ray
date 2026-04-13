@@ -239,7 +239,10 @@ void NormalTaskSubmitter::ReportWorkerBacklog() {
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
     const auto scheduling_class = std::get<0>(scheduling_key);
-    backlogs[scheduling_class] += scheduling_key_entry.BacklogSize();
+    const auto backlog_size = scheduling_key_entry.BacklogSize();
+    if (backlog_size > 0) {
+      backlogs[scheduling_class] += backlog_size;
+    }
   }
 
   rpc::ReportWorkerBacklogRequest request;
