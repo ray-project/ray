@@ -144,9 +144,15 @@ def ray_cc_library(name, strip_include_prefix = "/src", copts = [], visibility =
         **kwargs
     )
 
-def ray_cc_test(name, linkopts = [], copts = [], **kwargs):
+def ray_cc_test(name, deps = [], linkopts = [], copts = [], use_ray_gtest_main = True, **kwargs):
+    # Allow skipping the default `ray_gtest_main` function for tests that need bespoke
+    # setup logic.
+    if use_ray_gtest_main:
+      deps.append("//src/ray/common:ray_gtest_main")
+
     cc_test(
         name = name,
+        deps = deps,
         copts = COPTS_TESTS + copts,
         linkopts = linkopts + ["-pie"],
         **kwargs

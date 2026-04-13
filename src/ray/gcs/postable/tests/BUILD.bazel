@@ -6,7 +6,6 @@ ray_cc_test(
     srcs = ["postable_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/postable",
     ],
 )
@@ -16,7 +15,6 @@ ray_cc_test(
     srcs = ["function_traits_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs/postable:function_traits",
     ],
 )
