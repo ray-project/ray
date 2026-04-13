@@ -43,6 +43,39 @@ DATASET_FORMATS = ["pandas", "arrow"]
 class TestStructNamespace:
     """Tests for struct namespace operations."""
 
+    def test_struct_bracket_bool_index_raises(self, dataset_format):
+        """Test struct[bool] raises TypeError instead of being treated as int."""
+        del dataset_format  # Unused, required by class-level parametrization.
+
+        with pytest.raises(
+            TypeError, match="Struct indices must be strings or integers"
+        ):
+            col("user").struct[True]
+
+    def test_struct_field_by_index_non_integer_raises(self, dataset_format):
+        """Test struct.field_by_index() rejects non-integer indices."""
+        del dataset_format  # Unused, required by class-level parametrization.
+
+        with pytest.raises(TypeError, match="Struct field index must be an integer"):
+            col("user").struct.field_by_index("1")
+
+        with pytest.raises(TypeError, match="Struct field index must be an integer"):
+            col("user").struct.field_by_index(True)
+
+    def test_struct_field_by_index_negative_raises(self, dataset_format):
+        """Test struct.field_by_index() rejects negative indices."""
+        del dataset_format  # Unused, required by class-level parametrization.
+
+        with pytest.raises(
+            ValueError, match="Struct field index must be non-negative, got -1"
+        ):
+            col("user").struct.field_by_index(-1)
+
+        with pytest.raises(
+            ValueError, match="Struct field index must be non-negative, got -1"
+        ):
+            col("user").struct[-1]
+
     def test_struct_field(self, ray_start_regular_shared, dataset_format):
         """Test struct.field() extracts field."""
         arrow_table = pa.table(

@@ -50,7 +50,7 @@ class _StructNamespace:
         """
         if isinstance(key, str):
             return self.field(key)
-        if isinstance(key, int):
+        if isinstance(key, int) and not isinstance(key, bool):
             return self.field_by_index(key)
         raise TypeError(
             f"Struct indices must be strings or integers, not {type(key).__name__}"
@@ -88,6 +88,12 @@ class _StructNamespace:
         Returns:
             UDFExpr that extracts the specified field from each struct.
         """
+        if not isinstance(index, int) or isinstance(index, bool):
+            raise TypeError(
+                f"Struct field index must be an integer, not {type(index).__name__}"
+            )
+        if index < 0:
+            raise ValueError(f"Struct field index must be non-negative, got {index}")
         return_dtype = DataType(object)
         if self._expr.data_type.is_arrow_type():
             arrow_type = self._expr.data_type.to_arrow_dtype()
