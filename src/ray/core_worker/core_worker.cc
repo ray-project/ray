@@ -3623,10 +3623,10 @@ void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
 void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                           rpc::PubsubCommandBatchReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  // This handler may run on a dedicated pubsub io_context thread.
-  // UnregisterSubscription runs directly here (Publisher is thread-safe).
-  // Subscribe commands are posted to io_service_ so that RegisterSubscription
-  // and ProcessSubscribe* callbacks (which write RC) execute atomically.
+  // This handler runs on a dedicated pubsub io_context thread.
+  // Both subscribe and unsubscribe are posted to io_service_ to maintain
+  // strict ordering — otherwise an unsubscribe could execute before a
+  // preceding subscribe that was posted to io_service_.
   const NodeID subscriber_id = NodeID::FromBinary(request.subscriber_id());
   for (const auto &command : request.commands()) {
     if (!command.has_unsubscribe_message() && !command.has_subscribe_message()) {
@@ -3640,9 +3640,14 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
     }
 
     if (command.has_unsubscribe_message()) {
-      // Publisher is thread-safe, can call from any thread.
-      object_info_publisher_->UnregisterSubscription(
-          command.channel_type(), subscriber_id, command.key_id());
+      auto channel_type = command.channel_type();
+      auto key_id = command.key_id();
+      io_service_.post(
+          [this, channel_type, subscriber_id, key_id] {
+            object_info_publisher_->UnregisterSubscription(
+                channel_type, subscriber_id, key_id);
+          },
+          "CoreWorker.HandlePubsubCommandBatch.Unsubscribe");
     } else {  // subscribe_message case
       auto sub_message = command.subscribe_message();
       if (!sub_message.has_worker_object_eviction_message() &&
