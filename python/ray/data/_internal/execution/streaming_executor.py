@@ -339,15 +339,18 @@ class StreamingExecutor(Executor, threading.Thread):
             if isinstance(op, InternalQueueOperatorMixin):
                 op.clear_internal_input_queue()
                 op.clear_internal_output_queue()
-            # Multi-split sink: only skip clearing on cooperative *success* shutdown
-            # (siblings may still be draining). Failure paths set OpState._exception;
-            # consumers will not drain leftover bundles, so clear to release pins.
-            clear_output = (
-                force
-                or exception is not None
-                or op is not output_op
-                or op.num_output_splits() <= 1
+
+            # Multi-split sink: only skip clearing the output queue on cooperative
+            # *success* shutdown (siblings may still be draining). Failure paths set
+            # OpState._exception; consumers will not drain leftover bundles, so clear
+            # to release pins.
+            is_live_multi_split_sink = (
+                op is output_op
+                and op.num_output_splits() > 1
+                and not force
+                and exception is None
             )
+            clear_output = not is_live_multi_split_sink
             if clear_output:
                 state.output_queue.clear()
             for inqueue in state.input_queues:
