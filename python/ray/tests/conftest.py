@@ -416,8 +416,6 @@ def kill_all_redis_server():
           when the python Subprocess tracking the
           underlying process is garbage collected.
     """
-    import psutil
-
     # Find Redis server processes
     redis_procs = []
     for proc in psutil.process_iter(["name", "cmdline"]):
