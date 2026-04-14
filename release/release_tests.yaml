@@ -2140,6 +2140,7 @@
   team: rllib
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
@@ -2238,6 +2239,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_64.yaml
 
   run:
@@ -2251,6 +2253,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: tpl_64_gce.yaml
     - __suffix__: aws.py312
       frequency: weekly
@@ -2264,6 +2267,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_64.yaml
 
   run:
@@ -2278,6 +2282,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: experimental/compute_t4_gpu.yaml
@@ -2294,6 +2299,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: experimental/compute_gpu_2x1_aws.yaml
@@ -2310,6 +2316,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu-cu130
       post_build_script: byod_compiled_graph_gpu_cu130.sh
@@ -2328,6 +2335,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu-cu130
       post_build_script: byod_compiled_graph_gpu_cu130.sh
@@ -2346,6 +2354,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: experimental/compute_t4_gpu.yaml
@@ -2363,6 +2372,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: llm-cu128 # llm image already has nixl
       post_build_script: byod_llm_pin_cupy_cuda12x.sh # match cupy-cuda12x to ray-llm base lock (BYOD testdeps can float major)
@@ -2400,6 +2410,7 @@
   working_dir: benchmark-worker-startup
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: only_head_node_1gpu_64cpu.yaml
@@ -2418,6 +2429,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: only_head_node_1gpu_64cpu_gce.yaml
 
 - name: dask_on_ray_100gb_sort

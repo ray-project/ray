@@ -1,9 +1,6 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-max_workers: 0
-
-advanced_configurations_json:
+advanced_instance_config:
     # Fix the volume size so that IOPS is constant even if the default changes.
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
@@ -12,11 +9,8 @@ advanced_configurations_json:
             # 150GB is the default in Anyscale.
             VolumeSize: 150
 
-head_node_type:
-    name: head_node
+head_node:
     instance_type: g5.16xlarge
     resources:
-        cpu: 64
-        gpu: 64
-
-worker_node_types: []
+        CPU: 64
+        GPU: 64
