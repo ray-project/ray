@@ -25,11 +25,11 @@ overwrite_cache: true
 preprocessing_num_workers: 16
 
 ### output
-output_dir: qwen2.5_32b_lora_sft
+output_dir: /mnt/cluster_storage/qwen2.5_32b_lora_sft_output  # absolute path on shared storage; a relative path lands on an ephemeral worker disk and is lost after the run
 logging_steps: 5
 save_steps: 50
 plot_loss: true
-report_to: wandb # or none
+report_to: none # change to wandb and set WANDB_API_KEY in env_vars below to track runs
 
 ### train
 per_device_train_batch_size: 1 # Adjust this depending on your GPU memory and sequence length
@@ -52,9 +52,10 @@ resources_per_worker:
   # See https://docs.ray.io/en/master/ray-core/accelerator-types.html#accelerator-types for a full list of accelerator types.
 ray_init_kwargs:
   runtime_env:
-    # If all env_vars are commented out, use: env_vars: {}
-    env_vars:
-      # If using wandb for experiments tracking
-      WANDB_API_KEY: <your_wandb_token>
-      # If using gated models like meta-llama/Llama-3.1-8B-Instruct
-      # HF_TOKEN: <your_huggingface_token>
+    env_vars: {}  # no env vars needed by default
+    # To add env vars, replace the line above with a block mapping, e.g.:
+    # env_vars:
+    #   # If using wandb for experiments tracking (also set report_to: wandb above)
+    #   WANDB_API_KEY: <your_wandb_token>
+    #   # If using gated models like meta-llama/Llama-3.1-8B-Instruct
+    #   HF_TOKEN: <your_huggingface_token>

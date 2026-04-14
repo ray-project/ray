@@ -28,7 +28,7 @@ overwrite_cache: true
 preprocessing_num_workers: 16
 
 ### output
-output_dir: qwen2.5_7b_qlora_dpo
+output_dir: /mnt/cluster_storage/qwen2.5_7b_qlora_dpo_output  # absolute path on shared storage; a relative path lands on an ephemeral worker disk and is lost after the run
 logging_steps: 5
 save_steps: 5              # For tensorboard logging purpose too. Can increase if not using tensorboard
 plot_loss: true
@@ -56,7 +56,7 @@ resources_per_worker:
 
 ray_init_kwargs:
   runtime_env:
-    # If all env_vars are commented out, use: env_vars: {}
-    env_vars: {}
-      # If using gated models like meta-llama/Llama-3.1-8B-Instruct
-      # HF_TOKEN: <your_huggingface_token>
+    env_vars: {}  # no env vars needed by default
+    # To add env vars (e.g. for gated models), replace the line above with:
+    # env_vars:
+    #   HF_TOKEN: <your_huggingface_token>

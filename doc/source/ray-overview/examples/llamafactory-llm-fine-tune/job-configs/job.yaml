@@ -16,4 +16,5 @@ env_vars:
 # Copy and adapt train-configs/sft_lora_deepspeed.yaml to /mnt/user_storage/,
 # updating paths (dataset_dir, deepspeed, ray_storage_path) from
 # /mnt/cluster_storage/ to /mnt/user_storage/.
+# To use a different training method (DPO/KTO/CPT), swap in the matching train-configs/*.yaml you copied.
 entrypoint: llamafactory-cli train /mnt/user_storage/sft_lora_deepspeed.yaml
