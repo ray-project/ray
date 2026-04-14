@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
@@ -66,6 +68,55 @@ from ray.serve.schema import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def get_haproxy_binary() -> str:
+    """Return the path to the HAProxy binary.
+
+    When RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY is disabled (default), returns
+    "haproxy" to use the system PATH — zero behavior change from today.
+
+    When enabled, resolution order:
+      1. ``RAY_SERVE_HAPROXY_BINARY`` env var (explicit override).
+      2. The binary bundled in the ``ray-haproxy`` package.
+      3. ``haproxy`` on the system PATH (fallback).
+
+    Raises ``FileNotFoundError`` if no usable binary is found.
+    """
+    if not RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY:
+        return "haproxy"
+
+    # 1. Explicit env-var override.
+    env_path = os.environ.get("RAY_SERVE_HAPROXY_BINARY")
+    if env_path is not None:
+        if os.path.isfile(env_path) and os.access(env_path, os.X_OK):
+            return env_path
+        raise FileNotFoundError(
+            f"RAY_SERVE_HAPROXY_BINARY={env_path!r} does not point to an "
+            "executable file."
+        )
+
+    # 2. Bundled binary from the ray-haproxy package.
+    try:
+        from ray_haproxy import get_haproxy_binary as _pip_binary
+
+        return _pip_binary()
+    except ImportError:
+        pass
+    except FileNotFoundError:
+        pass
+
+    # 3. System PATH fallback.
+    system_haproxy = shutil.which("haproxy")
+    if system_haproxy:
+        return system_haproxy
+
+    raise FileNotFoundError(
+        "Could not find an HAProxy binary. "
+        "Install 'ray[haproxy]' for the bundled binary, "
+        "set RAY_SERVE_HAPROXY_BINARY, "
+        "or ensure 'haproxy' is on PATH."
+    )
 
 
 @dataclass
@@ -545,7 +596,8 @@ class HAProxyApi(ProxyApi):
         self, *extra_args: str, timeout_s: int = 5
     ) -> asyncio.subprocess.Process:
         # Build command args
-        args = ["haproxy", "-db", "-f", self.config_file_path]
+        haproxy_bin = get_haproxy_binary()
+        args = [haproxy_bin, "-db", "-f", self.config_file_path]
 
         if not self.cfg.enable_so_reuseport:
             args.append("-dR")
