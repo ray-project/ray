@@ -1358,7 +1358,7 @@ def unique_post_fn(
         if drop_na_values:
             values = pc.drop_null(values)
         else:
-            if pc.any(pc.is_null(values)).as_py():
+            if pc.any(pc.is_null(values, nan_is_null=True)).as_py():
                 raise ValueError(
                     "Unable to fit column because it contains null"
                     " values. Consider imputing missing values first."
@@ -1400,7 +1400,9 @@ def _validate_arrow(table: pa.Table, *columns: str) -> None:
         ValueError: If any of the specified columns contain null values.
     """
     null_columns = [
-        column for column in columns if pc.any(pc.is_null(table.column(column))).as_py()
+        column
+        for column in columns
+        if pc.any(pc.is_null(table.column(column), nan_is_null=True)).as_py()
     ]
     if null_columns:
         raise ValueError(
