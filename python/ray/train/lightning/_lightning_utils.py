@@ -280,7 +280,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
                 raise ValueError(
                     "checkpoint_upload_mode is not supported when using Ray Train V1"
                 )
-            if validation is not None:
+            if validation:
                 raise ValueError("validation is not supported when using Ray Train V1")
 
         job_id = ray.get_runtime_context().get_job_id()
