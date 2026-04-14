@@ -104,6 +104,7 @@ chown -R ray:"$(id -gn ray)" /run/haproxy
 EOF
 
 COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
 
 USER $RAY_UID
 ENV HOME=/home/ray
