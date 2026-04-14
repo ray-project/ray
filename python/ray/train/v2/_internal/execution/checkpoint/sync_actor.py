@@ -36,7 +36,7 @@ class SynchronizationActor:
 
     def __init__(
         self,
-        timeout_s: float = DEFAULT_COLLECTIVE_TIMEOUT_S,
+        timeout_s: Optional[float] = DEFAULT_COLLECTIVE_TIMEOUT_S,
         warn_interval_s: float = DEFAULT_COLLECTIVE_WARN_INTERVAL_S,
     ):
         self._counter: int = 0
@@ -47,7 +47,7 @@ class SynchronizationActor:
         # enters the synchronization barrier.
         self._sync_start_times: List[Optional[float]] = []
         # The timeout in seconds for the synchronization barrier.
-        self._timeout_s: float = timeout_s
+        self._timeout_s: Optional[float] = timeout_s
         # The interval in seconds to log a warning when waiting for the barrier.
         self._warn_interval_s: float = warn_interval_s
 

@@ -80,10 +80,20 @@ def _hash_partition(
     num_partitions: int,
 ) -> np.ndarray:
 
-    partitions = np.zeros((table.num_rows,), dtype=np.int64)
-    for i in range(table.num_rows):
-        _tuple = tuple(c[i] for c in table.columns)
-        partitions[i] = hash(_tuple) % num_partitions
+    # NOTE: We special casing-scenario of single column with integer type
+    #       short-circuiting the need for hashing the column and instead
+    #       using values as is for partitioning
+    if len(table.columns) == 1 and pyarrow.types.is_integer(table.column(0).type):
+        target_column = table.column(0)
+        partitions = (target_column.to_numpy() % num_partitions).astype(np.int64)
+    else:
+        # Otherwise fallback to invoking __hash__ on Pyarrow scalars filling out
+        # target table
+        partitions = np.zeros((table.num_rows,), dtype=np.int64)
+
+        for i in range(table.num_rows):
+            _tuple = tuple(c[i] for c in table.columns)
+            partitions[i] = hash(_tuple) % num_partitions
 
     # Convert to ndarray to compute hash partition indices
     # more efficiently
