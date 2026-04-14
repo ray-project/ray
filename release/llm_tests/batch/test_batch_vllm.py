@@ -1,9 +1,6 @@
 import sys
 import logging
 import time
-import os
-import signal
-import pynvml
 
 import pytest
 
@@ -51,85 +48,7 @@ def add_buffer_time_between_tests():
 def cleanup_ray_resources():
     """Automatically cleanup Ray resources between tests to prevent conflicts."""
     yield
-    _kill_gpu_processes_on_all_nodes()
     ray.shutdown()
-
-
-def _kill_gpu_processes():
-    """
-    Kill all processes occupying GPUs on the local node, particularly for
-    cleaning GPU processes created by vLLM's ``mp`` executor.
-    """
-    pids = set()
-    try:
-        pynvml.nvmlInit()
-        device_count = pynvml.nvmlDeviceGetCount()
-        for i in range(device_count):
-            handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-            for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
-                pids.add(proc.pid)
-        pynvml.nvmlShutdown()
-    except Exception:
-        pass
-
-    for pid in pids:
-        try:
-            os.kill(pid, signal.SIGKILL)
-        except (ProcessLookupError, ValueError):
-            pass
-
-
-def _kill_gpu_processes_on_all_nodes():
-    """Kill GPU processes on all nodes in the cluster.
-
-    This function dispatches the cleanup to every node that has GPUs.
-    """
-    if not ray.is_initialized():
-        return
-
-    @ray.remote(num_cpus=0)
-    def _remote_kill_gpu_processes():
-        import os
-        import signal
-
-        import pynvml
-
-        pids = set()
-        try:
-            pynvml.nvmlInit()
-            device_count = pynvml.nvmlDeviceGetCount()
-            for i in range(device_count):
-                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
-                for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
-                    pids.add(proc.pid)
-            pynvml.nvmlShutdown()
-        except Exception:
-            pass
-
-        for pid in pids:
-            try:
-                os.kill(pid, signal.SIGKILL)
-            except (ProcessLookupError, ValueError):
-                pass
-
-    try:
-        nodes = ray.nodes()
-        refs = []
-        for node in nodes:
-            if not node.get("Alive", False):
-                continue
-            node_id = node["NodeID"]
-            refs.append(
-                _remote_kill_gpu_processes.options(
-                    scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-                        node_id=node_id, soft=False
-                    ),
-                ).remote()
-            )
-        if refs:
-            ray.get(refs, timeout=30)
-    except Exception as e:
-        logging.warning(f"Failed to kill GPU processes on remote nodes: {e}")
 
 
 @pytest.mark.asyncio
