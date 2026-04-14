@@ -11,3 +11,5 @@ advanced_instance_config:
 
 head_node:
     instance_type: n2-highmem-32
+
+worker_nodes: []

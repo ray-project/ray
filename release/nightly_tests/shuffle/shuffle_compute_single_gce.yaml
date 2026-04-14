@@ -13,3 +13,5 @@ head_node:
     instance_type: n2-highmem-16
     resources:
         object_store_memory: 21474836480
+
+worker_nodes: []

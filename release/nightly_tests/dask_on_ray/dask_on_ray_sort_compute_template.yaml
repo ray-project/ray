@@ -9,3 +9,5 @@ advanced_instance_config:
 
 head_node:
     instance_type: m6i.8xlarge
+
+worker_nodes: []
