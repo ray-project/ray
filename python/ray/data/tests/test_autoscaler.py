@@ -29,7 +29,8 @@ def test_actor_pool_scaling():
     covering utilization-based scaling and resource-budget enforcement."""
 
     resource_manager = MagicMock(
-        spec=ResourceManager, get_budget=MagicMock(return_value=None)
+        spec=ResourceManager,
+        get_raw_budget=MagicMock(return_value=None),
     )
     autoscaler = DefaultActorAutoscaler(
         topology=MagicMock(),
@@ -219,8 +220,8 @@ def test_actor_pool_scaling():
             expected_reason="pool exceeding max size",
         )
 
-    # Should no-op because the op has no budget.
-    with patch(resource_manager, "get_budget", ExecutionResources.zero()):
+    # Should no-op because the op has no budget (zero headroom for new actors).
+    with patch(resource_manager, "get_raw_budget", ExecutionResources.zero()):
         assert_autoscaling_action(
             delta=0,
             expected_reason="exceeded resource limits",
@@ -235,25 +236,27 @@ def test_actor_pool_scaling():
 
     # --- Resource budget enforcement ---
     # The over-budget check runs before utilization logic. Even at 150% utilization
-    # (which would normally trigger a scale-up), a negative budget forces downscaling.
+    # (which would normally trigger a scale-up), a negative raw budget forces
+    # downscaling.
 
-    # Over budget by 2 CPUs: should downscale by 2 despite high utilization.
-    with patch(resource_manager, "get_budget", ExecutionResources(cpu=-2)):
+    # Raw budget of -2 CPUs, scale down by 2 despite high utilization.
+    with patch(resource_manager, "get_raw_budget", ExecutionResources(cpu=-2)):
         assert_autoscaling_action(
             delta=-2,
             expected_reason="actor pool exceeds resource allocation",
         )
 
-    # Over budget by 2 CPUs but pool at min_size + 1: delta capped to 1.
-    with patch(resource_manager, "get_budget", ExecutionResources(cpu=-2)):
+    # Raw budget of -2 CPUs with current_size=6 (min_size+1):
+    # required_scale_down=2 but max_can_release=1, so delta is capped to 1.
+    with patch(resource_manager, "get_raw_budget", ExecutionResources(cpu=-2)):
         with patch(actor_pool, "current_size", 6):
             assert_autoscaling_action(
                 delta=-1,
                 expected_reason="actor pool exceeds resource allocation",
             )
 
-    # Over budget but pool is already at min_size: no-op (cannot go below min).
-    with patch(resource_manager, "get_budget", ExecutionResources(cpu=-2)):
+    # Over total budget but pool is at min_size: no-op (cannot go below min).
+    with patch(resource_manager, "get_raw_budget", ExecutionResources(cpu=-2)):
         with patch(actor_pool, "current_size", 5):
             assert_autoscaling_action(
                 delta=0,
@@ -261,30 +264,25 @@ def test_actor_pool_scaling():
                 "but cannot scale below min size",
             )
 
-    # Over budget with pending actors: no-op (wait for pending actors to settle).
-    with patch(resource_manager, "get_budget", ExecutionResources(cpu=-2)):
-        with patch(actor_pool, "num_pending_actors", 1):
-            assert_autoscaling_action(
-                delta=0,
-                expected_reason="no downscaling while actors are pending",
-            )
-
-    # Within budget (positive): over-budget check is skipped, normal util logic runs.
-    with patch(resource_manager, "get_budget", ExecutionResources(cpu=5)):
+    # Positive raw budget: no forced downscaling, utilization logic takes over.
+    # Utilization delta = ceil(10 * (1.5/1.0 - 1)) = 5, but capped by
+    # budget headroom floor(2/1) = 2.
+    with patch(resource_manager, "get_raw_budget", ExecutionResources(cpu=2)):
         assert_autoscaling_action(
-            delta=5,
+            delta=2,
             expected_reason="utilization of 1.5 >= 1.0",
         )
 
-    # GPU over-budget: same logic applies for GPU-backed pools.
+    # GPU pool: raw GPU budget of -3, scale down by 3.
     with patch(actor_pool, "per_actor_resource_usage", ExecutionResources(gpu=1)):
-        with patch(resource_manager, "get_budget", ExecutionResources(gpu=-3)):
+        with patch(resource_manager, "get_raw_budget", ExecutionResources(gpu=-3)):
             assert_autoscaling_action(
                 delta=-3,
                 expected_reason="actor pool exceeds resource allocation",
             )
 
-    # Memory over-budget: same logic applies for memory-reserved actors.
+    # Memory is the bottleneck: raw.memory = -1 GB, scale down by
+    # ceil(1 GB / 500 MB) = 2. CPU is within budget (raw.cpu > 0).
     with patch(
         actor_pool,
         "per_actor_resource_usage",
@@ -292,11 +290,11 @@ def test_actor_pool_scaling():
     ):
         with patch(
             resource_manager,
-            "get_budget",
-            ExecutionResources(cpu=5, memory=-1_500_000_000),
+            "get_raw_budget",
+            ExecutionResources(cpu=5, memory=-1_000_000_000),
         ):
             assert_autoscaling_action(
-                delta=-3,
+                delta=-2,
                 expected_reason="actor pool exceeds resource allocation",
             )
 
@@ -304,7 +302,8 @@ def test_actor_pool_scaling():
 @pytest.fixture
 def autoscaler_max_upscaling_delta_setup():
     resource_manager = MagicMock(
-        spec=ResourceManager, get_budget=MagicMock(return_value=None)
+        spec=ResourceManager,
+        get_raw_budget=MagicMock(return_value=None),
     )
 
     actor_pool = MagicMock(
