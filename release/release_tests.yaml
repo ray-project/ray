@@ -2875,6 +2875,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2903,6 +2904,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2926,6 +2928,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -3082,6 +3085,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
