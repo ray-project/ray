@@ -2,6 +2,7 @@ import os
 
 import pytest
 
+import ray
 from ray.train import CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.lightning import (
     RayDDPStrategy,
@@ -91,6 +92,19 @@ def test_async_checkpointing_and_validation(ray_start_4_cpus, tmp_path):
     batch_size = 8
     dataset_size = 256
 
+    @ray.remote
+    class TmpdirPrefixActor:
+        def __init__(self):
+            self.tmpdir_prefix = None
+
+        def set_tmpdir_prefix(self, tmpdir_prefix):
+            self.tmpdir_prefix = tmpdir_prefix
+
+        def get_tmpdir_prefix(self):
+            return self.tmpdir_prefix
+
+    tmpdir_prefix_actor = TmpdirPrefixActor.remote()
+
     def validation_fn(checkpoint):
         assert checkpoint.path is not None
         checkpoint_file = checkpoint.path + "/checkpoint.ckpt"
@@ -101,19 +115,18 @@ def test_async_checkpointing_and_validation(ray_start_4_cpus, tmp_path):
 
     def train_loop():
         model = LinearModule(input_dim=32, output_dim=4, strategy="ddp")
-
+        callback = RayTrainReportCallback(
+            checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+            validation=ValidationTaskConfig(fn_kwargs={}),
+        )
+        ray.get(tmpdir_prefix_actor.set_tmpdir_prefix.remote(callback.tmpdir_prefix))
         trainer = pl.Trainer(
             max_epochs=num_epochs,
             devices="auto",
             accelerator="cpu",
             strategy=RayDDPStrategy(),
             plugins=[RayLightningEnvironment()],
-            callbacks=[
-                RayTrainReportCallback(
-                    checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
-                    validation=ValidationTaskConfig(fn_kwargs={}),
-                )
-            ],
+            callbacks=[callback],
         )
 
         datamodule = DummyDataModule(batch_size, dataset_size)
@@ -137,6 +150,9 @@ def test_async_checkpointing_and_validation(ray_start_4_cpus, tmp_path):
     assert results.best_checkpoints is not None
     assert len(results.best_checkpoints) == 1
     assert results.best_checkpoints[0][1]["val_score"] == 1
+    # Seems pyarrow.fs.FileSystem's delete_dir can leave an empty dir behind.
+    path = ray.get(tmpdir_prefix_actor.get_tmpdir_prefix.remote())
+    assert not os.path.exists(path) or not any(os.scandir(path))
 
 
 if __name__ == "__main__":
