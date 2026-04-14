@@ -902,7 +902,13 @@ def find_partition_index(
         # Use the Arrow column's O(1) null_count to skip the
         # expensive pd.isna + boolean indexing when there are no nulls (the
         # common case).
-        if table[col_name].null_count > 0:
+        column = table[col_name]
+        has_nulls = (
+            column.null_count > 0
+            if hasattr(column, "null_count")
+            else column.isna().any()
+        )
+        if has_nulls:
             col_vals = col_vals[~pd.isna(col_vals)]
         if desired_val is None:
             return left + len(col_vals)
