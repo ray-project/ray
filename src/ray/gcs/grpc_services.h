@@ -32,6 +32,7 @@
 #include "ray/rpc/authentication/authentication_token.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/rpc_callback_types.h"
+#include "src/proto/grpc/health/v1/health.grpc.pb.h"
 #include "src/ray/protobuf/autoscaler.grpc.pb.h"
 #include "src/ray/protobuf/gcs_service.grpc.pb.h"
 
@@ -54,7 +55,7 @@ class ActorInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   ActorInfoGcsService::AsyncService service_;
@@ -78,7 +79,7 @@ class NodeInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   NodeInfoGcsService::AsyncService service_;
@@ -102,7 +103,7 @@ class NodeResourceInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   NodeResourceInfoGcsService::AsyncService service_;
@@ -126,7 +127,7 @@ class InternalPubSubGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   InternalPubSubGcsService::AsyncService service_;
@@ -150,7 +151,7 @@ class JobInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   JobInfoGcsService::AsyncService service_;
@@ -174,7 +175,7 @@ class RuntimeEnvGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   RuntimeEnvGcsService::AsyncService service_;
@@ -198,7 +199,7 @@ class WorkerInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   WorkerInfoGcsService::AsyncService service_;
@@ -222,7 +223,7 @@ class InternalKVGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   InternalKVGcsService::AsyncService service_;
@@ -246,7 +247,7 @@ class TaskInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   TaskInfoGcsService::AsyncService service_;
@@ -270,7 +271,7 @@ class PlacementGroupInfoGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   PlacementGroupInfoGcsService::AsyncService service_;
@@ -296,7 +297,7 @@ class AutoscalerStateGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   AutoscalerStateService::AsyncService service_;
@@ -324,7 +325,7 @@ class RayEventExportGrpcService : public GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) override;
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
   RayEventExportGcsService::AsyncService service_;
@@ -333,6 +334,41 @@ class RayEventExportGrpcService : public GrpcService {
 };
 
 }  // namespace events
+
+/// gRPC Health Check service that dispatches to the threads running boost::asio
+/// event loops to ensure they are alive and not overloaded.
+///
+/// Unlike the default gRPC health check service (which responds directly from gRPC
+/// threads), this service's handler runs on the io_context event loop. If the event loop
+/// is stuck, the health check will not respond and the client will time out.
+///
+/// NOTE: we currently ignore the `service` field, which is part of the default
+/// health check protocol. In the future, we may want to implement this as per-service
+/// health checks (which could check the relevant boost::asio event loop).
+class HealthCheckGrpcService : public GrpcService {
+ public:
+  explicit HealthCheckGrpcService(instrumented_io_context &io_service)
+      : GrpcService(io_service) {}
+
+  void HandleCheck(grpc::health::v1::HealthCheckRequest request,
+                   grpc::health::v1::HealthCheckResponse *reply,
+                   SendReplyCallback send_reply_callback) {
+    reply->set_status(grpc::health::v1::HealthCheckResponse::SERVING);
+    send_reply_callback(Status::OK(), nullptr, nullptr);
+  }
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id,
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
+
+ private:
+  grpc::health::v1::Health::AsyncService service_;
+};
 
 }  // namespace rpc
 }  // namespace ray

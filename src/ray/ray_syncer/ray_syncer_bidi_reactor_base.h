@@ -73,9 +73,9 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
 
     auto &node_versions = GetNodeComponentVersions(message->node_id());
     if (node_versions[message->message_type()] >= message->version()) {
-      RAY_LOG(INFO) << "Dropping sync message with stale version. latest version: "
-                    << node_versions[message->message_type()]
-                    << ", dropped message version: " << message->version();
+      RAY_LOG(DEBUG) << "Dropping sync message with stale version. latest version: "
+                     << node_versions[message->message_type()]
+                     << ", dropped message version: " << message->version();
       return false;
     }
 

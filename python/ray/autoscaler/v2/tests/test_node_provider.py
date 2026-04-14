@@ -7,7 +7,7 @@ import unittest
 # coding: utf-8
 # coding: utf-8
 from collections import defaultdict
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Union
 from unittest.mock import MagicMock
 
 import pytest  # noqa
@@ -193,6 +193,7 @@ def get_provider():
 def test_node_providers_basic(get_provider, provider_name):
     # Test launching.
     provider = get_provider(name=provider_name)
+    timeout_s = 30 if provider_name == "fake_multi" else 10
     provider.launch(
         shape={"worker_nodes": 2},
         request_id="1",
@@ -212,7 +213,7 @@ def test_node_providers_basic(get_provider, provider_name):
         assert nodes_by_type == {"worker_nodes": 4, "worker_nodes1": 1}
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(verify, timeout=timeout_s)
 
     nodes = provider.get_non_terminated().keys()
 
@@ -238,7 +239,7 @@ def test_node_providers_basic(get_provider, provider_name):
             assert node.request_id == "4"
         return True
 
-    wait_for_condition(verify)
+    wait_for_condition(verify, timeout=timeout_s)
 
 
 @pytest.mark.parametrize(
@@ -353,11 +354,16 @@ class MockKubernetesHttpApiClient(IKubernetesHttpApiClient):
 
         raise NotImplementedError(f"get {path}")
 
-    def patch(self, path: str, patches: List[Dict[str, Any]]):
+    def patch(
+        self,
+        path: str,
+        patches: Union[List[Dict[str, Any]], Dict[str, Any]],
+        content_type: str = "application/json-patch+json",
+    ):
         self._patches[path] = patches
         return {path: patches}
 
-    def get_patches(self, path: str) -> List[Dict[str, Any]]:
+    def get_patches(self, path: str) -> Union[List[Dict[str, Any]], Dict[str, Any]]:
         return self._patches[path]
 
 

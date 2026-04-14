@@ -33,13 +33,14 @@ namespace rpc {
 /// \param MAX_ACTIVE_RPCS Maximum number of RPCs to handle at the same time. -1 means no
 /// limit.
 #define _RPC_SERVICE_HANDLER(                                                      \
-    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS)                  \
+    SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, RECORD_METRICS, PASS_GRPC_PEER)  \
   std::unique_ptr<ServerCallFactory> HANDLER##_call_factory(                       \
       new ServerCallFactoryImpl<SERVICE,                                           \
                                 SERVICE##Handler,                                  \
                                 HANDLER##Request,                                  \
                                 HANDLER##Reply,                                    \
-                                AUTH_TYPE>(                                        \
+                                AUTH_TYPE,                                         \
+                                PASS_GRPC_PEER>(                                   \
           service_,                                                                \
           &SERVICE::AsyncService::Request##HANDLER,                                \
           service_handler_,                                                        \
@@ -56,21 +57,27 @@ namespace rpc {
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
   _RPC_SERVICE_HANDLER(                                        \
-      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, true)
+      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, true, false)
 
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_SERVER_METRICS_DISABLED(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
   _RPC_SERVICE_HANDLER(                                                                \
-      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, false)
+      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, false, false)
+
+/// Like RPC_SERVICE_HANDLER, but passes `grpc::ServerContext::peer()` as the last
+/// argument to Handle##HANDLER (see HandleRequestFunctionWithGrpcPeer in server_call.h).
+#define RPC_SERVICE_HANDLER_WITH_GRPC_PEER(SERVICE, HANDLER, MAX_ACTIVE_RPCS) \
+  _RPC_SERVICE_HANDLER(                                                       \
+      SERVICE, HANDLER, MAX_ACTIVE_RPCS, ClusterIdAuthType::LAZY_AUTH, true, true)
 
 /// Define a RPC service handler with gRPC server metrics enabled.
 #define RPC_SERVICE_HANDLER_CUSTOM_AUTH(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE) \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, true, false)
 
 /// Define a RPC service handler with gRPC server metrics disabled.
 #define RPC_SERVICE_HANDLER_CUSTOM_AUTH_SERVER_METRICS_DISABLED( \
     SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE)                \
-  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false)
+  _RPC_SERVICE_HANDLER(SERVICE, HANDLER, MAX_ACTIVE_RPCS, AUTH_TYPE, false, false)
 
 class GrpcService;
 
@@ -90,13 +97,23 @@ class GrpcServer {
   /// \param[in] name Name of this server, used for logging and debugging purpose.
   /// \param[in] port The port to bind this server to. If it's 0, a random available port
   ///  will be chosen.
-  ///
+  /// \param[in] listen_to_localhost_only If true, binds only on localhost, not other
+  /// interfaces. \param[in] num_threads Number of gRPC completion queue threads to use.
+  /// \param[in] keepalive_time_ms Connection keepalive time (ms).
+  /// \param[in] auth_token Authentication token that clients must present when making
+  /// RPCs to the server. If nullptr, no authentication token is required. \param[in]
+  /// enable_default_health_check_service If true, enables gRPC's default health check
+  /// service handler. This health check is effectively a no-op that runs on a gRPC
+  /// internal thread. Server implementations can override it by defining a handler for
+  /// `grpc::health::v1::Health`, for example to check the health of a boost::asio event
+  /// loop.
   GrpcServer(std::string name,
              const uint32_t port,
              bool listen_to_localhost_only,
              int num_threads = 1,
              int64_t keepalive_time_ms = 7200000, /*2 hours, grpc default*/
-             std::optional<AuthenticationToken> auth_token = std::nullopt)
+             std::shared_ptr<const AuthenticationToken> auth_token = nullptr,
+             bool enable_default_health_check_service = true)
       : name_(std::move(name)),
         port_(port),
         listen_to_localhost_only_(listen_to_localhost_only),
@@ -104,12 +121,12 @@ class GrpcServer {
         num_threads_(num_threads),
         keepalive_time_ms_(keepalive_time_ms) {
     // Initialize auth token: use provided value or load from AuthenticationTokenLoader
-    if (auth_token.has_value()) {
-      auth_token_ = std::move(auth_token.value());
+    if (auth_token) {
+      auth_token_ = auth_token;
     } else {
       auth_token_ = AuthenticationTokenLoader::instance().GetToken();
     }
-    Init();
+    Init(enable_default_health_check_service);
   }
 
   /// Destruct this gRPC server.
@@ -153,7 +170,7 @@ class GrpcServer {
 
  protected:
   /// Initialize this server.
-  void Init();
+  void Init(bool enable_default_health_check_service = true);
 
   /// This function runs in a background thread. It keeps polling events from the
   /// `ServerCompletionQueue`, and dispaches the event to the `ServiceHandler` instances
@@ -174,7 +191,7 @@ class GrpcServer {
   ClusterID cluster_id_;
 
   /// Authentication token for token-based authentication.
-  std::optional<AuthenticationToken> auth_token_;
+  std::shared_ptr<const AuthenticationToken> auth_token_;
 
   /// Indicates whether this server is in shutdown state.
   std::atomic<bool> is_shutdown_;
@@ -243,7 +260,7 @@ class GrpcService {
       const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
       std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
       const ClusterID &cluster_id,
-      const std::optional<AuthenticationToken> &auth_token) = 0;
+      std::shared_ptr<const AuthenticationToken> auth_token) = 0;
 
   /// The main event loop, to which the service handler functions will be posted.
   instrumented_io_context &main_service_;

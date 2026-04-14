@@ -243,10 +243,12 @@ class MockDistributedPublisher : public pubsub::PublisherInterface {
         publisher_id_(publisher_id) {}
   ~MockDistributedPublisher() = default;
 
-  void RegisterSubscription(const rpc::ChannelType channel_type,
-                            const UniqueID &subscriber_id,
-                            const std::optional<std::string> &key_id_binary) override {
+  StatusSet<StatusT::InvalidArgument> RegisterSubscription(
+      const rpc::ChannelType channel_type,
+      const UniqueID &subscriber_id,
+      const std::optional<std::string> &key_id_binary) override {
     RAY_CHECK(false) << "No need to implement it for testing.";
+    return StatusT::OK();
   }
 
   void PublishFailure(const rpc::ChannelType channel_type,
@@ -381,7 +383,13 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
   // The below methods mirror a core worker's operations, e.g., `Put` simulates
   // a ray.put().
   void Put(const ObjectID &object_id) {
-    rc_.AddOwnedObject(object_id, {}, address_, "", 0, false, /*add_local_ref=*/true);
+    rc_.AddOwnedObject(object_id,
+                       {},
+                       address_,
+                       "",
+                       0,
+                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                       /*add_local_ref=*/true);
   }
 
   void PutWithForeignOwner(const ObjectID &object_id, const rpc::Address &owner_address) {
@@ -395,7 +403,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
                        address_,
                        "",
                        0,
-                       false,
+                       LineageReconstructionEligibility::INELIGIBLE_PUT,
                        /*add_local_ref=*/true);
   }
 
@@ -420,7 +428,13 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
     if (!arg_id.IsNil()) {
       rc_.UpdateSubmittedTaskReferences({return_id}, {arg_id});
     }
-    rc_.AddOwnedObject(return_id, {}, address_, "", 0, false, /*add_local_ref=*/true);
+    rc_.AddOwnedObject(return_id,
+                       {},
+                       address_,
+                       "",
+                       0,
+                       LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES,
+                       /*add_local_ref=*/true);
     return_ids_.push_back(return_id);
     return return_id;
   }
@@ -588,7 +602,13 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   // The object goes out of scope once it has no more refs.
   std::vector<ObjectID> out;
   ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
-  rc->AddOwnedObject(id, {}, address, "", 0, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
   ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   ASSERT_FALSE(*out_of_scope);
   rc->RemoveLocalReference(id, &out);
@@ -598,7 +618,13 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   // lineage ref count.
   *out_of_scope = false;
   ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
-  rc->AddOwnedObject(id, {}, address, "", 0, false, /*add_local_ref=*/false);
+  rc->AddOwnedObject(id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/false);
   ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->UpdateSubmittedTaskReferences({}, {id});
   ASSERT_FALSE(*out_of_scope);
@@ -625,7 +651,13 @@ TEST_F(ReferenceCountTest, TestReferenceStats) {
   ASSERT_EQ(stats.object_refs(0).call_site(), "file.py:42");
   rc->RemoveLocalReference(id1, nullptr);
 
-  rc->AddOwnedObject(id2, {}, address, "file2.py:43", 100, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(id2,
+                     {},
+                     address,
+                     "file2.py:43",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
   rpc::CoreWorkerStats stats2;
   rc->AddObjectRefStats({}, &stats2, -1);
   ASSERT_EQ(stats2.object_refs_size(), 1);
@@ -647,7 +679,13 @@ TEST_F(ReferenceCountTest, TestReferenceStatsLimit) {
 
   rpc::CoreWorkerStats stats;
 
-  rc->AddOwnedObject(id2, {}, address, "file2.py:43", 100, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(id2,
+                     {},
+                     address,
+                     "file2.py:43",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
   rc->AddObjectRefStats({}, &stats, 1);
   ASSERT_EQ(stats.object_refs_size(), 1);
   rc->RemoveLocalReference(id1, nullptr);
@@ -666,7 +704,7 @@ TEST_F(ReferenceCountTest, TestHandleObjectSpilled) {
                      address,
                      "file1.py:42",
                      object_size,
-                     false,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true,
                      std::optional<NodeID>(node1));
   rc->HandleObjectSpilled(obj1, "url1", node1);
@@ -696,7 +734,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
                      address,
                      "file2.py:42",
                      object_size,
-                     false,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true,
                      std::optional<NodeID>(node1));
   auto locality_data_obj1 = rc->GetLocalityData(obj1);
@@ -771,7 +809,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
                      address,
                      "file2.py:43",
                      -1,
-                     false,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true,
                      std::optional<NodeID>(node2));
   auto locality_data_obj2_no_object_size = rc->GetLocalityData(obj2);
@@ -784,7 +822,7 @@ TEST_F(ReferenceCountTest, TestGetLocalityData) {
                      address,
                      "file2.py:43",
                      -1,
-                     false,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
                      /*add_local_ref=*/true);
   rc->UpdateObjectSize(obj3, 101);
   rc->UpdateObjectPinnedAtRaylet(obj3, node1);
@@ -805,7 +843,13 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
   auto object_id = ObjectID::FromRandom();
   rpc::Address address;
   address.set_ip_address("1234");
-  rc->AddOwnedObject(object_id, {}, address, "", 0, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(object_id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
 
   TaskID added_id;
   rpc::Address added_address;
@@ -814,7 +858,13 @@ TEST_F(ReferenceCountTest, TestOwnerAddress) {
 
   auto object_id2 = ObjectID::FromRandom();
   address.set_ip_address("5678");
-  rc->AddOwnedObject(object_id2, {}, address, "", 0, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(object_id2,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
   ASSERT_TRUE(rc->GetOwner(object_id2, &added_address));
   ASSERT_EQ(address.ip_address(), added_address.ip_address());
 
@@ -1056,6 +1106,79 @@ TEST(DistributedReferenceCountTest, TestSimpleBorrowerFailure) {
 
   // The borrower fails. The owner's ref count should go to 0.
   borrower->FailAllWaitForRefRemovedRequests();
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+}
+
+// A borrower is given a reference to an object ID, removes the reference,
+// then the borrower process dies. The owner receives both the ref removed
+// message and the failure notification, triggering two cleanup callbacks.
+//
+// @ray.remote
+// class Borrower:
+//     def __init__(self, inner_ids):
+//         self.inner_id = inner_ids[0]
+//     def release(self):
+//         del self.inner_id
+//         # Process dies after releasing reference.
+//
+// inner_id = ray.put(1)
+// outer_id = ray.put([inner_id])
+// b = Borrower.remote(outer_id)
+// b.release.remote()
+TEST(DistributedReferenceCountTest, TestCleanupBorrowersOnRefRemovedIdempotent) {
+  auto borrower = std::make_shared<MockWorkerClient>("1");
+  auto owner = std::make_shared<MockWorkerClient>(
+      "2", [&](const rpc::Address &addr) { return borrower; });
+
+  // The owner creates an inner object and wraps it.
+  auto inner_id = ObjectID::FromRandom();
+  auto outer_id = ObjectID::FromRandom();
+  owner->Put(inner_id);
+  owner->PutWrappedId(outer_id, inner_id);
+
+  // The owner submits a task that depends on the outer object.
+  auto return_id = owner->SubmitTaskWithArg(outer_id);
+  owner->rc_.RemoveLocalReference(outer_id, nullptr);
+  owner->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_TRUE(owner->rc_.HasReference(outer_id));
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // The borrower is given a reference to the inner object.
+  borrower->ExecuteTaskWithArg(outer_id, inner_id, owner->address_);
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // The borrower task returns to the owner while still using inner_id.
+  auto borrower_refs = borrower->FinishExecutingTask(outer_id, ObjectID::Nil());
+  ASSERT_FALSE(borrower->rc_.HasReference(outer_id));
+  ASSERT_TRUE(borrower->rc_.HasReference(inner_id));
+
+  // The owner receives the borrower's reply and merges the borrower's ref count.
+  owner->HandleSubmittedTaskFinished(
+      return_id, outer_id, {}, borrower->address_, borrower_refs);
+  // Owner now has borrower in inner's borrowers list.
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+  ASSERT_FALSE(owner->rc_.HasReference(outer_id));
+
+  // The borrower removes its reference to inner_id.
+  borrower->rc_.RemoveLocalReference(inner_id, nullptr);
+  ASSERT_FALSE(borrower->rc_.HasReference(inner_id));
+  // Owner still has reference because it hasn't received the message yet.
+  ASSERT_TRUE(owner->rc_.HasReference(inner_id));
+
+  // Owner subscribes to borrower's ref removed and borrower sends the message.
+  // This triggers message_published_callback -> CleanupBorrowersOnRefRemoved (1st call).
+  borrower->FlushBorrowerCallbacks();
+  // Owner's reference should now be cleaned up.
+  ASSERT_FALSE(owner->rc_.HasReference(inner_id));
+
+  // Now simulate the race condition: publisher_failed_callback fires after
+  // message_published_callback has already cleaned up.
+  // This should trigger CleanupBorrowersOnRefRemoved (2nd call) which should be
+  // idempotent.
+  borrower->FailAllWaitForRefRemovedRequests();
+
+  // Verify the final state is correct - no references should remain.
   ASSERT_FALSE(owner->rc_.HasReference(inner_id));
   ASSERT_FALSE(owner->rc_.HasReference(outer_id));
 }
@@ -1808,7 +1931,7 @@ TEST(DistributedReferenceCountTest, TestForeignOwner) {
                                     foreign_owner->address_,
                                     "",
                                     0,
-                                    false,
+                                    LineageReconstructionEligibility::INELIGIBLE_PUT,
                                     /*add_local_ref=*/false);
   foreign_owner->rc_.AddBorrowerAddress(inner_id, owner->address_);
 
@@ -2457,7 +2580,13 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
   // The object goes out of scope once it has no more refs.
   std::vector<ObjectID> out;
   ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
-  rc->AddOwnedObject(id, {}, address, "", 0, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
   ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   ASSERT_FALSE(*out_of_scope);
   ASSERT_FALSE(*out_of_scope);
@@ -2470,7 +2599,13 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
   // count.
   *out_of_scope = false;
   ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
-  rc->AddOwnedObject(id, {}, address, "", 0, false, /*add_local_ref=*/false);
+  rc->AddOwnedObject(id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/false);
   ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->UpdateSubmittedTaskReferences({return_id}, {id});
   ASSERT_TRUE(rc->IsObjectPendingCreation(return_id));
@@ -2511,7 +2646,13 @@ TEST_F(ReferenceCountLineageEnabledTest, TestBasicLineage) {
   ASSERT_TRUE(lineage_deleted.empty());
 
   // We should keep lineage for owned objects.
-  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(id,
+                     {},
+                     rpc::Address(),
+                     "",
+                     0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
   ASSERT_TRUE(rc->HasReference(id));
   rc->RemoveLocalReference(id, nullptr);
   ASSERT_EQ(lineage_deleted.size(), 1);
@@ -2529,7 +2670,13 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
   for (int i = 0; i < 3; i++) {
     ObjectID id = ObjectID::FromRandom();
     ids.push_back(id);
-    rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/false);
+    rc->AddOwnedObject(id,
+                       {},
+                       rpc::Address(),
+                       "",
+                       0,
+                       LineageReconstructionEligibility::ELIGIBLE,
+                       /*add_local_ref=*/false);
   }
 
   rc->SetReleaseLineageCallback(
@@ -2583,7 +2730,13 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
   for (int i = 0; i < 3; i++) {
     ObjectID id = ObjectID::FromRandom();
     ids.push_back(id);
-    rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
+    rc->AddOwnedObject(id,
+                       {},
+                       rpc::Address(),
+                       "",
+                       0,
+                       LineageReconstructionEligibility::ELIGIBLE,
+                       /*add_local_ref=*/true);
   }
   std::vector<ObjectID> lineage_deleted;
   rc->SetReleaseLineageCallback(
@@ -2603,10 +2756,10 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
   rc->UpdateFinishedTaskReferences(
       {ids[1]}, {ids[0]}, /*release_lineage=*/false, empty_borrower, empty_refs, nullptr);
 
-  bool lineage_evicted = false;
+  LineageReconstructionEligibility eligibility;
   for (const auto &id : ids) {
-    ASSERT_TRUE(rc->IsObjectReconstructable(id, &lineage_evicted));
-    ASSERT_FALSE(lineage_evicted);
+    eligibility = rc->GetLineageReconstructionEligibility(id);
+    ASSERT_EQ(eligibility, LineageReconstructionEligibility::ELIGIBLE);
   }
 
   // IDs 0 and 1 should be evicted because they were created before ID2, and
@@ -2618,10 +2771,10 @@ TEST_F(ReferenceCountLineageEnabledTest, TestEvictLineage) {
   ASSERT_TRUE(rc->HasReference(ids[1]));
   ASSERT_TRUE(rc->HasReference(ids[2]));
   // ID1 is no longer reconstructable due to lineage eviction.
-  ASSERT_FALSE(rc->IsObjectReconstructable(ids[1], &lineage_evicted));
-  ASSERT_TRUE(lineage_evicted);
-  ASSERT_TRUE(rc->IsObjectReconstructable(ids[2], &lineage_evicted));
-  ASSERT_FALSE(lineage_evicted);
+  eligibility = rc->GetLineageReconstructionEligibility(ids[1]);
+  ASSERT_EQ(eligibility, LineageReconstructionEligibility::INELIGIBLE_LINEAGE_EVICTED);
+  eligibility = rc->GetLineageReconstructionEligibility(ids[2]);
+  ASSERT_EQ(eligibility, LineageReconstructionEligibility::ELIGIBLE);
 }
 
 TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
@@ -2629,7 +2782,13 @@ TEST_F(ReferenceCountLineageEnabledTest, TestResubmittedTask) {
   std::vector<ObjectID> lineage_deleted;
 
   ObjectID id = ObjectID::FromRandom();
-  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
+  rc->AddOwnedObject(id,
+                     {},
+                     rpc::Address(),
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true);
 
   rc->SetReleaseLineageCallback(
       [&](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
@@ -2676,7 +2835,13 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
 
   ObjectID id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
-  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
+  rc->AddOwnedObject(id,
+                     {},
+                     rpc::Address(),
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true);
   ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_TRUE(owned_by_us);
@@ -2692,7 +2857,13 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   ASSERT_GT(deleted->count(id), 0);
   deleted->clear();
 
-  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
+  rc->AddOwnedObject(id,
+                     {},
+                     rpc::Address(),
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true);
   ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
   rc->ResetObjectsOnRemovedNode(node_id);
@@ -2714,7 +2885,13 @@ TEST_F(ReferenceCountTest, TestFree) {
   NodeID node_id = NodeID::FromRandom();
 
   // Test free before receiving information about where the object is pinned.
-  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
+  rc->AddOwnedObject(id,
+                     {},
+                     rpc::Address(),
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true);
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
   rc->FreePlasmaObjects({id});
   ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
@@ -2732,7 +2909,13 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
 
   // Test free after receiving information about where the object is pinned.
-  rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
+  rc->AddOwnedObject(id,
+                     {},
+                     rpc::Address(),
+                     "",
+                     0,
+                     LineageReconstructionEligibility::ELIGIBLE,
+                     /*add_local_ref=*/true);
   ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
@@ -2797,7 +2980,7 @@ TEST_F(ReferenceCountTest, TestDelayedWaitForRefRemoved) {
                             owner->address_,
                             "",
                             0,
-                            false,
+                            LineageReconstructionEligibility::INELIGIBLE_PUT,
                             /*add_local_ref=*/false);
   owner->rc_.AddBorrowerAddress(outer_id, borrower->address_);
   owner->rc_.AddOwnedObject(inner_id,
@@ -2805,7 +2988,7 @@ TEST_F(ReferenceCountTest, TestDelayedWaitForRefRemoved) {
                             owner->address_,
                             "",
                             0,
-                            false,
+                            LineageReconstructionEligibility::INELIGIBLE_PUT,
                             /*add_local_ref=*/true);
   ASSERT_TRUE(owner->rc_.HasReference(outer_id));
   ASSERT_TRUE(owner->rc_.HasReference(inner_id));
@@ -2850,21 +3033,21 @@ TEST_F(ReferenceCountTest, TestRepeatedDeserialization) {
                             owner->address_,
                             "",
                             0,
-                            false,
+                            LineageReconstructionEligibility::INELIGIBLE_PUT,
                             /*add_local_ref=*/false);
   owner->rc_.AddOwnedObject(middle_id,
                             {inner_id},
                             owner->address_,
                             "",
                             0,
-                            false,
+                            LineageReconstructionEligibility::INELIGIBLE_PUT,
                             /*add_local_ref=*/false);
   owner->rc_.AddOwnedObject(outer_id,
                             {middle_id},
                             owner->address_,
                             "",
                             0,
-                            false,
+                            LineageReconstructionEligibility::INELIGIBLE_PUT,
                             /*add_local_ref=*/false);
   owner->rc_.AddBorrowerAddress(outer_id, borrower->address_);
   ASSERT_TRUE(owner->rc_.HasReference(outer_id));
@@ -2916,21 +3099,21 @@ TEST_F(ReferenceCountTest, TestForwardNestedRefs) {
                             owner->address_,
                             "",
                             0,
-                            false,
+                            LineageReconstructionEligibility::INELIGIBLE_PUT,
                             /*add_local_ref=*/false);
   owner->rc_.AddOwnedObject(middle_id,
                             {inner_id},
                             owner->address_,
                             "",
                             0,
-                            false,
+                            LineageReconstructionEligibility::INELIGIBLE_PUT,
                             /*add_local_ref=*/false);
   owner->rc_.AddOwnedObject(outer_id,
                             {middle_id},
                             owner->address_,
                             "",
                             0,
-                            false,
+                            LineageReconstructionEligibility::INELIGIBLE_PUT,
                             /*add_local_ref=*/false);
   owner->rc_.AddBorrowerAddress(outer_id, borrower1->address_);
   ASSERT_TRUE(owner->rc_.HasReference(outer_id));
@@ -2979,7 +3162,13 @@ TEST_F(ReferenceCountTest, TestOwnDynamicStreamingTaskReturnRef) {
   // Add a generator id.
   rpc::Address address;
   address.set_ip_address("1234");
-  rc->AddOwnedObject(generator_id, {}, address, "", 0, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(generator_id,
+                     {},
+                     address,
+                     "",
+                     0,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
   ASSERT_TRUE(rc->HasReference(generator_id));
 
   // Verify object id is not registered if the incorrect generator id is given.
@@ -3021,8 +3210,20 @@ TEST_F(ReferenceCountTest, TestOwnedObjectCounters) {
   ObjectID pending_id1 = ObjectID::FromRandom();
   ObjectID pending_id2 = ObjectID::FromRandom();
 
-  rc->AddOwnedObject(pending_id1, {}, addr, "", 100, false, /*add_local_ref=*/true);
-  rc->AddOwnedObject(pending_id2, {}, addr, "", 200, false, /*add_local_ref=*/true);
+  rc->AddOwnedObject(pending_id1,
+                     {},
+                     addr,
+                     "",
+                     100,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
+  rc->AddOwnedObject(pending_id2,
+                     {},
+                     addr,
+                     "",
+                     200,
+                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                     /*add_local_ref=*/true);
 
   rc->RecordMetrics();
 
@@ -3108,8 +3309,13 @@ TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {
     // object_id_1 = ray.put([object_id_2])
     auto object_id_1 = ObjectID::FromRandom();
     auto object_id_2 = ObjectID::FromRandom();
-    executor->rc_.AddOwnedObject(
-        object_id_1, {}, executor->address_, "", 0, false, /*add_local_ref=*/true);
+    executor->rc_.AddOwnedObject(object_id_1,
+                                 {},
+                                 executor->address_,
+                                 "",
+                                 0,
+                                 LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                 /*add_local_ref=*/true);
     executor->rc_.AddNestedObjectIds(object_id_1, {object_id_2}, executor->address_);
     executor->rc_.AddNestedObjectIds(object_id_1, {object_id_2}, executor->address_);
     ASSERT_TRUE(executor->rc_.HasReference(object_id_1));
@@ -3124,8 +3330,13 @@ TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {
     // Case 2: task returns an owned nested object
     auto object_id_3 = ObjectID::FromRandom();
     auto object_id_4 = ObjectID::FromRandom();
-    executor->rc_.AddOwnedObject(
-        object_id_3, {}, executor->address_, "", 0, false, /*add_local_ref=*/true);
+    executor->rc_.AddOwnedObject(object_id_3,
+                                 {},
+                                 executor->address_,
+                                 "",
+                                 0,
+                                 LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                 /*add_local_ref=*/true);
     executor->rc_.AddNestedObjectIds(object_id_4, {object_id_3}, caller->address_);
     executor->rc_.AddNestedObjectIds(object_id_4, {object_id_3}, caller->address_);
     ASSERT_TRUE(executor->rc_.HasReference(object_id_3));
@@ -3159,8 +3370,3 @@ TEST(DistributedReferenceCountTest, TestAddNestedObjectIdsIdempotency) {
 
 }  // namespace core
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

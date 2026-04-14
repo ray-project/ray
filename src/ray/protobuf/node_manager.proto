@@ -22,9 +22,9 @@ import "src/ray/protobuf/autoscaler.proto";
 import "src/ray/protobuf/public/runtime_environment.proto";
 
 message WorkerBacklogReport {
-  // LeaseSpec indicating the scheduling class.
-  // Cannot send scheduling class directly
-  // since it's local to each process.
+  // LeaseSpec with which the raylet will derive the scheduling class.
+  // Cannot send scheduling class directly since it's local
+  // to each worker process.
   LeaseSpec lease_spec = 1;
   // Size of the backlog for the above scheduling class.
   int64 backlog_size = 2;
@@ -69,6 +69,9 @@ message RequestWorkerLeaseReply {
     SCHEDULING_CANCELLED_INTENDED = 4;
     // Scheduling is cancelled because the task/actor is no longer schedulable.
     SCHEDULING_CANCELLED_UNSCHEDULABLE = 5;
+    // Scheduling is cancelled because worker startup repeatedly failed after max
+    // retries.
+    SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED = 6;
   }
 
   // Address of the leased worker. If this is empty, then the request should be
@@ -406,6 +409,14 @@ message GetWorkerPIDsReply {
   repeated int32 pids = 1;
 }
 
+message GetAgentPIDsRequest {}
+
+message GetAgentPIDsReply {
+  // All agent pids
+  optional int32 dashboard_agent_pid = 1;
+  optional int32 runtime_env_agent_pid = 2;
+}
+
 message KillLocalActorRequest {
   // ID of the actor that is intended to be killed.
   bytes intended_actor_id = 1;
@@ -463,9 +474,11 @@ service NodeManagerService {
   // Failure: Shouldn't fail because always sends to local raylet. Has a log on failure to
   // send.
   rpc PrestartWorkers(PrestartWorkersRequest) returns (PrestartWorkersReply);
-  // Report task backlog information from a worker to the raylet
-  // Failure: Doesn't need to be retried since it will keep getting periodically called,
-  // and is not critical.
+  // Report task backlog information from a worker to the raylet. This is used to tell the
+  // GCS + Autoscaler about resources needed by tasks who haven't had their dependencies
+  // resolved yet.
+  // Failure: Doesn't need to be retried since it will keep getting
+  // periodically called, and is not critical.
   rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
   // Return a worker lease back to its raylet.
   // Failure: Retries, it's idempotent.
@@ -558,6 +571,10 @@ service NodeManagerService {
   // Failure: Will retry with the default timeout 1000ms. If fails, reply return an empty
   // list.
   rpc GetWorkerPIDs(GetWorkerPIDsRequest) returns (GetWorkerPIDsReply);
+  // Get the PIDs of dashboard and runtime env agent currently alive that are managed by
+  // the local Raylet. Failure: Will retry with the default timeout 1000ms. If fails,
+  // reply return an empty list.
+  rpc GetAgentPIDs(GetAgentPIDsRequest) returns (GetAgentPIDsReply);
   // Request from the GCS actor manager or actor scheduler that the worker shut down
   // without completing outstanding work.
   // Failure: Retries, it's idempotent.

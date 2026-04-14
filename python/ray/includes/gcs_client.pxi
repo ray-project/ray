@@ -16,9 +16,11 @@ Binding of C++ ray::gcs::GcsClient.
 #
 # For how async API are implemented, see src/ray/common/python_callbacks.h
 from asyncio import Future
-from typing import List, Sequence
+from ray._common.utils import get_or_create_event_loop
+from typing import Dict, List, Sequence, Tuple
 from libcpp.utility cimport move
 import concurrent.futures
+from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray.includes.common cimport (
     CGcsClient,
     CGetAllResourceUsageReply,
@@ -31,9 +33,13 @@ from ray.includes.common cimport (
     CGcsNodeState,
     CNodeSelector,
     CGcsNodeInfo,
+    CAddEventsRequest,
+    CAddEventsReply,
+    CRayStatus,
 )
 from ray.includes.optional cimport optional, make_optional
 from ray.core.generated import gcs_pb2, autoscaler_pb2
+from ray.core.generated.gcs_service_pb2 import GetAllNodeInfoRequest
 from cython.operator import dereference, postincrement
 cimport cpython
 
@@ -326,41 +332,102 @@ cdef class InnerGcsClient:
 
     def get_all_node_info(
         self, timeout: Optional[int | float] = None,
+        node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
         state_filter: Optional[int] = None,
     ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
+        """Get all node info with optional filters.
+
+        Args:
+            timeout: Timeout in seconds
+            node_selectors: Optional list of GetAllNodeInfoRequest.NodeSelector
+                proto objects to filter nodes.
+            state_filter: Optional int representing the GcsNodeState enum value
+                to filter by node state.
+
+        Returns:
+            Dictionary mapping NodeID to GcsNodeInfo
+        """
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
             c_vector[CGcsNodeInfo] reply
             CRayStatus status
             optional[CStatusOr[c_vector[CGcsNodeInfo]]] status_or
             optional[CGcsNodeState] c_state_filter = nullopt
-            optional[CNodeSelector] c_node_selector = nullopt
+            c_vector[CNodeSelector] c_node_selectors
+            CNodeSelector c_node_selector
+
+        # Convert state_filter int to CGcsNodeState
         if state_filter is not None:
             c_state_filter.emplace(<CGcsNodeState>state_filter)
+
+        # Convert Python NodeSelector protos to C++ CNodeSelector
+        if node_selectors is not None:
+            for py_selector in node_selectors:
+                c_node_selector = CNodeSelector()
+                c_node_selector.ParseFromString(py_selector.SerializeToString())
+                c_node_selectors.push_back(c_node_selector)
+
         with nogil:
-            status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selector)
+            status_or = self.inner.get().Nodes().GetAllNoCache(timeout_ms, c_state_filter, c_node_selectors)
         status = status_or.value().status()
         if status_or.value().ok():
             reply = move(status_or.value().value())
         return raise_or_return(convert_get_all_node_info(status, move(reply)))
 
     def async_get_all_node_info(
-        self, node_id: Optional[NodeID] = None, timeout: Optional[int | float] = None
-    ) -> Future[Dict[NodeID, gcs_pb2.GcsNodeInfo]]:
+        self, timeout: Optional[int | float] = None,
+        node_selectors: Optional[List[GetAllNodeInfoRequest.NodeSelector]] = None,
+        state_filter: Optional[int] = None,
+        limit: Optional[int] = None,
+    ) -> Future[Tuple[Dict[NodeID, gcs_pb2.GcsNodeInfo], int]]:
+        """Asynchronously get all node info with filter metrics
+
+        Args:
+            timeout: Timeout in seconds
+            node_selectors: Optional list of GetAllNodeInfoRequest.NodeSelector
+                proto objects to filter nodes.
+            state_filter: Optional int representing the GcsNodeState enum value
+                to filter by node state.
+            limit: Maximum number of nodes to return
+
+        Returns:
+            A tuple of (node_infos, num_filtered) where:
+            - node_infos: Dict[NodeID, GcsNodeInfo] mapping node IDs to their info
+            - num_filtered: int, the number of nodes filtered out by the query
+        """
         cdef:
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-            c_vector[CNodeID] c_node_ids
+            optional[CGcsNodeState] c_state_filter = nullopt
+            c_vector[CNodeSelector] c_node_selectors
+            CNodeSelector c_node_selector
+            optional[int64_t] c_limit = nullopt
             fut = incremented_fut()
-        if node_id:
-            c_node_ids.push_back((<NodeID>node_id).native())
+
+        # Convert state_filter int to CGcsNodeState
+        if state_filter is not None:
+            c_state_filter.emplace(<CGcsNodeState>state_filter)
+
+        # Convert Python NodeSelector protos to C++ CNodeSelector
+        if node_selectors is not None:
+            for py_selector in node_selectors:
+                c_node_selector = CNodeSelector()
+                c_node_selector.ParseFromString(py_selector.SerializeToString())
+                c_node_selectors.push_back(c_node_selector)
+
+        # Set limit if provided
+        if limit is not None:
+            c_limit = <int64_t>limit
+
         with nogil:
             self.inner.get().Nodes().AsyncGetAll(
-                MultiItemPyCallback[CGcsNodeInfo](
-                    convert_get_all_node_info,
+                OptionalItemPyCallback[c_pair[c_vector[CGcsNodeInfo], int64_t]](
+                    convert_get_all_node_info_results,
                     assign_and_decrement_fut,
                     fut),
                 timeout_ms,
-                c_node_ids)
+                c_state_filter,
+                c_node_selectors,
+                c_limit)
         return asyncio.wrap_future(fut)
 
     #############################################################
@@ -588,6 +655,23 @@ cdef class InnerGcsClient:
 
         return (is_accepted, rejection_reason_message.decode())
 
+    def resize_raylet_resource_instances(
+            self,
+            node_id: c_string,
+            resources: unordered_map[c_string, cython.double],
+            timeout_s=None):
+        """Send the ResizeRayletResourceInstances request to GCS."""
+        cdef:
+            int64_t timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+            unordered_map[c_string, cython.double] total_resources
+        with nogil:
+            check_status_timeout_as_rpc_error(
+                self.inner.get().Autoscaler().ResizeRayletResourceInstances(
+                    node_id, resources, timeout_ms, total_resources
+                )
+            )
+        return {key.decode(): value for key, value in total_resources}
+
     #############################################################
     # Publisher methods
     #############################################################
@@ -662,6 +746,39 @@ cdef class InnerGcsClient:
                 )
             )
 
+    #############################################################
+    # TaskInfo methods
+    #############################################################
+    async def async_add_events(self, serialized_request: bytes, timeout_s=None, executor=None):
+        """Send async AddEvents request to GCS."""
+        cdef:
+            CAddEventsRequest c_req
+            int64_t timeout_ms
+            fut = incremented_fut()
+        timeout_ms = round(1000 * timeout_s) if timeout_s else -1
+
+        # Parse the protobuf payload
+        cdef c_string payload = serialized_request
+        cdef bint parsed = False
+        if executor is not None:
+            parsed = await get_or_create_event_loop().run_in_executor(
+                executor,
+                lambda: c_req.ParseFromString(payload),
+            )
+        else:
+            parsed = c_req.ParseFromString(payload)
+
+        if not parsed:
+            # Fail fast on parse error
+            assign_and_decrement_fut((None, ValueError("Invalid AddEventsRequest payload")), fut)
+            return await asyncio.wrap_future(fut)
+
+        with nogil:
+            self.inner.get().Tasks().AsyncAddEvents(
+                move(c_req),
+                StatusPyCallback(convert_status, assign_and_decrement_fut, fut),
+                timeout_ms)
+        return await asyncio.wrap_future(fut)
 
 #############################################################
 # Converter functions: C++ types -> Python types, use by both Sync and Async APIs.
@@ -692,6 +809,21 @@ cdef convert_get_all_node_info(
             proto.ParseFromString(b)
             node_table_data[NodeID.from_binary(proto.node_id)] = proto
         return node_table_data, None
+    except Exception as e:
+        return None, e
+
+cdef convert_get_all_node_info_results(
+        CRayStatus status, optional[c_pair[c_vector[CGcsNodeInfo], int64_t]] c_data) with gil:
+    # -> Tuple[Dict[NodeID, GcsNodeInfo], int], Exception
+    try:
+        check_status_timeout_as_rpc_error(status)
+        if not c_data.has_value():
+            raise ValueError("Reply is empty")
+        node_table_data, exc = convert_get_all_node_info(
+            status, c_data.value().first)
+        if exc is not None:
+            return None, exc
+        return (node_table_data, c_data.value().second), None
     except Exception as e:
         return None, e
 

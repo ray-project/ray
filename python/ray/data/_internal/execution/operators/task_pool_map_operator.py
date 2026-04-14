@@ -1,5 +1,5 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 
 if TYPE_CHECKING:
     import pyarrow as pa
@@ -85,6 +85,7 @@ class TaskPoolMapOperator(MapOperator):
             raise ValueError(f"max_concurrency have to be > 0 (got {max_concurrency})")
 
         self._max_concurrency = max_concurrency
+        self._current_logical_usage = ExecutionResources.zero()
 
         # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
         #       blocks themselves are going to be passed inside `fn.options(...)`
@@ -97,7 +98,7 @@ class TaskPoolMapOperator(MapOperator):
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
-    def _add_bundled_input(self, bundle: RefBundle):
+    def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
         # Submit the task as a normal Ray task.
@@ -109,6 +110,7 @@ class TaskPoolMapOperator(MapOperator):
 
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
+        logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
 
         if (
             "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
@@ -121,37 +123,35 @@ class TaskPoolMapOperator(MapOperator):
                 2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
             )
 
-        data_context = self.data_context
-
         gen = self._map_task.options(**dynamic_ray_remote_args).remote(
             self._map_transformer_ref,
-            data_context,
+            self._data_context_ref,
             ctx,
             *bundle.block_refs,
             slices=bundle.slices,
             **self.get_map_task_kwargs(),
         )
-        self._submit_data_task(gen, bundle)
+
+        self._current_logical_usage = self._current_logical_usage.add(logical_usage)
+
+        def task_done_callback():
+            self._current_logical_usage = self._current_logical_usage.subtract(
+                logical_usage
+            )
+
+        self._submit_data_task(gen, bundle, task_done_callback=task_done_callback)
 
     def progress_str(self) -> str:
         return ""
 
-    def current_processor_usage(self) -> ExecutionResources:
-        num_active_workers = self.num_active_tasks()
-        return ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-        )
+    def current_logical_usage(self) -> ExecutionResources:
+        return self._current_logical_usage
 
-    def pending_processor_usage(self) -> ExecutionResources:
+    def pending_logical_usage(self) -> ExecutionResources:
         return ExecutionResources()
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return self.per_task_resource_allocation().copy(
-            object_store_memory=(
-                self._metrics.obj_store_mem_max_pending_output_per_task or 0
-            ),
-        )
+        return self.per_task_resource_allocation()
 
     def per_task_resource_allocation(self) -> ExecutionResources:
         return ExecutionResources(
@@ -167,6 +167,37 @@ class TaskPoolMapOperator(MapOperator):
 
     def get_max_concurrency_limit(self) -> Optional[int]:
         return self._max_concurrency
+
+    def min_max_resource_requirements(
+        self,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Returns min/max resource requirements for this operator.
+
+        - Min: resources needed for one task (minimum to make progress)
+        - Max: resources for max_concurrency tasks (if set), else infinite
+        """
+        per_task = self.per_task_resource_allocation()
+        obj_store_per_task = (
+            self._metrics.obj_store_mem_max_pending_output_per_task or 0
+        )
+
+        min_resource_usage = per_task.copy(object_store_memory=obj_store_per_task)
+
+        # Cap resources to 0 if this operator doesn't use them.
+        # This prevents operators from hoarding resource budget they don't need.
+        max_concurrency = (
+            self._max_concurrency if self._max_concurrency is not None else float("inf")
+        )
+        max_resource_usage = ExecutionResources(
+            cpu=0 if per_task.cpu == 0 else per_task.cpu * max_concurrency,
+            gpu=0 if per_task.gpu == 0 else per_task.gpu * max_concurrency,
+            memory=0 if per_task.memory == 0 else per_task.memory * max_concurrency,
+            # Set the max `object_store_memory` requirement to 'inf', because we
+            # don't know how much data each task can output.
+            object_store_memory=float("inf"),
+        )
+
+        return min_resource_usage, max_resource_usage
 
     def all_inputs_done(self):
         super().all_inputs_done()

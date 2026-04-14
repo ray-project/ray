@@ -1,4 +1,4 @@
-from unittest.mock import patch
+from unittest.mock import Mock, patch
 
 import pytest
 
@@ -35,15 +35,6 @@ def kill_autoscaling_coordinator():
 def teardown_autoscaling_coordinator():
     yield
     kill_autoscaling_coordinator()
-
-
-MOCKED_TIME = 0
-
-
-def mock_time():
-    global MOCKED_TIME
-
-    return MOCKED_TIME
 
 
 CLUSTER_NODES_WITH_HEAD = [
@@ -94,97 +85,156 @@ CLUSTER_NODES_WITHOUT_HEAD = [
     ],
 )
 def test_basic(cluster_nodes):
-    with patch("ray.nodes", return_value=cluster_nodes), patch(
-        "time.time", mock_time
-    ), patch("ray.autoscaler.sdk.request_resources") as mock_request_resources:
-        global MOCKED_TIME
+    mocked_time = 0
 
-        MOCKED_TIME = 0
-        req1 = [{"CPU": 3, "GPU": 1, "object_store_memory": 100}]
-        req1_timeout = 2
-        as_coordinator = _AutoscalingCoordinatorActor()
-        as_coordinator.request_resources(
-            requester_id="requester1",
-            resources=req1,
-            expire_after_s=req1_timeout,
-        )
-        mock_request_resources.assert_called_once_with(bundles=req1)
-        res1 = as_coordinator.get_allocated_resources("requester1")
+    mock_request_resources = Mock()
+    as_coordinator = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: mocked_time,
+        send_resources_request=mock_request_resources,
+        get_cluster_nodes=lambda: cluster_nodes,
+    )
 
-        def _remove_head_node_resources(res):
-            for r in res:
-                if HEAD_NODE_RESOURCE_LABEL in r:
-                    del r[HEAD_NODE_RESOURCE_LABEL]
+    req1 = [{"CPU": 3, "GPU": 1, "object_store_memory": 100}]
+    req1_timeout = 2
+    as_coordinator.request_resources(
+        requester_id="requester1",
+        resources=req1,
+        expire_after_s=req1_timeout,
+    )
+    mock_request_resources.assert_called_once_with(req1)
+    res1 = as_coordinator.get_allocated_resources("requester1")
 
-        _remove_head_node_resources(res1)
-        assert res1 == req1
+    def _remove_head_node_resources(res):
+        for r in res:
+            if HEAD_NODE_RESOURCE_LABEL in r:
+                del r[HEAD_NODE_RESOURCE_LABEL]
 
-        # Send the same request again. `mock_request_resources` won't be called
-        # since the request is not updated.
-        as_coordinator.request_resources(
-            requester_id="requester1",
-            resources=req1,
-            expire_after_s=req1_timeout,
-        )
-        assert mock_request_resources.call_count == 1
+    _remove_head_node_resources(res1)
+    assert res1 == req1
 
-        # Send a request from requester2, with request_remaining=True.
-        # requester2 should get the requested + the remaining resources.
-        req2 = [{"CPU": 2, "GPU": 1, "object_store_memory": 100}]
-        req2_timeout = 20
-        as_coordinator.request_resources(
-            requester_id="requester2",
-            resources=req2,
-            expire_after_s=req2_timeout,
-            request_remaining=True,
-        )
-        mock_request_resources.assert_called_with(bundles=req1 + req2)
-        res2 = as_coordinator.get_allocated_resources("requester2")
-        _remove_head_node_resources(res2)
-        assert res2 == req2 + [{"CPU": 5, "GPU": 3, "object_store_memory": 800}]
+    # Send the same request again. `mock_request_resources` won't be called
+    # since the request is not updated.
+    as_coordinator.request_resources(
+        requester_id="requester1",
+        resources=req1,
+        expire_after_s=req1_timeout,
+    )
+    assert mock_request_resources.call_count == 1
 
-        # Test updating req1
-        req1_updated = [{"CPU": 4, "GPU": 2, "object_store_memory": 300}]
-        as_coordinator.request_resources(
-            requester_id="requester1",
-            resources=req1_updated,
-            expire_after_s=req1_timeout,
-        )
-        mock_request_resources.assert_called_with(bundles=req1_updated + req2)
-        res1 = as_coordinator.get_allocated_resources("requester1")
-        _remove_head_node_resources(res1)
-        assert res1 == req1_updated
-        res2 = as_coordinator.get_allocated_resources("requester2")
-        _remove_head_node_resources(res2)
-        assert res2 == req2 + [{"CPU": 4, "GPU": 2, "object_store_memory": 600}]
+    # Send a request from requester2, with request_remaining=True.
+    # requester2 should get the requested + the remaining resources.
+    req2 = [{"CPU": 2, "GPU": 1, "object_store_memory": 100}]
+    req2_timeout = 20
+    as_coordinator.request_resources(
+        requester_id="requester2",
+        resources=req2,
+        expire_after_s=req2_timeout,
+        request_remaining=True,
+    )
+    mock_request_resources.assert_called_with(req1 + req2)
+    res2 = as_coordinator.get_allocated_resources("requester2")
+    _remove_head_node_resources(res2)
+    assert res2 == req2 + [{"CPU": 5, "GPU": 3, "object_store_memory": 800}]
 
-        # After req1_timeout, req1 should be expired.
-        MOCKED_TIME = req1_timeout + 0.1
-        as_coordinator.tick()
-        mock_request_resources.assert_called_with(bundles=req2)
-        res1 = as_coordinator.get_allocated_resources("requester1")
-        res2 = as_coordinator.get_allocated_resources("requester2")
-        _remove_head_node_resources(res1)
-        _remove_head_node_resources(res2)
-        assert res1 == []
-        assert res2 == req2 + [{"CPU": 8, "GPU": 4, "object_store_memory": 900}]
+    # Test updating req1
+    req1_updated = [{"CPU": 4, "GPU": 2, "object_store_memory": 300}]
+    as_coordinator.request_resources(
+        requester_id="requester1",
+        resources=req1_updated,
+        expire_after_s=req1_timeout,
+    )
+    mock_request_resources.assert_called_with(req1_updated + req2)
+    res1 = as_coordinator.get_allocated_resources("requester1")
+    _remove_head_node_resources(res1)
+    assert res1 == req1_updated
+    res2 = as_coordinator.get_allocated_resources("requester2")
+    _remove_head_node_resources(res2)
+    assert res2 == req2 + [{"CPU": 4, "GPU": 2, "object_store_memory": 600}]
 
-        # After req2_timeout, req2 should be expired.
-        MOCKED_TIME = req2_timeout + 0.1
-        as_coordinator.tick()
-        mock_request_resources.assert_called_with(bundles=[])
-        res1 = as_coordinator.get_allocated_resources("requester1")
-        res2 = as_coordinator.get_allocated_resources("requester2")
-        _remove_head_node_resources(res1)
-        _remove_head_node_resources(res2)
-        assert res1 == []
-        assert res2 == []
+    # After req1_timeout, req1 should be expired.
+    mocked_time = req1_timeout + 0.1
+    as_coordinator._tick()
+    mock_request_resources.assert_called_with(req2)
+    res1 = as_coordinator.get_allocated_resources("requester1")
+    res2 = as_coordinator.get_allocated_resources("requester2")
+    _remove_head_node_resources(res1)
+    _remove_head_node_resources(res2)
+    assert res1 == []
+    assert res2 == req2 + [{"CPU": 8, "GPU": 4, "object_store_memory": 900}]
 
-        # Test canceling a request
-        as_coordinator.cancel_request("requester2")
-        res2 = as_coordinator.get_allocated_resources("requester2")
-        _remove_head_node_resources(res2)
-        assert res2 == []
+    # After req2_timeout, req2 should be expired.
+    mocked_time = req2_timeout + 0.1
+    as_coordinator._tick()
+    mock_request_resources.assert_called_with([])
+    res1 = as_coordinator.get_allocated_resources("requester1")
+    res2 = as_coordinator.get_allocated_resources("requester2")
+    _remove_head_node_resources(res1)
+    _remove_head_node_resources(res2)
+    assert res1 == []
+    assert res2 == []
+
+    # Test canceling a request
+    as_coordinator.cancel_request("requester2")
+    res2 = as_coordinator.get_allocated_resources("requester2")
+    _remove_head_node_resources(res2)
+    assert res2 == []
+
+
+def test_double_allocation_with_multiple_request_remaining():
+    """Test fair allocation when multiple requesters have request_remaining=True."""
+    cluster_nodes = [
+        {
+            "Resources": {
+                "CPU": 10,
+                "GPU": 5,
+                "object_store_memory": 1000,
+            },
+            "Alive": True,
+        }
+    ]
+
+    mocked_time = 0
+    mock_request_resources = Mock()
+    coordinator = _AutoscalingCoordinatorActor(
+        get_current_time=lambda: mocked_time,
+        send_resources_request=mock_request_resources,
+        get_cluster_nodes=lambda: cluster_nodes,
+    )
+
+    # Requester1: asks for CPU=2, GPU=1 with request_remaining=True
+    req1 = [{"CPU": 2, "GPU": 1, "object_store_memory": 100}]
+    coordinator.request_resources(
+        requester_id="requester1",
+        resources=req1,
+        expire_after_s=100,
+        request_remaining=True,
+    )
+
+    # Requester2: asks for CPU=3, GPU=1 with request_remaining=True
+    req2 = [{"CPU": 3, "GPU": 1, "object_store_memory": 200}]
+    coordinator.request_resources(
+        requester_id="requester2",
+        resources=req2,
+        expire_after_s=100,
+        request_remaining=True,
+    )
+
+    # Get allocated resources
+    res1 = coordinator.get_allocated_resources("requester1")
+    res2 = coordinator.get_allocated_resources("requester2")
+
+    # After allocating specific requests (req1 and req2):
+    # Remaining = CPU: 10-2-3=5, GPU: 5-1-1=3, memory: 1000-100-200=700
+    # With fair allocation, each requester gets 1/2 of remaining resources
+    expected_remaining_per_requester = {
+        "CPU": 5 // 2,  # = 2
+        "GPU": 3 // 2,  # = 1
+        "object_store_memory": 700 // 2,  # = 350
+    }
+
+    # Both requesters should get their specific requests + fair share of remaining
+    assert res1 == req1 + [expected_remaining_per_requester]
+    assert res2 == req2 + [expected_remaining_per_requester]
 
 
 @pytest.fixture
@@ -394,6 +444,20 @@ def test_request_resources_handles_timeout_error(teardown_autoscaling_coordinato
         counter_attr="_consecutive_failures_request_resources",
         error_msg_prefix="Failed to send resource request for test",
     )
+
+
+def test_coordinator_accepts_zero_resource_for_missing_resource_type(
+    teardown_autoscaling_coordinator,
+):
+    # This is a regression test for a bug where the coordinator crashes when you request
+    # a resource type (e.g., GPU: 0) that doesn't exist on the cluster.
+    coordinator = DefaultAutoscalingCoordinator()
+
+    coordinator.request_resources(
+        requester_id="spam", resources=[{"CPU": 1, "GPU": 0}], expire_after_s=1
+    )
+
+    assert coordinator.get_allocated_resources("spam") == [{"CPU": 1, "GPU": 0}]
 
 
 if __name__ == "__main__":

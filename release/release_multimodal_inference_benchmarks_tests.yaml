@@ -1,10 +1,16 @@
 - name: DEFAULTS
   python: "3.10"
-  group: multimodal-inference-benchmarks
+  group: data-multimodal-inference-benchmarks
   working_dir: nightly_tests/multimodal_inference_benchmarks
 
   frequency: manual
   team: data
+
+  cluster:
+    byod:
+      runtime_env:
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
 
 - name: image_classification
 
@@ -19,6 +25,7 @@
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python image_classification/ray_data_main.py
 
@@ -39,6 +46,7 @@
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python large_image_embedding/ray_data_main.py
 
@@ -59,6 +67,7 @@
 
   variations:
   - __suffix__: ray
+    frequency: nightly
     run:
       script: python document_embedding/ray_data_main.py
 
@@ -72,6 +81,9 @@
   cluster:
     cluster_compute: audio_transcription/compute.yaml
     byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
       type: gpu
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
       python_depset: audio_transcription_py3.10.lock
@@ -81,6 +93,7 @@
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python audio_transcription/ray_data_main.py
 
@@ -93,6 +106,8 @@
   cluster:
     cluster_compute: video_object_detection/compute.yaml
     byod:
+      runtime_env:
+        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Expect node death during test
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
       python_depset: video_object_detection_py3.10.lock
   run:
@@ -100,6 +115,7 @@
 
   variations:
     - __suffix__: ray
+      frequency: nightly
       run:
         script: python video_object_detection/ray_data_main.py
 

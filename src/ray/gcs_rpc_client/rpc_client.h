@@ -267,12 +267,6 @@ class GcsRpcClient {
                              job_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  /// Report job error to GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
-                             ReportJobError,
-                             job_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
   /// Get next job id from GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(JobInfoGcsService,
                              GetNextJobID,
@@ -524,6 +518,10 @@ class GcsRpcClient {
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+                             ReportJobError,
+                             internal_pubsub_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
                              GcsSubscriberPoll,
                              internal_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
@@ -577,6 +575,14 @@ class GcsRpcClient {
                                   ray::rpc::autoscaler,
                                   AutoscalerStateService,
                                   DrainNode,
+                                  autoscaler_state_grpc_client_,
+                                  /*method_timeout_ms*/ -1,
+                                  /*handle_payload_status=*/false, )
+
+  VOID_GCS_RPC_CLIENT_METHOD_FULL(ray::rpc::autoscaler,
+                                  ray::rpc::autoscaler,
+                                  AutoscalerStateService,
+                                  ResizeRayletResourceInstances,
                                   autoscaler_state_grpc_client_,
                                   /*method_timeout_ms*/ -1,
                                   /*handle_payload_status=*/false, )

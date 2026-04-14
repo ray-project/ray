@@ -1,4 +1,7 @@
-"""Integration tests for token-based authentication in Ray."""
+"""Integration tests for token-based authentication in Ray (part 1).
+
+Cluster lifecycle, connection, and end-to-end operation tests.
+"""
 
 import os
 import subprocess
@@ -9,7 +12,8 @@ from typing import Optional
 import pytest
 
 import ray
-from ray._private.test_utils import client_test_enabled, wait_for_condition
+from ray._common.test_utils import wait_for_condition
+from ray._private.test_utils import client_test_enabled
 
 try:
     from ray._raylet import AuthenticationTokenLoader
@@ -20,11 +24,9 @@ except ImportError:
     AuthenticationTokenLoader = None
 
 from ray._private.authentication_test_utils import (
-    authentication_env_guard,
     clear_auth_token_sources,
     reset_auth_token_state,
     set_auth_mode,
-    set_auth_token_path,
     set_env_auth_token,
 )
 
@@ -99,25 +101,9 @@ def _cleanup_ray_start(env: Optional[dict] = None):
 
 
 @pytest.fixture(autouse=True)
-def clean_token_sources(cleanup_auth_token_env):
-    """Ensure authentication-related state is clean around each test."""
-
-    clear_auth_token_sources(remove_default=True)
-    reset_auth_token_state()
-
+def _auto_clean_token_sources(clean_token_sources):
+    """Opt in to the shared clean_token_sources fixture for every test."""
     yield
-
-    if ray.is_initialized():
-        ray.shutdown()
-
-    subprocess.run(
-        ["ray", "stop", "--force"],
-        capture_output=True,
-        timeout=60,
-        check=False,
-    )
-
-    reset_auth_token_state()
 
 
 @pytest.mark.skipif(
@@ -463,174 +449,25 @@ def test_e2e_operations_with_token_auth(setup_cluster_with_token_auth):
     ), f"Job should succeed, got status: {final_status}"
 
 
-@pytest.mark.skipif(
-    client_test_enabled(),
-    reason="Uses subprocess ray CLI, not compatible with client mode",
-)
-@pytest.mark.parametrize("use_generate", [True, False])
-def test_get_auth_token_cli(use_generate):
-    """Test ray get-auth-token CLI command."""
-    test_token = "a" * 64
+def test_logs_api_with_token_auth(setup_cluster_with_token_auth):
+    """Test that log APIs work with token authentication enabled."""
+    from ray.util.state import get_log, list_logs
 
-    with authentication_env_guard():
-        if use_generate:
-            # Test --generate flag (no token set)
-            clear_auth_token_sources(remove_default=True)
-            args = ["ray", "get-auth-token", "--generate"]
-        else:
-            # Test with existing token from env var
-            set_env_auth_token(test_token)
-            reset_auth_token_state()
-            args = ["ray", "get-auth-token"]
+    # Get node ID for log queries
+    node_id = ray.nodes()[0]["NodeID"]
 
-        env = os.environ.copy()
-        result = subprocess.run(
-            args,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
+    # Test list_logs() with valid auth
+    logs = list_logs(node_id=node_id)
+    assert isinstance(logs, dict), f"list_logs should return a dict, got {type(logs)}"
 
-        assert result.returncode == 0, (
-            f"ray get-auth-token should succeed. "
-            f"stdout: {result.stdout}, stderr: {result.stderr}"
-        )
+    # Test get_log() with valid auth (fetch raylet.out which will always exist)
+    chunks_received = 0
+    for chunk in get_log(filename="raylet.out", node_id=node_id, tail=10):
+        assert isinstance(chunk, str), f"get_log chunk should be str, got {type(chunk)}"
+        chunks_received += 1
+        break
 
-        # Verify token is printed to stdout
-        token = result.stdout.strip()
-        assert len(token) == 64, token
-        assert all(c in "0123456789abcdef" for c in token), "Token should be hex"
-
-        if not use_generate:
-            # When using env var, should get exact token back
-            assert token == test_token
-
-        # Verify logs went to stderr (if --generate was used)
-        if use_generate:
-            assert (
-                "generating new authentication token..." in result.stderr.lower()
-            ), "Should log generation to stderr"
-
-
-@pytest.mark.skipif(
-    client_test_enabled(),
-    reason="Uses subprocess ray CLI, not compatible with client mode",
-)
-def test_get_auth_token_cli_no_token_no_generate():
-    """Test ray get-auth-token fails without token and without --generate."""
-    with authentication_env_guard():
-        reset_auth_token_state()
-        clear_auth_token_sources(remove_default=True)
-        env = os.environ.copy()
-
-        result = subprocess.run(
-            ["ray", "get-auth-token"],
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        assert result.returncode != 0, "Should fail when no token and no --generate"
-        assert "error" in result.stderr.lower(), "Should print error to stderr"
-        assert "no" in result.stderr.lower() and "token" in result.stderr.lower()
-
-
-@pytest.mark.skipif(
-    client_test_enabled(),
-    reason="Uses subprocess ray CLI, not compatible with client mode",
-)
-def test_get_auth_token_cli_piping():
-    """Test that ray get-auth-token output can be piped."""
-    test_token = "b" * 64
-
-    with authentication_env_guard():
-        set_env_auth_token(test_token)
-        reset_auth_token_state()
-        env = os.environ.copy()
-
-        # Test piping: use token in shell pipeline
-        result = subprocess.run(
-            "ray get-auth-token | wc -c",
-            shell=True,
-            env=env,
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-
-        assert result.returncode == 0
-        char_count = int(result.stdout.strip())
-        assert char_count == 64, f"Expected 64 chars (no newline), got {char_count}"
-
-
-@pytest.mark.skipif(
-    client_test_enabled(),
-    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
-)
-def test_missing_token_file_raises_authentication_error():
-    """Test that RAY_AUTH_TOKEN_PATH pointing to missing file raises AuthenticationError."""
-    with authentication_env_guard():
-        # Clear first, then set up the specific test scenario
-        clear_auth_token_sources(remove_default=True)
-        set_auth_mode("token")
-        set_auth_token_path(None, "/nonexistent/path/to/token")
-        reset_auth_token_state()
-
-        token_loader = AuthenticationTokenLoader.instance()
-
-        with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
-            token_loader.has_token()
-
-        # Verify error message is informative
-        assert str(Path("/nonexistent/path/to/token")) in str(exc_info.value)
-        assert "RAY_AUTH_TOKEN_PATH" in str(exc_info.value)
-
-
-@pytest.mark.skipif(
-    client_test_enabled(),
-    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
-)
-def test_empty_token_file_raises_authentication_error(tmp_path):
-    """Test that RAY_AUTH_TOKEN_PATH pointing to empty file raises AuthenticationError."""
-    token_file = tmp_path / "empty_token_file.txt"
-    with authentication_env_guard():
-        # Clear first, then set up the specific test scenario
-        clear_auth_token_sources(remove_default=True)
-        set_auth_mode("token")
-        set_auth_token_path("", token_file)
-        reset_auth_token_state()
-
-        token_loader = AuthenticationTokenLoader.instance()
-
-        with pytest.raises(ray.exceptions.AuthenticationError) as exc_info:
-            token_loader.has_token()
-
-        assert "cannot be opened or is empty" in str(exc_info.value)
-        assert str(token_file) in str(exc_info.value)
-
-
-@pytest.mark.skipif(
-    client_test_enabled(),
-    reason="Tests AuthenticationTokenLoader directly, no benefit testing this in client mode",
-)
-def test_no_token_with_auth_enabled_returns_false():
-    """Test that has_token(ignore_auth_mode=True) returns False when no token exists.
-
-    This allows the caller (ensure_token_if_auth_enabled) to decide whether
-    to generate a new token or raise an error.
-    """
-    with authentication_env_guard():
-        set_auth_mode("token")
-        clear_auth_token_sources(remove_default=True)
-        reset_auth_token_state()
-
-        token_loader = AuthenticationTokenLoader.instance()
-
-        # has_token(ignore_auth_mode=True) should return False, not raise an exception
-        result = token_loader.has_token(ignore_auth_mode=True)
-        assert result is False
+    assert chunks_received > 0, "Should have received at least one log chunk"
 
 
 if __name__ == "__main__":

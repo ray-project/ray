@@ -1,23 +1,19 @@
-import os
+import copy
 import sys
 import time
 import unittest
 from typing import Callable
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from freezegun import freeze_time
 
-from ray_release.cluster_manager.full import FullClusterManager
+from ray_release.aws import RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
 from ray_release.cluster_manager.minimal import MinimalClusterManager
 from ray_release.exception import (
     ClusterComputeCreateError,
-    ClusterCreationError,
     ClusterEnvBuildError,
     ClusterEnvBuildTimeout,
     ClusterEnvCreateError,
-    ClusterStartupError,
-    ClusterStartupFailed,
-    ClusterStartupTimeout,
 )
 from ray_release.test import Test
 from ray_release.tests.utils import (
@@ -28,7 +24,6 @@ from ray_release.tests.utils import (
     fail_always,
     fail_once,
 )
-from ray_release.util import get_anyscale_sdk
 
 TEST_CLUSTER_COMPUTE = {
     "cloud_id": UNIT_TEST_CLOUD_ID,
@@ -42,6 +37,21 @@ TEST_CLUSTER_COMPUTE = {
             "min_workers": 0,
             "max_workers": 0,
             "use_spot": False,
+        }
+    ],
+}
+
+
+TEST_CLUSTER_COMPUTE_NEW_SCHEMA = {
+    "cloud": "test_cloud",
+    "head_node": {
+        "instance_type": "m5.4xlarge",
+    },
+    "worker_nodes": [
+        {
+            "instance_type": "m5.xlarge",
+            "min_nodes": 0,
+            "max_nodes": 4,
         }
     ],
 }
@@ -78,8 +88,6 @@ class _DelayedResponse:
 
 
 class MinimalSessionManagerTest(unittest.TestCase):
-    cls = MinimalClusterManager
-
     def setUp(self) -> None:
         self.sdk = MockSDK()
         self.sdk.returns["get_project"] = APIDict(
@@ -88,7 +96,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
         self.cluster_compute = TEST_CLUSTER_COMPUTE
 
-        self.cluster_manager = self.cls(
+        self.cluster_manager = MinimalClusterManager(
             project_id=UNIT_TEST_PROJECT_ID,
             sdk=self.sdk,
             test=MockTest(
@@ -99,20 +107,18 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ),
         )
         self.sdk.reset()
-        self.sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
 
     def testClusterName(self):
         sdk = MockSDK()
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
-        sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
-        cluster_manager = self.cls(
+        cluster_manager = MinimalClusterManager(
             test=MockTest({"name": "test"}),
             project_id=UNIT_TEST_PROJECT_ID,
             smoke_test=False,
             sdk=sdk,
         )
         self.assertRegex(cluster_manager.cluster_name, r"^test_\d+$")
-        cluster_manager = self.cls(
+        cluster_manager = MinimalClusterManager(
             test=MockTest({"name": "test"}),
             project_id=UNIT_TEST_PROJECT_ID,
             smoke_test=True,
@@ -123,19 +129,14 @@ class MinimalSessionManagerTest(unittest.TestCase):
     def testSetClusterEnv(self):
         sdk = MockSDK()
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
-        sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
-        cluster_manager = self.cls(
+        cluster_manager = MinimalClusterManager(
             test=MockTest({"name": "test", "cluster": {"byod": {}}}),
             project_id=UNIT_TEST_PROJECT_ID,
             smoke_test=False,
             sdk=sdk,
         )
         cluster_manager.set_cluster_env()
-        self.assertEqual(
-            cluster_manager.cluster_env_name,
-            "anyscale__env__"
-            "a93b7dec6c1b606a9814ceb96ace13e116d04cc8ce3a2bdea1b0f279c34ff692",
-        )
+        self.assertEqual(cluster_manager.cluster_env_name, "anyscale")
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeExisting(self):
@@ -159,7 +160,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.cluster_manager.create_cluster_compute()
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 2)  # 1 extra for cloud provider
+        self.assertEqual(len(self.sdk.call_counter), 1)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateFailFail(self):
@@ -187,7 +188,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         # Both APIs were called twice (retry after fail)
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 2)
-        self.assertEqual(len(self.sdk.call_counter), 3)  # 1 extra for cloud provider
+        self.assertEqual(len(self.sdk.call_counter), 2)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateFailSucceed(self):
@@ -219,7 +220,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 2)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 2)
-        self.assertEqual(len(self.sdk.call_counter), 3)  # 1 extra for cloud provider
+        self.assertEqual(len(self.sdk.call_counter), 2)
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterComputeCreateSucceed(self):
@@ -249,7 +250,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(self.cluster_manager.cluster_compute_id, "correct")
         self.assertEqual(self.sdk.call_counter["search_cluster_computes"], 1)
         self.assertEqual(self.sdk.call_counter["create_cluster_compute"], 1)
-        self.assertEqual(len(self.sdk.call_counter), 3)  # 1 extra for cloud provider
+        self.assertEqual(len(self.sdk.call_counter), 2)
 
         # Test automatic fields
         self.assertEqual(
@@ -317,6 +318,78 @@ class MinimalSessionManagerTest(unittest.TestCase):
             self.cluster_manager.cluster_compute["advanced_configurations_json"],
             target_cluster_compute["advanced_configurations_json"],
         )
+
+    def testClusterComputeExtraTagsNewSchema(self):
+        # Create a cluster manager with anyscale_sdk_2026=True
+        sdk = MockSDK()
+        sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
+        cluster_manager = MinimalClusterManager(
+            project_id=UNIT_TEST_PROJECT_ID,
+            sdk=sdk,
+            test=MockTest(
+                {
+                    "name": "unit_test_new_schema",
+                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
+                }
+            ),
+        )
+
+        cluster_compute = copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA)
+        cluster_manager.set_cluster_compute(cluster_compute, extra_tags={"foo": "bar"})
+
+        # Top-level advanced_instance_config should have tags
+        top_level_aic = cluster_manager.cluster_compute["advanced_instance_config"]
+        self.assertIn("TagSpecifications", top_level_aic)
+
+        # head_node.advanced_instance_config should have tags
+        head_aic = cluster_manager.cluster_compute["head_node"][
+            "advanced_instance_config"
+        ]
+        self.assertIn("TagSpecifications", head_aic)
+
+        # worker_nodes[0].advanced_instance_config should have tags
+        worker_aic = cluster_manager.cluster_compute["worker_nodes"][0][
+            "advanced_instance_config"
+        ]
+        self.assertIn("TagSpecifications", worker_aic)
+
+        # Verify tag values for all tracked resource types
+        for aic in [top_level_aic, head_aic, worker_aic]:
+            tag_specs = aic["TagSpecifications"]
+            self.assertEqual(
+                len(tag_specs), len(RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING)
+            )
+            for resource_type in RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING:
+                resource_tags = [
+                    ts for ts in tag_specs if ts["ResourceType"] == resource_type
+                ]
+                self.assertEqual(len(resource_tags), 1)
+                self.assertIn({"Key": "foo", "Value": "bar"}, resource_tags[0]["Tags"])
+
+        # Test merging with already existing tags
+        cluster_compute_with_tags = copy.deepcopy(TEST_CLUSTER_COMPUTE_NEW_SCHEMA)
+        cluster_compute_with_tags["advanced_instance_config"] = {
+            "TagSpecifications": [
+                {"ResourceType": "fake", "Tags": []},
+                {"ResourceType": "instance", "Tags": [{"Key": "key", "Value": "val"}]},
+            ]
+        }
+        cluster_manager.set_cluster_compute(
+            cluster_compute_with_tags, extra_tags={"foo": "bar"}
+        )
+        merged_aic = cluster_manager.cluster_compute["advanced_instance_config"]
+        merged_specs = merged_aic["TagSpecifications"]
+        # Should have: fake (preserved), instance (merged), volume (new)
+        fake_tags = [ts for ts in merged_specs if ts["ResourceType"] == "fake"]
+        self.assertEqual(len(fake_tags), 1)
+        self.assertEqual(fake_tags[0]["Tags"], [])
+        instance_tags = [ts for ts in merged_specs if ts["ResourceType"] == "instance"]
+        self.assertEqual(len(instance_tags), 1)
+        self.assertIn({"Key": "key", "Value": "val"}, instance_tags[0]["Tags"])
+        self.assertIn({"Key": "foo", "Value": "bar"}, instance_tags[0]["Tags"])
+        volume_tags = [ts for ts in merged_specs if ts["ResourceType"] == "volume"]
+        self.assertEqual(len(volume_tags), 1)
+        self.assertIn({"Key": "foo", "Value": "bar"}, volume_tags[0]["Tags"])
 
     @patch("time.sleep", lambda *a, **kw: None)
     def testFindCreateClusterEnvExisting(self):
@@ -691,133 +764,120 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(len(self.sdk.call_counter), 2)
 
 
-class FullSessionManagerTest(MinimalSessionManagerTest):
-    cls = FullClusterManager
+class MinimalSessionManagerNewSchemaTest(unittest.TestCase):
+    """Tests for compute config creation using the anyscale.compute_config API."""
 
-    def testSessionStartCreationError(self):
-        self.cluster_manager.cluster_env_id = "correct"
-        self.cluster_manager.cluster_compute_id = "correct"
-
-        self.sdk.returns["create_cluster"] = _fail
-
-        with self.assertRaises(ClusterCreationError):
-            self.cluster_manager.start_cluster()
-
-    def testSessionStartStartupError(self):
-        self.cluster_manager.cluster_env_id = "correct"
-        self.cluster_manager.cluster_compute_id = "correct"
-
-        self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
-        self.sdk.returns["start_cluster"] = _fail
-
-        with self.assertRaises(ClusterStartupError):
-            self.cluster_manager.start_cluster()
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testSessionStartStartupTimeout(self):
-        self.cluster_manager.cluster_env_id = "correct"
-        self.cluster_manager.cluster_compute_id = "correct"
-
-        self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
-        self.sdk.returns["start_cluster"] = APIDict(
-            result=APIDict(id="cop_id", completed=False)
-        )
-
-        with freeze_time() as frozen_time, self.assertRaises(ClusterStartupTimeout):
-            self.sdk.returns["get_cluster_operation"] = _DelayedResponse(
-                lambda: frozen_time.tick(delta=10),
-                finish_after=300,
-                before=APIDict(result=APIDict(completed=False)),
-                after=APIDict(result=APIDict(completed=True)),
-            )
-
-            # Timeout before startup finishes
-            self.cluster_manager.start_cluster(timeout=200)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testSessionStartStartupFailed(self):
-        self.cluster_manager.cluster_env_id = "correct"
-        self.cluster_manager.cluster_compute_id = "correct"
-
-        self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
-        self.sdk.returns["start_cluster"] = APIDict(
-            result=APIDict(id="cop_id", completed=False)
-        )
-
-        with freeze_time() as frozen_time, self.assertRaises(ClusterStartupFailed):
-            frozen_time.tick(delta=0.1)
-            self.sdk.returns["get_cluster_operation"] = _DelayedResponse(
-                lambda: frozen_time.tick(delta=10),
-                finish_after=300,
-                before=APIDict(result=APIDict(completed=False)),
-                after=APIDict(result=APIDict(completed=True)),
-            )
-
-            self.sdk.returns["get_cluster"] = APIDict(
-                result=APIDict(state="Terminated")
-            )
-
-            # Timeout is long enough
-            self.cluster_manager.start_cluster(timeout=400)
-
-    @patch("time.sleep", lambda *a, **kw: None)
-    def testSessionStartStartupSuccess(self):
-        self.cluster_manager.cluster_env_id = "correct"
-        self.cluster_manager.cluster_compute_id = "correct"
-
-        self.sdk.returns["create_cluster"] = APIDict(result=APIDict(id="success"))
-        self.sdk.returns["start_cluster"] = APIDict(
-            result=APIDict(id="cop_id", completed=False)
-        )
-
-        with freeze_time() as frozen_time:
-            frozen_time.tick(delta=0.1)
-            self.sdk.returns["get_cluster_operation"] = _DelayedResponse(
-                lambda: frozen_time.tick(delta=10),
-                finish_after=300,
-                before=APIDict(result=APIDict(completed=False)),
-                after=APIDict(result=APIDict(completed=True)),
-            )
-
-            self.sdk.returns["get_cluster"] = APIDict(result=APIDict(state="Running"))
-
-            # Timeout is long enough
-            self.cluster_manager.start_cluster(timeout=400)
-
-
-@unittest.skipUnless(
-    os.environ.get("RELEASE_UNIT_TEST_NO_ANYSCALE", "0") == "1",
-    reason="RELEASE_UNIT_TEST_NO_ANYSCALE is set to 1",
-)
-class LiveSessionManagerTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.sdk = get_anyscale_sdk()
+        self.sdk = MockSDK()
+        self.sdk.returns["get_project"] = APIDict(
+            result=APIDict(name="release_unit_tests")
+        )
 
-        self.cluster_compute = TEST_CLUSTER_COMPUTE
+        self.cluster_compute = TEST_CLUSTER_COMPUTE_NEW_SCHEMA
 
-        self.cluster_manager = FullClusterManager(
+        self.cluster_manager = MinimalClusterManager(
             project_id=UNIT_TEST_PROJECT_ID,
             sdk=self.sdk,
-            test_name=f"unit_test__{self.__class__.__name__}__endToEnd",
+            test=MockTest(
+                {
+                    "name": f"unit_test__{self.__class__.__name__}",
+                    "cluster": {"byod": {}, "anyscale_sdk_2026": True},
+                }
+            ),
+        )
+        self.sdk.reset()
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    def testFindExistingComputeConfig(self):
+        """Find existing compute config via anyscale.compute_config.get."""
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertIsNone(self.cluster_manager.cluster_compute_id)
+
+        mock_anyscale = MagicMock()
+        self.cluster_manager.test.anyscale = mock_anyscale
+        mock_anyscale.compute_config.get.return_value = APIDict(
+            id="existing_id", name="test:1", config=None
         )
 
-    def tearDown(self) -> None:
-        self.cluster_manager.terminate_cluster()
-        self.cluster_manager.delete_configs()
+        self.cluster_manager.create_cluster_compute()
 
-    def testSessionEndToEnd(self):
-        self.cluster_manager.set_cluster_env(self.cluster_env)
+        self.assertEqual(self.cluster_manager.cluster_compute_id, "existing_id")
+        mock_anyscale.compute_config.get.assert_called_once_with(
+            self.cluster_manager.cluster_compute_name
+        )
+        mock_anyscale.compute_config.create.assert_not_called()
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    def testCreateComputeConfigSucceed(self):
+        """Compute config not found, create new, and succeed."""
         self.cluster_manager.set_cluster_compute(self.cluster_compute)
-        self.cluster_manager.build_configs(timeout=1200)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertIsNone(self.cluster_manager.cluster_compute_id)
 
-        # Reset, so that we fetch them again and test that code path
-        self.cluster_manager.cluster_compute_id = None
-        self.cluster_manager.cluster_env_id = None
-        self.cluster_manager.cluster_env_build_id = None
-        self.cluster_manager.build_configs(timeout=1200)
+        mock_anyscale = MagicMock()
+        self.cluster_manager.test.anyscale = mock_anyscale
+        # get: first call raises (not found), second call returns version
+        mock_anyscale.compute_config.get.side_effect = [
+            RuntimeError("not found"),
+            APIDict(id="new_id", name="test:1", config=None),
+        ]
+        mock_anyscale.compute_config.create.return_value = "test:1"
 
-        # Start cluster
-        self.cluster_manager.start_cluster(timeout=1200)
+        self.cluster_manager.create_cluster_compute()
+
+        self.assertEqual(self.cluster_manager.cluster_compute_id, "new_id")
+        mock_anyscale.compute_config.create.assert_called_once()
+        self.assertEqual(mock_anyscale.compute_config.get.call_count, 2)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    def testCreateComputeConfigCreateFailFail(self):
+        """Compute config not found, create fails both times."""
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertIsNone(self.cluster_manager.cluster_compute_id)
+
+        mock_anyscale = MagicMock()
+        self.cluster_manager.test.anyscale = mock_anyscale
+        # get always raises (not found)
+        mock_anyscale.compute_config.get.side_effect = RuntimeError("not found")
+        # create always fails
+        mock_anyscale.compute_config.create.side_effect = Exception("create failed")
+
+        with self.assertRaises(ClusterComputeCreateError):
+            self.cluster_manager.create_cluster_compute()
+
+        self.assertIsNone(self.cluster_manager.cluster_compute_id)
+        # get called once per attempt (lookup), create called once per attempt
+        self.assertEqual(mock_anyscale.compute_config.get.call_count, 2)
+        self.assertEqual(mock_anyscale.compute_config.create.call_count, 2)
+
+    @patch("time.sleep", lambda *a, **kw: None)
+    def testCreateComputeConfigCreateFailSucceed(self):
+        """Compute config not found, create fails once, succeeds on retry."""
+        self.cluster_manager.set_cluster_compute(self.cluster_compute)
+        self.assertTrue(self.cluster_manager.cluster_compute_name)
+        self.assertIsNone(self.cluster_manager.cluster_compute_id)
+
+        mock_anyscale = MagicMock()
+        self.cluster_manager.test.anyscale = mock_anyscale
+        # get: raises on lookups (attempts 1 and 2), succeeds on post-create fetch
+        mock_anyscale.compute_config.get.side_effect = [
+            RuntimeError("not found"),  # attempt 1: lookup
+            RuntimeError("not found"),  # attempt 2: lookup
+            APIDict(id="new_id", name="test:1", config=None),  # attempt 2: post-create
+        ]
+        # create: fails once, then succeeds
+        mock_anyscale.compute_config.create.side_effect = [
+            Exception("create failed"),
+            "test:1",
+        ]
+
+        self.cluster_manager.create_cluster_compute()
+
+        self.assertEqual(self.cluster_manager.cluster_compute_id, "new_id")
+        self.assertEqual(mock_anyscale.compute_config.get.call_count, 3)
+        self.assertEqual(mock_anyscale.compute_config.create.call_count, 2)
 
 
 if __name__ == "__main__":

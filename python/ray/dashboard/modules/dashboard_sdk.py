@@ -97,6 +97,7 @@ def get_job_submission_client_cluster_info(
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
     _use_tls: Optional[bool] = False,
+    **kwargs,
 ) -> ClusterInfo:
     """Get address, cookies, and metadata used for SubmissionClient.
 
@@ -131,6 +132,7 @@ def parse_cluster_info(
     cookies: Optional[Dict[str, Any]] = None,
     metadata: Optional[Dict[str, Any]] = None,
     headers: Optional[Dict[str, Any]] = None,
+    **kwargs,
 ) -> ClusterInfo:
     """Create a cluster if needed and return its address, cookies, and metadata."""
     if address is None:
@@ -176,6 +178,7 @@ def parse_cluster_info(
             metadata=metadata,
             headers=headers,
             _use_tls=(module_string == "https"),
+            **kwargs,
         )
     # Try to dynamically import the function to get cluster info.
     else:
@@ -198,6 +201,7 @@ def parse_cluster_info(
             cookies=cookies,
             metadata=metadata,
             headers=headers,
+            **kwargs,
         )
 
 
@@ -210,6 +214,7 @@ class SubmissionClient:
         metadata: Optional[Dict[str, Any]] = None,
         headers: Optional[Dict[str, Any]] = None,
         verify: Optional[Union[str, bool]] = True,
+        **kwargs,
     ):
         # Remove any trailing slashes
         if address is not None and address.endswith("/"):
@@ -220,7 +225,7 @@ class SubmissionClient:
             )
 
         cluster_info = parse_cluster_info(
-            address, create_cluster_if_needed, cookies, metadata, headers
+            address, create_cluster_if_needed, cookies, metadata, headers, **kwargs
         )
         self._address = cluster_info.address
         self._cookies = cluster_info.cookies
@@ -249,6 +254,8 @@ class SubmissionClient:
             else:
                 self._ssl_context = None
 
+        self._server_ray_version: Optional[str] = None
+
     def _check_connection_and_version(
         self, min_version: str = "1.9", version_error_message: str = None
     ):
@@ -274,6 +281,7 @@ class SubmissionClient:
             r.raise_for_status()
 
             running_ray_version = r.json()["ray_version"]
+            self._server_ray_version = running_ray_version
             if packaging.version.parse(running_ray_version) < packaging.version.parse(
                 min_version
             ):

@@ -21,6 +21,7 @@
 
 #include "gtest/gtest.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -57,9 +58,39 @@ class LocalResourceManagerTest : public ::testing::Test {
     return resource_view_sync_messge;
   }
 
+  // Creates a LocalResourceManager with a fake clock for deterministic testing.
+  void CreateManagerWithFakeClock(absl::flat_hash_map<ResourceID, double> resources = {
+                                      {ResourceID::CPU(), 2.0}}) {
+    manager = std::make_unique<LocalResourceManager>(local_node_id,
+                                                     CreateNodeResources(resources),
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr,
+                                                     nullptr,
+                                                     fake_resource_usage_gauge_,
+                                                     clock_);
+  }
+
+  void AdvanceTime(absl::Duration duration) { clock_.AdvanceTime(duration); }
+
+  // Asserts that the node is idle and returns the idle time.
+  absl::Time AssertIdleAndGetTime() {
+    EXPECT_TRUE(manager->IsLocalNodeIdle());
+    auto idle_time = manager->GetResourceIdleTime();
+    EXPECT_TRUE(idle_time.has_value());
+    return idle_time.value();
+  }
+
+  // Asserts that the node is busy (not idle).
+  void AssertBusy() {
+    EXPECT_FALSE(manager->IsLocalNodeIdle());
+    EXPECT_FALSE(manager->GetResourceIdleTime().has_value());
+  }
+
   scheduling::NodeID local_node_id = scheduling::NodeID(0);
   std::unique_ptr<LocalResourceManager> manager;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
+  FakeClock clock_;
 };
 
 TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
@@ -83,7 +114,8 @@ TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
       nullptr,
       nullptr,
       nullptr,
-      fake_resource_usage_gauge_);
+      fake_resource_usage_gauge_,
+      clock_);
 
   ///
   /// Test when there's no allocation.
@@ -151,7 +183,8 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
       nullptr,
       [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
       nullptr,
-      fake_resource_usage_gauge_);
+      fake_resource_usage_gauge_,
+      clock_);
 
   // Make the node non-idle.
   {
@@ -185,7 +218,8 @@ TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
       nullptr,
       [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
       nullptr,
-      fake_resource_usage_gauge_);
+      fake_resource_usage_gauge_,
+      clock_);
 
   // Make the node non-idle.
   *used_object_store = 1;
@@ -222,20 +256,18 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
       nullptr,
       nullptr,
       nullptr,
-      fake_resource_usage_gauge_);
+      fake_resource_usage_gauge_,
+      clock_);
 
   /// Test when the resource is all idle when initialized.
   {
     auto idle_time = manager->GetResourceIdleTime();
-    // Sleep for a while.
-    absl::SleepFor(absl::Seconds(1));
+    clock_.AdvanceTime(absl::Seconds(1));
 
     ASSERT_NE(idle_time, absl::nullopt);
     ASSERT_NE(*idle_time, absl::InfinitePast());
-    // Adds a 100ms buffer time. The idle time counting does not always
-    // guarantee to be strictly longer than the sleep time.
-    auto dur = absl::ToInt64Seconds(absl::Now() - *idle_time + absl::Milliseconds(100));
-    ASSERT_GE(dur, 1);
+    auto dur = absl::ToInt64Seconds(clock_.Now() - *idle_time);
+    ASSERT_EQ(dur, 1);
   }
 
   /// Test that allocate some resources make it non-idle.
@@ -272,20 +304,16 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
 
     auto idle_time = manager->GetResourceIdleTime();
     ASSERT_TRUE(idle_time.has_value());
-    auto dur = absl::Now() - *idle_time;
-    ASSERT_GE(dur, absl::ZeroDuration());
+    ASSERT_EQ(clock_.Now() - *idle_time, absl::ZeroDuration());
   }
 
   {
-    // Sleep for a while should have the right idle time.
-    absl::SleepFor(absl::Seconds(1));
+    // Advance time and check idle duration.
+    clock_.AdvanceTime(absl::Seconds(1));
     {
-      // Test allocates same resource have the right idle time.
       auto idle_time = manager->GetResourceIdleTime();
       ASSERT_TRUE(idle_time.has_value());
-      // Gives it 100ms buffer time. The idle time counting does not always
-      // guarantee that it is larger than 1 second after a 1 second sleep.
-      ASSERT_GE(absl::Now() - *idle_time, absl::Seconds(1) - absl::Milliseconds(100));
+      ASSERT_EQ(clock_.Now() - *idle_time, absl::Seconds(1));
     }
 
     // Allocate the resource
@@ -316,17 +344,15 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
                                          true);
     }
 
-    // Check the idle time should be reset (not longer than 1 secs).
+    // Check the idle time should be reset (at current clock time).
     {
       auto idle_time = manager->GetResourceIdleTime();
       ASSERT_TRUE(idle_time.has_value());
-      auto dur = absl::Now() - *idle_time;
-      ASSERT_GE(dur, absl::ZeroDuration());
-      ASSERT_LE(dur, absl::Seconds(1));
+      auto dur = clock_.Now() - *idle_time;
+      ASSERT_EQ(dur, absl::ZeroDuration());
 
       const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
-      ASSERT_GE(resource_view_sync_messge.idle_duration_ms(), 0);
-      ASSERT_LE(resource_view_sync_messge.idle_duration_ms(), 1 * 1000);
+      ASSERT_EQ(resource_view_sync_messge.idle_duration_ms(), 1);
     }
   }
 
@@ -347,12 +373,11 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
     manager->UpdateAvailableObjectStoreMemResource();
     auto idle_time = manager->GetResourceIdleTime();
     ASSERT_TRUE(idle_time.has_value());
-    auto dur = absl::Now() - *idle_time;
-    ASSERT_GE(dur, absl::ZeroDuration());
+    auto dur = clock_.Now() - *idle_time;
+    ASSERT_EQ(dur, absl::ZeroDuration());
 
-    // And syncer messages should be created correctly for resource reporting.
     const auto &resource_view_sync_messge = GetSyncMessageForResourceReport();
-    ASSERT_GE(resource_view_sync_messge.idle_duration_ms(), 0);
+    ASSERT_EQ(resource_view_sync_messge.idle_duration_ms(), 1);
   }
 }
 
@@ -369,7 +394,8 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
       nullptr,
       nullptr,
       nullptr,
-      fake_resource_usage_gauge_);
+      fake_resource_usage_gauge_,
+      clock_);
 
   manager->SubtractResourceInstances(
       ResourceID::CPU(), {2.0}, /*allow_going_negative=*/true);
@@ -389,7 +415,8 @@ TEST_F(LocalResourceManagerTest, PopulateResourceViewSyncMessage) {
                                                    nullptr,
                                                    nullptr,
                                                    nullptr,
-                                                   fake_resource_usage_gauge_);
+                                                   fake_resource_usage_gauge_,
+                                                   clock_);
 
   // Populate the sync message and verify labels are copied over.
   syncer::ResourceViewSyncMessage msg;
@@ -402,6 +429,95 @@ TEST_F(LocalResourceManagerTest, PopulateResourceViewSyncMessage) {
   ASSERT_EQ(msg.labels_size(), 2);
   ASSERT_EQ(msg.labels().at("label1"), "value1");
   ASSERT_EQ(msg.labels().at("label2"), "value2");
+}
+
+TEST_F(LocalResourceManagerTest, MaybeMarkFootprintAsBusyPreservesIdleTime) {
+  // Test that MaybeMarkFootprintAsBusy saves the idle time and restores it
+  // when MarkFootprintAsIdle is called, preserving the original idle duration.
+  CreateManagerWithFakeClock();
+
+  auto initial_idle_time = AssertIdleAndGetTime();
+
+  AdvanceTime(absl::Milliseconds(50));
+  manager->MaybeMarkFootprintAsBusy(WorkFootprint::PULLING_TASK_ARGUMENTS);
+  AssertBusy();
+
+  AdvanceTime(absl::Milliseconds(50));
+  manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
+
+  // Idle time should be restored to initial value, not reset to current time.
+  ASSERT_EQ(AssertIdleAndGetTime(), initial_idle_time);
+}
+
+TEST_F(LocalResourceManagerTest, MarkFootprintAsBusyResetsIdleTime) {
+  // Test that MarkFootprintAsBusy resets idle time to now when MarkFootprintAsIdle is
+  // called.
+  CreateManagerWithFakeClock();
+
+  auto initial_idle_time = AssertIdleAndGetTime();
+
+  AdvanceTime(absl::Milliseconds(50));
+  manager->MarkFootprintAsBusy(WorkFootprint::NODE_WORKERS);
+  AssertBusy();
+
+  AdvanceTime(absl::Milliseconds(50));
+  manager->MarkFootprintAsIdle(WorkFootprint::NODE_WORKERS);
+
+  // Idle time should be reset to current time, not restored to initial.
+  ASSERT_EQ(AssertIdleAndGetTime(), clock_.Now());
+  ASSERT_NE(AssertIdleAndGetTime(), initial_idle_time);
+}
+
+TEST_F(LocalResourceManagerTest, NodeWorkersBusyClearsSavedPullingTime) {
+  // Test that when any footprint is marked busy with MarkFootprintAsBusy(),
+  // all saved speculative idle times are cleared. This ensures that if a task
+  // was speculatively marked as pulling arguments but then actually runs,
+  // the idle time is correctly reset rather than restored to an old value.
+  CreateManagerWithFakeClock();
+
+  auto initial_idle_time = AssertIdleAndGetTime();
+
+  AdvanceTime(absl::Milliseconds(50));
+  manager->MaybeMarkFootprintAsBusy(WorkFootprint::PULLING_TASK_ARGUMENTS);
+  AssertBusy();
+
+  // Actual work starts - this clears saved PULLING_TASK_ARGUMENTS time.
+  manager->MarkFootprintAsBusy(WorkFootprint::NODE_WORKERS);
+
+  AdvanceTime(absl::Milliseconds(50));
+  manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
+  AssertBusy();  // Still busy because NODE_WORKERS is busy.
+
+  AdvanceTime(absl::Milliseconds(150));
+  manager->MarkFootprintAsIdle(WorkFootprint::NODE_WORKERS);
+
+  // Idle time should be current time (from NODE_WORKERS), not restored initial time.
+  ASSERT_EQ(AssertIdleAndGetTime(), clock_.Now());
+  ASSERT_NE(AssertIdleAndGetTime(), initial_idle_time);
+}
+
+TEST_F(LocalResourceManagerTest, RepeatedMarkFootprintAsIdleDoesNotResetIdleTime) {
+  CreateManagerWithFakeClock();
+
+  AssertIdleAndGetTime();
+
+  // First explicit idle mark for PULLING_TASK_ARGUMENTS (creates the entry).
+  manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
+  auto idle_after_first_mark = AssertIdleAndGetTime();
+
+  // Advance time and call MarkFootprintAsIdle again — this should be a no-op.
+  AdvanceTime(absl::Milliseconds(500));
+  manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
+
+  // Idle time must NOT have been reset to the current (advanced) time.
+  ASSERT_EQ(AssertIdleAndGetTime(), idle_after_first_mark);
+
+  // Call it a few more times with time advancing each time.
+  for (int i = 0; i < 5; i++) {
+    AdvanceTime(absl::Milliseconds(100));
+    manager->MarkFootprintAsIdle(WorkFootprint::PULLING_TASK_ARGUMENTS);
+    ASSERT_EQ(AssertIdleAndGetTime(), idle_after_first_mark);
+  }
 }
 
 }  // namespace ray

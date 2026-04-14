@@ -8,10 +8,14 @@ from ray.data.expressions import (
     DownloadExpr,
     Expr,
     LiteralExpr,
+    MonotonicallyIncreasingIdExpr,
     Operation,
+    RandomExpr,
     StarExpr,
     UDFExpr,
     UnaryExpr,
+    UUIDExpr,
+    _CallableClassUDF,
     _ExprVisitor,
 )
 
@@ -23,6 +27,7 @@ _INLINE_OP_SYMBOLS = {
     Operation.SUB: "-",
     Operation.MUL: "*",
     Operation.DIV: "/",
+    Operation.MOD: "%",
     Operation.FLOORDIV: "//",
     Operation.GT: ">",
     Operation.LT: "<",
@@ -76,6 +81,20 @@ class _ExprVisitorBase(_ExprVisitor[None]):
         """Visit a download expression (no columns to collect)."""
         pass
 
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> None:
+        """Visit a monotonically_increasing_id expression (no columns to collect)."""
+        pass
+
+    def visit_random(self, expr: "RandomExpr") -> None:
+        """Visit a synthetic expression (no columns to collect)."""
+        pass
+
+    def visit_uuid(self, expr: "UUIDExpr") -> None:
+        """Visit a uuid expression (no columns to collect)."""
+        pass
+
 
 class _ColumnReferenceCollector(_ExprVisitorBase):
     """Visitor that collects all column references from expression trees.
@@ -114,6 +133,46 @@ class _ColumnReferenceCollector(_ExprVisitorBase):
             None (only collects columns as a side effect).
         """
         self.visit(expr.expr)
+
+
+class _CallableClassUDFCollector(_ExprVisitorBase):
+    """Visitor that collects all callable class UDFs from expression trees.
+
+    This visitor traverses expression trees and collects _CallableClassUDF instances
+    that wrap callable classes (as opposed to regular functions).
+    """
+
+    def __init__(self):
+        """Initialize with an empty list of _CallableClassUDF instances."""
+        self._expr_udfs: List[_CallableClassUDF] = []
+
+    def get_callable_class_udfs(self) -> List[_CallableClassUDF]:
+        """Get the list of collected _CallableClassUDF instances.
+
+        Returns:
+            List of _CallableClassUDF instances that wrap callable classes.
+        """
+        return self._expr_udfs
+
+    def visit_column(self, expr: ColumnExpr) -> None:
+        """Visit a column expression (no UDFs to collect)."""
+        pass
+
+    def visit_udf(self, expr: UDFExpr) -> None:
+        """Visit a UDF expression and collect it if it's a callable class.
+
+        Args:
+            expr: The UDF expression.
+
+        Returns:
+            None (only collects UDFs as a side effect).
+        """
+        # Check if fn is an _CallableClassUDF (indicates callable class)
+        if isinstance(expr.fn, _CallableClassUDF):
+            self._expr_udfs.append(expr.fn)
+
+        # Continue visiting child expressions
+        super().visit_udf(expr)
 
 
 class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
@@ -192,9 +251,7 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
         """
         new_args = [self.visit(arg) for arg in expr.args]
         new_kwargs = {key: self.visit(value) for key, value in expr.kwargs.items()}
-        return UDFExpr(
-            fn=expr.fn, data_type=expr.data_type, args=new_args, kwargs=new_kwargs
-        )
+        return replace(expr, args=new_args, kwargs=new_kwargs)
 
     def visit_alias(self, expr: AliasExpr) -> Expr:
         """Visit an alias expression and rewrite its inner expression.
@@ -238,6 +295,41 @@ class _ColumnSubstitutionVisitor(_ExprVisitor[Expr]):
 
         Returns:
             The original star expression.
+        """
+        return expr
+
+    def visit_monotonically_increasing_id(
+        self, expr: MonotonicallyIncreasingIdExpr
+    ) -> Expr:
+        """Visit a monotonically_increasing_id expression (no rewriting needed).
+
+        Args:
+            expr: The monotonically_increasing_id expression.
+
+        Returns:
+            The original expression.
+        """
+        return expr
+
+    def visit_random(self, expr: "RandomExpr") -> Expr:
+        """Visit a random expression (no rewriting needed).
+
+        Args:
+            expr: The random expression.
+
+        Returns:
+            The original random expression.
+        """
+        return expr
+
+    def visit_uuid(self, expr: "UUIDExpr") -> Expr:
+        """Visit a uuid expression (no rewriting needed).
+
+        Args:
+            expr: The uuid expression.
+
+        Returns:
+            The original uuid expression.
         """
         return expr
 
@@ -368,6 +460,21 @@ class _TreeReprVisitor(_ExprVisitor[str]):
     def visit_star(self, expr: "StarExpr") -> str:
         return self._make_tree_lines("COL(*)", expr=expr)
 
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> str:
+        return self._make_tree_lines("MONOTONICALLY_INCREASING_ID()", expr=expr)
+
+    def visit_random(self, expr: "RandomExpr") -> str:
+        if expr.seed is None:
+            label = "RANDOM()"
+        else:
+            label = f"RANDOM(seed={expr.seed}, reseed_after_execution={expr.reseed_after_execution})"
+        return self._make_tree_lines(label, expr=expr)
+
+    def visit_uuid(self, expr: "UUIDExpr") -> str:
+        return self._make_tree_lines("UUID()", expr=expr)
+
 
 class _InlineExprReprVisitor(_ExprVisitor[str]):
     """Visitor that generates concise inline string representations of expressions.
@@ -456,6 +563,20 @@ class _InlineExprReprVisitor(_ExprVisitor[str]):
     def visit_star(self, expr: "StarExpr") -> str:
         """Visit a star expression and return its inline representation."""
         return "col(*)"
+
+    def visit_monotonically_increasing_id(
+        self, expr: "MonotonicallyIncreasingIdExpr"
+    ) -> str:
+        """Visit a monotonically_increasing_id expression and return its inline representation."""
+        return "monotonically_increasing_id()"
+
+    def visit_random(self, expr: "RandomExpr") -> str:
+        """Visit a random expression and return its inline representation."""
+        return "random()"
+
+    def visit_uuid(self, expr: "UUIDExpr") -> str:
+        """Visit a uuid expression and return its inline representation."""
+        return "uuid()"
 
 
 def get_column_references(expr: Expr) -> List[str]:

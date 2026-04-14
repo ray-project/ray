@@ -27,6 +27,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
+#include "ray/core_worker/core_worker_options.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
 #include "ray/core_worker/task_event_buffer.h"
@@ -35,12 +36,31 @@
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/util/counter_map.h"
+#include "ray/util/exponential_backoff.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 namespace ray {
 namespace core {
+
+/// Compute the retry delay for a failed task based on the error type and attempt number.
+/// OOM errors use exponential backoff with task_oom_retry_delay_base_ms.
+/// ACTOR_UNAVAILABLE errors use exponential backoff with a configurable base and cap.
+/// All other errors use the flat task_retry_delay_ms.
+inline uint32_t GetTaskRetryDelayMs(uint64_t attempt_number, rpc::ErrorType error_type) {
+  if (error_type == rpc::ErrorType::OUT_OF_MEMORY) {
+    return ExponentialBackoff::GetBackoffMs(
+        attempt_number, ::RayConfig::instance().task_oom_retry_delay_base_ms());
+  } else if (error_type == rpc::ErrorType::ACTOR_UNAVAILABLE) {
+    return ExponentialBackoff::GetBackoffMs(
+        attempt_number,
+        ::RayConfig::instance().task_actor_unavailable_retry_delay_base_ms(),
+        ::RayConfig::instance().task_actor_unavailable_retry_max_delay_ms());
+  } else {
+    return ::RayConfig::instance().task_retry_delay_ms();
+  }
+}
 
 class ActorManager;
 
@@ -55,7 +75,6 @@ using PushErrorCallback = std::function<Status(const JobID &job_id,
                                                const std::string &error_message,
                                                double timestamp)>;
 using ExecutionSignalCallback = std::function<void(Status, int64_t)>;
-using FreeActorObjectCallback = std::function<void(const ObjectID &)>;
 
 /// When the streaming generator tasks are submitted,
 /// the intermediate return objects are streamed
@@ -188,7 +207,8 @@ class TaskManager : public TaskManagerInterface {
       std::shared_ptr<gcs::GcsClient> gcs_client,
       ray::observability::MetricInterface &task_by_state_counter,
       ray::observability::MetricInterface &total_lineage_bytes_gauge,
-      FreeActorObjectCallback free_actor_object_callback)
+      FreeActorObjectCallback free_actor_object_callback,
+      SetDirectTransportMetadata set_direct_transport_metadata)
       : in_memory_store_(in_memory_store),
         reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
@@ -201,7 +221,8 @@ class TaskManager : public TaskManagerInterface {
         gcs_client_(std::move(gcs_client)),
         task_by_state_counter_(task_by_state_counter),
         total_lineage_bytes_gauge_(total_lineage_bytes_gauge),
-        free_actor_object_callback_(std::move(free_actor_object_callback)) {
+        free_actor_object_callback_(std::move(free_actor_object_callback)),
+        set_direct_transport_metadata_(std::move(set_direct_transport_metadata)) {
     task_counter_.SetOnChangeCallback(
         [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
@@ -448,6 +469,8 @@ class TaskManager : public TaskManagerInterface {
   void MarkTaskNoRetry(const TaskID &task_id) override;
 
   void MarkTaskCanceled(const TaskID &task_id) override;
+
+  bool IsTaskCanceled(const TaskID &task_id) const override;
 
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
 
@@ -818,8 +841,11 @@ class TaskManager : public TaskManagerInterface {
   /// reconstruction.
   observability::MetricInterface &total_lineage_bytes_gauge_;
 
-  /// Callback to free GPU object from the in-actor object store.
+  /// Callback to free GPU object from the in-actor RDT store.
   FreeActorObjectCallback free_actor_object_callback_;
+
+  /// Callback to set the direct transport metadata for a object.
+  SetDirectTransportMetadata set_direct_transport_metadata_;
 
   friend class TaskManagerTest;
 };

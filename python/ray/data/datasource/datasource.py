@@ -1,5 +1,5 @@
 import copy
-from typing import Callable, Dict, Generator, Iterable, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Generator, Iterable, List, Optional
 
 import numpy as np
 import pyarrow as pa
@@ -9,6 +9,9 @@ from ray.data.block import Block, BlockMetadata, Schema
 from ray.data.datasource.util import _iter_sliced_blocks
 from ray.data.expressions import Expr
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
+
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 
 class _DatasourceProjectionPushdownMixin:
@@ -222,7 +225,43 @@ class _DatasourcePredicatePushdownMixin:
 class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdownMixin):
     """Interface for defining a custom :class:`~ray.data.Dataset` datasource.
 
+    User may subclass this class to implement a custom datasource. The subclass should
+    implement :meth:`.get_read_tasks` and
+    :meth:`.estimate_inmemory_data_size` to read the data and estimate the in-memory data size, respectively.
+
     To read a datasource into a dataset, use :meth:`~ray.data.read_datasource`.
+
+    Example:
+        >>> from ray.data.context import DataContext
+        >>> class MyDatasource(Datasource):
+        ...     def __init__(self, num_rows: int = 100):
+        ...         super().__init__()
+        ...         self.num_rows = num_rows
+        ...     def get_read_tasks(
+        ...         self,
+        ...         parallelism: int,
+        ...         per_task_row_limit: int | None = None,
+        ...         data_context: DataContext | None = None,
+        ...     ) -> List["ReadTask"]:
+        ...         # Split num_rows across parallelism tasks
+        ...         rows_per_task = self.num_rows // parallelism
+        ...         return [
+        ...             ReadTask(
+        ...                 lambda: [pa.Table.from_pydict({"data": range(rows_per_task)})],
+        ...                 BlockMetadata(rows_per_task, rows_per_task * 8, None, None),
+        ...             ) for _ in range(parallelism)
+        ...         ]
+        ...     def estimate_inmemory_data_size(self) -> Optional[int]:
+        ...         # Return total size for all data (independent of parallelism)
+        ...         return self.num_rows * 8
+        >>> ds = MyDatasource(num_rows=100)
+        >>> tasks = ds.get_read_tasks(parallelism=5)
+        >>> len(tasks) == 5
+        True
+        >>> tasks[0].metadata.num_rows == 20
+        True
+        >>> ds.estimate_inmemory_data_size() == sum(t.metadata.size_bytes for t in tasks)
+        True
     """  # noqa: E501
 
     def __init__(self):
@@ -263,7 +302,10 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
         raise NotImplementedError
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
@@ -271,6 +313,7 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
             per_task_row_limit: The per-task row limit for the read tasks.
+            data_context: The data context to use to get read tasks.
         Returns:
             A list of read tasks that can be executed to read blocks from the
             datasource in parallel.
@@ -279,6 +322,8 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
 
     @property
     def should_create_reader(self) -> bool:
+        """Return True if the datasource should create a legacy reader"""
+
         has_implemented_get_read_tasks = (
             type(self).get_read_tasks is not Datasource.get_read_tasks
         )
@@ -286,9 +331,10 @@ class Datasource(_DatasourceProjectionPushdownMixin, _DatasourcePredicatePushdow
             type(self).estimate_inmemory_data_size
             is not Datasource.estimate_inmemory_data_size
         )
-        return (
-            not has_implemented_get_read_tasks
-            or not has_implemented_estimate_inmemory_data_size
+        # False when both get_read_tasks and estimate_inmemory_data_size are implemented
+        return not (
+            has_implemented_get_read_tasks
+            and has_implemented_estimate_inmemory_data_size
         )
 
     @property
@@ -336,7 +382,10 @@ class _LegacyDatasourceReader(Reader):
         return None
 
     def get_read_tasks(
-        self, parallelism: int, per_task_row_limit: Optional[int] = None
+        self,
+        parallelism: int,
+        per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List["ReadTask"]:
         """Execute the read and return read tasks.
 
@@ -344,6 +393,8 @@ class _LegacyDatasourceReader(Reader):
             parallelism: The requested read parallelism. The number of read
                 tasks should equal to this value if possible.
             per_task_row_limit: The per-task row limit for the read tasks.
+            data_context: The data context to use to get read tasks. Not used by this
+                legacy reader.
 
         Returns:
             A list of read tasks that can be executed to read blocks from the
@@ -450,6 +501,7 @@ class RandomIntRowDatasource(Datasource):
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
+        data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
         _check_pyarrow_version()
         import pyarrow

@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray.data.llm import SGLangEngineProcessorConfig
+from ray.llm._internal.batch.constants import SGLangTaskType
 from ray.llm._internal.batch.processor import ProcessorBuilder
 
 
@@ -50,8 +51,9 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
             "dp_size": 2,
             "disable_cuda_graph": True,
             "dtype": "half",
+            "task": SGLangTaskType.GENERATE,
         },
-        "task_type": "generate",
+        "task_type": SGLangTaskType.GENERATE,
         "max_pending_requests": 111,
     }
 

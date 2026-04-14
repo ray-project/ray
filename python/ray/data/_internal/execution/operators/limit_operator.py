@@ -1,5 +1,5 @@
-import copy
 from collections import deque
+from dataclasses import replace
 from typing import Deque, List, Optional, Tuple
 
 import ray
@@ -37,7 +37,7 @@ class LimitOperator(OneToOneOperator):
         return self._consumed_rows >= self._limit
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
-        assert not self.completed()
+        assert not self.has_completed()
         assert input_index == 0, input_index
         if self._limit_reached():
             return
@@ -57,9 +57,11 @@ class LimitOperator(OneToOneOperator):
                     block = BlockAccessor.for_block(block).slice(
                         0, num_rows, copy=False
                     )
-                    metadata = copy.deepcopy(metadata)
-                    metadata.num_rows = num_rows
-                    metadata.size_bytes = BlockAccessor.for_block(block).size_bytes()
+                    metadata = replace(
+                        metadata,
+                        num_rows=num_rows,
+                        size_bytes=BlockAccessor.for_block(block).size_bytes(),
+                    )
                     return block, metadata
 
                 block, metadata_ref = cached_remote_fn(
@@ -130,7 +132,4 @@ class LimitOperator(OneToOneOperator):
         return min(self._limit, input_num_rows)
 
     def throttling_disabled(self) -> bool:
-        return True
-
-    def implements_accurate_memory_accounting(self) -> bool:
         return True

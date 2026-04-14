@@ -1,27 +1,60 @@
 load("@py_deps_py310//:requirements.bzl", bk_require = "requirement")
 load("@rules_python//python:defs.bzl", "py_binary", "py_library", "py_test")
-load("@rules_python//python:pip.bzl", "compile_pip_requirements")
 
-compile_pip_requirements(
-    name = "requirements_buildkite",
-    data = [":requirements-doc.txt"],
-    requirements_in = "requirements_buildkite.in",
-    requirements_txt = "requirements_buildkite.txt",
-    tags = [
-        "team:ci",
+exports_files(
+    [
+        "aws2gce_iam.json",
+        "azure_docker_login.sh",
     ],
-    visibility = ["//visibility:private"],
+    visibility = ["//ci/ray_ci/automation:__pkg__"],
 )
 
-compile_pip_requirements(
-    name = "requirements_py310",
-    data = [":requirements-doc.txt"],
-    requirements_in = "requirements_py310.in",
-    requirements_txt = "requirements_py310.txt",
-    tags = [
-        "team:ci",
-    ],
+_requirements_py310_args = [
+    "$(rootpath :requirements_py310.in)",
+    "$(rootpath :requirements_py310.txt)",
+    "//release:requirements_py310.update",
+    "--no-upgrade",
+]
+
+_requirements_py310_data = [
+    ":requirements-doc.txt",
+    ":requirements_py310.in",
+    ":requirements_py310.txt",
+]
+
+_requirements_py310_deps = [
+    "@pypi__click//:lib",
+    "@pypi__colorama//:lib",
+    "@pypi__pep517//:lib",
+    "@pypi__pip//:lib",
+    "@pypi__pip_tools//:lib",
+    "@pypi__setuptools//:lib",
+    "@pypi__tomli//:lib",
+]
+
+py_binary(
+    name = "requirements_py310.update",
+    srcs = ["@rules_python//python/pip_install:pip_compile.py"],
+    args = _requirements_py310_args,
+    data = _requirements_py310_data,
+    exec_compatible_with = ["//bazel:py310"],
+    main = "@rules_python//python/pip_install:pip_compile.py",
+    tags = ["team:ci"],
     visibility = ["//visibility:private"],
+    deps = _requirements_py310_deps,
+)
+
+py_test(
+    name = "requirements_py310_test",
+    timeout = "short",
+    srcs = ["@rules_python//python/pip_install:pip_compile.py"],
+    args = _requirements_py310_args,
+    data = _requirements_py310_data,
+    exec_compatible_with = ["//bazel:py310"],
+    main = "@rules_python//python/pip_install:pip_compile.py",
+    tags = ["team:ci"],
+    visibility = ["//visibility:private"],
+    deps = _requirements_py310_deps,
 )
 
 test_srcs = glob(["**/*.py"])
@@ -376,12 +409,24 @@ py_library(
 )
 
 py_library(
+    name = "github_client",
+    srcs = ["ray_release/github_client.py"],
+    imports = ["."],
+    visibility = ["//ci/ray_ci:__subpackages__"],
+    deps = [
+        bk_require("requests"),
+    ],
+)
+
+py_library(
     name = "test",
     srcs = ["ray_release/test.py"],
     imports = ["."],
     visibility = ["//ci/ray_ci:__pkg__"],
     deps = [
+        ":anyscale_util",
         ":aws",
+        ":github_client",
         ":global_config",
         ":logger",
         ":result",
@@ -389,7 +434,6 @@ py_library(
         bk_require("aioboto3"),
         bk_require("boto3"),
         bk_require("botocore"),
-        bk_require("pygithub"),
     ],
 )
 
@@ -403,8 +447,8 @@ py_library(
     imports = ["."],
     visibility = ["//ci/ray_ci:__pkg__"],
     deps = [
+        ":github_client",
         ":test",
-        bk_require("pygithub"),
         bk_require("pybuildkite"),
     ],
 )
@@ -438,13 +482,8 @@ py_library(
     ]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
-        "//doc:deployment_serve_llm_example_configs",
-        "//doc:example_configs",
-        "//doc/source/data/examples:data_example_configs",
-        "//doc/source/train/examples/pytorch/deepspeed_finetune/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/distributing-pytorch/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/pytorch-fsdp/ci:ci_yamls",
-        "//doc/source/train/examples/pytorch/pytorch-profiling/ci:ci_yamls",
+        # Comprehensive filegroup that auto-discovers all ci/{aws,gce}.yaml configs for ray examples.
+        "//doc:all_examples_ci_configs",
     ],
     imports = ["."],
     visibility = ["//visibility:public"],
@@ -476,7 +515,6 @@ py_library(
         bk_require("jinja2"),
         bk_require("msal"),
         bk_require("pybuildkite"),
-        bk_require("pygithub"),
         bk_require("requests"),
     ],
 )
@@ -522,6 +560,21 @@ py_test(
     name = "test_anyscale_job_wrapper",
     size = "small",
     srcs = ["ray_release/tests/test_anyscale_job_wrapper.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_anyscale_job_runner",
+    size = "small",
+    srcs = ["ray_release/tests/test_anyscale_job_runner.py"],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
         "release_unit",
@@ -601,6 +654,21 @@ py_test(
 )
 
 py_test(
+    name = "test_byod_build_context",
+    size = "small",
+    srcs = ["ray_release/tests/test_byod_build_context.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
     name = "test_custom_byod_build",
     size = "small",
     srcs = ["ray_release/tests/test_custom_byod_build.py"],
@@ -624,6 +692,7 @@ py_test(
     srcs = ["ray_release/tests/test_custom_byod_build_init_helper.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
+        "//:ray-images.json",
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
@@ -827,6 +896,22 @@ py_test(
 )
 
 py_test(
+    name = "test_github_client",
+    size = "small",
+    srcs = ["ray_release/tests/test_github_client.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":github_client",
+        bk_require("pytest"),
+        bk_require("responses"),
+    ],
+)
+
+py_test(
     name = "test_test",
     size = "small",
     srcs = ["ray_release/tests/test_test.py"],
@@ -842,6 +927,7 @@ py_test(
         ":bazel",
         ":test",
         bk_require("pytest"),
+        bk_require("responses"),
     ],
 )
 
@@ -906,21 +992,6 @@ py_test(
     ],
 )
 
-py_binary(
-    name = "build_pipeline",
-    srcs = ["ray_release/scripts/build_pipeline.py"],
-    data = glob(["**/*.yaml"]) + [
-        "ray_release/byod/byod.Dockerfile",
-        "ray_release/byod/byod.custom.Dockerfile",
-        "//python/ray/autoscaler/aws:test_configs",
-        "//python/ray/autoscaler/gcp:test_configs",
-    ],
-    exec_compatible_with = ["//bazel:py3"],
-    deps = [
-        ":ray_release",
-    ],
-)
-
 py_library(
     name = "custom_byod_build_lib",
     srcs = ["ray_release/scripts/custom_byod_build.py"],
@@ -956,6 +1027,16 @@ py_library(
 py_binary(
     name = "custom_image_build_and_test_init",
     srcs = ["ray_release/scripts/custom_image_build_and_test_init.py"],
+    exec_compatible_with = ["//bazel:py3"],
+    deps = [
+        ":ray_release",
+        bk_require("click"),
+    ],
+)
+
+py_binary(
+    name = "list_release_tests",
+    srcs = ["ray_release/scripts/list_release_tests.py"],
     exec_compatible_with = ["//bazel:py3"],
     deps = [
         ":ray_release",

@@ -67,7 +67,9 @@ def test_deploy_app_custom_exception(serve_instance):
         ]
     }
 
-    ray.get(controller.apply_config.remote(config=ServeDeploySchema.parse_obj(config)))
+    ray.get(
+        controller.apply_config.remote(config=ServeDeploySchema.model_validate(config))
+    )
 
     def check_custom_exception() -> bool:
         status = serve.status().applications["broken_app"]
@@ -113,6 +115,16 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
         controller.get_deployment_details.remote("default", "autoscaling_app")
     )
     replica = deployment_details.replicas[0]
+
+    http_port, grpc_port = None, None
+
+    for target_group in details["target_groups"]:
+        if target_group["protocol"] == "HTTP" and target_group["targets"]:
+            http_port = target_group["targets"][0]["port"]
+
+        if target_group["protocol"] == "gRPC" and target_group["targets"]:
+            grpc_port = target_group["targets"][0]["port"]
+
     expected_json = json.dumps(
         {
             "controller_info": {
@@ -180,7 +192,8 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     "upscale_delay_s": 30.0,
                                     "aggregation_function": "mean",
                                     "policy": {
-                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+                                        "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+                                        "policy_kwargs": {},
                                     },
                                 },
                                 "graceful_shutdown_wait_loop_s": 2.0,
@@ -195,6 +208,9 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                                     "request_router_kwargs": {},
                                     "request_routing_stats_period_s": 10.0,
                                     "request_routing_stats_timeout_s": 30.0,
+                                    "initial_backoff_s": 0.025,
+                                    "backoff_multiplier": 2.0,
+                                    "max_backoff_s": 0.5,
                                 },
                             },
                             "target_num_replicas": 1,
@@ -237,25 +253,27 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy_nam
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 8000,
+                            "port": http_port,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name,
                         },
                     ],
                     "route_prefix": "/",
                     "protocol": "HTTP",
+                    "app_name": "",
                 },
                 {
                     "targets": [
                         {
                             "ip": node_ip,
-                            "port": 9000,
+                            "port": grpc_port,
                             "instance_id": node_instance_id,
                             "name": proxy_details.actor_name,
                         },
                     ],
                     "route_prefix": "/",
                     "protocol": "gRPC",
+                    "app_name": "",
                 },
             ],
         }
@@ -291,6 +309,96 @@ def test_get_deployment_config(serve_instance):
     )
     # After the deployment is created, the config should be DeploymentConfig.
     assert isinstance(deployment_config, DeploymentConfig)
+
+
+def test_get_health_metrics(serve_instance):
+    """Test that get_health_metrics returns valid controller health metrics."""
+
+    controller = _get_global_client()._controller
+
+    # Deploy a simple application to ensure controller is active
+    @serve.deployment
+    def health_test_app():
+        return "ok"
+
+    serve.run(health_test_app.bind())
+
+    # Get health metrics
+    metrics = ray.get(controller.get_health_metrics.remote())
+
+    # Verify it's a dictionary
+    assert isinstance(metrics, dict)
+
+    # Verify all expected fields are present
+    expected_fields = [
+        "timestamp",
+        "controller_start_time",
+        "uptime_s",
+        "num_control_loops",
+        "loop_duration_s",
+        "loops_per_second",
+        "last_sleep_duration_s",
+        "expected_sleep_duration_s",
+        "event_loop_delay_s",
+        "num_asyncio_tasks",
+        "deployment_state_update_duration_s",
+        "application_state_update_duration_s",
+        "proxy_state_update_duration_s",
+        "node_update_duration_s",
+        "handle_metrics_delay_ms",
+        "replica_metrics_delay_ms",
+        "process_memory_mb",
+    ]
+
+    for field in expected_fields:
+        assert field in metrics, f"Missing field: {field}"
+
+    # Verify types and basic sanity checks
+    assert metrics["timestamp"] > 0
+    assert metrics["controller_start_time"] > 0
+    assert metrics["uptime_s"] >= 0
+    assert metrics["expected_sleep_duration_s"] > 0  # Should be CONTROL_LOOP_INTERVAL_S
+
+    # Wait for at least one control loop to complete
+    def has_control_loops():
+        m = ray.get(controller.get_health_metrics.remote())
+        return m["num_control_loops"] > 0
+
+    wait_for_condition(has_control_loops, timeout=10)
+
+    # Get updated metrics after control loops have run
+    metrics = ray.get(controller.get_health_metrics.remote())
+
+    # Verify control loop metrics are populated
+    assert metrics["num_control_loops"] > 0
+    assert metrics["loops_per_second"] > 0
+
+    # Verify DurationStats structure for loop_duration_s
+    loop_stats = metrics["loop_duration_s"]
+    assert loop_stats is not None
+    assert "mean" in loop_stats
+    assert "std" in loop_stats
+    assert "min" in loop_stats
+    assert "max" in loop_stats
+    assert loop_stats["mean"] > 0
+
+    # Verify DurationStats structure for component update durations
+    for field in [
+        "deployment_state_update_duration_s",
+        "application_state_update_duration_s",
+        "proxy_state_update_duration_s",
+        "node_update_duration_s",
+    ]:
+        stats = metrics[field]
+        assert stats is not None, f"{field} should not be None"
+        assert "mean" in stats, f"{field} should have 'mean'"
+        assert "std" in stats, f"{field} should have 'std'"
+        assert "min" in stats, f"{field} should have 'min'"
+        assert "max" in stats, f"{field} should have 'max'"
+
+    # Verify the metrics are JSON serializable
+    metrics_json = json.dumps(metrics)
+    assert isinstance(metrics_json, str)
 
 
 if __name__ == "__main__":

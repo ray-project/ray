@@ -445,13 +445,15 @@ which produces a :class:`TaskCancelledError <ray.exceptions.TaskCancelledError>`
 
 **Running actor tasks (regular actor, threaded actor)**:
 For tasks classified as a single-threaded Actor or a multi-threaded Actor,
-Ray offers no mechanism for interruption.
+Ray sets a cancellation flag that can be checked via ``ray.get_runtime_context().is_canceled()``.
+This allows for graceful cancellation by periodically checking the cancellation status within the task.
 
 **Running async actor tasks**:
 For Tasks classified as :ref:`async Actors <async-actors>`, Ray seeks to cancel the associated `asyncio.Task`.
 This cancellation approach aligns with the standards presented in
 `asyncio task cancellation <https://docs.python.org/3/library/asyncio-task.html#task-cancellation>`__.
 Note that `asyncio.Task` won't be interrupted in the middle of execution if you don't `await` within the async function.
+Note: ``ray.get_runtime_context().is_canceled()`` is not supported for async actors and will raise a ``RuntimeError``.
 
 **Cancellation guarantee**:
 Ray attempts to cancel Tasks on a *best-effort* basis, meaning cancellation isn't always guaranteed.
@@ -462,6 +464,27 @@ You can check if a Task was successfully cancelled using ``ray.get(actor_task_re
 **Recursive cancellation**:
 Ray tracks all child and Actor Tasks. When the ``recursive=True`` argument is given,
 it cancels all child and Actor Tasks.
+
+Detecting cancellation in running actor tasks
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For non-async actor tasks, you can periodically check whether a cancellation has been requested
+by calling ``ray.get_runtime_context().is_canceled()``. This allows tasks to detect cancellation
+and perform cleanup operations before exiting gracefully.
+
+.. tab-set::
+
+    .. tab-item:: Python
+
+        .. literalinclude:: doc_code/actors.py
+            :language: python
+            :start-after: __cancel_graceful_actor_start__
+            :end-before: __cancel_graceful_actor_end__
+
+**Important notes:**
+
+- For **non-async actor tasks**, direct interruption is not supported. You need to check ``is_canceled()`` periodically to detect cancellation requests.
+- ``is_canceled()`` is **not supported** for async actor tasks and will raise a ``RuntimeError``.
 
 Scheduling
 ----------

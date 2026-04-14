@@ -21,9 +21,6 @@
 /// The duration between dumping debug info to logs, or 0 to disable.
 RAY_CONFIG(uint64_t, debug_dump_period_milliseconds, 10000)
 
-/// The duration at which the GCS tries to run global GC.
-RAY_CONFIG(uint64_t, gcs_global_gc_interval_milliseconds, 10000)
-
 /// Whether to enable Ray event stats collection.
 RAY_CONFIG(bool, event_stats, true)
 
@@ -40,6 +37,9 @@ RAY_CONFIG(bool, enable_cluster_auth, true)
 /// rpc/authentication/authentication_mode.h
 /// use GetAuthenticationMode() to get the authentication mode enum value.
 RAY_CONFIG(std::string, AUTH_MODE, "disabled")
+
+/// Whether to enable Kubernetes token-based authentication for RPC calls.
+RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)
 
 /// The interval of periodic event loop stats print.
 /// -1 means the feature is disabled. In this case, stats are available
@@ -70,7 +70,11 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// Threshold when the node is beyond the memory capacity. If the memory is above the
 /// memory_usage_threshold and free space is below the min_memory_free_bytes then
 /// it will start killing processes to free up the space.
-/// Ranging from [0, 1]
+/// Note: when resource isolation is enabled, the memory usage threshold is set to
+/// total memory - system reserved memory (can be specified in ray start) -
+/// kill_memory_buffer_bytes. Notice that the formula does not account for object store
+/// memory in system reserved memory. To configure the usage threshold, please adjust the
+/// system reserved memory in ray start command instead. Ranging from [0, 1]
 RAY_CONFIG(float, memory_usage_threshold, 0.95)
 
 /// The interval between runs of the memory usage monitor.
@@ -85,6 +89,37 @@ RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 /// represent a large chunk of memory, e.g. a host with 64GB of memory and 0.9 threshold
 /// means 6.4 GB of the memory will not be usable.
 RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
+
+/// The amount of memory to free under the memory usage threshold when
+/// killing workers via the worker killing policy.
+RAY_CONFIG(uint64_t, kill_memory_buffer_bytes, 3ULL * 1024 * 1024 * 1024)  // 3GB
+
+/// The reserved memory bytes for system processes
+/// enforced via cgroup memory.min constraint which guarantees
+/// that the system processes' memory will not be reclaimed under any conditions.
+/// Default is 0, meaning no memory.min constraint is applied.
+/// By default, if resource isolation is enabled, system reserved memory
+/// will be protected via memory.low instead. Only configure this value
+/// if you are certain that you want the min constraint protection.
+RAY_CONFIG(int64_t, system_memory_bytes_min, 0)
+
+/// The proportion of total memory the user processes are allowed to use.
+/// Enforced by the cgroup memory.high constraint which throttles the
+/// user processes' when the threshold is reached.
+/// Default is 1.0, meaning the user processes are allowed to use 100% of the total
+/// memory. Only configure this value if you are confident that
+/// the configuration is desirable. Bad constraint configurations may
+/// lead to significant system performance degradation.
+RAY_CONFIG(float, user_memory_proportion_high, 1.0)
+
+/// The proportion of total memory the user processes are allowed to use.
+/// Enforced by the cgroup memory.max constraint which triggers the
+//. kernel OOM killer when the threshold is reached.
+/// Default is 1.0, meaning the user processes are allowed to use 100% of the total
+/// memory. Only configure this value if you are confident that
+/// the configuration is desirable. Bad constraint configurations may
+/// lead to significant system performance degradation.
+RAY_CONFIG(float, user_memory_proportion_max, 1.0)
 
 /// The TTL for when the task failure entry is considered
 /// eligible for garbage collection.
@@ -262,11 +297,6 @@ RAY_CONFIG(bool, yield_plasma_lock_workaround, true)
 RAY_CONFIG(int64_t, raylet_client_num_connect_attempts, 10)
 RAY_CONFIG(int64_t, raylet_client_connect_timeout_milliseconds, 1000)
 
-/// The duration that the raylet will wait before reinitiating a
-/// fetch request for a missing task dependency. This time may adapt based on
-/// the number of missing task dependencies.
-RAY_CONFIG(int64_t, raylet_fetch_timeout_milliseconds, 1000)
-
 /// The duration that we wait after sending a worker SIGTERM before sending
 /// the worker SIGKILL.
 RAY_CONFIG(int64_t, kill_worker_timeout_milliseconds, 5000)
@@ -284,6 +314,11 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// The maximum workers raylet can start at the same time.
 /// 0 means it will use the default (number of CPUs).
 RAY_CONFIG(int64_t, worker_maximum_startup_concurrency, 0)
+
+/// Maximum number of retries for pop worker before the task is
+/// cancelled. 0 means no retry (fail immediately), default is 5.
+/// Retries indefinitely if the value is -1.
+RAY_CONFIG(int32_t, pop_worker_max_retries, 5)
 
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
@@ -411,6 +446,13 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 /// No delay if this value is zero.
 RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
 
+/// The base retry delay for exponential backoff when an actor task fails with
+/// ACTOR_UNAVAILABLE (e.g., actor is restarting or network error).
+RAY_CONFIG(uint32_t, task_actor_unavailable_retry_delay_base_ms, 100)
+
+/// The maximum retry delay for ACTOR_UNAVAILABLE exponential backoff.
+RAY_CONFIG(uint32_t, task_actor_unavailable_retry_max_delay_ms, 5000)
+
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
 
@@ -509,6 +551,11 @@ RAY_CONFIG(uint64_t, task_events_max_num_profile_events_buffer_on_worker, 10 * 1
 /// Setting the value to -1 allows unlimited dropped task attempts in a single
 /// report to GCS.
 RAY_CONFIG(int64_t, task_events_dropped_task_attempt_batch_size, 10 * 1000)
+
+/// Timeout in milliseconds to wait for task events to be flushed during shutdown.
+/// During graceful shutdown, the TaskEventBuffer and RayEventRecorder will wait up to
+/// this duration for in-flight gRPC calls to complete before stopping the io_service.
+RAY_CONFIG(int64_t, task_events_shutdown_flush_timeout_ms, 5000)
 
 /// The delay in ms that GCS should mark any running tasks from a job as failed.
 /// Setting this value too smaller might result in some finished tasks marked as failed by
@@ -659,6 +706,16 @@ RAY_CONFIG(int, max_io_workers, 4)
 /// default. This value is not recommended to set beyond --object-store-memory.
 RAY_CONFIG(int64_t, min_spilling_size, 100 * 1024 * 1024)
 
+/// Maximum size (bytes) of a single spilled file (i.e. one spill worker request).
+/// When > 0, the raylet caps the total bytes fused into a single spill request.
+/// This helps avoid generating very large spill files that may be hard to delete promptly
+/// when multiple object references keep them alive (to avoid disk out of space).
+/// Trade-off: smaller caps reduce spill fusion and can lower effective spill throughput
+/// due to higher per-file overhead. If spilling cannot keep up with allocation under
+/// memory pressure, this may increase the likelihood of object store OOMs.
+/// Set to -1 to disable this limit.
+RAY_CONFIG(int64_t, max_spilling_file_size_bytes, -1)
+
 /// If set to less than 1.0, Ray will start spilling objects when existing primary objects
 /// take more than this percentage of the available memory.
 RAY_CONFIG(float, object_spilling_threshold, 0.8)
@@ -705,6 +762,10 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
+/// Interval at which workers report their backlog of tasks with unresolved dependencies
+/// to the local raylet, used for autoscaling decisions.
+RAY_CONFIG(int64_t, report_worker_backlog_interval_ms, 1000)
+
 /// Starting timeout for core worker grpc server reconnection (will
 /// exponentially increase until the maximum timeout).
 RAY_CONFIG(uint32_t, core_worker_rpc_server_reconnect_timeout_base_s, 1)
@@ -741,9 +802,6 @@ RAY_CONFIG(uint64_t, subscriber_timeout_ms, 300 * 1000)
 // This is the minimum time an actor will remain in the actor table before
 // being garbage collected when a job finishes
 RAY_CONFIG(uint64_t, gcs_actor_table_min_duration_ms, /*  5 min */ 60 * 1000 * 5)
-
-/// Whether to enable GCS-based actor scheduling.
-RAY_CONFIG(bool, gcs_actor_scheduling_enabled, false)
 
 RAY_CONFIG(uint32_t, max_error_msg_size_bytes, 512 * 1024)
 
@@ -851,13 +909,17 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
 
 /// To use this,
-///  export
-///  RAY_testing_rpc_failure="method1=max_num_failures:req_failure_prob:resp_failure_prob:in_flight_failure_prob,method2=max_num_failures:req_failure_prob:resp_failure_prob:in_flight_failure_prob"
-/// If you want to test all rpc failures you can use * as the method name and you can set
-/// -1 max_num_failures to have unlimited failures.
-/// Ex. unlimited failures for all rpc's with 25% request failures, 50% response
+///     export
+///     RAY_testing_rpc_failure='{"method1":{"num_failures":X,"req_failure_prob":Y,"resp_failure_prob":Z,"in_flight_failure_prob":W}}'
+///
+/// If you want to test all RPC failures you can use * as the method name and you can set
+/// -1 num_failures to have unlimited failures.
+/// Ex. unlimited failures for all RPCs with 25% request failures, 50% response
 /// failures, and 10% in-flight failures.
-///     export RAY_testing_rpc_failure="*=-1:25:50:10"
+///     export
+///     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":25,"resp_failure_prob":50,"in_flight_failure_prob":10}}'
+/// This will set the probabilities for all RPCs to 25% for request failures, 50% for
+/// response failures, and 10% for in-flight failures.
 /// NOTE: Setting the wildcard will override any configuration for other methods.
 ///
 /// You can also provide an optional fifth, sixth, and/or seventh parameter to specify
@@ -871,10 +933,11 @@ RAY_CONFIG(std::string, testing_asio_delay_us, "")
 /// Afterwards, it will revert to the probabilistic failures. You can combine this with
 /// the wildcard so that each RPC method will have the same lower bounds applied.
 ///
-/// Ex. unlimited failures for all rpc's with 25% request failures, 50% response failures,
+/// Ex. unlimited failures for all RPCs with 25% request failures, 50% response failures,
 /// and 10% in-flight failures with at least 2 request failures, 3 response failures, and
-/// 1 in-flight failure.
-///     export RAY_testing_rpc_failure="*=-1:25:50:10:2:3:1"
+/// 1 in-flight failure:
+///     export
+///     RAY_testing_rpc_failure='{"*":{"num_failures":-1,"req_failure_prob":25,"resp_failure_prob":50,"in_flight_failure_prob":10,"num_lower_bound_req_failures":2,"num_lower_bound_resp_failures":3,"num_lower_bound_in_flight_failures":1}}'
 RAY_CONFIG(std::string, testing_rpc_failure, "")
 /// If this is set, when injecting RPC failures, we'll check if the server and client have
 /// the same address. If they do, we won't inject the failure.
@@ -948,7 +1011,7 @@ RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
 RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 
 // The number of grpc clients between object managers.
-RAY_CONFIG(int, object_manager_client_connection_num, 4)
+RAY_CONFIG(int, object_manager_client_connection_num, 2)
 
 // The actual number of threads for object transfers through the object manager is this
 // number * 3. There num_threads started for each of these 3 things:
@@ -1040,3 +1103,14 @@ RAY_CONFIG(size_t, gcs_resource_broadcast_max_batch_size, 1)
 // before the timeout, the batch will be broadcasted eagerly. This flag only applies if
 // `gcs_resource_broadcast_max_batch_size != 1`.
 RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
+
+// Whether to enable/disable multiple gRPC connections to improve object transfer
+// throughput.
+RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+// The threshold of the memory usage in bytes for the idle worker to be considered as
+// a candidate for killing.
+// TODO: We should clean it up after the memory monitor is revamped.
+RAY_CONFIG(int64_t,
+           idle_worker_killing_memory_threshold_bytes,
+           1024 * 1024 * 1024)  // 1GB

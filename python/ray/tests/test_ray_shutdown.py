@@ -9,6 +9,7 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
+from ray._private import ray_constants
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
 )
@@ -25,7 +26,15 @@ def get_all_ray_worker_processes():
     result = []
     for p in processes:
         cmdline = p.info["cmdline"]
-        if cmdline is not None and len(cmdline) > 0 and "ray::" in cmdline[0]:
+        # Skip agent processes. cmdline might be truncated on linux so match by substring.
+        if (
+            cmdline is not None
+            and len(cmdline) > 0
+            and "ray::" in cmdline[0]
+            and not any(
+                cmdline[0] in agent for agent in ray_constants.AGENT_PROCESS_LIST
+            )
+        ):
             result.append(p)
     print(f"all ray worker processes: {result}")
     return result
@@ -275,11 +284,23 @@ def test_raylet_graceful_exit_upon_agent_exit(ray_start_cluster):
                 raylet = p[1]
         assert raylet is not None
 
-        children = psutil.Process(raylet.pid).children()
-        target_path = os.path.join("dashboard", "agent.py")
-        for child in children:
-            if target_path in " ".join(child.cmdline()):
-                return raylet, child
+        agent = None
+
+        def verify():
+            nonlocal agent
+            children = psutil.Process(raylet.pid).children()
+            # in case linux truncates the proctitle
+            target_path = ray_constants.AGENT_PROCESS_TYPE_DASHBOARD_AGENT[:15]
+            for child in children:
+                if target_path in " ".join(child.cmdline()):
+                    agent = child
+                    return True
+            return False
+
+        # wait until proctitle is updated
+        wait_for_condition(verify, timeout=1, retry_interval_ms=100)
+        if agent is not None:
+            return raylet, agent
         raise ValueError("dashboard agent not found")
 
     # Make sure raylet exits gracefully upon agent terminated by SIGTERM.
@@ -314,11 +335,23 @@ def test_raylet_graceful_exit_upon_runtime_env_agent_exit(ray_start_cluster):
                 raylet = p[1]
         assert raylet is not None
 
-        children = psutil.Process(raylet.pid).children()
-        target_path = os.path.join("runtime_env", "agent", "main.py")
-        for child in children:
-            if target_path in " ".join(child.cmdline()):
-                return raylet, child
+        agent = None
+
+        def verify():
+            nonlocal agent
+            children = psutil.Process(raylet.pid).children()
+            # in case linux truncates the proctitle
+            target_path = ray_constants.AGENT_PROCESS_TYPE_RUNTIME_ENV_AGENT[:15]
+            for child in children:
+                if target_path in " ".join(child.cmdline()):
+                    agent = child
+                    return True
+            return False
+
+        # wait until proctitle is updated
+        wait_for_condition(verify, timeout=1, retry_interval_ms=100)
+        if agent is not None:
+            return raylet, agent
         raise ValueError("runtime env agent not found")
 
     # Make sure raylet exits gracefully upon agent terminated by SIGKILL.
@@ -473,6 +506,34 @@ def test_sigterm_while_ray_get_and_wait(shutdown_only, is_get):
         return True
 
     wait_for_condition(verify)
+
+
+@pytest.mark.skipif(platform.system() == "Windows", reason="Hang on Windows.")
+def test_kill_actor_after_restart(shutdown_only):
+    """Test that killing an actor from a previous session raises a helpful error."""
+    # Set include_dashboard=False to have faster startup.
+    ray.init(num_cpus=1, include_dashboard=False)
+
+    @ray.remote
+    class A:
+        pass
+
+    a = A.remote()
+
+    # Restart ray
+    ray.shutdown()
+    ray.init(num_cpus=1, include_dashboard=False)
+
+    # Attempting to kill an actor from the previous session should raise
+    # a helpful error message instead of crashing the interpreter.
+    with pytest.raises(
+        ray.exceptions.ActorHandleNotFoundError,
+        match="ActorHandle objects are not valid across Ray sessions",
+    ):
+        ray.kill(a)
+
+    ray.shutdown()
+    wait_for_condition(lambda: len(get_all_ray_worker_processes()) == 0)
 
 
 if __name__ == "__main__":

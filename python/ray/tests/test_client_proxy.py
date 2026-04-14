@@ -14,23 +14,27 @@ import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.util.client.server.proxier as proxier
 from ray._common.network_utils import parse_address
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._private.ray_constants import REDIS_DEFAULT_PASSWORD
-from ray._private.test_utils import run_string_as_driver
 from ray.cloudpickle.compat import pickle
 from ray.job_config import JobConfig
+
+import psutil
 
 
 def start_ray_and_proxy_manager(n_ports=2):
     ray_instance = ray.init(_redis_password=REDIS_DEFAULT_PASSWORD)
-    runtime_env_agent_address = (
-        ray._private.worker.global_worker.node.runtime_env_agent_address
-    )
+    node = ray._private.worker.global_worker.node
+    runtime_env_agent_address = node.runtime_env_agent_address
     pm = proxier.ProxyManager(
         ray_instance["address"],
         session_dir=ray_instance["session_dir"],
         redis_password=REDIS_DEFAULT_PASSWORD,
         runtime_env_agent_address=runtime_env_agent_address,
+        node_id=node.node_id,
     )
     free_ports = random.choices(pm._free_ports, k=n_ports)
     assert len(free_ports) == n_ports
@@ -260,6 +264,34 @@ def test_runtime_install_error_message(call_ray_start):
     ), str(excinfo.value)
 
     ray.util.disconnect()
+
+
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="PSUtil does not work the same on windows."
+)
+@pytest.mark.parametrize(
+    "call_ray_start",
+    [
+        "ray start --head --ray-client-server-port 25041 "
+        "--port 0 --redis-password=password"
+    ],
+    indirect=True,
+)
+def test_client_server_start_does_not_expose_redis_password_in_cmdline(call_ray_start):
+    def find_client_server_cmdline():
+        for proc in psutil.process_iter(attrs=["cmdline"]):
+            try:
+                cmdline = proc.info.get("cmdline") or []
+                if "ray.util.client.server" in cmdline and "--port=25041" in cmdline:
+                    return cmdline
+            except (psutil.NoSuchProcess, psutil.AccessDenied, psutil.ZombieProcess):
+                continue
+        return None
+
+    wait_for_condition(lambda: find_client_server_cmdline() is not None)
+    cmdline = find_client_server_cmdline()
+    assert not any(arg.startswith("--redis-password=") for arg in cmdline)
+    assert "--redis-password" not in cmdline
 
 
 def test_prepare_runtime_init_req_fails():

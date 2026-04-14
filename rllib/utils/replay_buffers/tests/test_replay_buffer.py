@@ -212,15 +212,17 @@ class TestReplayBuffer(unittest.TestCase):
             buffer.add(batch)
 
         num_sampled_dict = {_id: 0 for _id in range(1, 5)}
-        num_samples = 200
+        # Use 500 samples to reduce statistical variance while keeping atol=0.1
+        # for meaningful bug detection.
+        num_samples = 500
         for i in range(num_samples):
             sample = buffer.sample(1)
             _id = sample["batch_id"][0]
             assert len(sample[SampleBatch.SEQ_LENS]) == 1
             num_sampled_dict[_id] += 1
 
-        # Out of five sequences, we want to sequences from the last batch to
-        # be sampled twice as often, because they are stored separately
+        # Out of five sequences, we want sequences from the last batch to
+        # be sampled twice as often, because they are stored separately.
         assert np.allclose(
             np.array(list(num_sampled_dict.values())) / num_samples,
             [1 / 5, 1 / 5, 1 / 5, 2 / 5],
@@ -253,7 +255,8 @@ class TestReplayBuffer(unittest.TestCase):
         # The first batch should now not be sampled anymore, other batches
         # should be sampled as before
         num_sampled_dict = {_id: 0 for _id in range(2, 6)}
-        num_samples = 200
+        # See comment above about num_samples=500 for statistical stability.
+        num_samples = 500
         for i in range(num_samples):
             sample = buffer.sample(1)
             _id = sample["batch_id"][0]

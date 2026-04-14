@@ -5,7 +5,9 @@
 
 ARG BASE_IMAGE
 FROM ${BASE_IMAGE} AS main-build
-ARG PYTHON_VERSION
+ARG PYTHON_VERSION="3.10"
+ARG PYTHON_DEPSET="python/deplocks/base_slim/ray_base_slim_py${PYTHON_VERSION}.lock"
+ARG CONSTRAINTS_FILE="python/requirements_compiled_py${PYTHON_VERSION}.txt"
 
 RUN <<EOF
 #!/bin/bash
@@ -29,6 +31,10 @@ APT_PKGS=(
     gdb
     vim-tiny
     less
+
+    # For HAProxy
+    socat
+    liblua5.3-0
 )
 
 apt-get update
@@ -98,7 +104,8 @@ USER ray
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY python/requirements_compiled.txt /home/ray/requirements_compiled.txt
+COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
 #!/bin/bash
@@ -119,23 +126,9 @@ eval "$(/home/ray/anaconda3/bin/conda shell.bash activate)"
 /home/ray/anaconda3/bin/conda install -y "python=${PYTHON_VERSION}"
 /home/ray/anaconda3/bin/conda clean -a
 
-# Install python packages
-PIP_PKGS=(
-    anyscale
-    packaging
-    azure-identity
-    "adlfs[abfs]"
-    boto3
-    google-cloud-storage
-    jupyterlab
-    ipywidgets
-    supervisor
-    "smart_open[s3,gcs,azure,http]"
-)
+uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
+    -r $HOME/python_depset.lock
 
-uv pip install --system --no-cache-dir --index-strategy unsafe-best-match \
-    -c /home/ray/requirements_compiled.txt \
-    "${PIP_PKGS[@]}"
 anyscale --version
 
 mkdir -p /tmp/supervisord
@@ -188,13 +181,8 @@ RUN <<EOF
 #!/bin/bash
 set -euo pipefail
 
-apt-get update -y
-apt-get install -y --no-install-recommends socat liblua5.3-0
-
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 chown -R ray:"$(id -gn ray)" /run/haproxy
-
-rm -rf /var/lib/apt/lists/*
 
 EOF
 

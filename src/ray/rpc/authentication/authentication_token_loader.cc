@@ -15,9 +15,15 @@
 #include "ray/rpc/authentication/authentication_token_loader.h"
 
 #include <fstream>
+#include <memory>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "absl/strings/escaping.h"
+#include "absl/strings/str_split.h"
+#include "nlohmann/json.hpp"
+#include "ray/rpc/authentication/authentication_mode.h"
 #include "ray/rpc/authentication/k8s_constants.h"
 #include "ray/util/logging.h"
 
@@ -42,24 +48,62 @@ constexpr const char *kNoTokenErrorMessage =
     "or store the token in any file and set RAY_AUTH_TOKEN_PATH to point to it, "
     "or set the RAY_AUTH_TOKEN environment variable.";
 
+std::optional<std::chrono::system_clock::time_point>
+AuthenticationTokenLoader::GetJWTTokenExpiration(const std::string &token) {
+  std::vector<std::string> parts = absl::StrSplit(token, '.');
+  if (parts.size() != 3) {
+    RAY_LOG(WARNING) << "Invalid JWT token format.";
+    return std::nullopt;
+  }
+
+  std::string payload;
+  if (!absl::WebSafeBase64Unescape(parts[1], &payload)) {
+    RAY_LOG(WARNING) << "Unable to base64 decode JWT token.";
+    return std::nullopt;
+  }
+
+  try {
+    auto json = nlohmann::json::parse(payload);
+    if (json.contains("exp") && json["exp"].is_number()) {
+      int64_t exp = json["exp"].get<int64_t>();
+      return std::chrono::system_clock::from_time_t(exp) -
+             std::chrono::seconds(ray::rpc::k8s::kRaySATokenExpirationBufferSeconds);
+    }
+  } catch (...) {
+    return std::nullopt;
+  }
+
+  return std::chrono::system_clock::now() +
+         std::chrono::seconds(ray::rpc::k8s::kRaySATokenDefaultTTLSeconds);
+}
+
 AuthenticationTokenLoader &AuthenticationTokenLoader::instance() {
   static AuthenticationTokenLoader instance;
   return instance;
 }
 
-std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken(
+std::shared_ptr<const AuthenticationToken> AuthenticationTokenLoader::GetToken(
     bool ignore_auth_mode) {
   absl::MutexLock lock(&token_mutex_);
 
+  // If k8s token auth is enabled, revoke cached token as Kubelet
+  // will expire and auto rotate new service account tokens every hour by default.
+  // Use 5 minutes as a default as users can configure the expiration time.
+  if (IsK8sTokenAuthEnabled()) {
+    if (cached_token_ && cached_token_expiration_time_ &&
+        std::chrono::system_clock::now() >= cached_token_expiration_time_) {
+      cached_token_ = nullptr;
+    }
+  }
+
   // If already loaded, return cached value
-  if (cached_token_.has_value()) {
+  if (cached_token_) {
     return cached_token_;
   }
 
-  // If token or k8s auth is not enabled, return std::nullopt (unless ignoring auth mode)
-  if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
-    cached_token_ = std::nullopt;
-    return std::nullopt;
+  // If token auth is not enabled, return std::nullopt (unless ignoring auth mode)
+  if (!ignore_auth_mode && GetAuthenticationMode() != AuthenticationMode::TOKEN) {
+    return nullptr;
   }
 
   // Token auth is enabled (or we're ignoring auth mode), try to load from sources
@@ -74,25 +118,36 @@ std::optional<AuthenticationToken> AuthenticationTokenLoader::GetToken(
 
   // Cache and return the loaded token
   if (has_token) {
-    cached_token_ = std::move(result.token);
-    return *cached_token_;
+    cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
+    if (IsK8sTokenAuthEnabled()) {
+      cached_token_expiration_time_ = GetJWTTokenExpiration(cached_token_->GetRawValue());
+    }
   }
-  return std::nullopt;
+  return cached_token_;
 }
 
 TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
   absl::MutexLock lock(&token_mutex_);
   TokenLoadResult result;
 
+  // If k8s token auth is enabled, revoke cached token as Kubelet
+  // will expire and auto rotate new service account tokens every hour by default.
+  // Use 5 minutes as a default as users can configure the expiration time.
+  if (IsK8sTokenAuthEnabled()) {
+    if (cached_token_ && cached_token_expiration_time_ &&
+        std::chrono::system_clock::now() >= cached_token_expiration_time_) {
+      cached_token_ = nullptr;
+    }
+  }
+
   // If already loaded, return cached value
-  if (cached_token_.has_value()) {
-    result.token = cached_token_;
+  if (cached_token_) {
+    result.token = *cached_token_;  // Copy from shared_ptr
     return result;
   }
 
   // If auth is disabled, return nullopt (no token needed)
-  if (!ignore_auth_mode && !RequiresTokenAuthentication()) {
-    cached_token_ = std::nullopt;
+  if (!ignore_auth_mode && GetAuthenticationMode() != AuthenticationMode::TOKEN) {
     result.token = std::nullopt;
     return result;
   }
@@ -103,16 +158,20 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadToken(bool ignore_auth_mode) {
     return result;  // Propagate error
   }
 
-  bool no_token = !result.token.has_value() || result.token->empty();
-  if (no_token && ignore_auth_mode) {
+  bool has_token = result.token.has_value() && !result.token->empty();
+  if (!has_token && ignore_auth_mode) {
     result.token = std::nullopt;
     return result;
-  } else if (no_token) {
+  } else if (!has_token) {
     result.error_message = kNoTokenErrorMessage;
     return result;
   }
   // Cache and return success
-  cached_token_ = result.token;
+  cached_token_ = std::make_shared<const AuthenticationToken>(std::move(*result.token));
+  if (IsK8sTokenAuthEnabled()) {
+    cached_token_expiration_time_ = GetJWTTokenExpiration(cached_token_->GetRawValue());
+  }
+  result.token = *cached_token_;  // Copy back for return
   return result;
 }
 
@@ -151,18 +210,20 @@ TokenLoadResult AuthenticationTokenLoader::TryLoadTokenFromSources() {
     }
   }
 
-  // Precedence 3 (auth_mode=k8s only): Load Kubernetes service account token
-  if (GetAuthenticationMode() == AuthenticationMode::K8S) {
-    std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s::kK8sSaTokenPath));
+  // Precedence 3 (ENABLE_K8S_TOKEN_AUTH only): Load Ray service account token in
+  // /var/run/secrets/ray.io/serviceaccount/token
+  if (IsK8sTokenAuthEnabled()) {
+    const std::string k8s_token_path(k8s::kRaySaTokenPath);
+    std::string token_str = TrimWhitespace(ReadTokenFromFile(k8s_token_path));
     if (!token_str.empty()) {
       RAY_LOG(DEBUG)
           << "Loaded authentication token from Kubernetes service account path: "
-          << k8s::kK8sSaTokenPath;
+          << k8s_token_path;
       result.token = AuthenticationToken(token_str);
       return result;
     }
     RAY_LOG(DEBUG) << "Kubernetes service account token not found or empty at: "
-                   << k8s::kK8sSaTokenPath;
+                   << k8s_token_path;
   }
 
   // Precedence 4: Default token path ~/.ray/auth_token

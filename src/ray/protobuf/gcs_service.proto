@@ -73,8 +73,6 @@ service JobInfoGcsService {
   rpc MarkJobFinished(MarkJobFinishedRequest) returns (MarkJobFinishedReply);
   // Get information of all jobs from GCS Service.
   rpc GetAllJobInfo(GetAllJobInfoRequest) returns (GetAllJobInfoReply);
-  // Report job error.
-  rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
   // Get next job id.
   rpc GetNextJobID(GetNextJobIDRequest) returns (GetNextJobIDReply);
 }
@@ -231,6 +229,7 @@ message GetAllNodeInfoRequest {
       bytes node_id = 1;
       string node_name = 2;
       string node_ip_address = 3;
+      bool is_head_node = 4;
     }
   }
 
@@ -709,6 +708,8 @@ service InternalPubSubGcsService {
   /// The request to sent to GCS to publish messages.
   /// Currently only supporting error info, logs and Python function messages.
   rpc GcsPublish(GcsPublishRequest) returns (GcsPublishReply);
+  /// Report job error.
+  rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
   /// The long polling request sent to GCS for pubsub operations.
   /// The long poll request will be replied once there are a batch of messages that
   /// need to be published to the caller (subscriber).

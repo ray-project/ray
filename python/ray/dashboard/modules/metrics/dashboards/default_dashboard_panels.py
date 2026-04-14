@@ -18,6 +18,10 @@ MAX_CPUS = 'sum(autoscaler_cluster_resources{{resource="CPU",{global_filters}}})
 PENDING_CPUS = 'sum(autoscaler_pending_resources{{resource="CPU",{global_filters}}})'
 MAX_GPUS = 'sum(autoscaler_cluster_resources{{resource="GPU",{global_filters}}})'
 PENDING_GPUS = 'sum(autoscaler_pending_resources{{resource="GPU",{global_filters}}})'
+MAX_MEMORY = 'sum(autoscaler_cluster_resources{{resource="memory",{global_filters}}})'
+PENDING_MEMORY = (
+    'sum(autoscaler_pending_resources{{resource="memory",{global_filters}}})'
+)
 
 
 def max_plus_pending(max_resource, pending_resource):
@@ -26,6 +30,7 @@ def max_plus_pending(max_resource, pending_resource):
 
 MAX_PLUS_PENDING_CPUS = max_plus_pending(MAX_CPUS, PENDING_CPUS)
 MAX_PLUS_PENDING_GPUS = max_plus_pending(MAX_GPUS, PENDING_GPUS)
+MAX_PLUS_PENDING_MEMORY = max_plus_pending(MAX_MEMORY, PENDING_MEMORY)
 
 MAX_PERCENTAGE_EXPRESSION = (
     "100"  # To help draw the max limit line on percentage panels
@@ -107,6 +112,24 @@ OVERVIEW_AND_HEALTH_PANELS = [
             ),
         ],
     ),
+    Panel(
+        id=65,
+        title="Unexpected System Level Worker Failures",
+        description="The number of workers (potentially tasks or actors) that disconnected from the raylet unexpectedly. "
+        "This typically indicates the worker process unexpectedly failed due to "
+        "a Ray system error or a kernel kill (e.g. OOM, SIGKILL, Bad exit code). "
+        "Note that this metric only includes OOM kills from the kernel and does not "
+        "include OOM kills from Ray's memory monitor. "
+        "If errors of this type is encountered when the node is under memory pressure, "
+        "The failures are likely OOM kills.",
+        unit="failures",
+        targets=[
+            Target(
+                expr='sum(ray_node_manager_unexpected_worker_failure_total{{instance=~"$Instance", {global_filters}}}) by (Type, Name, instance)',
+                legend="Unexpected worker failure: {{Name}}, {{Type}}, {{instance}}",
+            ),
+        ],
+    ),
 ]
 
 RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
@@ -159,6 +182,20 @@ RAY_TASKS_ACTORS_PLACEMENT_GROUPS_PANELS = [
             Target(
                 expr='clamp_min(sum(ray_tasks{{IsRetry!="0",State=~"RUNNING*",instance=~"$Instance",{global_filters}}}) by (Name), 0)',
                 legend="{{Name}} (retry)",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=64,
+        title="Running Tasks by Node",
+        description="Current count of tasks that are currently executing, grouped by node.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr='clamp_min(sum(ray_tasks{{State=~"RUNNING*",Source="executor",instance=~"$Instance",{global_filters}}}) by (instance), 0)',
+                legend="{{instance}}",
             ),
         ],
         fill=0,
@@ -271,6 +308,26 @@ RAY_RESOURCES_PANELS = [
             # (A and predicate) means to return A when the predicate satisfies in PromSql.
             Target(
                 expr=f"({MAX_PLUS_PENDING_GPUS} and {MAX_PLUS_PENDING_GPUS} > ({MAX_GPUS} or vector(0)))",
+                legend="MAX + PENDING",
+            ),
+        ],
+    ),
+    Panel(
+        id=61,
+        title="Logical Memory Usage",
+        description="Logical memory usage of Ray by node. The dotted line indicates the total amount of memory available. Logical memory refers to Ray's view of memory resources allocated to tasks and actors. PENDING means the amount of memory that will be available when new nodes are up after the autoscaler scales up.",
+        unit="bytes",
+        targets=[
+            Target(
+                expr='sum(ray_resources{{Name="memory",State="USED",instance=~"$Instance",{global_filters}}}) by (instance)',
+                legend="Memory Usage: {{instance}}",
+            ),
+            Target(
+                expr='sum(ray_resources{{Name="memory",instance=~"$Instance",{global_filters}}})',
+                legend="MAX",
+            ),
+            Target(
+                expr=f"({MAX_PLUS_PENDING_MEMORY} and {MAX_PLUS_PENDING_MEMORY} > ({MAX_MEMORY} or vector(0)))",
                 legend="MAX + PENDING",
             ),
         ],
@@ -539,6 +596,34 @@ NODE_HARDWARE_UTILIZATION_PANELS = [
             Target(
                 expr='sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName) * 100 / (sum(ray_node_gram_available{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName) + sum(ray_node_gram_used{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName))',
                 legend="Used GRAM: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=62,
+        title="Node GPU Power",
+        description="Current GPU power draw per node. Reported in milliwatts; displayed in watts. Supported on NVIDIA and AMD GPUs.",
+        unit="mwatt",
+        targets=[
+            Target(
+                expr='sum(ray_node_gpu_power_milliwatts{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="Power: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+        ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=63,
+        title="Node GPU Temperature",
+        description="Current GPU temperature per node in Celsius. Supported on NVIDIA GPUs.",
+        unit="celsius",
+        targets=[
+            Target(
+                expr='sum(ray_node_gpu_temperature_celsius{{instance=~"$Instance", RayNodeType=~"$RayNodeType", {global_filters}}}) by (instance, RayNodeType, GpuIndex, GpuDeviceName)',
+                legend="Temperature: {{instance}} ({{RayNodeType}}), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
         ],
         fill=0,

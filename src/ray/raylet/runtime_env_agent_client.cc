@@ -30,7 +30,7 @@
 #include "ray/common/status.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
 #include "ray/util/logging.h"
-#include "ray/util/process.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/time.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
@@ -131,7 +131,7 @@ class Session : public std::enable_shared_from_this<Session> {
     req_.prepare_payload();
 
     auto auth_token = rpc::AuthenticationTokenLoader::instance().GetToken();
-    if (auth_token.has_value() && !auth_token->empty()) {
+    if (auth_token && !auth_token->empty()) {
       req_.set(http::field::authorization, auth_token->ToAuthorizationHeaderValue());
     }
   }

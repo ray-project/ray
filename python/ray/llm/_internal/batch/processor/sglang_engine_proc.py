@@ -1,5 +1,6 @@
 """The SGLang engine processor."""
 
+import logging
 from typing import Any, Dict, Optional
 
 import transformers
@@ -7,6 +8,7 @@ from pydantic import Field, root_validator
 
 import ray
 from ray.data.block import UserDefinedFunction
+from ray.llm._internal.batch.constants import SGLangTaskType, TypeSGLangTaskType
 from ray.llm._internal.batch.observability.usage_telemetry.usage import (
     BatchModelTelemetry,
     TelemetryAgent,
@@ -34,8 +36,10 @@ from ray.llm._internal.batch.stages.configs import (
     TokenizerStageConfig,
     resolve_stage_config,
 )
-from ray.llm._internal.batch.stages.sglang_engine_stage import SGLangTaskType
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+
+logger = logging.getLogger(__name__)
+
 
 DEFAULT_MODEL_ARCHITECTURE = "UNKNOWN_MODEL_ARCHITECTURE"
 
@@ -50,7 +54,7 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
         "https://docs.sglang.ai/backend/server_arguments.html "
         "for more details.",
     )
-    task_type: SGLangTaskType = Field(
+    task_type: TypeSGLangTaskType = Field(
         default=SGLangTaskType.GENERATE,
         description="The task type to use. If not specified, will use "
         "'generate' by default.",
@@ -58,8 +62,22 @@ class SGLangEngineProcessorConfig(OfflineProcessorConfig):
 
     @root_validator(pre=True)
     def validate_task_type(cls, values):
-        task_type_str = values.get("task_type", "generate")
-        values["task_type"] = SGLangTaskType(task_type_str)
+        task_type = values.get("task_type", SGLangTaskType.GENERATE)
+        if task_type not in SGLangTaskType.values():
+            raise ValueError(f"Invalid task type: {task_type}")
+
+        engine_kwargs = values.get("engine_kwargs", {})
+        engine_kwargs_task = engine_kwargs.get("task", "")
+        if engine_kwargs_task != task_type:
+            logger.warning(
+                "The task set in engine kwargs (%s) is different from the "
+                "stage (%s). Overriding the task in engine kwargs to %s.",
+                engine_kwargs_task,
+                task_type,
+                task_type,
+            )
+            engine_kwargs["task"] = task_type
+        values["engine_kwargs"] = engine_kwargs
         return values
 
 
@@ -96,6 +114,7 @@ def build_sglang_engine_processor(
     stages = []
 
     # Prepare processor defaults for merging into stage configs
+    trust_remote_code = config.engine_kwargs.get("trust_remote_code", False)
     processor_defaults = {
         "batch_size": config.batch_size,
         "concurrency": config.concurrency,
@@ -121,6 +140,7 @@ def build_sglang_engine_processor(
                         chat_template_stage_cfg.chat_template_kwargs,
                         chat_template_kwargs,
                     ),
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(chat_template_stage_cfg),
             )
@@ -137,6 +157,7 @@ def build_sglang_engine_processor(
             TokenizeStage(
                 fn_constructor_kwargs=dict(
                     model=tokenize_stage_cfg.model_source,
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(tokenize_stage_cfg),
             )
@@ -158,8 +179,7 @@ def build_sglang_engine_processor(
                 # which initiates enough many overlapping UDF calls per actor, to
                 # saturate `max_concurrency`.
                 compute=ray.data.ActorPoolStrategy(
-                    min_size=config.get_concurrency(autoscaling_enabled=False)[0],
-                    max_size=config.get_concurrency(autoscaling_enabled=False)[1],
+                    **config.get_concurrency(autoscaling_enabled=True),
                     max_tasks_in_flight_per_actor=config.experimental.get(
                         "max_tasks_in_flight_per_actor", DEFAULT_MAX_TASKS_IN_FLIGHT
                     ),
@@ -185,6 +205,7 @@ def build_sglang_engine_processor(
             DetokenizeStage(
                 fn_constructor_kwargs=dict(
                     model=detokenize_stage_cfg.model_source,
+                    trust_remote_code=trust_remote_code,
                 ),
                 map_batches_kwargs=build_cpu_stage_map_kwargs(detokenize_stage_cfg),
             )
@@ -201,7 +222,7 @@ def build_sglang_engine_processor(
             batch_size=config.batch_size,
             accelerator_type=config.accelerator_type or DEFAULT_GPU_TYPE,
             concurrency=config.concurrency,
-            task_type=SGLangTaskType(config.task_type),
+            task_type=config.task_type,
             tensor_parallel_size=config.engine_kwargs.get("tp_size", 1),
             data_parallel_size=config.engine_kwargs.get("dp_size", 1),
         )

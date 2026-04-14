@@ -60,13 +60,11 @@ TaskSpecification CreateTaskHelper(uint64_t num_returns,
         generator_backpressure_num_objects);
   }
 
-  auto tensor_transport = rpc::TensorTransport::OBJECT_STORE;
   if (enable_tensor_transport) {
     // Currently, only actors support transferring tensors out-of-band.
     task.GetMutableMessage().set_type(TaskType::ACTOR_TASK);
-    tensor_transport = rpc::TensorTransport::DIRECT_TRANSPORT;
+    task.GetMutableMessage().set_tensor_transport("some direct transport");
   }
-  task.GetMutableMessage().set_tensor_transport(tensor_transport);
 
   return task;
 }
@@ -136,6 +134,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
       (override));
 
   MOCK_METHOD(std::string, GetSessionName, (), (const, override));
+
+  MOCK_METHOD(NodeID, GetNodeID, (), (const, override));
 };
 
 class TaskManagerTest : public ::testing::Test {
@@ -185,7 +185,9 @@ class TaskManagerTest : public ::testing::Test {
             mock_gcs_client_,
             fake_task_by_state_counter_,
             fake_total_lineage_bytes_gauge_,
-            /*free_actor_object_callback=*/[](const ObjectID &object_id) {}) {}
+            /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+            /*set_direct_transport_metadata=*/
+            [](const ObjectID &, const std::string &) {}) {}
 
   virtual void TearDown() { AssertNoLeaks(); }
 
@@ -512,11 +514,11 @@ TEST_F(TaskManagerTest, TestResubmitCanceledTask) {
   ASSERT_FALSE(manager_.IsTaskPending(spec.TaskId()));
 
   // Check that resubmitting a canceled task does not crash and returns
-  // FAILED_TASK_CANCELED.
+  // OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED.
   manager_.MarkTaskCanceled(spec.TaskId());
   std::vector<ObjectID> task_deps;
   ASSERT_EQ(manager_.ResubmitTask(spec.TaskId(), &task_deps),
-            rpc::ErrorType::TASK_CANCELLED);
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
 
   // Final cleanup.
   reference_counter_->RemoveLocalReference(return_id, nullptr);
@@ -599,6 +601,79 @@ TEST_F(TaskManagerTest, TestTaskOomAndNonOomKillReturnsLastError) {
   rpc::ErrorType stored_error;
   ASSERT_TRUE(results[0]->IsException(&stored_error));
   ASSERT_EQ(stored_error, rpc::ErrorType::WORKER_DIED);
+}
+
+TEST(GetTaskRetryDelayMsTest, TestRetryDelayByErrorType) {
+  RayConfig::instance().initialize(
+      R"({"task_retry_delay_ms": 0,
+          "task_oom_retry_delay_base_ms": 1000,
+          "task_actor_unavailable_retry_delay_base_ms": 100,
+          "task_actor_unavailable_retry_max_delay_ms": 5000})");
+
+  // ACTOR_UNAVAILABLE: exponential backoff with base 100ms, cap 5000ms.
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::ACTOR_UNAVAILABLE), 100);
+  ASSERT_EQ(GetTaskRetryDelayMs(1, rpc::ErrorType::ACTOR_UNAVAILABLE), 200);
+  ASSERT_EQ(GetTaskRetryDelayMs(2, rpc::ErrorType::ACTOR_UNAVAILABLE), 400);
+  ASSERT_EQ(GetTaskRetryDelayMs(3, rpc::ErrorType::ACTOR_UNAVAILABLE), 800);
+  ASSERT_EQ(GetTaskRetryDelayMs(4, rpc::ErrorType::ACTOR_UNAVAILABLE), 1600);
+  ASSERT_EQ(GetTaskRetryDelayMs(5, rpc::ErrorType::ACTOR_UNAVAILABLE), 3200);
+  ASSERT_EQ(GetTaskRetryDelayMs(6, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+  ASSERT_EQ(GetTaskRetryDelayMs(7, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+  ASSERT_EQ(GetTaskRetryDelayMs(100, rpc::ErrorType::ACTOR_UNAVAILABLE), 5000);
+
+  // OOM: exponential backoff with base 1000ms, default cap (60s).
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::OUT_OF_MEMORY), 1000);
+  ASSERT_EQ(GetTaskRetryDelayMs(1, rpc::ErrorType::OUT_OF_MEMORY), 2000);
+  ASSERT_EQ(GetTaskRetryDelayMs(2, rpc::ErrorType::OUT_OF_MEMORY), 4000);
+
+  // Other errors: flat delay.
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::WORKER_DIED), 0);
+  ASSERT_EQ(GetTaskRetryDelayMs(5, rpc::ErrorType::WORKER_DIED), 0);
+  ASSERT_EQ(GetTaskRetryDelayMs(0, rpc::ErrorType::NODE_DIED), 0);
+}
+
+TEST_F(TaskManagerTest, TestActorUnavailableRetryWithBackoff) {
+  RayConfig::instance().initialize(
+      R"({"task_actor_unavailable_retry_delay_base_ms": 100,
+          "task_actor_unavailable_retry_max_delay_ms": 5000})");
+  int num_retries = -1;  // Infinite retries.
+
+  rpc::Address caller_address;
+  auto spec = CreateTaskHelper(1, {});
+  spec.GetMutableMessage().set_max_retries(num_retries);
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+
+  ASSERT_EQ(num_retries_, 0);
+
+  // ACTOR_UNAVAILABLE should use exponential backoff with base 100ms.
+  rpc::RayErrorInfo error_info;
+  error_info.set_error_type(rpc::ErrorType::ACTOR_UNAVAILABLE);
+  error_info.set_error_message("The actor is temporarily unavailable");
+  manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                  error_info.error_type(),
+                                  /*status=*/nullptr,
+                                  &error_info,
+                                  /*mark_task_object_failed=*/false,
+                                  /*fail_immediately=*/false);
+  ASSERT_EQ(num_retries_, 1);
+  ASSERT_EQ(last_delay_ms_,
+            RayConfig::instance().task_actor_unavailable_retry_delay_base_ms());
+
+  // A WORKER_DIED error on the same task should use the default (non-backoff) delay.
+  rpc::RayErrorInfo worker_died_error;
+  worker_died_error.set_error_type(rpc::ErrorType::WORKER_DIED);
+  worker_died_error.set_error_message("Worker died");
+  manager_.FailOrRetryPendingTask(spec.TaskId(),
+                                  worker_died_error.error_type(),
+                                  /*status=*/nullptr,
+                                  &worker_died_error,
+                                  /*mark_task_object_failed=*/false,
+                                  /*fail_immediately=*/false);
+  ASSERT_EQ(num_retries_, 2);
+  ASSERT_EQ(last_delay_ms_, RayConfig::instance().task_retry_delay_ms());
+
+  // Cleanup.
+  manager_.FailPendingTask(spec.TaskId(), rpc::ErrorType::WORKER_DIED);
 }
 
 TEST_F(TaskManagerTest, TestTaskOomInfiniteRetry) {
@@ -792,7 +867,7 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
       TaskID::Nil(),
       "");
   builder.SetActorTaskSpec(
-      actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0);
+      actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0, std::nullopt);
   TaskSpecification spec = std::move(builder).ConsumeAndBuild();
 
   ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
@@ -1409,7 +1484,8 @@ TEST_F(TaskManagerTest, PlasmaPut_ObjectStoreFull_FailsTaskAndWritesError) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
-      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1474,7 +1550,8 @@ TEST_F(TaskManagerTest, PlasmaPut_TransientFull_RetriesThenSucceeds) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
-      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
   rpc::Address caller_address;
   auto spec = CreateTaskHelper(1, {});
@@ -1537,7 +1614,8 @@ TEST_F(TaskManagerTest, DynamicReturn_PlasmaPutFailure_FailsTaskImmediately) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
-      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
   auto spec = CreateTaskHelper(1, {}, /*dynamic_returns=*/true);
   dyn_mgr.AddPendingTask(addr_, spec, "", /*num_retries=*/0);
@@ -2785,7 +2863,7 @@ TEST_F(TaskManagerLineageTest, RecoverIntermediateObjectInStreamingGenerator) {
       spec2.TaskId(), NodeID::FromRandom(), WorkerID::FromRandom());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec2.TaskId()));
   ASSERT_EQ(manager_.ResubmitTask(spec2.TaskId(), &task_deps),
-            rpc::ErrorType::TASK_CANCELLED);
+            rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_TASK_CANCELLED);
   ASSERT_TRUE(task_deps.empty());
   ASSERT_TRUE(manager_.IsTaskWaitingForExecution(spec2.TaskId()));
 
@@ -2807,7 +2885,7 @@ TEST_F(TaskManagerTest, TestGPUObjectTaskSuccess) {
   ObjectID gpu_obj_ref = ObjectID::FromRandom();
   auto *arg = spec.GetMutableMessage().add_args();
   arg->set_is_inlined(false);
-  arg->set_tensor_transport(rpc::TensorTransport::DIRECT_TRANSPORT);
+  arg->set_tensor_transport("random transport");
   arg->mutable_object_ref()->set_object_id(gpu_obj_ref.Binary());
 
   // `gpu_obj_ref` should have a local reference when the sender actor
@@ -3027,7 +3105,8 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
-      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
   // Create a task with retries enabled
   rpc::Address caller_address;
@@ -3054,7 +3133,7 @@ TEST_F(TaskManagerTest, TestRetryErrorMessageSentToCallback) {
   // Verify that the expected retry message was sent to the callback
   EXPECT_THAT(captured_error_message,
               testing::HasSubstr(
-                  "There are 1 retries remaining, so the task will be retried. Error:"));
+                  "There are 2 retries remaining, so the task will be retried. Error:"));
   EXPECT_THAT(captured_error_message,
               testing::HasSubstr("Worker crashed during task execution"));
   EXPECT_EQ(captured_error_type, "WORKER_DIED");
@@ -3109,7 +3188,8 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
       mock_gcs_client_,
       fake_task_by_state_counter_,
       fake_total_lineage_bytes_gauge_,
-      /*free_actor_object_callback=*/[](const ObjectID &object_id) {});
+      /*free_actor_object_callback=*/[](const ObjectID &object_id) {},
+      /*set_direct_transport_metadata=*/[](const ObjectID &, const std::string &) {});
 
   // Create a task that will be retried
   rpc::Address caller_address;
@@ -3151,8 +3231,3 @@ TEST_F(TaskManagerTest, TestErrorLogWhenPushErrorCallbackFails) {
 
 }  // namespace core
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

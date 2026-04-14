@@ -534,19 +534,40 @@ def _inject_tracing_into_class(_cls):
         if name == "__del__":
             continue
 
-        # Add _ray_trace_ctx to method signature
-        method.__signature__ = _add_param_to_signature(
-            method,
+        # If the method is already wrapped, we still need to set __signature__
+        # on the deeply unwrapped original. This is because cloudpickle doesn't
+        # preserve __signature__ attributes, and _ActorClassMethodMetadata.create
+        # uses inspect.unwrap which goes all the way to the original method.
+        unwrapped_method = inspect.unwrap(method)
+
+        # Add _ray_trace_ctx to the UNWRAPPED method's signature.
+        # This ensures inspect.unwrap() will find the signature.
+        # Note: We always set the signature, even if it was already set by a
+        # previous call, because the signature might have been lost during
+        # serialization/deserialization.
+        unwrapped_method.__signature__ = _add_param_to_signature(
+            unwrapped_method,
             inspect.Parameter(
                 "_ray_trace_ctx", inspect.Parameter.KEYWORD_ONLY, default=None
             ),
         )
+
+        # If method was already wrapped by tracing (e.g., preserved through
+        # cloudpickle), don't re-wrap it. We use a custom marker attribute
+        # instead of __wrapped__ because __wrapped__ could be from any
+        # decorator, not just tracing.
+        if getattr(method, "__ray_tracing_wrapped__", False):
+            continue
 
         if inspect.iscoroutinefunction(method):
             # If the method was async, swap out sync wrapper into async
             wrapped_method = wraps(method)(async_span_wrapper(method))
         else:
             wrapped_method = wraps(method)(span_wrapper(method))
+
+        # Mark the wrapped method so we don't re-wrap it if this class
+        # is processed again (e.g., after cloudpickle round-trip).
+        wrapped_method.__ray_tracing_wrapped__ = True
 
         setattr(_cls, name, wrapped_method)
 

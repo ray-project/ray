@@ -4,18 +4,20 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple, Union
 
 from google.protobuf.descriptor import FieldDescriptor
 from google.protobuf.message import Message
-
-from ray import cloudpickle
-from ray._common import ray_option_utils
-from ray._common.pydantic_compat import (
+from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
     NonNegativeFloat,
     NonNegativeInt,
     PositiveFloat,
     PositiveInt,
-    validator,
+    field_validator,
+    model_validator,
 )
+
+from ray import cloudpickle
+from ray._common import ray_option_utils
 from ray._common.serialization import pickle_dumps
 from ray._common.utils import resources_from_ray_options
 from ray.serve._private.constants import (
@@ -31,16 +33,24 @@ from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import (
     AggregationFunction,
     AutoscalingConfig,
+    DeploymentActorConfig,
     DeploymentMode,
+    GangPlacementStrategy,
+    GangRuntimeFailurePolicy,
+    GangSchedulingConfig,
     HTTPOptions,
     ProxyLocation,
     RequestRouterConfig,
 )
 from ray.serve.generated.serve_pb2 import (
     AutoscalingConfig as AutoscalingConfigProto,
+    DeploymentActorConfig as DeploymentActorConfigProto,
     DeploymentConfig as DeploymentConfigProto,
     DeploymentLanguage,
     EncodingType as EncodingTypeProto,
+    GangPlacementStrategy as GangPlacementStrategyProto,
+    GangRuntimeFailurePolicy as GangRuntimeFailurePolicyProto,
+    GangSchedulingConfig as GangSchedulingConfigProto,
     LoggingConfig as LoggingConfigProto,
     ReplicaConfig as ReplicaConfigProto,
     RequestRouterConfig as RequestRouterConfigProto,
@@ -199,15 +209,23 @@ class DeploymentConfig(BaseModel):
         default=DEFAULT_CONSTRUCTOR_RETRY_COUNT,
         update_type=DeploymentOptionUpdateType.NeedsReconfigure,
     )
+    gang_scheduling_config: Optional[GangSchedulingConfig] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
+
+    deployment_actors: Optional[List[DeploymentActorConfig]] = Field(
+        default=None,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
 
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 
-    class Config:
-        validate_assignment = True
-        arbitrary_types_allowed = True
+    model_config = ConfigDict(validate_assignment=True, arbitrary_types_allowed=True)
 
-    @validator("user_config", always=True)
+    @field_validator("user_config")
+    @classmethod
     def user_config_json_serializable(cls, v):
         if isinstance(v, bytes):
             return v
@@ -219,7 +237,8 @@ class DeploymentConfig(BaseModel):
 
         return v
 
-    @validator("logging_config", always=True)
+    @field_validator("logging_config")
+    @classmethod
     def logging_config_valid(cls, v):
         if v is None:
             return v
@@ -231,10 +250,11 @@ class DeploymentConfig(BaseModel):
         # Handle default value
         from ray.serve.schema import LoggingConfig
 
-        v = LoggingConfig(**v).dict()
+        v = LoggingConfig(**v).model_dump()
         return v
 
-    @validator("max_queued_requests", always=True)
+    @field_validator("max_queued_requests")
+    @classmethod
     def validate_max_queued_requests(cls, v):
         if not isinstance(v, int):
             raise TypeError("max_queued_requests must be an integer.")
@@ -246,11 +266,52 @@ class DeploymentConfig(BaseModel):
 
         return v
 
+    @model_validator(mode="after")
+    def validate_gang_scheduling_config(self):
+        if self.gang_scheduling_config is None:
+            return self
+        if (
+            self.autoscaling_config is not None
+            and self.autoscaling_config.min_replicas == 0
+        ):
+            raise ValueError(
+                "Scale to zero isn't supported for gang-scheduled deployments."
+            )
+        # Skip the num_replicas alignment check when autoscaling is enabled
+        if (
+            self.autoscaling_config is None
+            and self.num_replicas is not None
+            and self.num_replicas % self.gang_scheduling_config.gang_size != 0
+        ):
+            raise ValueError(
+                f"num_replicas ({self.num_replicas}) must be a multiple of "
+                f"gang_size ({self.gang_scheduling_config.gang_size})."
+            )
+
+        return self
+
+    @model_validator(mode="after")
+    def validate_deployment_actors_unique_names(self):
+        if self.deployment_actors is None:
+            return self
+        seen = set()
+        duplicates = set()
+        for cfg in self.deployment_actors:
+            if cfg.name in seen:
+                duplicates.add(cfg.name)
+            seen.add(cfg.name)
+        if duplicates:
+            raise ValueError(
+                f"deployment_actors must have unique names. "
+                f"Duplicate name(s): {sorted(duplicates)}"
+            )
+        return self
+
     def needs_pickle(self):
         return _needs_pickle(self.deployment_language, self.is_cross_language)
 
     def to_proto(self):
-        data = self.dict()
+        data = self.model_dump()
         if data.get("user_config") is not None:
             if self.needs_pickle():
                 data["user_config"] = cloudpickle.dumps(data["user_config"])
@@ -260,6 +321,15 @@ class DeploymentConfig(BaseModel):
             data["autoscaling_config"]["policy"][
                 "_serialized_policy_def"
             ] = self.autoscaling_config.policy._serialized_policy_def
+            # Serialize policy_kwargs dict to bytes for the proto
+            policy_kwargs = data["autoscaling_config"]["policy"].get("policy_kwargs")
+            if policy_kwargs is not None:
+                if not policy_kwargs:
+                    data["autoscaling_config"]["policy"]["policy_kwargs"] = b""
+                else:
+                    data["autoscaling_config"]["policy"][
+                        "policy_kwargs"
+                    ] = cloudpickle.dumps(policy_kwargs)
             data["autoscaling_config"] = AutoscalingConfigProto(
                 **data["autoscaling_config"]
             )
@@ -295,10 +365,47 @@ class DeploymentConfig(BaseModel):
         data["user_configured_option_names"] = list(
             data["user_configured_option_names"]
         )
+        if data.get("gang_scheduling_config"):
+            gang_config = data["gang_scheduling_config"]
+            placement_strategy = GangPlacementStrategyProto.Value(
+                gang_config["gang_placement_strategy"]
+            )
+            failure_policy = GangRuntimeFailurePolicyProto.Value(
+                gang_config["runtime_failure_policy"]
+            )
+            data["gang_scheduling_config"] = GangSchedulingConfigProto(
+                gang_size=gang_config["gang_size"],
+                gang_placement_strategy=placement_strategy,
+                runtime_failure_policy=failure_policy,
+            )
+        if self.deployment_actors:
+            deployment_actors_proto = []
+            for cfg in self.deployment_actors:
+                if not cfg._serialized_actor_class:
+                    cfg._serialize_actor_class()
+                deployment_actors_proto.append(
+                    DeploymentActorConfigProto(
+                        name=cfg.name,
+                        actor_class_name=cfg.actor_class,
+                        _serialized_actor_class=cfg._serialized_actor_class,
+                        serialized_init_args=cloudpickle.dumps(cfg.init_args or ()),
+                        serialized_init_kwargs=cloudpickle.dumps(cfg.init_kwargs or {}),
+                        serialized_actor_options=cloudpickle.dumps(
+                            cfg.actor_options or {}
+                        ),
+                    )
+                )
+            data["deployment_actors"] = deployment_actors_proto
+        else:
+            data.pop("deployment_actors", None)
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
         return self.to_proto().SerializeToString()
+
+    def to_dict(self):
+        # only use for logging purposes
+        return self.model_dump()
 
     @classmethod
     def from_proto(cls, proto: DeploymentConfigProto):
@@ -339,6 +446,16 @@ class DeploymentConfig(BaseModel):
                 else:
                     data["request_router_config"]["request_router_kwargs"] = {}
 
+            # Remove falsy proto defaults so Pydantic uses its Field defaults.
+            # This is important during rolling upgrades when older controllers
+            # send configs without these fields (proto3 defaults to 0.0).
+            if not data["request_router_config"].get("initial_backoff_s"):
+                data["request_router_config"].pop("initial_backoff_s", None)
+            if not data["request_router_config"].get("backoff_multiplier"):
+                data["request_router_config"].pop("backoff_multiplier", None)
+            if not data["request_router_config"].get("max_backoff_s"):
+                data["request_router_config"].pop("max_backoff_s", None)
+
             data["request_router_config"] = RequestRouterConfig(
                 **data["request_router_config"]
             )
@@ -357,6 +474,17 @@ class DeploymentConfig(BaseModel):
                 data["autoscaling_config"][
                     "aggregation_function"
                 ] = AggregationFunction.MEAN
+            # Deserialize policy_kwargs bytes back to a dict
+            if "policy" in data["autoscaling_config"]:
+                policy_data = data["autoscaling_config"]["policy"]
+                if "policy_kwargs" in policy_data:
+                    raw = policy_data["policy_kwargs"]
+                    if raw and raw != b"":
+                        policy_data["policy_kwargs"] = cloudpickle.loads(
+                            proto.autoscaling_config.policy.policy_kwargs
+                        )
+                    else:
+                        policy_data["policy_kwargs"] = {}
             data["autoscaling_config"] = AutoscalingConfig(**data["autoscaling_config"])
         if "version" in data:
             if data["version"] == "":
@@ -370,6 +498,44 @@ class DeploymentConfig(BaseModel):
                 data["logging_config"]["encoding"] = EncodingTypeProto.Name(
                     data["logging_config"]["encoding"]
                 )
+        if "gang_scheduling_config" in data and data["gang_scheduling_config"]:
+            gang_config = data["gang_scheduling_config"]
+            gang_config["gang_placement_strategy"] = GangPlacementStrategy(
+                GangPlacementStrategyProto.Name(gang_config["gang_placement_strategy"])
+            )
+            gang_config["runtime_failure_policy"] = GangRuntimeFailurePolicy(
+                GangRuntimeFailurePolicyProto.Name(
+                    gang_config["runtime_failure_policy"]
+                )
+            )
+            data["gang_scheduling_config"] = GangSchedulingConfig(**gang_config)
+        else:
+            data.pop("gang_scheduling_config", None)
+        if "deployment_actors" in data and data["deployment_actors"]:
+            deployment_actors = []
+
+            def _loads(b):
+                return cloudpickle.loads(b) if b else None
+
+            for proto_dict in data["deployment_actors"]:
+                serialized_cls = proto_dict.get("_serialized_actor_class")
+                serialized_args = proto_dict.get("serialized_init_args")
+                serialized_kwargs = proto_dict.get("serialized_init_kwargs")
+                serialized_opts = proto_dict.get("serialized_actor_options")
+                actor_class_name = proto_dict.get("actor_class_name", "")
+                deployment_actors.append(
+                    DeploymentActorConfig(
+                        name=proto_dict.get("name"),
+                        actor_class=actor_class_name,
+                        _serialized_actor_class=serialized_cls,
+                        init_args=_loads(serialized_args) or (),
+                        init_kwargs=_loads(serialized_kwargs) or {},
+                        actor_options=_loads(serialized_opts) or {},
+                    )
+                )
+            data["deployment_actors"] = deployment_actors
+        else:
+            data.pop("deployment_actors", None)
 
         return cls(**data)
 
@@ -390,7 +556,7 @@ class DeploymentConfig(BaseModel):
         """
 
         config = cls()
-        valid_config_options = set(config.dict().keys())
+        valid_config_options = set(cls.model_fields.keys())
 
         # Friendly error if a non-DeploymentConfig kwarg was passed in
         for key, val in kwargs.items():
@@ -430,11 +596,11 @@ def handle_num_replicas_auto(
     else:
         # If autoscaling config was specified, values specified in
         # autoscaling config overrides the default configuration
-        default_config = AutoscalingConfig.default().dict(exclude_unset=True)
+        default_config = AutoscalingConfig.default().model_dump(exclude_unset=True)
         autoscaling_config = (
             autoscaling_config
             if isinstance(autoscaling_config, dict)
-            else autoscaling_config.dict(exclude_unset=True)
+            else autoscaling_config.model_dump(exclude_unset=True)
         )
         default_config.update(autoscaling_config)
         autoscaling_config = AutoscalingConfig(**default_config)
@@ -476,6 +642,8 @@ class ReplicaConfig:
         ray_actor_options: Dict,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None,
+        placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
         needs_pickle: bool = True,
     ):
@@ -501,9 +669,14 @@ class ReplicaConfig:
 
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
+        self.placement_group_bundle_label_selector = (
+            placement_group_bundle_label_selector
+        )
+        self.placement_group_fallback_strategy = placement_group_fallback_strategy
 
         self.max_replicas_per_node = max_replicas_per_node
 
+        self._normalize_bundle_label_selector()
         self._validate()
 
         # Create resource_dict. This contains info about the replica's resource
@@ -511,6 +684,21 @@ class ReplicaConfig:
         # the ray_actor_options.
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
         self.needs_pickle = needs_pickle
+
+    def _normalize_bundle_label_selector(self):
+        """If a single selector is provided for multiple bundles, it is broadcasted
+        uniformly to all bundles.
+        """
+        if (
+            self.placement_group_bundles
+            and self.placement_group_bundle_label_selector
+            and len(self.placement_group_bundle_label_selector) == 1
+            and len(self.placement_group_bundles) > 1
+        ):
+            single_selector = self.placement_group_bundle_label_selector[0]
+            self.placement_group_bundle_label_selector = [
+                single_selector.copy() for _ in range(len(self.placement_group_bundles))
+            ]
 
     def _validate(self):
         self._validate_ray_actor_options()
@@ -531,15 +719,22 @@ class ReplicaConfig:
         ray_actor_options: dict,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None,
+        placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
     ):
         self.ray_actor_options = ray_actor_options
 
         self.placement_group_bundles = placement_group_bundles
         self.placement_group_strategy = placement_group_strategy
+        self.placement_group_bundle_label_selector = (
+            placement_group_bundle_label_selector
+        )
+        self.placement_group_fallback_strategy = placement_group_fallback_strategy
 
         self.max_replicas_per_node = max_replicas_per_node
 
+        self._normalize_bundle_label_selector()
         self._validate()
 
         self.resource_dict = resources_from_ray_options(self.ray_actor_options)
@@ -553,6 +748,8 @@ class ReplicaConfig:
         ray_actor_options: Optional[Dict] = None,
         placement_group_bundles: Optional[List[Dict[str, float]]] = None,
         placement_group_strategy: Optional[str] = None,
+        placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None,
+        placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None,
         max_replicas_per_node: Optional[int] = None,
         deployment_def_name: Optional[str] = None,
     ):
@@ -593,17 +790,23 @@ class ReplicaConfig:
                 deployment_def_name = deployment_def.__name__
 
         config = cls(
-            deployment_def_name,
-            pickle_dumps(
+            deployment_def_name=deployment_def_name,
+            serialized_deployment_def=pickle_dumps(
                 deployment_def,
                 f"Could not serialize the deployment {repr(deployment_def)}",
             ),
-            pickle_dumps(init_args, "Could not serialize the deployment init args"),
-            pickle_dumps(init_kwargs, "Could not serialize the deployment init kwargs"),
-            ray_actor_options,
-            placement_group_bundles,
-            placement_group_strategy,
-            max_replicas_per_node,
+            serialized_init_args=pickle_dumps(
+                init_args, "Could not serialize the deployment init args"
+            ),
+            serialized_init_kwargs=pickle_dumps(
+                init_kwargs, "Could not serialize the deployment init kwargs"
+            ),
+            ray_actor_options=ray_actor_options,
+            placement_group_bundles=placement_group_bundles,
+            placement_group_strategy=placement_group_strategy,
+            placement_group_bundle_label_selector=placement_group_bundle_label_selector,
+            placement_group_fallback_strategy=placement_group_fallback_strategy,
+            max_replicas_per_node=max_replicas_per_node,
         )
 
         config._deployment_def = deployment_def
@@ -629,6 +832,8 @@ class ReplicaConfig:
             "resources",
             # Other options
             "runtime_env",
+            "label_selector",
+            "fallback_strategy",
         }
 
         for option in self.ray_actor_options:
@@ -670,11 +875,37 @@ class ReplicaConfig:
                     "`placement_group_bundles` must also be provided."
                 )
 
+        if self.placement_group_fallback_strategy is not None:
+            if self.placement_group_bundles is None:
+                raise ValueError(
+                    "If `placement_group_fallback_strategy` is provided, "
+                    "`placement_group_bundles` must also be provided."
+                )
+            if not isinstance(self.placement_group_fallback_strategy, list):
+                raise TypeError(
+                    "placement_group_fallback_strategy must be a list of dictionaries. "
+                    f"Got: {type(self.placement_group_fallback_strategy)}."
+                )
+            for i, strategy in enumerate(self.placement_group_fallback_strategy):
+                if not isinstance(strategy, dict):
+                    raise TypeError(
+                        f"placement_group_fallback_strategy entry at index {i} must be a dictionary. "
+                        f"Got: {type(strategy)}."
+                    )
+
+        if self.placement_group_bundle_label_selector is not None:
+            if self.placement_group_bundles is None:
+                raise ValueError(
+                    "If `placement_group_bundle_label_selector` is provided, "
+                    "`placement_group_bundles` must also be provided."
+                )
+
         if self.placement_group_bundles is not None:
             validate_placement_group(
                 bundles=self.placement_group_bundles,
                 strategy=self.placement_group_strategy or "PACK",
                 lifetime="detached",
+                bundle_label_selector=self.placement_group_bundle_label_selector,
             )
 
             resource_error_prefix = (
@@ -768,19 +999,37 @@ class ReplicaConfig:
     @classmethod
     def from_proto(cls, proto: ReplicaConfigProto, needs_pickle: bool = True):
         return ReplicaConfig(
-            proto.deployment_def_name,
-            proto.deployment_def,
-            proto.init_args if proto.init_args != b"" else None,
-            proto.init_kwargs if proto.init_kwargs != b"" else None,
-            json.loads(proto.ray_actor_options),
-            json.loads(proto.placement_group_bundles)
-            if proto.placement_group_bundles
-            else None,
-            proto.placement_group_strategy
-            if proto.placement_group_strategy != ""
-            else None,
-            proto.max_replicas_per_node if proto.max_replicas_per_node else None,
-            needs_pickle,
+            deployment_def_name=proto.deployment_def_name,
+            serialized_deployment_def=proto.deployment_def,
+            serialized_init_args=(proto.init_args if proto.init_args != b"" else None),
+            serialized_init_kwargs=(
+                proto.init_kwargs if proto.init_kwargs != b"" else None
+            ),
+            ray_actor_options=json.loads(proto.ray_actor_options),
+            placement_group_bundles=(
+                json.loads(proto.placement_group_bundles)
+                if proto.placement_group_bundles
+                else None
+            ),
+            placement_group_strategy=(
+                proto.placement_group_strategy
+                if proto.placement_group_strategy != ""
+                else None
+            ),
+            placement_group_bundle_label_selector=(
+                json.loads(proto.placement_group_bundle_label_selector)
+                if proto.placement_group_bundle_label_selector
+                else None
+            ),
+            placement_group_fallback_strategy=(
+                json.loads(proto.placement_group_fallback_strategy)
+                if proto.placement_group_fallback_strategy
+                else None
+            ),
+            max_replicas_per_node=(
+                proto.max_replicas_per_node if proto.max_replicas_per_node else None
+            ),
+            needs_pickle=needs_pickle,
         )
 
     @classmethod
@@ -789,23 +1038,55 @@ class ReplicaConfig:
         return cls.from_proto(proto, needs_pickle)
 
     def to_proto(self):
+        placement_group_bundles = (
+            json.dumps(self.placement_group_bundles)
+            if self.placement_group_bundles is not None
+            else ""
+        )
+
+        bundle_label_selector = (
+            json.dumps(self.placement_group_bundle_label_selector)
+            if self.placement_group_bundle_label_selector is not None
+            else ""
+        )
+
+        fallback_strategy = (
+            json.dumps(self.placement_group_fallback_strategy)
+            if self.placement_group_fallback_strategy is not None
+            else ""
+        )
+
+        max_replicas_per_node = (
+            self.max_replicas_per_node if self.max_replicas_per_node is not None else 0
+        )
+
         return ReplicaConfigProto(
             deployment_def_name=self.deployment_def_name,
             deployment_def=self.serialized_deployment_def,
             init_args=self.serialized_init_args,
             init_kwargs=self.serialized_init_kwargs,
             ray_actor_options=json.dumps(self.ray_actor_options),
-            placement_group_bundles=json.dumps(self.placement_group_bundles)
-            if self.placement_group_bundles is not None
-            else "",
+            placement_group_bundles=placement_group_bundles,
             placement_group_strategy=self.placement_group_strategy,
-            max_replicas_per_node=self.max_replicas_per_node
-            if self.max_replicas_per_node is not None
-            else 0,
+            placement_group_bundle_label_selector=bundle_label_selector,
+            placement_group_fallback_strategy=fallback_strategy,
+            max_replicas_per_node=max_replicas_per_node,
         )
 
     def to_proto_bytes(self):
         return self.to_proto().SerializeToString()
+
+    def to_dict(self):
+        # only use for logging purposes
+        return {
+            "deployment_def_name": self.deployment_def_name,
+            "ray_actor_options": self.ray_actor_options,
+            "placement_group_bundles": self.placement_group_bundles,
+            "placement_group_strategy": self.placement_group_strategy,
+            "placement_group_bundle_label_selector": self.placement_group_bundle_label_selector,
+            "placement_group_fallback_strategy": self.placement_group_fallback_strategy,
+            "max_replicas_per_node": self.max_replicas_per_node,
+        }
 
 
 def prepare_imperative_http_options(
@@ -845,7 +1126,7 @@ def prepare_imperative_http_options(
     elif isinstance(http_options, HTTPOptions):
         # empty `HTTPOptions()` is considered as user specified the default location value `HeadOnly` explicitly
         location_set_explicitly = True
-        http_options = HTTPOptions(**http_options.dict(exclude_unset=True))
+        http_options = HTTPOptions(**http_options.model_dump(exclude_unset=True))
     else:
         raise ValueError(
             f"Unexpected type for http_options: `{type(http_options).__name__}`"

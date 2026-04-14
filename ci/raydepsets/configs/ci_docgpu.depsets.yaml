@@ -14,16 +14,16 @@ depsets:
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/test-requirements.txt
+      - python/requirements/py313/test-requirements.txt
       - python/requirements/ml/core-requirements.txt
-      - python/requirements/ml/dl-cpu-requirements.txt
-      - python/requirements/ml/train-requirements.txt
-      - python/requirements/ml/train-test-requirements.txt
-      - python/requirements/ml/tune-requirements.txt
-      - python/requirements/ml/tune-test-requirements.txt
-      - python/requirements/ml/data-requirements.txt
-      - python/requirements/ml/rllib-requirements.txt
-      - python/requirements/ml/rllib-test-requirements.txt
+      - python/requirements/ml/py313/dl-cpu-requirements.txt
+      - python/requirements/ml/py313/train-requirements.txt
+      - python/requirements/ml/py313/train-test-requirements.txt
+      - python/requirements/ml/py313/tune-requirements.txt
+      - python/requirements/ml/py313/tune-test-requirements.txt
+      - python/requirements/ml/py313/data-requirements.txt
+      - python/requirements/ml/py313/rllib-requirements.txt
+      - python/requirements/ml/py313/rllib-test-requirements.txt
     output: python/deplocks/ci/docgpu_cpu_depset_py${PYTHON_VERSION}.lock
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
@@ -45,16 +45,16 @@ depsets:
     depsets:
       - ray_img_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/test-requirements.txt
+      - python/requirements/py313/test-requirements.txt
       - python/requirements/ml/core-requirements.txt
-      - python/requirements/ml/dl-gpu-requirements.txt
-      - python/requirements/ml/train-requirements.txt
-      - python/requirements/ml/train-test-requirements.txt
-      - python/requirements/ml/tune-requirements.txt
-      - python/requirements/ml/tune-test-requirements.txt
-      - python/requirements/ml/data-requirements.txt
-      - python/requirements/ml/rllib-requirements.txt
-      - python/requirements/ml/rllib-test-requirements.txt
+      - python/requirements/ml/py313/dl-gpu-requirements.txt
+      - python/requirements/ml/py313/train-requirements.txt
+      - python/requirements/ml/py313/train-test-requirements.txt
+      - python/requirements/ml/py313/tune-requirements.txt
+      - python/requirements/ml/py313/tune-test-requirements.txt
+      - python/requirements/ml/py313/data-requirements.txt
+      - python/requirements/ml/py313/rllib-requirements.txt
+      - python/requirements/ml/py313/rllib-test-requirements.txt
     output: python/deplocks/ci/docgpu_gpu_depset_py${PYTHON_VERSION}.lock
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt

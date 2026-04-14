@@ -10,17 +10,15 @@ import socket
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 import timeit
 import traceback
 import uuid
-from collections import defaultdict
+from collections.abc import Hashable
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
-from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import requests
 import yaml
@@ -32,13 +30,20 @@ import ray._private.services as services
 import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 from ray._common.network_utils import build_address, parse_address
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    MetricSamplePattern,
+    PrometheusTimeseries,
+    fetch_prometheus_metric_timeseries,
+    fetch_prometheus_timeseries,
+    wait_for_condition,
+)
+from ray._common.tls_utils import generate_self_signed_tls_certs
 from ray._common.utils import get_or_create_event_loop
 from ray._private import (
     ray_constants,
 )
 from ray._private.internal_api import memory_summary
-from ray._private.tls_utils import generate_self_signed_tls_certs
+from ray._private.services import ProcessInfo
 from ray._private.worker import RayContext
 from ray._raylet import Config, GcsClient, GcsClientOptions, GlobalStateAccessor
 from ray.core.generated import (
@@ -59,16 +64,6 @@ RAY_PATH = os.path.abspath(os.path.dirname(os.path.dirname(__file__)))
 REDIS_EXECUTABLE = os.path.join(
     RAY_PATH, "core/src/ray/thirdparty/redis/src/redis-server" + EXE_SUFFIX
 )
-
-try:
-    from prometheus_client.core import Metric
-    from prometheus_client.parser import Sample, text_string_to_metric_families
-except (ImportError, ModuleNotFoundError):
-    Metric = None
-    Sample = None
-
-    def text_string_to_metric_families(*args, **kwargs):
-        raise ModuleNotFoundError("`prometheus_client` not found")
 
 
 def make_global_state_accessor(ray_context):
@@ -398,17 +393,57 @@ def check_call_ray(args, capture_stdout=False, capture_stderr=False):
     check_call_subprocess(["ray"] + args, capture_stdout, capture_stderr)
 
 
+def get_dashboard_agent_address(gcs_client: GcsClient, node_id: str):
+    result = gcs_client.internal_kv_get(
+        f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{node_id}".encode(),
+        namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+        timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
+    )
+    if result:
+        # Returns [ip, http_port, grpc_port]
+        ip, _, grpc_port = json.loads(result)
+        return f"{ip}:{grpc_port}"
+    return None
+
+
 def wait_for_dashboard_agent_available(cluster):
     gcs_client = GcsClient(address=cluster.address)
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, cluster.head_node.node_id)
+        is not None
+    )
 
-    def get_dashboard_agent_address():
-        return gcs_client.internal_kv_get(
-            f"{dashboard_consts.DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX}{cluster.head_node.node_id}".encode(),
-            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-            timeout=dashboard_consts.GCS_RPC_TIMEOUT_SECONDS,
-        )
 
-    wait_for_condition(lambda: get_dashboard_agent_address() is not None)
+def wait_for_aggregator_agent(address: str, node_id: str, timeout: float = 10) -> None:
+    """Wait for the aggregator agent to be ready by checking socket connectivity."""
+    gcs_client = GcsClient(address=address)
+    # Wait for the agent to publish its address
+    wait_for_condition(
+        lambda: get_dashboard_agent_address(gcs_client, node_id) is not None
+    )
+    # Get the agent address and test socket connectivity
+    agent_address = get_dashboard_agent_address(gcs_client, node_id)
+    parsed = urlparse(f"grpc://{agent_address}")
+
+    def _can_connect() -> bool:
+        try:
+            with socket.create_connection((parsed.hostname, parsed.port), timeout=1):
+                return True
+        except OSError:
+            return False
+
+    wait_for_condition(_can_connect, timeout=timeout)
+
+
+def wait_for_aggregator_agent_if_enabled(
+    address: str, node_id: str, timeout: float = 10
+) -> None:
+    """Wait for aggregator agent only if aggregator mode is enabled.
+
+    Checks RAY_enable_core_worker_ray_event_to_aggregator env var.
+    """
+    if os.environ.get("RAY_enable_core_worker_ray_event_to_aggregator") == "1":
+        wait_for_aggregator_agent(address, node_id, timeout)
 
 
 def wait_for_pid_to_exit(pid: int, timeout: float = 20):
@@ -458,33 +493,29 @@ def kill_process_by_name(name, SIGKILL=False):
                 p.terminate()
 
 
-def run_string_as_driver(driver_script: str, env: Dict = None, encode: str = "utf-8"):
-    """Run a driver as a separate process.
+def kill_processes(process_infos: List[ProcessInfo]):
+    """
+    Forcefully kills the list of given processes.
+    Ignores processes that are already dead.
 
     Args:
-        driver_script: A string to run as a Python script.
-        env: The environment variables for the driver.
+        process_infos: The list of ProcessInfo representing the processes to kill.
 
-    Returns:
-        The script's output.
+    Raises:
+        TimeoutError: If the process did not exit within 5 seconds.
     """
-    proc = subprocess.Popen(
-        [sys.executable, "-"],
-        stdin=subprocess.PIPE,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        env=env,
-    )
-    with proc:
-        output = proc.communicate(driver_script.encode(encoding=encode))[0]
-        if proc.returncode:
-            print(ray._common.utils.decode(output, encode_type=encode))
-            logger.error(proc.stderr)
-            raise subprocess.CalledProcessError(
-                proc.returncode, proc.args, output, proc.stderr
-            )
-        out = ray._common.utils.decode(output, encode_type=encode)
-    return out
+    for process_info in process_infos:
+        try:
+            process_info.process.kill()
+            process_info.process.wait(timeout=5)
+        except ProcessLookupError:
+            # Process already dead
+            pass
+        except subprocess.TimeoutExpired as exception:
+            raise TimeoutError(
+                f"Process {process_info.process.pid} did not exit within 5 seconds "
+                "after SIGKILL"
+            ) from exception
 
 
 def run_string_as_driver_stdout_stderr(
@@ -631,48 +662,6 @@ def wait_for_assertion(
         assertion_predictor(**kwargs)  # Should fail assert
 
 
-@dataclass
-class MetricSamplePattern:
-    name: Optional[str] = None
-    value: Optional[str] = None
-    partial_label_match: Optional[Dict[str, str]] = None
-
-    def matches(self, sample: Sample):
-        if self.name is not None:
-            if self.name != sample.name:
-                return False
-
-        if self.value is not None:
-            if self.value != sample.value:
-                return False
-
-        if self.partial_label_match is not None:
-            for label, value in self.partial_label_match.items():
-                if sample.labels.get(label) != value:
-                    return False
-
-        return True
-
-
-@dataclass
-class PrometheusTimeseries:
-    """A collection of timeseries from multiple addresses. Each timeseries is a
-    collection of samples with the same metric name and labels. Concretely:
-    - components_dict: a dictionary of addresses to the Component labels
-    - metric_descriptors: a dictionary of metric names to the Metric object
-    - metric_samples: the latest value of each label
-    """
-
-    components_dict: Dict[str, Set[str]] = field(default_factory=dict)
-    metric_descriptors: Dict[str, Metric] = field(default_factory=dict)
-    metric_samples: Dict[frozenset, Sample] = field(default_factory=dict)
-
-    def flush(self):
-        self.components_dict.clear()
-        self.metric_descriptors.clear()
-        self.metric_samples.clear()
-
-
 def get_metric_check_condition(
     metrics_to_check: List[MetricSamplePattern],
     timeseries: PrometheusTimeseries,
@@ -706,10 +695,8 @@ def get_metric_check_condition(
                 if metric_pattern.matches(metric_sample):
                     break
             else:
-                print(
-                    f"Didn't find {metric_pattern}",
-                    "all samples",
-                    metric_samples,
+                logger.info(
+                    f"Didn't find {metric_pattern} in all samples: {metric_samples}",
                 )
                 return False
         return True
@@ -986,91 +973,11 @@ def object_memory_usage() -> bool:
     return total - avail
 
 
-def fetch_raw_prometheus(prom_addresses):
-    # Local import so minimal dependency tests can run without requests
-    import requests
-
-    for address in prom_addresses:
-        try:
-            response = requests.get(f"http://{address}/metrics")
-            yield address, response.text
-        except requests.exceptions.ConnectionError:
-            continue
-
-
-def fetch_prometheus(prom_addresses):
-    components_dict = {}
-    metric_descriptors = {}
-    metric_samples = []
-
-    for address in prom_addresses:
-        if address not in components_dict:
-            components_dict[address] = set()
-
-    for address, response in fetch_raw_prometheus(prom_addresses):
-        for metric in text_string_to_metric_families(response):
-            for sample in metric.samples:
-                metric_descriptors[sample.name] = metric
-                metric_samples.append(sample)
-                if "Component" in sample.labels:
-                    components_dict[address].add(sample.labels["Component"])
-    return components_dict, metric_descriptors, metric_samples
-
-
-def fetch_prometheus_timeseries(
-    prom_addreses: List[str],
-    result: PrometheusTimeseries,
-) -> PrometheusTimeseries:
-    components_dict, metric_descriptors, metric_samples = fetch_prometheus(
-        prom_addreses
-    )
-    for address, components in components_dict.items():
-        if address not in result.components_dict:
-            result.components_dict[address] = set()
-        result.components_dict[address].update(components)
-    result.metric_descriptors.update(metric_descriptors)
-    for sample in metric_samples:
-        # udpate sample to the latest value
-        result.metric_samples[
-            frozenset(list(sample.labels.items()) + [("_metric_name_", sample.name)])
-        ] = sample
-    return result
-
-
-def fetch_prometheus_metrics(prom_addresses: List[str]) -> Dict[str, List[Any]]:
-    """Return prometheus metrics from the given addresses.
-
-    Args:
-        prom_addresses: List of metrics_agent addresses to collect metrics from.
-
-    Returns:
-        Dict mapping from metric name to list of samples for the metric.
-    """
-    _, _, samples = fetch_prometheus(prom_addresses)
-    samples_by_name = defaultdict(list)
-    for sample in samples:
-        samples_by_name[sample.name].append(sample)
-    return samples_by_name
-
-
-def fetch_prometheus_metric_timeseries(
-    prom_addresses: List[str], result: PrometheusTimeseries
-) -> Dict[str, List[Any]]:
-    samples = fetch_prometheus_timeseries(
-        prom_addresses, result
-    ).metric_samples.values()
-    samples_by_name = defaultdict(list)
-    for sample in samples:
-        samples_by_name[sample.name].append(sample)
-    return samples_by_name
-
-
 def raw_metric_timeseries(
     info: RayContext, result: PrometheusTimeseries
 ) -> Dict[str, List[Any]]:
     """Return prometheus timeseries from a RayContext"""
     metrics_page = "localhost:{}".format(info.address_info["metrics_export_port"])
-    print("Fetch metrics from", metrics_page)
     return fetch_prometheus_metric_timeseries([metrics_page], result)
 
 
@@ -1370,12 +1277,7 @@ def teardown_tls(key_filepath, cert_filepath, temp_dir):
 
 
 class ResourceKillerActor:
-    """Abstract base class used to implement resource killers for chaos testing.
-
-    Subclasses should implement _find_resource_to_kill, which should find a resource
-    to kill. This method should return the args to _kill_resource, which is another
-    abstract method that should kill the resource and add it to the `killed` set.
-    """
+    """Abstract base class used to implement resource killers for chaos testing."""
 
     def __init__(
         self,
@@ -1390,7 +1292,10 @@ class ResourceKillerActor:
         self.kill_delay_s = kill_delay_s
         self.is_running = False
         self.head_node_id = head_node_id
+
+        # Set to track the killed nodes.
         self.killed = set()
+
         self.done = get_or_create_event_loop().create_future()
         self.max_to_kill = max_to_kill
         self.batch_size_to_kill = batch_size_to_kill
@@ -1419,44 +1324,59 @@ class ResourceKillerActor:
                 sleep_interval = random.random() * self.kill_interval_s
                 time.sleep(sleep_interval)
 
-            for to_kill in to_kills:
-                self._kill_resource(*to_kill)
+            results = await asyncio.gather(
+                *[self._kill_resource(*to_kill) for to_kill in to_kills],
+                return_exceptions=True,
+            )
+            for to_kill, result in zip(to_kills, results):
+                if isinstance(result, Exception):
+                    logger.error(
+                        f"Failed to kill resource {to_kill}, may retry later. Error: {result}"
+                    )
+                elif result is True:
+                    logger.info(f"Successfully killed resource: {to_kill}")
+                    self.killed.add(to_kill)
+
             if self.max_to_kill is not None and len(self.killed) >= self.max_to_kill:
                 break
+
             await asyncio.sleep(self.kill_interval_s - sleep_interval)
 
         self.done.set_result(True)
         await self.stop_run()
 
-    async def _find_resources_to_kill(self):
+    async def _find_resources_to_kill(self) -> List[Hashable]:
+        """Implemented by subclasses to discover resources to kill.
+
+        Should return a list of "resources" to kill, which will be passed into
+        _kill_resource.
+        """
         raise NotImplementedError
 
-    def _kill_resource(self, *args):
+    async def _kill_resource(self, *args: Hashable) -> bool:
+        """Implemented by subclasses to kill resources.
+
+        The method should return False or raise an exception if killing the resource
+        failed, in which case it may be retried.
+        """
         raise NotImplementedError
 
     async def stop_run(self):
         was_running = self.is_running
-        if was_running:
-            self._cleanup()
-
         self.is_running = False
         return was_running
 
-    async def get_total_killed(self):
-        """Get the total number of killed resources"""
+    async def get_killed_nodes(self) -> Set[Hashable]:
+        """Get the set of nodes that were killed."""
         await self.done
-        return self.killed
-
-    def _cleanup(self):
-        """Cleanup any resources created by the killer.
-
-        Overriding this method is optional.
-        """
-        pass
+        return self.killed.copy()
 
 
 class NodeKillerBase(ResourceKillerActor):
-    async def _find_resources_to_kill(self):
+    async def _find_resources_to_kill(self) -> List[Tuple[str, str, str]]:
+        def _resource_from_node_info(n: Dict) -> Tuple[str, str, str]:
+            return (n["NodeID"], n["NodeManagerAddress"], n["NodeManagerPort"])
+
         nodes_to_kill = []
         while not nodes_to_kill and self.is_running:
             worker_nodes = [
@@ -1464,7 +1384,7 @@ class NodeKillerBase(ResourceKillerActor):
                 for node in ray.nodes()
                 if node["Alive"]
                 and (node["NodeID"] != self.head_node_id)
-                and (node["NodeID"] not in self.killed)
+                and (_resource_from_node_info(node) not in self.killed)
             ]
             if self.kill_filter_fn:
                 candidates = list(filter(self.kill_filter_fn(), worker_nodes))
@@ -1479,30 +1399,21 @@ class NodeKillerBase(ResourceKillerActor):
 
             # Collect nodes to kill, limited by batch size.
             for candidate in candidates[: self.batch_size_to_kill]:
-                nodes_to_kill.append(
-                    (
-                        candidate["NodeID"],
-                        candidate["NodeManagerAddress"],
-                        candidate["NodeManagerPort"],
-                    )
-                )
+                nodes_to_kill.append(_resource_from_node_info(candidate))
 
         return nodes_to_kill
 
 
 @ray.remote(num_cpus=0)
 class RayletKiller(NodeKillerBase):
-    def _kill_resource(self, node_id, node_to_kill_ip, node_to_kill_port):
-        if node_to_kill_port is not None:
-            try:
-                self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
-            except Exception:
-                pass
-            logging.info(
-                f"Killed node {node_id} at address: "
-                f"{node_to_kill_ip}, port: {node_to_kill_port}"
-            )
-            self.killed.add(node_id)
+    async def _kill_resource(
+        self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
+    ):
+        if node_to_kill_port is None:
+            return False
+
+        self._kill_raylet(node_to_kill_ip, node_to_kill_port, graceful=False)
+        return True
 
     def _kill_raylet(self, ip, port, graceful=False):
         import grpc
@@ -1523,51 +1434,33 @@ class RayletKiller(NodeKillerBase):
 
 @ray.remote(num_cpus=0)
 class EC2InstanceTerminator(NodeKillerBase):
-    def _kill_resource(self, node_id, node_to_kill_ip, _):
-        if node_to_kill_ip is not None:
-            try:
-                _terminate_ec2_instance(node_to_kill_ip)
-            except Exception:
-                pass
-            logging.info(f"Terminated instance, {node_id=}, address={node_to_kill_ip}")
-            self.killed.add(node_id)
+    async def _kill_resource(
+        self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
+    ):
+        if node_to_kill_ip is None:
+            return False
+
+        _terminate_ec2_instance(node_to_kill_ip)
+        return True
 
 
 @ray.remote(num_cpus=0)
 class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
     def __init__(self, *args, grace_period_s: int = 30, **kwargs):
         super().__init__(*args, **kwargs)
-
         self._grace_period_s = grace_period_s
-        self._kill_threads: Set[threading.Thread] = set()
 
-    def _kill_resource(self, node_id, node_to_kill_ip, _):
-        assert node_id not in self.killed
-
-        # Clean up any completed threads.
-        for thread in self._kill_threads.copy():
-            if not thread.is_alive():
-                thread.join()
-                self._kill_threads.remove(thread)
-
-        def _kill_node_with_grace_period(node_id, node_to_kill_ip):
-            self._drain_node(node_id)
-            time.sleep(self._grace_period_s)
-            # Anyscale extends the drain deadline if you shut down the instance
-            # directly. To work around this, we force-stop Ray on the node. Anyscale
-            # should then terminate it shortly after without updating the drain
-            # deadline.
-            _execute_command_on_node("ray stop --force", node_to_kill_ip)
-
-        logger.info(f"Starting killing thread {node_id=}, {node_to_kill_ip=}")
-        thread = threading.Thread(
-            target=_kill_node_with_grace_period,
-            args=(node_id, node_to_kill_ip),
-            daemon=True,
-        )
-        thread.start()
-        self._kill_threads.add(thread)
-        self.killed.add(node_id)
+    async def _kill_resource(
+        self, node_id: str, node_to_kill_ip: str, node_to_kill_port: int
+    ):
+        self._drain_node(node_id)
+        await asyncio.sleep(self._grace_period_s)
+        # Anyscale extends the drain deadline if you shut down the instance
+        # directly. To work around this, we force-stop Ray on the node.
+        # Anyscale should then terminate it shortly after without updating
+        # the drain deadline.
+        _execute_command_on_node("ray stop --force", node_to_kill_ip)
+        return True
 
     def _drain_node(self, node_id: str) -> None:
         # We need to lazily import this object. Otherwise, Ray can't serialize the
@@ -1594,13 +1487,6 @@ class EC2InstanceTerminatorWithGracePeriod(NodeKillerBase):
 
         assert is_accepted, "Drain node request was rejected"
 
-    def _cleanup(self):
-        for thread in self._kill_threads.copy():
-            thread.join()
-            self._kill_threads.remove(thread)
-
-        assert not self._kill_threads
-
 
 @ray.remote(num_cpus=0)
 class WorkerKillerActor(ResourceKillerActor):
@@ -1622,7 +1508,7 @@ class WorkerKillerActor(ResourceKillerActor):
             ]
         )
 
-    async def _find_resources_to_kill(self):
+    async def _find_resources_to_kill(self) -> List[Tuple[str, int, str]]:
         from ray.util.state.common import StateResource
 
         process_to_kill_task_id = None
@@ -1649,32 +1535,30 @@ class WorkerKillerActor(ResourceKillerActor):
 
         return [(process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id)]
 
-    def _kill_resource(
-        self, process_to_kill_task_id, process_to_kill_pid, process_to_kill_node_id
+    async def _kill_resource(
+        self,
+        process_to_kill_task_id: str,
+        process_to_kill_pid: int,
+        process_to_kill_node_id: str,
     ):
-        if process_to_kill_pid is not None:
+        if process_to_kill_pid is None:
+            return False
 
-            @ray.remote
-            def kill_process(pid):
-                import psutil
+        @ray.remote
+        def kill_process(pid: int):
+            proc = psutil.Process(pid)
+            proc.kill()
 
-                proc = psutil.Process(pid)
-                proc.kill()
-
-            scheduling_strategy = (
-                ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
-                    node_id=process_to_kill_node_id,
-                    soft=False,
-                )
+        scheduling_strategy = (
+            ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                node_id=process_to_kill_node_id,
+                soft=False,
             )
-            kill_process.options(scheduling_strategy=scheduling_strategy).remote(
-                process_to_kill_pid
-            )
-            logging.info(
-                f"Killing pid {process_to_kill_pid} on node {process_to_kill_node_id}"
-            )
-            # Store both task_id and pid because retried tasks have same task_id.
-            self.killed.add((process_to_kill_task_id, process_to_kill_pid))
+        )
+        await kill_process.options(scheduling_strategy=scheduling_strategy).remote(
+            process_to_kill_pid
+        )
+        return True
 
 
 def get_and_run_resource_killer(
@@ -2089,19 +1973,45 @@ def _execute_command_on_node(command: str, node_ip: str):
     # easy ssh access to worker nodes.
     ssh_command = f"ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -p 2222 ray@{node_ip} '{multi_line_command}'"  # noqa: E501
 
+    # Strip library path overrides so that the system ssh binary
+    # doesn't pick up a conflicting OpenSSL from the Ray/conda env.
+    env = os.environ.copy()
+    env.pop("LD_LIBRARY_PATH", None)
+    env.pop("DYLD_LIBRARY_PATH", None)
+
     try:
         subprocess.run(
-            ssh_command, shell=True, capture_output=True, text=True, check=True
+            ssh_command,
+            shell=True,
+            capture_output=True,
+            text=True,
+            check=True,
+            env=env,
         )
     except subprocess.CalledProcessError as e:
-        print("Exit code:", e.returncode)
-        print("Stderr:", e.stderr)
+        logger.error(
+            f"Command failed on node {node_ip}: {command}, "
+            f"exit code: {e.returncode}, stderr: {e.stderr}"
+        )
+        raise
 
 
 RPC_FAILURE_MAP = {
-    "request": "100:0:0",
-    "response": "0:100:0",
-    "in_flight": "0:0:100",
+    "request": {
+        "req_failure_prob": 100,
+        "resp_failure_prob": 0,
+        "in_flight_failure_prob": 0,
+    },
+    "response": {
+        "req_failure_prob": 0,
+        "resp_failure_prob": 100,
+        "in_flight_failure_prob": 0,
+    },
+    "in_flight": {
+        "req_failure_prob": 0,
+        "resp_failure_prob": 0,
+        "in_flight_failure_prob": 100,
+    },
 }
 
 RPC_FAILURE_TYPES = list(RPC_FAILURE_MAP.keys())

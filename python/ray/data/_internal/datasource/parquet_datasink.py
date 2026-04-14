@@ -16,17 +16,6 @@ if TYPE_CHECKING:
 
 WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
-
-# Map Ray Data's SaveMode to pyarrow's existing_data_behavior property which is exposed via the
-# `pyarrow.dataset.write_dataset` function.
-# Docs: https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
-EXISTING_DATA_BEHAVIOR_MAP = {
-    SaveMode.APPEND: "overwrite_or_ignore",
-    SaveMode.OVERWRITE: "overwrite_or_ignore",  # delete_matching is not a suitable choice for parallel writes.
-    SaveMode.IGNORE: "overwrite_or_ignore",
-    SaveMode.ERROR: "error",
-}
-
 FILE_FORMAT = "parquet"
 
 # These args are part of https://arrow.apache.org/docs/python/generated/pyarrow.fs.FileSystem.html#pyarrow.fs.FileSystem.open_output_stream
@@ -35,6 +24,8 @@ UNSUPPORTED_OPEN_STREAM_ARGS = {"path", "buffer", "metadata"}
 
 # https://arrow.apache.org/docs/python/generated/pyarrow.dataset.write_dataset.html
 ARROW_DEFAULT_MAX_ROWS_PER_GROUP = 1024 * 1024
+
+DEFAULT_PARTITIONING_FLAVOR = "hive"
 
 logger = logging.getLogger(__name__)
 
@@ -131,9 +122,10 @@ class ParquetDatasink(_FileDatasink):
         self.partition_cols = partition_cols
 
         if self.min_rows_per_file is not None and self.max_rows_per_file is not None:
-            assert (
-                self.min_rows_per_file <= self.max_rows_per_file
-            ), "min_rows_per_file must be less than or equal to max_rows_per_file"
+            if self.min_rows_per_file > self.max_rows_per_file:
+                raise ValueError(
+                    "min_rows_per_file must be less than or equal to max_rows_per_file"
+                )
 
         if open_stream_args is not None:
             intersecting_keys = UNSUPPORTED_OPEN_STREAM_ARGS.intersection(
@@ -148,6 +140,15 @@ class ParquetDatasink(_FileDatasink):
 
             if "compression" in open_stream_args:
                 self.arrow_parquet_args["compression"] = open_stream_args["compression"]
+
+        if ("partitioning_flavor" in self.arrow_parquet_args) or (
+            self.arrow_parquet_args_fn is not None
+            and "partitioning_flavor" in self.arrow_parquet_args_fn()
+        ):
+            if self.partition_cols is None:
+                raise ValueError(
+                    "partition_cols must be provided when partitioning_flavor is set."
+                )
 
         super().__init__(
             path,
@@ -176,13 +177,20 @@ class ParquetDatasink(_FileDatasink):
             block for block in blocks if BlockAccessor.for_block(block).num_rows() > 0
         ]
 
-        filename = self.filename_provider.get_filename_for_block(
-            blocks[0], ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx, 0
+        filename = self.filename_provider.get_filename_for_task(
+            ctx.kwargs[WRITE_UUID_KWARG_NAME], ctx.task_idx
         )
         write_kwargs = _resolve_kwargs(
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
         )
         user_schema = write_kwargs.pop("schema", None)
+
+        # For partitioning_flavor, if it's not provided, the default is "hive"
+        # Otherwise, it follows pyarrow's behavior: None for directory,
+        # "hive" for hive, and "filename" for FilenamePartitioning.
+        partitioning_flavor = write_kwargs.pop(
+            "partitioning_flavor", DEFAULT_PARTITIONING_FLAVOR
+        )
 
         def write_blocks_to_path():
             tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
@@ -197,6 +205,7 @@ class ParquetDatasink(_FileDatasink):
                 output_schema,
                 ctx.kwargs[WRITE_UUID_KWARG_NAME],
                 write_kwargs,
+                partitioning_flavor,
             )
 
         logger.debug(f"Writing {filename} file to {self.path}.")
@@ -246,6 +255,7 @@ class ParquetDatasink(_FileDatasink):
         output_schema: "pyarrow.Schema",
         write_uuid: str,
         write_kwargs: Dict[str, Any],
+        partitioning_flavor: Optional[str],
     ) -> None:
         import pyarrow.dataset as ds
 
@@ -257,9 +267,8 @@ class ParquetDatasink(_FileDatasink):
 
         row_group_size = write_kwargs.pop("row_group_size", None)
 
-        existing_data_behavior = EXISTING_DATA_BEHAVIOR_MAP.get(
-            self.mode, "overwrite_or_ignore"
-        )
+        # We set this to "overwrite_or_ignore", to avoid the race condition seen in parallel writes when this is set to "error". The driver already handles the save mode check in on_write_start.
+        existing_data_behavior = "overwrite_or_ignore"
 
         (
             min_rows_per_group,
@@ -273,6 +282,7 @@ class ParquetDatasink(_FileDatasink):
 
         basename_template = self._get_basename_template(filename, write_uuid)
 
+        # Note that the driver already handles the save mode logic, checking if the directory exists and raising an error if it does on SaveMode.ERROR
         ds.write_dataset(
             data=tables,
             base_dir=self.path,
@@ -282,7 +292,7 @@ class ParquetDatasink(_FileDatasink):
             partitioning=self.partition_cols,
             format=FILE_FORMAT,
             existing_data_behavior=existing_data_behavior,
-            partitioning_flavor="hive",
+            partitioning_flavor=partitioning_flavor,
             use_threads=True,
             min_rows_per_group=min_rows_per_group,
             max_rows_per_group=max_rows_per_group,

@@ -1,5 +1,6 @@
 import abc
 import logging
+import time
 import uuid
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
@@ -19,6 +20,7 @@ import ray
 from .ref_bundle import RefBundle
 from ray._raylet import ObjectRefGenerator
 from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
+    ActorPoolInfo,
     AutoscalingActorPool,
 )
 from ray.data._internal.execution.interfaces.execution_options import (
@@ -28,9 +30,8 @@ from ray.data._internal.execution.interfaces.execution_options import (
 from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
 from ray.data._internal.logical.interfaces import LogicalOperator, Operator
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict, Timer
-from ray.data.block import Block, BlockMetadata
+from ray.data.block import Block, BlockMetadata, TaskExecWorkerStats
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -76,20 +77,36 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
+
+        is_actor_task = not self.get_task_id().actor_id().is_nil()
+
+        ray.cancel(
+            self.get_waitable(),
+            recursive=True,
+            # NOTE: Actor tasks can't be force-cancelled
+            force=force and not is_actor_task,
+        )
+
+    def get_task_id(self) -> ray.TaskID:
         object_ref = self.get_waitable()
 
         # Get generator's `ObjectRef`
         if isinstance(object_ref, ObjectRefGenerator):
             object_ref = object_ref._generator_ref
+        return object_ref.task_id()
 
-        is_actor_task = not object_ref.task_id().actor_id().is_nil()
 
-        ray.cancel(
-            object_ref,
-            recursive=True,
-            # NOTE: Actor tasks can't be force-cancelled
-            force=force and not is_actor_task,
-        )
+@dataclass(frozen=True)
+class TaskExecDriverStats:
+    """Task's execution stats reported from the driver"""
+
+    task_output_backpressure_s: float
+
+
+TaskDoneCallbackType = Callable[
+    [Optional[Exception], Optional[TaskExecWorkerStats], Optional[TaskExecDriverStats]],
+    None,
+]
 
 
 class DataOpTask(OpTask):
@@ -100,7 +117,7 @@ class DataOpTask(OpTask):
         task_index: int,
         streaming_gen: ObjectRefGenerator,
         output_ready_callback: Callable[[RefBundle], None] = lambda bundle: None,
-        task_done_callback: Callable[[Optional[Exception]], None] = lambda exc: None,
+        task_done_callback: TaskDoneCallbackType = lambda exc, worker_stats, driver_stats: None,
         block_ready_callback: Callable[
             [ray.ObjectRef[Block]], None
         ] = lambda block_ref: None,
@@ -108,6 +125,7 @@ class DataOpTask(OpTask):
             [ray.ObjectRef[BlockMetadata]], None
         ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
+        operator_name: str = "Unknown",
     ):
         """Create a DataOpTask
         Args:
@@ -121,6 +139,8 @@ class DataOpTask(OpTask):
             metadata_ready_callback: A callback that's invoked when a new block metadata
                 reference is ready. This is exposed as a seam for testing.
             task_resource_bundle: The execution resources of this task.
+            operator_name: The name of the physical operator that created this task.
+                Used for logging the operator name in warnings/errors.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -132,6 +152,7 @@ class DataOpTask(OpTask):
         self._task_done_callback = task_done_callback
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
+        self._operator_name = operator_name
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -140,7 +161,11 @@ class DataOpTask(OpTask):
         self._pending_block_ref: ray.ObjectRef[Block] = ray.ObjectRef.nil()
         self._pending_meta_ref: ray.ObjectRef[BlockMetadata] = ray.ObjectRef.nil()
 
+        self._last_block_meta: Optional[BlockMetadata] = None
         self._has_finished = False
+
+        self._start_output_backpressure_s: Optional[float] = None
+        self._total_output_backpressure_s: float = 0
 
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
@@ -154,6 +179,9 @@ class DataOpTask(OpTask):
         Returns: The number of blocks read.
         """
         bytes_read = 0
+
+        self._track_task_output_backpressure(max_bytes_to_read)
+
         while max_bytes_to_read is None or bytes_read < max_bytes_to_read:
             if self._pending_block_ref.is_nil():
                 assert self._pending_meta_ref.is_nil(), (
@@ -167,7 +195,16 @@ class DataOpTask(OpTask):
                         timeout_s=0
                     )
                 except StopIteration:
-                    self._task_done_callback(None)
+                    self._task_done_callback(
+                        None,  # exception
+                        self._last_block_meta.task_exec_stats
+                        if self._last_block_meta is not None
+                        else None,
+                        TaskExecDriverStats(
+                            task_output_backpressure_s=self._total_output_backpressure_s,
+                        ),
+                    )
+
                     self._has_finished = True
                     break
 
@@ -194,7 +231,12 @@ class DataOpTask(OpTask):
                         ray.get(self._pending_block_ref)
                         assert False, "Above ray.get should raise an exception."
                     except Exception as ex:
-                        self._task_done_callback(ex)
+                        self._task_done_callback(
+                            ex,
+                            None,  # TaskExecStats
+                            None,  # TaskExecDriverStats
+                        )
+
                         self._has_finished = True
                         raise ex from None
 
@@ -217,11 +259,12 @@ class DataOpTask(OpTask):
                 # We have a reference to the block and its metadata, but the metadata
                 # object isn't available. This can happen if the node dies.
                 logger.warning(
-                    f"Metadata object not ready for "
-                    f"ref={self._pending_meta_ref.hex()} "
-                    f"(operator={self.__class__.__name__}). "
-                    f"Metadata may still be computing or worker may have failed and "
-                    f"object is being reconstructed. Will retry in next iteration."
+                    f"Timed out ({METADATA_GET_TIMEOUT_S}s) waiting for metadata from "
+                    f"operator '{self._operator_name}' "
+                    f"(metadata_ref={self._pending_meta_ref.hex()}). "
+                    f"Possible causes include a worker crash, node preemption, or an overloaded worker or head node. "
+                    f"Will retry next iteration. "
+                    f"If this repeats, check the Ray dashboard and logs for worker crashes, node preemption, or overload."
                 )
                 break
 
@@ -233,12 +276,32 @@ class DataOpTask(OpTask):
                     schema=meta_with_schema.schema,
                 ),
             )
+
+            self._last_block_meta = meta
             self._pending_block_ref = ray.ObjectRef.nil()
             self._pending_meta_ref = ray.ObjectRef.nil()
 
             bytes_read += meta.size_bytes
 
         return bytes_read
+
+    def _track_task_output_backpressure(self, max_bytes_to_read: Optional[int]):
+        if max_bytes_to_read == 0:
+            # Whenever provided `max_bytes_to_read == 0` we treat as task
+            # being in output backpressure, therefore correspondingly starting
+            # the timer (if necessary)
+            if self._start_output_backpressure_s is None:
+                self._start_output_backpressure_s = time.perf_counter()
+
+        elif (
+            max_bytes_to_read is None or max_bytes_to_read > 0
+        ) and self._start_output_backpressure_s is not None:
+            # Increment cumulative duration of task being in output
+            # backpressure
+            self._total_output_backpressure_s += (
+                time.perf_counter() - self._start_output_backpressure_s
+            )
+            self._start_output_backpressure_s = None
 
     @property
     def has_finished(self) -> bool:
@@ -270,21 +333,6 @@ class MetadataOpTask(OpTask):
     def on_task_finished(self):
         """Callback when the task is finished."""
         self._task_done_callback()
-
-
-@dataclass
-class _ActorPoolInfo:
-    """Breakdown of the state of the actors used by the ``PhysicalOperator``"""
-
-    running: int
-    pending: int
-    restarting: int
-
-    def __str__(self):
-        return (
-            f"running={self.running}, restarting={self.restarting}, "
-            f"pending={self.pending}"
-        )
 
 
 class PhysicalOperator(Operator):
@@ -328,11 +376,27 @@ class PhysicalOperator(Operator):
         input_dependencies: List["PhysicalOperator"],
         data_context: DataContext,
         target_max_block_size_override: Optional[int] = None,
+        num_output_splits: int = 1,
     ):
         super().__init__(name, input_dependencies)
+        self._output_dependencies: List["PhysicalOperator"] = []
 
-        for x in input_dependencies:
-            assert isinstance(x, PhysicalOperator), x
+        for input in input_dependencies:
+            assert isinstance(
+                input, PhysicalOperator
+            ), "Must inherit from PhysicalOperator"
+
+            # Assert that number of output splits produced by this operator is not
+            # exceeded by its input deps
+            assert num_output_splits >= input.num_output_splits(), (
+                f"Number of output splits of the upstream may not exceed that one of the downstream: "
+                f"{num_output_splits} for {self}, {input.num_output_splits()} for {input}"
+            )
+
+        # Number of output splits this operator partitions its output by
+        self._num_output_splits = num_output_splits
+
+        self._wire_output_deps(input_dependencies)
         self._inputs_complete = not input_dependencies
         self._output_block_size_option_override = OutputBlockSizeOption.of(
             target_max_block_size=target_max_block_size_override
@@ -340,7 +404,9 @@ class PhysicalOperator(Operator):
         self._started = False
         self._shutdown = False
         self._in_task_submission_backpressure = False
+        self._task_submission_backpressure_policy: Optional[str] = None
         self._in_task_output_backpressure = False
+        self._task_output_backpressure_policy: Optional[str] = None
         self._estimated_num_output_bundles = None
         self._estimated_output_num_rows = None
         self._is_execution_marked_finished = False
@@ -364,7 +430,7 @@ class PhysicalOperator(Operator):
     def data_context(self) -> DataContext:
         return self._data_context
 
-    # Override the following 3 methods to correct type hints.
+    # Override the following methods to correct type hints.
 
     @property
     def input_dependencies(self) -> List["PhysicalOperator"]:
@@ -372,10 +438,91 @@ class PhysicalOperator(Operator):
 
     @property
     def output_dependencies(self) -> List["PhysicalOperator"]:
-        return super().output_dependencies  # type: ignore
+        return self._output_dependencies
 
     def post_order_iter(self) -> Iterator["PhysicalOperator"]:
         return super().post_order_iter()  # type: ignore
+
+    def _apply_transform(
+        self, transform: Callable[["PhysicalOperator"], "PhysicalOperator"]
+    ) -> "PhysicalOperator":
+        # 1) Recursively transform input operators first.
+        transformed_input_ops = []
+        has_changes = False
+
+        for input_op in self.input_dependencies:
+            transformed_input_op = input_op._apply_transform(transform)
+            transformed_input_ops.append(transformed_input_op)
+            if transformed_input_op is not input_op:
+                has_changes = True
+
+        # 2) If any input changed, create a shallow copy of the current node,
+        # rebind its inputs, and rewire reverse dependencies from old inputs
+        # to transformed inputs.
+        if has_changes:
+            target = self._copy_for_transform()
+            for input_op in self.input_dependencies:
+                assert isinstance(input_op, PhysicalOperator), input_op
+                input_op._output_dependencies = [
+                    dep for dep in input_op._output_dependencies if dep is not self
+                ]
+            target._input_dependencies = transformed_input_ops
+            target._wire_output_deps(transformed_input_ops)
+        else:
+            target = self
+
+        # 3) Apply transform on the current node itself. If transform replaces
+        # the current node, rewire reverse dependencies from old node inputs
+        # to the returned replacement node inputs.
+        # Returning the same node must not mutate inputs in-place.
+        original_inputs = tuple(target.input_dependencies)
+        transformed_target = transform(target)
+        if transformed_target is not target:
+            for input_op in original_inputs:
+                assert isinstance(input_op, PhysicalOperator), input_op
+                input_op._output_dependencies = [
+                    dep for dep in input_op._output_dependencies if dep is not target
+                ]
+            transformed_target._rewire_output_deps(
+                target, transformed_target.input_dependencies
+            )
+        else:
+            assert (
+                tuple(transformed_target.input_dependencies) == original_inputs
+            ), "In-place input mutation is not supported; return a new node instead."
+        return transformed_target
+
+    def _copy_for_transform(self) -> "PhysicalOperator":
+        # copy.copy() is not safe here because PhysicalOperator.__reduce__()
+        # intentionally raises. Use a side-effect-free shallow copy to avoid
+        # re-running __init__ wiring/ID/metrics initialization during transform.
+        target = object.__new__(type(self))
+        target.__dict__ = self.__dict__.copy()
+        # The transformed node should have a distinct identity and metrics owner.
+        target._id = str(uuid.uuid4())
+        target._metrics = OpRuntimeMetrics(target)
+        # The copied node belongs to a new transformed DAG. Reverse edges are
+        # rewired by parents, so avoid carrying stale downstream references.
+        target._output_dependencies = []
+        return target
+
+    def _rewire_output_deps(
+        self,
+        source_op: "PhysicalOperator",
+        input_dependencies: List["PhysicalOperator"],
+    ) -> None:
+        for input_op in input_dependencies:
+            assert isinstance(input_op, PhysicalOperator), input_op
+            input_op._output_dependencies = [
+                dep for dep in input_op._output_dependencies if dep is not source_op
+            ]
+            if self not in input_op._output_dependencies:
+                input_op._output_dependencies.append(self)
+
+    def _wire_output_deps(self, input_dependencies: List["PhysicalOperator"]) -> None:
+        for input_op in input_dependencies:
+            assert isinstance(input_op, PhysicalOperator), input_op
+            input_op._output_dependencies.append(self)
 
     def set_logical_operators(
         self,
@@ -420,14 +567,13 @@ class PhysicalOperator(Operator):
         #       - All input blocks have been ingested
         #       - Internal queue is empty
         #       - There are no active or pending tasks
-
         return self._is_execution_marked_finished or (
             self._inputs_complete
             and self.num_active_tasks() == 0
             and internal_input_queue_num_blocks == 0
         )
 
-    def completed(self) -> bool:
+    def has_completed(self) -> bool:
         """Returns whether this operator has been fully completed.
 
         An operator is completed iff:
@@ -441,13 +587,14 @@ class PhysicalOperator(Operator):
             internal_output_queue_num_blocks = self.internal_output_queue_num_blocks()
 
         # NOTE: We check for (internal_output_queue_size == 0) and
-        # (not self.has_next()) because _OrderedOutputQueue can
+        # (not self.has_next()) because ReorderingBundleQueue can
         # return False for self.has_next(), but have a non-empty queue size.
         # Draining the internal output queue is important to free object refs.
         return (
             self.has_execution_finished()
-            and not self.has_next()
             and internal_output_queue_num_blocks == 0
+            # TODO following check is redundant; remove
+            and not self.has_next()
         )
 
     def get_stats(self) -> StatsDict:
@@ -506,7 +653,7 @@ class PhysicalOperator(Operator):
         For regular tasks, this is the resources required to schedule a task. For actor
         tasks, this is the resources required to schedule an actor.
         """
-        return ExecutionResources.zero()
+        return self.incremental_resource_usage()
 
     def progress_str(self) -> str:
         """Return any extra status to be displayed in the operator progress bar.
@@ -541,6 +688,13 @@ class PhysicalOperator(Operator):
         """
         return self._estimated_output_num_rows
 
+    def num_output_splits(self) -> int:
+        """Returns the number of splits for this operator's output is partitioned into.
+
+        Most operators have a single output split.
+        """
+        return self._num_output_splits
+
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
 
@@ -549,7 +703,7 @@ class PhysicalOperator(Operator):
         """
         self._started = True
 
-    def should_add_input(self) -> bool:
+    def can_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
 
         Operators can customize the implementation of this method to apply additional
@@ -584,7 +738,7 @@ class PhysicalOperator(Operator):
         raise NotImplementedError
 
     def input_done(self, input_index: int) -> None:
-        """Called when the upstream operator at index `input_index` has completed().
+        """Called when the upstream operator at index `input_index` has_completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for the given input index.
@@ -592,7 +746,7 @@ class PhysicalOperator(Operator):
         pass
 
     def all_inputs_done(self) -> None:
-        """Called when all upstream operators have completed().
+        """Called when all upstream operators has_completed().
 
         After this is called, the executor guarantees that no more inputs will be added
         via `add_input` for any input index.
@@ -675,40 +829,40 @@ class PhysicalOperator(Operator):
         # Default implementation simply cancels any outstanding active task
         self._cancel_active_tasks(force=force)
 
-    def current_processor_usage(self) -> ExecutionResources:
-        """Returns the current estimated CPU and GPU usage of this operator, excluding
-        object store memory.
+    def current_logical_usage(self) -> ExecutionResources:
+        """Returns the current estimated CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
-        This method is called by the executor to decide how to allocate processors
+        This method is called by the executor to decide how to allocate resources
         between different operators.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources.zero()
 
-    def running_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated running CPU and GPU usage of this operator, excluding
-        object store memory.
+    def running_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated running CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
-        executor to display the number of currently running CPUs and GPUs in the
-        progress bar.
+        executor to display the number of currently running CPUs, GPUs, and memory in
+        the progress bar.
 
-        Note, this method returns `current_processor_usage() -
-        pending_processor_usage()` by default. Subclasses should only override
-        `pending_processor_usage()` if needed.
+        Note, this method returns `current_logical_usage() -
+        pending_logical_usage()` by default. Subclasses should only override
+        `pending_logical_usage()` if needed.
         """
-        usage = self.current_processor_usage()
-        usage = usage.subtract(self.pending_processor_usage())
+        usage = self.current_logical_usage()
+        usage = usage.subtract(self.pending_logical_usage())
         return usage
 
-    def pending_processor_usage(self) -> ExecutionResources:
-        """Returns the estimated pending CPU and GPU usage of this operator, excluding
-        object store memory.
+    def pending_logical_usage(self) -> ExecutionResources:
+        """Returns the estimated pending CPU, GPU, and memory usage of this operator,
+        excluding object store memory.
 
         This method is called by the resource manager and the streaming
         executor to display the number of currently pending actors in the
         progress bar.
         """
-        return ExecutionResources(0, 0, 0)
+        return ExecutionResources.zero()
 
     def min_max_resource_requirements(
         self,
@@ -730,65 +884,62 @@ class PhysicalOperator(Operator):
         """
         return ExecutionResources()
 
-    def notify_in_task_submission_backpressure(self, in_backpressure: bool) -> None:
+    def notify_in_task_submission_backpressure(
+        self, in_backpressure: bool, policy_name: Optional[str] = None
+    ) -> None:
         """Called periodically from the executor to update internal in backpressure
         status for stats collection purposes.
 
         Args:
             in_backpressure: Value this operator's in_backpressure should be set to.
+            policy_name: Name of the backpressure policy that triggered.
         """
         # only update on change to in_backpressure
         if self._in_task_submission_backpressure != in_backpressure:
             self._metrics.on_toggle_task_submission_backpressure(in_backpressure)
             self._in_task_submission_backpressure = in_backpressure
+        self._task_submission_backpressure_policy = policy_name
 
-    def notify_in_task_output_backpressure(self, in_backpressure: bool) -> None:
+    def notify_in_task_output_backpressure(
+        self, in_backpressure: bool, policy_name: Optional[str] = None
+    ) -> None:
         """Called periodically from the executor to update internal output backpressure
         status for stats collection purposes.
 
         Args:
             in_backpressure: Value this operator's output backpressure should be set to.
+            policy_name: Name of the backpressure policy that triggered.
         """
         # only update on change to in_backpressure
         if self._in_task_output_backpressure != in_backpressure:
             self._metrics.on_toggle_task_output_backpressure(in_backpressure)
             self._in_task_output_backpressure = in_backpressure
+        self._task_output_backpressure_policy = policy_name
 
     def get_autoscaling_actor_pools(self) -> List[AutoscalingActorPool]:
         """Return a list of `AutoscalingActorPool`s managed by this operator."""
         return []
 
-    def implements_accurate_memory_accounting(self) -> bool:
-        """Return whether this operator implements accurate memory accounting.
-
-        An operator that implements accurate memory accounting should properly
-        report its memory usage via the following APIs:
-          - `self._metrics.on_input_queued`.
-          - `self._metrics.on_input_dequeued`.
-          - `self._metrics.on_output_queued`.
-          - `self._metrics.on_output_dequeued`.
-        """
-        # TODO(hchen): Currently we only enable `ReservationOpResourceAllocator` when
-        # all operators in the dataset have implemented accurate memory accounting.
-        # Eventually all operators should implement accurate memory accounting.
-        return False
-
     def supports_fusion(self) -> bool:
         """Returns ```True``` if this operator can be fused with other operators."""
         return False
 
-    def update_resource_usage(self) -> None:
-        """Updates resource usage of this operator at runtime.
+    def refresh_state(self):
+        """Refreshes the state of the operator at runtime.
 
         This method will be called at runtime in each StreamingExecutor iteration.
-        Subclasses can override it to account for dynamic resource usage updates due to
-        restarting actors, retrying tasks, lost objects, etc.
+        Subclasses can override it to account for asynchronous updates, like restarting
+        actors, retrying tasks, or lost objects which are NOT transparent to the
+        StreamingExecutor.
+
+        TODO: Currently this method is synchronous. We should consider making this async,
+        or calling it in an asynchronous context.
         """
         pass
 
-    def get_actor_info(self) -> _ActorPoolInfo:
+    def get_actor_info(self) -> ActorPoolInfo:
         """Returns the current status of actors being used by the operator"""
-        return _ActorPoolInfo(running=0, pending=0, restarting=0)
+        return ActorPoolInfo(running=0, pending=0, restarting=0)
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()
@@ -861,19 +1012,3 @@ def estimate_total_num_of_blocks(
         )
 
     return (0, 0, 0)
-
-
-def _create_sub_pb(
-    name: str, total_output_rows: Optional[int], position: int
-) -> Tuple[ProgressBar, int]:
-    progress_bar = ProgressBar(
-        name,
-        total_output_rows or 1,
-        unit="row",
-        position=position,
-    )
-    # NOTE: call `set_description` to trigger the initial print of progress
-    # bar on console.
-    progress_bar.set_description(f"  *- {name}")
-    position += 1
-    return progress_bar, position

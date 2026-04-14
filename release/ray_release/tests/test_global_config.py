@@ -11,14 +11,14 @@ from ray_release.configs.global_config import (
 
 _TEST_CONFIG = """
 byod:
-  ray_ecr: rayproject
   ray_cr_repo: ray
 release_byod:
   ray_ml_cr_repo: ray-ml
   ray_llm_cr_repo: ray-llm
   byod_ecr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
-  aws_cr: 029272617770.dkr.ecr.us-west-2.amazonaws.com
+  byod_ecr_region: us-west-2
   gcp_cr: us-west1-docker.pkg.dev/anyscale-oss-ci
+  azure_cr: rayreleasetest.azurecr.io
 state_machine:
   pr:
     aws_bucket: ray-ci-pr-results
@@ -47,7 +47,6 @@ def test_init_global_config() -> None:
             f.write(_TEST_CONFIG)
         init_global_config(os.path.join(tmp, "config"))
         config = get_global_config()
-        assert config["byod_ray_ecr"] == "rayproject"
         assert config["aws2gce_credentials"] == "release/aws2gce_iam.json"
         assert config["ci_pipeline_premerge"] == ["w00t"]
         assert config["ci_pipeline_postmerge"] == ["hi", "three"]
@@ -57,12 +56,14 @@ def test_init_global_config() -> None:
         )
         assert config["state_machine_pr_aws_bucket"] == "ray-ci-pr-results"
         assert config["state_machine_disabled"] is True
-        assert config["byod_ray_cr_repo"] == "ray"
-        assert config["byod_ray_ml_cr_repo"] == "ray-ml"
-        assert config["byod_ray_llm_cr_repo"] == "ray-llm"
         assert config["release_image_step_ray"] == "anyscalebuild"
         assert config["release_image_step_ray_ml"] == "anyscalemlbuild"
         assert config["release_image_step_ray_llm"] == "anyscalellmbuild"
+        assert config["byod_ecr"] == "029272617770.dkr.ecr.us-west-2.amazonaws.com"
+        assert config["byod_ecr_region"] == "us-west-2"
+        assert config["byod_gcp_cr"] == "us-west1-docker.pkg.dev/anyscale-oss-ci"
+        assert config["byod_azure_cr"] == "rayreleasetest.azurecr.io"
+        assert config["state_machine_branch_aws_bucket"] == "ray-ci-results"
 
 
 if __name__ == "__main__":

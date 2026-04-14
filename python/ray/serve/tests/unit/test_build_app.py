@@ -521,5 +521,29 @@ def test_external_scaler_enabled():
     assert built_app_default.name == "app-default"
 
 
+def test_ingress_name_got_modified():
+    """Test that the ingress deployment name is modified when there are name
+    collisions.
+    """
+
+    @serve.deployment
+    class D:
+        pass
+
+    app = D.bind(D.bind(D.bind()))
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    # The ingress deployment name should be modified to avoid collision.
+    assert built_app.ingress_deployment_name == "D_2"
+
+    # The ingress deployment should be the last one.
+    assert len(built_app.deployments) == 3
+    assert built_app.deployments[-1].name == "D_2"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

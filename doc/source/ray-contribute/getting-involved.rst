@@ -46,8 +46,50 @@ We welcome (and encourage!) all forms of contributions to Ray, including and not
 What can I work on?
 -------------------
 
-We use Github to track issues, feature requests, and bugs. Take a look at the
-ones labeled `"good first issue" <https://github.com/ray-project/ray/issues?utf8=%E2%9C%93&q=is%3Aissue+is%3Aopen+label%3A%22good-first-issue%22>`__ for a place to start.
+We use GitHub labels to categorize issues and help contributors find work that matches their interests and skill level.
+
+Getting started
+~~~~~~~~~~~~~~~
+
+If you're new to Ray, start with these labels:
+
+- `good-first-issue`_: Small issues that are good for new contributors to onboard to the codebase.
+- `contribution-welcome`_: Impactful issues that are good candidates for community contributions. Reviews for these issues will be prioritized.
+
+By component
+~~~~~~~~~~~~
+
+Find issues in the area you're most interested in:
+
+- `core`_: Ray Core (tasks, actors, objects, scheduling).
+- `data`_: Ray Data for distributed data processing.
+- `train`_: Ray Train for distributed training.
+- `tune`_: Ray Tune for hyperparameter tuning.
+- `serve`_: Ray Serve for model serving.
+- `rllib`_: RLlib for reinforcement learning.
+
+By type
+~~~~~~~
+
+Choose the kind of contribution you'd like to make:
+
+- `bug`_: Bug fixes.
+- `enhancement`_: New features or improvements.
+- `docs`_: Documentation improvements.
+
+You can combine labels in GitHub's search to find issues that match multiple criteria.
+
+.. _`good-first-issue`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3A%22good-first-issue%22
+.. _`contribution-welcome`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3A%22contribution-welcome%22
+.. _`core`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Acore
+.. _`data`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Adata
+.. _`train`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Atrain
+.. _`tune`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Atune
+.. _`serve`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Aserve
+.. _`rllib`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Arllib
+.. _`bug`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Abug
+.. _`enhancement`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Aenhancement
+.. _`docs`: https://github.com/ray-project/ray/issues?q=is%3Aissue+is%3Aopen+label%3Adocs
 
 Setting up your development environment
 ---------------------------------------
@@ -354,15 +396,32 @@ link (relative links point to other documentation pages, but direct links starti
 also work). Include the ``contributor: community`` metadata to ensure that the example is correctly
 labeled as a community example in the example gallery.
 
-Becoming a Reviewer
--------------------
+Becoming a Committer
+---------------------
 
-We identify reviewers from active contributors. Reviewers are individuals who
-not only actively contribute to the project and are also willing
-to participate in the code review of new contributions.
-A pull request to the project has to be reviewed by at least one reviewer in order to be merged.
-There is currently no formal process, but active contributors to Ray will be
-solicited by current reviewers.
+Committers are experienced contributors who have demonstrated significant contributions
+to the Ray project over an extended period. Committers have additional responsibilities
+and privileges within the project.
+
+**Eligibility Criteria**
+
+- Must be active in the project for at least 6 months
+- Must be nominated by at least 1 TSC (Technical Steering Committee) member
+- Must have demonstrated significant contributions to the project, including:
+
+  - High-quality code contributions
+  - Thorough code reviews
+  - Active participation in community discussions
+  - Technical expertise in one or more areas of the project
+
+**Responsibilities**
+
+Committers are expected to:
+
+- Review and merge pull requests
+- Ensure code quality and adherence to project standards
+- Help maintain the health and direction of the project
+- Mentor contributors and reviewers
 
 
 More Resources for Getting Involved

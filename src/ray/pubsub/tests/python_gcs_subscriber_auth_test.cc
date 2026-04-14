@@ -108,12 +108,12 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
         std::make_unique<MockInternalPubSubGcsService>(should_accept_requests);
     mock_service_ptr_ = mock_service.get();
 
-    std::optional<rpc::AuthenticationToken> auth_token;
+    std::shared_ptr<rpc::AuthenticationToken> auth_token;
     if (!server_token.empty()) {
-      auth_token = rpc::AuthenticationToken(server_token);
+      auth_token = std::make_shared<rpc::AuthenticationToken>(server_token);
     } else {
       // Empty token means no auth required
-      auth_token = rpc::AuthenticationToken("");
+      auth_token = std::make_shared<rpc::AuthenticationToken>("");
     }
 
     server_ = std::make_unique<rpc::GrpcServer>("test-gcs-server",
@@ -344,8 +344,3 @@ TEST_F(PythonGcsSubscriberAuthTest, MultipleSubscribersMatchingTokens) {
 
 }  // namespace pubsub
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

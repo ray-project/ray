@@ -8,6 +8,9 @@ from typing import Union
 import ray._private.ray_constants as ray_constants
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.utils as dashboard_utils
+from ray._private.authentication.http_token_authentication import (
+    get_auth_headers_if_auth_enabled,
+)
 from ray.dashboard.modules.event import event_consts
 from ray.dashboard.modules.event.event_utils import monitor_events
 from ray.dashboard.utils import async_loop_forever, create_task
@@ -63,7 +66,10 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 )
                 if not dashboard_http_address:
                     raise ValueError("Dashboard http address not found in InternalKV.")
-                self._dashboard_http_address = dashboard_http_address.decode()
+                address = dashboard_http_address.decode()
+                if not address.startswith(("http://", "https://")):
+                    address = f"http://{address}"
+                self._dashboard_http_address = address
                 return self._dashboard_http_address
             except Exception:
                 logger.exception("Get dashboard http address failed.")
@@ -86,6 +92,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
                 async with self._dashboard_agent.http_session.post(
                     f"{dashboard_http_address}/report_events",
                     json=data,
+                    headers=get_auth_headers_if_auth_enabled({}),
                 ) as response:
                     response.raise_for_status()
                 self.total_request_sent += 1

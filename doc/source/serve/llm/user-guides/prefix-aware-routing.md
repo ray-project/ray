@@ -50,42 +50,10 @@ The router maintains a distributed prefix tree actor that:
 
 The following example shows how to deploy an LLM with prefix-aware routing:
 
-```python
-from ray import serve
-from ray.serve.llm import LLMConfig, build_openai_app
-from ray.serve.llm.request_router import (
-    PrefixCacheAffinityRouter
-)
-
-llm_config = LLMConfig(
-    model_loading_config=dict(
-        model_id="qwen-7b",
-        model_source="Qwen/Qwen2.5-7B-Instruct",
-    ),
-    # Enable APC in vLLM
-    engine_kwargs=dict(
-        enable_prefix_caching=True,
-    ),
-    deployment_config=dict(
-        autoscaling_config=dict(
-            min_replicas=2,
-            max_replicas=4,
-        )
-    ),
-    accelerator_type="A10G",
-)
-
-# Configure prefix-aware router
-app = build_openai_app({
-    "llm_configs": [llm_config],
-    "router_cls": PrefixCacheAffinityRouter,
-    "router_config": {
-        "imbalanced_threshold": 10,
-        "match_rate_threshold": 0.1,
-    }
-})
-
-serve.run(app)
+```{literalinclude} ../../../llm/doc_code/serve/prefix_aware_router/prefix_aware_example.py
+:start-after: __prefix_aware_example_start__
+:end-before: __prefix_aware_example_end__
+:language: python
 ```
 
 ## Configuration parameters
@@ -94,7 +62,7 @@ The `PrefixCacheAffinityRouter` provides several configuration parameters to tun
 
 ### Core routing parameters
 
-- **`imbalanced_threshold`** (default: 10): Queue length difference threshold for considering load balanced. Lower values prioritize load balancing over cache locality.
+- **`imbalanced_threshold`** (default: infinity): Queue length difference threshold for considering load balanced. Lower values prioritize load balancing over cache locality.
 
 - **`match_rate_threshold`** (default: 0.1): Minimum prefix match rate (0.0-1.0) required to use prefix cache-aware routing. Higher values require stronger prefix matches before routing for cache locality.
 

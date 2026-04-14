@@ -1,6 +1,5 @@
 import copy
 import itertools
-import pathlib
 from functools import partial
 from typing import (
     TYPE_CHECKING,
@@ -269,18 +268,29 @@ class LearnerGroup(Checkpointable):
         # User kwargs passed onto the Learners.
         **kwargs,
     ) -> List[Dict[str, Any]]:
-        """Performs gradient based updates on Learners, based on given training data.
+        """Performs gradient based updates on Learners in parallel.
+
+        Updates are performed with data from any of the provided arguments
+        (batch, batches, batch_refs, episodes, episodes_refs, data_iterators, training_data).
 
         Args:
             batch: A data batch to use for the update. If there are more
                 than one Learner workers, the batch is split amongst these and one
                 shard is sent to each Learner.
-            batch_refs:
+            batch_refs: A list of Ray ObjectRefs to the batches. If there are more
+                than one Learner workers, the list of batch refs is split amongst these and
+                one list shard is sent to each Learner.
             episodes: A list of Episodes to process and perform the update
                 for. If there are more than one Learner workers, the list of episodes
                 is split amongst these and one list shard is sent to each Learner.
-            episodes_refs:
-            timesteps:
+            episodes_refs: A list of Ray ObjectRefs to the episodes. If there are more
+                than one Learner workers, the list of episode refs is split amongst these and
+                one list shard is sent to each Learner.
+            timesteps: A dictionary of timesteps to pass to the Learners's update method.
+                This is usually used for learning rate scheduling but can be used for any other purpose.
+            training_data: A TrainingData object to use for the update. If not provided,
+                a new TrainingData object will be created from the batch, batches, batch_refs,
+                episodes, and episodes_refs.
             async_update: Whether the update request(s) to the Learner workers should be
                 sent asynchronously. If True, will return NOT the results from the
                 update on the given data, but all results from prior asynchronous update
@@ -328,6 +338,10 @@ class LearnerGroup(Checkpointable):
                 )
             training_data.validate()
 
+            # NEW: allow caller to defer Ray.get()/materialization to the learner thread.
+            # TODO (simon): Set to `False` and create attribute in config.
+            defer_solve = kwargs.pop("defer_solve_refs_to_learner", False)
+
             # Local Learner instance.
             if self.is_local:
                 if async_update:
@@ -336,13 +350,15 @@ class LearnerGroup(Checkpointable):
                         "`num_learners=0`! Set `config.num_learners > 0` to allow async "
                         "updates."
                     )
-                # Solve all ray refs locally already here.
+                # Only solve refs here if NOT deferring. When deferring, the Learner/GPU
+                # loader thread will call `training_data.solve_refs()` and build the CPU MAB.
+                if not defer_solve:
+                    # Ray metrics
+                    with TimerAndPrometheusLogger(
+                        self._metrics_local_learner_training_data_solve_refs
+                    ):
+                        training_data.solve_refs()
 
-                # Ray metrics
-                with TimerAndPrometheusLogger(
-                    self._metrics_local_learner_training_data_solve_refs
-                ):
-                    training_data.solve_refs()
                 if return_state:
                     kwargs["return_state"] = return_state
                 # Return the single Learner's update results.
@@ -715,7 +731,14 @@ class LearnerGroup(Checkpointable):
     def async_update(self, *args, **kwargs):
         pass
 
-    @Deprecated(new="LearnerGroup.load_from_path(path=..., component=...)", error=False)
+    @Deprecated(
+        old="LearnerGroup.load_module_state()",
+        help="To restore RLModule or MultiRLModule state "
+        "use LearnerGroup.restore_from_path(path=..., component=...). "
+        "See docs for more details: "
+        "https://docs.ray.io/en/latest/rllib/rl-modules.html#checkpointing-rlmodules",
+        error=False,
+    )
     def load_module_state(
         self,
         *,
@@ -723,55 +746,60 @@ class LearnerGroup(Checkpointable):
         modules_to_load: Optional[Set[str]] = None,
         rl_module_ckpt_dirs: Optional[Dict[ModuleID, str]] = None,
     ) -> None:
-        """Load the checkpoints of the modules being trained by this LearnerGroup.
+        """Load the checkpoints of the modules being trained by `LearnerGroup`.
 
         `load_module_state` can be used 3 ways:
-            1. Load a checkpoint for the MultiRLModule being trained by this
-                LearnerGroup. Limit the modules that are loaded from the checkpoint
-                by specifying the `modules_to_load` argument.
-            2. Load the checkpoint(s) for single agent RLModules that
-                are in the MultiRLModule being trained by this LearnerGroup.
-            3. Load a checkpoint for the MultiRLModule being trained by this
-                LearnerGroup and load the checkpoint(s) for single agent RLModules
-                that are in the MultiRLModule. The checkpoints for the single
-                agent RLModules take precedence over the module states in the
-                MultiRLModule checkpoint.
+            1. Load a checkpoint for the `MultiRLModule` being trained by this
+                `LearnerGroup`. Optionally, limit the modules that are loaded
+                from the checkpoint by specifying the `modules_to_load` argument.
+            2. Load the checkpoint(s) for single agent `RLModules` that
+                are in the `MultiRLModule` being trained by this `LearnerGroup`.
+            3. Load a checkpoint for the `MultiRLModule` being trained by this
+                `LearnerGroup` and load the checkpoint(s) for single agent `RLModules`
+                that are in the `MultiRLModule`. The checkpoints for the single
+                agent `RLModules` take precedence over the module states in the
+                `MultiRLModule` checkpoint.
 
-        NOTE: At lease one of multi_rl_module_ckpt_dir or rl_module_ckpt_dirs is
-            must be specified. modules_to_load can only be specified if
-            multi_rl_module_ckpt_dir is specified.
+        At least one of `multi_rl_module_ckpt_dir` or `rl_module_ckpt_dirs`
+        must be specified.
+        `modules_to_load` can only be specified if `multi_rl_module_ckpt_dir`
+        is provided.
 
         Args:
             multi_rl_module_ckpt_dir: The path to the checkpoint for the
-                MultiRLModule.
-            modules_to_load: A set of module ids to load from the checkpoint.
+                `MultiRLModule`.
+            modules_to_load: A set of `RLModule` ids to load from the checkpoint.
             rl_module_ckpt_dirs: A mapping from module ids to the path to a
-                checkpoint for a single agent RLModule.
+                checkpoint for a single agent `RLModule`.
         """
         if not (multi_rl_module_ckpt_dir or rl_module_ckpt_dirs):
             raise ValueError(
-                "At least one of `multi_rl_module_ckpt_dir` or "
-                "`rl_module_ckpt_dirs` must be provided!"
+                f"At least one of `multi_rl_module_ckpt_dir` or "
+                f"`rl_module_ckpt_dirs` must be provided. "
+                f"Got {multi_rl_module_ckpt_dir=} and {rl_module_ckpt_dirs=}."
             )
-        if multi_rl_module_ckpt_dir:
-            multi_rl_module_ckpt_dir = pathlib.Path(multi_rl_module_ckpt_dir)
-        if rl_module_ckpt_dirs:
-            for module_id, path in rl_module_ckpt_dirs.items():
-                rl_module_ckpt_dirs[module_id] = pathlib.Path(path)
+
+        if modules_to_load and not multi_rl_module_ckpt_dir:
+            raise ValueError(
+                f"`modules_to_load` can only be specified if a "
+                f"multi_rl_module_ckpt_dir is provided. "
+                f"Got {modules_to_load=} and {multi_rl_module_ckpt_dir=}."
+            )
 
         # MultiRLModule checkpoint is provided.
         if multi_rl_module_ckpt_dir:
             # Restore the entire MultiRLModule state.
             if modules_to_load is None:
                 self.restore_from_path(
-                    multi_rl_module_ckpt_dir,
+                    path=multi_rl_module_ckpt_dir,
                     component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
-                )
+                ),
             # Restore individual module IDs.
             else:
                 for module_id in modules_to_load:
+                    path = multi_rl_module_ckpt_dir + "/" + module_id
                     self.restore_from_path(
-                        multi_rl_module_ckpt_dir / module_id,
+                        path=path,
                         component=(
                             COMPONENT_LEARNER
                             + "/"
@@ -783,7 +811,7 @@ class LearnerGroup(Checkpointable):
         if rl_module_ckpt_dirs:
             for module_id, path in rl_module_ckpt_dirs.items():
                 self.restore_from_path(
-                    path,
+                    path=path,
                     component=(
                         COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id
                     ),

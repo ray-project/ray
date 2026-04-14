@@ -188,8 +188,9 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       // complete out of order. This ensures that we will not deadlock due to
       // backpressure. The receiving actor will execute the tasks according to
       // this sequence number.
-      send_pos = task_spec.SequenceNumber();
-      queue->second.actor_submit_queue_->Emplace(send_pos, task_spec);
+      send_pos = task_spec.ConcurrencyGroupSequenceNumber();
+      auto concurrency_group = task_spec.ConcurrencyGroupName();
+      queue->second.actor_submit_queue_->Emplace(concurrency_group, send_pos, task_spec);
       queue->second.cur_pending_calls_++;
       task_queued = true;
     }
@@ -200,15 +201,17 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       absl::MutexLock resolver_lock(&resolver_mu_);
       pending_dependency_resolution_.insert(task_id);
     }
+    auto concurrency_group = task_spec.ConcurrencyGroupName();
     io_service_.post(
-        [task_spec, task_id, actor_id, send_pos, this]() mutable {
+        [task_spec, task_id, actor_id, send_pos, concurrency_group, this]() mutable {
           {
             absl::MutexLock resolver_lock(&resolver_mu_);
             if (pending_dependency_resolution_.erase(task_id) == 0) {
               return;
             }
             resolver_.ResolveDependencies(
-                task_spec, [this, send_pos, actor_id, task_id](Status status) {
+                task_spec,
+                [this, send_pos, concurrency_group, actor_id, task_id](Status status) {
                   task_manager_.MarkDependenciesResolved(task_id);
                   bool fail_or_retry_task = false;
                   {
@@ -218,13 +221,15 @@ void ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
                     auto &actor_submit_queue = queue->second.actor_submit_queue_;
                     // Only dispatch tasks if the submitted task is still queued. The task
                     // may have been dequeued if the actor has since failed.
-                    if (actor_submit_queue->Contains(send_pos)) {
+                    if (actor_submit_queue->Contains(concurrency_group, send_pos)) {
                       if (status.ok()) {
-                        actor_submit_queue->MarkDependencyResolved(send_pos);
+                        actor_submit_queue->MarkDependencyResolved(concurrency_group,
+                                                                   send_pos);
                         SendPendingTasks(actor_id);
                       } else {
                         fail_or_retry_task = true;
-                        actor_submit_queue->MarkDependencyFailed(send_pos);
+                        actor_submit_queue->MarkDependencyFailed(concurrency_group,
+                                                                 send_pos);
                       }
                     }
                   }
@@ -586,7 +591,7 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   request->mutable_task_spec()->CopyFrom(task_spec.GetMessage());
 
   request->set_intended_worker_id(queue.worker_id_);
-  request->set_sequence_number(task_spec.SequenceNumber());
+  request->set_sequence_number(task_spec.ConcurrencyGroupSequenceNumber());
 
   const auto actor_id = task_spec.ActorId();
 
@@ -670,7 +675,27 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   } else if (status.ok() && !is_retryable_exception) {
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
-    task_manager_.CompletePendingTask(task_id, reply, addr, reply.is_application_error());
+
+    // Handle tasks marked as canceled but completed without application error (sync
+    // actors). For async actors, cancellation raises an asyncio.CancelledError exception
+    // during task execution, which is treated as an application error
+    // (with is_application_error=true) and will be handled by CompletePendingTask.
+    // For sync actors, no exception is raised during cancellation, so
+    // is_application_error=false and we must explicitly fail the task here with
+    // TASK_CANCELLED.
+    if (task_manager_.IsTaskCanceled(task_id) && !reply.is_application_error()) {
+      RAY_LOG(INFO) << "Task " << task_id << " completed but was cancelled, failing it";
+      rpc::RayErrorInfo error_info;
+      std::ostringstream error_message;
+      error_message << "Task: " << task_id.Hex() << " was cancelled.";
+      error_info.set_error_message(error_message.str());
+      error_info.set_error_type(rpc::ErrorType::TASK_CANCELLED);
+      task_manager_.FailPendingTask(
+          task_id, rpc::ErrorType::TASK_CANCELLED, nullptr, &error_info);
+    } else {
+      task_manager_.CompletePendingTask(
+          task_id, reply, addr, reply.is_application_error());
+    }
   } else {
     bool is_actor_dead = false;
     bool fail_immediately = false;
@@ -940,7 +965,8 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
 
   const auto actor_id = task_spec.ActorId();
   const auto &task_id = task_spec.TaskId();
-  auto send_pos = task_spec.SequenceNumber();
+  auto concurrency_group = task_spec.ConcurrencyGroupName();
+  auto send_pos = task_spec.ConcurrencyGroupSequenceNumber();
 
   // Shouldn't hold a lock while accessing task_manager_.
   // Task is already canceled or finished.
@@ -965,11 +991,14 @@ void ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursive)
       return;
     }
 
-    task_queued = queue->second.actor_submit_queue_->Contains(send_pos);
+    task_queued =
+        queue->second.actor_submit_queue_->Contains(concurrency_group, send_pos);
     if (task_queued) {
       RAY_LOG(DEBUG).WithField(task_id)
           << "Task was queued. Mark a task is canceled from a queue.";
-      queue->second.actor_submit_queue_->MarkTaskCanceled(send_pos);
+      queue->second.actor_submit_queue_->MarkTaskCanceled(concurrency_group, send_pos);
+      queue->second.cur_pending_calls_--;
+      SendPendingTasks(actor_id);
     }
   }
 

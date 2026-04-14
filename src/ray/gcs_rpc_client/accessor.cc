@@ -31,7 +31,7 @@ namespace gcs {
 JobInfoAccessor::JobInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
 
 void JobInfoAccessor::AsyncAdd(const std::shared_ptr<rpc::JobTableData> &data_ptr,
-                               const StatusCallback &callback) {
+                               const rpc::StatusCallback &callback) {
   JobID job_id = JobID::FromBinary(data_ptr->job_id());
   RAY_LOG(DEBUG).WithField(job_id)
       << "Adding job, driver pid = " << data_ptr->driver_pid();
@@ -49,7 +49,7 @@ void JobInfoAccessor::AsyncAdd(const std::shared_ptr<rpc::JobTableData> &data_pt
 }
 
 void JobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
-                                        const StatusCallback &callback) {
+                                        const rpc::StatusCallback &callback) {
   RAY_LOG(DEBUG).WithField(job_id) << "Marking job state";
   rpc::MarkJobFinishedRequest request;
   request.set_job_id(job_id.Binary());
@@ -65,10 +65,11 @@ void JobInfoAccessor::AsyncMarkFinished(const JobID &job_id,
 }
 
 void JobInfoAccessor::AsyncSubscribeAll(
-    const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
-    const StatusCallback &done) {
+    const rpc::SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
+    const rpc::StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  fetch_all_data_operation_ = [this, subscribe](const StatusCallback &done_callback) {
+  fetch_all_data_operation_ = [this,
+                               subscribe](const rpc::StatusCallback &done_callback) {
     auto callback = [subscribe, done_callback](
                         const Status &status,
                         std::vector<rpc::JobTableData> &&job_info_list) {
@@ -85,7 +86,7 @@ void JobInfoAccessor::AsyncSubscribeAll(
                 callback,
                 /*timeout_ms=*/-1);
   };
-  subscribe_operation_ = [this, subscribe](const StatusCallback &done_callback) {
+  subscribe_operation_ = [this, subscribe](const rpc::StatusCallback &done_callback) {
     client_impl_->GetGcsSubscriber().SubscribeAllJobs(subscribe, done_callback);
   };
   subscribe_operation_(
@@ -106,11 +107,12 @@ void JobInfoAccessor::AsyncResubscribe() {
   }
 }
 
-void JobInfoAccessor::AsyncGetAll(const std::optional<std::string> &job_or_submission_id,
-                                  bool skip_submission_job_info_field,
-                                  bool skip_is_running_tasks_field,
-                                  const MultiItemCallback<rpc::JobTableData> &callback,
-                                  int64_t timeout_ms) {
+void JobInfoAccessor::AsyncGetAll(
+    const std::optional<std::string> &job_or_submission_id,
+    bool skip_submission_job_info_field,
+    bool skip_is_running_tasks_field,
+    const rpc::MultiItemCallback<rpc::JobTableData> &callback,
+    int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting all job info.";
   RAY_CHECK(callback);
   rpc::GetAllJobInfoRequest request;
@@ -146,7 +148,7 @@ Status JobInfoAccessor::GetAll(const std::optional<std::string> &job_or_submissi
   return Status::OK();
 }
 
-void JobInfoAccessor::AsyncGetNextJobID(const ItemCallback<JobID> &callback) {
+void JobInfoAccessor::AsyncGetNextJobID(const rpc::ItemCallback<JobID> &callback) {
   RAY_LOG(DEBUG) << "Getting next job id";
   rpc::GetNextJobIDRequest request;
   client_impl_->GetGcsRpcClient().GetNextJobID(
@@ -162,7 +164,7 @@ void JobInfoAccessor::AsyncGetNextJobID(const ItemCallback<JobID> &callback) {
 NodeInfoAccessor::NodeInfoAccessor(GcsClient *client_impl) : client_impl_(client_impl) {}
 
 void NodeInfoAccessor::RegisterSelf(rpc::GcsNodeInfo &&local_node_info,
-                                    const StatusCallback &callback) {
+                                    const rpc::StatusCallback &callback) {
   auto node_id = NodeID::FromBinary(local_node_info.node_id());
   RAY_LOG(DEBUG).WithField(node_id)
       << "Registering node info, address is = " << local_node_info.node_manager_address();
@@ -198,7 +200,7 @@ void NodeInfoAccessor::UnregisterSelf(const NodeID &node_id,
 }
 
 void NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
-                                     const StatusCallback &callback) {
+                                     const rpc::StatusCallback &callback) {
   NodeID node_id = NodeID::FromBinary(node_info.node_id());
   RAY_LOG(DEBUG).WithField(node_id) << "Registering node info";
   rpc::RegisterNodeRequest request;
@@ -216,7 +218,7 @@ void NodeInfoAccessor::AsyncRegister(const rpc::GcsNodeInfo &node_info,
 
 void NodeInfoAccessor::AsyncCheckAlive(const std::vector<NodeID> &node_ids,
                                        int64_t timeout_ms,
-                                       const MultiItemCallback<bool> &callback) {
+                                       const rpc::MultiItemCallback<bool> &callback) {
   rpc::CheckAliveRequest request;
   for (const auto &node_id : node_ids) {
     request.add_node_ids(node_id.Binary());
@@ -260,7 +262,7 @@ Status NodeInfoAccessor::DrainNodes(const std::vector<NodeID> &node_ids,
 }
 
 void NodeInfoAccessor::AsyncGetAllNodeAddressAndLiveness(
-    const MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+    const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
     int64_t timeout_ms,
     const std::vector<NodeID> &node_ids) {
   rpc::GetAllNodeAddressAndLivenessRequest request;
@@ -277,27 +279,45 @@ void NodeInfoAccessor::AsyncGetAllNodeAddressAndLiveness(
       timeout_ms);
 }
 
-void NodeInfoAccessor::AsyncGetAll(const MultiItemCallback<rpc::GcsNodeInfo> &callback,
-                                   int64_t timeout_ms,
-                                   const std::vector<NodeID> &node_ids) {
+void NodeInfoAccessor::AsyncGetAll(
+    const rpc::OptionalItemCallback<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+        &callback,
+    int64_t timeout_ms,
+    const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
+    const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
+    const std::optional<int64_t> &limit) const {
   RAY_LOG(DEBUG) << "Getting information of all nodes.";
   rpc::GetAllNodeInfoRequest request;
-  for (const auto &node_id : node_ids) {
-    request.add_node_selectors()->set_node_id(node_id.Binary());
+  if (state_filter.has_value()) {
+    request.set_state_filter(state_filter.value());
   }
+  for (const auto &node_selector : node_selectors) {
+    *request.add_node_selectors() = node_selector;
+  }
+  if (limit.has_value()) {
+    request.set_limit(limit.value());
+  }
+
   client_impl_->GetGcsRpcClient().GetAllNodeInfo(
       std::move(request),
       [callback](const Status &status, rpc::GetAllNodeInfoReply &&reply) {
-        callback(status, VectorFromProtobuf(std::move(*reply.mutable_node_info_list())));
         RAY_LOG(DEBUG) << "Finished getting information of all nodes, status = "
                        << status;
+        if (!status.ok()) {
+          callback(status, std::nullopt);
+          return;
+        }
+        callback(
+            status,
+            std::make_pair(VectorFromProtobuf(std::move(*reply.mutable_node_info_list())),
+                           reply.num_filtered()));
       },
       timeout_ms);
 }
 
 void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
     std::function<void(NodeID, const rpc::GcsNodeAddressAndLiveness &)> subscribe,
-    StatusCallback done) {
+    rpc::StatusCallback done) {
   /**
   1. Subscribe to node info
   2. Once the subscription is made, ask for all node info.
@@ -313,7 +333,7 @@ void NodeInfoAccessor::AsyncSubscribeToNodeAddressAndLivenessChange(
   RAY_CHECK(node_change_callback_address_and_liveness_ != nullptr);
 
   fetch_node_address_and_liveness_data_operation_ =
-      [this](const StatusCallback &done_callback) {
+      [this](const rpc::StatusCallback &done_callback) {
         AsyncGetAllNodeAddressAndLiveness(
             [this, done_callback](
                 const Status &status,
@@ -359,13 +379,13 @@ NodeInfoAccessor::GetAllNodeAddressAndLiveness() const {
 StatusOr<std::vector<rpc::GcsNodeInfo>> NodeInfoAccessor::GetAllNoCache(
     int64_t timeout_ms,
     std::optional<rpc::GcsNodeInfo::GcsNodeState> state_filter,
-    std::optional<rpc::GetAllNodeInfoRequest::NodeSelector> node_selector) {
+    const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors) {
   rpc::GetAllNodeInfoRequest request;
   if (state_filter.has_value()) {
     request.set_state_filter(state_filter.value());
   }
-  if (node_selector.has_value()) {
-    *request.add_node_selectors() = std::move(node_selector.value());
+  for (const auto &node_selector : node_selectors) {
+    *request.add_node_selectors() = node_selector;
   }
   rpc::GetAllNodeInfoReply reply;
   RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncGetAllNodeInfo(
@@ -475,7 +495,7 @@ NodeResourceInfoAccessor::NodeResourceInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
 void NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
-    const MultiItemCallback<rpc::AvailableResources> &callback) {
+    const rpc::MultiItemCallback<rpc::AvailableResources> &callback) {
   rpc::GetAllAvailableResourcesRequest request;
   client_impl_->GetGcsRpcClient().GetAllAvailableResources(
       std::move(request),
@@ -487,7 +507,7 @@ void NodeResourceInfoAccessor::AsyncGetAllAvailableResources(
 }
 
 void NodeResourceInfoAccessor::AsyncGetAllTotalResources(
-    const MultiItemCallback<rpc::TotalResources> &callback) {
+    const rpc::MultiItemCallback<rpc::TotalResources> &callback) {
   rpc::GetAllTotalResourcesRequest request;
   client_impl_->GetGcsRpcClient().GetAllTotalResources(
       std::move(request),
@@ -499,7 +519,7 @@ void NodeResourceInfoAccessor::AsyncGetAllTotalResources(
 }
 
 void NodeResourceInfoAccessor::AsyncGetDrainingNodes(
-    const ItemCallback<std::unordered_map<NodeID, int64_t>> &callback) {
+    const rpc::ItemCallback<std::unordered_map<NodeID, int64_t>> &callback) {
   rpc::GetDrainingNodesRequest request;
   client_impl_->GetGcsRpcClient().GetDrainingNodes(
       std::move(request),
@@ -515,7 +535,7 @@ void NodeResourceInfoAccessor::AsyncGetDrainingNodes(
 }
 
 void NodeResourceInfoAccessor::AsyncGetAllResourceUsage(
-    const ItemCallback<rpc::ResourceUsageBatchData> &callback) {
+    const rpc::ItemCallback<rpc::ResourceUsageBatchData> &callback) {
   rpc::GetAllResourceUsageRequest request;
   client_impl_->GetGcsRpcClient().GetAllResourceUsage(
       std::move(request),
@@ -534,7 +554,7 @@ Status NodeResourceInfoAccessor::GetAllResourceUsage(
 }
 
 void TaskInfoAccessor::AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData> data_ptr,
-                                             StatusCallback callback) {
+                                             rpc::StatusCallback callback) {
   rpc::AddTaskEventDataRequest request;
   // Prevent copy here
   request.mutable_data()->Swap(data_ptr.get());
@@ -548,8 +568,21 @@ void TaskInfoAccessor::AsyncAddTaskEventData(std::unique_ptr<rpc::TaskEventData>
       });
 }
 
+void TaskInfoAccessor::AsyncAddEvents(rpc::events::AddEventsRequest &&request,
+                                      const rpc::StatusCallback &callback,
+                                      int64_t timeout_ms) {
+  client_impl_->GetGcsRpcClient().AddEvents(
+      std::move(request),
+      [callback](const Status &status, rpc::events::AddEventsReply &&reply) {
+        if (callback) {
+          callback(status);
+        }
+      },
+      timeout_ms);
+}
+
 void TaskInfoAccessor::AsyncGetTaskEvents(
-    const MultiItemCallback<rpc::TaskEvents> &callback) {
+    const rpc::MultiItemCallback<rpc::TaskEvents> &callback) {
   RAY_LOG(DEBUG) << "Getting all task events info.";
   RAY_CHECK(callback);
   rpc::GetTaskEventsRequest request;
@@ -579,9 +612,10 @@ WorkerInfoAccessor::WorkerInfoAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
 void WorkerInfoAccessor::AsyncSubscribeToWorkerFailures(
-    const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
+    const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe,
+    const rpc::StatusCallback &done) {
   RAY_CHECK(subscribe != nullptr);
-  subscribe_operation_ = [this, subscribe](const StatusCallback &done_callback) {
+  subscribe_operation_ = [this, subscribe](const rpc::StatusCallback &done_callback) {
     client_impl_->GetGcsSubscriber().SubscribeAllWorkerFailures(subscribe, done_callback);
   };
   subscribe_operation_(done);
@@ -599,7 +633,7 @@ void WorkerInfoAccessor::AsyncResubscribe() {
 
 void WorkerInfoAccessor::AsyncReportWorkerFailure(
     const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
-    const StatusCallback &callback) {
+    const rpc::StatusCallback &callback) {
   rpc::Address worker_address = data_ptr->worker_address();
   RAY_LOG(DEBUG) << "Reporting worker failure, " << worker_address.DebugString();
   rpc::ReportWorkerFailureRequest request;
@@ -618,7 +652,7 @@ void WorkerInfoAccessor::AsyncReportWorkerFailure(
 
 void WorkerInfoAccessor::AsyncGet(
     const WorkerID &worker_id,
-    const OptionalItemCallback<rpc::WorkerTableData> &callback) {
+    const rpc::OptionalItemCallback<rpc::WorkerTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting worker info, worker id = " << worker_id;
   rpc::GetWorkerInfoRequest request;
   request.set_worker_id(worker_id.Binary());
@@ -635,7 +669,7 @@ void WorkerInfoAccessor::AsyncGet(
 }
 
 void WorkerInfoAccessor::AsyncGetAll(
-    const MultiItemCallback<rpc::WorkerTableData> &callback) {
+    const rpc::MultiItemCallback<rpc::WorkerTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting all worker info.";
   rpc::GetAllWorkerInfoRequest request;
   client_impl_->GetGcsRpcClient().GetAllWorkerInfo(
@@ -648,7 +682,7 @@ void WorkerInfoAccessor::AsyncGetAll(
 }
 
 void WorkerInfoAccessor::AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &data_ptr,
-                                  const StatusCallback &callback) {
+                                  const rpc::StatusCallback &callback) {
   rpc::AddWorkerInfoRequest request;
   request.mutable_worker_data()->CopyFrom(*data_ptr);
   client_impl_->GetGcsRpcClient().AddWorkerInfo(
@@ -662,7 +696,7 @@ void WorkerInfoAccessor::AsyncAdd(const std::shared_ptr<rpc::WorkerTableData> &d
 
 void WorkerInfoAccessor::AsyncUpdateDebuggerPort(const WorkerID &worker_id,
                                                  uint32_t debugger_port,
-                                                 const StatusCallback &callback) {
+                                                 const rpc::StatusCallback &callback) {
   rpc::UpdateWorkerDebuggerPortRequest request;
   request.set_worker_id(worker_id.Binary());
   request.set_debugger_port(debugger_port);
@@ -680,7 +714,7 @@ void WorkerInfoAccessor::AsyncUpdateDebuggerPort(const WorkerID &worker_id,
 void WorkerInfoAccessor::AsyncUpdateWorkerNumPausedThreads(
     const WorkerID &worker_id,
     const int num_paused_threads_delta,
-    const StatusCallback &callback) {
+    const rpc::StatusCallback &callback) {
   rpc::UpdateWorkerNumPausedThreadsRequest request;
   request.set_worker_id(worker_id.Binary());
   request.set_num_paused_threads_delta(num_paused_threads_delta);
@@ -727,7 +761,7 @@ Status PlacementGroupInfoAccessor::SyncRemovePlacementGroup(
 
 void PlacementGroupInfoAccessor::AsyncGet(
     const PlacementGroupID &placement_group_id,
-    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
+    const rpc::OptionalItemCallback<rpc::PlacementGroupTableData> &callback) {
   RAY_LOG(DEBUG).WithField(placement_group_id) << "Getting placement group info";
   rpc::GetPlacementGroupRequest request;
   request.set_placement_group_id(placement_group_id.Binary());
@@ -748,7 +782,7 @@ void PlacementGroupInfoAccessor::AsyncGet(
 void PlacementGroupInfoAccessor::AsyncGetByName(
     const std::string &name,
     const std::string &ray_namespace,
-    const OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
+    const rpc::OptionalItemCallback<rpc::PlacementGroupTableData> &callback,
     int64_t timeout_ms) {
   RAY_LOG(DEBUG) << "Getting named placement group info, name = " << name;
   rpc::GetNamedPlacementGroupRequest request;
@@ -769,7 +803,7 @@ void PlacementGroupInfoAccessor::AsyncGetByName(
 }
 
 void PlacementGroupInfoAccessor::AsyncGetAll(
-    const MultiItemCallback<rpc::PlacementGroupTableData> &callback) {
+    const rpc::MultiItemCallback<rpc::PlacementGroupTableData> &callback) {
   RAY_LOG(DEBUG) << "Getting all placement group info.";
   rpc::GetAllPlacementGroupRequest request;
   client_impl_->GetGcsRpcClient().GetAllPlacementGroup(
@@ -804,7 +838,7 @@ void InternalKVAccessor::AsyncInternalKVGet(
     const std::string &ns,
     const std::string &key,
     const int64_t timeout_ms,
-    const OptionalItemCallback<std::string> &callback) {
+    const rpc::OptionalItemCallback<std::string> &callback) {
   rpc::InternalKVGetRequest req;
   req.set_key(key);
   req.set_namespace_(ns);
@@ -824,7 +858,8 @@ void InternalKVAccessor::AsyncInternalKVMultiGet(
     const std::string &ns,
     const std::vector<std::string> &keys,
     const int64_t timeout_ms,
-    const OptionalItemCallback<std::unordered_map<std::string, std::string>> &callback) {
+    const rpc::OptionalItemCallback<std::unordered_map<std::string, std::string>>
+        &callback) {
   rpc::InternalKVMultiGetRequest req;
   for (const auto &key : keys) {
     req.add_keys(key);
@@ -849,12 +884,13 @@ void InternalKVAccessor::AsyncInternalKVMultiGet(
       timeout_ms);
 }
 
-void InternalKVAccessor::AsyncInternalKVPut(const std::string &ns,
-                                            const std::string &key,
-                                            const std::string &value,
-                                            bool overwrite,
-                                            const int64_t timeout_ms,
-                                            const OptionalItemCallback<bool> &callback) {
+void InternalKVAccessor::AsyncInternalKVPut(
+    const std::string &ns,
+    const std::string &key,
+    const std::string &value,
+    bool overwrite,
+    const int64_t timeout_ms,
+    const rpc::OptionalItemCallback<bool> &callback) {
   rpc::InternalKVPutRequest req;
   req.set_namespace_(ns);
   req.set_key(key);
@@ -872,7 +908,7 @@ void InternalKVAccessor::AsyncInternalKVExists(
     const std::string &ns,
     const std::string &key,
     const int64_t timeout_ms,
-    const OptionalItemCallback<bool> &callback) {
+    const rpc::OptionalItemCallback<bool> &callback) {
   rpc::InternalKVExistsRequest req;
   req.set_namespace_(ns);
   req.set_key(key);
@@ -884,11 +920,12 @@ void InternalKVAccessor::AsyncInternalKVExists(
       timeout_ms);
 }
 
-void InternalKVAccessor::AsyncInternalKVDel(const std::string &ns,
-                                            const std::string &key,
-                                            bool del_by_prefix,
-                                            const int64_t timeout_ms,
-                                            const OptionalItemCallback<int> &callback) {
+void InternalKVAccessor::AsyncInternalKVDel(
+    const std::string &ns,
+    const std::string &key,
+    bool del_by_prefix,
+    const int64_t timeout_ms,
+    const rpc::OptionalItemCallback<int> &callback) {
   rpc::InternalKVDelRequest req;
   req.set_namespace_(ns);
   req.set_key(key);
@@ -905,7 +942,7 @@ void InternalKVAccessor::AsyncInternalKVKeys(
     const std::string &ns,
     const std::string &prefix,
     const int64_t timeout_ms,
-    const OptionalItemCallback<std::vector<std::string>> &callback) {
+    const rpc::OptionalItemCallback<std::vector<std::string>> &callback) {
   rpc::InternalKVKeysRequest req;
   req.set_namespace_(ns);
   req.set_prefix(prefix);
@@ -1039,7 +1076,7 @@ Status InternalKVAccessor::Exists(const std::string &ns,
 }
 
 void InternalKVAccessor::AsyncGetInternalConfig(
-    const OptionalItemCallback<std::string> &callback) {
+    const rpc::OptionalItemCallback<std::string> &callback) {
   rpc::GetInternalConfigRequest request;
   client_impl_->GetGcsRpcClient().GetInternalConfig(
       std::move(request),
@@ -1133,7 +1170,7 @@ Status AutoscalerStateAccessor::GetClusterStatus(int64_t timeout_ms,
 
 void AutoscalerStateAccessor::AsyncGetClusterStatus(
     int64_t timeout_ms,
-    const OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback) {
+    const rpc::OptionalItemCallback<rpc::autoscaler::GetClusterStatusReply> &callback) {
   rpc::autoscaler::GetClusterStatusRequest request;
   client_impl_->GetGcsRpcClient().GetClusterStatus(
       std::move(request),
@@ -1196,6 +1233,22 @@ Status AutoscalerStateAccessor::DrainNode(const std::string &node_id,
   return Status::OK();
 }
 
+Status AutoscalerStateAccessor::ResizeRayletResourceInstances(
+    const std::string &node_id,
+    const std::unordered_map<std::string, double> &resources,
+    int64_t timeout_ms,
+    std::unordered_map<std::string, double> &total_resources) {
+  rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
+  request.set_node_id(NodeID::FromHex(node_id).Binary());
+  request.mutable_resources()->insert(resources.begin(), resources.end());
+
+  rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
+  RAY_RETURN_NOT_OK(client_impl_->GetGcsRpcClient().SyncResizeRayletResourceInstances(
+      std::move(request), &reply, timeout_ms));
+  total_resources.insert(reply.total_resources().begin(), reply.total_resources().end());
+  return Status::OK();
+}
+
 PublisherAccessor::PublisherAccessor(GcsClient *client_impl)
     : client_impl_(client_impl) {}
 
@@ -1228,7 +1281,7 @@ Status PublisherAccessor::PublishLogs(std::string key_id,
 void PublisherAccessor::AsyncPublishNodeResourceUsage(
     std::string key_id,
     std::string node_resource_usage_json,
-    const StatusCallback &done) {
+    const rpc::StatusCallback &done) {
   rpc::GcsPublishRequest request;
   auto *pub_message = request.add_pub_messages();
   pub_message->set_channel_type(rpc::RAY_NODE_RESOURCE_USAGE_CHANNEL);

@@ -239,7 +239,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool SubscribeToAllJobs(
-      const gcs::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
+      const rpc::SubscribeCallback<JobID, rpc::JobTableData> &subscribe) {
     std::promise<bool> promise;
     gcs_client_->Jobs().AsyncSubscribeAll(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
@@ -275,7 +275,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
 
   bool SubscribeActor(
       const ActorID &actor_id,
-      const gcs::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
+      const rpc::SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe) {
     std::promise<bool> promise;
     gcs_client_->Actors().AsyncSubscribe(actor_id, subscribe, [&promise](Status status) {
       promise.set_value(status.ok());
@@ -404,9 +404,12 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
     gcs_client_->Nodes().AsyncGetAll(
-        [&nodes, &promise](Status status, std::vector<rpc::GcsNodeInfo> &&result) {
+        [&nodes, &promise](
+            Status status,
+            const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+                &results) {
           assert(!result.empty());
-          nodes = std::move(result);
+          nodes = std::move(results->first);
           promise.set_value(status.ok());
         },
         rpc::GetGcsTimeoutMs());
@@ -429,7 +432,7 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
   }
 
   bool SubscribeToWorkerFailures(
-      const gcs::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
+      const rpc::ItemCallback<rpc::WorkerDeltaData> &subscribe) {
     std::promise<bool> promise;
     gcs_client_->Workers().AsyncSubscribeToWorkerFailures(
         subscribe, [&promise](Status status) { promise.set_value(status.ok()); });
@@ -1086,20 +1089,3 @@ TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      /*app_name=*/argv[0],
-      ray::RayLogLevel::INFO,
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 3);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  return RUN_ALL_TESTS();
-}

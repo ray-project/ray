@@ -105,16 +105,20 @@ class MockGcsClientNodeAccessor : public gcs::NodeInfoAccessor {
               (const NodeID &, bool),
               (const, override));
 
-  MOCK_METHOD(void,
-              AsyncGetAll,
-              (const gcs::MultiItemCallback<rpc::GcsNodeInfo> &,
-               int64_t,
-               const std::vector<NodeID> &),
-              (override));
+  MOCK_METHOD(
+      void,
+      AsyncGetAll,
+      ((const rpc::OptionalItemCallback<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+            &callback),
+       int64_t timeout_ms,
+       const std::optional<rpc::GcsNodeInfo::GcsNodeState> &state_filter,
+       const std::vector<rpc::GetAllNodeInfoRequest::NodeSelector> &node_selectors,
+       const std::optional<int64_t> &limit),
+      (const, override));
 
   MOCK_METHOD(void,
               AsyncGetAllNodeAddressAndLiveness,
-              (const gcs::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &,
+              (const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &,
                int64_t,
                const std::vector<NodeID> &),
               (override));
@@ -182,7 +186,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, NodeDeath) {
       [](std::vector<rpc::GcsNodeAddressAndLiveness> node_info_vector) {
         return Invoke(
             [node_info_vector](
-                const gcs::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+                const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
                 int64_t,
                 const std::vector<NodeID> &) {
               callback(Status::OK(), node_info_vector);
@@ -283,7 +287,7 @@ TEST_P(DefaultUnavailableTimeoutCallbackTest, WorkerDeath) {
                 AsyncGetAllNodeAddressAndLiveness(_, _, _))
         .Times(2)
         .WillRepeatedly(Invoke(
-            [&](const gcs::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
+            [&](const rpc::MultiItemCallback<rpc::GcsNodeAddressAndLiveness> &callback,
                 int64_t,
                 const std::vector<NodeID> &) {
               callback(Status::OK(), {node_info_alive});
@@ -321,8 +325,3 @@ INSTANTIATE_TEST_SUITE_P(IsSubscribedToNodeChange,
 
 }  // namespace rpc
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -2,6 +2,10 @@ import enum
 import os
 from urllib.parse import urlparse
 
+RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR = "RAY_RUNTIME_ENV_HTTP_USER_AGENT"
+RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR = "RAY_RUNTIME_ENV_BEARER_TOKEN"
+_DEFAULT_HTTP_USER_AGENT = "ray-runtime-env-curl/1.0"
+
 
 class ProtocolsProvider:
     _MISSING_DEPENDENCIES_WARNING = (
@@ -198,6 +202,44 @@ class ProtocolsProvider:
         return open_file, None
 
     @classmethod
+    def _http_headers(cls) -> dict:
+        headers = {
+            "User-Agent": os.environ.get(
+                RAY_RUNTIME_ENV_HTTP_USER_AGENT_ENV_VAR, _DEFAULT_HTTP_USER_AGENT
+            ),
+            "Accept": "*/*",
+        }
+
+        bearer_token = os.environ.get(RAY_RUNTIME_ENV_BEARER_TOKEN_ENV_VAR)
+        if bearer_token:
+            headers["Authorization"] = f"Bearer {bearer_token}"
+
+        return headers
+
+    @classmethod
+    def _handle_https_protocol(cls):
+        """Set up HTTPS protocol handling with curl-like headers."""
+
+        try:
+            from smart_open import open as smart_open_open
+        except ImportError:
+            raise ImportError(
+                "You must `pip install smart_open` to fetch HTTPS URIs. "
+                + cls._MISSING_DEPENDENCIES_WARNING
+            )
+
+        def open_file(uri, mode, *, transport_params=None):
+            params = {
+                "headers": cls._http_headers(),
+                "timeout": 60,
+            }
+            if transport_params:
+                params.update(transport_params)
+            return smart_open_open(uri, mode, transport_params=params)
+
+        return open_file, None
+
+    @classmethod
     def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
         """Download file from remote URI to destination file.
 
@@ -220,6 +262,8 @@ class ProtocolsProvider:
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)
 
+        elif protocol == "https":
+            open_file, tp = cls._handle_https_protocol()
         elif protocol == "s3":
             open_file, tp = cls._handle_s3_protocol()
         elif protocol == "gs":

@@ -93,6 +93,26 @@ Important differences:
 - FastAPI  always dispatches `def` endpoints to a threadpool.
 - In pure Serve, `def` methods run on the event loop unless you opt into threadpool behavior.
 
+## Threadpool sizing and overrides
+
+Serve sets a default threadpool size for user code that mirrors Python's
+`ThreadPoolExecutor` defaults while respecting `ray_actor_options["num_cpus"]`.
+
+In most cases, the default is fine. If you need to tune it, you can override the default
+executor inside your deployment:
+
+```{literalinclude} ../doc_code/asyncio_best_practices.py
+:start-after: __threadpool_override_begin__
+:end-before: __threadpool_override_end__
+:language: python
+```
+
+Guidance for choosing a size:
+
+- Default is fine in most cases.
+- For I/O-blocking code, consider a threadpool larger than `num_cpus`.
+- For GIL-releasing compute (NumPy/Pandas/SciPy, etc.), keep the threadpool at or below `num_cpus`.
+
 ## Blocking versus non-blocking in practice
 
 Blocking code keeps the event loop from processing other work. Non-blocking code yields control back to the loop when it's waiting on something.
@@ -108,6 +128,8 @@ Blocking I/O example:
 ```
 
 Even though the method is `async def`, `requests.get` blocks the loop. No other requests can run on this replica during the request call. Blocking in `async def` is still blocking.
+
+If the blocking call hangs and you've configured a request timeout, Ray Serve cancels the request when that timeout expires, but that cancellation is best-effort. Python only delivers `asyncio` cancellation when the task cooperates and yields control back to the event loop. A synchronous call such as `requests.get` doesn't do that, so one hung request can stall the replica's event loop and prevent later requests from running on that replica.
 
 Non-blocking equivalent with async HTTP client:
 

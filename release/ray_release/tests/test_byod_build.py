@@ -1,4 +1,6 @@
+import os
 import sys
+import tempfile
 from typing import List
 from unittest.mock import patch
 
@@ -10,6 +12,7 @@ from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
+from ray_release.byod.build_context import BuildContext
 from ray_release.configs.global_config import get_global_config, init_global_config
 from ray_release.test import Test
 
@@ -66,16 +69,26 @@ def test_build_anyscale_custom_byod_image() -> None:
             name="name",
             cluster={"byod": {"post_build_script": "foo.sh"}},
         )
-        build_anyscale_custom_byod_image(
-            test.get_anyscale_byod_image(),
-            test.get_anyscale_base_byod_image(),
-            test.get_byod_post_build_script(),
-            test.get_byod_python_depset(),
+        with tempfile.TemporaryDirectory() as byod_dir:
+            with open(os.path.join(byod_dir, "foo.sh"), "wt") as f:
+                f.write("echo foo")
+
+            build_context: BuildContext = {
+                "post_build_script": test.get_byod_post_build_script(),
+            }
+            build_anyscale_custom_byod_image(
+                test.get_anyscale_byod_image(),
+                test.get_anyscale_base_byod_image(),
+                build_context,
+                release_byod_dir=byod_dir,
+            )
+        assert (" ".join(cmds[0])).startswith(
+            "docker build --progress=plain . "
+            "--build-arg BASE_IMAGE=029272617770.dkr.ecr.us-west-2."
+            "amazonaws.com/anyscale/ray:a1b2c3d4-py310-cpu "
+            "-t 029272617770.dkr.ecr.us-west-2."
+            "amazonaws.com/anyscale/ray:a1b2c3d4-py310-cpu-"
         )
-        assert "docker build --build-arg BASE_IMAGE=029272617770.dkr.ecr.us-west-2."
-        "amazonaws.com/anyscale/ray:a1b2c3d4-py37 -t 029272617770.dkr.ecr.us-west-2."
-        "amazonaws.com/anyscale/ray:a1b2c3d4-py37-c3fc5fc6d84cea4d7ab885c6cdc966542e"
-        "f59e4c679b8c970f2f77b956bfd8fb" in " ".join(cmds[0])
 
 
 def test_build_anyscale_base_byod_images() -> None:
@@ -98,13 +111,16 @@ def test_build_anyscale_base_byod_images() -> None:
                 # This is a duplicate of the default.
                 name="aws",
                 env="aws",
-                python="3.9",
+                python="3.10",
                 cluster={"byod": {"type": "cpu"}},
             ),
-            Test(name="aws", env="aws", python="3.10", cluster={"byod": {}}),
+            Test(name="aws", env="aws", python="3.11", cluster={"byod": {}}),
             Test(name="aws", env="aws", cluster={"byod": {"type": "cu121"}}),
             Test(
-                name="aws", env="aws", python="3.9", cluster={"byod": {"type": "cu116"}}
+                name="aws",
+                env="aws",
+                python="3.10",
+                cluster={"byod": {"type": "cu116"}},
             ),
             Test(
                 name="aws",
@@ -116,17 +132,59 @@ def test_build_anyscale_base_byod_images() -> None:
         ]
         images = build_anyscale_base_byod_images(tests)
         global_config = get_global_config()
-        aws_cr = global_config["byod_aws_cr"]
-        gcp_cr = global_config["byod_gcp_cr"]
+        aws_cr = global_config["byod_ecr"]
+        # Base images are always from AWS ECR (see get_anyscale_base_byod_image),
+        # so GCE and AWS CPU tests resolve to the same image (6 unique, not 7).
         assert set(images) == {
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cpu",
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py39-cu116",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cu116",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cu121",
             f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cu118",
             f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py310-gpu",
-            f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
-            f"{gcp_cr}/anyscale/ray:a1b2c3d4-py310-cpu",
+            f"{aws_cr}/anyscale/ray:a1b2c3d4-py311-cpu",
         }
+
+
+def test_get_anyscale_base_byod_image_always_uses_aws_ecr() -> None:
+    """Base images should always come from AWS ECR, regardless of test env."""
+    global_config = get_global_config()
+    aws_cr = global_config["byod_ecr"]
+
+    with patch.dict(
+        "os.environ",
+        {
+            "BUILDKITE_COMMIT": "abc123",
+            "RAYCI_BUILD_ID": "a1b2c3d4",
+        },
+    ):
+        expected_cpu = f"{aws_cr}/anyscale/ray:a1b2c3d4-py310-cpu"
+        for env in ("aws", "gce", "azure", "kuberay"):
+            test = Test(name="t", env=env, cluster={"byod": {}})
+            assert test.get_anyscale_base_byod_image() == expected_cpu, env
+
+        gpu_test = Test(name="t", env="gce", cluster={"byod": {"type": "gpu"}})
+        assert gpu_test.get_anyscale_base_byod_image() == (
+            f"{aws_cr}/anyscale/ray-ml:a1b2c3d4-py310-gpu"
+        )
+
+        # When ray_version is set, base image uses anyscale/ray prefix
+        # instead of byod_ecr.
+        versioned_cpu_test = Test(
+            name="t",
+            env="gce",
+            cluster={"byod": {}, "ray_version": "2.50.0"},
+        )
+        versioned_gpu_test = Test(
+            name="t",
+            env="gce",
+            cluster={"byod": {"type": "gpu"}, "ray_version": "2.50.0"},
+        )
+        assert versioned_cpu_test.get_anyscale_base_byod_image() == (
+            "anyscale/ray:2.50.0-py310-cpu"
+        )
+        assert versioned_gpu_test.get_anyscale_base_byod_image() == (
+            "anyscale/ray:2.50.0-py310-cu121"
+        )
 
 
 if __name__ == "__main__":

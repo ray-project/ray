@@ -29,7 +29,7 @@
 #include "absl/synchronization/mutex.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
-#include "ray/util/process.h"
+#include "ray/util/process_utils.h"
 
 namespace ray {
 // Platform-specific implementation of subreaper code.

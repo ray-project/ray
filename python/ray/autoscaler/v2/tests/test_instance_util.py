@@ -34,7 +34,7 @@ class InstanceUtilTest(unittest.TestCase):
 
         g = InstanceUtil.get_valid_transitions()
 
-        assert g[Instance.QUEUED] == {Instance.REQUESTED}
+        assert g[Instance.QUEUED] == {Instance.REQUESTED, Instance.TERMINATED}
         all_status.remove(Instance.QUEUED)
 
         assert g[Instance.REQUESTED] == {
@@ -73,7 +73,10 @@ class InstanceUtilTest(unittest.TestCase):
         }
         all_status.remove(Instance.RAY_RUNNING)
 
-        assert g[Instance.ALLOCATION_TIMEOUT] == {Instance.TERMINATING}
+        assert g[Instance.ALLOCATION_TIMEOUT] == {
+            Instance.TERMINATING,
+            Instance.TERMINATED,
+        }
         all_status.remove(Instance.ALLOCATION_TIMEOUT)
 
         assert g[Instance.RAY_STOP_REQUESTED] == {
@@ -101,7 +104,10 @@ class InstanceUtilTest(unittest.TestCase):
         }
         all_status.remove(Instance.TERMINATING)
 
-        assert g[Instance.TERMINATION_FAILED] == {Instance.TERMINATING}
+        assert g[Instance.TERMINATION_FAILED] == {
+            Instance.TERMINATING,
+            Instance.TERMINATED,
+        }
         all_status.remove(Instance.TERMINATION_FAILED)
 
         assert g[Instance.TERMINATED] == set()

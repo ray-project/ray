@@ -84,20 +84,44 @@ def auto_http_archive(
     )
 
 def ray_deps_setup():
+    # Override build_bazel_rules_apple and build_bazel_apple_support before
+    # grpc_deps() runs. gRPC's rules_apple 1.1.3 uses apple_common.multi_arch_split
+    # which was removed in Bazel 7. rules_apple 3.2.1 is compatible with Bazel 6/7/8
+    # but requires apple_support >= 1.11.1 (for the configs/ package layout).
+    auto_http_archive(
+        name = "build_bazel_rules_apple",
+        sha256 = "9c4f1e1ec4fdfeac5bddb07fa0e872c398e3d8eb0ac596af9c463f9123ace292",
+        url = "https://github.com/bazelbuild/rules_apple/releases/download/3.2.1/rules_apple.3.2.1.tar.gz",
+        strip_prefix = "",
+    )
+
+    auto_http_archive(
+        name = "build_bazel_apple_support",
+        sha256 = "cf4d63f39c7ba9059f70e995bf5fe1019267d3f77379c2028561a5d7645ef67c",
+        url = "https://github.com/bazelbuild/apple_support/releases/download/1.11.1/apple_support.1.11.1.tar.gz",
+        strip_prefix = "",
+        patches = [
+            # In Bazel 7, local_config_apple_cc calls is_xcode_at_least_version
+            # during analysis. On CI machines with only Xcode CLT (no full Xcode
+            # app) xcode_config.xcode_version() returns None, causing a hard
+            # failure. Return False instead so the feature is disabled gracefully.
+            "//thirdparty/patches:build-bazel-apple-support-xcode.patch",
+        ],
+        patch_args = ["-p1"],
+    )
+
     # Explicitly bring in protobuf dependency to work around
     # https://github.com/ray-project/ray/issues/14117
     # This is copied from grpc's bazel/grpc_deps.bzl
     #
     # Pinned grpc version: v23.4
-    http_archive(
+    auto_http_archive(
         name = "com_google_protobuf",
         sha256 = "76a33e2136f23971ce46c72fd697cd94dc9f73d56ab23b753c3e16854c90ddfd",
-        strip_prefix = "protobuf-2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a",
-        urls = [
-            "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
-        ],
+        url = "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
         patches = [
             "@com_github_grpc_grpc//third_party:protobuf.patch",
+            "//thirdparty/patches:protobuf-bazel7.patch",
         ],
         patch_args = ["-p1"],
     )
@@ -158,13 +182,31 @@ def ray_deps_setup():
         sha256 = "a6e372118bc961b182a3a86344c0385b6b509882929c6b12dc03bb5084c775d5",
     )
 
-    http_archive(
+    auto_http_archive(
         name = "bazel_skylib",
         sha256 = "9f38886a40548c6e96c106b752f242130ee11aaa068a56ba7e56f4511f33e4f2",
+        url = "https://github.com/bazelbuild/bazel-skylib/releases/download/1.6.1/bazel-skylib-1.6.1.tar.gz",
+        strip_prefix = None
+    )
+
+    # Declare org_lzma_lzma before com_github_nelhage_rules_boost so that
+    # boost_deps()'s maybe() skips it and uses this declaration instead.
+    # Using a local build_file forces content-based cache invalidation:
+    # changing org_lzma_lzma.BUILD.bazel triggers re-setup on all machines,
+    # including Windows CI with persistent output bases where patching
+    # rules_boost's BUILD.lzma would not propagate (build_file label strings
+    # are used for fingerprinting, not file contents of external-repo labels).
+    auto_http_archive(
+        name = "org_lzma_lzma",
+        sha256 = "06327c2ddc81e126a6d9a78b0be5014b976a2c0832f492dcfc4755d7facf6d33",
+        strip_prefix = "xz-5.2.7",
         urls = [
-            "https://mirror.bazel.build/github.com/bazelbuild/bazel-skylib/releases/download/1.6.1/bazel-skylib-1.6.1.tar.gz",
-            "https://github.com/bazelbuild/bazel-skylib/releases/download/1.6.1/bazel-skylib-1.6.1.tar.gz",
+            "https://cfhcable.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://superb-sea2.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://ayera.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
+            "https://astuteinternet.dl.sourceforge.net/project/lzmautils/xz-5.2.7.tar.gz",
         ],
+        build_file = "//thirdparty/patches:org_lzma_lzma.BUILD.bazel",
     )
 
     auto_http_archive(
@@ -178,11 +220,10 @@ def ray_deps_setup():
         patch_args = ["-p1"],
     )
 
-    http_archive(
+    auto_http_archive(
         name = "com_github_google_flatbuffers",
         url = "https://github.com/google/flatbuffers/archive/refs/tags/v25.2.10.tar.gz",
         sha256 = "b9c2df49707c57a48fc0923d52b8c73beb72d675f9d44b2211e4569be40a7421",
-        strip_prefix = "flatbuffers-25.2.10",
     )
 
     auto_http_archive(
@@ -230,16 +271,24 @@ def ray_deps_setup():
         patch_args = ["-p1"],
     )
 
+    # WARNING: Upgrading the OTEL version caused a major regression in actor creation/task throughput.
+    # Verify that this regression is fixed before upgrading the below two OTEL versions.
     auto_http_archive(
         name = "io_opentelemetry_cpp",
         url = "https://github.com/open-telemetry/opentelemetry-cpp/archive/refs/tags/v1.19.0.zip",
         sha256 = "8ef0a63f4959d5dfc3d8190d62229ef018ce41eef36e1f3198312d47ab2de05a",
+        # Enable mTLS support for OTLP gRPC exporter.
+        # This is required because Ray's gRPC servers require client certificates when TLS is enabled.
+        # See https://github.com/ray-project/ray/issues/59968
+        patches = [
+            "@io_ray//thirdparty/patches:opentelemetry-cpp-enable-mtls.patch",
+        ],
+        patch_args = ["-p1"],
     )
 
     auto_http_archive(
         name = "com_github_opentelemetry_proto",
-        urls = ["https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.2.0.zip"],
-        strip_prefix = "opentelemetry-proto-1.2.0",
+        url = "https://github.com/open-telemetry/opentelemetry-proto/archive/refs/tags/v1.2.0.zip",
         build_file = "@io_opentelemetry_cpp//bazel:opentelemetry_proto.BUILD",
         sha256 = "b3cf4fefa4eaea43879ade612639fa7029c624c1b959f019d553b86ad8e01e82",
     )
@@ -251,10 +300,7 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_google_absl",
         sha256 = "987ce98f02eefbaf930d6e38ab16aa05737234d7afbab2d5c4ea7adbe50c28ed",
-        strip_prefix = "abseil-cpp-20230802.1",
-        urls = [
-            "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
-        ],
+        url = "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
         patches = [
             # TODO (israbbani): #55430 Separate the compiler flags and remove this patch
             "@io_ray//thirdparty/patches:abseil-cpp-shadow.patch",
@@ -278,16 +324,23 @@ def ray_deps_setup():
     auto_http_archive(
         name = "com_github_grpc_grpc",
         # NOTE: If you update this, also update @boringssl's hash.
-        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.57.1.tar.gz",
-        sha256 = "0762f809b9de845e6a7c809cabccad6aa4143479fd43b396611fe5a086c0aeeb",
+        url = "https://github.com/grpc/grpc/archive/refs/tags/v1.58.0.tar.gz",
+        sha256 = "ec64fdab22726d50fc056474dd29401d914cc616f53ab8f2fe4866772881d581",
         patches = [
             "@io_ray//thirdparty/patches:grpc-cython-copts.patch",
+            # Work around bazelbuild/bazel#21592: with layering_check and
+            # non-sandbox/local spawn, clang can record transitive *.cppmap files
+            # in .d files, which Bazel then reports as undeclared direct deps.
+            # Fixed in Bazel 7.3.0. LLVM used the same workaround by disabling
+            # layering_check in Bazel overlays (llvm/llvm-project@5bba176).
+            "@io_ray//thirdparty/patches:grpc-disable-layering-check.patch",
             "@io_ray//thirdparty/patches:grpc-zlib-fdopen.patch",
             "@io_ray//thirdparty/patches:grpc-configurable-thread-count.patch",
+            "@io_ray//thirdparty/patches:grpc-nextresult-cancelled-init.patch",
         ],
     )
 
-    http_archive(
+    auto_http_archive(
         name = "openssl",
         strip_prefix = "openssl-1.1.1f",
         sha256 = "186c6bfe6ecfba7a5b48c47f8a1673d0f3b0e5ba2e25602dd23b629975da3f35",
@@ -297,10 +350,9 @@ def ray_deps_setup():
         build_file = "@rules_foreign_cc_thirdparty//openssl:BUILD.openssl.bazel",
     )
 
-    http_archive(
+    auto_http_archive(
         name = "rules_foreign_cc",
         sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
-        strip_prefix = "rules_foreign_cc-0.9.0",
         url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
     )
 
@@ -313,24 +365,21 @@ def ray_deps_setup():
         shallow_since = "1663780239 -0700",
     )
 
-    http_archive(
+    auto_http_archive(
         name = "rules_foreign_cc_thirdparty",
         sha256 = "2a4d07cd64b0719b39a7c12218a3e507672b82a97b98c6a89d38565894cf7c51",
         strip_prefix = "rules_foreign_cc-0.9.0/examples/third_party",
         url = "https://github.com/bazelbuild/rules_foreign_cc/archive/refs/tags/0.9.0.tar.gz",
     )
 
-    http_archive(
+    auto_http_archive(
         # This rule is used by @com_github_grpc_grpc, and using a GitHub mirror
         # provides a deterministic archive hash for caching. Explanation here:
         # https://github.com/grpc/grpc/blob/1ff1feaa83e071d87c07827b0a317ffac673794f/bazel/grpc_deps.bzl#L189
         # Ensure this rule matches the rule used by grpc's bazel/grpc_deps.bzl
         name = "boringssl",
-        sha256 = "0675a4f86ce5e959703425d6f9063eaadf6b61b7f3399e77a154c0e85bad46b1",
-        strip_prefix = "boringssl-342e805bc1f5dfdd650e3f031686d6c939b095d9",
-        urls = [
-            "https://github.com/google/boringssl/archive/342e805bc1f5dfdd650e3f031686d6c939b095d9.tar.gz",
-        ],
+        sha256 = "b21994a857a7aa6d5256ffe355c735ad4c286de44c6c81dfc04edc41a8feaeef",
+        url = "https://github.com/google/boringssl/archive/2ff4b968a7e0cfee66d9f151cb95635b43dc1d5b.tar.gz",
     )
 
     # The protobuf version we use to auto generate python and java code.
@@ -339,11 +388,10 @@ def ray_deps_setup():
     # code generated by protoc of version X can be used with protobuf library of version >= X.
     # So the version here effectively determines the lower bound of python/java
     # protobuf library that Ray supports.
-    http_archive(
+    auto_http_archive(
         name = "com_google_protobuf_rules_proto_grpc",
-        strip_prefix = "protobuf-3.19.4",
-        urls = ["https://github.com/protocolbuffers/protobuf/archive/v3.19.4.tar.gz"],
-        sha256 = "3bd7828aa5af4b13b99c191e8b1e884ebfa9ad371b0ce264605d347f135d2568",
+        url = "https://github.com/protocolbuffers/protobuf/archive/v3.20.3.tar.gz",
+        sha256 = "9c0fd39c7a08dff543c643f0f4baf081988129a411b977a07c46221793605638",
     )
     auto_http_archive(
         name = "rules_proto_grpc",
@@ -366,17 +414,16 @@ def ray_deps_setup():
         ],
     )
 
-    http_archive(
+    auto_http_archive(
         name = "io_opencensus_proto",
         strip_prefix = "opencensus-proto-0.3.0/src",
-        urls = ["https://github.com/census-instrumentation/opencensus-proto/archive/v0.3.0.tar.gz"],
+        url = "https://github.com/census-instrumentation/opencensus-proto/archive/v0.3.0.tar.gz",
         sha256 = "b7e13f0b4259e80c3070b583c2f39e53153085a6918718b1c710caf7037572b0",
     )
 
-    http_archive(
+    auto_http_archive(
         name = "nlohmann_json",
-        strip_prefix = "json-3.9.1",
-        urls = ["https://github.com/nlohmann/json/archive/v3.9.1.tar.gz"],
+        url = "https://github.com/nlohmann/json/archive/v3.9.1.tar.gz",
         sha256 = "4cf0df69731494668bdd6460ed8cb269b68de9c19ad8c27abc24cd72605b2d5b",
         build_file = "@io_ray//bazel:nlohmann_json.BUILD",
     )
@@ -390,20 +437,19 @@ def ray_deps_setup():
 
     # Hedron's Compile Commands Extractor for Bazel
     # https://github.com/hedronvision/bazel-compile-commands-extractor
-    http_archive(
+    auto_http_archive(
         name = "hedron_compile_commands",
 
         # Replace the commit hash in both places (below) with the latest, rather than using the stale one here.
         # Even better, set up Renovate and let it do the work for you (see "Suggestion: Updates" in the README).
         url = "https://github.com/hedronvision/bazel-compile-commands-extractor/archive/2e8b7654fa10c44b9937453fa4974ed2229d5366.tar.gz",
-        strip_prefix = "bazel-compile-commands-extractor-2e8b7654fa10c44b9937453fa4974ed2229d5366",
         # When you first run this tool, it'll recommend a sha256 hash to put here with a message like: "DEBUG: Rule 'hedron_compile_commands' indicated that a canonical reproducible form can be obtained by modifying arguments sha256 = ..."
         sha256 = "7fbbbc05c112c44e9b406612e6a7a7f4789a6918d7aacefef4c35c105286930c",
     )
 
-    http_archive(
+    auto_http_archive(
         name = "jemalloc",
-        urls = ["https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2"],
+        url = "https://github.com/jemalloc/jemalloc/releases/download/5.3.0/jemalloc-5.3.0.tar.bz2",
         build_file = "@io_ray//bazel:jemalloc.BUILD",
         sha256 = "2db82d1e7119df3e71b7640219b6dfe84789bc0537983c3b7ac4f7189aecfeaa",
         strip_prefix = "jemalloc-5.3.0",

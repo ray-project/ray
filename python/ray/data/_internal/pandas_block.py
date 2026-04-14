@@ -1,6 +1,7 @@
 import collections
 import logging
 import sys
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -18,11 +19,10 @@ import numpy as np
 import pandas as pd
 from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
 
-from ray.air.constants import TENSOR_COLUMN_NAME
-from ray.air.util.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.numpy_support import convert_to_numpy
 from ray.data._internal.row import row_repr, row_repr_pretty, row_str
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
+from ray.data._internal.tensor_extensions.utils import _should_convert_to_tensor
 from ray.data._internal.util import is_null
 from ray.data.block import (
     Block,
@@ -59,6 +59,46 @@ def lazy_import_pandas():
 
         _pandas = pandas
     return _pandas
+
+
+def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
+    """Convert a pandas DataFrame to an Arrow table, handling object-dtype columns.
+
+    ``pa.Table.from_pandas`` infers Arrow types for object-dtype columns by inspecting
+    the first Python value, then calls ``pa.array()`` on the whole column. This fails
+    for values that PyArrow cannot convert natively — e.g. multi-dimensional numpy
+    arrays, PIL images, or mixed list/scalar content.
+
+    This function routes object-dtype columns through ``convert_to_pyarrow_array``,
+    which produces ``ArrowTensorArray`` for ndarray elements and falls back to
+    ``ArrowPythonObjectArray`` (pickle) for arbitrary Python objects. All other columns
+    go through ``pa.array(col, from_pandas=True)`` which handles nullable dtypes and
+    extension types via ``__arrow_array__``.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
+
+    # If no object-dtype columns, use fast path with regular from_pandas()
+    if not any(is_object_dtype(df[col].dtype) for col in df.columns):
+        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
+        return pa.Table.from_pandas(df, preserve_index=False)
+
+    # Convert column by column: object-dtype columns go through
+    # convert_to_pyarrow_array (handles tensors, PIL images, arbitrary objects),
+    # all others go through pa.array() with from_pandas=True.
+    arrays = []
+    fields = []
+    for col_name in df.columns:
+        col = df[col_name]
+        if is_object_dtype(col.dtype):
+            arr = convert_to_pyarrow_array(col.values, col_name)
+        else:
+            arr = pa.array(col, from_pandas=True)
+        arrays.append(arr)
+        fields.append(pa.field(col_name, arr.type))
+
+    return pa.table(dict(zip(df.columns, arrays)), schema=pa.schema(fields))
 
 
 class PandasRow(Mapping):
@@ -197,7 +237,7 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
     def hash(self) -> BlockColumn:
 
-        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+        from ray.data._internal.tensor_extensions.pandas import TensorArrayElement
 
         first_non_null = next((x for x in self._column if x is not None), None)
         if isinstance(first_non_null, TensorArrayElement):
@@ -214,7 +254,15 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
         pd = lazy_import_pandas()
 
         try:
-            return pd.Series(self._column.unique())
+            if self.is_composed_of_lists():
+                # NOTE: Pandas uses hashing internally to compute unique values,
+                #       and hence we have to convert lists into tuples to make
+                #       them hashable
+                col = self._column.map(lambda l: l if l is None else tuple(l))
+            else:
+                col = self._column
+
+            return pd.Series(col.unique())
         except ValueError as e:
             if "buffer source array is read-only" in str(e):
                 # NOTE: Pandas < 2.0 somehow tries to update the underlying buffer
@@ -224,15 +272,23 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
                 raise
 
     def flatten(self) -> BlockColumn:
-        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+        from ray.data._internal.tensor_extensions.pandas import TensorArrayElement
 
         first_non_null = next((x for x in self._column if x is not None), None)
-        if isinstance(first_non_null, TensorArrayElement):
-            self._column = self._column.apply(
+        if not isinstance(first_non_null, TensorArrayElement):
+            column = self._column
+        else:
+            column = self._column.apply(
                 lambda x: x.to_numpy() if isinstance(x, TensorArrayElement) else x
             )
 
-        return self._column.explode(ignore_index=True)
+        # NOTE: `Series.explode` explodes empty lists into NaNs, necessitating
+        #       filtering out of empty lists first
+        if self.is_composed_of_lists():
+            mask = column.apply(lambda x: x is not None and len(x) > 0)
+            column = column[mask]
+
+        return column.explode(ignore_index=True)
 
     def dropna(self) -> BlockColumn:
         return self._column.dropna()
@@ -261,17 +317,16 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
         return self._column.to_numpy(copy=not zero_copy_only)
 
-    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+    def _to_arrow_compatible_container(self) -> Union[List[Any], "pyarrow.Array"]:
         return self.to_pylist()
 
     def _is_all_null(self):
         return not self._column.notna().any()
 
-    def is_composed_of_lists(self, types: Optional[Tuple] = None) -> bool:
-        from ray.air.util.tensor_extensions.pandas import TensorArrayElement
+    def is_composed_of_lists(self) -> bool:
+        from ray.data._internal.tensor_extensions.pandas import TensorArrayElement
 
-        if not types:
-            types = (list, np.ndarray, TensorArrayElement)
+        types = (list, np.ndarray, TensorArrayElement)
         first_non_null = next((x for x in self._column if x is not None), None)
         return isinstance(first_non_null, types)
 
@@ -286,7 +341,6 @@ class PandasBlockBuilder(TableBlockBuilder):
         from ray.data.extensions.tensor_extension import TensorArray
 
         pandas = lazy_import_pandas()
-
         return pandas.DataFrame(
             {
                 column_name: (
@@ -302,7 +356,7 @@ class PandasBlockBuilder(TableBlockBuilder):
     @staticmethod
     def _combine_tables(tables: List["pandas.DataFrame"]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
-        from ray.air.util.data_batch_conversion import (
+        from ray.data.util.data_batch_conversion import (
             _cast_ndarray_columns_to_tensor_extension,
         )
 
@@ -331,9 +385,16 @@ class PandasBlockBuilder(TableBlockBuilder):
         return BlockType.PANDAS
 
 
-# This is to be compatible with pyarrow.lib.schema
-# TODO (kfstorm): We need a format-independent way to represent schema.
-PandasBlockSchema = collections.namedtuple("PandasBlockSchema", ["names", "types"])
+# NOTE: This has to be compatible with Pyarrow ``Schema``
+@dataclass(frozen=True, init=False)
+class PandasBlockSchema:
+    # Stored as tuples for hash-ability.
+    names: Tuple[str, ...]
+    types: Tuple
+
+    def __init__(self, names, types):
+        object.__setattr__(self, "names", tuple(names))
+        object.__setattr__(self, "types", tuple(types))
 
 
 class PandasBlockAccessor(TableBlockAccessor):
@@ -355,17 +416,6 @@ class PandasBlockAccessor(TableBlockAccessor):
             return self.upsert_column(name, value)
         # Scalar value - use original fill_column logic
         return self._table.assign(**{name: value})
-
-    @staticmethod
-    def _build_tensor_row(row: PandasRow, row_idx: int) -> np.ndarray:
-        from ray.data.extensions import TensorArrayElement
-
-        tensor = row[TENSOR_COLUMN_NAME].iloc[row_idx]
-        if isinstance(tensor, TensorArrayElement):
-            # Getting an item in a Pandas tensor column may return a TensorArrayElement,
-            # which we have to convert to an ndarray.
-            tensor = tensor.to_numpy()
-        return tensor
 
     def slice(self, start: int, end: int, copy: bool = False) -> "pandas.DataFrame":
         view = self._table[start:end]
@@ -411,7 +461,8 @@ class PandasBlockAccessor(TableBlockAccessor):
     def schema(self) -> PandasBlockSchema:
         dtypes = self._table.dtypes
         schema = PandasBlockSchema(
-            names=dtypes.index.tolist(), types=dtypes.values.tolist()
+            names=tuple(dtypes.index.tolist()),
+            types=tuple(dtypes.values.tolist()),
         )
         # Column names with non-str types of a pandas DataFrame is not
         # supported by Ray Dataset.
@@ -424,7 +475,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return schema
 
     def to_pandas(self) -> "pandas.DataFrame":
-        from ray.air.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
+        from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
         ctx = DataContext.get_current()
         table = self._table
@@ -465,11 +516,11 @@ class PandasBlockAccessor(TableBlockAccessor):
     def to_arrow(self) -> "pyarrow.Table":
         import pyarrow as pa
 
-        from ray.air.util.tensor_extensions.pandas import TensorDtype
+        from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
-        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
-        # column to the resulting table.
-        arrow_table = pa.Table.from_pandas(self._table, preserve_index=False)
+        # _from_pandas_safe handles object-dtype columns that pa.Table.from_pandas
+        # cannot convert (e.g. multi-dimensional numpy arrays, PIL images), because Arrow cannot handle them natively.
+        arrow_table = _from_pandas_safe(self._table)
 
         # NOTE: Pandas by default coerces all-null column types (including None,
         #       NaN, etc) into "double" type by default, which is incorrect in a
@@ -506,7 +557,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        from ray.air.util.tensor_extensions.pandas import TensorArray
+        from ray.data._internal.tensor_extensions.pandas import TensorArray
         from ray.data.extensions import TensorArrayElement, TensorDtype
 
         pd = lazy_import_pandas()
@@ -560,7 +611,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         # extension columns separately.
         memory_usage = self._table.memory_usage(index=True, deep=False)
 
-        # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
+        # TensorDtype for ray.data._internal.tensor_extensions.pandas.TensorDtype
         object_need_check = (TensorDtype,)
         max_sample_count = _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT
 
@@ -679,7 +730,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             ret = ret.sort_values(by=columns, ascending=ascending)
         from ray.data.block import BlockMetadataWithSchema
 
-        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(
+            ret, block_exec_stats=stats.build()
+        )
 
     def block_type(self) -> BlockType:
         return BlockType.PANDAS

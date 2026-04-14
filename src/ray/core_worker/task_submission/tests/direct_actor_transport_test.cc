@@ -19,7 +19,7 @@
 #include "mock/ray/core_worker/memory_store.h"
 #include "mock/ray/core_worker/task_manager_interface.h"
 #include "mock/ray/gcs_client/gcs_client.h"
-#include "ray/core_worker/actor_creator.h"
+#include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/core_worker/reference_counter_interface.h"
 #include "ray/core_worker/task_submission/actor_task_submitter.h"
@@ -65,7 +65,7 @@ class DirectTaskTransportTest : public ::testing::Test {
         *memory_store,
         *task_manager,
         *actor_creator,
-        [](const ObjectID &object_id) { return rpc::TensorTransport::OBJECT_STORE; },
+        [](const ObjectID &object_id) { return std::nullopt; },
         nullptr,
         io_context,
         reference_counter);

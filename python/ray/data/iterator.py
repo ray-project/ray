@@ -21,7 +21,7 @@ import numpy as np
 from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
-from ray.data._internal.logical.operators.input_data_operator import InputData
+from ray.data._internal.logical.operators import InputData
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
@@ -36,12 +36,13 @@ from ray.data.collate_fn import (
     is_tensor_batch_type,
 )
 from ray.data.context import DataContext
-from ray.util.annotations import PublicAPI, RayDeprecationWarning
+from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
     import tensorflow as tf
     import torch
 
+    from ray.data._internal.execution.streaming_executor import StreamingExecutor
     from ray.data.dataset import (
         CollatedData,
         MaterializedDataset,
@@ -84,23 +85,37 @@ class DataIterator(abc.ABC):
         >>> import ray
         >>> ds = ray.data.range(5)
         >>> ds
-        Dataset(num_rows=5, schema={id: int64})
+        shape: (5, 1)
+        ╭───────╮
+        │ id    │
+        │ ---   │
+        │ int64 │
+        ╰───────╯
+        (Dataset isn't materialized)
         >>> ds.iterator()
-        DataIterator(Dataset(num_rows=5, schema={id: int64}))
+        DataIterator(shape: (5, 1)
+        ╭───────╮
+        │ id    │
+        │ ---   │
+        │ int64 │
+        ╰───────╯
+        (Dataset isn't materialized))
     """
 
     @abc.abstractmethod
     def _to_ref_bundle_iterator(
         self,
-    ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool]:
+    ) -> Tuple[
+        Iterator[RefBundle], Optional[DatasetStats], bool, Optional["StreamingExecutor"]
+    ]:
         """Returns the iterator to use for `iter_batches`.
 
         Returns:
-            A tuple. The first item of the tuple is an iterator over RefBundles.
-            The second item of the tuple is a DatasetStats object used for recording
-            stats during iteration.
-            The third item is a boolean indicating if the blocks can be safely cleared
-            after use.
+            A tuple containing:
+            - An iterator over RefBundles.
+            - A DatasetStats object used for recording stats during iteration.
+            - A boolean indicating if the blocks can be safely cleared after use.
+            - An optional executor (StreamingExecutor) for reporting prefetched bytes.
         """
         ...
 
@@ -136,8 +151,9 @@ class DataIterator(abc.ABC):
                 The final batch may include fewer than ``batch_size`` rows if
                 ``drop_last`` is ``False``. Defaults to 256.
             batch_format: Specify ``"default"`` to use the default block format
-                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, "pyarrow" to
-                select ``pyarrow.Table``, or ``"numpy"`` to select
+                (NumPy), ``"pandas"`` to select ``pandas.DataFrame``, ``"pyarrow"`` to
+                select ``pyarrow.Table``, ``"cudf"`` [Experimental] to select
+                ``cudf.DataFrame``, or ``"numpy"`` to select
                 ``Dict[str, numpy.ndarray]``, or None to return the underlying block
                 exactly as is with no additional formatting.
             drop_last: Whether to drop the last batch if it's incomplete.
@@ -161,9 +177,16 @@ class DataIterator(abc.ABC):
         )
 
     def _create_batch_iterator(
-        self, ref_bundles_iter: Iterator[RefBundle], **kwargs
+        self,
+        ref_bundles_iter: Iterator[RefBundle],
+        prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        **kwargs,
     ) -> BatchIterator:
-        return BatchIterator(ref_bundles_iter, **kwargs)
+        return BatchIterator(
+            ref_bundles_iter,
+            prefetch_bytes_callback=prefetch_bytes_callback,
+            **kwargs,
+        )
 
     def _iter_batches(
         self,
@@ -190,9 +213,22 @@ class DataIterator(abc.ABC):
                 ref_bundles_iterator,
                 stats,
                 blocks_owned_by_consumer,
+                executor,
             ) = self._to_ref_bundle_iterator()
 
             dataset_tag = self._get_dataset_tag()
+
+            # Create a callback to report prefetched bytes to the executor's
+            # resource manager.
+            def make_prefetch_callback(exec):
+                def callback(num_bytes: int) -> None:
+                    exec.set_external_consumer_bytes(num_bytes)
+
+                return callback
+
+            prefetch_bytes_callback = (
+                make_prefetch_callback(executor) if executor is not None else None
+            )
 
             batch_iterator = self._create_batch_iterator(
                 ref_bundles_iterator,
@@ -207,6 +243,7 @@ class DataIterator(abc.ABC):
                 shuffle_buffer_min_size=local_shuffle_buffer_size,
                 shuffle_seed=local_shuffle_seed,
                 prefetch_batches=prefetch_batches,
+                prefetch_bytes_callback=prefetch_bytes_callback,
             )
 
             if stats:
@@ -260,7 +297,7 @@ class DataIterator(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def schema(self) -> "Schema":
+    def schema(self) -> Optional["Schema"]:
         """Return the schema of the dataset iterated over."""
         ...
 
@@ -430,7 +467,7 @@ class DataIterator(abc.ABC):
             # Ray Train is not being used.
             device = get_device() if _in_ray_train_worker() else "cpu"
 
-        from ray.air._internal.torch_utils import (
+        from ray.data.util.torch_utils import (
             move_tensors_to_device,
         )
 
@@ -559,7 +596,7 @@ class DataIterator(abc.ABC):
         Returns:
             An iterator over TensorFlow Tensor batches.
         """
-        from ray.air._internal.tensorflow_utils import (
+        from ray.data._internal.utils.tensorflow_utils import (
             convert_ndarray_batch_to_tf_tensor_batch,
         )
 
@@ -579,6 +616,7 @@ class DataIterator(abc.ABC):
 
         return mapped_iterable
 
+    @Deprecated
     def to_torch(
         self,
         *,
@@ -687,10 +725,16 @@ class DataIterator(abc.ABC):
         Returns:
             A torch IterableDataset.
         """
+        warnings.warn(
+            "`DataIterator.to_torch` is deprecated and will be removed after "
+            "October 2026. Use `DataIterator.iter_torch_batches` instead.",
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
         import torch
 
-        from ray.air._internal.torch_utils import convert_pandas_to_torch_tensor
         from ray.data._internal.torch_iterable_dataset import TorchIterableDataset
+        from ray.data.util.torch_utils import convert_pandas_to_torch_tensor
 
         # If an empty collection is passed in, treat it the same as None
         if not feature_columns:
@@ -802,7 +846,7 @@ class DataIterator(abc.ABC):
             ...     "s3://anonymous@air-example-data/iris.csv"
             ... )
             >>> it = ds.iterator(); it
-            DataIterator(Dataset(num_rows=?, schema=...))
+            DataIterator(Dataset(num_rows=?, schema=Unknown schema))
 
             If your model accepts a single tensor as input, specify a single feature column.
 
@@ -822,9 +866,6 @@ class DataIterator(abc.ABC):
             >>> columns_to_concat = ["sepal length (cm)", "sepal width (cm)", "petal length (cm)", "petal width (cm)"]
             >>> preprocessor = Concatenator(columns=columns_to_concat, output_column_name="features")
             >>> it = preprocessor.transform(ds).iterator()
-            >>> it
-            DataIterator(Concatenator
-            +- Dataset(num_rows=?, schema=...))
             >>> it.to_tf("features", "target")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'))>
 
@@ -904,7 +945,7 @@ class DataIterator(abc.ABC):
             A ``tf.data.Dataset`` that yields inputs and targets.
         """  # noqa: E501
 
-        from ray.air._internal.tensorflow_utils import (
+        from ray.data._internal.utils.tensorflow_utils import (
             convert_ndarray_to_tf_tensor,
             get_type_spec,
         )
@@ -1017,7 +1058,7 @@ class DataIterator(abc.ABC):
 
         from ray.data.dataset import MaterializedDataset
 
-        ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
+        ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
         execution_plan = ExecutionPlan(stats, self.get_context())
         logical_plan = LogicalPlan(
