@@ -45,7 +45,6 @@ ray_cc_library(
         "//src/ray/util:process",
         "//src/ray/util:time",
         "@boost//:optional",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -102,7 +101,6 @@ ray_cc_library(
     deps = [
         "//src/ray/common/cgroup2:cgroup_test_utils",
         "//src/ray/util:logging",
-        "@com_google_googletest//:gtest",
     ],
 )
 
