@@ -175,6 +175,7 @@ USER root
 
 # Copy HAProxy binary from builder stage
 COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
 
 # Install HAProxy runtime dependency and setup
 RUN <<EOF
