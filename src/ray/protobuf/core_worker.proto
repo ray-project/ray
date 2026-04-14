@@ -572,6 +572,13 @@ service CoreWorkerService {
   // Failure: TODO: Needs failure behavior.
   rpc RegisterMutableObjectReader(RegisterMutableObjectReaderRequest)
       returns (RegisterMutableObjectReaderReply);
+
+  // Update object locations at the owner. Caller: raylet (OwnershipBasedObjectDirectory);
+  // callee: owner worker. This is a data write to ReferenceCounter, not a pubsub
+  // operation — it stays in CoreWorkerService alongside other RC-mutating RPCs.
+  // Failure: Retries, it's idempotent.
+  rpc UpdateObjectLocationBatch(UpdateObjectLocationBatchRequest)
+      returns (UpdateObjectLocationBatchReply);
 }
 
 // Pubsub-related RPCs on the core worker. This is a separate gRPC service so it
@@ -583,8 +590,4 @@ service CoreWorkerPubsubService {
 
   // Failure: Retries on failures, see pubsub/README.md for more details.
   rpc PubsubCommandBatch(PubsubCommandBatchRequest) returns (PubsubCommandBatchReply);
-
-  // Failure: Retries, it's idempotent.
-  rpc UpdateObjectLocationBatch(UpdateObjectLocationBatchRequest)
-      returns (UpdateObjectLocationBatchReply);
 }

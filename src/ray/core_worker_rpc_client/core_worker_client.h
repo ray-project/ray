@@ -116,9 +116,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                                    override)
 
   VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
-                                   CoreWorkerPubsubService,
+                                   CoreWorkerService,
                                    UpdateObjectLocationBatch,
-                                   pubsub_grpc_client_,
+                                   grpc_client_,
                                    /*method_timeout_ms*/ -1,
                                    override)
 
@@ -230,7 +230,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   std::shared_ptr<GrpcClient<CoreWorkerService>> grpc_client_;
 
-  /// Shares the same gRPC channel as grpc_client_.
+  /// gRPC client for CoreWorkerPubsubService. Shares the same gRPC channel
+  /// (HTTP/2 connection) as grpc_client_ — the two services are multiplexed
+  /// on the same TCP connection to the same worker address.
   std::shared_ptr<GrpcClient<CoreWorkerPubsubService>> pubsub_grpc_client_;
 
   std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;

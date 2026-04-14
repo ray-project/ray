@@ -19,10 +19,15 @@
  * CoreWorkerInterface in the future, split it into its own target that does not include
  * the heavyweight gRPC headers..
  *
+ * There are two gRPC services:
+ *   - CoreWorkerService: general RPCs, dispatched to the main io_service_.
+ *   - CoreWorkerPubsubService: pubsub RPCs (PubsubLongPolling, PubsubCommandBatch),
+ *     dispatched to a dedicated pubsub io_context.
+ *
  * To add a new RPC handler:
- *   - Update core_worker.proto.
- *   - Add a virtual method to CoreWorkerService.
- *   - Initialize the handler for the method in InitServerCallFactories.
+ *   - Update core_worker.proto (add to the appropriate service).
+ *   - Add a virtual method to the corresponding ServiceHandler class below.
+ *   - Initialize the handler in the corresponding InitServerCallFactories.
  *   - Implement the method in core_worker.
  */
 
@@ -133,6 +138,10 @@ class CoreWorkerServiceHandler : public DelayedServiceHandler {
   virtual void HandleNumPendingTasks(NumPendingTasksRequest request,
                                      NumPendingTasksReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleUpdateObjectLocationBatch(UpdateObjectLocationBatchRequest request,
+                                               UpdateObjectLocationBatchReply *reply,
+                                               SendReplyCallback send_reply_callback) = 0;
 };
 
 class CoreWorkerGrpcService : public GrpcService {
@@ -171,10 +180,6 @@ class CoreWorkerPubsubServiceHandler : public DelayedServiceHandler {
   virtual void HandlePubsubCommandBatch(PubsubCommandBatchRequest request,
                                         PubsubCommandBatchReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleUpdateObjectLocationBatch(UpdateObjectLocationBatchRequest request,
-                                               UpdateObjectLocationBatchReply *reply,
-                                               SendReplyCallback send_reply_callback) = 0;
 };
 
 /// Pubsub-related gRPC service for CoreWorker. Dispatched to a dedicated

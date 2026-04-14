@@ -201,8 +201,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
              std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
              uint32_t pid,
              ray::observability::MetricInterface &task_by_state_counter,
-             ray::observability::MetricInterface &actor_by_state_counter,
-             std::shared_ptr<EventTracker> pubsub_event_stats = nullptr);
+             ray::observability::MetricInterface &actor_by_state_counter);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -1729,9 +1728,6 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   /// Event loop where the IO events are handled. e.g. async GCS operations.
   instrumented_io_context &io_service_;
-
-  /// Event stats for the dedicated pubsub io_context thread (may be null in tests).
-  std::shared_ptr<EventTracker> pubsub_event_stats_;
 
   /// Shared core worker client pool.
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;

@@ -317,15 +317,13 @@ CoreWorker::CoreWorker(
     std::unique_ptr<worker::TaskEventBuffer> task_event_buffer,
     uint32_t pid,
     ray::observability::MetricInterface &task_by_state_gauge,
-    ray::observability::MetricInterface &actor_by_state_gauge,
-    std::shared_ptr<EventTracker> pubsub_event_stats)
+    ray::observability::MetricInterface &actor_by_state_gauge)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
                          ? options_.get_lang_stack
                          : nullptr),
       worker_context_(std::move(worker_context)),
       io_service_(io_service),
-      pubsub_event_stats_(std::move(pubsub_event_stats)),
       core_worker_client_pool_(std::move(core_worker_client_pool)),
       raylet_client_pool_(std::move(raylet_client_pool)),
       periodical_runner_(std::move(periodical_runner)),
@@ -456,20 +454,14 @@ CoreWorker::CoreWorker(
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
     periodical_runner_->RunFnPeriodically(
         [this] {
-          std::ostringstream ss;
-          ss << "Event stats:\n\n" << io_service_.stats()->StatsString() << "\n\n";
-          if (pubsub_event_stats_) {
-            ss << "-----------------\n"
-               << "Pubsub io_context event stats:\n"
-               << pubsub_event_stats_->StatsString() << "\n\n";
-          }
-          ss << "-----------------\n"
-             << "Task execution event stats:\n"
-             << task_execution_service_.stats()->StatsString() << "\n\n"
-             << "-----------------\n"
-             << "Task Event stats:\n"
-             << task_event_buffer_->DebugString() << "\n";
-          RAY_LOG(INFO) << ss.str();
+          RAY_LOG(INFO) << "Event stats:\n\n"
+                        << io_service_.stats()->StatsString() << "\n\n"
+                        << "-----------------\n"
+                        << "Task execution event stats:\n"
+                        << task_execution_service_.stats()->StatsString() << "\n\n"
+                        << "-----------------\n"
+                        << "Task Event stats:\n"
+                        << task_event_buffer_->DebugString() << "\n";
         },
         event_stats_print_interval_ms,
         "CoreWorker.PrintEventStats");
@@ -3620,6 +3612,12 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
 void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
                                          rpc::PubsubLongPollingReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
+  // In production, this handler runs on the dedicated pubsub io_context thread.
+  // ConnectToSubscriber is safe to call from any thread because Publisher protects
+  // all state with its internal mutex_. Unlike subscribe/unsubscribe (which must be
+  // posted to io_service_ to maintain ordering with ProcessSubscribe* callbacks),
+  // long-poll only touches Publisher::subscribers_ and has no ordering dependency
+  // with ReferenceCounter operations.
   const NodeID subscriber_id = NodeID::FromBinary(request.subscriber_id());
   RAY_LOG(DEBUG).WithField(subscriber_id) << "Got a long polling request from a node";
   object_info_publisher_->ConnectToSubscriber(request,
@@ -3631,15 +3629,21 @@ void CoreWorker::HandlePubsubLongPolling(rpc::PubsubLongPollingRequest request,
 void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request,
                                           rpc::PubsubCommandBatchReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  // This handler runs on a dedicated pubsub io_context thread.
+  // In production, this handler runs on a dedicated pubsub io_context thread.
   // Both subscribe and unsubscribe are posted to io_service_ to maintain
   // strict ordering — otherwise an unsubscribe could execute before a
   // preceding subscribe that was posted to io_service_.
-  const NodeID subscriber_id = NodeID::FromBinary(request.subscriber_id());
-  for (const auto &command : request.commands()) {
+  //
+  // NOTE: All validation is done synchronously before posting to io_service_.
+  // If a mid-batch command fails validation, commands already posted for earlier
+  // entries in the batch will still execute. This is acceptable because malformed
+  // commands indicate a bug in the caller, not a runtime condition.
+  const NodeID subscriber_id =
+      NodeID::FromBinary(std::move(*request.mutable_subscriber_id()));
+  for (auto &command : *request.mutable_commands()) {
     if (!command.has_unsubscribe_message() && !command.has_subscribe_message()) {
       send_reply_callback(Status::InvalidArgument(absl::StrFormat(
-                              "Unexpected pubsub command has been received: %s."
+                              "Unexpected pubsub command has been received: %s. "
                               "Expected either unsubscribe or subscribe message",
                               command.DebugString())),
                           nullptr,
@@ -3647,22 +3651,35 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
       return;
     }
 
+    auto channel_type = command.channel_type();
+    if (channel_type != rpc::ChannelType::WORKER_OBJECT_EVICTION &&
+        channel_type != rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL &&
+        channel_type != rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
+      send_reply_callback(
+          Status::InvalidArgument(absl::StrFormat(
+              "Invalid channel type %s. Expected WORKER_OBJECT_EVICTION, "
+              "WORKER_REF_REMOVED_CHANNEL, or WORKER_OBJECT_LOCATIONS_CHANNEL",
+              rpc::ChannelType_Name(channel_type))),
+          nullptr,
+          nullptr);
+      return;
+    }
+
     if (command.has_unsubscribe_message()) {
-      auto channel_type = command.channel_type();
-      auto key_id = command.key_id();
+      auto key_id = std::move(*command.mutable_key_id());
       io_service_.post(
-          [this, channel_type, subscriber_id, key_id] {
+          [this, channel_type, subscriber_id, key_id = std::move(key_id)] {
             object_info_publisher_->UnregisterSubscription(
                 channel_type, subscriber_id, key_id);
           },
           "CoreWorker.HandlePubsubCommandBatch.Unsubscribe");
     } else {  // subscribe_message case
-      auto sub_message = command.subscribe_message();
+      auto sub_message = std::move(*command.mutable_subscribe_message());
       if (!sub_message.has_worker_object_eviction_message() &&
           !sub_message.has_worker_ref_removed_message() &&
           !sub_message.has_worker_object_locations_message()) {
         send_reply_callback(Status::InvalidArgument(absl::StrFormat(
-                                "Unexpected subscribe command has been received: %s"
+                                "Unexpected subscribe command has been received: %s. "
                                 "Expected worker_object_eviction, worker_ref_removed, or "
                                 "worker_object_locations message",
                                 sub_message.DebugString())),
@@ -3674,23 +3691,18 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
       // so they execute atomically. This prevents a race where the subscriber
       // receives updates (via Publish) before the initial snapshot is sent
       // by ProcessSubscribeObjectLocations.
-      auto channel_type = command.channel_type();
-      auto key_id = command.key_id();
+      auto key_id = std::move(*command.mutable_key_id());
       io_service_.post(
           [this,
            sub_message = std::move(sub_message),
            channel_type,
-           key_id,
+           key_id = std::move(key_id),
            subscriber_id] {
-            StatusSet<StatusT::InvalidArgument> result =
-                object_info_publisher_->RegisterSubscription(
-                    channel_type, subscriber_id, key_id);
-            if (result.has_error()) {
-              RAY_LOG(WARNING)
-                  << "Failed to register subscription: "
-                  << std::get<StatusT::InvalidArgument>(result.error()).message();
-              return;
-            }
+            // RegisterSubscription cannot fail here because channel_type
+            // is validated synchronously above.
+            RAY_CHECK(object_info_publisher_
+                          ->RegisterSubscription(channel_type, subscriber_id, key_id)
+                          .ok());
             if (sub_message.has_worker_object_eviction_message()) {
               ProcessSubscribeForObjectEviction(
                   sub_message.worker_object_eviction_message());
@@ -3701,7 +3713,7 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
                   sub_message.worker_object_locations_message());
             }
           },
-          "CoreWorker.PubsubCommandBatch.PostSubscribeToIO");
+          "CoreWorker.HandlePubsubCommandBatch.Subscribe");
     }
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
@@ -3711,8 +3723,6 @@ void CoreWorker::HandleUpdateObjectLocationBatch(
     rpc::UpdateObjectLocationBatchRequest request,
     rpc::UpdateObjectLocationBatchReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  // This handler may run on a dedicated pubsub io_context thread.
-  // HandleWrongRecipient only reads the immutable worker ID, safe from any thread.
   const auto &worker_id = request.intended_worker_id();
   if (HandleWrongRecipient(WorkerID::FromBinary(worker_id), send_reply_callback)) {
     return;

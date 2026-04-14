@@ -825,18 +825,14 @@ INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
 
 TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
   // Test that HandlePubsubCommandBatch returns InvalidArgument for an invalid channel
-  // type. The publisher was created with only:
-  // - WORKER_OBJECT_EVICTION
-  // - WORKER_REF_REMOVED_CHANNEL
-  // - WORKER_OBJECT_LOCATIONS_CHANNEL
-  // Using a channel type that was not registered should return InvalidArgument.
+  // type. Only WORKER_OBJECT_EVICTION, WORKER_REF_REMOVED_CHANNEL, and
+  // WORKER_OBJECT_LOCATIONS_CHANNEL are accepted.
   auto subscriber_id = NodeID::FromRandom();
   auto object_id = ObjectID::FromRandom();
 
   rpc::PubsubCommandBatchRequest command_batch_request;
   command_batch_request.set_subscriber_id(subscriber_id.Binary());
   auto *command = command_batch_request.add_commands();
-  // Use GCS_ACTOR_CHANNEL which is not registered with the core worker's publisher.
   command->set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
   command->set_key_id(object_id.Binary());
   command->mutable_subscribe_message();
@@ -857,7 +853,7 @@ TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
   ASSERT_TRUE(callback_invoked);
   ASSERT_FALSE(received_status.ok());
   ASSERT_TRUE(received_status.IsInvalidArgument());
-  EXPECT_TRUE(received_status.message().find("Unexpected subscribe command") !=
+  EXPECT_TRUE(received_status.message().find("Invalid channel type") !=
               std::string::npos);
 }
 
