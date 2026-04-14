@@ -4533,6 +4533,7 @@ def read_delta(
         num_cpus=num_cpus,
         num_gpus=num_gpus,
         memory=memory,
+        label_selector=label_selector,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,

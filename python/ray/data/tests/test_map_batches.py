@@ -880,6 +880,13 @@ def test_map_batches_set_label_selector(ray_start_regular_shared):
         == test_selector
     )
 
+    # Validate label_selector set for map_groups
+    ds_grouped = ds.groupby("id").map_groups(lambda x: x, label_selector=test_selector)
+    assert (
+        ds_grouped._plan._logical_plan.dag.ray_remote_args.get("label_selector")
+        == test_selector
+    )
+
 
 def test_map_batches_label_schedules(ray_start_cluster):
     """Verify that tasks and actors are scheduled on the expected labeled nodes."""
