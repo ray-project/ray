@@ -16,7 +16,7 @@ use tracing::{error, info, warn};
 
 pub use init_data::GcsInitData;
 
-use gcs_kv::{GcsInternalKVManager, StoreClientInternalKV};
+use gcs_kv::{GcsInternalKVManager, InternalKVInterface, StoreClientInternalKV};
 use gcs_managers::actor_stub::GcsActorManager;
 use gcs_managers::autoscaler_stub::GcsAutoscalerStateManager;
 use gcs_managers::event_export_stub::EventExportServiceStub;
@@ -44,11 +44,54 @@ use gcs_pubsub::{GcsPublisher, PubSubManager};
 use gcs_store::{InMemoryStoreClient, RedisStoreClient, StoreClient};
 use gcs_table_storage::GcsTableStorage;
 
+// Cluster ID KV constants matching C++ (gcs_server.cc + constants.h).
+const CLUSTER_ID_NAMESPACE: &str = "cluster";
+const CLUSTER_ID_KEY: &str = "ray_cluster_id";
+const CLUSTER_ID_SIZE: usize = 28; // kUniqueIDSize in C++
+
+/// Generate a random 28-byte cluster ID (matching C++ ClusterID::FromRandom).
+fn generate_random_cluster_id() -> Vec<u8> {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    let mut id = vec![0u8; CLUSTER_ID_SIZE];
+    let seed = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_nanos();
+    for (i, b) in id.iter_mut().enumerate() {
+        *b = ((seed >> (i % 16)) ^ (i as u128 * 37)) as u8;
+    }
+    id
+}
+
+/// Get an existing cluster ID from KV, or generate and persist a new one.
+///
+/// Maps C++ `GcsServer::GetOrGenerateClusterId` from `gcs_server.cc:234-269`.
+/// Uses KV namespace `"cluster"`, key `"ray_cluster_id"`.
+async fn get_or_generate_cluster_id(kv: &dyn InternalKVInterface) -> Vec<u8> {
+    // Try to retrieve existing cluster ID from KV.
+    if let Some(stored) = kv.get(CLUSTER_ID_NAMESPACE, CLUSTER_ID_KEY).await {
+        let bytes = stored.into_bytes();
+        if bytes.len() == CLUSTER_ID_SIZE {
+            info!("Using existing cluster ID from external storage");
+            return bytes;
+        }
+    }
+
+    // Generate new random 28-byte cluster ID.
+    let cluster_id = generate_random_cluster_id();
+
+    // Persist with overwrite=false (first writer wins, matching C++ HSETNX).
+    let id_str = unsafe { String::from_utf8_unchecked(cluster_id.clone()) };
+    kv.put(CLUSTER_ID_NAMESPACE, CLUSTER_ID_KEY, id_str, false).await;
+    info!("Generated and persisted new cluster ID");
+
+    cluster_id
+}
+
 /// Configuration for the GCS server.
 #[derive(Debug, Clone)]
 pub struct GcsServerConfig {
     pub grpc_port: u16,
-    pub cluster_id: Vec<u8>,
     pub raylet_config_list: String,
     pub max_task_events: usize,
     /// Redis connection URL. If `Some`, uses Redis-backed persistence.
@@ -62,20 +105,8 @@ pub struct GcsServerConfig {
 
 impl Default for GcsServerConfig {
     fn default() -> Self {
-        // ClusterID must be exactly 28 bytes (kUniqueIDSize in C++)
-        let mut cluster_id = vec![0u8; 28];
-        // Fill with random bytes using a simple approach
-        use std::time::{SystemTime, UNIX_EPOCH};
-        let seed = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .unwrap_or_default()
-            .as_nanos();
-        for (i, b) in cluster_id.iter_mut().enumerate() {
-            *b = ((seed >> (i % 16)) ^ (i as u128 * 37)) as u8;
-        }
         Self {
             grpc_port: 6379,
-            cluster_id,
             raylet_config_list: String::new(),
             max_task_events: 100_000,
             redis_address: None,
@@ -88,8 +119,12 @@ impl Default for GcsServerConfig {
 ///
 /// Creates all managers and serves gRPC on the configured port.
 /// Supports both in-memory and Redis-backed storage.
+/// The cluster ID is obtained from KV on construction (get-or-generate),
+/// matching C++ `GcsServer::GetOrGenerateClusterId`.
 pub struct GcsServer {
     config: GcsServerConfig,
+    /// Cluster ID recovered from KV or generated on first start.
+    cluster_id: Vec<u8>,
     // Shared infrastructure
     table_storage: Arc<GcsTableStorage>,
     publisher: Arc<GcsPublisher>,
@@ -111,19 +146,22 @@ pub struct GcsServer {
 
 impl GcsServer {
     /// Create a new GCS server with in-memory storage (no persistence).
-    pub fn new(config: GcsServerConfig) -> Self {
+    pub async fn new(config: GcsServerConfig) -> Self {
         let store: Arc<dyn StoreClient> = Arc::new(InMemoryStoreClient::new());
-        Self::new_with_store(config, store, None)
+        Self::new_with_store(config, store, None).await
     }
 
     /// Create a new GCS server with a Redis-backed store.
-    pub fn new_with_redis(config: GcsServerConfig, redis: Arc<RedisStoreClient>) -> Self {
+    pub async fn new_with_redis(config: GcsServerConfig, redis: Arc<RedisStoreClient>) -> Self {
         let store: Arc<dyn StoreClient> = redis.clone();
-        Self::new_with_store(config, store, Some(redis))
+        Self::new_with_store(config, store, Some(redis)).await
     }
 
     /// Shared constructor: wire all managers around a given `StoreClient`.
-    fn new_with_store(
+    ///
+    /// This is async because it calls `get_or_generate_cluster_id` via KV
+    /// before constructing managers that depend on the cluster ID.
+    async fn new_with_store(
         config: GcsServerConfig,
         store: Arc<dyn StoreClient>,
         redis_client: Option<Arc<RedisStoreClient>>,
@@ -131,12 +169,22 @@ impl GcsServer {
         let table_storage = Arc::new(GcsTableStorage::new(store.clone()));
         let publisher = Arc::new(GcsPublisher::new(4096));
 
-        let pubsub_manager = Arc::new(PubSubManager::new(config.cluster_id.clone()));
+        // Initialize KV first — needed for cluster ID retrieval (matches C++ flow).
+        let kv_store = Arc::new(StoreClientInternalKV::new(store));
+        let kv_manager = Arc::new(GcsInternalKVManager::new(
+            kv_store.clone(),
+            config.raylet_config_list.clone(),
+        ));
+
+        // Get or generate the cluster ID from KV (matching C++ GetOrGenerateClusterId).
+        let cluster_id = get_or_generate_cluster_id(kv_store.as_ref()).await;
+
+        let pubsub_manager = Arc::new(PubSubManager::new(cluster_id.clone()));
 
         let node_manager = Arc::new(GcsNodeManager::new(
             table_storage.clone(),
             publisher.clone(),
-            config.cluster_id.clone(),
+            cluster_id.clone(),
         ));
 
         let job_manager = Arc::new(GcsJobManager::new(
@@ -153,12 +201,6 @@ impl GcsServer {
 
         let resource_manager = Arc::new(GcsResourceManager::new());
 
-        let kv_store = Arc::new(StoreClientInternalKV::new(store));
-        let kv_manager = Arc::new(GcsInternalKVManager::new(
-            kv_store,
-            config.raylet_config_list.clone(),
-        ));
-
         let actor_manager = Arc::new(GcsActorManager::new(
             pubsub_manager.clone(),
             table_storage.clone(),
@@ -174,6 +216,7 @@ impl GcsServer {
 
         Self {
             config,
+            cluster_id,
             table_storage,
             publisher,
             pubsub_manager,
@@ -288,7 +331,7 @@ impl GcsServer {
             .add_service(ActorInfoGcsServiceServer::from_arc(self.actor_manager.clone()))
             .add_service(PlacementGroupInfoGcsServiceServer::from_arc(self.placement_group_manager.clone()))
             .add_service(InternalPubSubGcsServiceServer::from_arc(self.pubsub_service.clone()))
-            .add_service(RuntimeEnvGcsServiceServer::new(RuntimeEnvServiceStub))
+            .add_service(RuntimeEnvGcsServiceServer::new(RuntimeEnvServiceStub::new()))
             .add_service(AutoscalerStateServiceServer::from_arc(self.autoscaler_manager.clone()))
             .add_service(EventAggregatorServiceServer::new(EventExportServiceStub))
             .serve(addr)
@@ -331,13 +374,18 @@ impl GcsServer {
             .add_service(ActorInfoGcsServiceServer::from_arc(self.actor_manager.clone()))
             .add_service(PlacementGroupInfoGcsServiceServer::from_arc(self.placement_group_manager.clone()))
             .add_service(InternalPubSubGcsServiceServer::from_arc(self.pubsub_service.clone()))
-            .add_service(RuntimeEnvGcsServiceServer::new(RuntimeEnvServiceStub))
+            .add_service(RuntimeEnvGcsServiceServer::new(RuntimeEnvServiceStub::new()))
             .add_service(AutoscalerStateServiceServer::from_arc(self.autoscaler_manager.clone()))
             .add_service(EventAggregatorServiceServer::new(EventExportServiceStub))
             .serve_with_incoming(incoming)
             .await?;
 
         Ok(())
+    }
+
+    /// The cluster ID recovered from KV or generated on first start.
+    pub fn cluster_id(&self) -> &[u8] {
+        &self.cluster_id
     }
 
     pub fn node_manager(&self) -> &Arc<GcsNodeManager> {
@@ -381,45 +429,37 @@ mod tests {
     use gcs_proto::ray::rpc::internal_kv_gcs_service_client::InternalKvGcsServiceClient;
     use gcs_proto::ray::rpc::{GetAllNodeInfoRequest, GetAllJobInfoRequest, InternalKvGetRequest};
 
-    #[test]
-    fn test_server_creation() {
-        let server = GcsServer::new(GcsServerConfig::default());
+    #[tokio::test]
+    async fn test_server_creation() {
+        let server = GcsServer::new(GcsServerConfig::default()).await;
         assert!(server.node_manager().get_all_alive_nodes().is_empty());
+        // Cluster ID should be exactly 28 bytes.
+        assert_eq!(server.cluster_id().len(), CLUSTER_ID_SIZE);
     }
 
     #[tokio::test]
     async fn test_server_manager_accessors() {
         let config = GcsServerConfig {
             grpc_port: 0,
-            cluster_id: vec![0u8; 28],
             raylet_config_list: "test_config".to_string(),
             max_task_events: 100,
             ..Default::default()
         };
-        let server = GcsServer::new(config);
+        let server = GcsServer::new(config).await;
 
         // Verify all manager getters return valid references.
-        // node_manager
-        let _nm = server.node_manager();
         assert!(server.node_manager().get_all_alive_nodes().is_empty());
-
-        // job_manager -- get_job on non-existent should return None.
-        let _jm = server.job_manager();
         assert!(server.job_manager().get_job(b"no_such_job").is_none());
-
-        // worker_manager -- just verify the getter works.
         let _wm = server.worker_manager();
 
-        // kv_manager -- verify the kv() accessor works.
         let kv = server.kv_manager();
         let result = kv.kv().get("ns", "key").await;
         assert!(result.is_none());
 
-        // pubsub_manager -- verify publisher_id matches cluster_id.
+        // pubsub_manager publisher_id should match the generated cluster_id.
         let psm = server.pubsub_manager();
-        assert_eq!(psm.publisher_id(), vec![0u8; 28].as_slice());
+        assert_eq!(psm.publisher_id(), server.cluster_id());
 
-        // actor_manager -- get unknown actor should return not-found.
         let _am = server.actor_manager();
     }
 
@@ -427,28 +467,22 @@ mod tests {
     async fn test_start_with_listener() {
         let config = GcsServerConfig {
             grpc_port: 0,
-            cluster_id: vec![0u8; 28],
             ..Default::default()
         };
-        let server = Arc::new(GcsServer::new(config));
+        let server = Arc::new(GcsServer::new(config).await);
 
-        // Bind to an OS-assigned port.
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = listener.local_addr().unwrap();
-        let port = addr.port();
+        let port = listener.local_addr().unwrap().port();
 
-        // Spawn the server in the background.
         let server_clone = server.clone();
         let server_handle = tokio::spawn(async move {
             server_clone.start_with_listener(listener).await
         });
 
-        // Give the server a moment to start accepting connections.
         tokio::time::sleep(std::time::Duration::from_millis(200)).await;
 
         let endpoint = format!("http://127.0.0.1:{}", port);
 
-        // Test 1: NodeInfoGcsService - GetAllNodeInfo on empty cluster.
         let mut node_client = NodeInfoGcsServiceClient::connect(endpoint.clone())
             .await
             .expect("failed to connect to NodeInfoGcsService");
@@ -456,12 +490,8 @@ mod tests {
             .get_all_node_info(GetAllNodeInfoRequest::default())
             .await
             .expect("GetAllNodeInfo RPC failed");
-        assert!(
-            resp.into_inner().node_info_list.is_empty(),
-            "empty cluster should have no nodes"
-        );
+        assert!(resp.into_inner().node_info_list.is_empty());
 
-        // Test 2: JobInfoGcsService - GetAllJobInfo on empty cluster.
         let mut job_client = JobInfoGcsServiceClient::connect(endpoint.clone())
             .await
             .expect("failed to connect to JobInfoGcsService");
@@ -469,13 +499,9 @@ mod tests {
             .get_all_job_info(GetAllJobInfoRequest::default())
             .await
             .expect("GetAllJobInfo RPC failed");
-        assert!(
-            resp.into_inner().job_info_list.is_empty(),
-            "empty cluster should have no jobs"
-        );
+        assert!(resp.into_inner().job_info_list.is_empty());
 
-        // Test 3: InternalKvGcsService - get a non-existent key.
-        let mut kv_client = InternalKvGcsServiceClient::connect(endpoint.clone())
+        let mut kv_client = InternalKvGcsServiceClient::connect(endpoint)
             .await
             .expect("failed to connect to InternalKvGcsService");
         let resp = kv_client
@@ -485,43 +511,33 @@ mod tests {
             })
             .await
             .expect("InternalKvGet RPC failed");
-        // Non-existent key should return an empty value.
-        assert!(
-            resp.into_inner().value.is_empty(),
-            "non-existent key should return empty value"
-        );
+        assert!(resp.into_inner().value.is_empty());
 
-        // Clean up: abort the server task.
         server_handle.abort();
         let _ = server_handle.await;
     }
 
     #[tokio::test]
     async fn test_start() {
-        // Find a free port by binding to port 0 and immediately releasing.
         let tmp_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let port = tmp_listener.local_addr().unwrap().port();
         drop(tmp_listener);
 
         let config = GcsServerConfig {
             grpc_port: port,
-            cluster_id: vec![0u8; 28],
             ..Default::default()
         };
-        let server = Arc::new(GcsServer::new(config));
+        let server = Arc::new(GcsServer::new(config).await);
 
-        // Spawn the server in the background.
         let server_clone = server.clone();
         let server_handle = tokio::spawn(async move {
             server_clone.start().await
         });
 
-        // Give the server a moment to bind and start serving.
         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
 
         let endpoint = format!("http://127.0.0.1:{}", port);
 
-        // Verify the server is accepting connections and serving gRPC.
         let mut node_client = NodeInfoGcsServiceClient::connect(endpoint.clone())
             .await
             .expect("failed to connect to GCS server via start()");
@@ -529,12 +545,8 @@ mod tests {
             .get_all_node_info(GetAllNodeInfoRequest::default())
             .await
             .expect("GetAllNodeInfo RPC failed on start() server");
-        assert!(
-            resp.into_inner().node_info_list.is_empty(),
-            "empty cluster should have no nodes"
-        );
+        assert!(resp.into_inner().node_info_list.is_empty());
 
-        // Also verify a second service is available (JobInfo).
         let mut job_client = JobInfoGcsServiceClient::connect(endpoint)
             .await
             .expect("failed to connect to JobInfoGcsService via start()");
@@ -542,12 +554,8 @@ mod tests {
             .get_all_job_info(GetAllJobInfoRequest::default())
             .await
             .expect("GetAllJobInfo RPC failed on start() server");
-        assert!(
-            resp.into_inner().job_info_list.is_empty(),
-            "empty cluster should have no jobs"
-        );
+        assert!(resp.into_inner().job_info_list.is_empty());
 
-        // Clean up.
         server_handle.abort();
         let _ = server_handle.await;
     }
@@ -587,11 +595,8 @@ mod tests {
         table_storage.placement_group_table().put("pg_1", &pg).await;
 
         // Create a NEW server using the same store (simulating restart).
-        let config = GcsServerConfig {
-            cluster_id: vec![0u8; 28],
-            ..Default::default()
-        };
-        let server = GcsServer::new_with_store(config, store, None);
+        let config = GcsServerConfig::default();
+        let server = GcsServer::new_with_store(config, store, None).await;
 
         // Initialize from storage (this is what happens on restart).
         server.initialize().await;
@@ -599,5 +604,36 @@ mod tests {
         // Verify recovered state.
         assert!(server.job_manager().get_job(b"job_1").is_some());
         assert_eq!(server.node_manager().get_all_alive_nodes().len(), 1);
+    }
+
+    #[tokio::test]
+    async fn test_cluster_id_persisted_across_restarts() {
+        // Create a shared store that persists across "restarts".
+        let store: Arc<dyn StoreClient> = Arc::new(InMemoryStoreClient::new());
+
+        // First server: generates and persists a cluster ID.
+        let server1 = GcsServer::new_with_store(
+            GcsServerConfig::default(), store.clone(), None,
+        ).await;
+        let first_cluster_id = server1.cluster_id().to_vec();
+        assert_eq!(first_cluster_id.len(), CLUSTER_ID_SIZE);
+
+        // Verify the ID was persisted in KV.
+        let kv = StoreClientInternalKV::new(store.clone());
+        let stored = kv.get(CLUSTER_ID_NAMESPACE, CLUSTER_ID_KEY).await;
+        assert!(stored.is_some());
+        assert_eq!(stored.unwrap().into_bytes(), first_cluster_id);
+
+        // Second server: should recover the SAME cluster ID from KV.
+        let server2 = GcsServer::new_with_store(
+            GcsServerConfig::default(), store.clone(), None,
+        ).await;
+        assert_eq!(server2.cluster_id(), first_cluster_id.as_slice());
+
+        // Third server: still the same.
+        let server3 = GcsServer::new_with_store(
+            GcsServerConfig::default(), store, None,
+        ).await;
+        assert_eq!(server3.cluster_id(), first_cluster_id.as_slice());
     }
 }

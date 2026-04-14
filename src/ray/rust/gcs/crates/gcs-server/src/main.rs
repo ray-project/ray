@@ -92,14 +92,15 @@ async fn main() -> Result<()> {
     info!(port, redis = redis_url.is_some(), "Rust GCS server starting");
 
     // Create server with appropriate storage backend.
+    // Construction is async: it calls KV to get-or-generate the cluster ID.
     let server = if let Some(ref url) = redis_url {
         let redis_client = gcs_store::RedisStoreClient::connect(url, &external_storage_namespace)
             .await
             .expect("Failed to connect to Redis");
         let redis_client = std::sync::Arc::new(redis_client);
-        GcsServer::new_with_redis(config, redis_client)
+        GcsServer::new_with_redis(config, redis_client).await
     } else {
-        GcsServer::new(config)
+        GcsServer::new(config).await
     };
 
     // Bind to the port first so we know the actual port (handles port 0).
