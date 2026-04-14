@@ -1132,7 +1132,7 @@ def try_combine_chunked_columns(
     new_column_values_arrays = []
 
     for col in table.columns:
-        if col.num_chunks >= min_chunks_to_combine:
+        if col.num_chunks >= min_chunks_to_combine and col.num_chunks > 1:
             new_col = combine_chunked_array(col)
         else:
             new_col = col
