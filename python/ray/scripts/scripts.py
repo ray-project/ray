@@ -281,7 +281,7 @@ def none_to_empty(s):
 def format_table(table):
     """Format a table as a list of lines with aligned columns."""
     result = []
-    col_width = [max(len(x) for x in col) for col in zip(*table, strict=False)]
+    col_width = [max(len(x) for x in col) for col in zip(*table)]
     for line in table:
         result.append(
             " | ".join("{0:{1}}".format(x, col_width[i]) for i, x in enumerate(line))

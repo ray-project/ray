@@ -415,7 +415,7 @@ class PathPartitionParser:
             return {}
         return {
             field: directory
-            for field, directory in zip(field_names, dirs, strict=False)
+            for field, directory in zip(field_names, dirs)
             if field is not None
         }
 

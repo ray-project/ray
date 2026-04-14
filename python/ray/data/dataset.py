@@ -1297,10 +1297,7 @@ class Dataset:
                     f"schema names: {current_names}."
                 )
 
-            exprs = [
-                col(prev)._rename(new)
-                for prev, new in zip(current_names, names, strict=False)
-            ]
+            exprs = [col(prev)._rename(new) for prev, new in zip(current_names, names)]
         else:
             raise TypeError(
                 f"rename_columns expected names to be either List[str] or "
@@ -2220,7 +2217,7 @@ class Dataset:
         # We should not free blocks since we will materialize the Datasets.
         owned_by_consumer = False
         stats = self._plan.stats()
-        block_refs, metadata = zip(*bundle.blocks, strict=False)
+        block_refs, metadata = zip(*bundle.blocks)
 
         if locality_hints is None:
             block_refs_splits = np.array_split(block_refs, n)
@@ -2228,13 +2225,13 @@ class Dataset:
 
             split_datasets = []
             for block_refs_split, metadata_split in zip(
-                block_refs_splits, metadata_splits, strict=False
+                block_refs_splits, metadata_splits
             ):
                 ref_bundles = [
                     RefBundle(
                         [(b, m)], owns_blocks=owned_by_consumer, schema=bundle.schema
                     )
-                    for b, m in zip(block_refs_split, metadata_split, strict=False)
+                    for b, m in zip(block_refs_split, metadata_split)
                 ]
                 logical_plan = LogicalPlan(
                     InputData(input_data=ref_bundles),
@@ -2248,7 +2245,7 @@ class Dataset:
                 )
             return split_datasets
 
-        metadata_mapping = dict(zip(block_refs, metadata, strict=False))
+        metadata_mapping = dict(zip(block_refs, metadata))
 
         # If the locality_hints is set, we use a two-round greedy algorithm
         # to co-locate the blocks with the actors based on block
@@ -2347,7 +2344,7 @@ class Dataset:
             blocks = allocation_per_actor[actor]
             metadata = [metadata_mapping[b] for b in blocks]
             bundle = RefBundle(
-                tuple(zip(blocks, metadata, strict=False)),
+                tuple(zip(blocks, metadata)),
                 owns_blocks=owned_by_consumer,
                 schema=bundle.schema,
             )
@@ -2427,12 +2424,12 @@ class Dataset:
         parent_stats = self._plan.stats()
         splits = []
 
-        for bs, ms in zip(blocks, metadata, strict=False):
+        for bs, ms in zip(blocks, metadata):
             stats = DatasetStats(metadata={"Split": ms}, parent=parent_stats)
             stats.time_total_s = split_duration
             ref_bundles = [
                 RefBundle([(b, m)], owns_blocks=False, schema=bundle.schema)
-                for b, m in zip(bs, ms, strict=False)
+                for b, m in zip(bs, ms)
             ]
             logical_plan = LogicalPlan(
                 InputData(input_data=ref_bundles),
@@ -6336,7 +6333,7 @@ class Dataset:
                                 else np.object_
                             )
                         )
-                        for col, dtype in zip(schema.names, schema.types, strict=False)
+                        for col, dtype in zip(schema.names, schema.types)
                     }
                 )
             elif pa is not None and isinstance(schema, pa.Schema):
@@ -6354,9 +6351,7 @@ class Dataset:
                                     else np.object_
                                 )
                             )
-                            for col, dtype in zip(
-                                schema.names, schema.types, strict=False
-                            )
+                            for col, dtype in zip(schema.names, schema.types)
                         }
                     )
                 else:
@@ -7118,7 +7113,7 @@ class Dataset:
             )
         else:
             schema_data = {}
-            for sname, stype in zip(schema.names, schema.types, strict=False):
+            for sname, stype in zip(schema.names, schema.types):
                 schema_data[sname] = getattr(stype, "__name__", str(stype))
 
             schema_repr = Template("scrollableTable.html.j2").render(
@@ -7399,7 +7394,7 @@ class Schema:
         output += " " * ((column_width + padding) - len("Column"))
         output += "-" * len("Type") + "\n"
 
-        for name, type in zip(self.names, self.types, strict=False):
+        for name, type in zip(self.names, self.types):
             output += name
             output += " " * ((column_width + padding) - len(name))
             output += f"{type}\n"

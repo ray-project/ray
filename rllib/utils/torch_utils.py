@@ -457,7 +457,7 @@ def flatten_inputs_to_1d_tensor(
     B = None
     T = None
     out = []
-    for input_, space in zip(flat_inputs, flat_spaces, strict=False):
+    for input_, space in zip(flat_inputs, flat_spaces):
         # Store batch and (if applicable) time dimension.
         if B is None:
             B = input_.shape[0]

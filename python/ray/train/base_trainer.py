@@ -480,7 +480,7 @@ class BaseTrainer(abc.ABC):
         parameters = list(parameters.keys())
         # Remove self.
         parameters = parameters[1:]
-        arg_dict = dict(zip(parameters, args, strict=False))
+        arg_dict = dict(zip(parameters, args))
         trainer._param_dict = {**arg_dict, **kwargs}
         return trainer
 

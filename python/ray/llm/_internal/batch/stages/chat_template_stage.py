@@ -103,7 +103,7 @@ class ChatTemplateUDF(StatefulStageUDF):
             )
         assert len(batch) == len(prompts)
 
-        for row, prompt in zip(batch, prompts, strict=False):
+        for row, prompt in zip(batch, prompts):
             yield {
                 self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
                 "prompt": prompt,

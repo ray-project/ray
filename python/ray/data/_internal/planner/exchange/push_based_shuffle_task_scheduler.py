@@ -648,9 +648,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         ), f"Expected {output_num_blocks} outputs, produced {len(new_blocks)}"
 
         output = []
-        for block, meta_with_schema in zip(
-            new_blocks, reduce_stage_metadata_schema, strict=False
-        ):
+        for block, meta_with_schema in zip(new_blocks, reduce_stage_metadata_schema):
             output.append(
                 RefBundle(
                     [
@@ -731,7 +729,7 @@ class PushBasedShuffleTaskScheduler(ExchangeTaskScheduler):
         num_rows = 0
         size_bytes = 0
         schemas = []
-        for i, mapper_outputs in enumerate(zip(*all_mapper_outputs, strict=False)):
+        for i, mapper_outputs in enumerate(zip(*all_mapper_outputs)):
             block_meta_with_schema: Tuple[Block, "BlockMetadataWithSchema"] = reduce_fn(
                 *reduce_args, *mapper_outputs, partial_reduce=True
             )

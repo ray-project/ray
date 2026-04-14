@@ -186,7 +186,7 @@ async def test_submission_job_export_events(call_ray_start, tmp_path):  # noqa: 
         assert len(lines) == 3
         expected_status_values = ["PENDING", "RUNNING", "SUCCEEDED"]
 
-        for line, expected_status in zip(lines, expected_status_values, strict=False):
+        for line, expected_status in zip(lines, expected_status_values):
             data = json.loads(line)
             assert data["source_type"] == "EXPORT_SUBMISSION_JOB"
             assert data["event_data"]["submission_job_id"] == submission_id

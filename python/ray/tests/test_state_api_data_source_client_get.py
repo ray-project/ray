@@ -326,7 +326,7 @@ def test_list_get_nodes(ray_start_cluster):
         check_nodes = sorted(check_nodes, key=lambda n: n["NodeID"])
         nodes = sorted(nodes, key=lambda n: n["node_id"])
 
-        for check_node, node in zip(check_nodes, nodes, strict=False):
+        for check_node, node in zip(check_nodes, nodes):
             assert check_node["NodeID"] == node["node_id"]
             assert check_node["NodeName"] == node["node_name"]
 

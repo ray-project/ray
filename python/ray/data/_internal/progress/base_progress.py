@@ -48,7 +48,7 @@ class BaseProgressBar(ABC):
                 remaining, num_returns=len(remaining), fetch_local=False, timeout=0.1
             )
             total_rows_processed = 0
-            for _, result in zip(done, ray.get(done), strict=False):
+            for _, result in zip(done, ray.get(done)):
                 num_rows = _extract_num_rows(result)
                 total_rows_processed += num_rows
             self.update(total_rows_processed)
@@ -76,7 +76,7 @@ class BaseProgressBar(ABC):
             if fetch_local:
                 fetch_local = False
             total_rows_processed = 0
-            for ref, result in zip(done, ray.get(done), strict=False):
+            for ref, result in zip(done, ray.get(done)):
                 ref_to_result[ref] = result
                 num_rows = _extract_num_rows(result)
                 total_rows_processed += num_rows

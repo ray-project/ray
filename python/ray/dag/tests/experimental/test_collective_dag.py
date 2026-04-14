@@ -222,7 +222,7 @@ def test_all_reduce_bind_list_of_nodes_different_dtypes(ray_start_regular):
         )
         recvs = [
             worker.recv_tensors.bind(*collective)
-            for worker, collective in zip(workers, collectives, strict=False)
+            for worker, collective in zip(workers, collectives)
         ]
         dag = MultiOutputNode(recvs)
 
@@ -476,10 +476,7 @@ def test_exec_schedules_ddp(ray_start_regular, num_workers):
         grads = [worker.backward.bind(inp) for worker in workers]
         grads_reduced = collective.allreduce.bind(grads, transport=comm)
         outputs.extend(grads_reduced)
-        grads = [
-            worker.backward.bind(grad)
-            for worker, grad in zip(workers, grads, strict=False)
-        ]
+        grads = [worker.backward.bind(grad) for worker, grad in zip(workers, grads)]
         grads_reduced = collective.allreduce.bind(grads, transport=comm)
         outputs.extend(grads_reduced)
         dag = MultiOutputNode(outputs)

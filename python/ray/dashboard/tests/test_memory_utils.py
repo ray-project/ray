@@ -215,7 +215,7 @@ def test_memory_table_sort_by_pid():
     entries = [build_entry(pid=pid) for pid in unsort]
     memory_table = MemoryTable(entries, sort_by_type=SortingType.PID)
     sort = sorted(unsort)
-    for pid, entry in zip(sort, memory_table.table, strict=False):
+    for pid, entry in zip(sort, memory_table.table):
         assert pid == entry.pid
 
 
@@ -229,7 +229,7 @@ def test_memory_table_sort_by_reference_type():
     entries = [build_entry(reference_type=reference_type) for reference_type in unsort]
     memory_table = MemoryTable(entries, sort_by_type=SortingType.REFERENCE_TYPE)
     sort = sorted([entry.value for entry in unsort])
-    for reference_type, entry in zip(sort, memory_table.table, strict=False):
+    for reference_type, entry in zip(sort, memory_table.table):
         assert reference_type == entry.reference_type
 
 
@@ -238,7 +238,7 @@ def test_memory_table_sort_by_object_size():
     entries = [build_entry(object_size=object_size) for object_size in unsort]
     memory_table = MemoryTable(entries, sort_by_type=SortingType.OBJECT_SIZE)
     sort = sorted(unsort)
-    for object_size, entry in zip(sort, memory_table.table, strict=False):
+    for object_size, entry in zip(sort, memory_table.table):
         assert object_size == entry.object_size
 
 

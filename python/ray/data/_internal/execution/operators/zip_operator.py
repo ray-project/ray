@@ -237,9 +237,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
         output_blocks = []
         output_metadata_schema = []
-        for left_block, right_blocks in zip(
-            left_blocks, right_blocks_list, strict=False
-        ):
+        for left_block, right_blocks in zip(left_blocks, right_blocks_list):
             # For each block from left side, zip it together with 1 or more blocks from
             # right side. We're guaranteed to have that left_block has the same number
             # of rows as right_blocks has cumulatively.
@@ -259,9 +257,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
         output_refs: collections.deque[RefBundle] = collections.deque()
         input_owned = all(b.owns_blocks for b in left_input)
-        for block, meta_with_schema in zip(
-            output_blocks, output_metadata_schema, strict=False
-        ):
+        for block, meta_with_schema in zip(output_blocks, output_metadata_schema):
             output_refs.append(
                 RefBundle(
                     [

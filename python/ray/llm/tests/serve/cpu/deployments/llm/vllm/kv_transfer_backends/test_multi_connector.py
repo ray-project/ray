@@ -149,7 +149,7 @@ class TestMultiConnectorBackend:
         ]
 
         for (actual_name, actual_config), (expected_name, expected_specific) in zip(
-            captured_configs, expected_configs, strict=False
+            captured_configs, expected_configs
         ):
             assert actual_name == expected_name
             # Check inherited parent fields

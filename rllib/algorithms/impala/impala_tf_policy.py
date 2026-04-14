@@ -188,7 +188,7 @@ class VTraceClipGradients:
             losses = force_list(loss)
             assert len(optimizers) == len(losses)
             clipped_grads_and_vars = []
-            for optim, loss_ in zip(optimizers, losses, strict=False):
+            for optim, loss_ in zip(optimizers, losses):
                 grads_and_vars = optim.compute_gradients(loss_, trainable_variables)
                 clipped_g_and_v = []
                 for g, v in grads_and_vars:
@@ -207,9 +207,7 @@ class VTraceClipGradients:
             )
             grads = [g for (g, v) in grads_and_vars]
             self.grads, _ = tf.clip_by_global_norm(grads, self.config["grad_clip"])
-            clipped_grads_and_vars = list(
-                zip(self.grads, trainable_variables, strict=False)
-            )
+            clipped_grads_and_vars = list(zip(self.grads, trainable_variables))
 
         return clipped_grads_and_vars
 

@@ -211,7 +211,7 @@ def test_many_objects(num_objects, num_actors):
 
     waiting_actors = [
         actor.create_objs.remote(num_objs)
-        for actor, num_objs in zip(actors, num_objs_per_actor, strict=False)
+        for actor, num_objs in zip(actors, num_objs_per_actor)
     ]
 
     total_objs_created = 0

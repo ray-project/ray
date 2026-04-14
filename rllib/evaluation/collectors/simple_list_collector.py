@@ -388,15 +388,15 @@ class SimpleListCollector(SampleCollector):
                     # `shift_to` == -1: Until the end (including(!) the
                     # last item).
                     if time_indices[1] == -1:
-                        for d, b in zip(data, buffers[k][data_col], strict=False):
+                        for d, b in zip(data, buffers[k][data_col]):
                             d.append(b[time_indices[0] :])
                     # `shift_to` != -1: "Normal" range.
                     else:
-                        for d, b in zip(data, buffers[k][data_col], strict=False):
+                        for d, b in zip(data, buffers[k][data_col]):
                             d.append(b[time_indices[0] : time_indices[1] + 1])
                 # Single index.
                 else:
-                    for d, b in zip(data, buffers[k][data_col], strict=False):
+                    for d, b in zip(data, buffers[k][data_col]):
                         d.append(b[time_indices])
 
             np_data = [np.array(d) for d in data]

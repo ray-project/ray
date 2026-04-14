@@ -590,7 +590,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         assert len(priorities) == len(self._module_to_last_sampled_indices[module_id])
 
         for idx, priority in zip(
-            self._module_to_last_sampled_indices[module_id], priorities, strict=False
+            self._module_to_last_sampled_indices[module_id], priorities
         ):
             # sample_idx = self._module_to_tree_idx_to_sample_idx[module_id][idx]
             # ma_episode_idx = (

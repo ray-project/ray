@@ -849,9 +849,7 @@ class RayActorManager:
                 )
             kwargs_list = kwargs
 
-        for tracked_actor, args, kwargs in zip(
-            tracked_actors, args_list, kwargs_list, strict=False
-        ):
+        for tracked_actor, args, kwargs in zip(tracked_actors, args_list, kwargs_list):
             self.schedule_actor_task(
                 tracked_actor=tracked_actor,
                 method_name=method_name,

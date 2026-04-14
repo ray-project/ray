@@ -72,7 +72,7 @@ def named_values(col_names, tuples):
     output = []
     if isinstance(col_names, list):
         for t in tuples:
-            output.append(dict(zip(col_names, t, strict=False)))
+            output.append(dict(zip(col_names, t)))
     else:
         for t in tuples:
             output.append({col_names: t})

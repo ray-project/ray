@@ -221,9 +221,7 @@ class NodeHead(SubprocessModule):
                 )
 
                 if node_id_updated_info_tuples:
-                    _, updated_infos_proto = zip(
-                        *node_id_updated_info_tuples, strict=False
-                    )
+                    _, updated_infos_proto = zip(*node_id_updated_info_tuples)
                 else:
                     updated_infos_proto = []
 
@@ -517,7 +515,7 @@ class NodeHead(SubprocessModule):
         ), f"node_ids({len(node_ids)}): {node_ids}, responses({len(responses)}): {responses}"
 
         new_node_stats = await self._loop.run_in_executor(
-            self._node_executor, postprocess, zip(node_ids, responses, strict=False)
+            self._node_executor, postprocess, zip(node_ids, responses)
         )
 
         for node_id, new_stat in new_node_stats.items():

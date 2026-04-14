@@ -356,8 +356,7 @@ def _shuffle_block(
 
     if logger.isEnabledFor(logging.DEBUG) and partition_shards_stats:
         num_rows_series, byte_sizes_series = zip(
-            *[(s.num_rows, s.byte_size) for s in partition_shards_stats.values()],
-            strict=False,
+            *[(s.num_rows, s.byte_size) for s in partition_shards_stats.values()]
         )
 
         quantiles = [0, 50, 100]
@@ -676,9 +675,7 @@ class HashShufflingOperatorBase(PhysicalOperator, SubProgressBarMixin):
         input_blocks_refs: List[ObjectRef[Block]] = input_bundle.block_refs
         input_blocks_metadata: List[BlockMetadata] = input_bundle.metadata
 
-        for block_ref, block_metadata in zip(
-            input_blocks_refs, input_blocks_metadata, strict=False
-        ):
+        for block_ref, block_metadata in zip(input_blocks_refs, input_blocks_metadata):
             # If operator hasn't propagated schemas (for this sequence) to its
             # aggregator pool, it will need to do that upon receiving of the
             # first block

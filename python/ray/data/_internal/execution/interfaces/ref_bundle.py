@@ -100,9 +100,7 @@ class RefBundle:
                 self.slices
             ), "Number of blocks and slices must match"
             # Validate slice ranges
-            for (_, metadata), block_slice in zip(
-                self.blocks, self.slices, strict=False
-            ):
+            for (_, metadata), block_slice in zip(self.blocks, self.slices):
                 if block_slice is not None:
                     assert (
                         block_slice.start_offset >= 0
@@ -146,7 +144,7 @@ class RefBundle:
         - Returns None if any full block has unknown row count (metadata.num_rows is None)
         """
         total = 0
-        for metadata, block_slice in zip(self.metadata, self.slices, strict=False):
+        for metadata, block_slice in zip(self.metadata, self.slices):
             if block_slice is None:
                 if metadata.num_rows is None:
                     return None
@@ -168,7 +166,7 @@ class RefBundle:
         - Otherwise, uses the full metadata.size_bytes
         """
         total = 0
-        for (_, metadata), block_slice in zip(self.blocks, self.slices, strict=False):
+        for (_, metadata), block_slice in zip(self.blocks, self.slices):
             if block_slice is None:
                 # Full block
                 total += metadata.size_bytes
@@ -256,7 +254,7 @@ class RefBundle:
         ), f"To slice a RefBundle, the number of requested rows must be less than the number of rows in the bundle. Requested {needed_rows} rows but bundle only has {self.num_rows()} rows."
 
         block_slices = []
-        for metadata, block_slice in zip(self.metadata, self.slices, strict=False):
+        for metadata, block_slice in zip(self.metadata, self.slices):
             if block_slice is None:
                 # None represents a full block, convert to explicit BlockSlice
                 assert (
@@ -275,9 +273,7 @@ class RefBundle:
 
         rows_to_take = needed_rows
 
-        for (block_ref, metadata), block_slice in zip(
-            self.blocks, block_slices, strict=False
-        ):
+        for (block_ref, metadata), block_slice in zip(self.blocks, block_slices):
             block_rows = block_slice.num_rows
             if rows_to_take >= block_rows:
                 consumed_blocks.append((block_ref, metadata))
@@ -405,7 +401,7 @@ class RefBundle:
 
         # Loop through each block and show details
         for i, ((block_ref, metadata), block_slice) in enumerate(
-            zip(self.blocks, self.slices, strict=False)
+            zip(self.blocks, self.slices)
         ):
             row_str = (
                 f"{metadata.num_rows} rows"
@@ -451,7 +447,7 @@ def _iter_sliced_blocks(
     slices: List[Optional[BlockSlice]],
 ) -> Iterator[Block]:
     blocks_list = list(blocks)
-    for block, block_slice in zip(blocks_list, slices, strict=False):
+    for block, block_slice in zip(blocks_list, slices):
         if block_slice is None:
             # None represents a full block - yield it as is
             yield block

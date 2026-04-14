@@ -115,12 +115,7 @@ class MockDeploymentStateManager:
             dict(
                 zip(
                     self.deployment_infos.keys(),
-                    zip(
-                        self.deployment_infos.values(),
-                        self.deleting.values(),
-                        strict=False,
-                    ),
-                    strict=False,
+                    zip(self.deployment_infos.values(), self.deleting.values()),
                 )
             ),
         )

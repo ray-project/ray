@@ -484,7 +484,7 @@ class WorkerGroup(ExecutionGroup):
 
         workers = [
             Worker(actor, meta, resources_per_worker)
-            for actor, meta in zip(actors, actor_metadatas, strict=False)
+            for actor, meta in zip(actors, actor_metadatas)
         ]
         return WorkerGroup._assign_worker_ranks(workers)
 
@@ -800,7 +800,7 @@ class WorkerGroup(ExecutionGroup):
         pod_names = ray.get(pod_name_refs)
 
         # Zip workers with names and sort by name.
-        worker_name_pairs = list(zip(workers, pod_names, strict=False))
+        worker_name_pairs = list(zip(workers, pod_names))
         worker_name_pairs.sort(key=lambda pair: pair[1] or "")
 
         return [w for w, name in worker_name_pairs]
@@ -857,7 +857,7 @@ class WorkerGroup(ExecutionGroup):
         log_paths = ray.get(log_path_refs)
 
         # Assign log paths to workers
-        for worker, log_path in zip(workers, log_paths, strict=False):
+        for worker, log_path in zip(workers, log_paths):
             worker.log_file_path = log_path
 
         return workers

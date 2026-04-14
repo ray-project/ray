@@ -17,7 +17,7 @@ def _list_all(indexer, paths, **kwargs):
     manifests = list(indexer.list_files(pa_paths, filesystem=fs, **kwargs))
     results = []
     for m in manifests:
-        for p, s in zip(m.paths, m.file_sizes, strict=False):
+        for p, s in zip(m.paths, m.file_sizes):
             results.append((str(p), int(s)))
     return sorted(results)
 

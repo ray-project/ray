@@ -242,7 +242,7 @@ class AcquiredResources(abc.ABC):
             # Shift the remaining entities
             entities = entities[1:]
 
-        for i, (entity, bundle) in enumerate(zip(entities, bundles, strict=False)):
+        for i, (entity, bundle) in enumerate(zip(entities, bundles)):
             annotated.append(
                 self._annotate_remote_entity(entity, bundle, bundle_index=i)
             )

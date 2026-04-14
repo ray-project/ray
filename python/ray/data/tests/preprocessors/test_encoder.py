@@ -49,9 +49,7 @@ def _stats_to_dict(stats_value) -> Dict[Any, int]:
     elif isinstance(stats_value, tuple):
         # Arrow format: (keys_array, values_array)
         keys_array, values_array = stats_value
-        return {
-            k.as_py(): v.as_py() for k, v in zip(keys_array, values_array, strict=False)
-        }
+        return {k.as_py(): v.as_py() for k, v in zip(keys_array, values_array)}
     else:
         raise ValueError(f"Unknown stats format: {type(stats_value)}")
 
@@ -92,9 +90,7 @@ def test_ordinal_encoder_strings():
         1,
     }, f"Unexpected unique values in 'sex' column: {unique_values}"
     expected_encoding = {"male": 1, "female": 0}
-    for original, encoded in zip(
-        input_dataframe["sex"], encoded_ds_pd["sex"], strict=False
-    ):
+    for original, encoded in zip(input_dataframe["sex"], encoded_ds_pd["sex"]):
         assert (
             encoded == expected_encoding[original]
         ), f"Expected {original} to be encoded as {expected_encoding[original]}, but got {encoded}"  # noqa: E501
@@ -660,14 +656,14 @@ def test_ordinal_encoder_no_encode_list():
 def _assert_one_hot_equal(actual_series, expected_values):
     """Assert one-hot encoded columns are equal, handling both list and numpy array types."""
     assert len(actual_series) == len(expected_values)
-    for actual, expected in zip(actual_series, expected_values, strict=False):
+    for actual, expected in zip(actual_series, expected_values):
         assert list(actual) == list(expected)
 
 
 def _assert_list_column_equal(actual_series, expected_series):
     """Assert list columns are equal, handling Arrow round-trip type changes."""
     assert len(actual_series) == len(expected_series)
-    for actual, expected in zip(actual_series, expected_series, strict=False):
+    for actual, expected in zip(actual_series, expected_series):
         assert list(actual) == list(expected)
 
 

@@ -207,9 +207,7 @@ def run_prepare_commands(
         return prepare_passed, prepare_return_codes, prepare_time_taken
 
     logger.info("### Starting prepare commands ###")
-    for prepare_command, timeout in zip(
-        prepare_commands, prepare_commands_timeouts, strict=False
-    ):
+    for prepare_command, timeout in zip(prepare_commands, prepare_commands_timeouts):
         command_start_time = time.monotonic()
         prepare_return_codes.append(run_bash_command(prepare_command, timeout))
         prepare_time_taken = time.monotonic() - command_start_time

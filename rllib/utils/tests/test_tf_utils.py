@@ -98,7 +98,7 @@ class TrainActor:
         variables.set_weights(weights)
         return sess.run(
             [grad[0] for grad in grads],
-            feed_dict=dict(zip(placeholders, [[1] * 100, [2] * 100], strict=False)),
+            feed_dict=dict(zip(placeholders, [[1] * 100, [2] * 100])),
         )
 
     def get_weights(self):
@@ -240,7 +240,7 @@ def test_remote_training_loss(ray_init_2_cpus):
     loss, variables, _, sess, grads, train, placeholders = net_values
 
     before_acc = sess.run(
-        loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100], strict=False))
+        loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100]))
     )
 
     for _ in range(3):
@@ -251,13 +251,10 @@ def test_remote_training_loss(ray_init_2_cpus):
             sum(gradients[i] for gradients in gradients_list) / len(gradients_list)
             for i in range(len(gradients_list[0]))
         ]
-        feed_dict = {
-            grad[0]: mean_grad
-            for (grad, mean_grad) in zip(grads, mean_grads, strict=False)
-        }
+        feed_dict = {grad[0]: mean_grad for (grad, mean_grad) in zip(grads, mean_grads)}
         sess.run(train, feed_dict=feed_dict)
     after_acc = sess.run(
-        loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100], strict=False))
+        loss, feed_dict=dict(zip(placeholders, [[2] * 100, [4] * 100]))
     )
     assert before_acc < after_acc
 

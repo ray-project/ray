@@ -136,18 +136,14 @@ class CriticNetwork(nn.Module):
         After calling this method, the two networks have identical weights and the EMA
         net will be non-trainable.
         """
-        for param_ema, param in zip(
-            self.mlp_ema.parameters(), self.mlp.parameters(), strict=False
-        ):
+        for param_ema, param in zip(self.mlp_ema.parameters(), self.mlp.parameters()):
             param_ema.data.copy_(param.data)
             # Make all EMA parameters non-trainable.
             param_ema.requires_grad = False
             assert param_ema.grad is None
 
         for param_ema, param in zip(
-            self.return_layer_ema.parameters(),
-            self.return_layer.parameters(),
-            strict=False,
+            self.return_layer_ema.parameters(), self.return_layer.parameters()
         ):
             param_ema.data.copy_(param.data)
             # Make all EMA parameters non-trainable.
@@ -159,17 +155,13 @@ class CriticNetwork(nn.Module):
 
         ema_net=(`ema_decay`*ema_net) + (1.0-`ema_decay`)*critic_net
         """
-        for param_ema, param in zip(
-            self.mlp_ema.parameters(), self.mlp.parameters(), strict=False
-        ):
+        for param_ema, param in zip(self.mlp_ema.parameters(), self.mlp.parameters()):
             param_ema.data.mul_(self.ema_decay).add_(
                 (1.0 - self.ema_decay) * param.data
             )
 
         for param_ema, param in zip(
-            self.return_layer_ema.parameters(),
-            self.return_layer.parameters(),
-            strict=False,
+            self.return_layer_ema.parameters(), self.return_layer.parameters()
         ):
             param_ema.data.mul_(self.ema_decay).add_(
                 (1.0 - self.ema_decay) * param.data

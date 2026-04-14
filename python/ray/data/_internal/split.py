@@ -194,10 +194,10 @@ def _split_all_blocks(
         # only get metadata.
         per_block_split_metadata = ray.get(per_block_split_metadata_futures)
         for (block_id, meta), block_refs in zip(
-            per_block_split_metadata, per_block_split_block_refs, strict=False
+            per_block_split_metadata, per_block_split_block_refs
         ):
             assert len(meta) == len(block_refs)
-            all_blocks_split_results[block_id] = zip(block_refs, meta, strict=False)
+            all_blocks_split_results[block_id] = zip(block_refs, meta)
 
     # We make a copy for the blocks that have been splitted, so the input blocks
     # can be cleared if they are owned by consumer (consumer-owned blocks will

@@ -345,9 +345,7 @@ def check_compute_single_action(
         if state_in or full_fetch or what is pol:
             action, state_out, _ = action
         if state_out:
-            for si, so in zip(
-                tree.flatten(state_in), tree.flatten(state_out), strict=False
-            ):
+            for si, so in zip(tree.flatten(state_in), tree.flatten(state_out)):
                 if tf.is_tensor(si):
                     # If si is a tensor of Dimensions, we need to convert it
                     # We expect this to be the case for TF RLModules who's initial

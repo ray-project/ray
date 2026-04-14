@@ -321,7 +321,6 @@ class BayesOptSearch(Searcher):
         for (_, report), params in zip(
             analysis.dataframe(metric=self._metric, mode=self._mode).iterrows(),
             analysis.get_all_configs().values(),
-            strict=False,
         ):
             # We add the obtained results to the
             # gaussian process optimizer

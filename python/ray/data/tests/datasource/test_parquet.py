@@ -95,9 +95,7 @@ def test_write_parquet_partition_cols(
 
     df = df.sort_values(by=["a", "b", "c", "d"])
     df1 = ds1.to_pandas().sort_values(by=["a", "b", "c", "d"])
-    for (index1, row1), (index2, row2) in zip(
-        df.iterrows(), df1.iterrows(), strict=False
-    ):
+    for (index1, row1), (index2, row2) in zip(df.iterrows(), df1.iterrows()):
         row1_dict = row1.to_dict()
         row2_dict = row2.to_dict()
         assert row1_dict["c"] == row2_dict["c"]
@@ -499,7 +497,7 @@ def test_parquet_read_partitioned_with_partition_filter(
 
     # Where we insert partition columns is an implementation detail, so we don't check
     # the order of the columns.
-    assert sorted(zip(ds.schema().names, ds.schema().types, strict=False)) == [
+    assert sorted(zip(ds.schema().names, ds.schema().types)) == [
         ("x", pa.string()),
         ("y", pa.string()),
         ("z", pa.float64()),
@@ -651,7 +649,7 @@ def test_parquet_read_with_udf(
         str(tmp_path), override_num_blocks=1, _block_udf=_block_udf
     )
 
-    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()], strict=False)
+    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks
@@ -660,7 +658,7 @@ def test_parquet_read_with_udf(
         str(tmp_path), override_num_blocks=2, _block_udf=_block_udf
     )
 
-    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()], strict=False)
+    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     np.testing.assert_array_equal(sorted(ones), np.array(one_data) + 1)
 
     # 2 blocks/read tasks, 1 empty block
@@ -674,7 +672,7 @@ def test_parquet_read_with_udf(
         _block_udf=_block_udf,
     )
 
-    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()], strict=False)
+    ones, twos = zip(*[[s["one"], s["two"]] for s in ds.take()])
     np.testing.assert_array_equal(sorted(ones), np.array(one_data[:2]) + 1)
 
 
@@ -1257,14 +1255,14 @@ def test_tensors_in_tables_parquet(
         get_arrow_extension_fixed_shape_tensor_types(),
     )
 
-    expected_tuples = list(zip(id_vals, group_vals, arr, strict=False))
+    expected_tuples = list(zip(id_vals, group_vals, arr))
 
     def _assert_equal(rows, expected):
         values = [[s[id_col_name], s[group_col_name], s[tensor_col_name]] for s in rows]
 
         assert len(values) == len(expected)
 
-        for v, e in zip(sorted(values, key=lambda v: v[0]), expected, strict=False):
+        for v, e in zip(sorted(values, key=lambda v: v[0]), expected):
             np.testing.assert_equal(v, e)
 
     _assert_equal(ds.take_all(), expected_tuples)

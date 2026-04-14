@@ -361,7 +361,6 @@ def compute_gradients_fn(
                 zip(
                     tape.gradient(policy.alpha_prime_loss, log_alpha_prime),
                     log_alpha_prime,
-                    strict=False,
                 )
             )
         # Tf1.x: Use optimizer.compute_gradients()

@@ -215,7 +215,7 @@ def test_predictions(test_mode=False):
     dataset = load_mnist_data(False, True)
     num_to_test = 10 if test_mode else 1000
     filtered_dataset = [dataset[i] for i in range(num_to_test)]
-    images, labels = zip(*filtered_dataset, strict=False)
+    images, labels = zip(*filtered_dataset)
 
     # Remote function calls are done here for parallelism.
     # As a byproduct `predict` can hit localhost.
@@ -227,7 +227,7 @@ def test_predictions(test_mode=False):
     )
 
     correct = 0
-    for label, prediction in zip(labels, predictions, strict=False):
+    for label, prediction in zip(labels, predictions):
         if label == prediction:
             correct += 1
 

@@ -103,9 +103,7 @@ def test_default_file_metadata_provider(
         "ray.data.datasource.file_meta_provider._get_file_infos_serial",
         wraps=_get_file_infos_serial,
     ) as mock_get:
-        file_paths, file_sizes = map(
-            list, zip(*meta_provider.expand_paths(paths, fs), strict=False)
-        )
+        file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
     mock_get.assert_called_once_with(paths, fs, False)
     # No warning should be logged.
     assert len(caplog.text) == 0
@@ -155,8 +153,7 @@ def test_default_metadata_provider_ignore_missing(fs, data_path, endpoint_url):
         zip(
             *meta_provider.expand_paths(
                 paths_with_missing, fs, ignore_missing_paths=True
-            ),
-            strict=False,
+            )
         ),
     )
 
@@ -209,9 +206,7 @@ def test_default_file_metadata_provider_many_files_basic(
             wraps=_get_file_infos_common_path_prefix,
         )
     with caplog.at_level(logging.WARNING), patcher as mock_get:
-        file_paths, file_sizes = map(
-            list, zip(*meta_provider.expand_paths(paths, fs), strict=False)
-        )
+        file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
     if isinstance(fs, LocalFileSystem):
         mock_get.assert_called_once_with(paths, fs, False)
     else:
@@ -281,8 +276,7 @@ def test_default_file_metadata_provider_many_files_partitioned(
         )
     with caplog.at_level(logging.WARNING), patcher as mock_get:
         file_paths, file_sizes = map(
-            list,
-            zip(*meta_provider.expand_paths(paths, fs, partitioning), strict=False),
+            list, zip(*meta_provider.expand_paths(paths, fs, partitioning))
         )
     if isinstance(fs, LocalFileSystem):
         mock_get.assert_called_once_with(paths, fs, False)
@@ -349,9 +343,7 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
             wraps=_get_file_infos_parallel,
         )
     with caplog.at_level(logging.WARNING), patcher as mock_get:
-        file_paths, file_sizes = map(
-            list, zip(*meta_provider.expand_paths(paths, fs), strict=False)
-        )
+        file_paths, file_sizes = map(list, zip(*meta_provider.expand_paths(paths, fs)))
 
     mock_get.assert_called_once_with(paths, fs, False)
     if isinstance(fs, LocalFileSystem):
@@ -369,7 +361,7 @@ def test_default_file_metadata_provider_many_files_diff_dirs(
         dir_paths = [dir1, dir2] * num_dfs
         with caplog.at_level(logging.WARNING), patcher as mock_get:
             file_paths, file_sizes = map(
-                list, zip(*meta_provider.expand_paths(dir_paths, fs), strict=False)
+                list, zip(*meta_provider.expand_paths(dir_paths, fs))
             )
         assert len(file_paths) == len(paths) * num_dfs
 

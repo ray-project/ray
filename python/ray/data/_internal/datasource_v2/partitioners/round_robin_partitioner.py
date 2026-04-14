@@ -84,7 +84,6 @@ class RoundRobinPartitioner(FilePartitioner):
             input_manifest.paths,
             input_manifest.file_sizes,
             in_memory_size_estimates,
-            strict=False,
         ):
             current_bucket = self._buckets[self._current_bucket_index]
 

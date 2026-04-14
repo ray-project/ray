@@ -33,7 +33,7 @@ def test_as_completed_chunk_size_1(ray_init_4_cpu_shared, yield_obj_refs):
         return x
 
     # Submit tasks with their corresponding signals in the original order
-    refs = [f.remote(x, signal) for x, signal in zip(inputs, signals, strict=False)]
+    refs = [f.remote(x, signal) for x, signal in zip(inputs, signals)]
 
     # Use as_completed() lazily
     it = as_completed(refs, chunk_size=1, yield_obj_refs=yield_obj_refs)
@@ -71,7 +71,7 @@ def test_as_completed_chunk_size_2(ray_init_4_cpu_shared, yield_obj_refs):
         return x
 
     # Submit tasks with their corresponding signals in the original order
-    refs = [f.remote(x, signal) for x, signal in zip(inputs, signals, strict=False)]
+    refs = [f.remote(x, signal) for x, signal in zip(inputs, signals)]
 
     # Use as_completed() lazily
     it = as_completed(refs, chunk_size=2, yield_obj_refs=yield_obj_refs)
@@ -121,10 +121,7 @@ def test_map_unordered_chunk_size_1(ray_init_4_cpu_shared, yield_obj_refs):
 
     # Submit tasks with their corresponding signals in the original order
     it = map_unordered(
-        f,
-        zip(inputs, signals, strict=False),
-        chunk_size=1,
-        yield_obj_refs=yield_obj_refs,
+        f, zip(inputs, signals), chunk_size=1, yield_obj_refs=yield_obj_refs
     )
 
     # Send signal in reverse order to mimic time.sleep(x), i.e.,
@@ -162,10 +159,7 @@ def test_map_unordered_chunk_size_2(ray_init_4_cpu_shared, yield_obj_refs):
 
     # Submit tasks with their corresponding signals in the original order
     it = map_unordered(
-        f,
-        zip(inputs, signals, strict=False),
-        chunk_size=2,
-        yield_obj_refs=yield_obj_refs,
+        f, zip(inputs, signals), chunk_size=2, yield_obj_refs=yield_obj_refs
     )
 
     # Send signal in reverse order to mimic time.sleep(x), i.e.,

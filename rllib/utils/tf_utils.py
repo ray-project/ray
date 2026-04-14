@@ -75,7 +75,7 @@ def clip_gradients(
         clipped_grads, global_norm = tf.clip_by_global_norm(
             list(gradients_dict.values()), grad_clip
         )
-        for k, v in zip(gradients_dict.copy().keys(), clipped_grads, strict=False):
+        for k, v in zip(gradients_dict.copy().keys(), clipped_grads):
             gradients_dict[k] = v
 
         # Return the computed global norm scalar.
@@ -172,7 +172,7 @@ def flatten_inputs_to_1d_tensor(
     B = None
     T = None
     out = []
-    for input_, space in zip(flat_inputs, flat_spaces, strict=False):
+    for input_, space in zip(flat_inputs, flat_spaces):
         input_ = tf.convert_to_tensor(input_)
         shape = tf.shape(input_)
         # Store batch and (if applicable) time dimension.
@@ -456,9 +456,7 @@ def make_tf_callable(
                             kwargs_placeholders[k] = ph
 
                         symbolic_out[0] = fn(*args_placeholders, **kwargs_placeholders)
-                feed_dict = dict(
-                    zip(args_placeholders, tree.flatten(args), strict=False)
-                )
+                feed_dict = dict(zip(args_placeholders, tree.flatten(args)))
                 tree.map_structure(
                     lambda ph, v: feed_dict.__setitem__(ph, v),
                     kwargs_placeholders,
@@ -507,9 +505,7 @@ def minimize_and_clip(
 
     if tf.executing_eagerly():
         tape = optimizer.tape
-        grads_and_vars = list(
-            zip(list(tape.gradient(objective, var_list)), var_list, strict=False)
-        )
+        grads_and_vars = list(zip(list(tape.gradient(objective, var_list)), var_list))
     else:
         grads_and_vars = optimizer.compute_gradients(objective, var_list=var_list)
 
@@ -764,9 +760,7 @@ def update_target_network(
         target_net: The target network to update.
         tau: The tau value to use in the Polyak averaging formula.
     """
-    for old_var, current_var in zip(
-        target_net.variables, main_net.variables, strict=False
-    ):
+    for old_var, current_var in zip(target_net.variables, main_net.variables):
         updated_var = tau * current_var + (1.0 - tau) * old_var
         old_var.assign(updated_var)
 
@@ -967,13 +961,13 @@ class TensorFlowVariables:
         shapes = [v.get_shape().as_list() for v in self.variables.values()]
         arrays = _unflatten(new_weights, shapes)
         if not self.sess:
-            for v, a in zip(self.variables.values(), arrays, strict=False):
+            for v, a in zip(self.variables.values(), arrays):
                 v.assign(a)
         else:
             placeholders = [self.placeholders[k] for k, v in self.variables.items()]
             self.sess.run(
                 list(self.assignment_nodes.values()),
-                feed_dict=dict(zip(placeholders, arrays, strict=False)),
+                feed_dict=dict(zip(placeholders, arrays)),
             )
 
     def get_weights(self):

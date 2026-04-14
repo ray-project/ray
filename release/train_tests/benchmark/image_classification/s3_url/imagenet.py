@@ -197,7 +197,7 @@ def get_process_batch_fn(
         image_bytes_list = list(batch["bytes"])
         classes = list(batch["class"])
 
-        for data, wnid in zip(image_bytes_list, classes, strict=False):
+        for data, wnid in zip(image_bytes_list, classes):
             # Decode and transform image
             image_pil = Image.open(io.BytesIO(data)).convert("RGB")
             image_tensor = pil_to_tensor(image_pil) / 255.0

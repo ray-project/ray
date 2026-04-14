@@ -127,7 +127,7 @@ class _CollectiveOperation:
 
             # Check all lists of DAGNode have same order of actor handles
             for j, (first, current) in enumerate(
-                zip(first_actor_handles, current_actor_handles, strict=False)
+                zip(first_actor_handles, current_actor_handles)
             ):
                 if first != current:
                     raise ValueError(

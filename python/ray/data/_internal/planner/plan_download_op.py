@@ -190,7 +190,7 @@ def download_bytes_threaded(
 
     # Download each URI column and add it to the output block
     for uri_column_name, output_bytes_column_name in zip(
-        uri_column_names, output_bytes_column_names, strict=False
+        uri_column_names, output_bytes_column_names
     ):
         # Extract URIs from PyArrow table
         uris = output_block.column(uri_column_name).to_pylist()

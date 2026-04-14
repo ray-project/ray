@@ -33,10 +33,7 @@ class NestedSpaceRepeatAfterMeEnv(gym.Env):
         action = tree.flatten(action)
         reward = 0.0
         for a, o, space in zip(
-            action,
-            self.current_obs_flattened,
-            self.flattened_action_space,
-            strict=False,
+            action, self.current_obs_flattened, self.flattened_action_space
         ):
             # Box: -abs(diff).
             if isinstance(space, gym.spaces.Box):

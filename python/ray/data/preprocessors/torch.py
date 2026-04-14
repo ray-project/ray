@@ -160,9 +160,7 @@ class TorchVisionPreprocessor(SerializablePreprocessorBase):
             )
 
         if isinstance(data_batch, Mapping):
-            for input_col, output_col in zip(
-                self._columns, self._output_columns, strict=False
-            ):
+            for input_col, output_col in zip(self._columns, self._output_columns):
                 data_batch[output_col] = transform_batch(data_batch[input_col])
         else:
             # TODO(ekl) deprecate this code path. Unfortunately, predictors are still

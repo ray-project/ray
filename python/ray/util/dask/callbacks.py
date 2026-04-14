@@ -204,7 +204,7 @@ def unpack_ray_callbacks(cbs):
         return RayCallbacks(
             *(
                 [cb for cb in cbs_ if cb or CBS[idx] in CBS_DONT_DROP] or None
-                for idx, cbs_ in enumerate(zip(*cbs, strict=False))
+                for idx, cbs_ in enumerate(zip(*cbs))
             )
         )
     else:

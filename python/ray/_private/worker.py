@@ -912,7 +912,7 @@ class Worker:
     ):
         rdt_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, metadata, tensor_transport) in zip(
-            object_refs, serialized_objects, strict=False
+            object_refs, serialized_objects
         ):
             if tensor_transport is None:
                 # The object is not an RDT object, so we cannot use other external transport to

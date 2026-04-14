@@ -572,7 +572,7 @@ class FaultTolerantActorManager:
             limited_func = []
             limited_kwargs = []
             limited_remote_actor_ids = []
-            for i, (f, raid) in enumerate(zip(func, remote_actor_ids, strict=False)):
+            for i, (f, raid) in enumerate(zip(func, remote_actor_ids)):
                 num_outstanding_reqs_for_tag = self._remote_actor_states[
                     raid
                 ].get_num_in_flight_requests(tag)
@@ -610,7 +610,7 @@ class FaultTolerantActorManager:
         )
 
         # Save these as outstanding requests.
-        for id, call in zip(limited_remote_actor_ids, remote_calls, strict=False):
+        for id, call in zip(limited_remote_actor_ids, remote_calls):
             self._remote_actor_states[id].increment_requests(tag)
             self._in_flight_req_to_actor_id[call] = (tag, id)
 
@@ -665,7 +665,7 @@ class FaultTolerantActorManager:
             mark_healthy=mark_healthy,
         )
 
-        for obj_ref, result in zip(ready, remote_results, strict=False):
+        for obj_ref, result in zip(ready, remote_results):
             # Get the tag for this request and decrease outstanding request count by 1.
             if obj_ref in self._in_flight_req_to_actor_id:
                 tag, actor_id = self._in_flight_req_to_actor_id[obj_ref]
@@ -870,7 +870,7 @@ class FaultTolerantActorManager:
                 kwargs, list
             ), "If func is a list of functions, kwargs has to be a list of kwargs."
 
-            for i, (raid, f) in enumerate(zip(remote_actor_ids, func, strict=False)):
+            for i, (raid, f) in enumerate(zip(remote_actor_ids, func)):
                 if isinstance(f, str):
                     calls.append(
                         getattr(self._actors[raid], f).remote(
@@ -1024,7 +1024,7 @@ class FaultTolerantActorManager:
             temp_func = []
             temp_remote_actor_ids = []
             temp_kwargs = []
-            for i, (f, raid) in enumerate(zip(func, remote_actor_ids, strict=False)):
+            for i, (f, raid) in enumerate(zip(func, remote_actor_ids)):
                 if self.is_actor_healthy(raid):
                     k = kwargs[i] if isinstance(kwargs, list) else (kwargs or {})
                     temp_func.append(f)

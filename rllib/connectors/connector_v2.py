@@ -320,9 +320,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
                 # Simple case: Items are stored in lists directly under the column (str)
                 # key.
                 if isinstance(zip_with_batch_column, list):
-                    for episode, data in zip(
-                        episodes, zip_with_batch_column, strict=False
-                    ):
+                    for episode, data in zip(episodes, zip_with_batch_column):
                         yield episode, data
                 # Normal single-agent case: Items are stored in dicts under the column
                 # (str) key. These dicts map (eps_id,)-tuples to lists of individual
@@ -331,7 +329,6 @@ class ConnectorV2(Checkpointable, abc.ABC):
                     for episode, (eps_id_tuple, data) in zip(
                         episodes,
                         zip_with_batch_column.items(),
-                        strict=False,
                     ):
                         assert episode.id_ == eps_id_tuple[0]
                         d = data[list_indices[eps_id_tuple]]
@@ -851,7 +848,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
         # Simple case: Data items are stored in a list directly under the column
         # name(s).
         if isinstance(data_to_process[0], list):
-            for list_pos, data_tuple in enumerate(zip(*data_to_process, strict=False)):
+            for list_pos, data_tuple in enumerate(zip(*data_to_process)):
                 results = func(
                     data_tuple[0] if single_col else data_tuple,
                     None,  # episode_id
@@ -876,9 +873,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
                     eps_id = key[0]
                     agent_id = module_id = None
                 other_lists = [d[key] for d in data_to_process[1:]]
-                for list_pos, data_tuple in enumerate(
-                    zip(d0_list, *other_lists, strict=False)
-                ):
+                for list_pos, data_tuple in enumerate(zip(d0_list, *other_lists)):
                     results = func(
                         data_tuple[0] if single_col else data_tuple,
                         eps_id,

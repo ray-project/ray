@@ -142,8 +142,7 @@ class GPUUtilMock:
         self.gpus = gpus
         self.uuids = gpu_uuids
         self.gpu_list = [
-            self.GPU(gpu, uuid)
-            for gpu, uuid in zip(self.gpus, self.uuids, strict=False)
+            self.GPU(gpu, uuid) for gpu, uuid in zip(self.gpus, self.uuids)
         ]
 
     def getGPUs(self):

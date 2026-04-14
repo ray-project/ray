@@ -549,9 +549,7 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
             set_target_for_ref(refs[0], self.tensor_list)
             tensors = ray.get(refs[0])
             # Make sure we ray.get-ted into the buffers
-            for new_tensor, tensor_buffer in zip(
-                tensors, self.tensor_list, strict=False
-            ):
+            for new_tensor, tensor_buffer in zip(tensors, self.tensor_list):
                 assert id(new_tensor) == id(tensor_buffer)
             return True
 

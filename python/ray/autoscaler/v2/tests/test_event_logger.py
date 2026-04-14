@@ -97,9 +97,7 @@ def test_log_scheduling_updates():
         "No available node types can fulfill placement group requests",  # noqa
         "No available node types can fulfill cluster constraint",  # noqa
     ]
-    for expect_line, actual_line in zip(
-        expect_lines, mock_logger.get_logs("error"), strict=False
-    ):
+    for expect_line, actual_line in zip(expect_lines, mock_logger.get_logs("error")):
         assert expect_line in actual_line
 
     assert mock_logger.get_logs("error") == []

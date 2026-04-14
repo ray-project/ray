@@ -477,7 +477,7 @@ def dask_task_wrapper(
     result = task(repacked_deps)
 
     if ray_posttask_cbs is not None:
-        for cb, pre_state in zip(ray_posttask_cbs, pre_states, strict=False):
+        for cb, pre_state in zip(ray_posttask_cbs, pre_states):
             if cb is not None:
                 cb(key, result, pre_state)
 

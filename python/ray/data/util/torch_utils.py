@@ -129,7 +129,7 @@ def convert_pandas_to_torch_tensor(
             column_dtypes = [column_dtypes] * len(columns)
         return [
             get_tensor_for_columns(columns=subcolumns, dtype=dtype)
-            for subcolumns, dtype in zip(columns, column_dtypes, strict=False)
+            for subcolumns, dtype in zip(columns, column_dtypes)
         ]
     else:
         return get_tensor_for_columns(columns=columns, dtype=column_dtypes)

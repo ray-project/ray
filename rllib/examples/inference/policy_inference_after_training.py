@@ -200,7 +200,6 @@ if __name__ == "__main__":
                         zip(
                             tree.flatten(ort_session.get_inputs()),
                             tree.flatten(input_dict),
-                            strict=False,
                         )
                     ).items()
                 },

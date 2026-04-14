@@ -119,7 +119,7 @@ def test_ssh_command_runner():
     ]
 
     # Much easier to debug this loop than the function call.
-    for x, y in zip(process_runner.calls[0], expected, strict=False):
+    for x, y in zip(process_runner.calls[0], expected):
         assert x == y
     process_runner.assert_has_call("1.2.3.4", exact=expected)
 
@@ -189,7 +189,7 @@ def test_docker_command_runner():
         cmd,
     ]
     # Much easier to debug this loop than the function call.
-    for x, y in zip(process_runner.calls[0], expected, strict=False):
+    for x, y in zip(process_runner.calls[0], expected):
         print(f"expeted:\t{y}")
         print(f"actual: \t{x}")
         assert x == y

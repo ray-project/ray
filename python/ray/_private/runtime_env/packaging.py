@@ -117,7 +117,7 @@ class _AsyncFileLock:
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:
     if left and right:
-        return bytes(a ^ b for (a, b) in zip(left, right, strict=False))
+        return bytes(a ^ b for (a, b) in zip(left, right))
     return left or right
 
 

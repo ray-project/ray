@@ -37,12 +37,12 @@ class TestSchedules(unittest.TestCase):
         config = {"schedule_timesteps": 100, "initial_p": 2.1, "final_p": 0.6}
 
         linear = from_config(LinearSchedule, config, framework=None)
-        for t, e in zip(ts, expected, strict=False):
+        for t, e in zip(ts, expected):
             out = linear(t)
             check(out, e, decimals=4)
 
         ts_as_tensors = self._get_framework_tensors(ts, None)
-        for t, e in zip(ts_as_tensors, expected, strict=False):
+        for t, e in zip(ts_as_tensors, expected):
             out = linear(t)
             check(out, e, decimals=4)
 
@@ -58,12 +58,12 @@ class TestSchedules(unittest.TestCase):
         )
 
         polynomial = from_config(config, framework=None)
-        for t, e in zip(ts, expected, strict=False):
+        for t, e in zip(ts, expected):
             out = polynomial(t)
             check(out, e, decimals=4)
 
         ts_as_tensors = self._get_framework_tensors(ts, None)
-        for t, e in zip(ts_as_tensors, expected, strict=False):
+        for t, e in zip(ts_as_tensors, expected):
             out = polynomial(t)
             check(out, e, decimals=4)
 
@@ -74,12 +74,12 @@ class TestSchedules(unittest.TestCase):
         config = dict(initial_p=2.0, decay_rate=decay_rate, schedule_timesteps=100)
 
         exponential = from_config(ExponentialSchedule, config, framework=None)
-        for t, e in zip(ts, expected, strict=False):
+        for t, e in zip(ts, expected):
             out = exponential(t)
             check(out, e, decimals=4)
 
         ts_as_tensors = self._get_framework_tensors(ts, None)
-        for t, e in zip(ts_as_tensors, expected, strict=False):
+        for t, e in zip(ts_as_tensors, expected):
             out = exponential(t)
             check(out, e, decimals=4)
 
@@ -91,12 +91,12 @@ class TestSchedules(unittest.TestCase):
         )
 
         piecewise = from_config(PiecewiseSchedule, config, framework=None)
-        for t, e in zip(ts, expected, strict=False):
+        for t, e in zip(ts, expected):
             out = piecewise(t)
             check(out, e, decimals=4)
 
         ts_as_tensors = self._get_framework_tensors(ts, None)
-        for t, e in zip(ts_as_tensors, expected, strict=False):
+        for t, e in zip(ts_as_tensors, expected):
             out = piecewise(t)
             check(out, e, decimals=4)
 

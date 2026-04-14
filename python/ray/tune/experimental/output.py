@@ -410,9 +410,7 @@ def _get_trial_table_data(
 
     metric_header = [
         DEFAULT_COLUMNS[metric] if metric in DEFAULT_COLUMNS else formatted
-        for metric, formatted in zip(
-            metric_keys, formatted_metric_columns, strict=False
-        )
+        for metric, formatted in zip(metric_keys, formatted_metric_columns)
     ]
 
     param_header = formatted_param_columns

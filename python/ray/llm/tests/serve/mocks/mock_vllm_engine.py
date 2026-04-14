@@ -255,7 +255,7 @@ class MockVLLMEngine(LLMEngine):
 
         # Generate mock scores for each pair
         score_data = []
-        for i, (t1, t2) in enumerate(zip(text_1_list, text_2_list, strict=False)):
+        for i, (t1, t2) in enumerate(zip(text_1_list, text_2_list)):
             # Generate a random score (can be any float value)
             score = random.uniform(-10.0, 10.0)
 

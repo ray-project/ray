@@ -283,7 +283,7 @@ class NevergradSearch(Searcher):
         if not suggested_config.kwargs:
             if self._parameters:
                 return unflatten_dict(
-                    dict(zip(self._parameters, suggested_config.args[0], strict=False))
+                    dict(zip(self._parameters, suggested_config.args[0]))
                 )
             return unflatten_dict(suggested_config.value)
         else:

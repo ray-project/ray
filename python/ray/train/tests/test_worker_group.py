@@ -231,7 +231,7 @@ def test_sort_local_workers_by_gpu_id(ray_start_2_cpus):
                     pid=pid,
                 ),
             )
-            for pid, node_id, gpu_id in zip(pids, node_ids, gpu_ids, strict=False)
+            for pid, node_id, gpu_id in zip(pids, node_ids, gpu_ids)
         ]
         return wg
 

@@ -172,7 +172,7 @@ class DefaultTQCTorchRLModule(TorchRLModule, DefaultTQCRLModule):
         heads = self.target_qf_heads if use_target else self.qf_heads
 
         quantiles_list = []
-        for encoder, head in zip(encoders, heads, strict=False):
+        for encoder, head in zip(encoders, heads):
             encoder_out = encoder(batch_dict)
             quantiles = head(encoder_out[ENCODER_OUT])  # (batch, n_quantiles)
             quantiles_list.append(quantiles)

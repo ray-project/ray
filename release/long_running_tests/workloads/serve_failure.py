@@ -170,7 +170,7 @@ class RandomTest:
         previous_time = start_time
         for iteration in range(NUM_ITERATIONS):
             for _ in range(ACTIONS_PER_ITERATION):
-                actions, weights = zip(*self.weighted_actions, strict=False)
+                actions, weights = zip(*self.weighted_actions)
                 action_chosen = random.choices(actions, weights=weights)[0]
                 print(f"Executing {action_chosen}")
                 action_chosen()

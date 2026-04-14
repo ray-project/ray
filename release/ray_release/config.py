@@ -186,7 +186,7 @@ def _parse_test_definition_with_matrix(test_definition: TestDefinition) -> List[
     combinations = itertools.product(*matrix["setup"].values())
     for combination in combinations:
         test = test_definition
-        for variable, value in zip(variables, combination, strict=False):
+        for variable, value in zip(variables, combination):
             test = _substitute_variable(test, variable, str(value))
         tests.append(Test(test))
 

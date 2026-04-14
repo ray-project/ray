@@ -507,7 +507,7 @@ class StateAPIManager:
             result = []
             unresponsive_nodes = 0
             total_runtime_envs = 0
-            for node_info, reply in zip(node_infos, replies, strict=False):
+            for node_info, reply in zip(node_infos, replies):
                 if isinstance(reply, DataSourceUnavailable):
                     unresponsive_nodes += 1
                     continue

@@ -212,9 +212,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
             return stat_value
         # Arrow tuple format (keys_array, values_array)
         keys_array, values_array = stat_value
-        return {
-            k.as_py(): v.as_py() for k, v in zip(keys_array, values_array, strict=False)
-        }
+        return {k.as_py(): v.as_py() for k, v in zip(keys_array, values_array)}
 
     def _get_arrow_arrays(self, input_col: str) -> Tuple[pa.Array, pa.Array]:
         """Get Arrow arrays for keys and values."""
@@ -264,9 +262,7 @@ class OrdinalEncoder(SerializablePreprocessorBase):
                 result_df = self._transform_pandas(df)
                 return pa.Table.from_pandas(result_df, preserve_index=False)
 
-        for input_col, output_col in zip(
-            self._columns, self._output_columns, strict=False
-        ):
+        for input_col, output_col in zip(self._columns, self._output_columns):
             column = table.column(input_col)
             encoded_column = self._encode_column_vectorized(column, input_col)
 
@@ -494,9 +490,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
         _validate_df(df, *self._columns)
 
         # Compute new one-hot encoded columns
-        for column, output_column in zip(
-            self._columns, self._output_columns, strict=False
-        ):
+        for column, output_column in zip(self._columns, self._output_columns):
             stats = self.stats_[f"unique_values({column})"]
             num_categories = len(stats)
             one_hot = np.zeros((len(df), num_categories), dtype=np.uint8)
@@ -535,9 +529,7 @@ class OneHotEncoder(SerializablePreprocessorBase):
                 result_df = self._transform_pandas(df)
                 return pa.Table.from_pandas(result_df, preserve_index=False)
 
-        for input_col, output_col in zip(
-            self._columns, self._output_columns, strict=False
-        ):
+        for input_col, output_col in zip(self._columns, self._output_columns):
             column = table.column(input_col)
             encoded_column = self._encode_column_one_hot(column, input_col)
 
@@ -770,9 +762,7 @@ class MultiHotEncoder(SerializablePreprocessorBase):
             counter = Counter(element)
             return [counter.get(x, 0) for x in stats]
 
-        for column, output_column in zip(
-            self._columns, self._output_columns, strict=False
-        ):
+        for column, output_column in zip(self._columns, self._output_columns):
             df[output_column] = df[column].map(partial(encode_list, name=column))
 
         return df

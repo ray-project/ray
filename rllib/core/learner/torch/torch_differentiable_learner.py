@@ -183,8 +183,7 @@ class TorchDifferentiableLearner(DifferentiableLearner):
         # Map all gradients to their keys.
         named_grads = {
             module_id: {
-                name: grad
-                for (name, _), grad in zip(module_params.items(), grads, strict=False)
+                name: grad for (name, _), grad in zip(module_params.items(), grads)
             }
             for module_id, module_params in params.items()
         }

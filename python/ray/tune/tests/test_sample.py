@@ -37,7 +37,7 @@ def assertDictAlmostEqual(a, b):
             assert np.isclose(v, w)
         elif isinstance(v, (list, tuple)):
             # Does not work for nested dicts or lists
-            assert all(x == y for x, y in zip(v, w, strict=False))
+            assert all(x == y for x, y in zip(v, w))
         else:
             assert v == w
 

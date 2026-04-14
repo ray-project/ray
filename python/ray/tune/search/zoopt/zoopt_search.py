@@ -290,7 +290,7 @@ class ZOOptSearch(Searcher):
         if _solution:
             self.solution_dict[str(trial_id)] = _solution
             _x = _solution.get_x()
-            new_trial = dict(zip(self._dim_keys, _x, strict=False))
+            new_trial = dict(zip(self._dim_keys, _x))
             self._live_trial_mapping[trial_id] = new_trial
             return unflatten_dict(new_trial)
 

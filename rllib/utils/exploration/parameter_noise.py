@@ -362,7 +362,7 @@ class ParameterNoise(Exploration):
         elif self.framework == "tf2":
             self._tf_add_stored_noise_op()
         else:
-            for var, noise in zip(self.model_variables, self.noise, strict=False):
+            for var, noise in zip(self.model_variables, self.noise):
                 # Add noise to weights in-place.
                 var.requires_grad = False
                 var.add_(noise)
@@ -379,7 +379,7 @@ class ParameterNoise(Exploration):
             tf.op: The tf op to apply the already stored noise to the NN.
         """
         add_noise_ops = list()
-        for var, noise in zip(self.model_variables, self.noise, strict=False):
+        for var, noise in zip(self.model_variables, self.noise):
             add_noise_ops.append(tf1.assign_add(var, noise))
         ret = tf.group(*tuple(add_noise_ops))
         with tf1.control_dependencies([ret]):
@@ -402,7 +402,7 @@ class ParameterNoise(Exploration):
         elif self.framework == "tf2":
             self._tf_remove_noise_op()
         else:
-            for var, noise in zip(self.model_variables, self.noise, strict=False):
+            for var, noise in zip(self.model_variables, self.noise):
                 # Remove noise from weights in-place.
                 var.requires_grad = False
                 var.add_(-noise)
@@ -419,7 +419,7 @@ class ParameterNoise(Exploration):
             tf.op: The tf op to remve the currently stored noise from the NN.
         """
         remove_noise_ops = list()
-        for var, noise in zip(self.model_variables, self.noise, strict=False):
+        for var, noise in zip(self.model_variables, self.noise):
             remove_noise_ops.append(tf1.assign_add(var, -noise))
         ret = tf.group(*tuple(remove_noise_ops))
         with tf1.control_dependencies([ret]):

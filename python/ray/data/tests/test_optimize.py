@@ -274,7 +274,7 @@ def test_optimize_lazy_reuse_base_data(
     num_blocks = 4
     dfs = [pd.DataFrame({"one": list(range(i, i + 4))}) for i in range(num_blocks)]
     paths = [os.path.join(local_path, f"test{i}.csv") for i in range(num_blocks)]
-    for df, path in zip(dfs, paths, strict=False):
+    for df, path in zip(dfs, paths):
         df.to_csv(path, index=False)
     counter = Counter.remote()
     source = MySource(paths, counter)

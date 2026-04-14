@@ -36,13 +36,7 @@ def test_owner_assign_bug(ray_start_regular):
 @pytest.mark.parametrize(
     "actor_resources",
     [
-        dict(
-            zip(
-                ["owner", "creator", "borrower"],
-                [{f"node{i}": 1} for i in _],
-                strict=False,
-            )
-        )
+        dict(zip(["owner", "creator", "borrower"], [{f"node{i}": 1} for i in _]))
         for _ in [
             [1, 2, 3],  # None of them is on the same node.
             [1, 1, 3],  # Owner and creator are on the same node.

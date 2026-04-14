@@ -183,7 +183,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
                 if min_loss < 0.57:
                     break
 
-                for res1, res2 in zip(results, results[1:], strict=False):
+                for res1, res2 in zip(results, results[1:]):
                     self.assertEqual(
                         res1[DEFAULT_MODULE_ID]["mean_weight"],
                         res2[DEFAULT_MODULE_ID]["mean_weight"],
@@ -473,7 +473,6 @@ class TestLearnerGroupSaveAndRestoreState(unittest.TestCase):
             for r1, r2 in zip(
                 results_2nd_update_with_break,
                 results_2nd_update_without_break,
-                strict=False,
             ):
                 r1[ALL_MODULES].pop(LEARNER_CONNECTOR)
                 r2[ALL_MODULES].pop(LEARNER_CONNECTOR)

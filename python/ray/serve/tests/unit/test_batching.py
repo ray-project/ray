@@ -749,7 +749,7 @@ async def test_batch_generator_early_termination(stop_token):
 
     ids = list(range(NUM_CALLERS))
     generators = [sequential_terminator(id) for id in ids]
-    for id, generator in zip(ids, generators, strict=False):
+    for id, generator in zip(ids, generators):
         async for result in generator:
             assert result == id
 
@@ -774,7 +774,7 @@ async def test_batch_generator_setters():
     coros = [yield_three_times(*args) for args in args_list]
 
     # Partially consume generators
-    for coro, expected_result in zip(coros, args_list, strict=False):
+    for coro, expected_result in zip(coros, args_list):
         for _ in range(2):
             await coro.__anext__() == expected_result
 
@@ -790,13 +790,13 @@ async def test_batch_generator_setters():
     coros_2 = [yield_three_times(*args) for args in args_list_2]
 
     # Finish consuming original requests
-    for coro, expected_result in zip(coros, args_list, strict=False):
+    for coro, expected_result in zip(coros, args_list):
         await coro.__anext__() == expected_result
         with pytest.raises(StopAsyncIteration):
             await coro.__anext__()
 
     # Consume new requests
-    for coro, expected_result in zip(coros_2, args_list_2, strict=False):
+    for coro, expected_result in zip(coros_2, args_list_2):
         for _ in range(3):
             await coro.__anext__() == expected_result
         with pytest.raises(StopAsyncIteration):

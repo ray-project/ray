@@ -146,9 +146,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
                     actions, [-1, int(np.prod(self.action_space.shape))]
                 )
             actions = torch.unbind(actions, dim=1)
-        logps = torch.stack(
-            [cat.log_prob(act) for cat, act in zip(self.cats, actions, strict=False)]
-        )
+        logps = torch.stack([cat.log_prob(act) for cat, act in zip(self.cats, actions)])
         return torch.sum(logps, dim=0)
 
     @override(ActionDistribution)
@@ -164,7 +162,7 @@ class TorchMultiCategorical(TorchDistributionWrapper):
         return torch.stack(
             [
                 torch.distributions.kl.kl_divergence(cat, oth_cat)
-                for cat, oth_cat in zip(self.cats, other.cats, strict=False)
+                for cat, oth_cat in zip(self.cats, other.cats)
             ],
             dim=1,
         )
@@ -562,9 +560,7 @@ class TorchMultiActionDistribution(TorchDistributionWrapper):
         kl_list = [
             d.kl(o)
             for d, o in zip(
-                self.flat_child_distributions,
-                other.flat_child_distributions,
-                strict=False,
+                self.flat_child_distributions, other.flat_child_distributions
             )
         ]
         return functools.reduce(lambda a, b: a + b, kl_list)

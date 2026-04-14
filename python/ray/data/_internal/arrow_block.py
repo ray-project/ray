@@ -316,7 +316,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             assert len(columns) == 1
             return column_values_ndarrays[0]
         else:
-            return dict(zip(columns, column_values_ndarrays, strict=False))
+            return dict(zip(columns, column_values_ndarrays))
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table
@@ -398,9 +398,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def hstack(self, other_block: "pyarrow.Table") -> "pyarrow.Table":
 
         result_table = self._table
-        for name, column in zip(
-            other_block.column_names, other_block.columns, strict=False
-        ):
+        for name, column in zip(other_block.column_names, other_block.columns):
             result_table = result_table.append_column(name, column)
 
         return result_table
@@ -535,10 +533,7 @@ def _iter_rows_from_batch_with_tensors(
             col_values.append(column.to_pylist())
 
     for idx in range(batch.num_rows):
-        yield {
-            name: col[idx]
-            for name, col in zip(batch.column_names, col_values, strict=False)
-        }
+        yield {name: col[idx] for name, col in zip(batch.column_names, col_values)}
 
 
 class ArrowBlockColumnAccessor(BlockColumnAccessor):

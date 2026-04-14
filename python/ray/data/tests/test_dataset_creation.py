@@ -31,7 +31,7 @@ def test_from_blocks(input_blocks, ray_start_regular_shared):
     assert len(input_blocks) == len(output_blocks)
     assert all(
         input_block.equals(output_block)
-        for input_block, output_block in zip(input_blocks, output_blocks, strict=False)
+        for input_block, output_block in zip(input_blocks, output_blocks)
     )
 
 

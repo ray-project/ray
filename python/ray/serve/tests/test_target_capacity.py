@@ -962,7 +962,7 @@ class TestInitialReplicasHandling:
         ]
 
         for target_capacity, num_replicas in zip(
-            test_target_capacities, expected_num_replicas, strict=False
+            test_target_capacities, expected_num_replicas
         ):
             print(f"target_capacity: {target_capacity}, num_replicas: {num_replicas}")
             config.target_capacity = target_capacity
@@ -1014,7 +1014,7 @@ class TestInitialReplicasHandling:
         ]
 
         for target_capacity, num_replicas in zip(
-            test_target_capacities, expected_num_replicas, strict=False
+            test_target_capacities, expected_num_replicas
         ):
             print(f"target_capacity: {target_capacity}, num_replicas: {num_replicas}")
             config.target_capacity = target_capacity
@@ -1054,7 +1054,7 @@ class TestInitialReplicasHandling:
         expected_num_replicas = [0] * len(test_target_capacities)
 
         for target_capacity, num_replicas in zip(
-            test_target_capacities, expected_num_replicas, strict=False
+            test_target_capacities, expected_num_replicas
         ):
             config.target_capacity = target_capacity
             client.deploy_apps(config)

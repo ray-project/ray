@@ -499,7 +499,7 @@ def gen_incrementing_alphabets(length):
 def _generate_targets(panel: Panel, panel_global_filters: List[str]) -> List[dict]:
     targets = []
     for target, ref_id in zip(
-        panel.targets, gen_incrementing_alphabets(len(panel.targets)), strict=False
+        panel.targets, gen_incrementing_alphabets(len(panel.targets))
     ):
         template = copy.deepcopy(target.template.value)
         template.update(

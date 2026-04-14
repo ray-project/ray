@@ -79,7 +79,7 @@ class LimitOperator(OneToOneOperator):
                 break
         self._cur_output_bundles += 1
         out_refs = RefBundle(
-            list(zip(out_blocks, out_metadata, strict=False)),
+            list(zip(out_blocks, out_metadata)),
             owns_blocks=refs.owns_blocks,
             schema=refs.schema,
         )

@@ -1111,9 +1111,7 @@ class ReporterAgent(
         then, prev_stats = hist[0]
         now, now_stats = hist[-1]
         time_delta = now - then
-        return tuple(
-            (y - x) / time_delta for x, y in zip(prev_stats, now_stats, strict=False)
-        )
+        return tuple((y - x) / time_delta for x, y in zip(prev_stats, now_stats))
 
     def _get_shm_usage(self):
         """Return the shm usage.

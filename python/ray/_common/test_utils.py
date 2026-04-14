@@ -341,7 +341,7 @@ def assert_tensors_equivalent(obj1, obj2):
     # Handle namedtuples
     if is_named_tuple(type(obj1)):
         assert len(obj1) == len(obj2)
-        for a, b in zip(obj1, obj2, strict=False):
+        for a, b in zip(obj1, obj2):
             assert_tensors_equivalent(a, b)
     elif isinstance(obj1, dict):
         assert obj1.keys() == obj2.keys()
@@ -349,7 +349,7 @@ def assert_tensors_equivalent(obj1, obj2):
             assert_tensors_equivalent(obj1[k], obj2[k])
     elif isinstance(obj1, (list, tuple)):
         assert len(obj1) == len(obj2)
-        for a, b in zip(obj1, obj2, strict=False):
+        for a, b in zip(obj1, obj2):
             assert_tensors_equivalent(a, b)
     elif hasattr(obj1, "__dict__") and hasattr(obj2, "__dict__"):
         # Compare user-defined objects by their public attributes

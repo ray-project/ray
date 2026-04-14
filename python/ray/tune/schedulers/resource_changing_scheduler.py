@@ -434,7 +434,7 @@ class DistributeResources:
         all_trials = tune_controller.get_live_trials()
 
         used_cpus_and_gpus = [self._get_used_cpus_and_gpus(t) for t in all_trials]
-        used_cpus, used_gpus = zip(*used_cpus_and_gpus, strict=False)
+        used_cpus, used_gpus = zip(*used_cpus_and_gpus)
         used_cpus = sum(used_cpus)
         used_gpus = sum(used_gpus)
 

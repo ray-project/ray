@@ -424,7 +424,7 @@ def test_serve_start_different_http_checkpoint_options_warning(
 
     serve.start(http_options=test_http)
 
-    for test_config, msg in zip([["host", "port"]], warning_msg, strict=False):
+    for test_config, msg in zip([["host", "port"]], warning_msg):
         for test_msg in test_config:
             if "Autoscaling metrics pusher thread" in msg:
                 continue

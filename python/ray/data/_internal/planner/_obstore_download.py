@@ -418,7 +418,7 @@ def download_bytes_async(
     output_block = block
 
     for uri_column_name, output_bytes_column_name in zip(
-        uri_column_names, output_bytes_column_names, strict=False
+        uri_column_names, output_bytes_column_names
     ):
         uris = output_block.column(uri_column_name).to_pylist()
 
@@ -537,11 +537,11 @@ async def _download_uris_with_obstore(
         resolved = await asyncio.gather(
             *[_resolve_size(uris[i], registry, sem) for i in unknown_indices]
         )
-        for i, sz in zip(unknown_indices, resolved, strict=False):
+        for i, sz in zip(unknown_indices, resolved):
             sizes[i] = sz
 
     tasks = []
-    for uri, size in zip(uris, sizes, strict=False):
+    for uri, size in zip(uris, sizes):
         if size and size > range_threshold:
             tasks.append(
                 _fetch_ranged(

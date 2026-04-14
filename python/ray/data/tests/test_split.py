@@ -593,10 +593,10 @@ def test_drop_empty_block_split():
 
 def verify_splits(splits, blocks_by_split):
     assert len(splits) == len(blocks_by_split)
-    for blocks, (block_refs, metas) in zip(blocks_by_split, splits, strict=False):
+    for blocks, (block_refs, metas) in zip(blocks_by_split, splits):
         assert len(blocks) == len(block_refs)
         assert len(blocks) == len(metas)
-        for block, block_ref, meta in zip(blocks, block_refs, metas, strict=False):
+        for block, block_ref, meta in zip(blocks, block_refs, metas):
             assert list(ray.get(block_ref)["id"]) == block
             assert meta.num_rows == len(block)
 
@@ -608,59 +608,51 @@ def test_generate_global_split_results(ray_start_regular_shared_2_cpus):
         _create_block_and_metadata([4]),
     ]
 
-    splits = list(
-        zip(*_generate_global_split_results(iter(inputs), [1, 2, 1]), strict=False)
-    )
+    splits = list(zip(*_generate_global_split_results(iter(inputs), [1, 2, 1])))
     verify_splits(splits, [[[1]], [[2, 3]], [[4]]])
 
-    splits = list(
-        zip(*_generate_global_split_results(iter(inputs), [3, 1]), strict=False)
-    )
+    splits = list(zip(*_generate_global_split_results(iter(inputs), [3, 1])))
     verify_splits(splits, [[[1], [2, 3]], [[4]]])
 
-    splits = list(
-        zip(*_generate_global_split_results(iter(inputs), [3, 0, 1]), strict=False)
-    )
+    splits = list(zip(*_generate_global_split_results(iter(inputs), [3, 0, 1])))
     verify_splits(splits, [[[1], [2, 3]], [], [[4]]])
 
     inputs = []
-    splits = list(
-        zip(*_generate_global_split_results(iter(inputs), [0, 0]), strict=False)
-    )
+    splits = list(zip(*_generate_global_split_results(iter(inputs), [0, 0])))
     verify_splits(splits, [[], []])
 
 
 def test_private_split_at_indices(ray_start_regular_shared_2_cpus):
     inputs = _create_blocks_with_metadata([])
-    splits = list(zip(*_split_at_indices(inputs, [0]), strict=False))
+    splits = list(zip(*_split_at_indices(inputs, [0])))
     verify_splits(splits, [[], []])
 
-    splits = list(zip(*_split_at_indices(inputs, []), strict=False))
+    splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
 
-    splits = list(zip(*_split_at_indices(inputs, [1]), strict=False))
+    splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [2]), strict=False))
+    splits = list(zip(*_split_at_indices(inputs, [2])))
     verify_splits(splits, [[[1], [2]], [[3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [1]), strict=False))
+    splits = list(zip(*_split_at_indices(inputs, [1])))
     verify_splits(splits, [[[1]], [[2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [2, 2]), strict=False))
+    splits = list(zip(*_split_at_indices(inputs, [2, 2])))
     verify_splits(splits, [[[1], [2]], [], [[3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, []), strict=False))
+    splits = list(zip(*_split_at_indices(inputs, [])))
     verify_splits(splits, [[[1], [2, 3], [4]]])
 
     inputs = _create_blocks_with_metadata([[1], [2, 3], [4]])
-    splits = list(zip(*_split_at_indices(inputs, [0, 4]), strict=False))
+    splits = list(zip(*_split_at_indices(inputs, [0, 4])))
     verify_splits(splits, [[], [[1], [2, 3], [4]], []])
 
 

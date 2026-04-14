@@ -91,7 +91,7 @@ def get_type_spec(
     assert not isinstance(schema, type)
 
     dtypes: Dict[str, Union[np.dtype, pa.DataType]] = dict(
-        zip(schema.names, schema.types, strict=False)
+        zip(schema.names, schema.types)
     )
 
     def get_dtype(dtype: Union[np.dtype, pa.DataType]) -> tf.dtypes.DType:

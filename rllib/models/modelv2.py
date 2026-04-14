@@ -431,7 +431,7 @@ def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStr
                 prep.preprocessors
             ) == len(space.spaces)
             u = []
-            for p, v in zip(prep.preprocessors, space.spaces, strict=False):
+            for p, v in zip(prep.preprocessors, space.spaces):
                 obs_slice = obs[..., offset : offset + p.size]
                 offset += p.size
                 u.append(
@@ -446,9 +446,7 @@ def _unpack_obs(obs: TensorType, space: Space, tensorlib: Any = tf) -> TensorStr
                 prep.preprocessors
             ) == len(space.spaces)
             u = OrderedDict()
-            for p, (k, v) in zip(
-                prep.preprocessors, space.spaces.items(), strict=False
-            ):
+            for p, (k, v) in zip(prep.preprocessors, space.spaces.items()):
                 obs_slice = obs[..., offset : offset + p.size]
                 offset += p.size
                 u[k] = _unpack_obs(

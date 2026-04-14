@@ -250,9 +250,7 @@ def test_redeploy_multiple_replicas(serve_instance):
             return "v2", os.getpid()
 
     h = serve.run(V1.bind(), name="app")
-    vals1, pids1 = zip(
-        *[h.remote(block=False).result() for _ in range(10)], strict=False
-    )
+    vals1, pids1 = zip(*[h.remote(block=False).result() for _ in range(10)])
     assert set(vals1) == {"v1"}
     assert len(set(pids1)) == 2
 
@@ -266,9 +264,7 @@ def test_redeploy_multiple_replicas(serve_instance):
 
     while True:
         # Wait for the new version to be started and ready to handle requests.
-        vals2, pids2 = zip(
-            *[h.remote(block=False).result() for _ in range(10)], strict=False
-        )
+        vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
         if set(vals2) == {"v2"}:
             break
         time.sleep(1)
@@ -282,9 +278,7 @@ def test_redeploy_multiple_replicas(serve_instance):
     # Now the goal and requests to the new version should complete.
     # We should have two running replicas of the new version.
     client._wait_for_application_running("app")
-    vals3, pids3 = zip(
-        *[h.remote(block=False).result() for _ in range(10)], strict=False
-    )
+    vals3, pids3 = zip(*[h.remote(block=False).result() for _ in range(10)])
     assert set(vals3) == {"v2"}
     assert len(set(pids3)) == 2
 

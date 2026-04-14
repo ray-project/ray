@@ -68,9 +68,7 @@ def _get_filters_from_req(
     filter_values = req.query.getall("filter_values", [])
     assert len(filter_keys) == len(filter_values)
     filters = []
-    for key, predicate, val in zip(
-        filter_keys, filter_predicates, filter_values, strict=False
-    ):
+    for key, predicate, val in zip(filter_keys, filter_predicates, filter_values):
         filters.append((key, predicate, val))
     return filters
 

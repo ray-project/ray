@@ -91,7 +91,7 @@ class SyncVectorMultiAgentEnv(VectorMultiAgentEnv):
         self._autoreset_envs = np.zeros((self.num_envs,), dtype=np.bool_)
 
         # Force reset on all sub-environments.
-        for i, (env, single_seed) in enumerate(zip(self.envs, seed, strict=False)):
+        for i, (env, single_seed) in enumerate(zip(self.envs, seed)):
             self._observations[i], self._infos[i] = env.reset(
                 seed=single_seed, options=options
             )

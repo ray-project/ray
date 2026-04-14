@@ -614,9 +614,7 @@ class TorchPolicy(Policy):
 
         self.num_grad_updates += 1
 
-        for i, (model, batch) in enumerate(
-            zip(self.model_gpu_towers, device_batches, strict=False)
-        ):
+        for i, (model, batch) in enumerate(zip(self.model_gpu_towers, device_batches)):
             batch_fetches[f"tower_{i}"].update(
                 {
                     LEARNER_STATS_KEY: self.extra_grad_info(batch),
@@ -671,7 +669,7 @@ class TorchPolicy(Policy):
         else:
             # TODO(sven): Not supported for multiple optimizers yet.
             assert len(self._optimizers) == 1
-            for g, p in zip(gradients, self.model.parameters(), strict=False):
+            for g, p in zip(gradients, self.model.parameters()):
                 if g is not None:
                     if torch.is_tensor(g):
                         p.grad = g.to(self.device)
@@ -752,7 +750,7 @@ class TorchPolicy(Policy):
         optimizer_vars = state.get("_optimizer_variables", None)
         if optimizer_vars:
             assert len(optimizer_vars) == len(self._optimizers)
-            for o, s in zip(self._optimizers, optimizer_vars, strict=False):
+            for o, s in zip(self._optimizers, optimizer_vars):
                 # Torch optimizer param_groups include things like beta, etc. These
                 # parameters should be left as scalar and not converted to tensors.
                 # otherwise, torch.optim.step() will start to complain.
@@ -1146,7 +1144,7 @@ class TorchPolicy(Policy):
         # debugging).
         if len(self.devices) == 1 or self.config["_fake_gpus"]:
             for shard_idx, (model, sample_batch, device) in enumerate(
-                zip(self.model_gpu_towers, sample_batches, self.devices, strict=False)
+                zip(self.model_gpu_towers, sample_batches, self.devices)
             ):
                 _worker(shard_idx, model, sample_batch, device)
                 # Raise errors right away for better debugging.
@@ -1160,12 +1158,7 @@ class TorchPolicy(Policy):
                     target=_worker, args=(shard_idx, model, sample_batch, device)
                 )
                 for shard_idx, (model, sample_batch, device) in enumerate(
-                    zip(
-                        self.model_gpu_towers,
-                        sample_batches,
-                        self.devices,
-                        strict=False,
-                    )
+                    zip(self.model_gpu_towers, sample_batches, self.devices)
                 )
             ]
 

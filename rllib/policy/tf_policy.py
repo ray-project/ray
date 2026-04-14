@@ -416,9 +416,7 @@ class TFPolicy(Policy):
                     self._state_inputs, state_batches
                 )
             )
-        builder.add_feed_dict(
-            dict(zip(self._state_inputs, state_batches, strict=False))
-        )
+        builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
         if state_batches:
             builder.add_feed_dict({self._seq_lens: np.ones(len(obs_batch))})
         # Prev-a and r.
@@ -892,7 +890,7 @@ class TFPolicy(Policy):
         # We have more than one optimizers and loss terms.
         if self.config["_tf_policy_handles_more_than_one_loss"]:
             grads = []
-            for optim, loss_ in zip(optimizers, losses, strict=False):
+            for optim, loss_ in zip(optimizers, losses):
                 grads.append(optim.compute_gradients(loss_))
         # We have only one optimizer and one loss term.
         else:
@@ -1083,9 +1081,7 @@ class TFPolicy(Policy):
             while "state_in_{}".format(i) in input_dict:
                 state_batches.append(input_dict["state_in_{}".format(i)])
                 i += 1
-            builder.add_feed_dict(
-                dict(zip(self._state_inputs, state_batches, strict=False))
-            )
+            builder.add_feed_dict(dict(zip(self._state_inputs, state_batches)))
 
         if "state_in_0" in input_dict and SampleBatch.SEQ_LENS not in input_dict:
             builder.add_feed_dict(
@@ -1124,7 +1120,7 @@ class TFPolicy(Policy):
                 )
             )
         builder.add_feed_dict({self._is_training: True})
-        builder.add_feed_dict(dict(zip(self._grads, gradients, strict=False)))
+        builder.add_feed_dict(dict(zip(self._grads, gradients)))
         fetches = builder.add_fetches([self._apply_op])
         return fetches[0]
 

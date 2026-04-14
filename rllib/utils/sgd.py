@@ -61,7 +61,7 @@ def minibatches(samples: SampleBatch, sgd_minibatch_size: int, shuffle: bool = T
         for i, j in data_slices:
             yield samples[i:j]
     else:
-        all_slices = list(zip(data_slices, state_slices, strict=False))
+        all_slices = list(zip(data_slices, state_slices))
         if shuffle:
             # Make sure to shuffle data and states while linked together.
             random.shuffle(all_slices)

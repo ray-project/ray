@@ -277,7 +277,7 @@ async def _main(
         if run_throughput:
             # Microbenchmark: HTTP throughput
             for max_ongoing_requests, concurrency in zip(
-                throughput_max_ongoing_requests, concurrencies, strict=False
+                throughput_max_ongoing_requests, concurrencies
             ):
                 workloads = {
                     "http": Noop.options(
@@ -412,7 +412,7 @@ async def _main(
         if run_throughput:
             # Microbenchmark: GRPC throughput
             for max_ongoing_requests, concurrency in zip(
-                throughput_max_ongoing_requests, concurrencies, strict=False
+                throughput_max_ongoing_requests, concurrencies
             ):
                 workloads = {
                     "grpc": GrpcDeployment.options(
@@ -462,7 +462,7 @@ async def _main(
         if run_throughput:
             # Microbenchmark: Handle throughput
             for max_ongoing_requests, concurrency in zip(
-                throughput_max_ongoing_requests, concurrencies, strict=False
+                throughput_max_ongoing_requests, concurrencies
             ):
                 workloads = {
                     "handle": Benchmarker.options(

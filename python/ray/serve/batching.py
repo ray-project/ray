@@ -434,7 +434,7 @@ class _BatchQueue:
         try:
             results = await func_future
             self._validate_results(results, input_batch_length)
-            for result, future in zip(results, futures, strict=False):
+            for result, future in zip(results, futures):
                 _set_result_if_not_done(future, result)
         except Exception as e:
             for future in futures:

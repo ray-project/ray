@@ -76,14 +76,12 @@ def assert_cluster_resource_constraints(
             bundle_by_count.request.resources_bundle.keys()
         ),
     )
-    expected = zip(expected_bundles, expected_count, strict=False)
+    expected = zip(expected_bundles, expected_count)
     expected = sorted(
         expected, key=lambda bundle_count: "".join(bundle_count[0].keys())
     )
 
-    for actual_bundle_count, expected_bundle_count in zip(
-        resource_requests, expected, strict=False
-    ):
+    for actual_bundle_count, expected_bundle_count in zip(resource_requests, expected):
         assert (
             dict(actual_bundle_count.request.resources_bundle)
             == expected_bundle_count[0]
@@ -112,7 +110,7 @@ def assert_node_states(
     node_states = sorted(state.node_states, key=lambda node: node.node_id)
     expected_nodes = sorted(expected_nodes, key=lambda node: node.node_id)
 
-    for actual_node, expected_node in zip(node_states, expected_nodes, strict=False):
+    for actual_node, expected_node in zip(node_states, expected_nodes):
         assert actual_node.status == expected_node.node_status
         if expected_node.idle_time_check_cb:
             assert expected_node.idle_time_check_cb(actual_node.idle_duration_ms)
@@ -144,7 +142,7 @@ def assert_nodes(actual_nodes: List[NodeInfo], expected_nodes: List[ExpectedNode
     actual_nodes = sorted(actual_nodes, key=lambda node: node.node_id)
     expected_nodes = sorted(expected_nodes, key=lambda node: node.node_id)
 
-    for actual_node, expected_node in zip(actual_nodes, expected_nodes, strict=False):
+    for actual_node, expected_node in zip(actual_nodes, expected_nodes):
         if expected_node.node_id is not None:
             assert actual_node.node_id == expected_node.node_id
         if expected_node.node_status is not None:
@@ -190,7 +188,7 @@ def assert_launches(
     expected_failed_launches: List[LaunchRequest],
 ):
     def assert_launches(actuals, expects):
-        for actual, expect in zip(actuals, expects, strict=False):
+        for actual, expect in zip(actuals, expects):
             assert actual.instance_type_name == expect.instance_type_name
             assert actual.ray_node_type_name == expect.ray_node_type_name
             assert actual.count == expect.count
@@ -242,7 +240,7 @@ def assert_gang_requests(
     )
     expected = sorted(expected, key=lambda request: "".join(request.details))
 
-    for actual_request, expected_request in zip(requests, expected, strict=False):
+    for actual_request, expected_request in zip(requests, expected):
         # Assert the detail contains the expected details
         for detail_str in expected_request.details:
             assert detail_str in actual_request.details
@@ -302,7 +300,7 @@ def test_request_cluster_resources_with_label_selectors(shutdown_only):
     ]
     to_request = [
         {"resources": b, "label_selector": s}
-        for b, s in zip(bundles, bundle_label_selectors, strict=False)
+        for b, s in zip(bundles, bundle_label_selectors)
     ]
 
     # Send the request for these resource bundles

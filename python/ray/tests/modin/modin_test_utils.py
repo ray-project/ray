@@ -96,7 +96,7 @@ def df_equals(df1, df2):
     ):
         assert isinstance(df2, type(df1)), "Different type of collection"
         assert len(df1) == len(df2), "Different length result"
-        return (df_equals(d1, d2) for d1, d2 in zip(df1, df2, strict=False))
+        return (df_equals(d1, d2) for d1, d2 in zip(df1, df2))
 
     # Convert to pandas
     if isinstance(df1, (pd.DataFrame, pd.Series)):
@@ -128,7 +128,7 @@ def df_equals(df1, df2):
     elif isinstance(df1, pandas.Series) and isinstance(df2, pandas.Series):
         assert_series_equal(df1, df2, check_dtype=False, check_series_type=False)
     elif isinstance(df1, groupby_types) and isinstance(df2, groupby_types):
-        for g1, g2 in zip(df1, df2, strict=False):
+        for g1, g2 in zip(df1, df2):
             assert g1[0] == g2[0]
             df_equals(g1[1], g2[1])
     elif (

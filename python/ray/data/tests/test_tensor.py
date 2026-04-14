@@ -389,9 +389,9 @@ def test_tensor_array_block_slice(tensor_format_context):
         assert table2.equals(expected_slice)
         assert table2.schema == table1.schema
         assert table1.num_columns == table2.num_columns
-        for col1, col2 in zip(table1.columns, table2.columns, strict=False):
+        for col1, col2 in zip(table1.columns, table2.columns):
             assert col1.num_chunks == col2.num_chunks
-            for chunk1, chunk2 in zip(col1.chunks, col2.chunks, strict=False):
+            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
                 bufs1 = chunk1.buffers()
                 bufs2 = chunk2.buffers()
                 expected_offset = 0 if is_copy else a
@@ -518,7 +518,7 @@ def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data
     out = table2["one"].chunk(0).to_numpy()
     expected = test_arr[a:b]
     if is_variable_shaped:
-        for o, e in zip(out, expected, strict=False):
+        for o, e in zip(out, expected):
             np.testing.assert_array_equal(o, e)
     else:
         np.testing.assert_array_equal(out, expected)
@@ -531,7 +531,7 @@ def test_tensor_array_boolean_slice_pandas_roundtrip(init_with_pandas, test_data
     out = table2["one"].chunk(0).to_numpy()
     expected = test_arr[a:b]
     if is_variable_shaped:
-        for o, e in zip(out, expected, strict=False):
+        for o, e in zip(out, expected):
             np.testing.assert_array_equal(o, e)
     else:
         np.testing.assert_array_equal(out, expected)
@@ -552,8 +552,8 @@ def test_tensors_in_tables_from_pandas(ray_start_regular_shared, tensor_format_c
     df["two"] = df["two"].astype(TensorDtype(shape, np.int64))
     ds = ray.data.from_pandas([df])
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(zip(list(range(outer_dim)), arr, strict=False))
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
 
@@ -565,7 +565,7 @@ def test_tensors_in_tables_from_pandas_variable_shaped(
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
         np.arange(offset, offset + np.prod(shape)).reshape(shape)
-        for offset, shape in zip(cumsum_sizes, shapes, strict=False)
+        for offset, shape in zip(cumsum_sizes, shapes)
     ]
     outer_dim = len(arrs)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": arrs})
@@ -573,8 +573,8 @@ def test_tensors_in_tables_from_pandas_variable_shaped(
     df["two"] = df["two"].astype(TensorDtype(None, np.int64))
     ds = ray.data.from_pandas(df)
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(zip(range(outer_dim), arrs, strict=False))
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(range(outer_dim), arrs))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
 
@@ -607,7 +607,7 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
         np.arange(offset, offset + np.prod(shape)).reshape(shape)
-        for offset, shape in zip(cumsum_sizes, shapes, strict=False)
+        for offset, shape in zip(cumsum_sizes, shapes)
     ]
     outer_dim = len(arrs)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arrs)})
@@ -636,8 +636,8 @@ def test_tensors_in_tables_parquet_roundtrip(
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path))
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(zip(list(range(1, outer_dim + 1)), arr + 1, strict=False))
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(list(range(1, outer_dim + 1)), arr + 1))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
 
@@ -648,7 +648,7 @@ def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
     cumsum_sizes = np.cumsum([0] + [np.prod(shape) for shape in shapes[:-1]])
     arrs = [
         np.arange(offset, offset + np.prod(shape)).reshape(shape)
-        for offset, shape in zip(cumsum_sizes, shapes, strict=False)
+        for offset, shape in zip(cumsum_sizes, shapes)
     ]
     outer_dim = len(arrs)
     df = pd.DataFrame({"one": list(range(outer_dim)), "two": TensorArray(arrs)})
@@ -657,10 +657,8 @@ def test_tensors_in_tables_parquet_roundtrip_variable_shaped(
     ds.write_parquet(str(tmp_path))
     ds = ray.data.read_parquet(str(tmp_path))
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(
-        zip(list(range(1, outer_dim + 1)), [arr + 1 for arr in arrs], strict=False)
-    )
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(list(range(1, outer_dim + 1)), [arr + 1 for arr in arrs]))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
 
@@ -685,8 +683,8 @@ def test_tensors_in_tables_parquet_with_schema(
     schema = pa.schema([("one", pa.int32()), ("two", tensor_type)])
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(zip(list(range(outer_dim)), arr, strict=False))
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
 
@@ -717,8 +715,8 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
     casted_ds = ds.map_batches(deser_mapper, batch_format="pandas")
 
     values = [[s["one"], s["two"]] for s in casted_ds.take()]
-    expected = list(zip(list(range(outer_dim)), arr, strict=False))
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
     # Manually deserialize the pickle tensor bytes and directly cast it to a
@@ -730,8 +728,8 @@ def test_tensors_in_tables_parquet_pickle_manual_serde(
     casted_ds = ds.map_batches(deser_mapper_direct, batch_format="pandas")
 
     values = [[s["one"], s["two"]] for s in casted_ds.take()]
-    expected = list(zip(list(range(outer_dim)), arr, strict=False))
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
 
@@ -772,8 +770,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde(
     ds = ds.map_batches(np_deser_mapper, batch_format="pyarrow")
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(zip(list(range(outer_dim)), arr, strict=False))
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
 
@@ -807,8 +805,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_udf(
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(zip(list(range(outer_dim)), arr, strict=False))
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
 
@@ -848,8 +846,8 @@ def test_tensors_in_tables_parquet_bytes_manual_serde_col_schema(
     )
 
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(zip(list(range(outer_dim)), arr + 1, strict=False))
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(list(range(outer_dim)), arr + 1))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
 
@@ -881,8 +879,8 @@ def test_tensors_in_tables_parquet_bytes_with_schema(
     schema = pa.schema([("one", pa.int32()), ("two", tensor_type)])
     ds = ray.data.read_parquet(str(tmp_path), schema=schema)
     values = [[s["one"], s["two"]] for s in ds.take()]
-    expected = list(zip(list(range(outer_dim)), arr, strict=False))
-    for v, e in zip(sorted(values), expected, strict=False):
+    expected = list(zip(list(range(outer_dim)), arr))
+    for v, e in zip(sorted(values), expected):
         np.testing.assert_equal(v, e)
 
 
@@ -915,7 +913,7 @@ def test_tensors_in_tables_iter_batches(
     batches = list(ds.iter_batches(batch_size=2, batch_format="pandas"))
     assert len(batches) == 3
     expected_batches = [df.iloc[:2], df.iloc[2:4], df.iloc[4:]]
-    for batch, expected_batch in zip(batches, expected_batches, strict=False):
+    for batch, expected_batch in zip(batches, expected_batches):
         batch = batch.reset_index(drop=True)
         expected_batch = expected_batch.reset_index(drop=True)
         pd.testing.assert_frame_equal(batch, expected_batch)

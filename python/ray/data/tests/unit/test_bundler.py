@@ -99,7 +99,7 @@ def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_coun
 
     # Verify row counts for each bundle
     for i, (out_bundle, expected_count) in enumerate(
-        zip(out_bundles, expected_row_counts, strict=False)
+        zip(out_bundles, expected_row_counts)
     ):
         assert (
             out_bundle.num_rows() == expected_count
@@ -122,9 +122,7 @@ def test_streaming_repartition_ref_bundler(target, in_bundles, expected_row_coun
     # Verify block content - extract all values from output bundles
     output_values = []
     for bundle in out_bundles:
-        for (block_ref, _), block_slice in zip(
-            bundle.blocks, bundle.slices, strict=False
-        ):
+        for (block_ref, _), block_slice in zip(bundle.blocks, bundle.slices):
             # Look up the actual block data from our map (no ray.get needed)
             data = block_data_map[block_ref]["id"]
             if block_slice is not None:

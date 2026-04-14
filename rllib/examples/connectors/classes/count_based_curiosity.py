@@ -78,7 +78,7 @@ class CountBasedCuriosity(ConnectorV2):
             # Get all respective extrinsic rewards.
             rewards = sa_episode.get_rewards()
 
-            for i, (obs, rew) in enumerate(zip(observations, rewards, strict=False)):
+            for i, (obs, rew) in enumerate(zip(observations, rewards)):
                 # Add 1 to obs counter.
                 obs = tuple(obs)
                 self._counts[obs] += 1

@@ -1016,7 +1016,7 @@ class TFMultiGPUTowerStack:
 
         self._towers = []
         for tower_i, (device, placeholders) in enumerate(
-            zip(self.devices, device_placeholders, strict=False)
+            zip(self.devices, device_placeholders)
         ):
             self._towers.append(
                 self._setup_device(
@@ -1053,10 +1053,7 @@ class TFMultiGPUTowerStack:
 
             with tf1.control_dependencies(self._update_ops):
                 self._train_op = tf.group(
-                    [
-                        o.apply_gradients(a)
-                        for o, a in zip(self.optimizers, avgs, strict=False)
-                    ]
+                    [o.apply_gradients(a) for o, a in zip(self.optimizers, avgs)]
                 )
         else:
             avg = _average_gradients([t.grads for t in self._towers])
@@ -1207,12 +1204,12 @@ class TFMultiGPUTowerStack:
                 seq_len,
                 len(inputs[0]),
             )
-            for ph, arr in zip(self.loss_inputs, inputs + state_inputs, strict=False):
+            for ph, arr in zip(self.loss_inputs, inputs + state_inputs):
                 feed_dict[ph] = arr
             truncated_len = len(inputs[0])
         else:
             truncated_len = 0
-            for ph, arr in zip(self.loss_inputs, inputs, strict=False):
+            for ph, arr in zip(self.loss_inputs, inputs):
                 truncated_arr = _make_divisible_by(arr, sequences_per_minibatch)
                 feed_dict[ph] = truncated_arr
                 if truncated_len == 0:
@@ -1332,7 +1329,7 @@ def _average_gradients(tower_grads):
     """
 
     average_grads = []
-    for grad_and_vars in zip(*tower_grads, strict=False):
+    for grad_and_vars in zip(*tower_grads):
         # Note that each grad_and_vars looks like the following:
         #   ((grad0_gpu0, var0_gpu0), ... , (grad0_gpuN, var0_gpuN))
         grads = []

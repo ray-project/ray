@@ -185,9 +185,7 @@ class TorchMetaLearner(TorchLearner):
             # Update all differentiable learners.
             others_loss_per_module = []
             others_results = {}
-            for other, other_training_data in zip(
-                self.others, others_training_data, strict=False
-            ):
+            for other, other_training_data in zip(self.others, others_training_data):
                 # TODO (simon): Maybe return all losses from each other's update step.
                 params, other_loss_per_module, other_results = other.update(
                     training_data=other_training_data,

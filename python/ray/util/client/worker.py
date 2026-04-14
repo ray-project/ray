@@ -679,11 +679,11 @@ class Worker:
                     f"Expected {num_return_refs} returns but received "
                     f"{len(ticket.return_ids)}"
                 )
-                for future, raw_id in zip(id_futures, ticket.return_ids, strict=False):
+                for future, raw_id in zip(id_futures, ticket.return_ids):
                     future.set_exception(exc)
                 return
 
-            for future, raw_id in zip(id_futures, ticket.return_ids, strict=False):
+            for future, raw_id in zip(id_futures, ticket.return_ids):
                 future.set_result(raw_id)
 
         self.data_client.Schedule(task, populate_ids)

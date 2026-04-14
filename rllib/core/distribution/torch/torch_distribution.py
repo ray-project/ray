@@ -439,9 +439,7 @@ class TorchMultiCategorical(Distribution):
     @override(Distribution)
     def logp(self, value: "torch.Tensor") -> TensorType:
         value = torch.unbind(value, dim=-1)
-        logps = torch.stack(
-            [cat.logp(act) for cat, act in zip(self._cats, value, strict=False)]
-        )
+        logps = torch.stack([cat.logp(act) for cat, act in zip(self._cats, value)])
         return torch.sum(logps, dim=0)
 
     @override(Distribution)
@@ -453,10 +451,7 @@ class TorchMultiCategorical(Distribution):
     @override(Distribution)
     def kl(self, other: Distribution) -> TensorType:
         kls = torch.stack(
-            [
-                cat.kl(oth_cat)
-                for cat, oth_cat in zip(self._cats, other._cats, strict=False)
-            ],
+            [cat.kl(oth_cat) for cat, oth_cat in zip(self._cats, other._cats)],
             dim=-1,
         )
         return torch.sum(kls, dim=-1)
@@ -629,9 +624,7 @@ class TorchMultiDistribution(Distribution):
         kl_list = [
             d.kl(o)
             for d, o in zip(
-                self._flat_child_distributions,
-                other._flat_child_distributions,
-                strict=False,
+                self._flat_child_distributions, other._flat_child_distributions
             )
         ]
         return sum(kl_list)

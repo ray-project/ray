@@ -212,7 +212,7 @@ class TargetNetworkMixin:
                 model_vars,
                 target_model_vars,
             )
-            for var, var_target in zip(model_vars, target_model_vars, strict=False):
+            for var, var_target in zip(model_vars, target_model_vars):
                 update_target_expr.append(
                     var_target.assign(tau * var + (1.0 - tau) * var_target)
                 )
@@ -381,7 +381,7 @@ def compute_gradients(
                 policy.grads.append(tf.where(tf.math.is_nan(g), tf.zeros_like(g), g))
             else:
                 policy.grads.append(None)
-        clipped_grads_and_vars = list(zip(policy.grads, variables, strict=False))
+        clipped_grads_and_vars = list(zip(policy.grads, variables))
         return clipped_grads_and_vars
     else:
         return grads_and_vars

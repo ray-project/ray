@@ -171,7 +171,7 @@ class HashingVectorizer(SerializablePreprocessorBase):
             hashed_tokens = [simple_hash(token, self._num_features) for token in tokens]
             return Counter(hashed_tokens)
 
-        for col, output_col in zip(self._columns, self._output_columns, strict=False):
+        for col, output_col in zip(self._columns, self._output_columns):
             tokenized = df[col].map(self._tokenization_fn)
             hashed = tokenized.map(hash_count)
             # Create a list to store the hash columns
@@ -366,7 +366,7 @@ class CountVectorizer(SerializablePreprocessorBase):
 
             return {
                 key_gen(col): counts  # noqa
-                for (col, counts) in zip(self._columns, top_counts, strict=False)
+                for (col, counts) in zip(self._columns, top_counts)
             }
 
         self._stat_computation_plan.add_callable_stat(
@@ -379,7 +379,7 @@ class CountVectorizer(SerializablePreprocessorBase):
 
     def _transform_pandas(self, df: pd.DataFrame):
         result_columns = []
-        for col, output_col in zip(self._columns, self._output_columns, strict=False):
+        for col, output_col in zip(self._columns, self._output_columns):
             token_counts = self.stats_[f"token_counts({col})"]
             sorted_tokens = [token for (token, count) in token_counts.most_common()]
             tokenized = df[col].map(self._tokenization_fn).map(Counter)

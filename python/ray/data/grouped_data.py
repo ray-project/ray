@@ -625,7 +625,7 @@ def _apply_udf_to_groups(
 
     boundaries = block_accessor._get_group_boundaries_sorted(keys)
 
-    for start, end in zip(boundaries[:-1], boundaries[1:], strict=False):
+    for start, end in zip(boundaries[:-1], boundaries[1:]):
         group_block = block_accessor.slice(start, end, copy=False)
         group_block_accessor = BlockAccessor.for_block(group_block)
 

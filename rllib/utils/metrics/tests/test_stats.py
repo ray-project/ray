@@ -424,7 +424,7 @@ def test_series_stats_windowed(stats_class, window, values, expected_result):
 def test_series_stats_no_window(stats_class, values, expected_results):
     stats = stats_class(window=None)
 
-    for value, expected in zip(values, expected_results, strict=False):
+    for value, expected in zip(values, expected_results):
         stats.push(value)
         check(stats.peek(), expected)
 

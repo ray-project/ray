@@ -83,10 +83,7 @@ class TestMetricsPusher:
             + [(0.3 * (i + 1), "B", i + 2) for i in range(10)]
             + [(0.5 * (i + 1), "C", i + 2) for i in range(6)]
         )
-        advances = [
-            (j[0] - i[0], j[1], j[2])
-            for i, j in zip(times[:-1], times[1:], strict=False)
-        ]
+        advances = [(j[0] - i[0], j[1], j[2]) for i, j in zip(times[:-1], times[1:])]
 
         for t, key, expected in advances:
             await async_wait_for_condition(
@@ -152,7 +149,7 @@ def assert_timeseries_equal(actual, expected):
     assert len(actual) == len(
         expected
     ), f"Length mismatch: {len(actual)} vs {len(expected)}"
-    for i, (a, e) in enumerate(zip(actual, expected, strict=False)):
+    for i, (a, e) in enumerate(zip(actual, expected)):
         assert (
             # c_round is used in the Cython implementation, so we need to use a tolerance
             abs(a.timestamp - e.timestamp)
@@ -684,9 +681,7 @@ class TestInstantaneousMerge:
         actual_timestamps = [point.timestamp for point in result]
 
         assert len(actual_timestamps) == len(expected_timestamps)
-        for actual, expected in zip(
-            actual_timestamps, expected_timestamps, strict=False
-        ):
+        for actual, expected in zip(actual_timestamps, expected_timestamps):
             # c_round is used in the Cython implementation, so we need to use a tolerance
             assert abs(actual - expected) < 1e-4, f"Expected {expected}, got {actual}"
 

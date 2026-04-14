@@ -234,7 +234,7 @@ def fixed_size_list_array():
 @pytest.fixture
 def map_array():
     return pa.array(
-        [list(zip("abcdefghij", range(10), strict=False)) for _ in range(1000)],
+        [list(zip("abcdefghij", range(10))) for _ in range(1000)],
         type=pa.map_(pa.string(), pa.int64()),
     )
 
@@ -346,7 +346,7 @@ def complex_nested_array():
                 ]
             ),
             pa.array(
-                [list(zip("abcdefghij", range(10), strict=False)) for _ in range(1000)],
+                [list(zip("abcdefghij", range(10))) for _ in range(1000)],
                 type=pa.map_(pa.string(), pa.int64()),
             ),
         ],
@@ -452,7 +452,7 @@ def test_custom_arrow_data_serializer(ray_start_regular_shared, data, cap_mult):
     assert view.equals(post_slice), post_slice
     # Check that the slice view was truncated upon serialization.
     assert len(s_view) <= cap_mult * len(s_arr)
-    for column, pre_column in zip(post_slice.columns, view.columns, strict=False):
+    for column, pre_column in zip(post_slice.columns, view.columns):
         # Check that offset was reset on slice.
         if column.num_chunks > 0:
             assert column.chunk(0).offset == 0
@@ -515,7 +515,7 @@ def test_custom_arrow_data_serializer_fallback(
     assert view.equals(post_slice), post_slice
     # Check that the slice view was truncated upon serialization.
     assert len(s_view) <= cap_mult * len(s_arr)
-    for column, pre_column in zip(post_slice.columns, view.columns, strict=False):
+    for column, pre_column in zip(post_slice.columns, view.columns):
         # Check that offset was reset on slice.
         if column.num_chunks > 0:
             assert column.chunk(0).offset == 0

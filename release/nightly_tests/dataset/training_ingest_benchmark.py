@@ -426,7 +426,7 @@ class S3UrlImageDataLoader(BaseDataLoader):
             paths = list(batch["path"])
             classes = list(batch["class"])
 
-            for s3_url, wnid in zip(paths, classes, strict=False):
+            for s3_url, wnid in zip(paths, classes):
                 # Parse S3 URL: s3://bucket/key
                 url_path = s3_url[5:] if s3_url.startswith("s3://") else s3_url
                 bucket, key = url_path.split("/", 1)

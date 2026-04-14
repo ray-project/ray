@@ -1464,7 +1464,6 @@ async def test_queue_len_response_deadline_backoff(pow_2_router):
     for i, j in zip(
         range(1, len(r1.queue_len_deadline_history) - 1),
         range(2, len(r1.queue_len_deadline_history)),
-        strict=False,
     ):
         deadline_i = r1.queue_len_deadline_history[i]
         deadline_j = r1.queue_len_deadline_history[j]

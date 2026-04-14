@@ -980,7 +980,7 @@ def test_pb2_nested_hyperparams():
 
     np.random.seed(2023)
 
-    for trial_nested, trial_flat in zip(trials_nested, trials_flat, strict=False):
+    for trial_nested, trial_flat in zip(trials_nested, trials_flat):
         pb2_nested.on_trial_add(mock_runner, trial_nested)
         # Let PB2 generate the initial config randomly, then use the same
         # initial values for the flattened version
@@ -990,9 +990,7 @@ def test_pb2_nested_hyperparams():
 
     # Make sure that config suggestions are the same for each timestep
     for t in range(1, 10):
-        for i, (trial_nested, trial_flat) in enumerate(
-            zip(trials_nested, trials_flat, strict=False)
-        ):
+        for i, (trial_nested, trial_flat) in enumerate(zip(trials_nested, trials_flat)):
             res = _result(time=t, val=t * (i + 1) * 10)
             _save_trial_result(pb2_nested, trial_nested, t, res)
             _save_trial_result(pb2_flat, trial_flat, t, res)
