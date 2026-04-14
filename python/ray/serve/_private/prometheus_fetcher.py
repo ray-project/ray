@@ -86,36 +86,22 @@ class PrometheusMetricsFetcherActor:
         if self._session is None or self._session.closed:
             self._session = aiohttp.ClientSession()
 
-        # Budget: don't let a single iteration run forever.
-        budget_s = RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S / 2
-
         all_results: Dict[DeploymentID, Dict[str, float]] = {}
-        try:
-            coros = []
-            deployment_ids = []
-            for dep_id, queries in self._queries.items():
-                deployment_ids.append(dep_id)
-                coros.append(self._fetch_for_deployment(queries))
+        coros = []
+        deployment_ids = []
+        for dep_id, queries in self._queries.items():
+            deployment_ids.append(dep_id)
+            coros.append(self._fetch_for_deployment(queries))
 
-            results = await asyncio.wait_for(
-                asyncio.gather(*coros, return_exceptions=True),
-                timeout=budget_s,
-            )
+        results = await asyncio.gather(*coros, return_exceptions=True)
 
-            for dep_id, result in zip(deployment_ids, results):
-                if isinstance(result, Exception):
-                    logger.warning(
-                        f"Failed to fetch Prometheus metrics for {dep_id}: {result}"
-                    )
-                elif result:
-                    all_results[dep_id] = result
-
-        except asyncio.TimeoutError:
-            logger.warning(
-                f"Prometheus fetch exceeded budget of {budget_s:.1f}s. "
-                f"Consider reducing prometheus_queries or increasing "
-                f"RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S."
-            )
+        for dep_id, result in zip(deployment_ids, results):
+            if isinstance(result, Exception):
+                logger.warning(
+                    f"Failed to fetch Prometheus metrics for {dep_id}: {result}"
+                )
+            elif result:
+                all_results[dep_id] = result
 
         if all_results:
             timestamp = time.time()
