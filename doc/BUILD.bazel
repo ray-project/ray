@@ -302,6 +302,7 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/cross_node_parallelism_example.py",
         "source/serve/doc_code/llm/llm_yaml_config_example.py",
         "source/serve/doc_code/llm/qwen_example.py",
+        "source/serve/doc_code/capacity_queue_request_router_app.py",
     ],
     extra_srcs = [],
     tags = [
@@ -668,7 +669,10 @@ doctest(
 doctest(
     name = "doctest[train]",
     # TODO: [V2] Migrate
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "0",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     files = glob(
         include = [
             "source/train/**/*.md",

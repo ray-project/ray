@@ -1,7 +1,7 @@
 group: core tests
 depends_on:
   - forge
-  - ray-core-build
+  - ray-core-build(*)
   - ray-dashboard-build
 steps:
   # builds
@@ -204,7 +204,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
         python/ray/tests/modin/... core
-        --install-mask all-ray-libraries
         --python-version 3.10
         --build-name datalbuild-py3.10
     depends_on:
@@ -269,7 +268,7 @@ steps:
       - manylinux-x86_64
       - corebuild-multipy
       - forge
-      - ray-wheel-build
+      - ray-wheel-build(*)
 
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:
@@ -473,7 +472,7 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase
+      - raycpubase(*)
       - corebuild-multipy
 
   - label: ":ray: core: runtime env container tests"
@@ -495,7 +494,7 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase
+      - raycpubase(*)
       - corebuild-multipy
 
   - label: ":core: core: spark-on-ray tests"

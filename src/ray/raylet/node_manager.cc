@@ -243,7 +243,9 @@ NodeManager::NodeManager(
       placement_group_resource_manager_(placement_group_resource_manager),
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create()),
-      memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback())),
+      memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
+                                                   config.enable_resource_isolation,
+                                                   *cgroup_manager)),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
       shutting_down_(shutting_down),
@@ -3057,9 +3059,9 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 
 // Picks the workers and kills the process if the memory usage is above the threshold.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
-  return [this](const SystemMemorySnapshot &system_memory_snapshot) {
+  return [this](SystemMemorySnapshot system_memory_snapshot) {
     io_service_.post(
-        [this, system_memory = system_memory_snapshot]() {
+        [this, system_memory = std::move(system_memory_snapshot)]() {
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           std::vector<std::shared_ptr<WorkerInterface>> workers =
