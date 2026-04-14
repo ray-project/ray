@@ -25,6 +25,5 @@ llm_config = LLMConfig(
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
-serve.start()
 serve.run(app, blocking=True)
 # __sglang_single_node_end__
