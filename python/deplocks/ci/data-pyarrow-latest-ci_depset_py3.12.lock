@@ -361,6 +361,7 @@ cachetools==5.5.2 \
     --hash=sha256:d26a22bcc62eb95c3beabd9f1ee5e820d3d2704fe2967cbe350e20c8ffcd3f0a
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
     #   google-auth
     #   pyiceberg
 celery==5.5.3 \
@@ -1043,14 +1044,23 @@ cuda-pathfinder==1.5.2 ; sys_platform != 'darwin' \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   cuda-bindings
     #   cuda-core
+    #   numba-cuda
 cuda-python==12.9.6 ; sys_platform != 'darwin' \
     --hash=sha256:ed5cf30e1129729eecf4605dff6e8bce84f2d30c17b17c7e5ac4b76448de35d2
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
     #   pylibcudf-cu12
     #   rmm-cu12
 cuda-toolkit==12.8.0 ; sys_platform != 'darwin' \
     --hash=sha256:f179e2f8d027d2c3b7f786ecaeb526640396df52303fdfbb0b60c6ced69b5732
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
+    #   numba-cuda
+cudf-cu12==26.4.0 ; sys_platform != 'darwin' \
+    --hash=sha256:43cbc0175e5016fa94ae96de83355c578dc149b644961301b47c6e28d5f61f49 \
+    --hash=sha256:fc92aa356ec99e6ee53465c357ede6c0ed68bc7c8760f41be881e84f2190424e
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
 cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \
@@ -1068,7 +1078,9 @@ cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     --hash=sha256:e5426ae3b1b9cf59927481e457a89e3f0b50a35b114a8034ec9110e7a833434c \
     --hash=sha256:e78409ea72f5ac7d6b6f3d33d99426a94005254fa57e10617f430f9fd7c3a0a1 \
     --hash=sha256:f33c9c975782ef7a42c79b6b4fb3d5b043498f9b947126d792592372b432d393
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
 dask==2025.5.0 \
     --hash=sha256:3ec9175e53effe1c2b0086668352e0d5261c5ef6f71a410264eda83659d686ef \
     --hash=sha256:77e9a64bb09098515bc579477b7051b0909474cd7b3e0005e3d0968a70c84015
@@ -1434,6 +1446,7 @@ fsspec==2023.12.1 \
     --hash=sha256:c4da01a35ac65c853f833e43f67802c25213f560820d54ddf248f92eddd5e990
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
     #   dask
     #   delta-sharing
     #   etils
@@ -1966,6 +1979,7 @@ libcudf-cu12==26.4.0 ; sys_platform != 'darwin' \
     --hash=sha256:432fe19cb4ed7af4149be1d018bec4b243a184bbbcd3284fd178e06a0c4eb8f2
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
     #   pylibcudf-cu12
 libkvikio-cu12==26.4.0 ; sys_platform != 'darwin' \
     --hash=sha256:0c051a60322877785ce37f5b1229902a5af3099c2180dd20c68a27c8dc55b9cf \
@@ -2618,6 +2632,7 @@ numba==0.61.2 ; sys_platform != 'darwin' \
     --hash=sha256:efd3db391df53aaa5cfbee189b6c910a5b471488749fd6606c3f33fc984c2ae2
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
     #   numba-cuda
 numba-cuda==0.28.2 ; sys_platform != 'darwin' \
     --hash=sha256:03cf721073974b7abd02ecdef563057a93c65c1885ee8bfc0e82ef499bca61fe \
@@ -2635,7 +2650,9 @@ numba-cuda==0.28.2 ; sys_platform != 'darwin' \
     --hash=sha256:e52ff5a98ea705794df397197b045a34ab7ac17c6e3a2b4ebaa967acea557d88 \
     --hash=sha256:fab7c67fb263c461bcd7ec9be61bdb6b4142a6c376e85ab5e40e63e35b87aaf6 \
     --hash=sha256:ff94d4e8ee2576b900f3422895aed93e55b090939f9da2696d858cc85ea446b5
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
 numpy==2.2.6 \
     --hash=sha256:038613e9fb8c72b0a41f025a7e4c3f0b7a1b5d768ece4796b674c8f3fe13efff \
     --hash=sha256:0678000bb9ac1475cd454c6b8c799206af8107e310843532b04d49649c717a47 \
@@ -2696,6 +2713,7 @@ numpy==2.2.6 \
     #   bokeh
     #   contourpy
     #   cuda-core
+    #   cudf-cu12
     #   cupy-cuda12x
     #   datasketches
     #   decord
@@ -2740,7 +2758,9 @@ nvidia-cuda-cccl-cu12==12.8.55 ; sys_platform == 'linux' or sys_platform == 'win
     --hash=sha256:2ece421cb1fb79bd36d39b450b4ecb8638c2aeec43917ff13121de2d37e2d6d1 \
     --hash=sha256:6ec11487a7dff1d1eb9403d6ed3a153edf3d98c92279df99040338661cabadd9 \
     --hash=sha256:9b8fea7d4a4a81e110a95075aabcb161c024a24280af9a30131a37970519face
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cuda-toolkit
 nvidia-cuda-cupti-cu12==12.8.57 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:8e0b2eb847de260739bee4a3f66fac31378f4ff49538ff527a38a01a9a39f950 \
     --hash=sha256:bbed719c52a476958a74cfc42f2b95a3fd6b3fd94eb40134acc4601feb4acac3 \
@@ -2752,13 +2772,16 @@ nvidia-cuda-nvcc-cu12==12.8.61 ; sys_platform == 'linux' or sys_platform == 'win
     --hash=sha256:171f605044ba17bc455d19cad289946c3dbea029a90c60dfa7b88e545bc8e329 \
     --hash=sha256:28604ec42aaa09035b0fb7111432e5121bc385580b30c55d2acfb7d644b16548 \
     --hash=sha256:4524739cfc080e9c9e53032912be8f020058e0a7186746d19acef3b6d916ea0b
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cuda-toolkit
 nvidia-cuda-nvrtc-cu12==12.8.61 ; sys_platform == 'linux' or sys_platform == 'win32' \
     --hash=sha256:9c8887bf5e5dffc441018ba8c5dc59952372a6f4806819e8c1f03d62637dbeea \
     --hash=sha256:a0fa9c2a21583105550ebd871bd76e2037205d56f33f128e69f6d2a55e0af9ed \
     --hash=sha256:b1f376bf58111ca73dde4fd4df89a462b164602e074a76a2c29c121ca478dcd4
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cuda-toolkit
     #   torch
 nvidia-cuda-runtime-cu12==12.8.57 ; sys_platform == 'linux' or sys_platform == 'win32' \
     --hash=sha256:534ccebd967b6a44292678fa5da4f00666029cb2ed07a79515ea41ef31fe3ec7 \
@@ -2766,6 +2789,7 @@ nvidia-cuda-runtime-cu12==12.8.57 ; sys_platform == 'linux' or sys_platform == '
     --hash=sha256:89be637e3ee967323865b85e0f147d75f9a5bd98360befa37481b02dd57af8f5
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cuda-toolkit
     #   torch
 nvidia-cudnn-cu12==9.7.1.26 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:6d011159a158f3cfc47bf851aea79e31bcff60d530b70ef70474c84cac484d07 \
@@ -2834,6 +2858,7 @@ nvidia-nvjitlink-cu12==12.8.61 ; sys_platform != 'darwin' \
     --hash=sha256:9b80ecab31085dda3ce3b41d043be0ec739216c3fc633b8abe212d5a30026df0
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   numba-cuda
     #   nvidia-cufft-cu12
     #   nvidia-cusolver-cu12
     #   nvidia-cusparse-cu12
@@ -2873,6 +2898,7 @@ nvtx==0.2.15 ; sys_platform != 'darwin' \
     --hash=sha256:f862e22017b43edf7eaf8379091a034e88d99631bc16f3b6b11abf6d09a1177f
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
     #   pylibcudf-cu12
 opencensus==0.11.4 \
     --hash=sha256:a18487ce68bc19900336e0ff4655c5a116daf10c1b3685ece8d971bddad6a864 \
@@ -3057,6 +3083,7 @@ packaging==24.2 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
     #   bokeh
+    #   cudf-cu12
     #   dask
     #   distributed
     #   google-cloud-bigquery
@@ -3132,6 +3159,7 @@ pandas==2.3.3 \
     # via
     #   -r python/requirements/data/pyarrow-latest.txt
     #   bokeh
+    #   cudf-cu12
     #   delta-sharing
     #   modin
     #   raydp
@@ -3488,6 +3516,7 @@ pyarrow==23.0.1 \
     --hash=sha256:fed7020203e9ef273360b9e45be52a2a47d3103caf156a30ace5247ffb51bdbd
     # via
     #   -r python/requirements/data/pyarrow-latest.txt
+    #   cudf-cu12
     #   delta-sharing
     #   getdaft
     #   hudi
@@ -3918,7 +3947,9 @@ pylance==2.0.1 \
 pylibcudf-cu12==26.4.0 ; sys_platform != 'darwin' \
     --hash=sha256:1d0b191096b574cff4d709bb0880d2f0a346120493090cc8103098de9abead71 \
     --hash=sha256:89d3d4e27a536e2ed5e409c96875e0d7e9dbad96b15f5f3df5db6ab94bfd22ca
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
 pyopenssl==25.0.0 \
     --hash=sha256:424c247065e46e76a37411b9ab1782541c23bb658bf003772c3405fbaa128e90 \
     --hash=sha256:cd2cef799efa3936bb08e8ccb9433a575722b9dd986023f1cabc4ae64e9dac16
@@ -4195,6 +4226,7 @@ rich==13.7.1 \
     --hash=sha256:9be308cb1fe2f1f57d67ce99e95af38a1e2bc71ad9813b0e247cf7ffbcc3a432
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
     #   keras
     #   memray
     #   pyiceberg
@@ -4204,6 +4236,7 @@ rmm-cu12==26.4.0 ; sys_platform != 'darwin' \
     --hash=sha256:f13d90d87b9cf8511fba2e929de72fb8e89a519aecdc975df9e7e91719f86f8e
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.12.lock
+    #   cudf-cu12
     #   pylibcudf-cu12
 rpds-py==0.22.3 \
     --hash=sha256:009de23c9c9ee54bf11303a966edf4d9087cd43a6003672e6aa7def643d06518 \
