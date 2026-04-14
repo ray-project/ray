@@ -23,14 +23,6 @@ the :class:`~ray.train.ScalingConfig`:
         num_workers=8
     )
 
-.. tip::
-
-    When using TPU slices on GKE, set ``num_workers`` to the number of TPU VM
-    hosts in the slice. For example, a ``v6e`` TPU slice with a ``4x4`` topology
-    has 4 VMs, so you'd set ``num_workers=4``. For details on how topology maps
-    to the number of VMs, see `Plan TPUs in GKE <https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus>`_.
-
-
 Using accelerators
 ------------------
 
@@ -54,8 +46,12 @@ Using accelerators
     .. tab-item:: TPU
 
         To use TPUs, pass ``use_tpu=True`` to the :class:`~ray.train.ScalingConfig`.
-        You also need to specify ``topology`` and ``accelerator_type`` for multi-host
-        training. Set ``num_workers`` to the number of TPU VM hosts in the slice.
+        You also need to specify ``topology`` and ``accelerator_type``.
+
+        Set ``num_workers`` to the number of TPU VM hosts in the slice, or a
+        multiple of it for multi-slice training. For example, a ``v6e`` TPU
+        slice with a ``4x4`` topology has 4 VMs, so you'd set ``num_workers=4``
+        for a single slice, or ``num_workers=8`` for two slices.
 
         For details on how TPU topologies map to the number of VMs, see
         `Plan TPUs in GKE <https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus>`_.
@@ -65,8 +61,17 @@ Using accelerators
 
             from ray.train import ScalingConfig
 
+            # Single slice: 4 v6e VMs in a 4x4 topology
             scaling_config = ScalingConfig(
                 num_workers=4,
+                use_tpu=True,
+                topology="4x4",
+                accelerator_type="TPU-V6E",
+            )
+
+            # Multi-slice: 2 v6e slices, 8 VMs total
+            scaling_config = ScalingConfig(
+                num_workers=8,
                 use_tpu=True,
                 topology="4x4",
                 accelerator_type="TPU-V6E",
@@ -110,15 +115,15 @@ Using accelerators in the training function
 
     .. tab-item:: TPU
 
-        When ``use_tpu=True`` is set, Ray Train automatically initializes the
-        JAX distributed environment for TPU execution. It sets the ``JAX_PLATFORMS``
-        environment variable to ``tpu`` and calls ``jax.distributed.initialize()``
-        on each worker.
+        When ``use_tpu=True`` is set, Ray Train configures the distributed
+        environment for TPU execution on each worker. The specific initialization
+        depends on the trainer you use (such as :class:`~ray.train.v2.jax.JaxTrainer`).
 
         .. note::
 
-            Import ``jax`` inside your ``train_loop_per_worker`` function rather
-            than at the module level. This avoids driver-side TPU lock issues.
+            If you're using JAX, import ``jax`` inside your ``train_loop_per_worker``
+            function rather than at the module level. This avoids driver-side TPU
+            lock issues.
 
         The following example shows a basic TPU training setup with
         :class:`~ray.train.v2.jax.JaxTrainer`:
@@ -206,9 +211,9 @@ Assigning multiple accelerators to a worker
                 resources_per_worker={"TPU": 4},
             )
 
-        When both ``topology`` and ``accelerator_type`` are specified, Ray Train
-        can auto-detect the correct ``resources_per_worker`` and ``num_workers``
-        for the given TPU slice configuration.
+        When ``topology`` and ``accelerator_type`` are specified, Ray Train
+        can auto-detect the correct ``resources_per_worker`` for the given
+        TPU slice configuration.
 
 
 Setting the accelerator type
@@ -240,15 +245,9 @@ rather than on any arbitrary accelerator node. You can get a list of supported `
 
     .. tab-item:: TPU
 
-        For TPUs, ``accelerator_type`` specifies the TPU generation (such as
-        ``"TPU-V6E"`` or ``"TPU-V4"``). This field is required when ``use_tpu=True``
-        and ``num_workers`` > 1.
-
-        .. tip::
-            Ensure that your GKE cluster has TPU node pools of the specified type,
-            or that it can autoscale to provision them. See
-            `Plan TPUs in GKE <https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus>`_
-            for available TPU types and regions.
+        For TPUs, ``accelerator_type`` specifies the TPU generation. The
+        supported values are: ``"TPU-V2"``, ``"TPU-V3"``, ``"TPU-V4"``,
+        ``"TPU-V5P"``, ``"TPU-V5LITEPOD"``, ``"TPU-V6E"``, and ``"TPU-V7X"``.
 
         .. testcode::
             :skipif: True
@@ -358,12 +357,14 @@ the ``resources_per_worker`` attribute:
         For TPU workers, specify the number of TPU chips per worker in
         ``resources_per_worker``. Each TPU VM host has a fixed number of chips
         depending on the machine type (such as 4 chips for ``ct6e-standard-4t``).
+        Supported chip counts are 1, 2, 4, and 8.
 
         .. testcode::
             :skipif: True
 
             from ray.train import ScalingConfig
 
+            # Allocate all 4 chips per host to each worker
             scaling_config = ScalingConfig(
                 num_workers=4,
                 resources_per_worker={
@@ -375,11 +376,23 @@ the ``resources_per_worker`` attribute:
                 accelerator_type="TPU-V6E",
             )
 
+            # Allocate 2 of 4 chips per host to each worker
+            scaling_config = ScalingConfig(
+                num_workers=4,
+                resources_per_worker={
+                    "CPU": 4,
+                    "TPU": 2,
+                },
+                use_tpu=True,
+                topology="4x4",
+                accelerator_type="TPU-V6E",
+            )
+
         .. note::
             If you specify TPUs in ``resources_per_worker``, you also need to set
             ``use_tpu=True``.
 
-        When both ``topology`` and ``accelerator_type`` are provided, Ray Train
+        When ``topology`` and ``accelerator_type`` are provided, Ray Train
         can auto-detect the correct ``resources_per_worker`` for the TPU slice,
         so you can omit it:
 
