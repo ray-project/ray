@@ -3,6 +3,8 @@ zones: [us-west1-b]
 
 head_node:
   instance_type: n2-standard-16 # aws m5.4xlarge
+  resources:
+    CPU: 16
 
 worker_nodes:
   - instance_type: n1-standard-16-nvidia-tesla-t4-1 # g4dn.4xlarge
