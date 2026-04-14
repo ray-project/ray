@@ -162,16 +162,19 @@ def test_zip_does_not_free_shared_materialized_blocks(ray_start_regular_shared):
     to be called on blocks that were shared with other operators in the DAG,
     leading to ObjectFreedError.
     """
-    # Create a dataset with multiple blocks and materialize it.
+    # Create a dataset with 3 blocks (rows [7, 7, 6]) and materialize it.
     # The materialized blocks have owns_blocks=False.
-    ds = ray.data.range(20, override_num_blocks=4).materialize()
+    ds = ray.data.range(20, override_num_blocks=3).materialize()
 
     # Consumer 1: a map_batches that uses the same materialized dataset.
     mapped_ds = ds.map_batches(lambda batch: batch, batch_format="pandas")
 
     # Consumer 2: zip the same materialized dataset with another dataset.
     # This triggers _split_at_indices inside ZipOperator._zip().
-    # The other dataset has a different number of blocks to force block splitting.
+    # Use 2 blocks (rows [10, 10]) so that block boundaries are NOT aligned
+    # with ds's blocks (rows [7, 7, 6]). This forces actual block splitting
+    # (e.g., the first 10-row block gets split at row 7), which exercises
+    # the owned_by_consumer code path in _split_all_blocks.
     other_ds = ray.data.range(20, override_num_blocks=2)
     zipped = other_ds.zip(ds)
 
