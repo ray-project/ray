@@ -1,6 +1,13 @@
 cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 zones: [us-west1-c]
 
+#advanced_instance_config:
+#    BlockDeviceMappings:
+#        - DeviceName: /dev/sda1
+#          Ebs:
+#            DeleteOnTermination: true
+#            VolumeSize: 500
+
 head_node:
     instance_type: n2-highmem-16 # i3.4xlarge
 
