@@ -954,6 +954,8 @@ class TestRuntimeEnv:
         runtime_env = {"env_vars": env_vars}
         if resource_kwarg:
             run_cmd = "RAY_TEST_RESOURCES_SPECIFIED=1 " + run_cmd
+            if "entrypoint_num_gpus" in resource_kwarg:
+                run_cmd = "RAY_TEST_GPUS_SPECIFIED=1 " + run_cmd
         job_id = await job_manager.submit_job(
             entrypoint=run_cmd,
             runtime_env=runtime_env,
@@ -1328,7 +1330,7 @@ while True:
             check_job_stopped,
             job_manager=job_manager,
             job_id=job_id,
-            timeout=stop_timeout - 1,
+            timeout=stop_timeout / 2,
         )
 
     await async_wait_for_condition(
