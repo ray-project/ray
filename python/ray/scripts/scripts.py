@@ -1326,7 +1326,13 @@ def stop(force: bool, grace_period: int):
         for proc in psutil.process_iter(["name", "cmdline", "status"]):
             try:
                 if proc.status() == psutil.STATUS_ZOMBIE:
-                    pre_stopped.append(proc)
+                    name = proc.name()
+                    cmdline = proc.cmdline()
+                    for keyword, filter_by_cmd in processes_to_kill:
+                        corpus = name if filter_by_cmd else subprocess.list2cmdline(cmdline)
+                        if keyword in corpus:
+                            pre_stopped.append(proc)
+                            break
                 else:
                     process_infos.append((proc, proc.name(), proc.cmdline()))
             except psutil.Error:

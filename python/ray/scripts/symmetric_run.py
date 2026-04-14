@@ -247,7 +247,13 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
                 *ray_start_args,
             ]
 
-            subprocess.run(ray_start_cmd)
+            worker_result = subprocess.run(ray_start_cmd)
+            if worker_result.returncode != 0:
+                click.echo(
+                    f"ray start --block exited with code {worker_result.returncode} "
+                    "(expected on normal cluster shutdown).",
+                    err=True,
+                )
 
     except subprocess.CalledProcessError as e:
         click.echo(f"Failed to start Ray: {e}", err=True)
