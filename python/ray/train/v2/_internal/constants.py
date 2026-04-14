@@ -84,12 +84,13 @@ STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR = (
     "RAY_TRAIN_STATE_ACTOR_RECONCILIATION_INTERVAL_S"
 )
 DEFAULT_STATE_ACTOR_RECONCILIATION_INTERVAL_S: float = 30.0
-# TODO: `ray.util.state.api.get_actor` takes 10-50ms but we cannot pick lower than 2s
-# due to https://github.com/ray-project/ray/issues/54153. Lower this after fix.
-GET_ACTOR_TIMEOUT_S: int = 2
-# GET_ACTOR_TIMEOUT_S_ENV_VAR * CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR should be
-# way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR.
-CONTROLLERS_TO_POLL_PER_ITERATION: int = 5
+# TODO: `ray.util.state.api.get_actor` typically takes 10-50ms but can take longer
+# when there is high load on the cluster.
+GET_ACTOR_TIMEOUT_S: int = 10
+# GET_ACTOR_TIMEOUT_S * CONTROLLERS_TO_POLL_PER_ITERATION should be
+# way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S to give the state actor
+# time to update live train run state.
+CONTROLLERS_TO_POLL_PER_ITERATION: int = 1
 
 # Environment variable for Train execution callbacks
 RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
