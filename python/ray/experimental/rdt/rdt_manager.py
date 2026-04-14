@@ -465,6 +465,12 @@ class RDTManager:
         Returns:
             None
         """
+        import time as _time
+
+        from ray._private.worker import _rdt_profile_timings
+
+        _fetch_start = _time.perf_counter()
+
         from ray.experimental.rdt.rdt_store import (
             __ray_fetch_rdt_object__,
         )
@@ -538,6 +544,10 @@ class RDTManager:
                 tensor_transport,
                 target_buffers,
             )
+
+        _rdt_profile_timings["F_fetch_object_total"] = (
+            _time.perf_counter() - _fetch_start
+        )
 
     def queue_or_trigger_out_of_band_tensor_transfer(
         self, dst_actor: "ray.actor.ActorHandle", task_args: Tuple[Any, ...]

@@ -115,6 +115,8 @@ from ray.util.tracing.tracing_helper import _import_from_string
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
+_rdt_profile_timings = {}
+
 SCRIPT_MODE = 0
 WORKER_MODE = 1
 SPILL_WORKER_MODE = 2
@@ -855,14 +857,22 @@ class Worker:
                 _tensor_transport
             )
             validate_one_sided(tensor_transport, "ray.put")
+        import time as _time
+
+        _prof = getattr(self.__class__, "_rdt_profiling", True)
         try:
             if tensor_transport is not None:
+                _t0 = _time.perf_counter()
                 (
                     serialized_value,
                     tensors,
                 ) = self.get_serialization_context().serialize_rdt_objects(
                     value, tensor_transport
                 )
+                if _prof:
+                    _rdt_profile_timings["A1_serialize_rdt_objects"] = (
+                        _time.perf_counter() - _t0
+                    )
             else:
                 serialized_value = self.get_serialization_context().serialize(value)
         except TypeError as e:
@@ -885,6 +895,7 @@ class Worker:
         # reference will be created. If another reference is created and
         # removed before this one, it will corrupt the state in the
         # reference counter.
+        _t0 = _time.perf_counter()
         ret = self.core_worker.put_object(
             serialized_value,
             pin_object=pin_object,
@@ -893,8 +904,15 @@ class Worker:
             _is_experimental_channel=_is_experimental_channel,
             tensor_transport=tensor_transport,
         )
+        if _prof and tensor_transport is not None:
+            _rdt_profile_timings["A2_core_worker_put"] = _time.perf_counter() - _t0
         if tensors:
+            _t0 = _time.perf_counter()
             self.rdt_manager.put_object(ret, tensor_transport, tensors)
+            if _prof:
+                _rdt_profile_timings["A3_rdt_manager_put_object"] = (
+                    _time.perf_counter() - _t0
+                )
         return ret
 
     def raise_errors(self, serialized_objects, object_refs):
@@ -910,6 +928,9 @@ class Worker:
         object_refs,
         use_object_store: bool = False,
     ):
+        import time as _time
+
+        _deser_start = _time.perf_counter()
         rdt_objects: Dict[str, List["torch.Tensor"]] = {}
         for obj_ref, (_, metadata, tensor_transport) in zip(
             object_refs, serialized_objects
@@ -937,6 +958,11 @@ class Worker:
                 rdt_objects[object_id] = self.rdt_manager.get_rdt_object(
                     object_id, use_object_store
                 )
+
+        if rdt_objects:
+            _rdt_profile_timings["G_deserialize_objects_total"] = (
+                _time.perf_counter() - _deser_start
+            )
 
         # Function actor manager or the import thread may call pickle.loads
         # at the same time which can lead to failed imports
