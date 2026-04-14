@@ -3308,7 +3308,8 @@ void NodeManager::GCWorkerFailureReason() {
     auto duration_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
                            clock_.SteadyNow() - entry.second.creation_time_)
                            .count();
-    if (duration_ms > RayConfig::instance().task_failure_entry_ttl_ms()) {
+    if (duration_ms > static_cast<int64_t>(
+            RayConfig::instance().task_failure_entry_ttl_ms())) {
       RAY_LOG(INFO).WithField(entry.first)
           << "Removing worker failure reason since it expired";
       worker_failure_reasons_.erase(entry.first);
