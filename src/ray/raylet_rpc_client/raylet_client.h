@@ -81,9 +81,7 @@ class RayletClient : public RayletClientInterface {
                          const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply>
                              &callback) override;
 
-  void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override;
+  void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) override;
 
   void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,

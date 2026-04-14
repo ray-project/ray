@@ -233,9 +233,7 @@ class FakeRayletClient : public RayletClientInterface {
     }
   }
 
-  void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<WorkerBacklogReport> &backlog_reports) override {}
+  void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) override {}
 
   void GetResourceLoad(const ClientCallback<GetResourceLoadReply> &callback) override {}
 

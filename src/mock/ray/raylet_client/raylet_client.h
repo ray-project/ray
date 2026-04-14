@@ -19,8 +19,7 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
   MOCK_METHOD(void,
               ReportWorkerBacklog,
-              (const WorkerID &worker_id,
-               const std::vector<rpc::WorkerBacklogReport> &backlog_reports),
+              (const rpc::ReportWorkerBacklogRequest &request),
               (override));
   MOCK_METHOD(void,
               RequestWorkerLease,
