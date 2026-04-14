@@ -2,3 +2,5 @@ cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
 head_node:
     instance_type: g4dn.12xlarge
+
+worker_nodes: []
