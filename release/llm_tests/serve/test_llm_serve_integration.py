@@ -369,5 +369,84 @@ def test_nested_engine_kwargs_structured_outputs():
     time.sleep(1)
 
 
+def test_prometheus_autoscaling():
+    """Test that a custom autoscaling policy using Prometheus metrics works
+    end-to-end: deploy with 1 replica, send traffic so p99 TTFT exceeds a
+    trivially low threshold, and verify scale-up to 2 replicas."""
+    import os
+    from openai import OpenAI
+    from ray.serve.config import AutoscalingConfig, AutoscalingPolicy
+    from ray.serve.llm.autoscaling import TTFTAutoscalingPolicy, P99_TTFT_QUERY
+
+    prometheus_address = os.environ.get("RAY_PROMETHEUS_HOST", "http://localhost:9090")
+
+    model_id = "Qwen/Qwen2.5-0.5B-Instruct"
+
+    llm_config = LLMConfig(
+        model_loading_config=dict(model_id=model_id),
+        deployment_config=dict(
+            autoscaling_config=AutoscalingConfig(
+                min_replicas=1,
+                max_replicas=2,
+                initial_replicas=1,
+                upscale_delay_s=5,
+                downscale_delay_s=600,
+                prometheus_address=prometheus_address,
+                prometheus_queries=[P99_TTFT_QUERY],
+                policy=AutoscalingPolicy(
+                    policy_function=TTFTAutoscalingPolicy,
+                    # 1ms threshold — any real request triggers scale-up
+                    policy_kwargs=dict(ttft_target_s=0.001),
+                ),
+            ),
+        ),
+        engine_kwargs=dict(enforce_eager=True),
+    )
+
+    app = build_openai_app({"llm_configs": [llm_config]})
+    serve.run(app, blocking=False)
+    wait_for_condition(is_default_app_running, timeout=300)
+
+    # Wait for the server to actually handle requests
+    client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
+    for _ in range(30):
+        try:
+            client.completions.create(
+                model=model_id, prompt="test", max_tokens=5, temperature=0
+            )
+            break
+        except Exception:
+            time.sleep(2)
+
+    # Send traffic to generate TTFT metrics (any real TTFT > 0.001s)
+    for i in range(10):
+        try:
+            client.completions.create(
+                model=model_id,
+                prompt=f"Write a story about topic {i}. " * 10,
+                max_tokens=30,
+                temperature=0.8,
+            )
+        except Exception:
+            pass
+
+    # Wait for scale-up: policy threshold is 0.001s, any real TTFT triggers it
+    def scaled_to_two():
+        status = serve.status()
+        for app_status in status.applications.values():
+            for name, dep in app_status.deployments.items():
+                if "LLMServer" in name:
+                    running = dep.replica_states.get("RUNNING", 0)
+                    print(f"  {name}: {running} running replicas")
+                    return running >= 2
+        return False
+
+    wait_for_condition(scaled_to_two, timeout=120, retry_interval_ms=5000)
+    print("Prometheus autoscaling: scale-up to 2 replicas confirmed.")
+
+    serve.shutdown()
+    time.sleep(1)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

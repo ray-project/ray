@@ -40,7 +40,9 @@ def _make_autoscaling_context(prometheus_metrics=None) -> AutoscalingContext:
     )
 
 
-def _make_state(prometheus_queries=None) -> DeploymentAutoscalingState:
+def _make_state(
+    prometheus_queries=None, prometheus_address=None
+) -> DeploymentAutoscalingState:
     """Build a DeploymentAutoscalingState with config set directly."""
     state = DeploymentAutoscalingState(
         DeploymentID(name="MyDeployment", app_name="app")
@@ -49,6 +51,7 @@ def _make_state(prometheus_queries=None) -> DeploymentAutoscalingState:
         min_replicas=1,
         max_replicas=5,
         prometheus_queries=prometheus_queries,
+        prometheus_address=prometheus_address,
     )
     return state
 
@@ -91,16 +94,25 @@ class TestAutoscalingContextPrometheusMetrics:
 
 class TestDeploymentAutoscalingStatePrometheus:
     def test_cache_returns_none_before_record(self):
-        state = _make_state(prometheus_queries=["up"])
+        state = _make_state(
+            prometheus_queries=["up"], prometheus_address="localhost:9090"
+        )
         assert state._get_cached_prometheus_metrics() is None
 
     def test_has_prometheus_queries(self):
-        assert _make_state(prometheus_queries=["up"]).has_prometheus_queries()
+        assert _make_state(
+            prometheus_queries=["up"], prometheus_address="localhost:9090"
+        ).has_prometheus_queries()
         assert not _make_state(prometheus_queries=None).has_prometheus_queries()
         assert not _make_state(prometheus_queries=[]).has_prometheus_queries()
+        # queries without address should also be False
+        assert not _make_state(prometheus_queries=["up"]).has_prometheus_queries()
 
     def test_record_populates_cache(self):
-        state = _make_state(prometheus_queries=["my_gauge", "rate(rps[5m])"])
+        state = _make_state(
+            prometheus_queries=["my_gauge", "rate(rps[5m])"],
+            prometheus_address="localhost:9090",
+        )
         state.record_prometheus_metrics(
             {"my_gauge": 42.5, "rate(rps[5m])": 100.0},
             timestamp=time.time(),
@@ -111,12 +123,16 @@ class TestDeploymentAutoscalingStatePrometheus:
         }
 
     def test_record_empty_caches_none(self):
-        state = _make_state(prometheus_queries=["m"])
+        state = _make_state(
+            prometheus_queries=["m"], prometheus_address="localhost:9090"
+        )
         state.record_prometheus_metrics({}, timestamp=time.time())
         assert state._get_cached_prometheus_metrics() is None
 
     def test_cache_expiry(self):
-        state = _make_state(prometheus_queries=["m"])
+        state = _make_state(
+            prometheus_queries=["m"], prometheus_address="localhost:9090"
+        )
         state.record_prometheus_metrics({"m": 1.0}, timestamp=time.time())
         assert state._get_cached_prometheus_metrics() == {"m": 1.0}
 
@@ -145,7 +161,10 @@ class TestAutoscalingStateManagerPrometheus:
         app_state = ApplicationAutoscalingState("app")
         dep_state = DeploymentAutoscalingState(dep_id)
         dep_state._config = AutoscalingConfig(
-            min_replicas=1, max_replicas=5, prometheus_queries=["q"]
+            min_replicas=1,
+            max_replicas=5,
+            prometheus_queries=["q"],
+            prometheus_address="localhost:9090",
         )
         app_state._deployment_autoscaling_states[dep_id] = dep_state
         mgr._app_autoscaling_states["app"] = app_state
@@ -153,7 +172,7 @@ class TestAutoscalingStateManagerPrometheus:
         mgr.record_prometheus_metrics({dep_id: {"q": 7.0}}, time.time())
         assert dep_state._get_cached_prometheus_metrics() == {"q": 7.0}
 
-    def test_get_queries_by_deployment(self):
+    def test_get_config_by_deployment(self):
         mgr = AutoscalingStateManager()
         dep_id = DeploymentID(name="D", app_name="app")
 
@@ -168,16 +187,40 @@ class TestAutoscalingStateManagerPrometheus:
             min_replicas=1,
             max_replicas=5,
             prometheus_queries=["rate(rps[5m])", "up"],
+            prometheus_address="localhost:9090",
         )
         app_state._deployment_autoscaling_states[dep_id] = dep_state
         mgr._app_autoscaling_states["app"] = app_state
 
-        queries = mgr.get_prometheus_queries_by_deployment()
-        assert queries == {dep_id: ["rate(rps[5m])", "up"]}
+        config = mgr.get_prometheus_config_by_deployment()
+        assert config == {dep_id: (["rate(rps[5m])", "up"], "localhost:9090")}
 
-    def test_get_queries_empty_when_none_configured(self):
+    def test_get_config_empty_when_none_configured(self):
         mgr = AutoscalingStateManager()
-        assert mgr.get_prometheus_queries_by_deployment() == {}
+        assert mgr.get_prometheus_config_by_deployment() == {}
+
+    def test_get_config_empty_when_no_address(self):
+        """Queries without an address should not be returned."""
+        mgr = AutoscalingStateManager()
+        dep_id = DeploymentID(name="D", app_name="app")
+
+        from ray.serve._private.autoscaling_state import (
+            ApplicationAutoscalingState,
+            DeploymentAutoscalingState,
+        )
+
+        app_state = ApplicationAutoscalingState("app")
+        dep_state = DeploymentAutoscalingState(dep_id)
+        dep_state._config = AutoscalingConfig(
+            min_replicas=1,
+            max_replicas=5,
+            prometheus_queries=["up"],
+            # No prometheus_address set
+        )
+        app_state._deployment_autoscaling_states[dep_id] = dep_state
+        mgr._app_autoscaling_states["app"] = app_state
+
+        assert mgr.get_prometheus_config_by_deployment() == {}
 
 
 # ---------------------------------------------------------------------------
@@ -189,27 +232,32 @@ class TestAutoscalingConfigPrometheusField:
     def test_default_is_none(self):
         config = AutoscalingConfig(min_replicas=1, max_replicas=5)
         assert config.prometheus_queries is None
+        assert config.prometheus_address is None
 
     def test_accepts_promql_expressions(self):
         config = AutoscalingConfig(
             min_replicas=1,
             max_replicas=5,
+            prometheus_address="localhost:9090",
             prometheus_queries=[
                 "rate(http_requests_total[5m])",
                 "histogram_quantile(0.99, sum(rate(latency_bucket[5m])) by (le))",
             ],
         )
         assert len(config.prometheus_queries) == 2
+        assert config.prometheus_address == "localhost:9090"
 
     def test_serialization_roundtrip(self):
         config = AutoscalingConfig(
             min_replicas=1,
             max_replicas=5,
+            prometheus_address="localhost:9090",
             prometheus_queries=["rate(rps[5m])"],
         )
         data = config.model_dump()
         restored = AutoscalingConfig(**data)
         assert restored.prometheus_queries == ["rate(rps[5m])"]
+        assert restored.prometheus_address == "localhost:9090"
 
 
 if __name__ == "__main__":

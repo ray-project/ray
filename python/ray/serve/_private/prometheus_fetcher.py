@@ -18,7 +18,6 @@ from ray.actor import ActorHandle
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.constants import (
     RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S,
-    RAY_SERVE_PROMETHEUS_SERVER_ADDRESS,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.metrics_utils import MetricsPusher
@@ -39,8 +38,12 @@ class PrometheusMetricsFetcherActor:
         prometheus_address: str,
     ):
         self._controller_handle = controller_handle
-        self._prometheus_address = prometheus_address
-        self._base_url = f"http://{prometheus_address}/api/v1/query"
+        # Accept both "host:port" and "http://host:port".
+        address = prometheus_address.rstrip("/")
+        if not address.startswith("http://") and not address.startswith("https://"):
+            address = f"http://{address}"
+        self._prometheus_address = address
+        self._base_url = f"{address}/api/v1/query"
         self._session: Optional[aiohttp.ClientSession] = None
 
         # DeploymentID -> list of PromQL expressions
@@ -165,22 +168,24 @@ class PrometheusMetricsFetcherActor:
 def create_prometheus_fetcher_actor(
     controller_handle: ActorHandle,
     namespace: str = "serve",
+    prometheus_address: Optional[str] = None,
 ) -> Optional[ActorHandle]:
     """Create the singleton PrometheusMetricsFetcher actor.
 
-    Returns None if the Prometheus server address is not configured.
+    Returns None if no Prometheus address is provided.
 
     Args:
         controller_handle: handle to the Serve controller.
         namespace: Ray namespace.
+        prometheus_address: Prometheus server address (host:port).
 
     Returns:
         ActorHandle or None.
     """
-    if not RAY_SERVE_PROMETHEUS_SERVER_ADDRESS:
+    if not prometheus_address:
         logger.error(
-            "RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING is set but "
-            "RAY_SERVE_PROMETHEUS_SERVER_ADDRESS is not configured."
+            "prometheus_queries is configured but prometheus_address is not set "
+            "in AutoscalingConfig."
         )
         return None
 
@@ -199,10 +204,9 @@ def create_prometheus_fetcher_actor(
         resources={HEAD_NODE_RESOURCE_NAME: 0.001},
     ).remote(
         controller_handle=controller_handle,
-        prometheus_address=RAY_SERVE_PROMETHEUS_SERVER_ADDRESS,
+        prometheus_address=prometheus_address,
     )
     logger.info(
-        f"Created PrometheusMetricsFetcher actor "
-        f"(server={RAY_SERVE_PROMETHEUS_SERVER_ADDRESS})."
+        f"Created PrometheusMetricsFetcher actor " f"(server={prometheus_address})."
     )
     return actor

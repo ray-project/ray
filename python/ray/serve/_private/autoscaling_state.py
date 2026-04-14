@@ -815,8 +815,12 @@ class DeploymentAutoscalingState:
         return self._cached_prometheus_metrics
 
     def has_prometheus_queries(self) -> bool:
-        """Whether this deployment has Prometheus queries configured."""
-        return bool(self._config and self._config.prometheus_queries)
+        """Whether this deployment has Prometheus queries and address configured."""
+        return bool(
+            self._config
+            and self._config.prometheus_queries
+            and self._config.prometheus_address
+        )
 
     def record_prometheus_metrics(
         self, metrics: Dict[str, float], timestamp: float
@@ -1318,19 +1322,24 @@ class AutoscalingStateManager:
             if dep_state is not None:
                 dep_state.record_prometheus_metrics(dep_metrics, timestamp)
 
-    def get_prometheus_queries_by_deployment(
+    def get_prometheus_config_by_deployment(
         self,
-    ) -> Dict[DeploymentID, List[str]]:
-        """Return the configured PromQL queries for all deployments.
+    ) -> Dict[DeploymentID, Tuple[List[str], str]]:
+        """Return Prometheus config for all deployments that have it.
 
         Used by the controller to tell the fetcher actor what to query.
 
         Returns:
-            Mapping of DeploymentID to list of PromQL expressions.
+            Mapping of DeploymentID to (queries, address) tuples.
+            Only includes deployments with both prometheus_queries and
+            prometheus_address configured.
         """
         result = {}
         for app_state in self._app_autoscaling_states.values():
             for dep_id, dep_state in app_state._deployment_autoscaling_states.items():
                 if dep_state.has_prometheus_queries():
-                    result[dep_id] = list(dep_state._config.prometheus_queries)
+                    result[dep_id] = (
+                        list(dep_state._config.prometheus_queries),
+                        dep_state._config.prometheus_address,
+                    )
         return result

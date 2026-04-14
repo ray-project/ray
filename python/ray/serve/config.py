@@ -639,14 +639,22 @@ class AutoscalingConfig(BaseModel):
         description="Function used to aggregate metrics across a time window.",
     )
 
+    prometheus_address: Optional[str] = Field(
+        default=None,
+        description=(
+            "Address of the Prometheus server "
+            "(e.g. 'localhost:9090' or 'http://localhost:9090'). "
+            "Required when prometheus_queries is set."
+        ),
+    )
+
     prometheus_queries: Optional[List[str]] = Field(
         default=None,
         description=(
-            "List of PromQL expressions to evaluate against a Prometheus server "
-            "and include in the AutoscalingContext. Each expression should "
-            "return a single scalar value. Requires "
-            "RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING=1 and "
-            "RAY_SERVE_PROMETHEUS_SERVER_ADDRESS to be set."
+            "List of PromQL expressions to evaluate against the Prometheus "
+            "server specified by prometheus_address. Each expression should "
+            "return a single scalar value. Results are available in the "
+            "AutoscalingContext passed to custom autoscaling policies."
         ),
     )
 

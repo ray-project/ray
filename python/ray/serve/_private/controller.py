@@ -39,7 +39,6 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
-    RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING,
     RAY_SERVE_LOG_TO_STDERR,
     RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
     RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
@@ -422,17 +421,21 @@ class ServeController:
 
         Only sends queries to the actor when they change.
         """
-        if not RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING:
+        prom_config = (
+            self.autoscaling_state_manager.get_prometheus_config_by_deployment()
+        )
+        if not prom_config:
             return
 
-        queries = self.autoscaling_state_manager.get_prometheus_queries_by_deployment()
-        if not queries:
-            return
+        queries = {dep_id: cfg[0] for dep_id, cfg in prom_config.items()}
+        # Use the address from the first deployment that has one configured.
+        address = next(cfg[1] for cfg in prom_config.values())
 
         if getattr(self, "_prometheus_fetcher", None) is None:
             self._prometheus_fetcher = create_prometheus_fetcher_actor(
                 controller_handle=ray.get_runtime_context().current_actor,
                 namespace=SERVE_NAMESPACE,
+                prometheus_address=address,
             )
             if self._prometheus_fetcher is None:
                 return

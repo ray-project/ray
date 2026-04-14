@@ -358,17 +358,6 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
-# Feature flag to enable Prometheus-based autoscaling metrics.
-RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING = get_env_bool(
-    "RAY_SERVE_ENABLE_PROMETHEUS_AUTOSCALING", "0"
-)
-
-# Address of the Prometheus server (host:port) for fetching autoscaling metrics.
-# Required when AutoscalingConfig.prometheus_queries is set.
-RAY_SERVE_PROMETHEUS_SERVER_ADDRESS = get_env_str(
-    "RAY_SERVE_PROMETHEUS_SERVER_ADDRESS", None
-)
-
 # How often (seconds) the controller fetches Prometheus metrics in the background.
 RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S = get_env_float_positive(
     "RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S", 5.0
