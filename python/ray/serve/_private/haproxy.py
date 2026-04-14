@@ -106,7 +106,7 @@ def get_haproxy_binary() -> str:
         return _pip_binary()
     except ImportError:
         pass
-    except FileNotFoundError:
+    except OSError:
         pass
 
     # 3. System PATH fallback.
