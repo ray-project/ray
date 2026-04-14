@@ -1066,6 +1066,9 @@ cuda-toolkit==12.8.0; sys_platform != "darwin" \
 # via
 #   cudf-cu12
 #   numba-cuda
+cudf-cu12==26.4.0; sys_platform != "darwin" \
+    --hash=sha256:43cbc0175e5016fa94ae96de83355c578dc149b644961301b47c6e28d5f61f49 \
+    --hash=sha256:fc92aa356ec99e6ee53465c357ede6c0ed68bc7c8760f41be881e84f2190424e
 # via -r python/requirements/ml/py313/dl-gpu-requirements.txt
 cupy-cuda12x==13.6.0; sys_platform != "darwin" \
     --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \

@@ -6,7 +6,6 @@ ray_cc_test(
     srcs = ["publisher_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/pubsub:publisher",
     ],
 )
@@ -19,7 +18,6 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/pubsub:subscriber",
     ],
 )
@@ -31,7 +29,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:grpc_util",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/protobuf:pubsub_cc_grpc",
         "//src/ray/pubsub:publisher",
         "//src/ray/pubsub:subscriber",
@@ -48,7 +45,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:ray_config",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:status",
         "//src/ray/protobuf:gcs_service_cc_grpc",
         "//src/ray/pubsub:python_gcs_subscriber",

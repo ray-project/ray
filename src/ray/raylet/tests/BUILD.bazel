@@ -23,7 +23,6 @@ ray_cc_test(
     srcs = ["wait_manager_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/raylet:wait_manager",
     ],
 )
@@ -38,7 +37,6 @@ ray_cc_test(
     ],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/raylet:worker",
         "//src/ray/raylet:worker_pool",
@@ -63,7 +61,6 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:asio",
         "//src/ray/common:id",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/gcs_rpc_client:gcs_client",
@@ -85,7 +82,6 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:id",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common/scheduling:placement_group_util",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet:placement_group_resource_manager",
@@ -102,7 +98,6 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:asio",
         "//src/ray/common:id",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/protobuf:runtime_env_agent_cc_proto",
         "//src/ray/raylet:runtime_env_agent_client",
         "//src/ray/util:clock",
@@ -120,7 +115,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//:ray_mock",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet:lease_dependency_manager",
@@ -139,7 +133,6 @@ ray_cc_test(
         ":util",
         "//src/ray/common:asio",
         "//src/ray/common:lease",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/raylet:worker_killing_policy_group_by_owner",
         "//src/ray/util:fake_process",
     ],
@@ -157,7 +150,6 @@ ray_cc_test(
         ":util",
         "//src/ray/common:lease",
         "//src/ray/common:memory_monitor_interface",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/raylet:worker_killing_policy_by_time",
     ],
 )
@@ -175,7 +167,6 @@ ray_cc_test(
         ":util",
         "//:ray_mock",
         "//src/ray/common:lease",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:ray_object",
         "//src/ray/common:task_common",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
@@ -201,7 +192,6 @@ ray_cc_test(
     srcs = ["throttler_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/raylet:throttler",
         "//src/ray/util:clock",
     ],
