@@ -52,7 +52,7 @@ Unit tests must not
 - Use fixtures starting with `ray_start_`
 - Call `ray.*` APIs that depend on ray clusters including `ray.init()`, `ray.put()`, `ray.get()`
 - Depend on heavy external resources (e.g., large data downloads, network access).
-- Use `time.sleep()`.
+- Use `time.sleep()` or any other nondeterministic behavior.
 
 1. If a test added to `tests/unit/` violates the unit test rules above, post:
 
