@@ -266,7 +266,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         self,
         # v2-only arguments
         checkpoint_upload_mode=None,
-        validation=None,
+        validation=False,
     ) -> None:
         super().__init__()
         self.checkpoint_upload_mode = checkpoint_upload_mode
