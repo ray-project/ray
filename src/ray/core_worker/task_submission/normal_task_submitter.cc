@@ -233,31 +233,33 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
 
 void NormalTaskSubmitter::ReportWorkerBacklog() {
   absl::MutexLock lock(&mu_);
-  ReportWorkerBacklogInternal();
-}
-
-void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
-  absl::flat_hash_map<SchedulingClass, std::pair<LeaseSpecification, int64_t>> backlogs;
-  for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
-    const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
-    if (backlogs.find(scheduling_class) == backlogs.end()) {
-      backlogs[scheduling_class].first = scheduling_key_and_entry.second.lease_spec;
-      backlogs[scheduling_class].second = 0;
-    }
+  absl::flat_hash_map<SchedulingClass, std::pair<rpc::LeaseSpec, int64_t>> backlogs;
+  for (const auto &[scheduling_key, scheduling_key_entry] : scheduling_key_entries_) {
     // We report backlog size per scheduling class not per scheduling key
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
-    backlogs[scheduling_class].second += scheduling_key_and_entry.second.BacklogSize();
+    const auto scheduling_class = std::get<0>(scheduling_key);
+    auto [it, inserted] = backlogs.try_emplace(
+        scheduling_class, scheduling_key_entry.lease_spec.GetMessage(), 0);
+    int64_t &backlog_size = it->second.second;
+    backlog_size += scheduling_key_entry.BacklogSize();
   }
 
-  std::vector<rpc::WorkerBacklogReport> backlog_reports;
-  for (const auto &backlog : backlogs) {
-    rpc::WorkerBacklogReport backlog_report;
-    backlog_report.mutable_lease_spec()->CopyFrom(backlog.second.first.GetMessage());
-    backlog_report.set_backlog_size(backlog.second.second);
-    backlog_reports.emplace_back(backlog_report);
+  rpc::ReportWorkerBacklogRequest request;
+  request.set_worker_id(worker_id_.Binary());
+  for (auto &[scheduling_class, spec_and_size] : backlogs) {
+    auto &[lease_spec, backlog_size] = spec_and_size;
+    if (backlog_size > 0) {
+      auto *report = request.add_backlog_reports();
+      *report->mutable_lease_spec() = std::move(lease_spec);
+      report->set_backlog_size(backlog_size);
+    }
   }
-  local_raylet_client_->ReportWorkerBacklog(worker_id_, backlog_reports);
+  bool has_backlog = !request.backlog_reports().empty();
+  if (has_backlog || last_backlog_report_nonempty_) {
+    local_raylet_client_->ReportWorkerBacklog(request);
+  }
+  last_backlog_report_nonempty_ = has_backlog;
 }
 
 void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduling_key,

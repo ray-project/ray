@@ -85,12 +85,7 @@ std::shared_ptr<grpc::Channel> RayletClient::GetChannel() const {
   return grpc_client_->Channel();
 }
 
-void RayletClient::ReportWorkerBacklog(
-    const WorkerID &worker_id,
-    const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
-  rpc::ReportWorkerBacklogRequest request;
-  request.set_worker_id(worker_id.Binary());
-  request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
+void RayletClient::ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) {
   INVOKE_RPC_CALL(
       NodeManagerService,
       ReportWorkerBacklog,
