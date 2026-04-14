@@ -2,9 +2,11 @@ import asyncio
 import contextlib
 import functools
 import logging
+import threading
 import time
 import traceback
 from datetime import datetime
+from enum import Enum
 from typing import (
     Any,
     Callable,
@@ -12,6 +14,7 @@ from typing import (
     Dict,
     Generator,
     Generic,
+    Iterator,
     List,
     Optional,
     TypeVar,
@@ -91,6 +94,36 @@ def construct_train_func(
                 return train_func()
 
     return train_fn
+
+
+class TrainingFramework(Enum):
+    TORCH = "torch"
+    JAX = "jax"
+    TENSORFLOW = "tensorflow"
+    XGBOOST = "xgboost"
+    LIGHTGBM = "lightgbm"
+
+    def module_names(self) -> tuple[str, ...]:
+        """Returns the relevant module names for the training framework.
+
+        These module names are used by Train state version collection (see
+        `_get_framework_version`) to gather versions of key framework-related packages.
+
+        Note: If adding a new module, make sure to use the module name rather than
+        the distribution name. (e.g. sklearn instead of scikit-learn)
+        """
+        if self is TrainingFramework.TORCH:
+            return ("torch",)
+        if self is TrainingFramework.JAX:
+            return ("jax", "jaxlib")
+        if self is TrainingFramework.TENSORFLOW:
+            return ("tensorflow", "keras")
+        if self is TrainingFramework.XGBOOST:
+            return ("xgboost",)
+        if self is TrainingFramework.LIGHTGBM:
+            return ("lightgbm",)
+
+        return (self.value,)
 
 
 class ObjectRefWrapper(Generic[T]):
@@ -257,7 +290,7 @@ async def wait_with_logging(
     predicate: Optional[Callable[[], bool]] = None,
     generate_warning_message: Optional[Callable[[], str]] = None,
     warn_interval_s: float = 60,
-    timeout_s: float = -1,
+    timeout_s: Optional[float] = None,
 ):
     """Waits for condition to be notified, logging warnings and eventually timing out.
 
@@ -270,7 +303,7 @@ async def wait_with_logging(
         generate_warning_message: A function that generates the warning message to log.
             If None, no warning is logged.
         warn_interval_s: The interval in seconds to log a warning.
-        timeout_s: The timeout in seconds.
+        timeout_s: The timeout in seconds. Defaults to``None`` to not time out.
     """
 
     async def _wait_loop():
@@ -293,5 +326,36 @@ async def wait_with_logging(
 
     await asyncio.wait_for(
         _wait_loop(),
-        timeout=timeout_s if timeout_s >= 0 else None,
+        timeout=timeout_s,
     )
+
+
+@contextlib.contextmanager
+def context_watchdog(fn: Callable, *args: Any) -> Iterator[None]:
+    """Run a function in a background thread for the duration of the context.
+
+    The function is started in a daemon thread on entry. On exit, a
+    threading.Event is set to signal the thread to stop. The function is
+    responsible for checking the event and returning promptly once it is set.
+
+    Args:
+        fn: A function whose first argument is a threading.Event stop signal.
+            The function should return when stop_event.is_set() or
+            stop_event.wait(...) returns True.
+        *args: Additional arguments forwarded to fn after the stop event.
+
+    Yields:
+        None: Control is yielded to the caller while the watchdog thread runs.
+    """
+    stop_event = threading.Event()
+    thread = threading.Thread(
+        target=fn,
+        args=(stop_event, *args),
+        daemon=True,  # thread will end even if the finally is bypassed by an abnormal exit
+    )
+    thread.start()
+    try:
+        yield
+    finally:
+        stop_event.set()
+        thread.join()

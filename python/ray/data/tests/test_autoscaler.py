@@ -69,6 +69,7 @@ def test_actor_pool_scaling():
         input_dependencies=[MagicMock()],
         internal_input_queue_num_blocks=MagicMock(return_value=1),
         metrics=MagicMock(average_num_inputs_per_task=1, num_inputs_received=1),
+        num_output_splits=MagicMock(return_value=1),
     )
     op_state = OpState(
         op, inqueues=[MagicMock(__len__=MagicMock(return_value=10), num_blocks=10)]
@@ -174,10 +175,11 @@ def test_actor_pool_scaling():
                     expected_reason="consumed all inputs",
                 )
 
-            # Should be no-op since the op has enough free task slots to consume the existing inputs (which is 0).
+            # With no enqueued inputs but inputs not being complete still,
+            # the autoscaler should still scale up based on utilization
             assert_autoscaling_action(
-                delta=0,
-                expected_reason="enough free task slots to consume the existing inputs",
+                delta=5,
+                expected_reason="utilization of 1.5 >= 1.0",
             )
 
     # Should be no-op since the op doesn't have enough resources.

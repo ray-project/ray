@@ -87,6 +87,7 @@ class Worker:
     resources: Dict[str, float]
     distributed_context: Optional[DistributedContext] = None
     log_file_path: Optional[str] = None
+    placement_group_bundle_index: Optional[int] = None
 
     @cached_property
     def _repr(self) -> str:

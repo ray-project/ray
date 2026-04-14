@@ -27,6 +27,7 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -56,6 +57,7 @@ from ray.serve._private.haproxy_templates import (
 from ray.serve._private.logging_utils import get_component_logger_file_path
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.proxy import ProxyActorInterface
+from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import (
     LoggingConfig,
@@ -385,6 +387,10 @@ class HAProxyConfig:
 
     syslog_port: int = RAY_SERVE_HAPROXY_SYSLOG_PORT
 
+    balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
+
+    is_head: bool = False
+
     @property
     def frontend_host(self) -> str:
         if self.http_options.host is None or self.http_options.host == "0.0.0.0":
@@ -404,12 +410,12 @@ class HAProxyConfig:
         if not self.has_received_routes:
             router_ready_for_traffic = False
             router_message = NO_ROUTES_MESSAGE
-        elif not self.has_received_servers:
-            router_ready_for_traffic = False
-            router_message = NO_REPLICAS_MESSAGE
-        else:
+        elif self.is_head or self.has_received_servers:
             router_ready_for_traffic = True
             router_message = ""
+        else:
+            router_ready_for_traffic = False
+            router_message = NO_REPLICAS_MESSAGE
 
         if not self.pass_health_checks:
             healthy = False
@@ -556,7 +562,7 @@ class HAProxyApi(ProxyApi):
         )
 
         try:
-            await self._wait_for_hap_availability(proc)
+            await self._wait_for_hap_availability(proc, timeout_s=timeout_s)
         except Exception:
             # If startup fails, ensure the process is killed to avoid orphaned processes
             if proc.returncode is None:
@@ -968,6 +974,8 @@ class HAProxyManager(ProxyActorInterface):
             call_in_event_loop=self.event_loop,
         )
 
+        is_head = self._node_id == get_head_node_id()
+
         startup_msg = f"HAProxy starting on node {self._node_id} (HTTP port: {self._http_options.port})."
         logger.info(startup_msg)
         logger.debug(
@@ -975,7 +983,9 @@ class HAProxyManager(ProxyActorInterface):
             f"logger with logging config: {logging_config}"
         )
 
-        self._haproxy = HAProxyApi(cfg=HAProxyConfig(http_options=http_options))
+        self._haproxy = HAProxyApi(
+            cfg=HAProxyConfig(http_options=http_options, is_head=is_head)
+        )
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
     async def shutdown(self) -> None:

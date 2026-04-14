@@ -2,9 +2,7 @@ import functools
 import logging
 import time
 import typing
-from collections import deque
 from typing import (
-    Deque,
     Dict,
     Iterator,
     List,
@@ -16,8 +14,10 @@ from typing import (
 import pyarrow as pa
 
 import ray
+import ray.exceptions
 from ray.actor import ActorHandle
 from ray.data import ExecutionOptions
+from ray.data._internal.execution.bundle_queue import ReorderingBundleQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -43,6 +43,8 @@ if typing.TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+# Arrow schema metadata key for the rapidsmpf partition ID.
+_GPU_PARTITION_ID_KEY = b"_gpu_partition_id"
 
 # ---------------------------------------------------------------------------
 # GPU shuffle actor
@@ -147,6 +149,11 @@ class GPUShuffleActor:
 
         Follows the Ray Data streaming generator protocol: yield block then
         BlockMetadataWithSchema for each output partition.
+
+        The partition ID from ``rapidsmpf``'s ``extract()`` is embedded in each
+        block's Arrow schema metadata under ``_gpu_partition_id`` so the operator
+        can reorder bundles into correct partition order on the driver side,
+        regardless of GPU completion order.
         """
         self._shuffler.insert_finished()
 
@@ -154,18 +161,29 @@ class GPUShuffleActor:
 
         from ray.data.block import BlockExecStats, BlockMetadataWithSchema
 
-        for _, partition in self._shuffler.extract():
+        for partition_id, partition in self._shuffler.extract():
             exec_stats_builder = BlockExecStats.builder()
             cdf = pylibcudf_to_cudf_dataframe(
                 partition, column_names=self._columns
             ).copy(deep=True)
             # Caveat: The following operation copies the data to CPU memory, unless we use Arrow CUDA.
             block = cdf.to_arrow(preserve_index=False)
+            existing_metadata = block.schema.metadata or {}
+            tagged_schema = block.schema.with_metadata(
+                {**existing_metadata, _GPU_PARTITION_ID_KEY: str(partition_id).encode()}
+            )
             exec_stats = exec_stats_builder.build()
             stats = yield block
             if stats:
-                exec_stats.block_ser_time_s = stats.object_creation_dur_s
-            yield BlockMetadataWithSchema.from_block(block, block_exec_stats=exec_stats)
+                object.__setattr__(
+                    exec_stats, "block_ser_time_s", stats.object_creation_dur_s
+                )
+            block_meta = BlockMetadataWithSchema.from_block(
+                block, block_exec_stats=exec_stats
+            )
+            yield BlockMetadataWithSchema.from_metadata(
+                block_meta.metadata, schema=tagged_schema
+            )
 
 
 def _wait_for_refs_with_timeout(
@@ -417,7 +435,7 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._insert_tasks: Dict[int, MetadataOpTask] = {}
         self._extraction_tasks: Dict[int, DataOpTask] = {}
         self._finalization_started: bool = False
-        self._output_queue: Deque[RefBundle] = deque()
+        self._output_queue: ReorderingBundleQueue = ReorderingBundleQueue()
         self._shuffled_blocks_stats: List[BlockStats] = []
         self._output_blocks_stats: List[BlockStats] = []
 
@@ -475,15 +493,32 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             return
 
         self._finalization_started = True
-        # Running count of partitions extracted across all ranks.
-        # In the CPU path each partition has its own finalize task so
-        # partition_id naturally counts completed partitions.  Here a
-        # single rank yields many partitions, so we maintain an explicit
-        # counter to keep the metrics aligned.
+        # Running count of partitions extracted, used for metrics only.
+        # Real partition_id is read from each block's Arrow schema metadata
+        # ("_gpu_partition_id"), embedded by the actor because rapidsmpf's
+        # extract() uses wait_any() and yields in completion order, not
+        # partition order.
         self._num_partitions_reduced = 0
 
         def _on_bundle_ready(bundle: RefBundle) -> None:
-            partition_id = self._num_partitions_reduced
+            assert (
+                bundle.schema is not None
+                and _GPU_PARTITION_ID_KEY in bundle.schema.metadata
+            ), (
+                "Bundle is missing _gpu_partition_id in schema metadata. "
+                "Was finish_and_extract modified to skip tagging?"
+            )
+            partition_id = int(bundle.schema.metadata[_GPU_PARTITION_ID_KEY].decode())
+            clean_meta = {
+                k: v
+                for k, v in bundle.schema.metadata.items()
+                if k != _GPU_PARTITION_ID_KEY
+            }
+            bundle = RefBundle(
+                bundle.blocks,
+                schema=bundle.schema.with_metadata(clean_meta or None),
+                owns_blocks=bundle.owns_blocks,
+            )
             self._num_partitions_reduced += 1
 
             # Register a logical reduce "task" for this partition, mirroring
@@ -493,8 +528,11 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 partition_id, empty_bundle, task_id=None
             )
 
-            # Add finalized block to the output queue
-            self._output_queue.append(bundle)
+            # Add to the reordering queue keyed by partition_id so output is
+            # always emitted in partition order (0, 1, 2, ...) regardless of
+            # the order GPU actors finish.
+            self._output_queue.add(bundle, key=partition_id)
+            self._output_queue.finalize(key=partition_id)
 
             # Update Finalize Metrics on task output generated
             self._reduce_metrics.on_output_queued(bundle)
@@ -554,10 +592,10 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def has_next(self) -> bool:
         self._try_finalize()
-        return len(self._output_queue) > 0
+        return self._output_queue.has_next()
 
     def _get_next_inner(self) -> RefBundle:
-        bundle = self._output_queue.popleft()
+        bundle = self._output_queue.get_next()
         self._reduce_metrics.on_output_dequeued(bundle)
         self._reduce_metrics.on_output_taken(bundle)
         self._output_blocks_stats.extend(to_stats(bundle.metadata))

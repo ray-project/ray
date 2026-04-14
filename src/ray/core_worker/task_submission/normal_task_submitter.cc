@@ -248,8 +248,6 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
     backlogs[scheduling_class].second += scheduling_key_and_entry.second.BacklogSize();
-    scheduling_key_and_entry.second.last_reported_backlog_size =
-        scheduling_key_and_entry.second.BacklogSize();
   }
 
   std::vector<rpc::WorkerBacklogReport> backlog_reports;
@@ -260,16 +258,6 @@ void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
     backlog_reports.emplace_back(backlog_report);
   }
   local_raylet_client_->ReportWorkerBacklog(worker_id_, backlog_reports);
-}
-
-void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
-    const SchedulingKey &scheduling_key) {
-  const auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-
-  if (scheduling_key_entry.last_reported_backlog_size !=
-      scheduling_key_entry.BacklogSize()) {
-    ReportWorkerBacklogInternal();
-  }
 }
 
 void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduling_key,
@@ -369,7 +357,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                       rpc::RequestWorkerLeaseReply::
                           SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED ||
                   reply.failure_type() ==
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE) {
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE ||
+                  reply.failure_type() ==
+                      rpc::RequestWorkerLeaseReply::
+                          SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED) {
                 // We need to actively fail all of the pending tasks in the queue when the
                 // placement group was removed or the runtime env failed to be set up.
                 // Such an operation is straightforward for the scenario of placement
@@ -387,6 +378,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                            rpc::RequestWorkerLeaseReply::
                                SCHEDULING_CANCELLED_UNSCHEDULABLE) {
                   error_type = rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR;
+                } else if (reply.failure_type() ==
+                           rpc::RequestWorkerLeaseReply::
+                               SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED) {
+                  error_type = rpc::ErrorType::WORKER_STARTUP_FAILED;
                 } else {
                   error_type = rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED;
                 }
@@ -496,7 +491,6 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
       task_queue.size(),
       is_selected_based_on_locality);
   scheduling_key_entry.pending_lease_requests.emplace(lease_id, *raylet_address);
-  ReportWorkerBacklogIfNeeded(scheduling_key);
 
   // Lease more workers if there are still pending tasks and
   // and we haven't hit the max_pending_lease_requests yet.

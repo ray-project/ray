@@ -18,6 +18,7 @@ from ray.train.v2.api.report_config import (
     CheckpointConsistencyMode,
     CheckpointUploadMode,
 )
+from ray.train.v2.api.reported_checkpoint import ReportedCheckpointStatus
 from ray.train.v2.api.validation_config import (
     ValidationConfig,
     ValidationTaskConfig,
@@ -475,7 +476,8 @@ def _run_first_trainer_for_resumption(storage_path, validation_task_config):
 def test_report_validation_fn_resumption(
     tmp_path, validation_task_config, expected_score
 ):
-    """Start train run with interrupted validations. Confirm second run finishes validations."""
+    """A train_func call a validation_fn that stalls and the trainer is cancelled.
+    Does the resumed trainer restart the validation?"""
     signal_actor = (
         create_remote_signal_actor(ray)
         .options(
@@ -501,7 +503,12 @@ def test_report_validation_fn_resumption(
         return {"score": score}
 
     def train_fn_second():
-        pass
+        rc = ray.train.get_all_reported_checkpoints(
+            consistency_mode=CheckpointConsistencyMode.VALIDATED
+        )
+        assert len(rc) == 1
+        assert rc[0].status == ReportedCheckpointStatus.VALIDATED
+        assert rc[0].metrics == {"score": expected_score}
 
     # Run second trainer that should finish interrupted validations.
     trainer = DataParallelTrainer(
@@ -517,6 +524,138 @@ def test_report_validation_fn_resumption(
     )
     result = trainer.fit()
     assert result.metrics == {"score": expected_score}
+
+
+@pytest.mark.parametrize(
+    "validation_task_config, expected_score",
+    [
+        (True, 1),
+        (ValidationTaskConfig(fn_kwargs={"score": 2}), 2),
+    ],
+)
+def test_report_validation_fn_resumption_on_train_fn_error(
+    tmp_path, validation_task_config, expected_score
+):
+    """Train run where train_fn fails after reporting a checkpoint with pending validation.
+    The validation only returns after train_fn signals failure. before_controller_shutdown
+    drains the validation, persisting the validated metrics. The second run sees them."""
+    signal_actor = create_remote_signal_actor(ray).remote()
+
+    def validation_fn(checkpoint, score):
+        # Block until train_fn has signaled and sleep to ensure that the train_func has closed.
+        ray.get(signal_actor.wait.remote())
+        time.sleep(2)
+        return {"score": score}
+
+    def train_fn_first():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp,
+                validation=validation_task_config,
+            )
+        try:
+            raise RuntimeError("train_fn failed intentionally")
+        finally:
+            signal_actor.send.remote()
+
+    def train_fn_second():
+        rc = ray.train.get_all_reported_checkpoints(
+            consistency_mode=CheckpointConsistencyMode.VALIDATED
+        )
+        assert len(rc) == 1
+        assert rc[0].status == ReportedCheckpointStatus.VALIDATED
+        assert rc[0].metrics == {"score": expected_score}
+
+    run_config = RunConfig(
+        name="validation_fn_resumption_on_train_fn_error",
+        storage_path=str(tmp_path),
+    )
+    validation_config = ValidationConfig(
+        fn=validation_fn,
+        task_config=ValidationTaskConfig(fn_kwargs={"score": 1}),
+    )
+
+    with pytest.raises(WorkerGroupError):
+        DataParallelTrainer(
+            train_fn_first,
+            validation_config=validation_config,
+            run_config=run_config,
+        ).fit()
+
+    result = DataParallelTrainer(
+        train_fn_second,
+        validation_config=validation_config,
+        run_config=run_config,
+    ).fit()
+    assert result.metrics == {"score": expected_score}
+
+
+def test_report_validation_fn_resumption_checkpoint_status(tmp_path):
+    """When a train_func does it remember all previous validation_fn status and metrics."""
+
+    def validation_fn(checkpoint, score):
+        return {"score": score}
+
+    def train_fn_first():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"score": 1},
+                checkpoint=cp,
+                validation=False,
+            )
+
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(fn_kwargs={"score": 2}),
+            )
+
+        raise RuntimeError("train_fn failed intentionally")
+
+    def train_fn_second():
+        rc = ray.train.get_all_reported_checkpoints(
+            consistency_mode=CheckpointConsistencyMode.VALIDATED
+        )
+        assert len(rc) == 2
+        assert rc[0].status == ReportedCheckpointStatus.COMMITTED
+        assert rc[0].metrics == {"score": 1}
+        assert rc[1].status == ReportedCheckpointStatus.VALIDATED
+        assert rc[1].metrics == {"score": 2}
+
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(fn_kwargs={"score": 3}),
+            )
+
+        rc = ray.train.get_all_reported_checkpoints(
+            consistency_mode=CheckpointConsistencyMode.VALIDATED
+        )
+        assert len(rc) == 3
+        assert rc[2].status == ReportedCheckpointStatus.VALIDATED
+        assert rc[2].metrics == {"score": 3}
+
+    run_config = RunConfig(
+        name="validation_fn_resumption_checkpoint_status",
+        storage_path=str(tmp_path),
+    )
+
+    with pytest.raises(WorkerGroupError):
+        DataParallelTrainer(
+            train_fn_first,
+            validation_config=ValidationConfig(fn=validation_fn),
+            run_config=run_config,
+        ).fit()
+
+    result = DataParallelTrainer(
+        train_fn_second,
+        validation_config=ValidationConfig(fn=validation_fn),
+        run_config=run_config,
+    ).fit()
+    assert result.metrics == {"score": 3}
 
 
 def test_report_checkpoint_upload_fn(tmp_path):
@@ -583,14 +722,24 @@ def test_report_get_all_reported_checkpoints(tmp_path):
             ray.train.report(metrics={}, checkpoint=None)
             with create_dict_checkpoint({}) as checkpoint:
                 ray.train.report(metrics={}, checkpoint=checkpoint)
-            assert len(ray.train.get_all_reported_checkpoints()) == 1
+
+            reported_checkpoints = ray.train.get_all_reported_checkpoints()
+            assert len(reported_checkpoints) == 1
+            assert reported_checkpoints[0].status == ReportedCheckpointStatus.COMMITTED
+
             with create_dict_checkpoint({}) as checkpoint:
                 ray.train.report(metrics={}, checkpoint=checkpoint)
         else:
             ray.train.report(metrics={}, checkpoint=None)
             ray.train.report(metrics={}, checkpoint=None)
             ray.train.report(metrics={}, checkpoint=None)
-            assert len(ray.train.get_all_reported_checkpoints()) == 2
+
+            reported_checkpoints = ray.train.get_all_reported_checkpoints()
+            assert len(reported_checkpoints) == 2
+            assert all(
+                rc.status == ReportedCheckpointStatus.COMMITTED
+                for rc in reported_checkpoints
+            )
 
     trainer = DataParallelTrainer(
         train_fn,
@@ -615,30 +764,47 @@ def test_get_all_reported_checkpoints_all_consistency_modes(tmp_path):
         if ray.train.get_context().get_world_rank() == 0:
             # Assert that we get committed checkpoints
             with create_dict_checkpoint({}) as cp1:
+                # The validation check will hang until signal_actor.send.remote() is called
                 ray.train.report(
                     metrics={"training_score": 1},
                     checkpoint=cp1,
                     validation=True,
                 )
-            assert [
-                reported_checkpoint.metrics
-                for reported_checkpoint in ray.train.get_all_reported_checkpoints(
-                    consistency_mode=CheckpointConsistencyMode.COMMITTED
-                )
-            ] == [
-                {"training_score": 1},
-            ]
 
-            # Assert that we get validated chceckpoints
+            # Check with ConsistencyMode.COMMITTED
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.COMMITTED
+            )
+            assert len(reported_checkpoints) == 1
+            assert (
+                reported_checkpoints[0].status
+                == ReportedCheckpointStatus.PENDING_VALIDATION
+            )
+            assert reported_checkpoints[0].metrics == {"training_score": 1}
+
+            # Check with ConsistencyMode.VALIDATED with timeout as the validation is hanging currently
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.VALIDATED,
+                timeout_s=2,
+            )
+            assert len(reported_checkpoints) == 1
+            assert (
+                reported_checkpoints[0].status
+                == ReportedCheckpointStatus.PENDING_VALIDATION
+            )
+            assert reported_checkpoints[0].metrics == {"training_score": 1}
+
+            # Assert that we get validated checkpoints
             signal_actor.send.remote()
-            assert [
-                reported_checkpoint.metrics
-                for reported_checkpoint in ray.train.get_all_reported_checkpoints(
-                    consistency_mode=CheckpointConsistencyMode.VALIDATED
-                )
-            ] == [
-                {"training_score": 1, "validation_score": 100},
-            ]
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.VALIDATED
+            )
+            assert len(reported_checkpoints) == 1
+            assert reported_checkpoints[0].status == ReportedCheckpointStatus.VALIDATED
+            assert reported_checkpoints[0].metrics == {
+                "training_score": 1,
+                "validation_score": 100,
+            }
         else:
             ray.train.report(metrics={}, checkpoint=None)
 
@@ -651,6 +817,61 @@ def test_get_all_reported_checkpoints_all_consistency_modes(tmp_path):
         scaling_config=ScalingConfig(num_workers=2),
         train_loop_config={"signal_actor": signal_actor},
         run_config=RunConfig(storage_path=str(tmp_path)),
+    )
+    trainer.fit()
+
+
+def test_hanging_checkpoint_upload_fn(tmp_path):
+    """Test hanging async checkpoint upload fn with `get_all_reported_checkpoints` timeout."""
+    signal_actor = create_remote_signal_actor(ray).remote()
+
+    def checkpoint_fn(checkpoint, checkpoint_name):
+        ray.get(signal_actor.wait.remote())
+        full_checkpoint_path = (
+            ray.train.get_context()
+            .get_storage()
+            .build_checkpoint_path_from_name(checkpoint_name)
+        )
+        shutil.copytree(checkpoint.path, full_checkpoint_path)
+        return Checkpoint.from_directory(full_checkpoint_path)
+
+    def train_fn(config):
+        signal_actor = config["signal_actor"]
+
+        with create_dict_checkpoint({}) as checkpoint:
+            ray.train.report(
+                metrics={"training_score": 1},
+                checkpoint=checkpoint,
+                checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+                checkpoint_upload_fn=checkpoint_fn,
+                checkpoint_dir_name="my_checkpoint",
+            )
+
+            # This will hang without a timeout.
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.COMMITTED, timeout_s=1
+            )
+            # As the checkpoint hasn't been committed yet, then the length is zero.
+            assert len(reported_checkpoints) == 0
+
+            signal_actor.send.remote()
+
+            # Now the checkpoint has been completed, a timeout isn't necessary
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.COMMITTED
+            )
+            assert len(reported_checkpoints) == 1
+            assert reported_checkpoints[0].status == ReportedCheckpointStatus.COMMITTED
+            assert reported_checkpoints[0].metrics == {"training_score": 1}
+            assert "my_checkpoint" in reported_checkpoints[0].checkpoint.path
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        train_loop_config={"signal_actor": signal_actor},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            checkpoint_config=CheckpointConfig(num_to_keep=1),
+        ),
     )
     trainer.fit()
 
