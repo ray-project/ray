@@ -1,5 +1,4 @@
 import asyncio
-import time
 import unittest.mock
 from unittest.mock import create_autospec
 

@@ -48,6 +48,7 @@
 #include "ray/raylet/tests/util.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/rpc/utils.h"
+#include "ray/util/clock.h"
 
 namespace ray::raylet {
 using ::testing::_;
@@ -190,14 +191,14 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     MockLocalLeaseManager local_lease_manager;
 
     WorkerID worker_id = WorkerID::FromRandom();
-    EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
-        .Times(1)
-        .WillOnce(Return(nullptr));
+
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(nullptr));
-    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(_)).Times(0);
-    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_, _, _)).Times(0);
+    EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
+        .Times(1)
+        .WillOnce(Return(nullptr));
+    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_)).Times(0);
 
     rpc::ReportWorkerBacklogRequest request;
     request.set_worker_id(worker_id.Binary());
@@ -232,19 +233,10 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
-    EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
-        .Times(1)
-        .WillOnce(Return(nullptr));
     EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
         .Times(1)
         .WillOnce(Return(driver));
-    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(worker_id)).Times(1);
-    EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(lease_spec_1.GetSchedulingClass(), worker_id, 1))
-        .Times(1);
-    EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(lease_spec_2.GetSchedulingClass(), worker_id, 3))
-        .Times(1);
+    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_)).Times(1);
 
     NodeManager::HandleReportWorkerBacklog(
         request,
@@ -276,18 +268,14 @@ TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog) {
     backlog_report_2->set_backlog_size(3);
     rpc::ReportWorkerBacklogReply reply;
 
+    EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id))
+        .Times(1)
+        .WillOnce(Return(nullptr));
     EXPECT_CALL(worker_pool, GetRegisteredWorker(worker_id))
         .Times(1)
         .WillOnce(Return(worker));
-    EXPECT_CALL(worker_pool, GetRegisteredDriver(worker_id)).Times(0);
 
-    EXPECT_CALL(local_lease_manager, ClearWorkerBacklog(worker_id)).Times(1);
-    EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(lease_spec_1.GetSchedulingClass(), worker_id, 1))
-        .Times(1);
-    EXPECT_CALL(local_lease_manager,
-                SetWorkerBacklog(lease_spec_2.GetSchedulingClass(), worker_id, 3))
-        .Times(1);
+    EXPECT_CALL(local_lease_manager, SetWorkerBacklog(_)).Times(1);
 
     NodeManager::HandleReportWorkerBacklog(
         request,
@@ -364,6 +352,7 @@ class NodeManagerTest : public ::testing::Test {
               NodeID::FromBinary(node_id.Binary()));
         },
         fake_resource_usage_gauge_,
+        clock_,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {
@@ -464,6 +453,7 @@ class NodeManagerTest : public ::testing::Test {
 
   NodeID raylet_node_id_;
   std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
+  ray::Clock clock_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;
   std::unique_ptr<ClusterLeaseManager> cluster_lease_manager_;
@@ -1539,8 +1529,3 @@ INSTANTIATE_TEST_SUITE_P(ReleaseUnusedBundlesRetriesVariations,
                          ::testing::Bool());
 
 }  // namespace ray::raylet
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

@@ -209,6 +209,11 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
             checkpoint_to_metrics[checkpoint] = ray.get(task)
             checkpoint_to_status[checkpoint] = ReportedCheckpointStatus.VALIDATED
         except ray.exceptions.TaskCancelledError:
+            logger.info(
+                f"Validation was cancelled for checkpoint {checkpoint}, likely because the train run was aborted. "
+                "It will be retried in the next train run with the same storage path if there is one."
+            )
+        except ray.exceptions.RayTaskError:
             checkpoint_to_metrics[checkpoint] = {}
             if task in self._timed_out_validations:
                 self._timed_out_validations.pop(task)
@@ -221,12 +226,7 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
                     checkpoint
                 ] = ReportedCheckpointStatus.VALIDATION_FAILED
                 logger.warning(f"Validation cancelled for checkpoint {checkpoint}")
-        except ray.exceptions.RayTaskError:
-            checkpoint_to_metrics[checkpoint] = {}
-            checkpoint_to_status[
-                checkpoint
-            ] = ReportedCheckpointStatus.VALIDATION_FAILED
-            logger.warning(f"Validation failed for checkpoint {checkpoint}")
+
         return checkpoint_to_metrics, checkpoint_to_status
 
     async def before_controller_shutdown(self):
