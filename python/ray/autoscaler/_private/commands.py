@@ -533,7 +533,7 @@ def teardown_cluster(
                 "The head node will not be shut down. " + cf.dimmed("(due to {})"),
                 cf.bold("--workers-only"),
             )
-        return _nodes_to_teardown(provider.non_terminated_nodes)
+        return _nodes_to_teardown(provider.nodes_for_teardown)
 
     def run_docker_stop(node, container_name):
         try:
