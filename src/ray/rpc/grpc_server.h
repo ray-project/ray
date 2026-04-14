@@ -224,9 +224,6 @@ class GrpcServer {
   /// gRPC server cannot get the ping response within the time, it triggers
   /// the watchdog timer fired error, which will close the connection.
   const int64_t keepalive_time_ms_;
-
-  /// If true, the default gRPC health check service will be disabled for this server.
-  bool disable_default_health_check_ = false;
 };
 
 /// Base class that represents an abstract gRPC service.

@@ -129,8 +129,6 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
-  // Whether resource isolation via cgroupv2 is enabled.
-  bool enable_resource_isolation;
 };
 
 enum RayletShutdownState : std::uint8_t {

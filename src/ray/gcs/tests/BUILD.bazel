@@ -7,6 +7,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//:ray_mock",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs:gcs_function_manager",
     ],
 )
@@ -19,6 +20,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//src/ray/common:fake_periodical_runner",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs:gcs_pubsub_handler",
         "//src/ray/pubsub:gcs_publisher",
         "//src/ray/pubsub:publisher",
@@ -35,6 +37,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//:ray_mock",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_placement_group_manager",
         "//src/ray/observability:fake_metric",
@@ -63,6 +66,7 @@ ray_cc_test(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_server_lib",
         "//src/ray/observability:fake_metric",
@@ -87,31 +91,12 @@ ray_cc_test(
     tags = ["team:core"],
     visibility = ["//visibility:private"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_kv_manager",
         "//src/ray/gcs:gcs_store_client_kv",
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/gcs/store_client:redis_store_client",
-    ],
-)
-
-ray_cc_test(
-    name = "gcs_health_check_service_test",
-    size = "medium",
-    srcs = [
-        "gcs_health_check_service_test.cc",
-    ],
-    tags = [
-        "no_windows",
-        "team:core",
-    ],
-    visibility = ["//visibility:private"],
-    deps = [
-        "//src/ray/common:asio",
-        "//src/ray/gcs:grpc_services",
-        "//src/ray/rpc:grpc_server",
-        "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -127,6 +112,7 @@ ray_cc_test(
     ],
     visibility = ["//visibility:private"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs:gcs_health_check_manager",
         "//src/ray/observability:fake_metric",
         "//src/ray/rpc:grpc_server",
@@ -145,6 +131,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_node_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
@@ -164,6 +151,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs:gcs_job_manager",
@@ -185,6 +173,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:protobuf_utils",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_task_manager",
     ],
@@ -203,6 +192,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_placement_group_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
@@ -224,6 +214,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:fake_core_worker_client",
         "//src/ray/gcs:gcs_node_manager",
@@ -250,6 +241,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_store_client_kv",
         "//src/ray/gcs:gcs_worker_manager",
@@ -286,6 +278,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":gcs_table_storage_test_lib",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_table_storage",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
@@ -300,6 +293,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         ":gcs_table_storage_test_lib",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_table_storage",
         "//src/ray/gcs/store_client:in_memory_store_client",
@@ -319,6 +313,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:asio",
         "//src/ray/common:protobuf_utils",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_autoscaler_state_manager",
         "//src/ray/gcs:gcs_init_data",
@@ -339,6 +334,7 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//:ray_mock",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_node_manager",
         "//src/ray/gcs:gcs_resource_manager",
@@ -357,6 +353,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:asio",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_usage_stats_client",
     ],
@@ -374,6 +371,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_job_manager",
         "//src/ray/gcs:gcs_kv_manager",
@@ -394,6 +392,7 @@ ray_cc_test(
     deps = [
         "//:ray_mock",
         "//src/ray/common:asio",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:runtime_env",
         "//src/ray/common:test_utils",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
@@ -420,6 +419,7 @@ ray_cc_test(
     ],
     deps = [
         "//src/mock/ray/pubsub:mock_publisher",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_node_manager",
         "//src/ray/gcs/store_client:in_memory_store_client",
@@ -436,6 +436,7 @@ ray_cc_test(
     tags = ["team:core"],
     visibility = ["//visibility:private"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/gcs:gcs_ray_event_converter",
     ],
 )

@@ -11,6 +11,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:lease",
         "//src/ray/common:ray_config",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/gcs_rpc_client:gcs_client",
@@ -27,6 +28,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet/scheduling:cluster_resource_scheduler",
         "//src/ray/raylet/scheduling:scheduling_context",
@@ -43,6 +45,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/observability:fake_metric",
         "//src/ray/raylet/scheduling:local_resource_manager",
         "//src/ray/util:clock",
@@ -58,6 +61,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:id",
         "//src/ray/common:lease",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/observability:fake_metric",
@@ -79,6 +83,7 @@ ray_cc_test(
         "//:ray_mock",
         "//src/ray/common:id",
         "//src/ray/common:lease",
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:task_common",
         "//src/ray/common:test_utils",
         "//src/ray/raylet/scheduling:cluster_lease_manager",
@@ -97,6 +102,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/raylet/scheduling:cluster_resource_manager",
     ],
 )

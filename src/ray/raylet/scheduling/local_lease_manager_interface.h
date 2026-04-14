@@ -69,7 +69,9 @@ class LocalLeaseManagerInterface {
                                     absl::flat_hash_map<WorkerID, int64_t>>
       &GetBackLogTracker() const = 0;
 
-  virtual void SetWorkerBacklog(rpc::ReportWorkerBacklogRequest request) = 0;
+  virtual void SetWorkerBacklog(SchedulingClass scheduling_class,
+                                const WorkerID &worker_id,
+                                int64_t backlog_size) = 0;
 
   virtual void ClearWorkerBacklog(const WorkerID &worker_id) = 0;
 

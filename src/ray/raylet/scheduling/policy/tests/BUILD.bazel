@@ -8,6 +8,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/raylet/scheduling:composite_scheduling_policy",
     ],
 )
@@ -20,6 +21,7 @@ ray_cc_test(
     ],
     tags = ["team:core"],
     deps = [
+        "//src/ray/common:ray_gtest_main",
         "//src/ray/raylet/scheduling:composite_scheduling_policy",
         "//src/ray/raylet/scheduling:hybrid_scheduling_policy",
         "@com_google_absl//absl/random:mock_distributions",
