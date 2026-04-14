@@ -272,17 +272,15 @@ class MockRayletClient : public rpc::FakeRayletClient {
   }
 
   void RequestWorkerLease(
-      const rpc::LeaseSpec &lease_spec,
-      bool grant_or_reject,
-      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-      const int64_t backlog_size,
-      const bool is_selected_based_on_locality) override {
+      rpc::RequestWorkerLeaseRequest &&request,
+      const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback)
+      override {
     std::lock_guard<std::mutex> lock(mu_);
     num_workers_requested += 1;
-    if (grant_or_reject) {
+    if (request.grant_or_reject()) {
       num_grant_or_reject_leases_requested += 1;
     }
-    if (is_selected_based_on_locality) {
+    if (request.is_selected_based_on_locality()) {
       num_is_selected_based_on_locality_leases_requested += 1;
     }
     callbacks.push_back(callback);

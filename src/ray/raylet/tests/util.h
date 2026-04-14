@@ -72,7 +72,7 @@ class MockWorker : public WorkerInterface {
 
   std::optional<bool> GetIsActorWorker() const override { return is_actor_worker_; }
 
-  const std::string IpAddress() const override { return address_.ip_address(); }
+  std::string IpAddress() const override { return address_.ip_address(); }
 
   void AsyncNotifyGCSRestart() override {}
 
@@ -166,7 +166,7 @@ class MockWorker : public WorkerInterface {
 
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
 
-  RayLease &GetGrantedLease() override { return lease_.value(); }
+  RayLease &GetGrantedLease() { return lease_.value(); }
 
   bool IsRegistered() override {
     RAY_CHECK(false) << "Method unused";

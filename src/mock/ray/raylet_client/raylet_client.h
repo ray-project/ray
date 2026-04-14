@@ -22,15 +22,11 @@ class MockRayletClientInterface : public RayletClientInterface {
               (const WorkerID &worker_id,
                const std::vector<rpc::WorkerBacklogReport> &backlog_reports),
               (override));
-  MOCK_METHOD(
-      void,
-      RequestWorkerLease,
-      (const rpc::LeaseSpec &lease_spec,
-       bool grant_or_reject,
-       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-       const int64_t backlog_size,
-       const bool is_selected_based_on_locality),
-      (override));
+  MOCK_METHOD(void,
+              RequestWorkerLease,
+              (rpc::RequestWorkerLeaseRequest && request,
+               const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback),
+              (override));
   MOCK_METHOD(void,
               ReturnWorkerLease,
               (int worker_port,

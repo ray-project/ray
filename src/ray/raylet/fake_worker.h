@@ -112,7 +112,7 @@ class FakeWorker : public WorkerInterface {
   BundleID bundle_id_;
   std::unique_ptr<ProcessInterface> proc_;
   std::shared_ptr<ClientConnection> connection_;
-  RayLease granted_lease_;
+  std::optional<RayLease> granted_lease_;
   JobID job_id_;
   ActorID actor_id_;
   rpc::Address owner_address_;
