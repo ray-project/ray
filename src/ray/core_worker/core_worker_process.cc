@@ -981,9 +981,6 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   core_worker->RunTaskExecutionLoop();
   RAY_LOG(INFO) << "Task execution loop terminated. Waiting for shutdown to complete...";
   core_worker->WaitForShutdownComplete();
-  // Stop dedicated io_contexts (e.g. pubsub) after shutdown is complete.
-  // The gRPC server is stopped inside CoreWorker::Shutdown() →
-  // core_worker_server_->Shutdown(), so no new RPCs are dispatched here.
   io_context_provider_.StopAllDedicatedIOContexts();
   RAY_LOG(INFO) << "Shutdown complete. Removing the global worker.";
   {
@@ -1002,9 +999,6 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
   global_worker->Shutdown();
   RAY_LOG(INFO) << "Waiting for driver shutdown to complete...";
   global_worker->WaitForShutdownComplete();
-  // Stop dedicated io_contexts (e.g. pubsub) after shutdown is complete.
-  // The gRPC server is stopped inside CoreWorker::Shutdown() →
-  // core_worker_server_->Shutdown(), so no new RPCs are dispatched here.
   io_context_provider_.StopAllDedicatedIOContexts();
   RAY_LOG(INFO) << "Driver shutdown complete. Removing the global worker.";
   {

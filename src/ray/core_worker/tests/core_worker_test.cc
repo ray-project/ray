@@ -824,9 +824,9 @@ INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
                          ::testing::Values(true, false));
 
 TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
-  // Test that HandlePubsubCommandBatch returns InvalidArgument for an invalid channel
-  // type. Only WORKER_OBJECT_EVICTION, WORKER_REF_REMOVED_CHANNEL, and
-  // WORKER_OBJECT_LOCATIONS_CHANNEL are accepted.
+  // Subscribe commands with invalid channel types are posted to io_service_ where
+  // ProcessSubscribeMessage detects the error asynchronously. The handler itself
+  // returns OK because it runs on the pubsub thread and cannot wait for the result.
   auto subscriber_id = NodeID::FromRandom();
   auto object_id = ObjectID::FromRandom();
 
@@ -851,10 +851,8 @@ TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
       });
 
   ASSERT_TRUE(callback_invoked);
-  ASSERT_FALSE(received_status.ok());
-  ASSERT_TRUE(received_status.IsInvalidArgument());
-  EXPECT_TRUE(received_status.message().find("Invalid channel type") !=
-              std::string::npos);
+  // The handler returns OK; the error is detected asynchronously on io_service_.
+  ASSERT_TRUE(received_status.ok());
 }
 
 TEST_F(CoreWorkerTest,
@@ -881,8 +879,10 @@ TEST_F(CoreWorkerTest,
   ASSERT_TRUE(received_status.IsInvalidArgument());
 }
 
-TEST_F(CoreWorkerTest,
-       HandlePubsubCommandBatchInvalidSubscribeMessageTypeReturnsInvalidArgument) {
+TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidSubscribeMessageTypeReturnsOk) {
+  // An empty subscribe_message (no eviction/ref_removed/locations sub-message)
+  // is detected asynchronously in ProcessSubscribeMessage on io_service_.
+  // The handler returns OK because subscribe is posted, not executed inline.
   auto subscriber_id = NodeID::FromRandom();
   auto object_id = ObjectID::FromRandom();
 
@@ -903,7 +903,7 @@ TEST_F(CoreWorkerTest,
                          std::function<void()>,
                          std::function<void()>) { received_status = status; });
 
-  ASSERT_TRUE(received_status.IsInvalidArgument());
+  ASSERT_TRUE(received_status.ok());
 }
 
 class CoreWorkerPubsubWorkerRefRemovedChannelTest

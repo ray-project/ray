@@ -1579,6 +1579,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
 
   using Commands = ::google::protobuf::RepeatedPtrField<rpc::Command>;
 
+  /// Processes a subscribe command from a pubsub batch.
+  ///
+  /// \return StatusT::OK() if successful.
+  /// \return StatusT::InvalidArgument() if the channel or command type is invalid.
+  StatusSet<StatusT::InvalidArgument> ProcessSubscribeMessage(
+      const rpc::SubMessage &sub_message,
+      rpc::ChannelType channel_type,
+      const std::string &key_id,
+      const NodeID &subscriber_id);
+
   void AddSpilledObjectLocationOwner(const ObjectID &object_id,
                                      const std::string &spilled_url,
                                      const NodeID &spilled_node_id,
