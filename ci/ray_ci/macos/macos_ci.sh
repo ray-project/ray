@@ -121,6 +121,7 @@ _prelude() {
     rm -rf /tmp/bazel_event_logs
     (which bazel && bazel clean) || true;
   fi
+  export SKIP_PIP_INSTALL=1
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
 
@@ -129,6 +130,11 @@ _prelude() {
     # Otherwise, python/python3 might point to ones under /opt/homebrew/bin/
     export PATH="/opt/homebrew/opt/miniforge/bin:$PATH"
   fi
+
+  # Install locked dependencies to ensure consistent package versions
+  # Strip hashes from lock file since pip can't verify hashes for VCS dependencies
+  sed 's/ \\$//; s/ --hash[^ ]*//g' python/deplocks/ci/macos_depset_py3.10.lock > /tmp/macos_depset_no_hashes.txt
+  pip install -r /tmp/macos_depset_no_hashes.txt --no-deps
 
   ./ci/ci.sh build
   ./ci/env/env_info.sh
