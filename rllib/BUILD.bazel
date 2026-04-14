@@ -1676,11 +1676,9 @@ py_test(
     name = "test_node_failures",
     size = "large",
     srcs = ["algorithms/tests/test_node_failures.py"],
-    # TODO(elliot-barn): Re-enable once test_node_failure_recreate_env_runners is fixed.
     tags = [
         "algorithms",
         "exclusive",
-        "manual",
         "team:rllib",
     ],
     deps = [":conftest"],

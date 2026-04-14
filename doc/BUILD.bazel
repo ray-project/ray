@@ -626,9 +626,6 @@ doctest(
         ],
         exclude = [
             "source/rllib/getting-started.rst",
-            "source/rllib/algorithm-config.rst",
-            "source/rllib/checkpoints.rst",
-            "source/rllib/connector-v2.rst",
         ],
     ),
     tags = ["team:rllib"],
@@ -640,9 +637,6 @@ doctest(
     files = glob(
         include = [
             "source/rllib/getting-started.rst",
-            "source/rllib/algorithm-config.rst",
-            "source/rllib/checkpoints.rst",
-            "source/rllib/connector-v2.rst",
         ],
     ),
     # TODO(elliot-barn): Re-enable once getting-started.rst doctest hang is fixed.
