@@ -258,8 +258,8 @@ def _make_endpoint_user_class(
     payload: Any,
     user_class_name_prefix: str = "",
 ) -> type:
-    """Create a locust HttpUser subclass for one endpoint."""
-    from locust import HttpUser, between, task
+    """Create a locust FastHttpUser subclass for one endpoint."""
+    from locust import FastHttpUser, between, task
 
     # Capture local vars for the closure
     _name = name
@@ -269,18 +269,16 @@ def _make_endpoint_user_class(
     _token = token
     _payload = payload
 
-    class _User(HttpUser):
+    _headers = {"Authorization": f"Bearer {_token}"} if _token else None
+
+    class _User(FastHttpUser):
         host = _host_url
         wait_time = between(min_wait=0.001, max_wait=0.002)
         weight = _weight
 
-        def on_start(self):
-            if _token:
-                self.client.headers["Authorization"] = f"Bearer {_token}"
-
         @task
         def predict(self):
-            self.client.post(_route, json=_payload, name=_name, timeout=0.5)
+            self.client.post(_route, json=_payload, name=_name, headers=_headers)
 
     prefix = f"{user_class_name_prefix}_" if user_class_name_prefix else ""
     _User.__name__ = prefix + name.replace("-", "_") + "_User"
