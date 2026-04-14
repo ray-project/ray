@@ -57,12 +57,14 @@ class JobConfig:
         self.jvm_options = jvm_options or []
         #: A list of directories or jar files that
         #: specify the search path for user code.
-        self.code_search_path = code_search_path or []
-        # It's difficult to find the error that caused by the
-        # code_search_path is a string. So we assert here.
-        assert isinstance(self.code_search_path, (list, tuple)), (
-            f"The type of code search path is incorrect: " f"{type(code_search_path)}"
-        )
+        validated_code_search_path = code_search_path or []
+        # Validate eagerly so optimized Python runs do not skip this check.
+        if not isinstance(validated_code_search_path, (list, tuple)):
+            raise TypeError(
+                "The type of code search path is incorrect: "
+                f"{type(code_search_path)}"
+            )
+        self.code_search_path = validated_code_search_path
         self._client_job = _client_job
         #: An opaque metadata dictionary.
         self.metadata = metadata or {}
