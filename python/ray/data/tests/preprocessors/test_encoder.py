@@ -1767,9 +1767,9 @@ def test_multi_hot_encoder_drop_first():
     assert all(len(x) == 2 for x in result_df["genre"])
 
     # Verify encoding: action dropped, comedy=idx0, drama=idx1
-    assert result_df["genre"].iloc[0] == [1, 0]  # action+comedy -> comedy only
-    assert result_df["genre"].iloc[1] == [0, 1]  # drama+action -> drama only
-    assert result_df["genre"].iloc[2] == [1, 0]  # comedy only
+    assert result_df["genre"].iloc[0].tolist() == [1, 0]  # action+comedy -> comedy only
+    assert result_df["genre"].iloc[1].tolist() == [0, 1]  # drama+action -> drama only
+    assert result_df["genre"].iloc[2].tolist() == [1, 0]  # comedy only
 
 
 def test_multi_hot_encoder_drop_if_binary():
