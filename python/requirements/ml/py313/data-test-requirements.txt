@@ -29,8 +29,9 @@ testcontainers[kafka]
 pyarrow
 torch
 tensorflow
-jax
-jaxlib
+# Match python/requirements/ml/py313/dl-cpu-requirements.txt (standalone DATA_PROCESSING_TESTING installs omit dl-cpu). Python 3.13 needs jax/jaxlib >= 0.4.34 (first line with cp313 jaxlib wheels; jax 0.4.33 caps jaxlib at 0.4.33).
+jax>=0.4.34; sys_platform != 'darwin'
+jaxlib>=0.4.34; sys_platform != 'darwin'
 tensorflow-datasets
 tensorflow-metadata>=1.17.0
 tf-keras

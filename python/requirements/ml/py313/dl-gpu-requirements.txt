@@ -24,4 +24,5 @@ nixl==0.4.0; sys_platform != 'darwin'
 nvidia-nccl-cu12>=2.26.2,<3; platform_system == "Linux" and platform_machine == "x86_64"
 
 --find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-jaxlib==0.4.28+cuda12.cudnn89; sys_platform != 'darwin'
+# Match py313/dl-cpu jax/jaxlib floor: cp313 CUDA jaxlib wheels align with jax >= 0.4.34 (see dl-cpu comment).
+jaxlib>=0.4.34+cuda12.cudnn89; sys_platform != 'darwin'

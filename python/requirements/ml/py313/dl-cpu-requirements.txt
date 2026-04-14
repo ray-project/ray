@@ -31,6 +31,6 @@ cupy-cuda12x==13.6.0; sys_platform != 'darwin'
 # Align NCCL with torch 2.7+cu128 (ray-ml Docker install, raydepsets). Scoped to Linux x86_64 like XGBoost's optional NCCL dep.
 nvidia-nccl-cu12>=2.26.2,<3; platform_system == "Linux" and platform_machine == "x86_64"
 
-# Keep JAX version consistent with dl-gpu-requirements.txt
-jax==0.4.28; sys_platform != 'darwin'
-jaxlib==0.4.28; sys_platform != 'darwin'
+# JAX: On PyPI, jaxlib gains cp313 wheels starting at 0.4.34; jax 0.4.33 pins jaxlib to 0.4.33 only, so Python 3.13 needs jax/jaxlib >= 0.4.34. Keep consistent with py313/dl-gpu-requirements.txt.
+jax>=0.4.34; sys_platform != 'darwin'
+jaxlib>=0.4.34; sys_platform != 'darwin'
