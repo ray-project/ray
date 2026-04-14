@@ -269,6 +269,60 @@ class TestAlgorithm(unittest.TestCase):
         algo.train()
         algo.stop()
 
+    def test_add_module_applies_initial_module_state_before_sync(self):
+        config = (
+            ppo.PPOConfig()
+            .environment(
+                env="multi_cart",
+                env_config={"num_agents": 2},
+            )
+            .env_runners(num_env_runners=1, num_cpus_per_env_runner=0.1)
+            .training(
+                train_batch_size=100,
+                minibatch_size=50,
+                num_epochs=1,
+            )
+            .rl_module(
+                model_config=DefaultModelConfig(
+                    fcnet_hiddens=[5], fcnet_activation="linear"
+                ),
+            )
+            .multi_agent(
+                policies={"p0"},
+                policy_mapping_fn=lambda *a, **kw: "p0",
+            )
+            .evaluation(
+                evaluation_num_env_runners=1,
+                evaluation_config=ppo.PPOConfig.overrides(num_cpus_per_env_runner=0.1),
+            )
+        )
+
+        algo = config.build()
+        algo.train()
+        mod0 = algo.get_module("p0")
+        source_state = mod0.get_state()
+        algo.add_module(
+            module_id="p1",
+            module_spec=RLModuleSpec.from_module(mod0),
+            module_state=source_state,
+            new_agent_to_module_mapping_fn=lambda *a, **kw: "p1",
+            new_should_module_be_updated=["p1"],
+        )
+        learner_state = algo.learner_group.get_state(
+            components=[f"{COMPONENT_LEARNER}/{COMPONENT_RL_MODULE}/p1"]
+        )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]["p1"]
+        check(learner_state, source_state)
+        check(algo.get_module("p1").get_state(), source_state)
+        for state in algo.env_runner_group.foreach_env_runner(
+            lambda w: w.module["p1"].get_state()
+        ):
+            check(state, source_state)
+        for state in algo.eval_env_runner_group.foreach_env_runner(
+            lambda w: w.module["p1"].get_state()
+        ):
+            check(state, source_state)
+        algo.stop()
+
     @OldAPIStack
     def test_add_policy_and_remove_policy(self):
         config = (
