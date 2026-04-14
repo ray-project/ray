@@ -70,7 +70,11 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// Threshold when the node is beyond the memory capacity. If the memory is above the
 /// memory_usage_threshold and free space is below the min_memory_free_bytes then
 /// it will start killing processes to free up the space.
-/// Ranging from [0, 1]
+/// Note: when resource isolation is enabled, the memory usage threshold is set to
+/// total memory - system reserved memory (can be specified in ray start) -
+/// kill_memory_buffer_bytes. Notice that the formula does not account for object store
+/// memory in system reserved memory. To configure the usage threshold, please adjust the
+/// system reserved memory in ray start command instead. Ranging from [0, 1]
 RAY_CONFIG(float, memory_usage_threshold, 0.95)
 
 /// The interval between runs of the memory usage monitor.
@@ -86,24 +90,35 @@ RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 /// means 6.4 GB of the memory will not be usable.
 RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
+/// The amount of memory to free under the memory usage threshold when
+/// killing workers via the worker killing policy.
+RAY_CONFIG(uint64_t, kill_memory_buffer_bytes, 3ULL * 1024 * 1024 * 1024)  // 3GB
+
 /// The reserved memory bytes for system processes
-/// enforced via cgroup memory.low constraint which only
-/// reclaims the system processes' memory when nothing else can be reclaimed.
-/// Default is 0, meaning no memory.low constraint is applied.
-RAY_CONFIG(int64_t, system_memory_bytes_low, 0)
+/// enforced via cgroup memory.min constraint which guarantees
+/// that the system processes' memory will not be reclaimed under any conditions.
+/// Default is 0, meaning no memory.min constraint is applied.
+/// By default, if resource isolation is enabled, system reserved memory
+/// will be protected via memory.low instead. Only configure this value
+/// if you are certain that you want the min constraint protection.
+RAY_CONFIG(int64_t, system_memory_bytes_min, 0)
 
 /// The proportion of total memory the user processes are allowed to use.
 /// Enforced by the cgroup memory.high constraint which throttles the
 /// user processes' when the threshold is reached.
 /// Default is 1.0, meaning the user processes are allowed to use 100% of the total
-/// memory.
+/// memory. Only configure this value if you are confident that
+/// the configuration is desirable. Bad constraint configurations may
+/// lead to significant system performance degradation.
 RAY_CONFIG(float, user_memory_proportion_high, 1.0)
 
 /// The proportion of total memory the user processes are allowed to use.
 /// Enforced by the cgroup memory.max constraint which triggers the
 //. kernel OOM killer when the threshold is reached.
 /// Default is 1.0, meaning the user processes are allowed to use 100% of the total
-/// memory.
+/// memory. Only configure this value if you are confident that
+/// the configuration is desirable. Bad constraint configurations may
+/// lead to significant system performance degradation.
 RAY_CONFIG(float, user_memory_proportion_max, 1.0)
 
 /// The TTL for when the task failure entry is considered
@@ -753,6 +768,10 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// The core worker heartbeat interval. During heartbeat, it'll
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
+
+/// Interval at which workers report their backlog of tasks with unresolved dependencies
+/// to the local raylet, used for autoscaling decisions.
+RAY_CONFIG(int64_t, report_worker_backlog_interval_ms, 1000)
 
 /// Starting timeout for core worker grpc server reconnection (will
 /// exponentially increase until the maximum timeout).
