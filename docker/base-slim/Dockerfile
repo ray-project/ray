@@ -157,7 +157,7 @@ apt-get install -y --no-install-recommends \
 rm -rf /var/lib/apt/lists/*
 
 # Install HAProxy from source
-HAPROXY_VERSION="2.8.12"
+HAPROXY_VERSION="2.8.20"
 BUILD_DIR=$(mktemp -d)
 curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
