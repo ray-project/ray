@@ -9,7 +9,6 @@ from ray.includes.event_recorder cimport (
     CPythonEventRecorder,
     CreatePythonRayEvent,
 )
-from ray.util.annotations import DeveloperAPI
 from ray.includes.common cimport move
 from libcpp.memory cimport unique_ptr
 from libcpp.vector cimport vector as c_vector
@@ -20,7 +19,6 @@ import threading
 
 logger = logging.getLogger(__name__)
 
-@DeveloperAPI
 cdef class RayEvent:
     """Python wrapper holding event data for transfer to C++.
 
@@ -96,7 +94,6 @@ _event_recorder_instance = None
 _event_recorder_lock = threading.RLock()
 
 
-@DeveloperAPI
 cdef class EventRecorder:
     """Per-process singleton for recording Ray events."""
     cdef unique_ptr[CPythonEventRecorder] _recorder
