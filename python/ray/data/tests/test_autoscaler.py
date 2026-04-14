@@ -281,6 +281,18 @@ def test_actor_pool_scaling():
                 expected_reason="actor pool exceeds resource allocation",
             )
 
+    # Cross-resource: GPU pool with negative CPU budget but positive GPU budget.
+    # CPU is irrelevant (per_actor.cpu=0), so downscale is not triggered.
+    # GPU headroom = floor(5/1) = 5, capped by max_size(15)-current_size(10) = 5.
+    with patch(actor_pool, "per_actor_resource_usage", ExecutionResources(gpu=1)):
+        with patch(
+            resource_manager, "get_raw_budget", ExecutionResources(cpu=-2, gpu=5)
+        ):
+            assert_autoscaling_action(
+                delta=5,
+                expected_reason="utilization of 1.5 >= 1.0",
+            )
+
     # Memory is the bottleneck: raw.memory = -1 GB, scale down by
     # ceil(1 GB / 500 MB) = 2. CPU is within budget (raw.cpu > 0).
     with patch(
