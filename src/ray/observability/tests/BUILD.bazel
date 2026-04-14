@@ -7,7 +7,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:open_telemetry_metric_recorder",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -49,7 +48,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:ray_driver_job_lifecycle_event",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -60,7 +58,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:ray_actor_definition_event",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -71,7 +68,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:ray_actor_lifecycle_event",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -82,6 +78,5 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/observability:ray_node_definition_event",
-        "@com_google_googletest//:gtest_main",
     ],
 )
