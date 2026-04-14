@@ -2359,7 +2359,7 @@ torchmetrics==0.10.3
     #   lightning
     #   mosaicml
     #   pytorch-lightning
-torchtext==0.18.0
+torchtext==0.18.0 ; python_version < "3.13"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
 torchvision==0.22.0
     # via
