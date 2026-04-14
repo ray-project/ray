@@ -636,6 +636,12 @@ RAY_SERVE_LOG_CLIENT_ADDRESS = (
     os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
 )
 
+# Absolute path to the HAProxy binary. Defaults to bare "haproxy" (PATH lookup).
+# Set in Docker images to avoid PATH-resolution failures (e.g. broken mounts).
+RAY_SERVE_HAPROXY_BINARY_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy"
+)
+
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
 RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "20000"))

@@ -28,6 +28,7 @@ from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
+    RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -545,7 +546,7 @@ class HAProxyApi(ProxyApi):
         self, *extra_args: str, timeout_s: int = 5
     ) -> asyncio.subprocess.Process:
         # Build command args
-        args = ["haproxy", "-db", "-f", self.config_file_path]
+        args = [RAY_SERVE_HAPROXY_BINARY_PATH, "-db", "-f", self.config_file_path]
 
         if not self.cfg.enable_so_reuseport:
             args.append("-dR")
