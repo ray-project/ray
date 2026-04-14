@@ -528,6 +528,27 @@ TEST_F(LocalResourceManagerTest, PullingIdleAfterNodeWorkersDoesNotResetIdleTime
   ASSERT_EQ(AssertIdleAndGetTime(), node_workers_idle_time);
 }
 
+// When a footprint goes from speculatively busy (MaybeMarkFootprintAsBusy)
+// to definitely busy (MarkFootprintAsBusy), the saved idle time must be cleared
+// so that MarkFootprintAsIdle resets to Now() rather than restoring the stale time.
+TEST_F(LocalResourceManagerTest, SpeculativeBusyUpgradedToDefiniteBusyClearsSaved) {
+  CreateManagerWithFakeClock();
+
+  auto initial_idle_time = AssertIdleAndGetTime();
+
+  AdvanceTime(absl::Milliseconds(50));
+  manager->MaybeMarkFootprintAsBusy(WorkFootprint::NODE_WORKERS);
+  AssertBusy();
+
+  manager->MarkFootprintAsBusy(WorkFootprint::NODE_WORKERS);
+
+  AdvanceTime(absl::Milliseconds(100));
+  manager->MarkFootprintAsIdle(WorkFootprint::NODE_WORKERS);
+
+  ASSERT_EQ(AssertIdleAndGetTime(), clock_.Now());
+  ASSERT_NE(AssertIdleAndGetTime(), initial_idle_time);
+}
+
 TEST_F(LocalResourceManagerTest, RepeatedMarkFootprintAsIdleDoesNotResetIdleTime) {
   CreateManagerWithFakeClock();
 

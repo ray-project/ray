@@ -127,7 +127,8 @@ void LocalResourceManager::FreeTaskResourceInstances(
 }
 void LocalResourceManager::MarkFootprintAsBusy(WorkFootprint item) {
   auto prev = idle_time_states_.find(item);
-  if (prev != idle_time_states_.end() && !prev->second.current.has_value()) {
+  if (prev != idle_time_states_.end() && !prev->second.current.has_value() &&
+      !prev->second.saved.has_value()) {
     return;
   }
   idle_time_states_[item].current = absl::nullopt;
