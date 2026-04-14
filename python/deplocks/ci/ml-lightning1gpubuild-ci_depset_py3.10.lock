@@ -1,7 +1,6 @@
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
 --find-links https://data.pyg.org/whl/torch-2.7.0+cu128.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 about-time==4.2.1 \
     --hash=sha256:6a538862d33ce67d997429d14998310e1dbfda6cb7d9bbfbf799c4709847fece \
@@ -1812,11 +1811,44 @@ izulu==0.50.0 \
     --hash=sha256:4e9ae2508844e7c5f62c468a8b9e2deba2f60325ef63f01e65b39fd9a6b3fab4 \
     --hash=sha256:cc8e252d5e8560c70b95380295008eeb0786f7b745a405a40d3556ab3252d5f5
     # via taskiq
-jaxlib==0.4.28+cuda12.cudnn89 ; sys_platform != 'darwin' \
-    --hash=sha256:3d7b56bfe50470c585f0b8567ba67550691fd783c6ddd909d08a29d0b8a29a74
+jax==0.4.33 ; sys_platform != 'darwin' \
+    --hash=sha256:5f33e30b49060ebc990b1f8d75f89d15b9fec263f6fff34ef1af1d01996d314f \
+    --hash=sha256:f0d788692fc0179653066c9e1c64e57311b8c15a389837fd7baf328abefcbb92
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13_no_ptl.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
+jax-cuda12-pjrt==0.4.33 ; sys_platform != 'darwin' \
+    --hash=sha256:6a9945a8b58fabd040a06850f5ca6bcf94b9ec45b8248afb20c7f2eb809e2cea \
+    --hash=sha256:b43f199ec27fd9b3bb79b34ed297894ad50bb7a6eab62012baaa9ea6607b22de
+    # via jax-cuda12-plugin
+jax-cuda12-plugin==0.4.33 ; sys_platform != 'darwin' \
+    --hash=sha256:73c54317223aa8a5b46f6821d7cacfb38f4dbd2fc66f2a83a33419b4d72a5211 \
+    --hash=sha256:750b8147076b17ddff097bd6b38f1db227eba6674eb4e5843dbb007e0b6bec33 \
+    --hash=sha256:80736e03df2a5a0c35e4801f59e4d3c8b94cc8e8a03221763c95dcf7851fd120 \
+    --hash=sha256:a88cf22061416a97731ef837d56695e73d5ebd26aefc612328eeea510d3ed7e5 \
+    --hash=sha256:ad8f8863ee8d5e11a867bd71b37e979939cad64d0f74efd52cdb37292517613e \
+    --hash=sha256:bb81b2f65b1bb8e65b966b6f79985d3b168d495628b694fdf1791cd89696694e
+    # via -r python/requirements/ml/py313/dl-gpu-requirements.txt
+jaxlib==0.4.33 ; sys_platform != 'darwin' \
+    --hash=sha256:054aa0f122725e000b8f8815b1794067ef2ff821588b62e1fab2a1280847f5c6 \
+    --hash=sha256:0676ac605880ac6aa0ab9946a24a073ee8a1a83baf71cc1d35b71917a99d03d1 \
+    --hash=sha256:3e14b4b50a19370312875541509a7ddc1ef8fc0bd95cff9508db9725038e8297 \
+    --hash=sha256:400f401498675fd42dcaf0b855f325691951b250d619a8cbc5955f947e2494aa \
+    --hash=sha256:43c63e094948f0486505035b55a685b03ddde61705ce585f84b8c1438da20da0 \
+    --hash=sha256:4af6ee4070650ff120a92ff8454e70e0ef993434f3f3767a0e898cc484b836e2 \
+    --hash=sha256:5ba7eaa9722037755833cb70d9a98a049abea13e51dac3719b833dbf42ddf69a \
+    --hash=sha256:6ee2f8692a5ea32acc63bbcc7390312f553614c22348c7366f08995e8764d839 \
+    --hash=sha256:82c29635ddc51ba91671ab2be042f4701339df176e792eb6adf50ccabd723606 \
+    --hash=sha256:94e8d7bdd0506e1471d36d5da1e5838711fbd2ce18dffe7b694cad6b56e64e8c \
+    --hash=sha256:95fedfb5f10f8bdfa57d81dd09933e78ba297719b40192357685b3aaa4287fef \
+    --hash=sha256:98e682e0d944ca8af8c05724dc4a14b7aaa87cd67ddb32737861eee7ccdaabb4 \
+    --hash=sha256:9e6e933033cdfaebd018cdb5bfaf735bc164020316fe3ecff6c4b0dcf63f0f95 \
+    --hash=sha256:c12294ff10e5dcea9a4601833399a8b04aa7d0c8ab6e2c1afde930d36d5d0b20 \
+    --hash=sha256:eaf21b55fd8f046fcd82c8ea956b636b4b11f892341f3fcd3dc29c4ce5ac4857
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13_no_ptl.txt
+    #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
+    #   jax
 jaxtyping==0.3.4 \
     --hash=sha256:70e438db2f361575d04cccea50f77f9c8fe92f8b2086dc0ce89e5f1658bebaab \
     --hash=sha256:b4aac576a1b6c62a363f76f543f21c7cd4c7bb8714816c2c875f28b7abcdb770
@@ -2673,6 +2705,7 @@ ml-dtypes==0.5.4 \
     --hash=sha256:f21c9219ef48ca5ee78402d5cc831bd58ea27ce89beda894428bc67a52da5328
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13_no_ptl.txt
+    #   jax
     #   jaxlib
     #   keras
     #   tensorflow
@@ -3201,6 +3234,7 @@ numpy==1.26.4 \
     #   hpbandster
     #   hyperopt
     #   imageio
+    #   jax
     #   jaxlib
     #   keras
     #   labmaze
@@ -3471,6 +3505,7 @@ opt-einsum==3.3.0 \
     --hash=sha256:59f6475f77bbc37dcf7cd748519c0ec60722e91e63ca114e68821c0c54a46549
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13_no_ptl.txt
+    #   jax
     #   pyro-ppl
     #   tensorflow
 optree==0.18.0 \
@@ -5277,6 +5312,7 @@ scipy==1.14.1 \
     #   gpytorch
     #   hpbandster
     #   hyperopt
+    #   jax
     #   jaxlib
     #   linear-operator
     #   open-spiel
