@@ -84,9 +84,7 @@ class RayletClient : public RayletClientInterface {
                          const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply>
                              &callback) override;
 
-  void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override;
+  void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) override;
 
   void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
@@ -130,6 +128,11 @@ class RayletClient : public RayletClientInterface {
                    const std::string &reason_message,
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
+
+  void ResizeLocalResourceInstances(
+      google::protobuf::Map<std::string, double> resources,
+      const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback)
+      override;
 
   void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,

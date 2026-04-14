@@ -10,6 +10,7 @@ import time
 import urllib
 import urllib.parse
 import warnings
+from collections import deque
 from datetime import datetime
 from typing import List, Optional, Set, Tuple
 
@@ -66,6 +67,67 @@ from ray.util.check_open_ports import check_open_ports
 import psutil
 
 logger = logging.getLogger(__name__)
+
+
+def _tail_file(path: str, max_lines: int = 200) -> str:
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return "".join(deque(f, maxlen=max_lines))
+
+
+def _log_unexpected_subprocess_exit_details(
+    unexpected_deceased, logs_dir: str, process_exit_logger
+) -> None:
+    """Log unexpected subprocess exits to both structured and console outputs."""
+    lines_for_file = []
+    exit_codes_by_process_type = {}
+    with cli_logger.indented():
+        for process_type, process in unexpected_deceased:
+            cli_logger.error(
+                "{}",
+                cf.bold(str(process_type)),
+                _tags={"exit code": str(process.returncode)},
+            )
+            rc = getattr(process, "returncode", None)
+            rc_str = format_returncode(rc)
+            exit_codes_by_process_type.setdefault(str(process_type), set()).add(rc_str)
+            lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
+    try:
+        file_msg = "Some Ray subprocesses exited unexpectedly:\n" + "\n".join(
+            lines_for_file
+        )
+        process_exit_logger.error("%s", file_msg)
+    except Exception as e:
+        cli_logger.warning("Failed to write process exit log: {}", e)
+
+    process_types = sorted({str(t) for t, _p in unexpected_deceased})
+    for process_type in process_types:
+        exit_codes = sorted(exit_codes_by_process_type[process_type])
+        exit_codes_display = ", ".join(exit_codes)
+        for fname in (f"{process_type}.err", f"{process_type}.out"):
+            began_tail_output = False
+            try:
+                fpath = os.path.join(logs_dir, fname)
+                if not os.path.exists(fpath) or os.path.getsize(fpath) == 0:
+                    continue
+                cli_logger.newline()
+                cli_logger.error(
+                    "----- BEGIN {} tail (exit code(s)={}) -----",
+                    fname,
+                    exit_codes_display,
+                )
+                began_tail_output = True
+                cli_logger.newline()
+                cli_logger.error("{}", _tail_file(fpath))
+            except Exception as e:
+                cli_logger.error("Failed to tail process log {}: {}", fname, e)
+            finally:
+                if began_tail_output:
+                    cli_logger.newline()
+                    cli_logger.error(
+                        "----- END {} tail (exit code(s)={}) -----",
+                        fname,
+                        exit_codes_display,
+                    )
 
 
 def _check_ray_version(gcs_client):
@@ -676,6 +738,16 @@ Windows powershell users need additional escaping:
     "Cgroup memory and cpu controllers be enabled for this cgroup. "
     "This option only works if enable_resource_isolation is True.",
 )
+@click.option(
+    "--proxy-server-url",
+    required=False,
+    type=str,
+    help="[Experimental] The server url to redirect dashboard backend requests to. "
+    "By default, the dashboard requests will be directed to the Ray api server. "
+    "If you have a custom server to serve the dashboard requests, "
+    "you can set this option to override the server url. "
+    "Ex: --proxy-server-url=http://historyserver:8080 ",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -724,6 +796,7 @@ def start(
     system_reserved_cpu,
     system_reserved_memory,
     cgroup_path,
+    proxy_server_url,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -843,6 +916,7 @@ def start(
         ray_debugger_external=ray_debugger_external,
         include_log_monitor=include_log_monitor,
         resource_isolation_config=resource_isolation_config,
+        proxy_server_url=proxy_server_url,
         env_vars=env_vars,
     )
 
@@ -1119,13 +1193,13 @@ def start(
         ensure_token_if_auth_enabled(system_config, create_token_if_missing=False)
 
         node = ray._private.node.Node(
-            ray_params, head=False, shutdown_at_exit=block, spawn_reaper=block
+            ray_params,
+            head=False,
+            shutdown_at_exit=block,
+            spawn_reaper=block,
+            connect_only=False,
         )
         temp_dir = node.get_temp_dir_path()
-
-        # Ray and Python versions should probably be checked before
-        # initializing Node.
-        node.check_version_info()
 
         cli_logger.newline()
         startup_msg = "Ray runtime started."
@@ -1187,29 +1261,15 @@ def start(
             if len(unexpected_deceased) > 0:
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprocesses exited unexpectedly:")
-
-                lines_for_file = []
-                with cli_logger.indented():
-                    for process_type, process in unexpected_deceased:
-                        cli_logger.error(
-                            "{}",
-                            cf.bold(str(process_type)),
-                            _tags={"exit code": str(process.returncode)},
-                        )
-                        rc = getattr(process, "returncode", None)
-                        rc_str = format_returncode(rc)
-                        lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
-                try:
-                    file_msg = (
-                        "Some Ray subprocesses exited unexpectedly:\n"
-                        + "\n".join(lines_for_file)
-                    )
-                    process_exit_logger.error("%s", file_msg)
-                except Exception as e:
-                    cli_logger.warning("Failed to write process exit log: {}", e)
+                _log_unexpected_subprocess_exit_details(
+                    unexpected_deceased,
+                    logs_dir,
+                    process_exit_logger,
+                )
 
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
+                cli_logger.flush()
 
                 # explicitly kill all processes since atexit handlers
                 # will not exit with errors.
@@ -2869,9 +2929,9 @@ except Exception as e:
 
 
 try:
-    from ray.serve.scripts import serve_cli
+    from ray.serve.scripts import cli as serve_cli_group
 
-    cli.add_command(serve_cli)
+    cli.add_command(serve_cli_group, name="serve")
 except Exception as e:
     logger.debug(f"Integrating ray serve command line tool failed with {e}")
 

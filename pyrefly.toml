@@ -32,6 +32,7 @@ ignore-missing-imports = [
     "mcap.*",
     "modin.*",
     "numpy.*",
+    "obstore.*",
     "pandas.*",
     "polars.*",
     "psutil.*",
@@ -58,5 +59,11 @@ ignore-missing-imports = [
     "torchvision.*",
     "tqdm.*",
     "transformers.*",
-    "webdataset.*"
+    "webdataset.*",
+    "cudf.*",
+    "pylibcudf.*",
+    "pynvml.*",
+    "rapidsmpf.*",
+    "rmm.*",
+    "confluent_kafka.*",
 ]

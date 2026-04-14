@@ -1,4 +1,5 @@
 import atexit
+import dataclasses
 import faulthandler
 import functools
 import inspect
@@ -910,10 +911,21 @@ class Worker:
         use_object_store: bool = False,
     ):
         rdt_objects: Dict[str, List["torch.Tensor"]] = {}
-        for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
+        for obj_ref, (_, metadata, tensor_transport) in zip(
+            object_refs, serialized_objects
+        ):
             if tensor_transport is None:
                 # The object is not an RDT object, so we cannot use other external transport to
                 # fetch it.
+                continue
+
+            # Assures that the upstream task didn't error out. This logic comes from the
+            # serialization_context deserialize_objects path. RDT tensors are only used
+            # if the metadata field contains that constant
+            if not metadata:
+                continue
+            metadata_fields = metadata.split(b",")
+            if metadata_fields[0] != ray_constants.OBJECT_METADATA_TYPE_PYTHON:
                 continue
 
             object_id = obj_ref.hex()
@@ -1417,6 +1429,7 @@ def init(
     cgroup_path: Optional[str] = None,
     system_reserved_cpu: Optional[float] = None,
     system_reserved_memory: Optional[int] = None,
+    proxy_server_url: Optional[str] = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1536,6 +1549,11 @@ def init(
             The process starting ray must have read/write permissions to this path.
             Cgroup memory and cpu controllers must be enabled for this cgroup.
             This option only works if enable_resource_isolation is True.
+        proxy_server_url:[Experimental] The server url to redirect dashboard backend requests to.
+            By default, the dashboard requests will be directed to the Ray api server.
+            If you have a custom server to serve the dashboard requests,
+            you can set this option to override the server url.
+            Ex: proxy_server_url=http://historyserver:8080
         system_reserved_cpu: The number of cpu cores to reserve for ray system processes.
             Cores can be fractional i.e. 1.5 means one and a half a cpu core.
             By default, the value will be atleast 1 core, and at maximum 3 cores. The default value
@@ -1676,6 +1694,14 @@ def init(
                 # builder
                 passed_kwargs[argument_name] = passed_value
         passed_kwargs.update(kwargs)
+
+        # Convert LoggingConfig to dict before client sends it over JSON
+        if "logging_config" in passed_kwargs and isinstance(
+            passed_kwargs["logging_config"], LoggingConfig
+        ):
+            lc = passed_kwargs["logging_config"]
+            passed_kwargs["logging_config"] = dataclasses.asdict(lc)
+
         builder._init_args(**passed_kwargs)
         ctx = builder.connect()
         from ray._common.usage import usage_lib
@@ -1789,6 +1815,7 @@ def init(
     if logging_config is not None:
         job_config.set_py_logging_config(logging_config)
 
+    services.find_gcs_addresses.cache_clear()
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
@@ -1878,6 +1905,7 @@ def init(
             tracing_startup_hook=_tracing_startup_hook,
             node_name=_node_name,
             resource_isolation_config=resource_isolation_config,
+            proxy_server_url=proxy_server_url,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
@@ -2021,21 +2049,6 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
-    # Check and show accelerator override warning during driver initialization
-    from ray._private.ray_constants import env_bool
-
-    override_on_zero = env_bool(
-        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
-        True,
-    )
-    if override_on_zero and log_once("ray_accel_env_var_override_on_zero"):
-        warnings.warn(
-            "Tip: In future versions of Ray, Ray will no longer override accelerator "
-            "visible devices env var if num_gpus=0 or num_gpus=None (default). To enable "
-            "this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0",
-            FutureWarning,
-        )
-
     # Check for Pydantic v1 and emit deprecation warning
     from ray._common.pydantic_compat import PYDANTIC_MAJOR_VERSION
 
@@ -2051,6 +2064,7 @@ def init(
             FutureWarning,
         )
 
+    services.find_gcs_addresses.cache_clear()
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
@@ -2140,6 +2154,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker.set_cached_job_id(None)
+    services.find_gcs_addresses.cache_clear()
 
 
 atexit.register(shutdown, True)
@@ -3381,7 +3396,12 @@ def _make_remote(function_or_class, options):
         function_or_class.__module__ = "global"
 
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
-        ray_option_utils.validate_task_options(options, in_options=False)
+        is_generator_callable = inspect.isgeneratorfunction(
+            function_or_class
+        ) or inspect.isasyncgenfunction(function_or_class)
+        ray_option_utils.validate_task_options(
+            options, in_options=False, is_generator_callable=is_generator_callable
+        )
         return ray.remote_function.RemoteFunction(
             Language.PYTHON,
             function_or_class,

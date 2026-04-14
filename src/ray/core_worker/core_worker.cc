@@ -499,6 +499,16 @@ CoreWorker::CoreWorker(
       "CoreWorker.InternalHeartbeat");
 
   periodical_runner_->RunFnPeriodically(
+      [this] {
+        // Periodically report the backlog so that the local raylet can report the
+        // resources needed for tasks that haven't had their dependencies resolved yet to
+        // the GCS + Autoscaler.
+        normal_task_submitter_->ReportWorkerBacklog();
+      },
+      RayConfig::instance().report_worker_backlog_interval_ms(),
+      "CoreWorker.ReportWorkerBacklog");
+
+  periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
       RayConfig::instance().metrics_report_interval_ms() / 2,
       "CoreWorker.RecordMetrics");
@@ -818,15 +828,7 @@ void CoreWorker::InternalHeartbeat() {
   }
 
   // Check timeout tasks that are waiting for death info.
-  if (actor_task_submitter_ != nullptr) {
-    actor_task_submitter_->CheckTimeoutTasks();
-  }
-
-  // Periodically report the latest backlog so that
-  // local raylet will have the eventually consistent view of worker backlogs
-  // even in cases where backlog reports from normal_task_submitter
-  // are lost or reordered.
-  normal_task_submitter_->ReportWorkerBacklog();
+  actor_task_submitter_->CheckTimeoutTasks();
 
   // Check for unhandled exceptions to raise after a timeout on the driver.
   // Only do this for TTY, since shells like IPython sometimes save references
@@ -845,6 +847,8 @@ void CoreWorker::RecordMetrics() {
   // Record worker heap memory metrics.
   memory_store_->RecordMetrics();
   reference_counter_->RecordMetrics();
+  // Flush percentile metrics: swap histogram buffers and update exported gauges.
+  normal_task_submitter_->FlushMetrics();
 }
 
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
@@ -2444,7 +2448,7 @@ Status CoreWorker::SubmitActorTask(
                       /*generator_backpressure_num_objects=*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_events=*/task_options.enable_task_events,
-                      /*labels=*/{},
+                      /*labels=*/task_options.labels,
                       /*label_selector=*/{},
                       /*fallback_strategy=*/{});
   // NOTE: placement_group_capture_child_tasks and runtime_env will
@@ -2785,6 +2789,12 @@ Status CoreWorker::ExecuteTask(
   std::string func_name = task_spec.GetName();
   bool is_retry = task_spec.IsRetry();
 
+  // Modify the worker's per-function counters. This should be done before updating any
+  // substates (running_in_ray_get, running_in_ray_wait, getting_and_pinning_args) since
+  // the metric callback subtracts substate counts from running_total. Incrementing
+  // substates before kRunning could result in wrong values of RUNNING metric.
+  task_counter_.MovePendingToRunning(func_name, is_retry);
+
   ++num_get_pin_args_in_flight_;
   task_counter_.SetMetricStatus(
       func_name, rpc::TaskStatus::GETTING_AND_PINNING_ARGS, is_retry);
@@ -2797,7 +2807,8 @@ Status CoreWorker::ExecuteTask(
     ++num_failed_get_pin_args_;
     // If this has happened, it's because we are unable to talk to our local raylet.
     // This very likely means that the raylet has shutdown before this worker
-    // unexpectedly. In whic case we'll trigger shut down.
+    // unexpectedly. In which case we'll mark the task finished and trigger shut down.
+    task_counter_.MoveRunningToFinished(func_name, task_spec.IsRetry());
     Exit(rpc::WorkerExitType::SYSTEM_ERROR,
          absl::StrCat("Worker failed to get and pin task arguments! Error message: ",
                       pin_args_request_status.message()),
@@ -2807,9 +2818,6 @@ Status CoreWorker::ExecuteTask(
 
   task_queue_length_ -= 1;
   num_executed_tasks_ += 1;
-
-  // Modify the worker's per-function counters.
-  task_counter_.MovePendingToRunning(func_name, is_retry);
 
   worker::TaskStatusEvent::TaskStateUpdate update;
   {
