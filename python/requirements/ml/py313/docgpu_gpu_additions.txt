@@ -1,11 +1,17 @@
-# Packages needed for GPU docgpu that exist in dl-cpu but not dl-gpu
-# These don't conflict with GPU PyTorch/PyG variants and use standard versions
+# Packages from dl-cpu needed by the GPU docgpu image but absent from dl-gpu
+# (dl-gpu only lists GPU-specific wheels; merging both files in one depset
+#  would recreate the torch-spline-conv CPU/GPU conflict).
+# These use standard (non-CUDA) versions and don't conflict with GPU PyTorch/PyG wheels.
 
+# TF ecosystem: no cp312+ wheels exist for these versions; marker matches package constraints
 tensorflow-io-gcs-filesystem==0.31.0; python_version < '3.12'
 array-record==0.5.1; python_version < '3.12' and sys_platform != 'darwin' and platform_system != 'Windows'
 etils==1.5.2; python_version < '3.12'
 
+# torchmetrics is pure-Python, installs everywhere
 torchmetrics==0.10.3
-torchtext==0.18.0
+# torchtext 0.18.0 has no cp313 wheel; guard until a cp313-compatible version is available
+torchtext==0.18.0; python_version < '3.13'
 
+# JAX frontend (pure-Python); jaxlib CUDA backend comes from dl-gpu via GCS find-links
 jax==0.4.28; sys_platform != 'darwin'
