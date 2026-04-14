@@ -52,7 +52,7 @@
 Unit tests must live in `python/ray/data/tests/unit/` and must **only** test pure
 Python logic. A unit test must NOT:
 - Call any `ray.*` API during runtime (imports of ray modules are fine).
-  - This includes `ray.init()`, `ray.data.*()`, `ray.put()`, `ray.get()`, and any other runtime call into the ray package.
+  - This includes `ray.init()`, `ray.put()`, `ray.get()`, and any other runtime call into the ray package.
 - Use fixtures that start ray clusters.
   - This includes any fixture that starts with `ray_start_`.
 - Use `time.sleep()`.
@@ -62,7 +62,7 @@ Everything else - calling ray.* APIs at runtime, using fixtures that start ray c
 ### Checks
 1. **Test added to `python/ray/data/tests/unit/` that violates the unit test rules**: If a new or modified test in `unit/` calls any `ray.*` API at runtime, uses a cluster-starting fixture, or uses `time.sleep()`, post:
 
-> ⚠️ This test requires a ray cluster or uses `time.sleep()` during runtime, which means it is an integration test.
+> ⚠️ This test does not appear to be a unit test: it may depend on a Ray cluster, `time.sleep()`, or heavy external resources.
 > Unit tests in `python/ray/data/tests/unit/` must only test pure Python logic without initiating ray clusters.
 > Please move it to the appropriate top-level test file under `python/ray/data/tests/`.
 
