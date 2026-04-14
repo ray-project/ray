@@ -19,7 +19,7 @@ apt-get install -y --no-install-recommends \
     wget \
     zlib1g-dev
 
-HAPROXY_VERSION="2.8.12"
+HAPROXY_VERSION="2.8.20"
 HAPROXY_BUILD_DIR=$(mktemp -d)
 wget -O "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
@@ -48,7 +48,7 @@ RUN <<EOF
 #!/bin/bash
 set -euo pipefail
 
-apt-get update -y && apt-get install -y --no-install-recommends socat liblua5.3-0 libpcre3
+apt-get update -y && apt-get install -y --no-install-recommends liblua5.3-0 libpcre3
 rm -rf /var/lib/apt/lists/*
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 EOF
