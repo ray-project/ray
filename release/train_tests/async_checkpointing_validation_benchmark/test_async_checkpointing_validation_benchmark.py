@@ -22,6 +22,7 @@ from ray._private.test_utils import safe_write_to_results_json
 
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class ValidationType(Enum):
@@ -233,6 +234,7 @@ def validate_and_report(
 
     # DCP save is a distributed collective so all ranks must call it together.
     ckpt_ref = None  # Only used by TORCH_DCP_ASYNC
+    iteration_checkpoint_dir = None
     if checkpoint_save_mode in (
         CheckpointSaveMode.TORCH_DCP_SYNC,
         CheckpointSaveMode.TORCH_DCP_ASYNC,
@@ -256,11 +258,6 @@ def validate_and_report(
             ckpt_ref = async_save({"model": model_dict}, storage_writer=storage_writer)
         else:
             raise NotImplementedError
-    elif checkpoint_save_mode == CheckpointSaveMode.TORCH_SAVE:
-        # For torch.save, a local temp dir is used and Ray Train handles the upload.
-        iteration_checkpoint_dir = tempfile.mkdtemp()
-    else:
-        raise NotImplementedError
 
     if ray.train.get_context().get_world_rank() == 0:
         if val_elapsed_time:
@@ -280,6 +277,8 @@ def validate_and_report(
             validation = False
 
         if checkpoint_save_mode == CheckpointSaveMode.TORCH_SAVE:
+            # We can't use `tempfile.TemporaryDirectory()` due to CheckpointUploadMode.ASYNC
+            iteration_checkpoint_dir = tempfile.mkdtemp()
             torch.save(
                 model.module.state_dict(),
                 os.path.join(iteration_checkpoint_dir, "model.pt"),
@@ -518,10 +517,9 @@ def main():
         training_rows,
         CheckpointSaveMode.TORCH_DCP_ASYNC,
     )
-    logger.info(consolidated_metrics)
     safe_write_to_results_json(consolidated_metrics)
     for run_name, metrics in consolidated_metrics.items():
-        print(f"{run_name}={metrics}")
+        logger.info(f"{run_name}={metrics}")
 
     # Assert final scores aren't too far off, which would imply an inaccurate comparison
     # Example value: 0.55
@@ -538,7 +536,7 @@ def main():
     async_dcp_final_score = consolidated_metrics["async_dcp_map_batches_val_metrics"][
         "final_score"
     ]
-    print(
+    logger.info(
         "Validation metrics order=",
         dict(
             sorted(
@@ -574,7 +572,7 @@ def main():
     async_dcp_e2e_time = consolidated_metrics["async_dcp_map_batches_val_metrics"][
         "e2e_time"
     ]
-    print(
+    logger.info(
         "Total end-to-end time order=",
         dict(
             sorted(
@@ -619,7 +617,7 @@ def main():
     async_dcp_report_blocked_time = consolidated_metrics[
         "async_dcp_map_batches_val_metrics"
     ]["total_report_blocked_time"]
-    print(
+    logger.info(
         "Total report blocked time order=",
         dict(
             sorted(
@@ -675,7 +673,7 @@ def main():
     async_dcp_blocking_time = (
         async_dcp_report_blocked_time + async_dcp_final_validation_blocking_time
     )
-    print(
+    logger.info(
         "Total validation blocking time order=",
         dict(
             sorted(
