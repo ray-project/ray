@@ -334,7 +334,7 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         # after report() returns. Let ray.train.report delete_local_checkpoint_after_upload
         # handle cleanup instead.
         if is_v2_enabled() and self.checkpoint_upload_mode is not None:
-            # Check here because CheckpointUploadMode is only imoprted when is_v2_enabled() is True
+            # Check here because CheckpointUploadMode is only imported when is_v2_enabled() is True
             if self.checkpoint_upload_mode == CheckpointUploadMode.ASYNC:
                 return
 
