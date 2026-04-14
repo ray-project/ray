@@ -416,11 +416,14 @@ class OneHotEncoder(SerializablePreprocessorBase):
             If a value isn't specified for a column, then a feature is created
             for every category in that column.
         drop: Strategy for dropping categories to avoid multicollinearity.
-            - If ``None`` (default), all categories are retained.
-            - If ``"first"``, the first category in sorted order is dropped for each column.
-              The choice of baseline category is arbitrary; sorted order provides
-              a stable and reproducible rule.
-            - If ``"if_binary"``, the first category is dropped only if exactly 2 categories exist.
+            Supported values are:
+
+            * ``None`` (default): Retain all categories.
+            * ``"first"``: Drop the first category in sorted order for each
+              column. The choice of baseline category is arbitrary; sorted order
+              provides a stable and reproducible rule.
+            * ``"if_binary"``: Drop the first category only if exactly 2
+              categories exist.
         output_columns: The names of the transformed columns. If None, the transformed
             columns will be the same as the input columns. If not None, the length of
             ``output_columns`` must match the length of ``columns``, othwerwise an error
@@ -743,11 +746,15 @@ class MultiHotEncoder(SerializablePreprocessorBase):
             If a value isn't specified for a column, then a feature is created
             for every unique category in that column.
         drop: Strategy for dropping categories to avoid multicollinearity.
-            - If ``None`` (default), all categories are retained.
-            - If ``"first"``, the first category in sorted order is dropped for each column.
-              The choice of baseline category is arbitrary; sorted order provides
-              a stable and reproducible rule.
-            - If ``"if_binary"``, the first category is dropped only if exactly 2 categories exist.
+            Supported values are:
+
+            * ``None`` (default): Retain all categories.
+            * ``"first"``: Drop the first category in sorted order for each
+              column. The choice of baseline category is arbitrary; sorted order
+              provides a stable and reproducible rule.
+            * ``"if_binary"``: Drop the first category only if exactly 2
+              categories exist.
+
             This helps prevent the dummy variable trap in linear models.
         output_columns: The names of the transformed columns. If None, the transformed
             columns will be the same as the input columns. If not None, the length of
