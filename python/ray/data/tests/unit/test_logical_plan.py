@@ -3,6 +3,13 @@ from ray.data.context import DataContext
 
 
 class DummyLogicalOperator(LogicalOperator):
+    def __init__(self, input_dependencies, name=None, num_outputs=None):
+        super().__init__(
+            _name=name or self.__class__.__name__,
+            _input_dependencies=input_dependencies,
+            _num_outputs=num_outputs,
+        )
+
     @property
     def num_outputs(self):
         return self._num_outputs

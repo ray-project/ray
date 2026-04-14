@@ -91,50 +91,75 @@ class DummyLogicalOperator(LogicalOperator):
     """A dummy logical operator for testing _get_logical_args with various data types."""
 
     def __init__(self, input_op=None):
-        super().__init__(input_dependencies=[], name="DummyOperator")
+        super().__init__(
+            _name="DummyOperator",
+            _input_dependencies=[],
+            _num_outputs=None,
+        )
 
         # Test various data types that might be returned by _get_logical_args
-        self._string_value = "test_string"
-        self._int_value = 42
-        self._float_value = 3.14
-        self._bool_value = True
-        self._none_value = None
-        self._list_value = [1, 2, 3, "string", None]
-        self._dict_value = {"key1": "value1", "key2": 123, "key3": None}
-        self._nested_dict = {
-            "level1": {
-                "level2": {
-                    "level3": "deep_value",
-                    "numbers": [1, 2, 3],
-                    "mixed": {"a": 1, "b": "string", "c": None},
+        object.__setattr__(self, "_string_value", "test_string")
+        object.__setattr__(self, "_int_value", 42)
+        object.__setattr__(self, "_float_value", 3.14)
+        object.__setattr__(self, "_bool_value", True)
+        object.__setattr__(self, "_none_value", None)
+        object.__setattr__(self, "_list_value", [1, 2, 3, "string", None])
+        object.__setattr__(
+            self, "_dict_value", {"key1": "value1", "key2": 123, "key3": None}
+        )
+        object.__setattr__(
+            self,
+            "_nested_dict",
+            {
+                "level1": {
+                    "level2": {
+                        "level3": "deep_value",
+                        "numbers": [1, 2, 3],
+                        "mixed": {"a": 1, "b": "string", "c": None},
+                    }
                 }
-            }
-        }
-        self._tuple_value = (1, "string", None, 3.14)
-        self._set_value = {1}
-        self._bytes_value = b"binary_data"
-        self._complex_dict = {
-            "string_keys": {"a": 1, "b": 2},
-            "int_keys": {1: "one", 2: "two"},  # This should cause issues if not handled
-            "mixed_keys": {"str": "value", 1: "int_key", None: "none_key"},
-        }
-        self._empty_containers = {
-            "empty_list": [],
-            "empty_dict": {},
-            "empty_tuple": (),
-            "empty_set": set(),
-        }
-        self._special_values = {
-            "zero": 0,
-            "negative": -1,
-            "large_int": 999999999999999999,
-            "small_float": 0.0000001,
-            "inf": float("inf"),
-            "neg_inf": float("-inf"),
-            "nan": float("nan"),
-        }
+            },
+        )
+        object.__setattr__(self, "_tuple_value", (1, "string", None, 3.14))
+        object.__setattr__(self, "_set_value", {1})
+        object.__setattr__(self, "_bytes_value", b"binary_data")
+        object.__setattr__(
+            self,
+            "_complex_dict",
+            {
+                "string_keys": {"a": 1, "b": 2},
+                "int_keys": {
+                    1: "one",
+                    2: "two",
+                },  # This should cause issues if not handled
+                "mixed_keys": {"str": "value", 1: "int_key", None: "none_key"},
+            },
+        )
+        object.__setattr__(
+            self,
+            "_empty_containers",
+            {
+                "empty_list": [],
+                "empty_dict": {},
+                "empty_tuple": (),
+                "empty_set": set(),
+            },
+        )
+        object.__setattr__(
+            self,
+            "_special_values",
+            {
+                "zero": 0,
+                "negative": -1,
+                "large_int": 999999999999999999,
+                "small_float": 0.0000001,
+                "inf": float("inf"),
+                "neg_inf": float("-inf"),
+                "nan": float("nan"),
+            },
+        )
 
-        self._data_class = TestDataclass()
+        object.__setattr__(self, "_data_class", TestDataclass())
 
     @property
     def num_outputs(self):

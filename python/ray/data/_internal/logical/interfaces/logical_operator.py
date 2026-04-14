@@ -23,10 +23,6 @@ class LogicalOperator(Operator, ABC):
     _input_dependencies: List["LogicalOperator"] = field(repr=False)
     _num_outputs: Optional[int] = field(default=None, repr=False)
 
-    def __post_init__(self):
-        for x in self._input_dependencies:
-            assert isinstance(x, LogicalOperator), x
-
     @property
     @abstractmethod
     def num_outputs(self) -> Optional[int]:
@@ -52,10 +48,15 @@ class LogicalOperator(Operator, ABC):
 
     @property
     def input_dependencies(self) -> List["LogicalOperator"]:
-        return super().input_dependencies  # type: ignore
+        value = super().input_dependencies  # type: ignore
+        for x in value:
+            assert isinstance(x, LogicalOperator), x
+        return value
 
     @input_dependencies.setter
     def input_dependencies(self, value: List["LogicalOperator"]) -> None:
+        for x in value:
+            assert isinstance(x, LogicalOperator), x
         object.__setattr__(self, "_input_dependencies", value)
 
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
