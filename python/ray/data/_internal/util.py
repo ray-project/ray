@@ -895,21 +895,15 @@ def find_partition_index(
         col_vals = table[col_name].to_numpy()[left:right]
         desired_val = desired[i]
 
-        # Nulls sort last in Arrow, so they accumulate at the tail of col_vals.
-        # Stripping them before searching avoids a TypeError from np.searchsorted
-        # on None values — and if desired_val is also None, the answer is simply
-        # the end of the non-null region.
-        # Use the Arrow column's O(1) null_count to skip the
-        # expensive pd.isna + boolean indexing when there are no nulls (the
-        # common case).
+        # Nulls and NaN sort last in Arrow, so they accumulate at the tail of
+        # col_vals. Strip them before np.searchsorted to avoid incorrect bounds.
+        # Use O(1) null_count as a fast path, and fall back to np.isnan for
+        # float columns that may contain NaN without Arrow nulls.
         column = table[col_name]
-        has_nulls = (
-            column.null_count > 0
-            if hasattr(column, "null_count")
-            else column.isna().any()
-        )
-        if has_nulls:
+        if hasattr(column, "null_count") and column.null_count > 0:
             col_vals = col_vals[~pd.isna(col_vals)]
+        elif col_vals.dtype.kind == "f" and np.isnan(col_vals).any():
+            col_vals = col_vals[~np.isnan(col_vals)]
         if desired_val is None:
             return left + len(col_vals)
 
