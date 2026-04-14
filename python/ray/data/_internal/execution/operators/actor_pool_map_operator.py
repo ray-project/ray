@@ -397,7 +397,6 @@ class ActorPoolMapOperator(MapOperator):
             actor_task_args = dict(self._ray_actor_task_remote_args)
             extra_labels = actor_task_args.pop("_labels", None) or {}
             gen = actor.submit.options(
-                name=self.name,
                 num_returns="streaming",
                 _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **extra_labels},
                 **actor_task_args,
