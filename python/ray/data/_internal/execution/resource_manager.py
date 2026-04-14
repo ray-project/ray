@@ -664,6 +664,7 @@ class OpResourceAllocator(ABC):
         allocation is unlimited."""
         ...
 
+    @abstractmethod
     def get_raw_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         """Returns the true total budget (Allocation - Usage) without clamping to zero,
         or `None` if the operator has unlimited budget.
@@ -672,7 +673,7 @@ class OpResourceAllocator(ABC):
         exceeds its total allocation (reserved + shared portion). It is the correct
         signal for detecting over-allocation in the actor autoscaler.
         """
-        return None
+        ...
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         """Returns a list of operators eligible for allocation.
