@@ -22,6 +22,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "ray/common/memory_monitor_interface.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -292,23 +293,60 @@ int64_t MemoryMonitorUtils::NullableMin(int64_t left, int64_t right) {
   }
 }
 
-int64_t MemoryMonitorUtils::GetMemoryThreshold(int64_t total_memory_bytes,
-                                               float usage_threshold,
-                                               int64_t min_memory_free_bytes) {
+int64_t MemoryMonitorUtils::GetMemoryThreshold(
+    int64_t total_memory_bytes,
+    float usage_threshold,
+    int64_t min_memory_free_bytes,
+    bool resource_isolation_enabled,
+    const CgroupManagerInterface &cgroup_manager) {
   RAY_CHECK_GE(total_memory_bytes, MemoryMonitorInterface::kNull);
   RAY_CHECK_GE(min_memory_free_bytes, MemoryMonitorInterface::kNull);
-  RAY_CHECK_GE(usage_threshold, 0);
-  RAY_CHECK_LE(usage_threshold, 1);
+  RAY_CHECK_GE(usage_threshold, 0)
+      << "Invalid configuration: usage_threshold must be >= 0";
+  RAY_CHECK_LE(usage_threshold, 1)
+      << "Invalid configuration: usage_threshold must be <= 1";
 
+  int64_t resolved_memory_threshold_bytes;
   int64_t threshold_fraction = (int64_t)(total_memory_bytes * usage_threshold);
 
   if (min_memory_free_bytes > MemoryMonitorInterface::kNull) {
     int64_t threshold_absolute = total_memory_bytes - min_memory_free_bytes;
     RAY_CHECK_GE(threshold_absolute, 0);
-    return std::max(threshold_fraction, threshold_absolute);
+    resolved_memory_threshold_bytes = std::max(threshold_fraction, threshold_absolute);
   } else {
-    return threshold_fraction;
+    resolved_memory_threshold_bytes = threshold_fraction;
   }
+
+  if (resource_isolation_enabled) {
+    StatusOr<std::string> result =
+        cgroup_manager.GetUserCgroupConstraintValue("memory.max");
+    RAY_CHECK(result.ok()) << absl::StrFormat(
+        "Failed to get user cgroup memory limit when setting up memory monitor: %s",
+        result.ToString());
+    std::string user_memory_max_bytes_str = result.value();
+    RAY_CHECK(!user_memory_max_bytes_str.empty()) << absl::StrFormat(
+        "Failed to get memory.max constraint value from user cgroup %s. "
+        "Please check that the cgroup path for resource isolation is correct.",
+        cgroup_manager.GetUserCgroupPath());
+
+    if (!user_memory_max_bytes_str.empty() &&
+        std::all_of(user_memory_max_bytes_str.begin(),
+                    user_memory_max_bytes_str.end(),
+                    ::isdigit)) {
+      int64_t user_memory_max_bytes = std::stoll(user_memory_max_bytes_str);
+      resolved_memory_threshold_bytes =
+          user_memory_max_bytes -
+          static_cast<int64_t>(RayConfig::instance().kill_memory_buffer_bytes());
+      RAY_CHECK_GE(resolved_memory_threshold_bytes, 0) << absl::StrFormat(
+          "Available user task memory is less than the kill memory buffer bytes: "
+          "%d < %d. Please consider using a host with more memory. If the current host "
+          "memory size must be kept, please adjust the kill memory buffer size.",
+          user_memory_max_bytes,
+          RayConfig::instance().kill_memory_buffer_bytes());
+    }
+  }
+
+  return resolved_memory_threshold_bytes;
 }
 
 int64_t MemoryMonitorUtils::GetProcessUsedMemoryBytes(

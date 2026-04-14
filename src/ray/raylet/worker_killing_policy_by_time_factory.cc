@@ -14,7 +14,9 @@
 
 #include <memory>
 
-#include "ray/raylet/noop_worker_killing_policy.h"
+#include "ray/common/memory_monitor_utils.h"
+#include "ray/common/ray_config.h"
+#include "ray/raylet/worker_killing_policy_by_time.h"
 #include "ray/raylet/worker_killing_policy_factory.h"
 
 namespace ray {
@@ -23,7 +25,18 @@ namespace raylet {
 
 std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create(
     bool resource_isolation_enabled, const CgroupManagerInterface &cgroup_manager) {
-  return std::make_unique<NoopWorkerKillingPolicy>();
+  int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemorySnapshot(
+                                   MemoryMonitorInterface::kDefaultCgroupPath)
+                                   .total_bytes;
+  int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
+      total_memory_bytes,
+      RayConfig::instance().memory_usage_threshold(),
+      RayConfig::instance().min_memory_free_bytes(),
+      resource_isolation_enabled,
+      cgroup_manager);
+
+  return std::make_unique<TimeBasedWorkerKillingPolicy>(
+      memory_usage_threshold_bytes, RayConfig::instance().kill_memory_buffer_bytes());
 }
 
 }  // namespace raylet

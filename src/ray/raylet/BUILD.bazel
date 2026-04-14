@@ -189,7 +189,7 @@ ray_cc_library(
     name = "worker_killing_policy_factory",
     srcs = select({
         "//bazel:is_linux": [
-            "worker_killing_policy_group_by_owner_factory.cc",
+            "worker_killing_policy_by_time_factory.cc",
         ],
         "//conditions:default": [
             "noop_worker_killing_policy_factory.cc",
@@ -201,9 +201,10 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":worker_killing_policy_interface",
+        "//src/ray/common:ray_config",
     ] + select({
         "//bazel:is_linux": [
-            ":worker_killing_policy_group_by_owner",
+            ":worker_killing_policy_by_time",
         ],
         "//conditions:default": [
             ":noop_worker_killing_policy",
