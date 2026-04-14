@@ -14,6 +14,8 @@ if TYPE_CHECKING:
     from ray.train.v2._internal.execution.failure_handling import FailureDecision
     from ray.train.v2._internal.execution.scaling_policy import ResizeDecision
     from ray.train.v2._internal.execution.worker_group import (
+        ExecutionGroup,
+        ReplicaGroup,
         Worker,
         WorkerGroup,
         WorkerGroupContext,
@@ -23,19 +25,34 @@ if TYPE_CHECKING:
 
 
 @DeveloperAPI
-class WorkerGroupCallback(RayTrainCallback):
+class ExecutionGroupCallback(RayTrainCallback):
+    """Base callback for execution groups (worker groups and replica groups)."""
+
     def before_init_train_context(
         self, workers: List["Worker"]
     ) -> Dict[str, List[Any]]:
-        """Called before initializing the TrainContext for the worker_group.
+        """Called before initializing the TrainContext for an execution group.
 
         Return:
             A dictionary of additional arguments for TrainContext.
             The key is the argument name and the value is a list of argument values
-            to pass to the TrainContext constructor of each worker in the worker group.
+            to pass to the TrainContext constructor of each worker in the group.
         """
         return {}
 
+    def after_execution_group_start(self, execution_group: "ExecutionGroup"):
+        """Called after an execution group is started or replaced.
+        All workers in the execution group should be ready to execute tasks."""
+        pass
+
+    def before_execution_group_shutdown(self, execution_group: "ExecutionGroup"):
+        """Called before an execution group is shut down.
+        Workers may be dead at this point due to actor failures."""
+        pass
+
+
+@DeveloperAPI
+class WorkerGroupCallback(ExecutionGroupCallback):
     @contextmanager
     def on_worker_group_start(self):
         yield
@@ -47,7 +64,7 @@ class WorkerGroupCallback(RayTrainCallback):
     def after_worker_group_start(self, worker_group: "WorkerGroup"):
         """Called after the worker group actors are initialized.
         All workers should be ready to execute tasks."""
-        pass
+        return self.after_execution_group_start(worker_group)
 
     def after_worker_group_training_start(self, worker_group: "WorkerGroup"):
         pass
@@ -60,7 +77,7 @@ class WorkerGroupCallback(RayTrainCallback):
         """Called before the worker group is shut down.
         Workers may be dead at this point due to actor failures, so this method
         should catch and handle exceptions if attempting to execute tasks."""
-        pass
+        return self.before_execution_group_shutdown(worker_group)
 
     def after_worker_group_shutdown(self, worker_group_context: "WorkerGroupContext"):
         """Called after the worker group is shut down."""
@@ -78,6 +95,21 @@ class WorkerGroupCallback(RayTrainCallback):
     def after_worker_group_abort(self, worker_group_context: "WorkerGroupContext"):
         """Called after the worker group is aborted."""
         pass
+
+
+@DeveloperAPI
+class ReplicaGroupCallback(ExecutionGroupCallback):
+    """Callback for replica group lifecycle events."""
+
+    def after_replica_group_start(self, replica_group: "ReplicaGroup"):
+        """Called after a replica group is started or replaced.
+        All workers in the replica group should be ready to execute tasks."""
+        return self.after_execution_group_start(replica_group)
+
+    def before_replica_group_shutdown(self, replica_group: "ReplicaGroup"):
+        """Called before a replica group is shut down.
+        Workers may be dead at this point due to actor failures."""
+        return self.before_execution_group_shutdown(replica_group)
 
 
 @DeveloperAPI

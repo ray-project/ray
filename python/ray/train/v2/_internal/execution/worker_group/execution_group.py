@@ -1,10 +1,15 @@
 import abc
-from typing import Callable, List, TypeVar
+from typing import TYPE_CHECKING, Callable, List, Optional, TypeVar
 
 import ray
 from ray.train._internal.base_worker_group import BaseWorkerGroup
+from ray.train.v2._internal.execution.worker_group.state import _shutdown_workers
 from ray.train.v2._internal.execution.worker_group.worker import Worker
 from ray.types import ObjectRef
+
+if TYPE_CHECKING:
+    from ray.train.v2._internal.execution.callback import ReplicaGroupCallback
+    from ray.train.v2._internal.execution.worker_group.state import WorkerGroupContext
 
 T = TypeVar("T")
 
@@ -65,16 +70,48 @@ class ReplicaGroup(ExecutionGroup):
     as if they were a standalone worker group.
     """
 
-    def __init__(self, workers: List[Worker], resources_per_worker: dict):
+    def __init__(
+        self,
+        workers: List[Worker],
+        resources_per_worker: dict,
+        callbacks: Optional[List["ReplicaGroupCallback"]] = None,
+    ):
         self._workers = workers
         self._resources_per_worker = resources_per_worker
+        self._callbacks = callbacks or []
+        # An inactive ReplicaGroup still needs to keep track of workers
+        # so we can replace them later.
+        self._active = True
 
     def _assert_active(self):
-        # Expected to always be active since just created from WorkerGroup.
-        return True
+        if not self.is_active():
+            raise ValueError("ReplicaGroup has been shut down.")
+
+    def is_active(self) -> bool:
+        return self._active
 
     def get_workers(self) -> List[Worker]:
         return self._workers
 
     def get_resources_per_worker(self) -> dict:
         return self._resources_per_worker
+
+    def shutdown(self):
+        """Shutdown all workers in this replica group and clear state."""
+        if self.is_active():
+            for cb in self._callbacks:
+                cb.before_replica_group_shutdown(self)
+
+            _shutdown_workers(self._workers)
+            self._active = False
+
+    def start_training(self, worker_group_context: "WorkerGroupContext"):
+        """Start training on all workers in this replica group."""
+        for cb in self._callbacks:
+            cb.after_replica_group_start(self)
+        ray.get(
+            [
+                worker.actor.run_train_fn.remote(worker_group_context.train_fn_ref)
+                for worker in self._workers
+            ]
+        )
