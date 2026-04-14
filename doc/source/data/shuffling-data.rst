@@ -77,15 +77,15 @@ ordering of files. See :ref:`Shuffle the ordering of files <shuffling_file_order
 
 .. _map_batches_shuffle:
 
-Map_batches shuffle
-~~~~~~~~~~~~~~~~~~~
+``map_batches`` shuffle
+~~~~~~~~~~~~~~~~~~~~~~~
 
 To shuffle data as a distributed pipeline stage, use :meth:`~ray.data.Dataset.map_batches`
 with a shuffle function that randomly permutes rows within each batch. Compared to local
 buffer shuffle, this approach has several advantages:
 
 - It **decouples shuffling from the iterator**, running as a separate Ray Data operator
-  that does not block downstream CPU/GPU processing.
+  that doesn't block downstream CPU/GPU processing.
 - Ray Data's resource management automatically schedules shuffle tasks based on available
   cluster resources (CPU, memory), avoiding resource contention.
 - The shuffle work can be **distributed across multiple machines**, making it more scalable
@@ -123,20 +123,20 @@ together for better randomness but requires more memory.
 
 .. tip::
 
-    Combine map_batches shuffle with :ref:`file order shuffling <shuffling_file_order>` for
+    Combine ``map_batches`` shuffle with :ref:`file order shuffling <shuffling_file_order>` for
     additional randomness. File order shuffling randomizes which files are read first, while
-    map_batches shuffle randomizes rows within each shuffle window.
+    ``map_batches`` shuffle randomizes rows within each shuffle window.
 
 .. _map_batches_vs_local_shuffle:
 
-Comparing local buffer shuffle and map_batches shuffle
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Comparing local buffer shuffle and ``map_batches`` shuffle
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 The following benchmark compares steady-state training throughput between local buffer shuffle
-and map_batches shuffle on a synthetic workload (``ray.data.range_tensor``, ~4 KB/row, 4 GPU
+and ``map_batches`` shuffle on a synthetic workload (``ray.data.range_tensor``, ~4 KB/row, 4 GPU
 workers, batch size 4096, 200 steps with 100 warmup):
 
-.. list-table:: Local buffer shuffle vs. map_batches shuffle
+.. list-table:: Local buffer shuffle vs. ``map_batches`` shuffle
    :header-rows: 1
    :widths: 30 20 15
 
@@ -155,13 +155,13 @@ workers, batch size 4096, 200 steps with 100 warmup):
    * - Local buffer shuffle 3 GB
      - 153,256
      - 9%
-   * - map_batches shuffle 1 GB
+   * - ``map_batches`` shuffle 1 GB
      - 1,400,734
      - 80%
-   * - map_batches shuffle 2 GB
+   * - ``map_batches`` shuffle 2 GB
      - 1,460,037
      - 83%
-   * - map_batches shuffle 3 GB
+   * - ``map_batches`` shuffle 3 GB
      - 1,588,428
      - 90%
 
