@@ -30,6 +30,7 @@ __all__ = [
 logger = logging.getLogger(__name__)
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractMap(AbstractOneToOne):
     """Abstract class for logical operators that should be converted to physical
     MapOperator.
@@ -78,16 +79,19 @@ class AbstractMap(AbstractOneToOne):
             num_outputs=num_outputs,
             name=name,
         )
-        self.min_rows_per_bundled_input = min_rows_per_bundled_input
-        self.ray_remote_args = ray_remote_args or {}
-        self.ray_remote_args_fn = ray_remote_args_fn
-        self.compute = compute or TaskPoolStrategy()
-        self.per_block_limit = None
+        object.__setattr__(
+            self, "min_rows_per_bundled_input", min_rows_per_bundled_input
+        )
+        object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
+        object.__setattr__(self, "ray_remote_args_fn", ray_remote_args_fn)
+        object.__setattr__(self, "compute", compute or TaskPoolStrategy())
+        object.__setattr__(self, "per_block_limit", None)
 
     def set_per_block_limit(self, per_block_limit: int):
-        self.per_block_limit = per_block_limit
+        object.__setattr__(self, "per_block_limit", per_block_limit)
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractUDFMap(AbstractMap):
     """Abstract class for logical operators performing a UDF that should be converted
     to physical MapOperator.
@@ -146,12 +150,12 @@ class AbstractUDFMap(AbstractMap):
             ray_remote_args=ray_remote_args,
             compute=compute,
         )
-        self.fn = fn
-        self.fn_args = fn_args
-        self.fn_kwargs = fn_kwargs
-        self.fn_constructor_args = fn_constructor_args
-        self.fn_constructor_kwargs = fn_constructor_kwargs
-        self.ray_remote_args_fn = ray_remote_args_fn
+        object.__setattr__(self, "fn", fn)
+        object.__setattr__(self, "fn_args", fn_args)
+        object.__setattr__(self, "fn_kwargs", fn_kwargs)
+        object.__setattr__(self, "fn_constructor_args", fn_constructor_args)
+        object.__setattr__(self, "fn_constructor_kwargs", fn_constructor_kwargs)
+        object.__setattr__(self, "ray_remote_args_fn", ray_remote_args_fn)
 
     def _get_operator_name(self, op_name: str, fn: UserDefinedFunction):
         """Gets the Operator name including the map `fn` UDF name."""

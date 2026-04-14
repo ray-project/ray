@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
@@ -10,6 +11,7 @@ if TYPE_CHECKING:
     from ray.data.block import Schema
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class LogicalOperator(Operator, ABC):
     """Abstract class for logical operators.
 
@@ -17,23 +19,13 @@ class LogicalOperator(Operator, ABC):
     physical operator.
     """
 
-    def __init__(
-        self,
-        input_dependencies: List["LogicalOperator"],
-        num_outputs: Optional[int] = None,
-        *,
-        name: Optional[str] = None,
-    ):
-        if name is None:
-            name = self.__class__.__name__
-        super().__init__(
-            name,
-            input_dependencies,
-        )
-        for x in input_dependencies:
-            assert isinstance(x, LogicalOperator), x
+    _name: str = field(repr=False)
+    _input_dependencies: List["LogicalOperator"] = field(repr=False)
+    _num_outputs: Optional[int] = field(default=None, repr=False)
 
-        self._num_outputs: Optional[int] = num_outputs
+    def __post_init__(self):
+        for x in self._input_dependencies:
+            assert isinstance(x, LogicalOperator), x
 
     @property
     @abstractmethod
@@ -64,7 +56,7 @@ class LogicalOperator(Operator, ABC):
 
     @input_dependencies.setter
     def input_dependencies(self, value: List["LogicalOperator"]) -> None:
-        self._input_dependencies = value
+        object.__setattr__(self, "_input_dependencies", value)
 
     def post_order_iter(self) -> Iterator["LogicalOperator"]:
         return super().post_order_iter()  # type: ignore
