@@ -270,6 +270,10 @@ impl GcsServer {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use gcs_proto::ray::rpc::node_info_gcs_service_client::NodeInfoGcsServiceClient;
+    use gcs_proto::ray::rpc::job_info_gcs_service_client::JobInfoGcsServiceClient;
+    use gcs_proto::ray::rpc::internal_kv_gcs_service_client::InternalKvGcsServiceClient;
+    use gcs_proto::ray::rpc::{GetAllNodeInfoRequest, GetAllJobInfoRequest, InternalKvGetRequest};
 
     #[test]
     fn test_server_creation() {
@@ -310,5 +314,146 @@ mod tests {
 
         // actor_manager -- get unknown actor should return not-found.
         let _am = server.actor_manager();
+    }
+
+    #[tokio::test]
+    async fn test_start_with_listener() {
+        let config = GcsServerConfig {
+            grpc_port: 0,
+            cluster_id: vec![0u8; 28],
+            raylet_config_list: String::new(),
+            max_task_events: 100,
+        };
+        let server = Arc::new(GcsServer::new(config));
+
+        // Bind to an OS-assigned port.
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let port = addr.port();
+
+        // Spawn the server in the background.
+        let server_clone = server.clone();
+        let server_handle = tokio::spawn(async move {
+            server_clone.start_with_listener(listener).await
+        });
+
+        // Give the server a moment to start accepting connections.
+        tokio::time::sleep(std::time::Duration::from_millis(200)).await;
+
+        let endpoint = format!("http://127.0.0.1:{}", port);
+
+        // Test 1: NodeInfoGcsService - GetAllNodeInfo on empty cluster.
+        let mut node_client = NodeInfoGcsServiceClient::connect(endpoint.clone())
+            .await
+            .expect("failed to connect to NodeInfoGcsService");
+        let resp = node_client
+            .get_all_node_info(GetAllNodeInfoRequest {})
+            .await
+            .expect("GetAllNodeInfo RPC failed");
+        assert!(
+            resp.into_inner().node_info_list.is_empty(),
+            "empty cluster should have no nodes"
+        );
+
+        // Test 2: JobInfoGcsService - GetAllJobInfo on empty cluster.
+        let mut job_client = JobInfoGcsServiceClient::connect(endpoint.clone())
+            .await
+            .expect("failed to connect to JobInfoGcsService");
+        let resp = job_client
+            .get_all_job_info(GetAllJobInfoRequest {
+                job_or_submission_id: None,
+                skip_is_running_tasks_field: false,
+                skip_submission_job_info_field: false,
+                limit: None,
+            })
+            .await
+            .expect("GetAllJobInfo RPC failed");
+        assert!(
+            resp.into_inner().job_info_list.is_empty(),
+            "empty cluster should have no jobs"
+        );
+
+        // Test 3: InternalKvGcsService - get a non-existent key.
+        let mut kv_client = InternalKvGcsServiceClient::connect(endpoint.clone())
+            .await
+            .expect("failed to connect to InternalKvGcsService");
+        let resp = kv_client
+            .internal_kv_get(InternalKvGetRequest {
+                namespace: "test_ns".into(),
+                key: "nonexistent".into(),
+            })
+            .await
+            .expect("InternalKvGet RPC failed");
+        // Non-existent key should return an empty value.
+        assert!(
+            resp.into_inner().value.is_empty(),
+            "non-existent key should return empty value"
+        );
+
+        // Clean up: abort the server task.
+        server_handle.abort();
+        let _ = server_handle.await;
+    }
+
+    #[tokio::test]
+    async fn test_start() {
+        // Find a free port by binding to port 0 and immediately releasing.
+        let tmp_listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = tmp_listener.local_addr().unwrap().port();
+        drop(tmp_listener);
+
+        let config = GcsServerConfig {
+            grpc_port: port,
+            cluster_id: vec![0u8; 28],
+            raylet_config_list: String::new(),
+            max_task_events: 100,
+        };
+        let server = Arc::new(GcsServer::new(config));
+
+        // Spawn the server in the background.
+        let server_clone = server.clone();
+        let server_handle = tokio::spawn(async move {
+            server_clone.start().await
+        });
+
+        // Give the server a moment to bind and start serving.
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+
+        let endpoint = format!("http://127.0.0.1:{}", port);
+
+        // Verify the server is accepting connections and serving gRPC.
+        let mut node_client = NodeInfoGcsServiceClient::connect(endpoint.clone())
+            .await
+            .expect("failed to connect to GCS server via start()");
+        let resp = node_client
+            .get_all_node_info(GetAllNodeInfoRequest {})
+            .await
+            .expect("GetAllNodeInfo RPC failed on start() server");
+        assert!(
+            resp.into_inner().node_info_list.is_empty(),
+            "empty cluster should have no nodes"
+        );
+
+        // Also verify a second service is available (JobInfo).
+        let mut job_client = JobInfoGcsServiceClient::connect(endpoint)
+            .await
+            .expect("failed to connect to JobInfoGcsService via start()");
+        let resp = job_client
+            .get_all_job_info(GetAllJobInfoRequest {
+                job_or_submission_id: None,
+                skip_is_running_tasks_field: false,
+                skip_submission_job_info_field: false,
+                limit: None,
+            })
+            .await
+            .expect("GetAllJobInfo RPC failed on start() server");
+        assert!(
+            resp.into_inner().job_info_list.is_empty(),
+            "empty cluster should have no jobs"
+        );
+
+        // Clean up.
+        server_handle.abort();
+        let _ = server_handle.await;
     }
 }
