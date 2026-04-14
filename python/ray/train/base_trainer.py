@@ -931,13 +931,14 @@ def format_datasets_for_repr(datasets: Optional[Dict[str, GenDataset]]) -> str:
     need to special-case datasets.
     """
     from ray.data import Dataset
+    from ray.data._internal.dataset_repr import build_dataset_summary_repr
 
     assert datasets is not None, "Expected caller to pass in non-None argument"
 
     formatted = {}
     for key, dataset in datasets.items():
         if isinstance(dataset, Dataset):
-            formatted[key] = dataset._plan.get_plan_as_string(type(dataset))
+            formatted[key] = build_dataset_summary_repr(dataset)
         else:
             formatted[key] = dataset
 

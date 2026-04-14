@@ -844,13 +844,28 @@ def test_get_all_reported_checkpoints_all_consistency_modes(tmp_path):
         if ray.train.get_context().get_world_rank() == 0:
             # Assert that we get committed checkpoints
             with create_dict_checkpoint({}) as cp1:
+                # The validation check will hang until signal_actor.send.remote() is called
                 ray.train.report(
                     metrics={"training_score": 1},
                     checkpoint=cp1,
                     validation=True,
                 )
+
+            # Check with ConsistencyMode.COMMITTED
             reported_checkpoints = ray.train.get_all_reported_checkpoints(
                 consistency_mode=CheckpointConsistencyMode.COMMITTED
+            )
+            assert len(reported_checkpoints) == 1
+            assert (
+                reported_checkpoints[0].status
+                == ReportedCheckpointStatus.PENDING_VALIDATION
+            )
+            assert reported_checkpoints[0].metrics == {"training_score": 1}
+
+            # Check with ConsistencyMode.VALIDATED with timeout as the validation is hanging currently
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.VALIDATED,
+                timeout_s=2,
             )
             assert len(reported_checkpoints) == 1
             assert (
@@ -882,6 +897,61 @@ def test_get_all_reported_checkpoints_all_consistency_modes(tmp_path):
         scaling_config=ScalingConfig(num_workers=2),
         train_loop_config={"signal_actor": signal_actor},
         run_config=RunConfig(storage_path=str(tmp_path)),
+    )
+    trainer.fit()
+
+
+def test_hanging_checkpoint_upload_fn(tmp_path):
+    """Test hanging async checkpoint upload fn with `get_all_reported_checkpoints` timeout."""
+    signal_actor = create_remote_signal_actor(ray).remote()
+
+    def checkpoint_fn(checkpoint, checkpoint_name):
+        ray.get(signal_actor.wait.remote())
+        full_checkpoint_path = (
+            ray.train.get_context()
+            .get_storage()
+            .build_checkpoint_path_from_name(checkpoint_name)
+        )
+        shutil.copytree(checkpoint.path, full_checkpoint_path)
+        return Checkpoint.from_directory(full_checkpoint_path)
+
+    def train_fn(config):
+        signal_actor = config["signal_actor"]
+
+        with create_dict_checkpoint({}) as checkpoint:
+            ray.train.report(
+                metrics={"training_score": 1},
+                checkpoint=checkpoint,
+                checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
+                checkpoint_upload_fn=checkpoint_fn,
+                checkpoint_dir_name="my_checkpoint",
+            )
+
+            # This will hang without a timeout.
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.COMMITTED, timeout_s=1
+            )
+            # As the checkpoint hasn't been committed yet, then the length is zero.
+            assert len(reported_checkpoints) == 0
+
+            signal_actor.send.remote()
+
+            # Now the checkpoint has been completed, a timeout isn't necessary
+            reported_checkpoints = ray.train.get_all_reported_checkpoints(
+                consistency_mode=CheckpointConsistencyMode.COMMITTED
+            )
+            assert len(reported_checkpoints) == 1
+            assert reported_checkpoints[0].status == ReportedCheckpointStatus.COMMITTED
+            assert reported_checkpoints[0].metrics == {"training_score": 1}
+            assert "my_checkpoint" in reported_checkpoints[0].checkpoint.path
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        train_loop_config={"signal_actor": signal_actor},
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            checkpoint_config=CheckpointConfig(num_to_keep=1),
+        ),
     )
     trainer.fit()
 

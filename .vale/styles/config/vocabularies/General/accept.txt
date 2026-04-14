@@ -71,6 +71,7 @@ GPTQ
 GPU(s)?
 hostfile
 http
+HAProxy
 HTTP
 Karpenter
 KServe
