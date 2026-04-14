@@ -30,8 +30,8 @@ class DefaultCoreWorkerMemoryStoreWithThread : public CoreWorkerMemoryStore {
     // C++ limitation: std::make_unique cannot be used because std::unique_ptr cannot
     // invoke private constructors.
     return std::unique_ptr<DefaultCoreWorkerMemoryStoreWithThread>(
-        new DefaultCoreWorkerMemoryStoreWithThread(
-            std::move(io_context), std::move(clock)));
+        new DefaultCoreWorkerMemoryStoreWithThread(std::move(io_context),
+                                                   std::move(clock)));
   }
 
   static std::shared_ptr<DefaultCoreWorkerMemoryStoreWithThread> CreateShared() {
@@ -42,8 +42,8 @@ class DefaultCoreWorkerMemoryStoreWithThread : public CoreWorkerMemoryStore {
     // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
     // invoke private constructors.
     return std::shared_ptr<DefaultCoreWorkerMemoryStoreWithThread>(
-        new DefaultCoreWorkerMemoryStoreWithThread(
-            std::move(io_context), std::move(clock)));
+        new DefaultCoreWorkerMemoryStoreWithThread(std::move(io_context),
+                                                   std::move(clock)));
   }
 
   ~DefaultCoreWorkerMemoryStoreWithThread() { io_context_->Stop(); }
