@@ -265,7 +265,6 @@ async def test_vllm_wrapper_forwards_lora_request_to_generate():
     passed it to the vLLM engine, causing per-row LoRA adapters to be
     silently dropped.
     """
-    import vllm
 
     async def finished_stream():
         output = MagicMock()
@@ -287,7 +286,7 @@ async def test_vllm_wrapper_forwards_lora_request_to_generate():
         multimodal_data=None,
         mm_processor_kwargs=None,
         multimodal_uuids=None,
-        params=vllm.SamplingParams(max_tokens=1),
+        params=MagicMock(),
         tokenization_kwargs=None,
         lora_request=sentinel_lora,
     )
@@ -307,7 +306,6 @@ async def test_vllm_wrapper_forwards_lora_request_to_encode(task_type):
     """Regression test: lora_request must be forwarded to engine.encode() for
     pooling task types (EMBED / CLASSIFY / SCORE).
     """
-    import vllm
 
     async def finished_stream():
         output = MagicMock()
@@ -329,7 +327,7 @@ async def test_vllm_wrapper_forwards_lora_request_to_encode(task_type):
         multimodal_data=None,
         mm_processor_kwargs=None,
         multimodal_uuids=None,
-        params=vllm.PoolingParams(task=task_type),
+        params=MagicMock(),
         tokenization_kwargs=None,
         lora_request=sentinel_lora,
     )
