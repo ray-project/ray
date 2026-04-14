@@ -1,4 +1,3 @@
-import asyncio
 import sys
 import time
 
@@ -10,6 +9,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.test_utils import Barrier
 from ray.serve.handle import DeploymentHandle
 from ray.util.state import list_objects
 
@@ -74,21 +74,7 @@ def test_parallel_start(serve_instance):
     # wait for each replica to initialize. This test avoid this by preventing
     # the first replica to finish initialization unless the second replica is
     # also started.
-    @ray.remote
-    class Barrier:
-        def __init__(self, release_on):
-            self.release_on = release_on
-            self.current_waiters = 0
-            self.event = asyncio.Event()
-
-        async def wait(self):
-            self.current_waiters += 1
-            if self.current_waiters == self.release_on:
-                self.event.set()
-            else:
-                await self.event.wait()
-
-    barrier = Barrier.remote(release_on=2)
+    barrier = Barrier.remote(n=2)
 
     @serve.deployment(num_replicas=2)
     class LongStartingServable:
