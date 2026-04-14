@@ -19,7 +19,7 @@ llm_config = LLMConfig(
     # PACK fills GPUs on each node before moving to the next.
     # With 8 bundles across 2 nodes (4 GPUs each), each node gets 4 bundles.
     placement_group_config={
-        "placement_group_bundles": [{"GPU": 1}] * 8,
+        "placement_group_bundles": [{"CPU": 1, "GPU": 1}] + [{"GPU": 1}] * 7,
         "placement_group_strategy": "PACK",
     },
     server_cls=SGLangServer,
