@@ -14,7 +14,6 @@
 
 #pragma once
 
-#include <atomic>
 #include <functional>
 #include <memory>
 #include <string>
@@ -30,14 +29,14 @@
 namespace ray {
 
 /// The probe state machine. Tracks registered io_contexts, posts probes, and
-/// evaluates health. Does NOT own a thread — call Tick() to advance one cycle.
+/// evaluates health based on the latency to execute the probes.
 ///
 /// This separation from IOContextMonitorThread allows deterministic unit testing
 /// by calling Tick() directly with a FakeClock.
 class IOContextMonitor {
  public:
   /// @param component_name Human-readable name for logging (e.g. "gcs", "raylet").
-  /// @param io_contexts Named io_contexts to monitor.
+  /// @param io_contexts Named io_contexts to monitor. Must outlive the monitor.
   /// @param lag_gauge Gauge metric for recording probe lag (ms). Tagged by "Name".
   /// @param deadline_exceeded_counter Counter incremented each time a probe exceeds
   ///   the deadline. Tagged by "Name".
@@ -53,39 +52,51 @@ class IOContextMonitor {
       ClockInterface &clock);
 
   /// Run one probe cycle: check previous probes, emit metrics/logs, post new probes.
-  /// Returns true if all registered io_contexts are healthy.
+  /// Returns true iff all registered io_contexts are healthy.
   bool Tick();
 
  private:
   struct ProbeState {
-    std::string name;
-    instrumented_io_context *io_context;
-    std::atomic<bool> last_probe_completed{true};
-    std::atomic<int64_t> probe_complete_time_ns{0};
+    ProbeState(std::string name, instrumented_io_context &io_context)
+        : name(std::move(name)), io_context(io_context) {}
+
+    const std::string name;
+    instrumented_io_context &io_context;
+
+    // Mutex protecting fields written by the probe callback (on the io_context
+    // thread) and read by the monitor in ProcessProbe.
+    absl::Mutex mu;
+    // Defaults to true to kick off the probe in the first iteration.
+    bool last_probe_completed ABSL_GUARDED_BY(mu) = true;
+    absl::Time probe_complete_time ABSL_GUARDED_BY(mu) = absl::InfinitePast();
+
+    // Only accessed from the monitor (via Tick/ProcessProbe).
     absl::Time probe_post_time = absl::InfinitePast();
-    bool healthy{true};
+    bool healthy = true;
+    bool deadline_exceeded_recorded = false;
   };
 
-  bool ProcessProbe(ProbeState &probe);
+  bool ProcessProbe(const std::shared_ptr<ProbeState> &probe);
+  bool OnProbePending(const std::shared_ptr<ProbeState> &probe)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(probe->mu);
+  bool OnProbeCompleted(const std::shared_ptr<ProbeState> &probe) ABSL_EXCLUSIVE_LOCKS_REQUIRED(probe->mu);
 
   const std::string component_name_;
   const absl::Duration healthy_deadline_;
   ClockInterface &clock_;
-
   observability::MetricInterface &lag_gauge_;
   observability::MetricInterface &deadline_exceeded_counter_;
-
-  std::vector<std::unique_ptr<ProbeState>> probe_states_;
+  std::vector<std::shared_ptr<ProbeState>> probe_states_;
 };
 
 /// Runs an IOContextMonitor on a dedicated thread, calling Tick() at a
 /// configurable interval.
 class IOContextMonitorThread {
  public:
-  /// @param monitor The monitor to drive. Takes ownership.
+  /// @param monitor The monitor to call into.
   /// @param probe_interval How often to call monitor->Tick().
   /// @param health_callback Called from the monitor thread after each tick with the
-  ///   health status. Useful for updating gRPC SetServingStatus.
+  ///   health status (true means healthy).
   IOContextMonitorThread(std::unique_ptr<IOContextMonitor> monitor,
                          absl::Duration probe_interval,
                          std::function<void(bool healthy)> health_callback);
@@ -98,13 +109,13 @@ class IOContextMonitorThread {
   void Stop();
 
  private:
-  void Run();
+  void Run() ABSL_LOCKS_EXCLUDED(mutex_);
 
   std::unique_ptr<IOContextMonitor> monitor_;
-  absl::Duration probe_interval_;
-  std::function<void(bool)> health_callback_;
+  const absl::Duration probe_interval_;
+  const std::function<void(bool)> health_callback_;
   absl::Mutex mutex_;
-  std::atomic<bool> running_{false};
+  bool running_ ABSL_GUARDED_BY(mutex_) = false;
   std::thread thread_;
 };
 

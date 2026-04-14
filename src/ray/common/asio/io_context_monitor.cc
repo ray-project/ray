@@ -37,72 +37,78 @@ IOContextMonitor::IOContextMonitor(
       lag_gauge_(lag_gauge),
       deadline_exceeded_counter_(deadline_exceeded_counter) {
   for (auto &[name, io_context] : io_contexts) {
-    auto state = std::make_unique<ProbeState>();
-    state->name = std::move(name);
-    state->io_context = io_context;
-    probe_states_.push_back(std::move(state));
+    probe_states_.push_back(
+        std::make_shared<ProbeState>(std::move(name), *io_context));
   }
 }
 
 bool IOContextMonitor::Tick() {
   bool all_healthy = true;
   for (auto &probe : probe_states_) {
-    if (!ProcessProbe(*probe)) {
+    if (!ProcessProbe(probe)) {
       all_healthy = false;
     }
   }
   return all_healthy;
 }
 
-bool IOContextMonitor::ProcessProbe(ProbeState &probe) {
+bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
+  absl::MutexLock lock(&probe->mu);
+
+  if (!probe->last_probe_completed) {
+    return OnProbePending(probe);
+  }
+  return OnProbeCompleted(probe);
+}
+
+bool IOContextMonitor::OnProbePending(const std::shared_ptr<ProbeState> &probe) {
   absl::Time now = clock_.Now();
-
-  if (!probe.last_probe_completed.load(std::memory_order_acquire)) {
-    // Previous probe still outstanding.
-    absl::Duration elapsed = now - probe.probe_post_time;
-    int64_t elapsed_ms = absl::ToInt64Milliseconds(elapsed);
-
-    RAY_LOG(WARNING) << "[" << component_name_ << "] io_context '" << probe.name
-                     << "' has not responded to probe (" << elapsed_ms << "ms elapsed)";
-
-    if (elapsed >= healthy_deadline_) {
-      if (probe.healthy) {
-        deadline_exceeded_counter_.Record(1, {{"Name", probe.name}});
-      }
-      probe.healthy = false;
-    }
-    // Do NOT post another probe — avoid accumulation on stuck threads.
-    return probe.healthy;
+  if (now - probe->probe_post_time >= healthy_deadline_ &&
+      !probe->deadline_exceeded_recorded) {
+    RAY_LOG(WARNING) << "[" << component_name_ << "] io_context '" << probe->name
+                     << "' has not responded to probe ("
+                     << absl::ToInt64Milliseconds(now - probe->probe_post_time)
+                     << "ms elapsed)";
+    deadline_exceeded_counter_.Record(1, {{"Name", probe->name}});
+    probe->healthy = false;
+    probe->deadline_exceeded_recorded = true;
   }
 
-  // Previous probe completed. Record actual lag.
-  if (probe.probe_post_time != absl::InfinitePast()) {
-    int64_t complete_ns = probe.probe_complete_time_ns.load(std::memory_order_acquire);
-    absl::Time complete_time = absl::FromUnixNanos(complete_ns);
-    double lag_ms = absl::ToDoubleMilliseconds(complete_time - probe.probe_post_time);
-    lag_gauge_.Record(lag_ms, {{"Name", probe.name}});
+  // Don't post another probe until this one completes.
+  return probe->healthy;
+}
+
+bool IOContextMonitor::OnProbeCompleted(const std::shared_ptr<ProbeState> &probe) {
+  absl::Time now = clock_.Now();
+
+  // Record lag from the previous probe.
+  if (probe->probe_post_time != absl::InfinitePast()) {
+    double lag_ms =
+        absl::ToDoubleMilliseconds(probe->probe_complete_time - probe->probe_post_time);
+    lag_gauge_.Record(lag_ms, {{"Name", probe->name}});
 
     // Only mark healthy if we're still within the deadline window. If we're
     // past the deadline, the probe completed late — wait for a fresh one.
-    if (now - probe.probe_post_time < healthy_deadline_) {
-      probe.healthy = true;
+    if (now - probe->probe_post_time < healthy_deadline_) {
+      probe->healthy = true;
     }
   }
 
-  // Post a new probe.
-  probe.last_probe_completed.store(false, std::memory_order_release);
-  probe.probe_post_time = now;
-
-  auto *probe_ptr = &probe;
-  probe.io_context->post(
-      [probe_ptr]() {
-        int64_t complete_ns = absl::GetCurrentTimeNanos();
-        probe_ptr->probe_complete_time_ns.store(complete_ns, std::memory_order_release);
-        probe_ptr->last_probe_completed.store(true, std::memory_order_release);
+  // Post a new probe. The callback captures the shared_ptr to keep the
+  // ProbeState alive even if the monitor is destroyed while a probe is
+  // outstanding.
+  probe->probe_post_time = now;
+  probe->last_probe_completed = false;
+  probe->deadline_exceeded_recorded = false;
+  probe->io_context.post(
+      [probe]() {
+        absl::MutexLock lock(&probe->mu);
+        probe->probe_complete_time = absl::Now();
+        probe->last_probe_completed = true;
       },
       "io_context_monitor_probe");
 
-  return probe.healthy;
+  return probe->healthy;
 }
 
 // ---------------------------------------------------------------------------
@@ -120,21 +126,22 @@ IOContextMonitorThread::IOContextMonitorThread(
 IOContextMonitorThread::~IOContextMonitorThread() { Stop(); }
 
 void IOContextMonitorThread::Start() {
-  bool expected = false;
-  if (!running_.compare_exchange_strong(expected, true)) {
+  absl::MutexLock lock(&mutex_);
+  if (running_) {
     return;
   }
+  running_ = true;
   thread_ = std::thread([this] { Run(); });
 }
 
 void IOContextMonitorThread::Stop() {
   {
     absl::MutexLock lock(&mutex_);
-    bool expected = true;
-    if (!running_.compare_exchange_strong(expected, false)) {
+    if (!running_) {
       return;
     }
-  }
+    running_ = false;
+  }  // Release lock before join so the thread can observe the change.
   if (thread_.joinable()) {
     thread_.join();
   }
@@ -143,17 +150,18 @@ void IOContextMonitorThread::Stop() {
 void IOContextMonitorThread::Run() {
   SetThreadName("io_context_monitor");
 
-  while (running_.load(std::memory_order_relaxed)) {
+  while (true) {
     bool healthy = monitor_->Tick();
-    if (health_callback_) {
-      health_callback_(healthy);
-    }
+    health_callback_(healthy);
 
     absl::MutexLock lock(&mutex_);
     mutex_.AwaitWithTimeout(
-        absl::Condition(
-            +[](std::atomic<bool> *running) { return !running->load(); }, &running_),
+        absl::Condition(+[](bool *running) { return !*running; }, &running_),
         probe_interval_);
+
+    if (!running_) {
+      break;
+    }
   }
 }
 
