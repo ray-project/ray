@@ -8,12 +8,7 @@ import numpy as np
 from ray.core.generated.common_pb2 import TaskStatus
 from ray.util.state.common import TaskState
 
-
-class DataTaskName(str, Enum):
-    """Names of tasks used by Ray Data operators."""
-
-    MAP_TASK = "_map_task"
-    MAP_WORKER = "_MapWorker"
+TaskName = str
 
 
 class SchedulingPhase(str, Enum):
@@ -175,12 +170,14 @@ class BucketedSchedulingOverhead:
 
 
 def collect_scheduling_overhead(
+    operator_names: List[str],
     num_buckets: int = 4,
-) -> Dict[str, List[BucketedSchedulingOverhead]]:
+) -> Dict[TaskName, List[BucketedSchedulingOverhead]]:
     """Collect per-operator scheduling overhead from the Ray State API,
     bucketed into ``num_buckets`` equal time intervals.
 
-    Fetches all Ray Data tasks (``_map_task`` and ``_MapWorker``), determines
+    Queries tasks by operator name (both ``TaskPoolMapOperator`` and
+    ``ActorPoolMapOperator`` set ``name`` to the operator name), determines
     the global time range from ``creation_time_ms``, splits into equal
     intervals, and returns a dict mapping operator name to its list of
     time-bucketed scheduling overhead summaries.
@@ -188,10 +185,10 @@ def collect_scheduling_overhead(
     from ray.util.state.api import list_tasks
 
     all_tasks: List[TaskState] = []
-    for task_type in DataTaskName:
+    for op_name in operator_names:
         all_tasks.extend(
             list_tasks(
-                filters=[("func_or_class_name", "=", task_type)],
+                filters=[("name", "=", op_name)],
                 detail=True,
                 limit=10_000,
                 raise_on_missing_output=False,
@@ -221,7 +218,7 @@ def collect_scheduling_overhead(
 
     # Pre-allocate per-bucket, per-operator task lists.
     # bucket_tasks[bucket_idx][operator_name] -> list of tasks
-    bucket_tasks: List[Dict[str, List[TaskState]]] = [
+    bucket_tasks: List[Dict[TaskName, List[TaskState]]] = [
         defaultdict(list) for _ in boundaries
     ]
 
@@ -240,7 +237,7 @@ def collect_scheduling_overhead(
         bucket_tasks[bucket_idx][t.name].append(t)
 
     # Build the result dict: operator_name -> list of bucketed summaries.
-    result: Dict[str, List[BucketedSchedulingOverhead]] = defaultdict(list)
+    result: Dict[TaskName, List[BucketedSchedulingOverhead]] = defaultdict(list)
     for i, (lo, hi) in enumerate(boundaries):
         for op_name, tasks in bucket_tasks[i].items():
             result[op_name].append(

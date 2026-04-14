@@ -6825,7 +6825,8 @@ class Dataset:
                 collect_scheduling_overhead,
             )
 
-            overhead_by_op = collect_scheduling_overhead()
+            op_names = [op.operator_name for op in summary.operators_stats]
+            overhead_by_op = collect_scheduling_overhead(op_names)
             for op in summary.operators_stats:
                 if op.operator_name in overhead_by_op:
                     op.scheduling_overhead = overhead_by_op[op.operator_name]
