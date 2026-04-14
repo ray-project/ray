@@ -53,20 +53,15 @@ def _deserialize_tables_from_buffer(
     buf: Union[bytes, memoryview],
 ) -> List[pa.Table]:
     """Deserialize Arrow tables from a buffer. Zero-copy when backed by SharedMemory."""
-    if isinstance(buf, memoryview):
-        raw = bytes(buf)
-    else:
-        raw = buf
-
     offset = 0
-    (num_tables,) = struct.unpack_from("<I", raw, offset)
+    (num_tables,) = struct.unpack_from("<I", buf, offset)
     offset += 4
 
     tables = []
     for _ in range(num_tables):
-        (ipc_size,) = struct.unpack_from("<Q", raw, offset)
+        (ipc_size,) = struct.unpack_from("<Q", buf, offset)
         offset += 8
-        ipc_buf = pa.py_buffer(raw[offset : offset + ipc_size])
+        ipc_buf = pa.py_buffer(buf[offset : offset + ipc_size])
         reader = ipc.open_stream(ipc_buf)
         tables.append(reader.read_all())
         offset += ipc_size
@@ -89,12 +84,7 @@ class _FlightHandler(flight.FlightServerBase):
             raise flight.FlightUnavailableError(
                 f"Object {key} not found. It may have been garbage collected."
             )
-        # For single table, return directly. For multi-table, the key
-        # includes an index suffix like "obj_id:0".
-        if isinstance(tables, pa.Table):
-            return flight.RecordBatchStream(tables)
-        else:
-            return flight.RecordBatchStream(tables)
+        return flight.RecordBatchStream(tables)
 
 
 class ArrowFlightSenderServer:
@@ -160,6 +150,18 @@ class ArrowFlightTransport(TensorTransportManager):
         self._server_lock = threading.Lock()
         self._shared_memory_objects: Dict[str, shm.SharedMemory] = {}
         self._receiver_shm_blocks: Dict[str, shm.SharedMemory] = {}
+        self._flight_clients: Dict[str, flight.FlightClient] = {}
+        self._flight_clients_lock = threading.Lock()
+
+    def _get_flight_client(self, address: str) -> flight.FlightClient:
+        client = self._flight_clients.get(address)
+        if client is None:
+            with self._flight_clients_lock:
+                client = self._flight_clients.get(address)
+                if client is None:
+                    client = flight.connect(address)
+                    self._flight_clients[address] = client
+        return client
 
     def _ensure_server(self) -> ArrowFlightSenderServer:
         if self._server is None:
@@ -242,14 +244,18 @@ class ArrowFlightTransport(TensorTransportManager):
         if my_node_id == tensor_transport_metadata.sender_node_id:
             # Same node: zero-copy read from shared memory via Arrow IPC
             shm_block = shm.SharedMemory(name=tensor_transport_metadata.shm_name)
-            tables = _deserialize_tables_from_buffer(
-                shm_block.buf[: tensor_transport_metadata.shm_size]
-            )
+            try:
+                tables = _deserialize_tables_from_buffer(
+                    shm_block.buf[: tensor_transport_metadata.shm_size]
+                )
+            except Exception:
+                shm_block.close()
+                raise
             self._receiver_shm_blocks[obj_id] = shm_block
             return tables
         else:
             # Cross node: fetch via Arrow Flight
-            client = flight.connect(tensor_transport_metadata.flight_address)
+            client = self._get_flight_client(tensor_transport_metadata.flight_address)
             if num_tables == 1:
                 reader = client.do_get(flight.Ticket(obj_id.encode()))
                 return [reader.read_all()]
