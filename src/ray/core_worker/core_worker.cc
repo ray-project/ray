@@ -854,7 +854,8 @@ void CoreWorker::RecordMetrics() {
 std::unordered_map<ObjectID, std::pair<size_t, size_t>>
 CoreWorker::GetAllReferenceCounts() const {
   auto counts = reference_counter_->GetAllReferenceCounts();
-  std::vector<ObjectID> actor_handle_ids = actor_manager_->GetActorHandleIDsFromHandles();
+  absl::InlinedVector<ObjectID, 8> actor_handle_ids =
+      actor_manager_->GetActorHandleIDsFromHandles();
   // Strip actor IDs from the ref counts since there is no associated ObjectID
   // in the language frontend.
   for (const auto &actor_handle_id : actor_handle_ids) {
@@ -863,7 +864,8 @@ CoreWorker::GetAllReferenceCounts() const {
   return counts;
 }
 
-std::vector<TaskID> CoreWorker::GetPendingChildrenTasks(const TaskID &task_id) const {
+absl::InlinedVector<TaskID, 8> CoreWorker::GetPendingChildrenTasks(
+    const TaskID &task_id) const {
   return task_manager_->GetPendingChildrenTasks(task_id);
 }
 
@@ -4482,7 +4484,7 @@ bool CoreWorker::IsIdle() const {
 }
 
 Status CoreWorker::WaitForActorRegistered(const std::vector<ObjectID> &ids) {
-  std::vector<ActorID> actor_ids;
+  absl::InlinedVector<ActorID, 8> actor_ids;
   for (const auto &id : ids) {
     if (ObjectID::IsActorID(id)) {
       actor_ids.emplace_back(ObjectID::ToActorID(id));

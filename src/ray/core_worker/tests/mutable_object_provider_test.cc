@@ -89,14 +89,14 @@ class MockRayletClient : public rpc::FakeRayletClient {
     pushed_objects_.push_back(object_id);
   }
 
-  std::vector<ObjectID> pushed_objects() {
+  absl::InlinedVector<ObjectID, 8> pushed_objects() {
     absl::MutexLock guard(&lock_);
     return pushed_objects_;
   }
 
  private:
   absl::Mutex lock_;
-  std::vector<ObjectID> pushed_objects_;
+  absl::InlinedVector<ObjectID, 8> pushed_objects_;
 };
 
 std::shared_ptr<RayletClientInterface> GetMockRayletClient(

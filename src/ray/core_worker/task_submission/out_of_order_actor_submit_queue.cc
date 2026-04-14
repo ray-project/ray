@@ -123,8 +123,8 @@ void OutofOrderActorSubmitQueue::MarkDependencyResolved(
       position, std::make_pair(std::move(spec), /*dependency_resolved*/ true));
 }
 
-std::vector<TaskID> OutofOrderActorSubmitQueue::ClearAllTasks() {
-  std::vector<TaskID> task_ids;
+absl::InlinedVector<TaskID, 8> OutofOrderActorSubmitQueue::ClearAllTasks() {
+  absl::InlinedVector<TaskID, 8> task_ids;
   for (const auto &[_, queue] : pending_queue_per_group_) {
     for (const auto &[__, spec] : queue) {
       task_ids.push_back(spec.first.TaskId());

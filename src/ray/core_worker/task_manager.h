@@ -24,6 +24,7 @@
 
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/id.h"
 #include "ray/common/status.h"
@@ -151,7 +152,7 @@ class ObjectRefStream {
   /// TryReadNextItem.
   ///
   /// \return A list of object IDs that are not read yet.
-  std::vector<ObjectID> PopUnconsumedItems();
+  absl::InlinedVector<ObjectID, 8> PopUnconsumedItems();
 
   /// \return Index of the last consumed item, -1 if nothing is consumed yet.
   int64_t LastConsumedIndex() const { return next_index_ - 1; }
@@ -234,7 +235,8 @@ class TaskManager : public TaskManagerInterface {
                    {"Source", "owner"}});
             });
     reference_counter_.SetReleaseLineageCallback(
-        [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
+        [this](const ObjectID &object_id,
+               absl::InlinedVector<ObjectID, 8> *ids_to_release) {
           return RemoveLineageReference(object_id, ids_to_release);
           ShutdownIfNeeded();
         });
@@ -245,8 +247,8 @@ class TaskManager : public TaskManagerInterface {
                                                    const std::string &call_site,
                                                    int max_retries = 0) override;
 
-  std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
-                                             std::vector<ObjectID> *task_deps) override;
+  std::optional<rpc::ErrorType> ResubmitTask(
+      const TaskID &task_id, absl::InlinedVector<ObjectID, 8> *task_deps) override;
 
   /// Wait for all pending tasks to finish, and then shutdown.
   ///
@@ -463,8 +465,9 @@ class TaskManager : public TaskManagerInterface {
       const rpc::RayErrorInfo *ray_error_info,
       const absl::flat_hash_set<ObjectID> &store_in_plasma_ids) ABSL_LOCKS_EXCLUDED(mu_);
 
-  void OnTaskDependenciesInlined(const std::vector<ObjectID> &inlined_dependency_ids,
-                                 const std::vector<ObjectID> &contained_ids) override;
+  void OnTaskDependenciesInlined(
+      const absl::InlinedVector<ObjectID, 8> &inlined_dependency_ids,
+      const absl::InlinedVector<ObjectID, 8> &contained_ids) override;
 
   void MarkTaskNoRetry(const TaskID &task_id) override;
 
@@ -475,7 +478,8 @@ class TaskManager : public TaskManagerInterface {
   std::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const override;
 
   /// Return specs for pending children tasks of the given parent task.
-  std::vector<TaskID> GetPendingChildrenTasks(const TaskID &parent_task_id) const;
+  absl::InlinedVector<TaskID, 8> GetPendingChildrenTasks(
+      const TaskID &parent_task_id) const;
 
   /// Return whether this task can be submitted for execution.
   ///
@@ -657,7 +661,7 @@ class TaskManager : public TaskManagerInterface {
   /// task's arguments whose lineage should also be released.
   /// \param[out] The amount of lineage in bytes that was removed.
   int64_t RemoveLineageReference(const ObjectID &object_id,
-                                 std::vector<ObjectID> *ids_to_release)
+                                 absl::InlinedVector<ObjectID, 8> *ids_to_release)
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Helper function to call RemoveSubmittedTaskReferences on the remaining
@@ -747,7 +751,7 @@ class TaskManager : public TaskManagerInterface {
 
   /// Update the references for a task that is being resubmitted.
   void UpdateReferencesForResubmit(const TaskSpecification &spec,
-                                   std::vector<ObjectID> *task_deps)
+                                   absl::InlinedVector<ObjectID, 8> *task_deps)
       ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.

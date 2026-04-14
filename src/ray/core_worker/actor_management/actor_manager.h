@@ -22,6 +22,7 @@
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
+#include "absl/container/inlined_vector.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/actor_management/actor_handle.h"
 #include "ray/core_worker/reference_counter_interface.h"
@@ -132,7 +133,7 @@ class ActorManager {
 
   /// Get a list of actor_ids from existing actor handles.
   /// This is used for debugging purpose.
-  std::vector<ObjectID> GetActorHandleIDsFromHandles();
+  absl::InlinedVector<ObjectID, 8> GetActorHandleIDsFromHandles();
 
   /// Function that's invoked when the actor is permanatly dead.
   ///

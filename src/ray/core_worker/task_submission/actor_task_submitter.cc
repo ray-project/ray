@@ -387,7 +387,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
   absl::flat_hash_map<TaskAttempt, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
   std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>> wait_for_death_info_tasks;
-  std::vector<TaskID> task_ids_to_fail;
+  absl::InlinedVector<TaskID, 8> task_ids_to_fail;
   {
     absl::MutexLock lock(&mu_);
     auto queue = client_queues_.find(actor_id);

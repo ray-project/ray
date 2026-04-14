@@ -23,7 +23,7 @@
 namespace ray {
 namespace core {
 
-LeaseSpecification CreateFakeLease(std::vector<ObjectID> deps) {
+LeaseSpecification CreateFakeLease(absl::InlinedVector<ObjectID, 8> deps) {
   rpc::LeaseSpec spec;
   for (auto &dep : deps) {
     spec.add_dependencies()->set_object_id(dep.Binary());
@@ -69,7 +69,7 @@ TEST(LocalLeasePolicyTest, TestReturnFallback) {
   LocalLeasePolicy local_lease_policy(fallback_rpc_address);
   ObjectID obj1 = ObjectID::FromRandom();
   ObjectID obj2 = ObjectID::FromRandom();
-  std::vector<ObjectID> deps{obj1, obj2};
+  absl::InlinedVector<ObjectID, 8> deps{obj1, obj2};
   auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
       local_lease_policy.GetBestNodeForLease(lease_spec);
@@ -92,7 +92,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackSpreadSchedulingStrat
       std::make_shared<MockLocalityDataProvider>(locality_data);
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
-  std::vector<ObjectID> deps{obj1, obj2};
+  absl::InlinedVector<ObjectID, 8> deps{obj1, obj2};
   auto lease_spec = CreateFakeLease(deps);
   lease_spec.GetMutableMessage()
       .mutable_scheduling_strategy()
@@ -121,7 +121,7 @@ TEST(LocalityAwareLeasePolicyTest,
       std::make_shared<MockLocalityDataProvider>(locality_data);
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
-  std::vector<ObjectID> deps{obj1, obj2};
+  absl::InlinedVector<ObjectID, 8> deps{obj1, obj2};
   auto lease_spec = CreateFakeLease(deps);
   NodeID node_affinity_node = NodeID::FromRandom();
   lease_spec.GetMutableMessage()
@@ -151,7 +151,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityDominatingNode) {
       std::make_shared<MockLocalityDataProvider>(locality_data);
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
-  std::vector<ObjectID> deps{obj1, obj2};
+  absl::InlinedVector<ObjectID, 8> deps{obj1, obj2};
   auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
       locality_lease_policy.GetBestNodeForLease(lease_spec);
@@ -177,7 +177,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityBiggerObject) {
       std::make_shared<MockLocalityDataProvider>(locality_data);
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
-  std::vector<ObjectID> deps{obj1, obj2};
+  absl::InlinedVector<ObjectID, 8> deps{obj1, obj2};
   auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
       locality_lease_policy.GetBestNodeForLease(lease_spec);
@@ -207,7 +207,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityBetterNode) {
       std::make_shared<MockLocalityDataProvider>(locality_data);
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
-  std::vector<ObjectID> deps{obj1, obj2, obj3};
+  absl::InlinedVector<ObjectID, 8> deps{obj1, obj2, obj3};
   auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
       locality_lease_policy.GetBestNodeForLease(lease_spec);
@@ -231,7 +231,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackNoLocations) {
       std::make_shared<MockLocalityDataProvider>(locality_data);
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
-  std::vector<ObjectID> deps{obj1, obj2};
+  absl::InlinedVector<ObjectID, 8> deps{obj1, obj2};
   auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
       locality_lease_policy.GetBestNodeForLease(lease_spec);
@@ -250,7 +250,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackNoDeps) {
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactory, fallback_rpc_address);
   // No lease dependencies.
-  std::vector<ObjectID> deps;
+  absl::InlinedVector<ObjectID, 8> deps;
   auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
       locality_lease_policy.GetBestNodeForLease(lease_spec);
@@ -275,7 +275,7 @@ TEST(LocalityAwareLeasePolicyTest, TestBestLocalityFallbackAddrFetchFail) {
   // Provided node address factory always returns absl::nullopt.
   LocalityAwareLeasePolicy locality_lease_policy(
       *mock_locality_data_provider, MockNodeAddrFactoryAlwaysNull, fallback_rpc_address);
-  std::vector<ObjectID> deps{obj1, obj2};
+  absl::InlinedVector<ObjectID, 8> deps{obj1, obj2};
   auto lease_spec = CreateFakeLease(deps);
   auto [best_node_address, is_selected_based_on_locality] =
       locality_lease_policy.GetBestNodeForLease(lease_spec);

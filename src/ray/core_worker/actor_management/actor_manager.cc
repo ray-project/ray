@@ -267,9 +267,9 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
   }
 }
 
-std::vector<ObjectID> ActorManager::GetActorHandleIDsFromHandles() {
+absl::InlinedVector<ObjectID, 8> ActorManager::GetActorHandleIDsFromHandles() {
   absl::MutexLock lock(&mutex_);
-  std::vector<ObjectID> actor_handle_ids;
+  absl::InlinedVector<ObjectID, 8> actor_handle_ids;
   for (const auto &handle : actor_handles_) {
     auto actor_id = handle.first;
     auto actor_handle_id = ObjectID::ForActorHandle(actor_id);
