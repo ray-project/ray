@@ -37,8 +37,7 @@ IOContextMonitor::IOContextMonitor(
       lag_gauge_(lag_gauge),
       deadline_exceeded_counter_(deadline_exceeded_counter) {
   for (auto &[name, io_context] : io_contexts) {
-    probe_states_.push_back(
-        std::make_shared<ProbeState>(std::move(name), *io_context));
+    probe_states_.push_back(std::make_shared<ProbeState>(std::move(name), *io_context));
   }
 }
 
@@ -155,9 +154,9 @@ void IOContextMonitorThread::Run() {
     health_callback_(healthy);
 
     absl::MutexLock lock(&mutex_);
-    mutex_.AwaitWithTimeout(
-        absl::Condition(+[](bool *running) { return !*running; }, &running_),
-        probe_interval_);
+    mutex_.AwaitWithTimeout(absl::Condition(
+                                +[](bool *running) { return !*running; }, &running_),
+                            probe_interval_);
 
     if (!running_) {
       break;
