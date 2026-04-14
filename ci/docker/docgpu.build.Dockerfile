@@ -2,16 +2,24 @@
 
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_gpu-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
+
+ARG PYTHON
+ARG PYTHON_DEPSET=python/deplocks/ci/docgpu_gpu_depset_py$PYTHON.lock
+
 SHELL ["/bin/bash", "-ice"]
 
 COPY . .
+
+COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 RUN <<EOF
 #!/bin/bash
 
 set -euo pipefail
 
-DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 ci/env/install-dependencies.sh
-pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
+uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
+
+# Remove installed ray so the source overlay at /rayci/ is used at test time
+pip uninstall -y ray
 
 EOF
