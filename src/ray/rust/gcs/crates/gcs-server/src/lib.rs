@@ -347,7 +347,7 @@ mod tests {
             .await
             .expect("failed to connect to NodeInfoGcsService");
         let resp = node_client
-            .get_all_node_info(GetAllNodeInfoRequest {})
+            .get_all_node_info(GetAllNodeInfoRequest::default())
             .await
             .expect("GetAllNodeInfo RPC failed");
         assert!(
@@ -360,12 +360,7 @@ mod tests {
             .await
             .expect("failed to connect to JobInfoGcsService");
         let resp = job_client
-            .get_all_job_info(GetAllJobInfoRequest {
-                job_or_submission_id: None,
-                skip_is_running_tasks_field: false,
-                skip_submission_job_info_field: false,
-                limit: None,
-            })
+            .get_all_job_info(GetAllJobInfoRequest::default())
             .await
             .expect("GetAllJobInfo RPC failed");
         assert!(
@@ -426,7 +421,7 @@ mod tests {
             .await
             .expect("failed to connect to GCS server via start()");
         let resp = node_client
-            .get_all_node_info(GetAllNodeInfoRequest {})
+            .get_all_node_info(GetAllNodeInfoRequest::default())
             .await
             .expect("GetAllNodeInfo RPC failed on start() server");
         assert!(
@@ -439,12 +434,7 @@ mod tests {
             .await
             .expect("failed to connect to JobInfoGcsService via start()");
         let resp = job_client
-            .get_all_job_info(GetAllJobInfoRequest {
-                job_or_submission_id: None,
-                skip_is_running_tasks_field: false,
-                skip_submission_job_info_field: false,
-                limit: None,
-            })
+            .get_all_job_info(GetAllJobInfoRequest::default())
             .await
             .expect("GetAllJobInfo RPC failed on start() server");
         assert!(
