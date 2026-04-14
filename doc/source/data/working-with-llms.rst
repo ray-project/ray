@@ -24,7 +24,7 @@ The :ref:`ray.data.llm <llm-ref>` module enables scalable batch inference on Ray
 **Operations:**
 
 * :ref:`Troubleshooting <troubleshooting>` - GPU memory, model loading issues
-* :ref:`Advanced configuration <advanced_configuration>` - Parallelism, per-stage tuning, LoRA, batch concurrency
+* :ref:`Advanced configuration <advanced_configuration>` - Parallelism, per-stage tuning, LoRA, batch concurrency, serve deployments
 
 .. _vllm_quickstart:
 
