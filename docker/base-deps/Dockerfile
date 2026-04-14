@@ -24,7 +24,7 @@ apt-get install -y --no-install-recommends \
     zlib1g-dev
 
 # Install HAProxy from source
-HAPROXY_VERSION="2.8.12"
+HAPROXY_VERSION="2.8.20"
 HAPROXY_BUILD_DIR=$(mktemp -d)
 curl -sSfL -o "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
