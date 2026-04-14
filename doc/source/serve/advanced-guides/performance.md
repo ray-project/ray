@@ -263,7 +263,7 @@ apt-get update -y && apt-get install -y --no-install-recommends \
     liblua5.3-dev libpcre3-dev libssl-dev zlib1g-dev
 
 # Build HAProxy from source
-export HAPROXY_VERSION="2.8.12"
+export HAPROXY_VERSION="2.8.20"
 curl -sSfL -o /tmp/haproxy.tar.gz \
   "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 mkdir -p /tmp/haproxy-build && tar -xzf /tmp/haproxy.tar.gz -C /tmp/haproxy-build --strip-components=1
