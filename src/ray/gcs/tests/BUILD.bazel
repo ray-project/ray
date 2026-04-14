@@ -139,6 +139,7 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_ray_event_recorder",
         "//src/ray/raylet_rpc_client:fake_raylet_client",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -161,6 +162,7 @@ ray_cc_test(
         "//src/ray/gcs/store_client:in_memory_store_client",
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
+        "//src/ray/util:clock",
     ],
 )
 
@@ -285,6 +287,7 @@ ray_cc_test(
         "//src/ray/common:test_utils",
         "//src/ray/gcs:gcs_table_storage",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
+        "//src/ray/util:clock",
     ],
 )
 

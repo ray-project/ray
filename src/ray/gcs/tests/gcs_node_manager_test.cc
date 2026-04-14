@@ -26,6 +26,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 class GcsNodeManagerTest : public ::testing::Test {
@@ -50,6 +51,7 @@ class GcsNodeManagerTest : public ::testing::Test {
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   std::unique_ptr<instrumented_io_context> io_context_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
+  Clock clock_;
 };
 
 TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
@@ -65,7 +67,8 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   clock_);
   auto node = GenNodeInfo();
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
@@ -170,7 +173,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   clock_);
   // Test Add/Get/Remove functionality.
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -190,7 +194,8 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   clock_);
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::atomic_int callbacks_remaining = node_count;
@@ -264,7 +269,8 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   clock_);
   int node_count = 10;
   std::atomic_int callbacks_remaining = node_count;
   node_manager.AddNodeAddedListener(
@@ -295,7 +301,8 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   clock_);
 
   // Create a test node
   auto node = GenNodeInfo();
@@ -374,7 +381,8 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   clock_);
 
   // Create and add a test node
   auto node = GenNodeInfo();
@@ -413,7 +421,8 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeInfo) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   clock_);
 
   // Add multiple alive nodes with different properties
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;
@@ -611,7 +620,8 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   clock_);
 
   // Add multiple alive nodes
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;

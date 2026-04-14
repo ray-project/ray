@@ -14,6 +14,7 @@
 #pragma once
 
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
+#include "ray/util/clock.h"
 
 namespace ray::core {
 
@@ -22,34 +23,41 @@ namespace ray::core {
 class DefaultCoreWorkerMemoryStoreWithThread : public CoreWorkerMemoryStore {
  public:
   static std::unique_ptr<DefaultCoreWorkerMemoryStoreWithThread> Create() {
+    auto clock = std::make_unique<Clock>();
     std::unique_ptr<InstrumentedIOContextWithThread> io_context =
         std::make_unique<InstrumentedIOContextWithThread>(
             "DefaultCoreWorkerMemoryStoreWithThread");
     // C++ limitation: std::make_unique cannot be used because std::unique_ptr cannot
     // invoke private constructors.
     return std::unique_ptr<DefaultCoreWorkerMemoryStoreWithThread>(
-        new DefaultCoreWorkerMemoryStoreWithThread(std::move(io_context)));
+        new DefaultCoreWorkerMemoryStoreWithThread(
+            std::move(io_context), std::move(clock)));
   }
 
   static std::shared_ptr<DefaultCoreWorkerMemoryStoreWithThread> CreateShared() {
+    auto clock = std::make_unique<Clock>();
     std::unique_ptr<InstrumentedIOContextWithThread> io_context =
         std::make_unique<InstrumentedIOContextWithThread>(
             "DefaultCoreWorkerMemoryStoreWithThread");
     // C++ limitation: std::make_shared cannot be used because std::shared_ptr cannot
     // invoke private constructors.
     return std::shared_ptr<DefaultCoreWorkerMemoryStoreWithThread>(
-        new DefaultCoreWorkerMemoryStoreWithThread(std::move(io_context)));
+        new DefaultCoreWorkerMemoryStoreWithThread(
+            std::move(io_context), std::move(clock)));
   }
 
   ~DefaultCoreWorkerMemoryStoreWithThread() { io_context_->Stop(); }
 
  private:
-  explicit DefaultCoreWorkerMemoryStoreWithThread(
-      std::unique_ptr<InstrumentedIOContextWithThread> io_context)
-      : CoreWorkerMemoryStore(io_context->GetIoService()),
-        io_context_(std::move(io_context)) {}
+  DefaultCoreWorkerMemoryStoreWithThread(
+      std::unique_ptr<InstrumentedIOContextWithThread> io_context,
+      std::unique_ptr<Clock> clock)
+      : CoreWorkerMemoryStore(io_context->GetIoService(), *clock),
+        io_context_(std::move(io_context)),
+        clock_(std::move(clock)) {}
 
   std::unique_ptr<InstrumentedIOContextWithThread> io_context_;
+  std::unique_ptr<Clock> clock_;
 };
 
 }  // namespace ray::core

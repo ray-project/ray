@@ -140,7 +140,8 @@ class GcsHealthCheckManagerTest : public ::testing::Test {
     }
   }
 
-  FakeClock clock_;
+  // Use a real clock because health check manager uses a boost::asio timer.
+  Clock clock_;
   instrumented_io_context io_service;
   std::unordered_map<NodeID, std::shared_ptr<rpc::GrpcServer>> servers;
   std::unordered_set<NodeID> dead_nodes;

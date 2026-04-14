@@ -1111,7 +1111,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestRayNamespace) {
   {  // Placement groups with the same namespace, different jobs should still collide.
     std::promise<void> promise;
     gcs_placement_group_manager_->RegisterPlacementGroup(
-        std::make_shared<gcs::GcsPlacementGroup>(request3, "", counter_),
+        std::make_shared<gcs::GcsPlacementGroup>(request3, "", counter_, clock_),
         [&promise](Status status) {
           ASSERT_FALSE(status.ok());
           promise.set_value();
