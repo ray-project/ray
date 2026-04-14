@@ -11,6 +11,7 @@ gcs-table-storage = { path = "../gcs-table-storage" }
 gcs-kv = { path = "../gcs-kv" }
 gcs-pubsub = { path = "../gcs-pubsub" }
 gcs-managers = { path = "../gcs-managers" }
+redis = { workspace = true }
 async-trait = { workspace = true }
 tonic = { workspace = true }
 tonic-health = { workspace = true }

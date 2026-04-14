@@ -54,6 +54,29 @@ impl GcsPlacementGroupManager {
             table_storage,
         }
     }
+
+    /// Initialize from persisted data (on restart recovery).
+    pub fn initialize(
+        &self,
+        pgs: &std::collections::HashMap<String, PlacementGroupTableData>,
+    ) {
+        for (_key, pg) in pgs {
+            let pg_id = pg.placement_group_id.clone();
+            // Rebuild the named_pgs index.
+            if !pg.name.is_empty() {
+                self.named_pgs.insert(
+                    (pg.name.clone(), pg.ray_namespace.clone()),
+                    pg_id.clone(),
+                );
+            }
+            self.placement_groups.insert(pg_id, pg.clone());
+        }
+        info!(
+            placement_groups = self.placement_groups.len(),
+            named = self.named_pgs.len(),
+            "Placement group manager initialized"
+        );
+    }
 }
 
 #[tonic::async_trait]

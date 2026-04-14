@@ -60,14 +60,47 @@ async fn main() -> Result<()> {
         let _ = std::fs::File::create(path);
     }
 
+    // Parse Redis configuration.
+    let redis_address = flags.get("redis_address").cloned()
+        .or_else(|| std::env::var("RAY_REDIS_ADDRESS").ok());
+    let redis_password = flags.get("redis_password").cloned()
+        .or_else(|| std::env::var("RAY_REDIS_PASSWORD").ok());
+    let external_storage_namespace = flags
+        .get("external_storage_namespace")
+        .cloned()
+        .unwrap_or_default();
+
+    // Build Redis URL if address is provided.
+    let redis_url = redis_address.map(|addr| {
+        if addr.starts_with("redis://") || addr.starts_with("rediss://") {
+            addr
+        } else if let Some(password) = &redis_password {
+            format!("redis://:{}@{}", password, addr)
+        } else {
+            format!("redis://{}", addr)
+        }
+    });
+
     let config = GcsServerConfig {
         grpc_port: port,
         raylet_config_list: config_list,
+        redis_address: redis_url.clone(),
+        external_storage_namespace: external_storage_namespace.clone(),
         ..Default::default()
     };
 
-    info!(port, "Rust GCS server starting");
-    let server = GcsServer::new(config);
+    info!(port, redis = redis_url.is_some(), "Rust GCS server starting");
+
+    // Create server with appropriate storage backend.
+    let server = if let Some(ref url) = redis_url {
+        let redis_client = gcs_store::RedisStoreClient::connect(url, &external_storage_namespace)
+            .await
+            .expect("Failed to connect to Redis");
+        let redis_client = std::sync::Arc::new(redis_client);
+        GcsServer::new_with_redis(config, redis_client)
+    } else {
+        GcsServer::new(config)
+    };
 
     // Bind to the port first so we know the actual port (handles port 0).
     let listener = TcpListener::bind(format!("0.0.0.0:{}", port)).await?;

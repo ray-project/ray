@@ -11,6 +11,7 @@ tokio = { workspace = true }
 tracing = { workspace = true }
 anyhow = { workspace = true }
 thiserror = { workspace = true }
+redis = { workspace = true }
 
 [dev-dependencies]
 tokio-test = { workspace = true }

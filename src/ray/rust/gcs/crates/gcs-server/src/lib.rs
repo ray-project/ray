@@ -4,13 +4,17 @@
 //! This is a drop-in replacement for the C++ GCS binary, implementing the same
 //! 12 gRPC services from the same proto files.
 
+mod init_data;
+
 use std::net::SocketAddr;
 use std::sync::Arc;
 
 use anyhow::Result;
 use tokio::net::TcpListener;
 use tonic::transport::Server;
-use tracing::info;
+use tracing::{error, info, warn};
+
+pub use init_data::GcsInitData;
 
 use gcs_kv::{GcsInternalKVManager, StoreClientInternalKV};
 use gcs_managers::actor_stub::GcsActorManager;
@@ -37,7 +41,7 @@ use gcs_proto::ray::rpc::runtime_env_gcs_service_server::RuntimeEnvGcsServiceSer
 use gcs_proto::ray::rpc::task_info_gcs_service_server::TaskInfoGcsServiceServer;
 use gcs_proto::ray::rpc::worker_info_gcs_service_server::WorkerInfoGcsServiceServer;
 use gcs_pubsub::{GcsPublisher, PubSubManager};
-use gcs_store::InMemoryStoreClient;
+use gcs_store::{InMemoryStoreClient, RedisStoreClient, StoreClient};
 use gcs_table_storage::GcsTableStorage;
 
 /// Configuration for the GCS server.
@@ -47,6 +51,13 @@ pub struct GcsServerConfig {
     pub cluster_id: Vec<u8>,
     pub raylet_config_list: String,
     pub max_task_events: usize,
+    /// Redis connection URL. If `Some`, uses Redis-backed persistence.
+    /// If `None`, uses in-memory storage (no persistence across restarts).
+    /// Example: `"redis://127.0.0.1:6379"` or `"redis://:password@host:port"`.
+    pub redis_address: Option<String>,
+    /// Namespace prefix that isolates this cluster's data in a shared Redis.
+    /// Maps C++ `external_storage_namespace`. Defaults to empty string.
+    pub external_storage_namespace: String,
 }
 
 impl Default for GcsServerConfig {
@@ -67,6 +78,8 @@ impl Default for GcsServerConfig {
             cluster_id,
             raylet_config_list: String::new(),
             max_task_events: 100_000,
+            redis_address: None,
+            external_storage_namespace: String::new(),
         }
     }
 }
@@ -74,13 +87,15 @@ impl Default for GcsServerConfig {
 /// The GCS Server. Maps C++ `GcsServer`.
 ///
 /// Creates all managers and serves gRPC on the configured port.
+/// Supports both in-memory and Redis-backed storage.
 pub struct GcsServer {
     config: GcsServerConfig,
     // Shared infrastructure
-    store: Arc<InMemoryStoreClient>,
     table_storage: Arc<GcsTableStorage>,
     publisher: Arc<GcsPublisher>,
     pubsub_manager: Arc<PubSubManager>,
+    /// Optional Redis client handle for health checks (only set when using Redis).
+    redis_client: Option<Arc<RedisStoreClient>>,
     // Managers
     node_manager: Arc<GcsNodeManager>,
     job_manager: Arc<GcsJobManager>,
@@ -95,13 +110,27 @@ pub struct GcsServer {
 }
 
 impl GcsServer {
-    /// Create a new GCS server with all managers initialized.
+    /// Create a new GCS server with in-memory storage (no persistence).
     pub fn new(config: GcsServerConfig) -> Self {
-        let store = Arc::new(InMemoryStoreClient::new());
+        let store: Arc<dyn StoreClient> = Arc::new(InMemoryStoreClient::new());
+        Self::new_with_store(config, store, None)
+    }
+
+    /// Create a new GCS server with a Redis-backed store.
+    pub fn new_with_redis(config: GcsServerConfig, redis: Arc<RedisStoreClient>) -> Self {
+        let store: Arc<dyn StoreClient> = redis.clone();
+        Self::new_with_store(config, store, Some(redis))
+    }
+
+    /// Shared constructor: wire all managers around a given `StoreClient`.
+    fn new_with_store(
+        config: GcsServerConfig,
+        store: Arc<dyn StoreClient>,
+        redis_client: Option<Arc<RedisStoreClient>>,
+    ) -> Self {
         let table_storage = Arc::new(GcsTableStorage::new(store.clone()));
         let publisher = Arc::new(GcsPublisher::new(4096));
 
-        // Create the PubSubManager with a publisher_id derived from cluster_id.
         let pubsub_manager = Arc::new(PubSubManager::new(config.cluster_id.clone()));
 
         let node_manager = Arc::new(GcsNodeManager::new(
@@ -124,7 +153,7 @@ impl GcsServer {
 
         let resource_manager = Arc::new(GcsResourceManager::new());
 
-        let kv_store = Arc::new(StoreClientInternalKV::new(store.clone()));
+        let kv_store = Arc::new(StoreClientInternalKV::new(store));
         let kv_manager = Arc::new(GcsInternalKVManager::new(
             kv_store,
             config.raylet_config_list.clone(),
@@ -145,10 +174,10 @@ impl GcsServer {
 
         Self {
             config,
-            store,
             table_storage,
             publisher,
             pubsub_manager,
+            redis_client,
             node_manager,
             job_manager,
             worker_manager,
@@ -162,22 +191,81 @@ impl GcsServer {
         }
     }
 
+    /// Load persisted state from storage and initialize all managers.
+    ///
+    /// Maps C++ `GcsServer::DoStart` which calls `GcsInitData::AsyncLoad`
+    /// then initializes each manager with the recovered data.
+    /// This is a no-op for empty storage (fresh start).
+    pub async fn initialize(&self) {
+        let init_data = GcsInitData::load(&self.table_storage).await;
+
+        self.node_manager.initialize(&init_data.nodes).await;
+        self.job_manager.initialize(&init_data.jobs);
+        self.actor_manager.initialize(&init_data.actors, &init_data.actor_task_specs);
+        self.placement_group_manager.initialize(&init_data.placement_groups);
+
+        info!("GCS server initialized from persisted state");
+    }
+
+    /// Start a background loop that periodically PINGs Redis.
+    /// Panics if Redis becomes unreachable (matching C++ behavior).
+    fn start_redis_health_check(&self) {
+        if let Some(redis) = &self.redis_client {
+            let redis = redis.clone();
+            let interval_ms: u64 = std::env::var("RAY_gcs_redis_heartbeat_interval_ms")
+                .ok()
+                .and_then(|s| s.parse().ok())
+                .unwrap_or(5000);
+
+            tokio::spawn(async move {
+                let mut consecutive_failures = 0u32;
+                loop {
+                    tokio::time::sleep(std::time::Duration::from_millis(interval_ms)).await;
+                    match redis.check_health().await {
+                        Ok(_) => {
+                            if consecutive_failures > 0 {
+                                info!("Redis health check recovered after {} failures", consecutive_failures);
+                            }
+                            consecutive_failures = 0;
+                        }
+                        Err(e) => {
+                            consecutive_failures += 1;
+                            error!(
+                                error = %e,
+                                consecutive_failures,
+                                "Redis health check failed"
+                            );
+                            // Match C++ behavior: crash on Redis failure.
+                            if consecutive_failures >= 5 {
+                                panic!(
+                                    "Redis connection failed after {} consecutive health check failures: {}",
+                                    consecutive_failures, e
+                                );
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    }
+
     /// Start the gRPC server, binding to the configured port. Blocks until shutdown.
     pub async fn start(&self) -> Result<()> {
         let addr: SocketAddr = format!("0.0.0.0:{}", self.config.grpc_port).parse()?;
 
         info!(
             port = self.config.grpc_port,
+            redis = self.redis_client.is_some(),
             "Starting Rust GCS server"
         );
+
+        // Load persisted state from storage and initialize managers.
+        self.initialize().await;
 
         let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
         health_reporter.set_serving::<NodeInfoGcsServiceServer<GcsNodeManager>>().await;
 
         // Start the health check loop for detecting dead nodes.
-        // Health check parameters can be configured via RayConfig (config_list).
-        // Defaults match the C++ GCS: period=1000ms, timeout=10ms, threshold=5.
-        // For tests, env vars override: RAY_health_check_period_ms etc.
         let hc_period = std::env::var("RAY_health_check_period_ms")
             .ok().and_then(|s| s.parse().ok()).unwrap_or(1000u64);
         let hc_timeout = std::env::var("RAY_health_check_timeout_ms")
@@ -185,6 +273,9 @@ impl GcsServer {
         let hc_threshold = std::env::var("RAY_health_check_failure_threshold")
             .ok().and_then(|s| s.parse().ok()).unwrap_or(5u32);
         self.node_manager.start_health_check_loop(hc_period, hc_timeout, hc_threshold);
+
+        // Start periodic Redis health check (no-op if using in-memory store).
+        self.start_redis_health_check();
 
         Server::builder()
             .add_service(health_service)
@@ -211,13 +302,20 @@ impl GcsServer {
         let local_addr = listener.local_addr()?;
         info!(
             port = local_addr.port(),
+            redis = self.redis_client.is_some(),
             "Starting Rust GCS server (pre-bound listener)"
         );
+
+        // Load persisted state from storage and initialize managers.
+        self.initialize().await;
 
         let incoming = tokio_stream::wrappers::TcpListenerStream::new(listener);
 
         // Start the health check loop for detecting dead nodes.
         self.node_manager.start_health_check_loop(1000, 500, 5);
+
+        // Start periodic Redis health check (no-op if using in-memory store).
+        self.start_redis_health_check();
 
         let (mut health_reporter, health_service) = tonic_health::server::health_reporter();
         health_reporter.set_serving::<NodeInfoGcsServiceServer<GcsNodeManager>>().await;
@@ -265,6 +363,14 @@ impl GcsServer {
     pub fn actor_manager(&self) -> &Arc<GcsActorManager> {
         &self.actor_manager
     }
+
+    pub fn placement_group_manager(&self) -> &Arc<GcsPlacementGroupManager> {
+        &self.placement_group_manager
+    }
+
+    pub fn table_storage(&self) -> &Arc<GcsTableStorage> {
+        &self.table_storage
+    }
 }
 
 #[cfg(test)]
@@ -288,6 +394,7 @@ mod tests {
             cluster_id: vec![0u8; 28],
             raylet_config_list: "test_config".to_string(),
             max_task_events: 100,
+            ..Default::default()
         };
         let server = GcsServer::new(config);
 
@@ -321,8 +428,7 @@ mod tests {
         let config = GcsServerConfig {
             grpc_port: 0,
             cluster_id: vec![0u8; 28],
-            raylet_config_list: String::new(),
-            max_task_events: 100,
+            ..Default::default()
         };
         let server = Arc::new(GcsServer::new(config));
 
@@ -400,8 +506,7 @@ mod tests {
         let config = GcsServerConfig {
             grpc_port: port,
             cluster_id: vec![0u8; 28],
-            raylet_config_list: String::new(),
-            max_task_events: 100,
+            ..Default::default()
         };
         let server = Arc::new(GcsServer::new(config));
 
@@ -445,5 +550,54 @@ mod tests {
         // Clean up.
         server_handle.abort();
         let _ = server_handle.await;
+    }
+
+    #[tokio::test]
+    async fn test_restart_recovery_with_init_data() {
+        use gcs_proto::ray::rpc::{
+            JobTableData, GcsNodeInfo, ActorTableData,
+            PlacementGroupTableData, gcs_node_info,
+        };
+
+        // Create a shared in-memory store (simulating Redis persistence).
+        let store: Arc<dyn StoreClient> = Arc::new(InMemoryStoreClient::new());
+        let table_storage = Arc::new(GcsTableStorage::new(store.clone()));
+
+        // Pre-populate storage with data (as if from a previous server lifetime).
+        let mut job = JobTableData::default();
+        job.job_id = b"job_1".to_vec();
+        job.is_dead = false;
+        table_storage.job_table().put("job_1", &job).await;
+
+        let mut node = GcsNodeInfo::default();
+        node.node_id = b"node_1".to_vec();
+        node.state = gcs_node_info::GcsNodeState::Alive as i32;
+        table_storage.node_table().put("node_1", &node).await;
+
+        let mut actor = ActorTableData::default();
+        actor.actor_id = b"actor_1".to_vec();
+        actor.name = "my_actor".to_string();
+        actor.ray_namespace = "default".to_string();
+        table_storage.actor_table().put("actor_1", &actor).await;
+
+        let mut pg = PlacementGroupTableData::default();
+        pg.placement_group_id = b"pg_1".to_vec();
+        pg.name = "my_pg".to_string();
+        pg.ray_namespace = "default".to_string();
+        table_storage.placement_group_table().put("pg_1", &pg).await;
+
+        // Create a NEW server using the same store (simulating restart).
+        let config = GcsServerConfig {
+            cluster_id: vec![0u8; 28],
+            ..Default::default()
+        };
+        let server = GcsServer::new_with_store(config, store, None);
+
+        // Initialize from storage (this is what happens on restart).
+        server.initialize().await;
+
+        // Verify recovered state.
+        assert!(server.job_manager().get_job(b"job_1").is_some());
+        assert_eq!(server.node_manager().get_all_alive_nodes().len(), 1);
     }
 }

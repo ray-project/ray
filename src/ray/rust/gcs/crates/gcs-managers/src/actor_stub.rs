@@ -60,6 +60,36 @@ impl GcsActorManager {
         }
     }
 
+    /// Initialize from persisted data (on restart recovery).
+    pub fn initialize(
+        &self,
+        actors: &std::collections::HashMap<String, ActorTableData>,
+        task_specs: &std::collections::HashMap<String, TaskSpec>,
+    ) {
+        for (_key, actor) in actors {
+            let actor_id = actor.actor_id.clone();
+            // Rebuild the named_actors index.
+            if !actor.name.is_empty() {
+                self.named_actors.insert(
+                    (actor.name.clone(), actor.ray_namespace.clone()),
+                    actor_id.clone(),
+                );
+            }
+            self.actors.insert(actor_id, actor.clone());
+        }
+        for (_key, spec) in task_specs {
+            if let Some(actor_id) = Self::actor_id_from_task_spec(spec) {
+                self.actor_task_specs.insert(actor_id, spec.clone());
+            }
+        }
+        info!(
+            actors = self.actors.len(),
+            named = self.named_actors.len(),
+            task_specs = self.actor_task_specs.len(),
+            "Actor manager initialized"
+        );
+    }
+
     /// Publish an actor state change on the GCS_ACTOR_CHANNEL (channel_type = 3).
     fn publish_actor_update(&self, actor: &ActorTableData) {
         let msg = PubMessage {
