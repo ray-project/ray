@@ -3609,7 +3609,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   }
 }
 
-StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeMessage(
+StatusSet<StatusT::InvalidArgument> CoreWorker::ProcessSubscribeCommand(
     const rpc::SubMessage &sub_message,
     rpc::ChannelType channel_type,
     const std::string &key_id,
@@ -3659,7 +3659,7 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
   // UnregisterSubscription touch ReferenceCounter state that lives there.
   const NodeID subscriber_id =
       NodeID::FromBinary(std::move(*request.mutable_subscriber_id()));
-  for (const auto &command : request.commands()) {
+  for (auto &command : *request.mutable_commands()) {
     if (!command.has_unsubscribe_message() && !command.has_subscribe_message()) {
       send_reply_callback(Status::InvalidArgument(absl::StrFormat(
                               "Unexpected pubsub command has been received: %s."
@@ -3686,7 +3686,10 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
 
     if (command.has_unsubscribe_message()) {
       io_service_.post(
-          [this, channel_type, subscriber_id, key_id = command.key_id()] {
+          [this,
+           channel_type,
+           subscriber_id,
+           key_id = std::move(*command.mutable_key_id())] {
             object_info_publisher_->UnregisterSubscription(
                 channel_type, subscriber_id, key_id);
           },
@@ -3694,15 +3697,23 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
     } else {  // subscribe_message case
       io_service_.post(
           [this,
-           sub_message = command.subscribe_message(),
+           sub_message = std::move(*command.mutable_subscribe_message()),
            channel_type,
-           key_id = command.key_id(),
+           key_id = std::move(*command.mutable_key_id()),
            subscriber_id] {
-            ProcessSubscribeMessage(sub_message, channel_type, key_id, subscriber_id);
+            auto result =
+                ProcessSubscribeCommand(sub_message, channel_type, key_id, subscriber_id);
+            if (result.has_error()) {
+              RAY_LOG(WARNING)
+                  << "Failed to process subscribe command: "
+                  << std::get<StatusT::InvalidArgument>(result.error()).message();
+            }
           },
           "CoreWorker.HandlePubsubCommandBatch");
     }
   }
+  // Reply immediately. Subscribe/unsubscribe are fire-and-forget; the subscriber
+  // relies on long-poll timeout to detect failures.
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 

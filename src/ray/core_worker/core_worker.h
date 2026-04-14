@@ -1583,7 +1583,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   ///
   /// \return StatusT::OK() if successful.
   /// \return StatusT::InvalidArgument() if the channel or command type is invalid.
-  StatusSet<StatusT::InvalidArgument> ProcessSubscribeMessage(
+  StatusSet<StatusT::InvalidArgument> ProcessSubscribeCommand(
       const rpc::SubMessage &sub_message,
       rpc::ChannelType channel_type,
       const std::string &key_id,

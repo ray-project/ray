@@ -759,6 +759,7 @@ TEST_P(CoreWorkerPubsubWorkerObjectEvictionChannelTest, HandlePubsubCommandBatch
       [](const Status &status, std::function<void()>, std::function<void()>) {
         ASSERT_TRUE(status.ok());
       });
+  // Drain io_service_ to execute the posted subscribe/unsubscribe handlers.
   io_service_.poll();
   io_service_.restart();
   core_worker_->HandlePubsubCommandBatch(
@@ -954,6 +955,7 @@ TEST_P(CoreWorkerPubsubWorkerRefRemovedChannelTest, HandlePubsubCommandBatchRetr
       [](const Status &status, std::function<void()>, std::function<void()>) {
         ASSERT_TRUE(status.ok());
       });
+  // Drain io_service_ to execute the posted subscribe/unsubscribe handlers.
   io_service_.poll();
   io_service_.restart();
   // NOTE: unlike in the worker object eviction channel test, the second call to
