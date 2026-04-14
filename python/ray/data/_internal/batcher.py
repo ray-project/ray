@@ -136,7 +136,7 @@ class Batcher(BatcherInterface):
                 if isinstance(accessor, ArrowBlockAccessor):
                     accessor = BlockAccessor.for_block(
                         transform_pyarrow.try_combine_chunked_columns(
-                            block, min_num_chunks=1
+                            block, min_chunks_to_combine=1
                         )
                     )
 
@@ -354,7 +354,7 @@ class ShufflingBatcher(BatcherInterface):
                 BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
             ):
                 self._shuffle_buffer = try_combine_chunked_columns(
-                    self._shuffle_buffer, min_num_chunks=1
+                    self._shuffle_buffer, min_chunks_to_combine=1
                 )
 
             # Reset the builder.

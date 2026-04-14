@@ -32,26 +32,6 @@ PYARROW_VERSION = get_pyarrow_version()
 
 
 # pyarrow.Table.slice is slow when the table has many chunks
-# so we combine chunks into a single one to make slice faster
-# with the cost of an extra copy.
-#
-# The decision to combine chunks is based on a threshold for the number
-# of chunks, set by `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`. To make
-# this more flexible, we have made this threshold configurable via the
-# `RAY_DATA_MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS` environment variable.
-#
-# This configurability is important because the size of each chunk can vary
-# greatly depending on the dataset and the operations performed previously.
-# A fixed threshold might not be optimal for all scenarios, as in some cases,
-# a smaller number of large chunks could behave differently from a larger
-# number of smaller chunks. By making this threshold tunable, users have
-# the ability to optimize for their specific case, adjusting based on their
-# chunk sizes and available memory.
-# See https://github.com/ray-project/ray/issues/31108 for more details.
-# TODO(jjyao): remove this once https://github.com/apache/arrow/issues/35126 is resolved
-MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = env_integer(
-    "RAY_DATA_MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS", 10
-)
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +80,25 @@ def _hash_partition(
     return partitions
 
 
+# The decision to combine chunks is based on a threshold for the number
+# of chunks. To make this more flexible, we have made this threshold
+# configurable via the `RAY_DATA_MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
+# environment variable.
+#
+# This configurability is important because the size of each chunk can vary
+# greatly depending on the dataset and the operations performed previously.
+# A fixed threshold might not be optimal for all scenarios, as in some cases,
+# a smaller number of large chunks could behave differently from a larger
+# number of smaller chunks. By making this threshold tunable, users have
+# the ability to optimize for their specific case, adjusting based on their
+# chunk sizes and available memory.
+# See https://github.com/ray-project/ray/issues/31108 for more details.
+# TODO(jjyao): remove this once https://github.com/apache/arrow/issues/35126 is resolved
+_HASH_PARTITION_MIN_CHUNKS_TO_COMBINE = env_integer(
+    "RAY_DATA_MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS", 10
+)
+
+
 def hash_partition(
     table: "pyarrow.Table",
     *,
@@ -132,7 +131,10 @@ def hash_partition(
     #       chunks w/in the individual columns, and therefore to improve performance
     #       we attempt to defragment the table to potentially combine some of those
     #       chunks into contiguous arrays.
-    table = try_combine_chunked_columns(table)
+    # TODO: can we always combine chunks?
+    table = try_combine_chunked_columns(
+        table, min_chunks_to_combine=_HASH_PARTITION_MIN_CHUNKS_TO_COMBINE
+    )
 
     return {
         p: table.take(idx)
@@ -1106,11 +1108,11 @@ def to_numpy(
 
 def try_combine_chunked_columns(
     table: "pyarrow.Table",
-    min_num_chunks: Optional[int] = None,
+    min_chunks_to_combine: int,
 ) -> "pyarrow.Table":
     """This method attempts to coalesce table by combining any of its
-    columns exceeding threshold of `min_num_chunks` (defaulting to
-    `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`) chunks in its `ChunkedArray`.
+    columns with at least ``min_chunks_to_combine`` chunks in its
+    ``ChunkedArray``.
 
     This is necessary to improve performance for some operations (like `take`, etc)
     when dealing with `ChunkedArrays` w/ large number of chunks
@@ -1119,22 +1121,19 @@ def try_combine_chunked_columns(
 
     Args:
         table: The PyArrow table to combine chunks for.
-        min_num_chunks: Minimum number of chunks in a column to trigger
-            combining. Defaults to MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS.
+        min_chunks_to_combine: Minimum number of chunks in a column to trigger
+            combining.
 
     Returns:
         A new table with chunked columns combined where applicable.
     """
-    if min_num_chunks is None:
-        min_num_chunks = MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
-
     if table.num_columns == 0:
         return table
 
     new_column_values_arrays = []
 
     for col in table.columns:
-        if col.num_chunks >= min_num_chunks:
+        if col.num_chunks >= min_chunks_to_combine:
             new_col = combine_chunked_array(col)
         else:
             new_col = col

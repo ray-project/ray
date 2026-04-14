@@ -45,14 +45,15 @@ def test_try_defragment_table():
 
     assert len(t["id"].chunks) == 10
 
-    dt = try_combine_chunked_columns(t)
+    dt = try_combine_chunked_columns(t, min_chunks_to_combine=10)
 
     assert len(dt["id"].chunks) == 1
     assert dt == t
 
 
-def test_try_combine_chunked_columns_min_num_chunks():
-    """Test that the min_num_chunks parameter controls the combining threshold."""
+def test_try_combine_chunked_columns_min_chunks_to_combine():
+    """Test that the min_chunks_to_combine parameter controls the combining
+    threshold."""
     # Create a table with 3 chunks per column.
     t = pa.Table.from_pydict(
         {
@@ -67,24 +68,24 @@ def test_try_combine_chunked_columns_min_num_chunks():
     assert t["a"].num_chunks == 3
     assert t["b"].num_chunks == 3
 
-    # Default threshold (10) should NOT combine since 3 < 10.
-    result = try_combine_chunked_columns(t)
+    # Threshold of 10 should NOT combine since 3 < 10.
+    result = try_combine_chunked_columns(t, min_chunks_to_combine=10)
     assert result["a"].num_chunks == 3
     assert result["b"].num_chunks == 3
 
-    # min_num_chunks=1 should always combine.
-    result = try_combine_chunked_columns(t, min_num_chunks=1)
+    # min_chunks_to_combine=1 should always combine.
+    result = try_combine_chunked_columns(t, min_chunks_to_combine=1)
     assert result["a"].num_chunks == 1
     assert result["b"].num_chunks == 1
     assert result == t
 
-    # min_num_chunks=3 should combine (3 >= 3).
-    result = try_combine_chunked_columns(t, min_num_chunks=3)
+    # min_chunks_to_combine=3 should combine (3 >= 3).
+    result = try_combine_chunked_columns(t, min_chunks_to_combine=3)
     assert result["a"].num_chunks == 1
     assert result["b"].num_chunks == 1
 
-    # min_num_chunks=4 should NOT combine (3 < 4).
-    result = try_combine_chunked_columns(t, min_num_chunks=4)
+    # min_chunks_to_combine=4 should NOT combine (3 < 4).
+    result = try_combine_chunked_columns(t, min_chunks_to_combine=4)
     assert result["a"].num_chunks == 3
     assert result["b"].num_chunks == 3
 

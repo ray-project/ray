@@ -208,7 +208,7 @@ def test_batching_pyarrow_table_with_many_chunks():
 
 def test_batcher_combines_chunks_with_few_chunks():
     """Test that the Batcher combines chunked columns even when the number of chunks
-    is below the default MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS (10).
+    is below the default hash_partition threshold (10).
 
     This is important for map_batches and local shuffle performance when the buffer
     size is small.
@@ -233,7 +233,7 @@ def test_batcher_combines_chunks_with_few_chunks():
 
 def test_shuffling_batcher_combines_chunks_with_few_chunks():
     """Test that the ShufflingBatcher combines chunked columns even when the number
-    of chunks is below the default MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS (10).
+    of chunks is below the default hash_partition threshold (10).
     """
     # Create a block with 3 chunks per column.
     arrays = [pa.table({"a": list(range(i * 10, (i + 1) * 10))}) for i in range(3)]
