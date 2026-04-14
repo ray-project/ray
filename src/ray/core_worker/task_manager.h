@@ -101,6 +101,10 @@ class ObjectRefStream {
 
   std::pair<ObjectID, bool> PeekNextItem();
 
+  /// Like repeated PeekNextItem at offsets 0..n-1 without consuming, capped by
+  /// max_num_generator_returns().
+  std::vector<std::pair<ObjectID, bool>> PeekNextItems(size_t n) const;
+
   /// Return True if the item_index is already consumed.
   bool IsObjectConsumed(int64_t item_index) const;
 
@@ -433,6 +437,10 @@ class TaskManager : public TaskManagerInterface {
   /// It should not be nil.
   std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Peek the next ``n`` stream indices without consuming (see PeekNextItems).
+  std::vector<std::pair<ObjectID, bool>> PeekObjectRefStreamN(
+      const ObjectID &generator_id, size_t n) ABSL_LOCKS_EXCLUDED(mu_);
 
   void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override;
 

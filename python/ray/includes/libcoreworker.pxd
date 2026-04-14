@@ -2,6 +2,7 @@
 # distutils: language = c++
 # cython: embedsignature = True
 
+from libc.stddef cimport size_t
 from libc.stdint cimport int64_t, uint64_t
 from libcpp cimport bool as c_bool
 from libcpp.functional cimport function
@@ -196,6 +197,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool StreamingGeneratorIsFinished(const CObjectID &generator_id) const
         pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
+        c_vector[pair[CObjectReference, c_bool]] PeekObjectRefStreamN(
+            const CObjectID &generator_id, size_t n)
         CObjectID AllocateDynamicReturnId(
             const CAddress &owner_address,
             const CTaskID &task_id,

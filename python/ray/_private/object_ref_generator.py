@@ -191,7 +191,7 @@ class ObjectRefGenerator:
         If an object is not available within the given timeout, it
         returns a nil object reference.
 
-        If -1 timeout is provided, it means it waits infinitely.
+        If None timeout is provided, it means it waits infinitely.
 
         Waiting is implemented as busy waiting.
 
@@ -240,6 +240,65 @@ class ObjectRefGenerator:
                 # The task finished without an exception.
                 raise StopIteration from None
         return ref
+
+    def _next_bulk_sync(
+        self, n: int, timeout_s: Optional[int | float] = None
+    ) -> list["ray.ObjectRef"]:
+        """Waits for timeout_s and returns up to n object refs if available.
+
+        If objects are not available within the given timeout, it
+        returns up to n object refs that are already ready.
+
+        If None timeout is provided, it means it waits infinitely until
+        all n objects are ready. It is user's responsibility to ensure that
+        the generator task returns at least n objects if None timeout is provided.
+
+        Raises StopIteration if there's no more objects
+        to generate after the timeout.
+
+        Args:
+            n: Maximum number of object refs to return. Must be non-negative.
+            timeout_s: Maximum time to wait for the objects to be ready.
+
+        Returns:
+            A list of up to ``n`` ``ObjectRef`` values (possibly empty on timeout).
+        """
+        if n < 0:
+            raise ValueError("n must be non-negative")
+        if n == 0:
+            return []
+        core_worker = self.worker.core_worker
+        pairs = core_worker.peek_object_ref_stream_n(self._generator_ref, n)
+        if not pairs:
+            return []
+        unready = [ref for ref, is_ready in pairs if not is_ready]
+        if unready:
+            _, unready = ray.wait(
+                unready,
+                num_returns=len(unready),
+                timeout=timeout_s,
+                fetch_local=False,
+            )
+        out: list["ray.ObjectRef"] = []
+        for _ in range(max(1, len(pairs) - len(unready))):
+            try:
+                ref = core_worker.try_read_next_object_ref_stream(self._generator_ref)
+            except ObjectRefStreamEndOfStreamError:
+                if out:
+                    return out
+                if self._generator_task_raised:
+                    raise StopIteration from None
+                try:
+                    ray.get(self._generator_ref)
+                except Exception:
+                    self._generator_task_raised = True
+                    return [self._generator_ref]
+                else:
+                    raise StopIteration from None
+            if ref.is_nil():
+                break
+            out.append(ref)
+        return out
 
     async def _suppress_exceptions(self, ref: "ray.ObjectRef") -> None:
         # Wrap a streamed ref to avoid asyncio warnings about not retrieving

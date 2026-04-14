@@ -3083,6 +3083,20 @@ std::pair<rpc::ObjectReference, bool> CoreWorker::PeekObjectRefStream(
   return {object_ref, ready};
 }
 
+std::vector<std::pair<rpc::ObjectReference, bool>> CoreWorker::PeekObjectRefStreamN(
+    const ObjectID &generator_id, size_t n) {
+  const auto items = task_manager_->PeekObjectRefStreamN(generator_id, n);
+  std::vector<std::pair<rpc::ObjectReference, bool>> result;
+  result.reserve(items.size());
+  for (const auto &[object_id, ready] : items) {
+    rpc::ObjectReference object_ref;
+    object_ref.set_object_id(object_id.Binary());
+    object_ref.mutable_owner_address()->CopyFrom(rpc_address_);
+    result.emplace_back(std::move(object_ref), ready);
+  }
+  return result;
+}
+
 bool CoreWorker::PinExistingReturnObject(const ObjectID &return_id,
                                          std::shared_ptr<RayObject> *return_object,
                                          const ObjectID &generator_id,
