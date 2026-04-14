@@ -1,5 +1,5 @@
 import os
-from typing import Dict
+from typing import Dict, Optional
 
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._private.ray_constants import env_bool, env_set_by_user
@@ -47,7 +47,7 @@ DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 60.0
 COLLECTIVE_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_TIMEOUT_S"
 # NOTE: Default to no timeout to avoid introducing more timeouts for users to configure.
 # For example, users can already configure timeouts in torch distributed.
-DEFAULT_COLLECTIVE_TIMEOUT_S: float = -1
+DEFAULT_COLLECTIVE_TIMEOUT_S: Optional[float] = None
 # Interval in seconds to log a warning when waiting for a collective operation to complete.
 COLLECTIVE_WARN_INTERVAL_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_WARN_INTERVAL_S"
 DEFAULT_COLLECTIVE_WARN_INTERVAL_S: float = 60
