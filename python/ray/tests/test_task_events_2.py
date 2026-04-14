@@ -1020,8 +1020,7 @@ ray.get([f.options(name="f.{task_name}").remote() for _ in range(10)])
 
     def get_last_job() -> str:
         jobs = list_jobs()
-        sorted(jobs, key=lambda x: x["job_id"])
-        return jobs[-1].job_id
+        return max(jobs, key=lambda x: x["job_id"]).job_id
 
     async def verify_tasks(task_name: str):
         # Query with job directly.
