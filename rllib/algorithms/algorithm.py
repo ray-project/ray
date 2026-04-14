@@ -2414,7 +2414,8 @@ class Algorithm(Checkpointable, Trainable):
             module_spec: The SingleAgentRLModuleSpec to use for constructing the new
                 RLModule.
             module_state: Optional state dict to apply to the new RLModule on the
-                LearnerGroup before syncing weights to EnvRunners.
+                LearnerGroup before syncing weights to EnvRunners. Requires
+                ``add_to_learners=True``; otherwise a ``ValueError`` is raised.
             config_overrides: The `AlgorithmConfig` overrides that should apply to
                 the new Module, if any.
             new_agent_to_module_mapping_fn: An optional (updated) AgentID to ModuleID
@@ -2454,6 +2455,13 @@ class Algorithm(Checkpointable, Trainable):
             raise ValueError(
                 "At least one of `add_to_learners`, `add_to_env_runners`, or "
                 "`add_to_eval_env_runners` must be set to True!"
+            )
+
+        if module_state is not None and not add_to_learners:
+            raise ValueError(
+                "`module_state` requires the new RLModule to exist on the LearnerGroup, "
+                "but `add_to_learners=False`. Either set `add_to_learners=True` or omit "
+                "`module_state`."
             )
 
         # Add to Learners and sync weights.
