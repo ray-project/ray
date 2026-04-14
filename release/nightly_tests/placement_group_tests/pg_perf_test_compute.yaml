@@ -20,6 +20,5 @@ worker_nodes:
       max_nodes: 4
       market_type: ON_DEMAND
       resources:
-          CPU: 16
           pending: 1
           custom: 100
