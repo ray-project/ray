@@ -35,7 +35,6 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
     input_blocks: InitVar[List[ObjectRef[Block]]]
     input_metadata: InitVar[List[BlockMetadataWithSchema]]
     input_data: List[RefBundle] = field(init=False)
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(
         init=False, repr=False, default_factory=list
     )

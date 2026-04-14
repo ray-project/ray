@@ -20,7 +20,6 @@ class InputData(LogicalOperator, SourceOperator):
     """
 
     input_data: List[RefBundle]
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(
         init=False, repr=False, default_factory=list
     )

@@ -41,7 +41,6 @@ class NAry(LogicalOperator):
 class Zip(NAry):
     """Logical operator for zip."""
 
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -86,7 +85,6 @@ class Zip(NAry):
 class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for union."""
 
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 

@@ -25,7 +25,7 @@ class LogicalOperator(Operator, ABC):
 
     @property
     def name(self) -> str:
-        return getattr(self, "_name", None) or self.__class__.__name__
+        return self._name or self.__class__.__name__
 
     @property
     @abstractmethod

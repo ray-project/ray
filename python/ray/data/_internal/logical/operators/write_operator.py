@@ -25,7 +25,6 @@ class Write(AbstractMap):
     min_rows_per_bundled_input: Optional[int] = field(init=False)
     ray_remote_args_fn: None = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 

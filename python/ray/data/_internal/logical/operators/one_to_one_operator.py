@@ -69,7 +69,6 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     input_op: InitVar[LogicalOperator]
     limit: int
     can_modify_num_rows: bool = field(init=False, default=True)
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -138,7 +137,6 @@ class Download(AbstractOneToOne):
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     filesystem: Optional["pyarrow.fs.FileSystem"] = None
     can_modify_num_rows: bool = field(init=False, default=False)
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
