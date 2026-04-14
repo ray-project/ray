@@ -36,7 +36,6 @@ from ray.data.collate_fn import (
     is_tensor_batch_type,
 )
 from ray.data.context import DataContext
-from ray.data.util.jax_util import jax_sync_generator
 from ray.util.annotations import Deprecated, PublicAPI, RayDeprecationWarning
 
 if TYPE_CHECKING:
@@ -695,6 +694,8 @@ class DataIterator(abc.ABC):
         """
 
         import jax
+
+        from ray.data.util.jax_util import jax_sync_generator
 
         num_local_devices = jax.local_device_count()
 
