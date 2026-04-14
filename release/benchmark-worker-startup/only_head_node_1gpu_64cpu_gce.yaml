@@ -11,6 +11,9 @@ advanced_instance_config:
 
 head_node:
     instance_type: n2-standard-64
+    # GPU: 64 is an intentional override (instance has no physical GPU);
+    # the benchmark script uses --num_gpus_in_cluster 64 to test
+    # resource scheduling with 64 logical GPU slots.
     resources:
         CPU: 64
         GPU: 64
