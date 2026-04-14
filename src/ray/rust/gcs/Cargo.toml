@@ -1,0 +1,52 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/gcs-proto",
+    "crates/gcs-store",
+    "crates/gcs-table-storage",
+    "crates/gcs-kv",
+    "crates/gcs-pubsub",
+    "crates/gcs-managers",
+    "crates/gcs-server",
+    "crates/gcs-test-utils",
+]
+
+[workspace.dependencies]
+# gRPC / Protobuf
+tonic = "0.12"
+tonic-build = "0.12"
+tonic-health = "0.12"
+prost = "0.13"
+prost-types = "0.13"
+
+# Async runtime
+tokio = { version = "1", features = ["full"] }
+
+# Redis
+redis = { version = "0.27", features = ["tokio-comp", "connection-manager"] }
+
+# Concurrent data structures
+dashmap = "6"
+parking_lot = "0.12"
+
+# Logging / Metrics
+tracing = "0.1"
+tracing-subscriber = "0.3"
+
+# Serialization
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Error handling
+anyhow = "1"
+thiserror = "2"
+
+# Utilities
+bytes = "1"
+async-trait = "0.1"
+
+# Streaming
+tokio-stream = "0.1"
+
+# Testing
+tokio-test = "0.4"

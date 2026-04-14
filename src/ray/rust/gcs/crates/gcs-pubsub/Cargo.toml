@@ -1,0 +1,16 @@
+[package]
+name = "gcs-pubsub"
+version = "0.1.0"
+edition = "2021"
+description = "GCS publish-subscribe messaging"
+
+[dependencies]
+gcs-proto = { path = "../gcs-proto" }
+async-trait = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+dashmap = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }

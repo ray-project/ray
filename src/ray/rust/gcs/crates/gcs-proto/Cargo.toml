@@ -1,0 +1,16 @@
+[package]
+name = "gcs-proto"
+version = "0.1.0"
+edition = "2021"
+description = "Generated protobuf/gRPC types for Ray GCS"
+
+[dependencies]
+prost = { workspace = true }
+prost-types = { workspace = true }
+tonic = { workspace = true }
+
+[build-dependencies]
+tonic-build = { workspace = true }
+
+[lib]
+doctest = false

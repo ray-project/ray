@@ -1,0 +1,16 @@
+[package]
+name = "gcs-store"
+version = "0.1.0"
+edition = "2021"
+description = "Storage layer for Ray GCS (StoreClient trait + implementations)"
+
+[dependencies]
+async-trait = { workspace = true }
+dashmap = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }

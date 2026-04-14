@@ -256,6 +256,122 @@ TEST_F(GcsWorkerManagerTest, TestUpdateWorkerDebuggerPort) {
   }
 }
 
+TEST_F(GcsWorkerManagerTest, TestHandleReportWorkerFailure) {
+  auto worker_manager = GetWorkerManager();
+  auto worker = GenWorkerTableData(123);
+  auto worker_id =
+      WorkerID::FromBinary(worker.worker_address().worker_id());
+
+  // First, add the worker.
+  {
+    rpc::AddWorkerInfoRequest request;
+    request.mutable_worker_data()->CopyFrom(worker);
+    rpc::AddWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleAddWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+  }
+
+  // Track dead listener invocations.
+  std::atomic<int> dead_listener_count{0};
+  worker_manager->AddWorkerDeadListener(
+      [&dead_listener_count](std::shared_ptr<rpc::WorkerTableData>) {
+        dead_listener_count++;
+      });
+
+  // Report worker failure.
+  {
+    rpc::ReportWorkerFailureRequest request;
+    auto *failure = request.mutable_worker_failure();
+    failure->mutable_worker_address()->set_worker_id(worker_id.Binary());
+    failure->mutable_worker_address()->set_node_id(NodeID::FromRandom().Binary());
+    failure->mutable_worker_address()->set_ip_address("127.0.0.1");
+    failure->set_exit_type(rpc::WorkerExitType::SYSTEM_ERROR);
+    failure->set_exit_detail("test failure");
+
+    rpc::ReportWorkerFailureReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleReportWorkerFailure(request, &reply, callback);
+    promise.get_future().get();
+  }
+
+  // Dead listener should have been called.
+  ASSERT_EQ(dead_listener_count.load(), 1);
+
+  // Worker should now be marked as not alive.
+  {
+    rpc::GetAllWorkerInfoRequest request;
+    rpc::GetAllWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleGetAllWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+
+    ASSERT_EQ(reply.worker_table_data().size(), 1);
+    ASSERT_FALSE(reply.worker_table_data(0).is_alive());
+  }
+}
+
+TEST_F(GcsWorkerManagerTest, TestHandleGetWorkerInfo) {
+  auto worker_manager = GetWorkerManager();
+  auto worker = GenWorkerTableData(42);
+  auto worker_id =
+      WorkerID::FromBinary(worker.worker_address().worker_id());
+
+  // Add the worker.
+  {
+    rpc::AddWorkerInfoRequest request;
+    request.mutable_worker_data()->CopyFrom(worker);
+    rpc::AddWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleAddWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+  }
+
+  // Get existing worker.
+  {
+    rpc::GetWorkerInfoRequest request;
+    request.set_worker_id(worker_id.Binary());
+    rpc::GetWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleGetWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+
+    ASSERT_TRUE(reply.has_worker_table_data());
+    ASSERT_EQ(reply.worker_table_data().pid(), 42);
+  }
+
+  // Get non-existing worker.
+  {
+    rpc::GetWorkerInfoRequest request;
+    request.set_worker_id(WorkerID::FromRandom().Binary());
+    rpc::GetWorkerInfoReply reply;
+    std::promise<void> promise;
+    auto callback = [&promise](Status status,
+                               std::function<void()> success,
+                               std::function<void()> failure) { promise.set_value(); };
+    worker_manager->HandleGetWorkerInfo(request, &reply, callback);
+    promise.get_future().get();
+
+    // Reply should still be OK, but with no worker_table_data.
+    ASSERT_FALSE(reply.has_worker_table_data());
+  }
+}
+
 TEST_F(GcsWorkerManagerTest, TestUpdateWorkerNumPausedThreads) {
   auto worker_manager = GetWorkerManager();
   auto worker = GenWorkerTableData(0);

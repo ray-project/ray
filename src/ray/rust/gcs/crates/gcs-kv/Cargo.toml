@@ -1,0 +1,16 @@
+[package]
+name = "gcs-kv"
+version = "0.1.0"
+edition = "2021"
+description = "Internal KV store for Ray GCS"
+
+[dependencies]
+gcs-store = { path = "../gcs-store" }
+gcs-proto = { path = "../gcs-proto" }
+async-trait = { workspace = true }
+tonic = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }

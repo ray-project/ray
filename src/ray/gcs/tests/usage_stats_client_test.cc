@@ -60,3 +60,51 @@ TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
                  },
                  io_context_->GetIoService()});
 }
+
+TEST_F(UsageStatsClientTest, TestRecordExtraUsageCounter) {
+  gcs::UsageStatsClient usage_stats_client(*fake_kv_, io_context_->GetIoService());
+
+  // RecordExtraUsageCounter stores the counter as a string value.
+  usage_stats_client.RecordExtraUsageCounter(usage::TagKey::_TEST1, 42);
+  fake_kv_->Get("usage_stats",
+                "extra_usage_tag__test1",
+                {[](std::optional<std::string> value) {
+                   ASSERT_TRUE(value.has_value());
+                   ASSERT_EQ(value.value(), "42");
+                 },
+                 io_context_->GetIoService()});
+
+  // Update the counter to a new value (overwrites).
+  usage_stats_client.RecordExtraUsageCounter(usage::TagKey::_TEST1, 100);
+  fake_kv_->Get("usage_stats",
+                "extra_usage_tag__test1",
+                {[](std::optional<std::string> value) {
+                   ASSERT_TRUE(value.has_value());
+                   ASSERT_EQ(value.value(), "100");
+                 },
+                 io_context_->GetIoService()});
+}
+
+TEST_F(UsageStatsClientTest, TestRecordExtraUsageCounterAndTag) {
+  gcs::UsageStatsClient usage_stats_client(*fake_kv_, io_context_->GetIoService());
+
+  // Record a tag and a counter for different keys.
+  usage_stats_client.RecordExtraUsageTag(usage::TagKey::_TEST1, "tag_value");
+  usage_stats_client.RecordExtraUsageCounter(usage::TagKey::_TEST2, 7);
+
+  fake_kv_->Get("usage_stats",
+                "extra_usage_tag__test1",
+                {[](std::optional<std::string> value) {
+                   ASSERT_TRUE(value.has_value());
+                   ASSERT_EQ(value.value(), "tag_value");
+                 },
+                 io_context_->GetIoService()});
+
+  fake_kv_->Get("usage_stats",
+                "extra_usage_tag__test2",
+                {[](std::optional<std::string> value) {
+                   ASSERT_TRUE(value.has_value());
+                   ASSERT_EQ(value.value(), "7");
+                 },
+                 io_context_->GetIoService()});
+}

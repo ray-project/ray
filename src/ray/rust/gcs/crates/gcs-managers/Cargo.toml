@@ -1,0 +1,23 @@
+[package]
+name = "gcs-managers"
+version = "0.1.0"
+edition = "2021"
+description = "GCS domain managers (node, job, actor, placement group, etc.)"
+
+[dependencies]
+gcs-store = { path = "../gcs-store" }
+gcs-proto = { path = "../gcs-proto" }
+gcs-table-storage = { path = "../gcs-table-storage" }
+gcs-kv = { path = "../gcs-kv" }
+gcs-pubsub = { path = "../gcs-pubsub" }
+async-trait = { workspace = true }
+tonic = { workspace = true }
+tonic-health = { workspace = true }
+tokio = { workspace = true }
+tracing = { workspace = true }
+dashmap = { workspace = true }
+prost = { workspace = true }
+parking_lot = { workspace = true }
+
+[dev-dependencies]
+tokio-test = { workspace = true }
