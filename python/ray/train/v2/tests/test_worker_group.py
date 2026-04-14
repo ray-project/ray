@@ -463,7 +463,7 @@ def test_local_rank_assignment():
                 ),
                 resources={"CPU": 1},
             )
-            for pid, node_id, gpu_id in zip(pids, node_ids, gpu_ids)
+            for pid, node_id, gpu_id in zip(pids, node_ids, gpu_ids, strict=False)
         ]
 
     def setup_and_check_worker_group(pids, node_ids, gpu_ids, expected_local_ranks):

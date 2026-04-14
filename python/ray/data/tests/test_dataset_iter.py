@@ -18,7 +18,7 @@ def test_iter_rows(ray_start_regular_shared):
     # Test simple rows.
     n = 10
     ds = ray.data.range(n)
-    for row, k in zip(ds.iter_rows(), range(n)):
+    for row, k in zip(ds.iter_rows(), range(n), strict=False):
         assert row == {"id": k}
 
     # Test tabular rows.
@@ -40,14 +40,14 @@ def test_iter_rows(ray_start_regular_shared):
         return pylist
 
     # Default ArrowRows.
-    for row, t_row in zip(ds.iter_rows(), to_pylist(t)):
+    for row, t_row in zip(ds.iter_rows(), to_pylist(t), strict=False):
         assert isinstance(row, dict)
         assert row == t_row
 
     # PandasRows after conversion.
     pandas_ds = ds.map_batches(lambda x: x, batch_format="pandas")
     df = t.to_pandas()
-    for row, (index, df_row) in zip(pandas_ds.iter_rows(), df.iterrows()):
+    for row, (index, df_row) in zip(pandas_ds.iter_rows(), df.iterrows(), strict=False):
         assert isinstance(row, dict)
         assert row == df_row.to_dict()
 
@@ -61,17 +61,23 @@ def test_iter_batches_basic(ray_start_regular_shared):
     ds = ray.data.from_blocks(dfs)
 
     # Default.
-    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pandas"), dfs):
+    for batch, df in zip(
+        ds.iter_batches(batch_size=None, batch_format="pandas"), dfs, strict=False
+    ):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
     # pyarrow.Table format.
-    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="pyarrow"), dfs):
+    for batch, df in zip(
+        ds.iter_batches(batch_size=None, batch_format="pyarrow"), dfs, strict=False
+    ):
         assert isinstance(batch, pa.Table)
         assert batch.equals(pa.Table.from_pandas(df))
 
     # NumPy format.
-    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="numpy"), dfs):
+    for batch, df in zip(
+        ds.iter_batches(batch_size=None, batch_format="numpy"), dfs, strict=False
+    ):
         assert isinstance(batch, dict)
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
@@ -79,14 +85,18 @@ def test_iter_batches_basic(ray_start_regular_shared):
 
     # Test NumPy format on Arrow blocks.
     ds2 = ds.map_batches(lambda b: b, batch_size=None, batch_format="pyarrow")
-    for batch, df in zip(ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs):
+    for batch, df in zip(
+        ds2.iter_batches(batch_size=None, batch_format="numpy"), dfs, strict=False
+    ):
         assert isinstance(batch, dict)
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
         pd.testing.assert_frame_equal(pd.DataFrame(batch), df)
 
     # Default format -> numpy.
-    for batch, df in zip(ds.iter_batches(batch_size=None, batch_format="default"), dfs):
+    for batch, df in zip(
+        ds.iter_batches(batch_size=None, batch_format="default"), dfs, strict=False
+    ):
         assert isinstance(batch, dict)
         assert list(batch.keys()) == ["one", "two"]
         assert all(isinstance(col, np.ndarray) for col in batch.values())
@@ -153,7 +163,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
         ds.iter_batches(prefetch_batches=1, batch_size=None, batch_format="pandas")
     )
     assert len(batches) == len(dfs)
-    for batch, df in zip(batches, dfs):
+    for batch, df in zip(batches, dfs, strict=False):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
@@ -178,7 +188,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
         )
     )
     assert len(batches) == len(dfs)
-    for batch, df in zip(batches, dfs):
+    for batch, df in zip(batches, dfs, strict=False):
         assert isinstance(batch, pd.DataFrame)
         assert batch.equals(df)
 
@@ -191,7 +201,7 @@ def test_iter_batches_basic(ray_start_regular_shared):
             ds.iter_batches(prefetch_batches=1, batch_size=None, batch_format="pandas")
         )
         assert len(batches) == len(dfs)
-        for batch, df in zip(batches, dfs):
+        for batch, df in zip(batches, dfs, strict=False):
             assert isinstance(batch, pd.DataFrame)
             assert batch.equals(df)
     finally:

@@ -112,7 +112,9 @@ def mock_ray_dataset(mock_hf_dataset):
     return ray.data.from_items(
         [
             {"text": text, "label": label}
-            for text, label in zip(mock_hf_dataset["text"], mock_hf_dataset["label"])
+            for text, label in zip(
+                mock_hf_dataset["text"], mock_hf_dataset["label"], strict=False
+            )
         ]
     )
 
@@ -133,7 +135,9 @@ def mock_successful_http_responses(mock_parquet_urls):
 def mock_redirected_http_responses(mock_parquet_urls, mock_resolved_urls):
     """Fixture providing mock HTTP responses that simulate redirects."""
     mock_responses = []
-    for original_url, resolved_url in zip(mock_parquet_urls, mock_resolved_urls):
+    for original_url, resolved_url in zip(
+        mock_parquet_urls, mock_resolved_urls, strict=False
+    ):
         mock_response = MagicMock()
         mock_response.status_code = 200
         mock_response.url = resolved_url

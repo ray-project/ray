@@ -116,7 +116,7 @@ def test_allreduce_basic(ray_start_cluster):
         collectives = collective.allreduce.bind(computes, transport=cpu_group)
         recvs = [
             worker.recv.bind(collective)
-            for worker, collective in zip(workers, collectives)
+            for worker, collective in zip(workers, collectives, strict=False)
         ]
         dag = MultiOutputNode(recvs)
 
@@ -208,7 +208,7 @@ def test_allreduce_wrong_shape(ray_start_cluster):
         collectives = collective.allreduce.bind(computes, transport=cpu_group)
         recvs = [
             worker.recv.bind(collective)
-            for worker, collective in zip(workers, collectives)
+            for worker, collective in zip(workers, collectives, strict=False)
         ]
         dag = MultiOutputNode(recvs)
 

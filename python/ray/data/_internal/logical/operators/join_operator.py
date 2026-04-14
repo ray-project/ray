@@ -122,7 +122,7 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             return (
                 [
                     _type
-                    for name, _type in zip(schema.names, schema.types)
+                    for name, _type in zip(schema.names, schema.types, strict=False)
                     if name in keys
                 ]
                 if schema

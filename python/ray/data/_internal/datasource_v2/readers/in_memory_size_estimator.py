@@ -51,7 +51,7 @@ class SamplingInMemorySizeEstimator(InMemorySizeEstimator):
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
         assert np.all(manifest.file_sizes >= 0)
 
-        for path, file_size in zip(manifest.paths, manifest.file_sizes):
+        for path, file_size in zip(manifest.paths, manifest.file_sizes, strict=False):
             if self._encoding_ratio is None:
                 # Estimating the encoding ratio can be expensive since it requires
                 # reading the file. So, we only estimate the encoding ratio if we don't

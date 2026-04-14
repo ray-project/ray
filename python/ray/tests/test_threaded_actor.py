@@ -99,7 +99,7 @@ def test_threaded_actor_api_thread_safe(ray_start_cluster):
     # Test plasma return obj
     real = ray.get([a.plasma_return_test.remote(seqno) for seqno in range(max_seq)])
     expected = [np.zeros(8 * 1024 * i, dtype=np.uint8) for i in range(max_seq)]
-    for r, e in zip(real, expected):
+    for r, e in zip(real, expected, strict=False):
         assert np.array_equal(r, e)
 
     ray.kill(a)

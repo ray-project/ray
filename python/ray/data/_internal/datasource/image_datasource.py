@@ -112,7 +112,9 @@ class ImageDatasource(FileBasedDatasource):
         start_time = time.perf_counter()
         # Filter out empty file to avoid noise.
         non_empty_path_and_size = list(
-            filter(lambda p: p[1] > 0, zip(self._paths(), self._file_sizes()))
+            filter(
+                lambda p: p[1] > 0, zip(self._paths(), self._file_sizes(), strict=False)
+            )
         )
         num_files = len(non_empty_path_and_size)
         if num_files == 0:

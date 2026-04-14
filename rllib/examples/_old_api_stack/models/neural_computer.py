@@ -143,7 +143,7 @@ class DNCMemory(TorchModelV2, nn.Module):
         read_vecs: TensorType = state[2]
         memory: List[TensorType] = state[3:]
         memory_dict: OrderedDict[str, TensorType] = OrderedDict(
-            zip(self.MEMORY_KEYS, memory)
+            zip(self.MEMORY_KEYS, memory, strict=False)
         )
 
         return ctrl_hidden, memory_dict, read_vecs

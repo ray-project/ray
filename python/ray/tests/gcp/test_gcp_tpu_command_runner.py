@@ -108,7 +108,7 @@ def test_tpu_ssh_command_runner():
 
     # Much easier to debug this loop than the function call.
     for i in range(num_workers):
-        for x, y in zip(calls[i], expected):
+        for x, y in zip(calls[i], expected, strict=False):
             assert x == y
 
 
@@ -185,7 +185,7 @@ def test_tpu_docker_command_runner():
 
     # Much easier to debug this loop than the function call.
     for i in range(num_workers):
-        for x, y in zip(calls[i], expected):
+        for x, y in zip(calls[i], expected, strict=False):
             assert x == y
 
 

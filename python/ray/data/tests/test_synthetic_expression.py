@@ -274,7 +274,7 @@ def test_random_with_column_then_random_shuffle_deterministic(ray_start_regular_
     results2 = sorted(ds2.take_all(), key=lambda x: x["id"])
 
     # Same random values for same id
-    for r1, r2 in zip(results1, results2):
+    for r1, r2 in zip(results1, results2, strict=False):
         assert r1["rand"] == r2["rand"]
 
 

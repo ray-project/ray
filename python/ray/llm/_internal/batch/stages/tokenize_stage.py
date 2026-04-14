@@ -66,6 +66,7 @@ class TokenizeUDF(StatefulStageUDF):
         for row, prompt_token_ids in zip(
             batch,
             self.tokenizer([row["prompt"] for row in batch])["input_ids"],
+            strict=False,
         ):
             yield {
                 self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],
@@ -141,6 +142,7 @@ class DetokenizeUDF(StatefulStageUDF):
                 [row["generated_tokens"] for row in batch],
                 skip_special_tokens=True,
             ),
+            strict=False,
         ):
             yield {
                 self.IDX_IN_BATCH_COLUMN: row[self.IDX_IN_BATCH_COLUMN],

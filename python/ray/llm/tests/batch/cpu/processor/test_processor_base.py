@@ -116,7 +116,7 @@ def test_processor_with_stages(has_extra: bool):
     ]
 
     # Check the stages.
-    for stage_name, stage in zip(stage_names, stages):
+    for stage_name, stage in zip(stage_names, stages, strict=False):
         assert processor.get_stage_by_name(stage_name) == stage
 
     # Run the processor twice with different datasets to test

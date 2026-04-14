@@ -1245,7 +1245,9 @@ class ValueCounter(AggregateFnV2):
         # Build a value → index map once (avoid repeated lookups)
         value_to_index = {v: i for i, v in enumerate(values)}
 
-        for v_new, c_new in zip(new_accumulator["values"], new_accumulator["counts"]):
+        for v_new, c_new in zip(
+            new_accumulator["values"], new_accumulator["counts"], strict=False
+        ):
             if v_new in value_to_index:
                 idx = value_to_index[v_new]
                 counts[idx] += c_new

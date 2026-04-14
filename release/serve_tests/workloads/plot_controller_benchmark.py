@@ -161,13 +161,13 @@ def plot_facet_grid(df: pd.DataFrame, output_path: str) -> None:
     )
 
     # Add error bars (std as CI) to each facet
-    for ax, base_metric in zip(g.axes.flat, base_metrics):
+    for ax, base_metric in zip(g.axes.flat, base_metrics, strict=False):
         subset = plot_df[plot_df[facet_var] == base_metric].sort_values(
             ["file", x_var]  # seaborn bar order: hue then x
         )
         # Match bars to data: seaborn containers = one per hue, bars per x
         bars = [bar for c in ax.containers for bar in c]
-        for (_, row), bar in zip(subset.iterrows(), bars):
+        for (_, row), bar in zip(subset.iterrows(), bars, strict=False):
             ax.errorbar(
                 bar.get_x() + bar.get_width() / 2,
                 row["mean"],

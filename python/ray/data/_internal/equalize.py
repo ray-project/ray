@@ -38,7 +38,9 @@ def _equalize(
     )
 
     # validate invariants
-    for shaved_split, split_needed_row in zip(shaved_splits, per_split_needed_rows):
+    for shaved_split, split_needed_row in zip(
+        shaved_splits, per_split_needed_rows, strict=False
+    ):
         num_shaved_rows = sum([meta.num_rows for _, meta in shaved_split])
         assert num_shaved_rows <= target_split_size
         assert num_shaved_rows + split_needed_row == target_split_size
@@ -86,7 +88,7 @@ def _shave_one_split(
     shaved = []
     leftovers = []
     shaved_rows = 0
-    for block_with_meta, block_rows in zip(split, num_rows_per_block):
+    for block_with_meta, block_rows in zip(split, num_rows_per_block, strict=False):
         if block_rows + shaved_rows <= target_size:
             shaved.append(block_with_meta)
             shaved_rows += block_rows
@@ -117,7 +119,9 @@ def _shave_all_splits(
     per_split_needed_rows = []
     leftovers = []
 
-    for split, num_rows_per_block in zip(input_splits, per_split_num_rows):
+    for split, num_rows_per_block in zip(
+        input_splits, per_split_num_rows, strict=False
+    ):
         shaved, num_rows_needed, _leftovers = _shave_one_split(
             split, num_rows_per_block, target_size
         )
@@ -145,6 +149,7 @@ def _split_leftovers(
         split_indices,
         leftovers.owns_blocks,
     )
-    return [list(zip(block_refs, meta)) for block_refs, meta in zip(*split_result)][
-        :num_splits
-    ]
+    return [
+        list(zip(block_refs, meta, strict=False))
+        for block_refs, meta in zip(*split_result, strict=False)
+    ][:num_splits]

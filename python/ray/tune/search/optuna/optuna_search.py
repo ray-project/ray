@@ -443,7 +443,7 @@ class OptunaSearch(Searcher):
             )
             if self._evaluated_rewards:
                 for point, reward in zip(
-                    self._points_to_evaluate, self._evaluated_rewards
+                    self._points_to_evaluate, self._evaluated_rewards, strict=False
                 ):
                     self.add_evaluated_point(point, reward)
             else:

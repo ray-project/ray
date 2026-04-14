@@ -456,7 +456,7 @@ class ActorPool:
         """
         busy_actors = []
         if self._future_to_actor.values():
-            _, busy_actors = zip(*self._future_to_actor.values())
+            _, busy_actors = zip(*self._future_to_actor.values(), strict=False)
         if actor in self._idle_actors or actor in busy_actors:
             raise ValueError("Actor already belongs to current ActorPool")
         else:

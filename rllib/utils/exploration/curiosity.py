@@ -326,7 +326,9 @@ class Curiosity(Exploration):
         if self.framework != "tf":
             grads = tape.gradient(loss, self._optimizer_var_list)
             grads_and_vars = [
-                (g, v) for g, v in zip(grads, self._optimizer_var_list) if g is not None
+                (g, v)
+                for g, v in zip(grads, self._optimizer_var_list, strict=False)
+                if g is not None
             ]
             update_op = self._optimizer.apply_gradients(grads_and_vars)
         else:

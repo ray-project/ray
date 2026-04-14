@@ -188,7 +188,7 @@ def test_map_operator_udf_name(ray_start_regular_shared_2_cpus):
         "NormalClass.method",
     ]
 
-    for udf, expected_name in zip(udf_list, expected_names):
+    for udf, expected_name in zip(udf_list, expected_names, strict=False):
         op = MapRows(
             get_parquet_read_logical_op(),
             udf,

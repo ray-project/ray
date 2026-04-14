@@ -32,7 +32,7 @@ def generate_data(
                 data_dir,
             )
         )
-    filenames, data_sizes = zip(*ray.get(results))
+    filenames, data_sizes = zip(*ray.get(results), strict=False)
     return filenames, sum(data_sizes)
 
 

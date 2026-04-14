@@ -826,7 +826,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # check that no result was dropped or modified
         complete_results = [
-            check_no_missing(log, result) for log, result in zip(logs1, results1)
+            check_no_missing(log, result)
+            for log, result in zip(logs1, results1, strict=False)
         ]
         self.assertTrue(all(complete_results))
 
@@ -848,7 +849,8 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
         # check that no result was dropped or modified
         complete_results1 = [
-            check_no_missing(log, result) for log, result in zip(logs1, results1)
+            check_no_missing(log, result)
+            for log, result in zip(logs1, results1, strict=False)
         ]
         self.assertTrue(all(complete_results1))
 

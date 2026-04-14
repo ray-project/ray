@@ -251,7 +251,9 @@ def test_starmap(pool_4_processes):
 
     args = [tuple(range(i)) for i in range(100)]
     assert pool_4_processes.starmap(f, args) == args
-    assert pool_4_processes.starmap(lambda x, y: x + y, zip([1, 2], [3, 4])) == [4, 6]
+    assert pool_4_processes.starmap(
+        lambda x, y: x + y, zip([1, 2], [3, 4], strict=False)
+    ) == [4, 6]
 
 
 def test_callbacks(pool_4_processes, pool_4_processes_python_multiprocessing_lib):

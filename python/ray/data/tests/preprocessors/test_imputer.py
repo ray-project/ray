@@ -380,7 +380,9 @@ class TestSimpleImputerSerialization:
                     assert stat_dict[key] == deserialized.stats_[stat_name][key]
 
                 # Key types should be preserved
-                for orig_key, rest_key in zip(original_keys, restored_keys):
+                for orig_key, rest_key in zip(
+                    original_keys, restored_keys, strict=False
+                ):
                     if orig_key == rest_key:  # Same key
                         assert type(orig_key) is type(rest_key)
 

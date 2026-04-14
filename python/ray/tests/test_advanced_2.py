@@ -324,7 +324,7 @@ def test_multiple_raylets(ray_start_cluster):
     assert len(store_names) == 3
 
     def validate_names_and_results(names, results):
-        for name, result in zip(names, ray.get(results)):
+        for name, result in zip(names, ray.get(results), strict=False):
             if name == "run_on_0":
                 assert result in [store_names[0]]
             elif name == "run_on_1":

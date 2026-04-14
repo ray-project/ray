@@ -313,7 +313,7 @@ def test_local_shuffle(ray_start_regular_shared):
         shuffle_buffer_size=100
     )
     result = "".join(it4.gather_sync().for_each(str))
-    freq_counter = Counter(zip(result[:-1], result[1:]))
+    freq_counter = Counter(zip(result[:-1], result[1:], strict=False))
     assert len(freq_counter) == 4
     for key, value in freq_counter.items():
         assert value / len(freq_counter) > 0.2

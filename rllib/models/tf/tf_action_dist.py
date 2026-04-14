@@ -155,7 +155,9 @@ class MultiCategorical(TFActionDistribution):
             elif isinstance(self.action_space, gym.spaces.MultiDiscrete):
                 actions.set_shape((None, len(self.cats)))
             actions = tf.unstack(tf.cast(actions, tf.int32), axis=1)
-        logps = tf.stack([cat.logp(act) for cat, act in zip(self.cats, actions)])
+        logps = tf.stack(
+            [cat.logp(act) for cat, act in zip(self.cats, actions, strict=False)]
+        )
         return tf.reduce_sum(logps, axis=0)
 
     @override(ActionDistribution)
@@ -169,7 +171,11 @@ class MultiCategorical(TFActionDistribution):
     @override(ActionDistribution)
     def multi_kl(self, other: ActionDistribution) -> TensorType:
         return tf.stack(
-            [cat.kl(oth_cat) for cat, oth_cat in zip(self.cats, other.cats)], axis=1
+            [
+                cat.kl(oth_cat)
+                for cat, oth_cat in zip(self.cats, other.cats, strict=False)
+            ],
+            axis=1,
         )
 
     @override(ActionDistribution)
@@ -641,7 +647,9 @@ class MultiActionDistribution(TFActionDistribution):
         kl_list = [
             d.kl(o)
             for d, o in zip(
-                self.flat_child_distributions, other.flat_child_distributions
+                self.flat_child_distributions,
+                other.flat_child_distributions,
+                strict=False,
             )
         ]
         return functools.reduce(lambda a, b: a + b, kl_list)

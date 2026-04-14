@@ -346,11 +346,11 @@ class TableBlockAccessor(BlockAccessor):
             # Build the row.
             row = {}
             if keys:
-                for k, gk in zip(keys, group_keys):
+                for k, gk in zip(keys, group_keys, strict=False):
                     row[k] = gk
 
             count = collections.defaultdict(int)
-            for agg, accumulator in zip(aggs, accumulators):
+            for agg, accumulator in zip(aggs, accumulators, strict=False):
                 name = agg.name
                 # Check for conflicts with existing aggregation name.
                 if count[name] > 0:
@@ -468,11 +468,13 @@ class TableBlockAccessor(BlockAccessor):
                 # Build the row.
                 row = {}
                 if keys:
-                    for col_name, next_key in zip(next_key_columns, next_keys):
+                    for col_name, next_key in zip(
+                        next_key_columns, next_keys, strict=False
+                    ):
                         row[col_name] = next_key
 
                 for agg, agg_name, accumulator in zip(
-                    aggs, resolved_agg_names, accumulators
+                    aggs, resolved_agg_names, accumulators, strict=False
                 ):
                     if finalize:
                         row[agg_name] = agg.finalize(accumulator)

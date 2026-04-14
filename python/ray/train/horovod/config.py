@@ -102,7 +102,9 @@ class _HorovodBackend(Backend):
         hostnames = [w.metadata.hostname for w in worker_group.workers]
         # Register each hostname to the coordinator. assumes the hostname
         # ordering is the same.
-        for rank, (hostname, node_id) in enumerate(zip(hostnames, node_ids)):
+        for rank, (hostname, node_id) in enumerate(
+            zip(hostnames, node_ids, strict=False)
+        ):
             self.coordinator.register(hostname, node_id, rank)
         all_info = self.coordinator.finalize_registration()
 

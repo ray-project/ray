@@ -153,7 +153,7 @@ def test_allgather(ray_start_regular_shared, collective_actors):
         ]
     )
     for tensor_list in all_tensor_lists:
-        for tensor, expected_tensor in zip(tensors, tensor_list):
+        for tensor, expected_tensor in zip(tensors, tensor_list, strict=False):
             assert torch.allclose(tensor, expected_tensor)
 
 
@@ -210,7 +210,7 @@ def test_reducescatter(ray_start_regular_shared, collective_actors):
             for actor in actors
         ]
     )
-    for tensor, expected in zip(tensors, expected_tensors):
+    for tensor, expected in zip(tensors, expected_tensors, strict=False):
         assert torch.allclose(tensor, expected, atol=1e-2)
 
 

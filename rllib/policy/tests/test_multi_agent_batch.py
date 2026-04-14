@@ -83,6 +83,7 @@ class TestMultiAgentBatch(unittest.TestCase):
                         1,
                     ),
                 ],
+                strict=False,
             )
         ]
 
@@ -159,6 +160,7 @@ class TestMultiAgentBatch(unittest.TestCase):
                         1,
                     ),
                 ],
+                strict=False,
             )
         ]
 
@@ -230,6 +232,7 @@ class TestMultiAgentBatch(unittest.TestCase):
                         1,
                     ),
                 ],
+                strict=False,
             )
         ]
 

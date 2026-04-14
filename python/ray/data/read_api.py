@@ -3224,7 +3224,7 @@ def from_pandas_refs(
     df_to_block = cached_remote_fn(pandas_df_to_arrow_block, num_returns=2)
 
     res = [df_to_block.remote(df) for df in dfs]
-    blocks, metadata_schema = map(list, zip(*res))
+    blocks, metadata_schema = map(list, zip(*res, strict=False))
     metadata_schema = ray.get(metadata_schema)
     execution_plan = ExecutionPlan(
         DatasetStats(metadata={"FromPandas": metadata_schema}, parent=None),
@@ -3349,7 +3349,7 @@ def from_numpy_refs(
     ndarray_to_block_remote = cached_remote_fn(ndarray_to_block, num_returns=2)
 
     res = [ndarray_to_block_remote.remote(ndarray, ctx) for ndarray in ndarrays]
-    blocks, metadata_schema = map(list, zip(*res))
+    blocks, metadata_schema = map(list, zip(*res, strict=False))
     metadata_schema = ray.get(metadata_schema)
 
     execution_plan = ExecutionPlan(

@@ -184,7 +184,9 @@ def test_simulate_pp_2workers_2batches_1f1b(
     w2_schedule = compiled_dag.actor_to_execution_schedule[w2]
 
     for schedule, expected_schedule in zip(
-        [w1_schedule, w2_schedule], [w1_expected_schedule, w2_expected_schedule]
+        [w1_schedule, w2_schedule],
+        [w1_expected_schedule, w2_expected_schedule],
+        strict=False,
     ):
         assert len(schedule) == len(expected_schedule)
         for i, operation in enumerate(schedule):
@@ -280,6 +282,7 @@ def test_three_actors_with_nccl_1(ray_start_regular):
     for schedule, expected_schedule in zip(
         [a_schedule, b_schedule, c_schedule],
         [a_expected_schedule, b_expected_schedule, c_expected_schedule],
+        strict=False,
     ):
         assert len(schedule) == len(expected_schedule)
         for i, operation in enumerate(schedule):
@@ -366,6 +369,7 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
     for schedule, expected_schedule in zip(
         [a_schedule, b_schedule, c_schedule],
         [a_expected_schedule, b_expected_schedule, c_expected_schedule],
+        strict=False,
     ):
         assert len(schedule) == len(expected_schedule)
         for i, operation in enumerate(schedule):

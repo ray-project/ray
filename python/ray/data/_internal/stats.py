@@ -569,7 +569,7 @@ class _StatsActor:
                 if isinstance(value, RuntimeMetricsHistogram):
                     value.export_to(prom_metric, tags)
 
-        for stats, operator_tag in zip(op_metrics, operator_tags):
+        for stats, operator_tag in zip(op_metrics, operator_tags, strict=False):
             tags = self._create_tags(dataset_tag, operator_tag)
 
             self.spilled_bytes.set(stats.get("obj_store_mem_spilled", 0), tags)

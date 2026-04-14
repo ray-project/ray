@@ -591,7 +591,7 @@ def test_incremental_rollout_version_isolation(serve_instance):
     signal.send.remote()
     refs = [h.remote() for _ in range(10)]
     results = [ref.result() for ref in refs]
-    versions, counter_vals, _ = zip(*results)
+    versions, counter_vals, _ = zip(*results, strict=False)
     assert versions.count("1") == 10
     assert counter_vals.count(1) == 10
     initial_pids = {r[2] for r in results}
@@ -623,7 +623,9 @@ def test_incremental_rollout_version_isolation(serve_instance):
 
     # New requests go to v2; verify v2 uses v2 actor
     refs = [h.remote() for _ in range(10)]
-    versions, counter_vals, _ = zip(*[ref.result(timeout_s=5) for ref in refs])
+    versions, counter_vals, _ = zip(
+        *[ref.result(timeout_s=5) for ref in refs], strict=False
+    )
     assert versions.count("2") == 10
     assert counter_vals.count(2) == 10
 

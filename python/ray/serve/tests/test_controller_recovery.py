@@ -151,7 +151,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
     # Send requests to get pids of initial 2 replicas
     signal.send.remote()
     refs = [h.remote() for _ in range(10)]
-    versions, pids = zip(*[ref.result() for ref in refs])
+    versions, pids = zip(*[ref.result() for ref in refs], strict=False)
     assert versions.count("1") == 10
     initial_pids = set(pids)
     assert len(initial_pids) == 2
@@ -182,7 +182,7 @@ def test_recover_rolling_update_from_replica_actor_names(serve_instance):
 
     # All new requests should be sent to the new running replicas
     refs = [h.remote() for _ in range(10)]
-    versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs])
+    versions, pids = zip(*[ref.result(timeout_s=5) for ref in refs], strict=False)
     assert versions.count("2") == 10
     pids2 = set(pids)
     assert len(pids2 & initial_pids) == 0

@@ -126,7 +126,7 @@ class GroupAgentsWrapper(MultiAgentEnv):
                     value,
                     self.groups,
                 )
-                for a, v in zip(self.groups[agent_id], value):
+                for a, v in zip(self.groups[agent_id], value, strict=False):
                     out[a] = v
             else:
                 out[agent_id] = value

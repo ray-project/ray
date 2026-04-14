@@ -857,7 +857,9 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
 
         projection_exprs = input_column_ref_exprs + projection_exprs[1:]
 
-    names, output_cols = zip(*[(e.name, eval_expr(e, block)) for e in projection_exprs])
+    names, output_cols = zip(
+        *[(e.name, eval_expr(e, block)) for e in projection_exprs], strict=False
+    )
 
     # This clumsy workaround is necessary to be able to fill in Pyarrow tables
     # that has to be "seeded" from existing table with N rows, and couldn't be
@@ -867,7 +869,7 @@ def eval_projection(projection_exprs: List[Expr], block: Block) -> Block:
     new_block = BlockAccessor.for_block(block).fill_column("__stub__", None)
     new_block = BlockAccessor.for_block(new_block).drop(input_column_names)
 
-    for name, output_col in zip(names, output_cols):
+    for name, output_col in zip(names, output_cols, strict=False):
         new_block = BlockAccessor.for_block(new_block).fill_column(name, output_col)
 
     return BlockAccessor.for_block(new_block).drop(["__stub__"])

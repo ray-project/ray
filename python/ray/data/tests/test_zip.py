@@ -51,7 +51,7 @@ def test_zip_different_num_blocks_combinations(
     ds = ds1.zip(ds2)
     assert ds.schema().names == ["id", "id_1"]
     assert ds.take() == named_values(
-        ["id", "id_1"], list(zip(range(n), range(1, n + 1)))
+        ["id", "id_1"], list(zip(range(n), range(1, n + 1), strict=False))
     )
 
 
@@ -149,7 +149,7 @@ def test_zip_preserve_order(ray_start_regular_shared):
     ds2 = ds2.map_batches(foo, batch_size=1)
     result = ds1.zip(ds2).take_all()
     assert result == named_values(
-        ["item", "item_1"], list(zip(range(num_items), range(num_items)))
+        ["item", "item_1"], list(zip(range(num_items), range(num_items), strict=False))
     ), result
 
 

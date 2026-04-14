@@ -125,6 +125,6 @@ class OpenSpielEnv(MultiAgentEnv):
         # Chance node(s): Sample a (non-player) action and apply.
         while self.state.is_chance_node():
             assert self.state.current_player() == -1
-            actions, probs = zip(*self.state.chance_outcomes())
+            actions, probs = zip(*self.state.chance_outcomes(), strict=False)
             action = np.random.choice(actions, p=probs)
             self.state.apply_action(action)

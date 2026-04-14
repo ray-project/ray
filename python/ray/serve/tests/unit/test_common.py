@@ -108,7 +108,7 @@ class TestDeploymentStatusInfo:
 
     @pytest.mark.parametrize(
         "status,status_trigger",
-        list(zip(list(DeploymentStatus), list(DeploymentStatusTrigger))),
+        list(zip(list(DeploymentStatus), list(DeploymentStatusTrigger), strict=False)),
     )
     def test_proto(self, status, status_trigger):
         deployment_status_info = DeploymentStatusInfo(

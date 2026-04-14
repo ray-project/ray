@@ -1328,7 +1328,7 @@ class ResourceKillerActor:
                 *[self._kill_resource(*to_kill) for to_kill in to_kills],
                 return_exceptions=True,
             )
-            for to_kill, result in zip(to_kills, results):
+            for to_kill, result in zip(to_kills, results, strict=False):
                 if isinstance(result, Exception):
                     logger.error(
                         f"Failed to kill resource {to_kill}, may retry later. Error: {result}"

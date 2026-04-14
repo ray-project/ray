@@ -106,7 +106,7 @@ def test_python_global_event_logger(tmp_path):
     line_severities = ["INFO", "ERROR", "WARNING", "FATAL"]
 
     with event_file.open() as f:
-        for line, severity in zip(f.readlines(), line_severities):
+        for line, severity in zip(f.readlines(), line_severities, strict=False):
             data = json.loads(line)
             assert data["severity"] == severity
             assert data["label"] == ""

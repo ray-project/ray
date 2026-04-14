@@ -3213,7 +3213,7 @@ class CompiledDAG:
             elif len(task.output_channels) > 1:
                 assert len(task.output_idxs) == len(task.output_channels)
                 for output_channel, downstream_idx in zip(
-                    task.output_channels, task.output_node_idxs
+                    task.output_channels, task.output_node_idxs, strict=False
                 ):
                     edge_label = None
                     if channel_details:

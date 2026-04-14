@@ -130,7 +130,7 @@ def remove_last_ts_from_episodes_and_restore_truncateds(
     """
 
     # Fix all episodes.
-    for episode, orig_truncated in zip(episodes, orig_truncateds):
+    for episode, orig_truncated in zip(episodes, orig_truncateds, strict=False):
         # Reduce timesteps by 1.
         episode.t -= 1
         # Remove all extra timestep data from the episode's buffers.

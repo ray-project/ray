@@ -171,7 +171,7 @@ def check_for_legacy_tensor_type(schema):
     """
     import pyarrow as pa
 
-    for name, type in zip(schema.names, schema.types):
+    for name, type in zip(schema.names, schema.types, strict=False):
         if isinstance(type, pa.UnknownExtensionType) and isinstance(
             type, pa.PyExtensionType
         ):
@@ -373,7 +373,7 @@ class ParquetDatasource(Datasource):
         )
 
         if listed_files:
-            paths, file_sizes = zip(*listed_files)
+            paths, file_sizes = zip(*listed_files, strict=False)
         else:
             paths, file_sizes = [], []
 
@@ -516,7 +516,7 @@ class ParquetDatasource(Datasource):
         # `_SerializedFragment()` implementation for more details.
         self._pq_fragments = [
             _ParquetFragment(fragment, file_size)
-            for fragment, file_size in zip(fragments, file_sizes)
+            for fragment, file_size in zip(fragments, file_sizes, strict=False)
         ]
         self._pq_paths = [f.path for f in fragments]
         self._block_udf = _block_udf
@@ -705,6 +705,7 @@ class ParquetDatasource(Datasource):
         for fragments, paths in zip(
             np.array_split(pq_fragments, parallelism),
             np.array_split(pq_paths, parallelism),
+            strict=False,
         ):
             if len(fragments) <= 0:
                 continue
@@ -893,7 +894,7 @@ class ParquetDatasource(Datasource):
             pruned_fragments = []
             pruned_paths = []
 
-            for fragment, path in zip(self._pq_fragments, self._pq_paths):
+            for fragment, path in zip(self._pq_fragments, self._pq_paths, strict=False):
                 # Evaluate partition predicate - skip if it doesn't match
                 if parser.evaluate_predicate_on_partition(
                     path, split_result.partition_predicate
@@ -1611,7 +1612,9 @@ def _estimate_files_encoding_ratio(
 
     estimated_encoding_ratios = [
         float(in_mem_size) / file_size
-        for in_mem_size, file_size in zip(estimated_in_mem_size_arr, file_size_arr)
+        for in_mem_size, file_size in zip(
+            estimated_in_mem_size_arr, file_size_arr, strict=False
+        )
         if file_size > 0 and in_mem_size is not None
     ]
 

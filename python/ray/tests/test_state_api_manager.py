@@ -594,7 +594,7 @@ async def test_api_manager_list_tasks_events(state_api_manager):
             "created_ms": (current + 3 * second) // 1e6,
         },
     ]
-    for actual, expected in zip(result["events"], expected_events):
+    for actual, expected in zip(result["events"], expected_events, strict=False):
         assert actual == expected
     assert result["start_time_ms"] == (current + 2 * second) // 1e6
     assert result["end_time_ms"] == (current + 3 * second) // 1e6

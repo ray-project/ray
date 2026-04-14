@@ -60,7 +60,9 @@ class PiecewiseSchedule(Schedule):
     @override(Schedule)
     def _value(self, t: TensorType) -> TensorType:
         # Find t in our list of endpoints.
-        for (l_t, l), (r_t, r) in zip(self.endpoints[:-1], self.endpoints[1:]):
+        for (l_t, l), (r_t, r) in zip(
+            self.endpoints[:-1], self.endpoints[1:], strict=False
+        ):
             # When found, return an interpolation (default: linear).
             if l_t <= t < r_t:
                 alpha = float(t - l_t) / (r_t - l_t)
@@ -81,7 +83,9 @@ class PiecewiseSchedule(Schedule):
 
         # Create all possible interpolation results.
         results_list = []
-        for (l_t, l), (r_t, r) in zip(self.endpoints[:-1], self.endpoints[1:]):
+        for (l_t, l), (r_t, r) in zip(
+            self.endpoints[:-1], self.endpoints[1:], strict=False
+        ):
             alpha = tf.cast(t - l_t, tf.float32) / tf.cast(r_t - l_t, tf.float32)
             results_list.append(self.interpolation(l, r, alpha))
         # If t does not belong to any of the pieces, return `outside_value`.

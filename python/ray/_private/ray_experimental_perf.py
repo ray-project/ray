@@ -138,7 +138,7 @@ def main(results=None):
         ray_channel.Channel(None, [reader_and_node_list[i]], 1000) for i in range(n_cpu)
     ]
     ray.get([reader.ready.remote() for reader, _ in reader_and_node_list])
-    for chan, reader_node_tuple in zip(chans, reader_and_node_list):
+    for chan, reader_node_tuple in zip(chans, reader_and_node_list, strict=False):
         reader = reader_node_tuple[0]
         reader.read.remote([chan])
     results += timeit(

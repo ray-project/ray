@@ -40,7 +40,7 @@ def test_sort_with_specified_boundaries(ray_start_regular, descending, boundarie
 
     blocks = list(ds.iter_batches(batch_size=None))
     assert len(blocks) == len(expected_blocks)
-    for block, expected_block in zip(blocks, expected_blocks):
+    for block, expected_block in zip(blocks, expected_blocks, strict=False):
         assert np.all(block["id"] == expected_block)
 
 
@@ -144,13 +144,13 @@ def test_sort_arrow(
                 expected_rows
             )
 
-        assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+        assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b), strict=False))
         # Make sure we have rows in each block.
         assert (
             len([n for n in ds.sort(key="a")._block_num_rows() if n > 0]) == parallelism
         )
-        assert_sorted(ds.sort(key="b"), zip(a, b))
-        assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
+        assert_sorted(ds.sort(key="b"), zip(a, b, strict=False))
+        assert_sorted(ds.sort(key="a", descending=True), zip(a, b, strict=False))
     finally:
         ctx.use_polars_sort = original_use_polars
 
@@ -169,7 +169,7 @@ def test_sort(ray_start_regular, use_polars_sort):
 
     sorted_block = BlockAccessor.for_block(t).sort(SortKey(["ints", "floats"]))
 
-    sorted_tuples = list(zip(*sorted(zip(ints, floats))))
+    sorted_tuples = list(zip(*sorted(zip(ints, floats, strict=False)), strict=False))
 
     assert sorted_block == pa.Table.from_pydict(
         {"ints": sorted_tuples[0], "floats": sorted_tuples[1]}
@@ -257,7 +257,7 @@ def test_sort_with_multiple_keys(ray_start_regular, descending, batch_format):
     assert len(sorted_ds._block_num_rows()) == num_blocks
     # Rows are sorted over the dimensions
     assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
-        zip(df["a"], df["b"], df["c"])
+        zip(df["a"], df["b"], df["c"], strict=False)
     )
 
 
@@ -286,11 +286,11 @@ def test_sort_pandas(
             expected_rows
         )
 
-    assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b)))
+    assert_sorted(ds.sort(key="a"), zip(reversed(a), reversed(b), strict=False))
     # Make sure we have rows in each block.
     assert len([n for n in ds.sort(key="a")._block_num_rows() if n > 0]) == parallelism
-    assert_sorted(ds.sort(key="b"), zip(a, b))
-    assert_sorted(ds.sort(key="a", descending=True), zip(a, b))
+    assert_sorted(ds.sort(key="b"), zip(a, b, strict=False))
+    assert_sorted(ds.sort(key="a", descending=True), zip(a, b, strict=False))
 
 
 def test_sort_pandas_with_empty_blocks(ray_start_regular, configure_shuffle_method):

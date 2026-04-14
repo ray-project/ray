@@ -170,7 +170,7 @@ class RandomAccessDataset:
         for i, fut in futures.items():
             keybatch = batches[i]
             values = ray.get(fut)
-            for k, v in zip(keybatch, values):
+            for k, v in zip(keybatch, values, strict=False):
                 results[k] = v
         return [results.get(k) for k in keys]
 
@@ -236,10 +236,12 @@ class _RandomAccessWorker:
             acc = BlockAccessor.for_block(block)
             result = [
                 acc._get_row(i) if k1.as_py() == k2 else None
-                for i, k1, k2 in zip(indices, col.take(indices), keys)
+                for i, k1, k2 in zip(indices, col.take(indices), keys, strict=False)
             ]
         else:
-            result = [self._get(i, k) for i, k in zip(block_indices, keys)]
+            result = [
+                self._get(i, k) for i, k in zip(block_indices, keys, strict=False)
+            ]
         self.total_time += time.perf_counter() - start
         self.num_accesses += 1
         return result

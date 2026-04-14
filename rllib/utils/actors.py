@@ -222,7 +222,7 @@ def split_colocated(
     # same node, regardless of what that node is.
     if node is None:
         node_groups = defaultdict(set)
-        for host, actor in zip(hosts, actors):
+        for host, actor in zip(hosts, actors, strict=False):
             node_groups[host].add(actor)
         max_ = -1
         largest_group = None
@@ -241,7 +241,7 @@ def split_colocated(
         # Split into co-located (on `node) and non-co-located (not on `node`).
         co_located = []
         non_co_located = []
-        for host, a in zip(hosts, actors):
+        for host, a in zip(hosts, actors, strict=False):
             # This actor has been placed on the correct node.
             if host == node:
                 co_located.append(a)

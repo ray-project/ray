@@ -94,7 +94,7 @@ class EuclidianDistanceBasedCuriosity(ConnectorV2):
 
             max_dist_obs = None
             max_dist = float("-inf")
-            for i, (obs, rew) in enumerate(zip(observations, rewards)):
+            for i, (obs, rew) in enumerate(zip(observations, rewards, strict=False)):
                 # Compare obs to all stored observations and compute euclidian distance.
                 min_dist = 0.0
                 if self.obs_buffer:

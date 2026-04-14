@@ -1407,7 +1407,7 @@ class ArrowVariableShapedTensorArray(pa.ExtensionArray):
         return create_ragged_ndarray(
             [
                 _to_ndarray_helper(shape, data_value_type, offset, data_array_buffer)
-                for shape, offset in zip(shapes, offsets)
+                for shape, offset in zip(shapes, offsets, strict=False)
             ]
         )
 

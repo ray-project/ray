@@ -127,7 +127,7 @@ def test_segfault_report_streaming_generator_output(
     worker_state_after = [(a.worker_id, a.exit_type) for a in list_workers()]
     print(">>> Workers state after: ", worker_state_after)
 
-    worker_ids, worker_exit_types = zip(*worker_state_after)
+    worker_ids, worker_exit_types = zip(*worker_state_after, strict=False)
     # Make sure no workers crashed
     assert (
         "SYSTEM_ERROR" not in worker_exit_types

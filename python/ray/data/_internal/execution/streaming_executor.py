@@ -510,7 +510,7 @@ class StreamingExecutor(Executor, threading.Thread):
             types = [str(t) for t in schema.types]
             operator_schema = OperatorSchema(
                 operator_uuid=op.id,
-                schema_fields=dict(zip(names, types)),
+                schema_fields=dict(zip(names, types, strict=False)),
             )
             operator_schema_exporter.export_operator_schema(operator_schema)
 

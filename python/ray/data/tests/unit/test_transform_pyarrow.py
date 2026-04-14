@@ -219,9 +219,9 @@ def test_arrow_concat_tensor_extension_variable_shaped(
     assert out["a"].num_chunks == variable_shaped_tensor_expected["chunks"]
     # Check content.
     content = variable_shaped_tensor_expected["content"]
-    for o, e in zip(out["a"].chunk(0).to_numpy(), content[0]):
+    for o, e in zip(out["a"].chunk(0).to_numpy(), content[0], strict=False):
         np.testing.assert_array_equal(o, e)
-    for o, e in zip(out["a"].chunk(1).to_numpy(), content[1]):
+    for o, e in zip(out["a"].chunk(1).to_numpy(), content[1], strict=False):
         np.testing.assert_array_equal(o, e)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
     # fails for this case.
@@ -259,7 +259,7 @@ def test_arrow_concat_tensor_extension_uniform_and_variable_shaped(
         actual = sorted(actual, key=lambda arr: arr.tobytes())
         expected = sorted(expected, key=lambda arr: arr.tobytes())
 
-    for a, e in zip(actual, expected):
+    for a, e in zip(actual, expected, strict=False):
         np.testing.assert_array_equal(a, e)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
     # fails for this case.
@@ -283,9 +283,9 @@ def test_arrow_concat_tensor_extension_uniform_but_different(
     assert out["a"].num_chunks == different_shape_tensor_expected["chunks"]
     # Check content.
     content = different_shape_tensor_expected["content"]
-    for o, e in zip(out["a"].chunk(0).to_numpy(), content[0]):
+    for o, e in zip(out["a"].chunk(0).to_numpy(), content[0], strict=False):
         np.testing.assert_array_equal(o, e)
-    for o, e in zip(out["a"].chunk(1).to_numpy(), content[1]):
+    for o, e in zip(out["a"].chunk(1).to_numpy(), content[1], strict=False):
         np.testing.assert_array_equal(o, e)
     # NOTE: We don't check equivalence with pyarrow.concat_tables since it currently
     # fails for this case.
@@ -468,7 +468,9 @@ def test_struct_with_arrow_variable_shaped_tensor_type(
 
     # Verify each struct contains the correct metadata and tensor data
     expected_metadata = ["row1", "row2", "row3", "row4"]
-    for i, (struct, expected_meta) in enumerate(zip(result_structs, expected_metadata)):
+    for i, (struct, expected_meta) in enumerate(
+        zip(result_structs, expected_metadata, strict=False)
+    ):
         assert struct["metadata"] == expected_meta
         assert isinstance(struct["tensor"], np.ndarray)
 
@@ -799,9 +801,9 @@ def test_arrow_block_slice_copy(block_slice_data):
         assert table2.equals(expected_slice)
         assert table2.schema == table1.schema
         assert table1.num_columns == table2.num_columns
-        for col1, col2 in zip(table1.columns, table2.columns):
+        for col1, col2 in zip(table1.columns, table2.columns, strict=False):
             assert col1.num_chunks == col2.num_chunks
-            for chunk1, chunk2 in zip(col1.chunks, col2.chunks):
+            for chunk1, chunk2 in zip(col1.chunks, col2.chunks, strict=False):
                 bufs1 = chunk1.buffers()
                 bufs2 = chunk2.buffers()
                 expected_offset = 0 if is_copy else a
@@ -877,7 +879,9 @@ def test_mixed_tensor_types_same_dtype(
         result_tensors = sorted(result_tensors, key=lambda arr: arr.tobytes())
         expected_tensors = sorted(expected_tensors, key=lambda arr: arr.tobytes())
 
-    for result_tensor, expected_tensor in zip(result_tensors, expected_tensors):
+    for result_tensor, expected_tensor in zip(
+        result_tensors, expected_tensors, strict=False
+    ):
         assert isinstance(result_tensor, np.ndarray)
         assert result_tensor.shape == expected_tensor.shape
         assert result_tensor.dtype == expected_tensor.dtype
@@ -908,7 +912,7 @@ def test_mixed_tensor_types_fixed_shape_different(
 
     # Verify each tensor
     for i, (result_tensor, expected_tensor) in enumerate(
-        zip(result_tensors, expected_tensors)
+        zip(result_tensors, expected_tensors, strict=False)
     ):
         assert isinstance(result_tensor, np.ndarray)
         assert result_tensor.shape == expected_tensor.shape
@@ -941,7 +945,7 @@ def test_mixed_tensor_types_variable_shaped(
 
     # Verify each tensor
     for i, (result_tensor, expected_tensor) in enumerate(
-        zip(result_tensors, expected_tensors)
+        zip(result_tensors, expected_tensors, strict=False)
     ):
         assert isinstance(result_tensor, np.ndarray)
         assert result_tensor.shape == expected_tensor.shape
@@ -986,7 +990,7 @@ def test_mixed_tensor_types_in_struct(
 
     # Verify struct values
     for i, (struct_row, expected_values) in enumerate(
-        zip(struct_data, expected_struct_values)
+        zip(struct_data, expected_struct_values, strict=False)
     ):
         for key, expected_value in expected_values.items():
             assert struct_row[key] == expected_value
@@ -1163,7 +1167,7 @@ def test_struct_with_null_tensor_values(
 
     # Check each row
     for i, (expected_value, expected_valid) in enumerate(
-        zip(expected_values, expected_tensor_validity)
+        zip(expected_values, expected_tensor_validity, strict=False)
     ):
         assert struct_column[i]["value"].as_py() == expected_value
 
@@ -3032,7 +3036,7 @@ def _create_simple_struct_blocks(
     struct_column="d",
 ):
     """Helper function to create struct blocks with simple field patterns."""
-    struct_type = pa.struct(list(zip(field_names, field_types)))
+    struct_type = pa.struct(list(zip(field_names, field_types, strict=False)))
 
     return _create_struct_blocks_with_columns(
         struct_data1,
@@ -3048,7 +3052,7 @@ def _create_simple_struct_blocks(
 # Helper function for creating simple struct schemas
 def _create_simple_struct_schema(field_names, field_types, additional_fields=None):
     """Helper function to create simple struct schemas."""
-    struct_fields = list(zip(field_names, field_types))
+    struct_fields = list(zip(field_names, field_types, strict=False))
 
     fields = []
     if additional_fields:

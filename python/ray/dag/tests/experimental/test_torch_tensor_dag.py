@@ -1375,7 +1375,8 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
 
     with InputNode() as inp:
         computes = [
-            worker.send_tensor.bind(tensor) for worker, tensor in zip(workers, inp)
+            worker.send_tensor.bind(tensor)
+            for worker, tensor in zip(workers, inp, strict=False)
         ]
         if operation == collective.allgather:
             collectives = operation.bind(computes)
@@ -1383,7 +1384,7 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
             collectives = operation.bind(computes, op=reduce_op)
         recvs = [
             worker.recv_tensor.bind(collective)
-            for worker, collective in zip(workers, collectives)
+            for worker, collective in zip(workers, collectives, strict=False)
         ]
         dag = MultiOutputNode(recvs)
 
@@ -1454,7 +1455,9 @@ def test_torch_tensor_nccl_collective_ops(ray_start_regular, operation, reduce_o
         else:
             raise ValueError(f"Unknown operation: {operation}")
 
-        for result_tensor, expected_tensor in zip(result, expected_tensors):
+        for result_tensor, expected_tensor in zip(
+            result, expected_tensors, strict=False
+        ):
             assert torch.equal(result_tensor.to("cpu"), expected_tensor)
 
 
@@ -1479,7 +1482,7 @@ def test_torch_tensor_nccl_all_reduce_bind_list_of_nodes(ray_start_regular):
         collectives = collective.allreduce.bind([computes_0, computes_1], ReduceOp.SUM)
         recvs = [
             worker.recv_tensors.bind(*collective)
-            for worker, collective in zip(workers, collectives)
+            for worker, collective in zip(workers, collectives, strict=False)
         ]
         dag = MultiOutputNode(recvs)
 
@@ -1571,7 +1574,7 @@ def test_torch_tensor_nccl_all_reduce_wrong_shape(ray_start_regular):
         collectives = collective.allreduce.bind(computes)
         recvs = [
             worker.recv.bind(collective)
-            for worker, collective in zip(workers, collectives)
+            for worker, collective in zip(workers, collectives, strict=False)
         ]
         dag = MultiOutputNode(recvs)
 
@@ -1721,7 +1724,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         collectives = collective.allreduce.bind(computes, transport=nccl_group)
         recvs = [
             worker.recv.bind(collective)
-            for worker, collective in zip(workers, collectives)
+            for worker, collective in zip(workers, collectives, strict=False)
         ]
         dag = MultiOutputNode(recvs)
 

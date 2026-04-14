@@ -4645,7 +4645,7 @@ class Algorithm(Checkpointable, Trainable):
         if state is None:
             state = []
         else:
-            state = list(zip(*filtered_state))
+            state = list(zip(*filtered_state, strict=False))
             state = [np.stack(s) for s in state]
 
         input_dict = {Columns.OBS: obs_batch}
@@ -4668,7 +4668,7 @@ class Algorithm(Checkpointable, Trainable):
 
         single_actions = space_utils.unbatch(actions)
         actions = {}
-        for key, a in zip(observations, single_actions):
+        for key, a in zip(observations, single_actions, strict=False):
             if unsquash_actions:
                 a = space_utils.unsquash_action(a, policy.action_space_struct)
             elif clip_actions:

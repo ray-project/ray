@@ -22,7 +22,7 @@ def test_from_tf_e2e(ray_start_regular_shared_2_cpus):
     expected_data = list(tf_dataset)
     assert len(actual_data) == len(expected_data)
     for (expected_features, expected_label), (actual_features, actual_label) in zip(
-        expected_data, actual_data
+        expected_data, actual_data, strict=False
     ):
         tf.debugging.assert_equal(expected_features, actual_features)
         tf.debugging.assert_equal(expected_label, actual_label)
