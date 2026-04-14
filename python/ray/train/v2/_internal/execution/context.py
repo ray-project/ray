@@ -398,24 +398,28 @@ class TrainContext:
                 "`validation_config` was not set on the trainer, but a validation was requested."
             )
 
-        if delete_local_checkpoint_after_upload and checkpoint:
-            experiment_path = Path(self.storage_context.experiment_fs_path).resolve()
-            checkpoint_path = Path(checkpoint.path).resolve()
+        if delete_local_checkpoint_after_upload and checkpoint is not None:
+            experiment_path = Path(self.storage_context.experiment_fs_path)
+            checkpoint_path = Path(checkpoint.path)
 
-            try:
-                # is_relative_to raises a ValueError if one path is absolute and the other is relative
-                is_relative = experiment_path.is_relative_to(checkpoint_path)
-            except Exception:
-                is_relative = False
+            # Resolve symlinks only for local (absolute) paths.
+            # Remote paths (S3, GCS, etc.) are relative after URI and resolve()
+            # would prepend CWD, producing a meaningless local path.
+            # Mixed absolute/relative paths return False
+            if experiment_path.is_absolute():
+                experiment_path = experiment_path.resolve()
+            if checkpoint_path.is_absolute():
+                checkpoint_path = checkpoint_path.resolve()
 
-            if is_relative:
+            if experiment_path.is_relative_to(checkpoint_path):
                 raise ValueError(
                     f"Ray Train's experiment directory ({self.storage_context.experiment_fs_path}) "
                     f"is contained within the checkpoint path ({checkpoint.path}) "
                     f"and `ray.train.report(delete_local_checkpoint_after_upload=True)`. "
                     "As a result, this would delete the experiment directory. "
-                    "Please write the checkpoint to a subdirectory of the "
-                    "experiment directory or use `delete_local_checkpoint_after_upload=False`."
+                    "Please write the checkpoint to a temporary directory, "
+                    "a subdirectory of the experiment directory, "
+                    "or use `delete_local_checkpoint_after_upload=False`."
                 )
 
         with invoke_context_managers(
