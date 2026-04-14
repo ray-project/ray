@@ -899,9 +899,11 @@ def find_partition_index(
         # Stripping them before searching avoids a TypeError from np.searchsorted
         # on None values — and if desired_val is also None, the answer is simply
         # the end of the non-null region.
-        col_vals = col_vals[
-            ~pd.isna(col_vals)
-        ]  # remove nulls from the tail of col_vals
+        # Use the Arrow column's O(1) null_count to skip the
+        # expensive pd.isna + boolean indexing when there are no nulls (the
+        # common case).
+        if table[col_name].null_count > 0:
+            col_vals = col_vals[~pd.isna(col_vals)]
         if desired_val is None:
             return left + len(col_vals)
 
