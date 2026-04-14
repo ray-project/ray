@@ -48,6 +48,7 @@ depsets:
       - python/requirements/py313/test-requirements.txt
       - python/requirements/ml/core-requirements.txt
       - python/requirements/ml/py313/dl-gpu-requirements.txt
+      - python/requirements/ml/py313/docgpu_gpu_additions.txt
       - python/requirements/ml/py313/train-requirements.txt
       - python/requirements/ml/py313/train-test-requirements.txt
       - python/requirements/ml/py313/tune-requirements.txt

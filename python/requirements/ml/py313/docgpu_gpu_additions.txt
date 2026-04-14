@@ -1,0 +1,11 @@
+# Packages needed for GPU docgpu that exist in dl-cpu but not dl-gpu
+# These don't conflict with GPU PyTorch/PyG variants and use standard versions
+
+tensorflow-io-gcs-filesystem==0.31.0; python_version < '3.12'
+array-record==0.5.1; python_version < '3.12' and sys_platform != 'darwin' and platform_system != 'Windows'
+etils==1.5.2; python_version < '3.12'
+
+torchmetrics==0.10.3
+torchtext==0.18.0
+
+jax==0.4.28; sys_platform != 'darwin'
