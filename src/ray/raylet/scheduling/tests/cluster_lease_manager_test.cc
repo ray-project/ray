@@ -1893,8 +1893,14 @@ TEST_F(ClusterLeaseManagerTest, BacklogReportTest) {
         false,
         std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
     worker_ids.push_back(WorkerID::FromRandom());
-    local_lease_manager_->SetWorkerBacklog(
-        lease.GetLeaseSpecification().GetSchedulingClass(), worker_ids.back(), 10 - i);
+    {
+      rpc::ReportWorkerBacklogRequest backlog_request;
+      backlog_request.set_worker_id(worker_ids.back().Binary());
+      auto *report = backlog_request.add_backlog_reports();
+      report->mutable_lease_spec()->CopyFrom(lease.GetLeaseSpecification().GetMessage());
+      report->set_backlog_size(10 - i);
+      local_lease_manager_->SetWorkerBacklog(backlog_request);
+    }
     pool_.TriggerCallbacks();
     // Don't add the first lease to `to_cancel`.
     if (i != 0) {
