@@ -247,8 +247,7 @@ def symmetric_run(address, min_nodes, ray_args_and_entrypoint):
                 *ray_start_args,
             ]
 
-            # This command will block until the Ray cluster is stopped.
-            subprocess.run(ray_start_cmd, check=True)
+            subprocess.run(ray_start_cmd)
 
     except subprocess.CalledProcessError as e:
         click.echo(f"Failed to start Ray: {e}", err=True)

@@ -1322,9 +1322,13 @@ def stop(force: bool, grace_period: int):
                 gracefully, they are added here.
         """
         process_infos = []
-        for proc in psutil.process_iter(["name", "cmdline"]):
+        pre_stopped = []
+        for proc in psutil.process_iter(["name", "cmdline", "status"]):
             try:
-                process_infos.append((proc, proc.name(), proc.cmdline()))
+                if proc.status() == psutil.STATUS_ZOMBIE:
+                    pre_stopped.append(proc)
+                else:
+                    process_infos.append((proc, proc.name(), proc.cmdline()))
             except psutil.Error:
                 pass
 
@@ -1387,7 +1391,7 @@ def stop(force: bool, grace_period: int):
         # Dedup processes.
         stopped, alive = psutil.wait_procs(stopped, timeout=0)
         procs_to_kill = stopped + alive
-        total_found = len(procs_to_kill)
+        total_found = len(procs_to_kill) + len(pre_stopped)
 
         # Wait for grace period to terminate processes.
         gone_procs = set()
@@ -1399,7 +1403,8 @@ def stop(force: bool, grace_period: int):
         stopped, alive = psutil.wait_procs(
             procs_to_kill, timeout=grace_period, callback=on_terminate
         )
-        total_stopped = len(stopped)
+        # Zombies were already dead; count them toward the stopped total.
+        total_stopped = len(stopped) + len(pre_stopped)
 
         # For processes that are not killed within the grace period,
         # we send force termination signals.
