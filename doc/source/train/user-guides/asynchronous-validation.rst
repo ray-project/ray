@@ -122,11 +122,11 @@ Example: validation with Ray Train TorchTrainer
 Here is a ``validation_fn`` that uses a ``TorchTrainer`` to calculate average cross entropy
 loss on a validation set. Note the following about this example:
 
-* The train function returns its metrics directly rather than calling ``ray.train.report``.
-  The return value from worker 0 is accessible via ``result.return_values`` on the :class:`~ray.train.Result`.
-* While you typically use the ``TorchTrainer`` for training, you can use it solely for validation like in this example.
-* Because training generally has a higher GPU memory requirement than inference, you can set different
-  resource requirements for training and validation, for example, A100 for training and A10G for validation.
+* ``TorchTrainer`` is typically used for training, but you can use it for validation like in this
+  example allowing different resource requirements for training and validation, for example,
+  A100 for training and A10G for validation.
+* The validation train function returns its metrics directly from worker 0 rather than calling
+  ``ray.train.report`` which is accessible via ``result.return_values``.
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python

@@ -55,7 +55,6 @@ def eval_only_train_fn(config_dict: dict) -> dict:
             outputs = model(images)
             loss = criterion(outputs, labels)
             mean_valid_loss(loss)
-    # Report metrics
     return {"score": mean_valid_loss.compute().item()}
 
 
@@ -75,7 +74,7 @@ def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: 
         datasets={"validation": validation_dataset},
     )
     result = trainer.fit()
-    # return_values holds the return value of the train function from worker 0
+    # return_value holds the value returned by train function of worker 0
     return result.return_value
 # __validation_fn_torch_trainer_end__
 
