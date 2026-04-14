@@ -23,6 +23,5 @@ nixl==0.4.0; sys_platform != 'darwin'
 # Keep in sync with dl-cpu-requirements.txt (NCCL bound for torch 2.7+cu128).
 nvidia-nccl-cu12>=2.26.2,<3; platform_system == "Linux" and platform_machine == "x86_64"
 
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
-# Match py313/dl-cpu jax/jaxlib floor: cp313 CUDA jaxlib wheels align with jax >= 0.4.34 (see dl-cpu comment).
-jaxlib>=0.4.34+cuda12.cudnn89; sys_platform != 'darwin'
+# CUDA 12 for JAX 0.9.x: plugin stack on PyPI (cp313). Do not use legacy jax_cuda_releases jaxlib+X+cuda12.cudnn89 (no cp313 there; conflicts with jaxlib==0.9.2).
+jax-cuda12-plugin[with-cuda]==0.9.2; sys_platform != 'darwin'
