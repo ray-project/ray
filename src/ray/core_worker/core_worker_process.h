@@ -192,6 +192,7 @@ class CoreWorkerProcessImpl {
   /// The proxy service handler that routes the RPC calls to the core worker.
   std::unique_ptr<CoreWorkerServiceHandlerProxy> service_handler_;
 
+  /// The proxy service handler for pubsub RPCs (dispatched to a dedicated io_context).
   std::unique_ptr<CoreWorkerPubsubServiceHandlerProxy> pubsub_service_handler_;
 
   std::unique_ptr<ray::stats::Gauge> task_by_state_gauge_;

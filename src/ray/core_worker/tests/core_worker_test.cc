@@ -824,9 +824,7 @@ INSTANTIATE_TEST_SUITE_P(WorkerObjectEvictionChannel,
                          ::testing::Values(true, false));
 
 TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
-  // Subscribe commands with invalid channel types are posted to io_service_ where
-  // ProcessSubscribeMessage detects the error asynchronously. The handler itself
-  // returns OK because it runs on the pubsub thread and cannot wait for the result.
+  // channel_type is validated synchronously before posting to io_service_.
   auto subscriber_id = NodeID::FromRandom();
   auto object_id = ObjectID::FromRandom();
 
@@ -851,8 +849,10 @@ TEST_F(CoreWorkerTest, HandlePubsubCommandBatchInvalidChannelType) {
       });
 
   ASSERT_TRUE(callback_invoked);
-  // The handler returns OK; the error is detected asynchronously on io_service_.
-  ASSERT_TRUE(received_status.ok());
+  ASSERT_FALSE(received_status.ok());
+  ASSERT_TRUE(received_status.IsInvalidArgument());
+  EXPECT_TRUE(received_status.message().find("Invalid channel type") !=
+              std::string::npos);
 }
 
 TEST_F(CoreWorkerTest,

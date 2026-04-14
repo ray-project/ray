@@ -66,9 +66,7 @@ def test_update_object_location_batch_failure(
         m.setenv(
             "RAY_testing_rpc_failure",
             json.dumps(
-                {
-                    "CoreWorkerPubsubService.grpc_client.UpdateObjectLocationBatch": failure
-                }
+                {"CoreWorkerService.grpc_client.UpdateObjectLocationBatch": failure}
             ),
         )
         cluster = ray_start_cluster

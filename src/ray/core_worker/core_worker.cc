@@ -3670,12 +3670,23 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
       return;
     }
 
+    auto channel_type = command.channel_type();
+    if (channel_type != rpc::ChannelType::WORKER_OBJECT_EVICTION &&
+        channel_type != rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL &&
+        channel_type != rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL) {
+      send_reply_callback(
+          Status::InvalidArgument(absl::StrFormat(
+              "Invalid channel type %s. Expected WORKER_OBJECT_EVICTION, "
+              "WORKER_REF_REMOVED_CHANNEL, or WORKER_OBJECT_LOCATIONS_CHANNEL",
+              rpc::ChannelType_Name(channel_type))),
+          nullptr,
+          nullptr);
+      return;
+    }
+
     if (command.has_unsubscribe_message()) {
       io_service_.post(
-          [this,
-           channel_type = command.channel_type(),
-           subscriber_id,
-           key_id = command.key_id()] {
+          [this, channel_type, subscriber_id, key_id = command.key_id()] {
             object_info_publisher_->UnregisterSubscription(
                 channel_type, subscriber_id, key_id);
           },
@@ -3684,16 +3695,10 @@ void CoreWorker::HandlePubsubCommandBatch(rpc::PubsubCommandBatchRequest request
       io_service_.post(
           [this,
            sub_message = command.subscribe_message(),
-           channel_type = command.channel_type(),
+           channel_type,
            key_id = command.key_id(),
            subscriber_id] {
-            auto result =
-                ProcessSubscribeMessage(sub_message, channel_type, key_id, subscriber_id);
-            if (result.has_error()) {
-              RAY_LOG(WARNING)
-                  << "Failed to process subscribe message: "
-                  << std::get<StatusT::InvalidArgument>(result.error()).message();
-            }
+            ProcessSubscribeMessage(sub_message, channel_type, key_id, subscriber_id);
           },
           "CoreWorker.HandlePubsubCommandBatch");
     }
