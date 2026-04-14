@@ -2191,6 +2191,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
   run:
@@ -2203,6 +2204,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
@@ -2452,6 +2454,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
@@ -2467,6 +2470,7 @@
   smoke_test:
     frequency: nightly
     cluster:
+      anyscale_sdk_2026: true
       app_config: stress_tests/state_api_app_config.yaml
       cluster_compute: stress_tests/smoke_test_compute.yaml
 
@@ -2487,6 +2491,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/stress_tests_compute_large_gce.yaml
       smoke_test:
         frequency: manual
@@ -2528,6 +2533,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -2540,6 +2546,7 @@
   smoke_test:
     frequency: nightly
     cluster:
+      anyscale_sdk_2026: true
       app_config: stress_tests/stress_tests_app_config.yaml
       cluster_compute: stress_tests/smoke_test_compute.yaml
 
@@ -2555,6 +2562,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
@@ -2568,6 +2576,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -2580,6 +2589,7 @@
   smoke_test:
     frequency: nightly
     cluster:
+      anyscale_sdk_2026: true
       app_config: stress_tests/stress_tests_app_config.yaml
       cluster_compute: stress_tests/smoke_test_compute.yaml
 
@@ -2596,6 +2606,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
@@ -2610,6 +2621,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -2626,6 +2638,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 # - name: threaded_actors_stress_test
@@ -2670,6 +2683,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -2684,6 +2698,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/smoke_test_compute_gce.yaml
       smoke_test:
         frequency: manual
@@ -2697,6 +2712,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         # Lower the memory usage threshold at which the Ray memory monitor will kill
@@ -2717,6 +2733,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/stress_tests_single_node_oom_compute_gce.yaml
 
 
@@ -2789,6 +2806,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: placement_group_tests/compute.yaml
 
   run:
@@ -2801,6 +2819,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: placement_group_tests/compute_gce.yaml
 
 - name: placement_group_performance_test
@@ -2811,6 +2830,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: placement_group_tests/pg_perf_test_compute.yaml
 
   run:
@@ -2825,6 +2845,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: placement_group_tests/pg_perf_test_compute_gce.yaml
 
 
