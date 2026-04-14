@@ -714,6 +714,7 @@ py_test(
         "ray_release/configs/oss_config.yaml",
         "ray_release/tests/sample_5_tests.yaml",
         "ray_release/tests/sample_tests.yaml",
+        "//:ray-images.json",
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
