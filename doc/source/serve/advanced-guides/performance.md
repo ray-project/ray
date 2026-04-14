@@ -273,13 +273,13 @@ make -C /tmp/haproxy-build install SBINDIR=/usr/local/bin
 rm -rf /tmp/haproxy-build /tmp/haproxy.tar.gz
 
 # Install runtime dependencies
-apt-get install -y --no-install-recommends socat liblua5.3-0
+apt-get install -y --no-install-recommends liblua5.3-0
 
 # Create required directories
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 ```
 
-The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependencies are `socat` (for the admin socket) and `liblua5.3-0` (Lua runtime library).
+The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependency is `liblua5.3-0` (Lua runtime library).
 
 (serve-interdeployment-grpc)=
 ### Use gRPC for interdeployment communication

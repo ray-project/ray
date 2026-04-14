@@ -48,7 +48,7 @@ RUN <<EOF
 #!/bin/bash
 set -euo pipefail
 
-apt-get update -y && apt-get install -y --no-install-recommends socat liblua5.3-0 libpcre3
+apt-get update -y && apt-get install -y --no-install-recommends liblua5.3-0 libpcre3
 rm -rf /var/lib/apt/lists/*
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 EOF

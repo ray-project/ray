@@ -88,7 +88,6 @@ APT_PKGS=(
     gnupg
 
     # For HAProxy
-    socat
     liblua5.3-0
 )
 
