@@ -74,7 +74,6 @@ class Join(NAry, LogicalOperatorSupportsPredicatePassThrough):
             )
 
         object.__setattr__(self, "join_type", join_type_enum)
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(
             self,
             "_input_dependencies",

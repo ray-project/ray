@@ -27,7 +27,6 @@ class InputData(LogicalOperator, SourceOperator):
     _num_outputs: Optional[int] = field(init=False, repr=False)
 
     def __post_init__(self):
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_num_outputs", len(self.input_data))
 
     def output_data(self) -> Optional[List[RefBundle]]:

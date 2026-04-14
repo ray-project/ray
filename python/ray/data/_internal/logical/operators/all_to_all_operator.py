@@ -56,10 +56,11 @@ class AbstractAllToAll(LogicalOperator):
                 inspecting the logical plan of a Dataset.
         """
         super().__init__(
-            _name=name or self.__class__.__name__,
             _input_dependencies=[input_op],
             _num_outputs=num_outputs,
         )
+        if name is not None:
+            object.__setattr__(self, "_name", name)
         object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
         object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
 
@@ -203,7 +204,6 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
                 ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
             ]
         object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", num_outputs)
 
@@ -264,7 +264,6 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
@@ -323,7 +322,6 @@ class Aggregate(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 

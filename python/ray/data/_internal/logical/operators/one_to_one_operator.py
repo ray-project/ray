@@ -46,10 +46,11 @@ class AbstractOneToOne(LogicalOperator):
                 inspecting the logical plan of a Dataset.
         """
         super().__init__(
-            _name=name or self.__class__.__name__,
             _input_dependencies=[input_op] if input_op else [],
             _num_outputs=num_outputs,
         )
+        if name is not None:
+            object.__setattr__(self, "_name", name)
         object.__setattr__(self, "can_modify_num_rows", can_modify_num_rows)
 
     @property
@@ -148,7 +149,6 @@ class Download(AbstractOneToOne):
                 f"Number of URI columns ({len(self.uri_column_names)}) must match "
                 f"number of output columns ({len(self.output_bytes_column_names)})"
             )
-        object.__setattr__(self, "_name", "Download")
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 

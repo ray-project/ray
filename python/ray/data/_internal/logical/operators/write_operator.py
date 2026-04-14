@@ -43,7 +43,6 @@ class Write(AbstractMap):
         object.__setattr__(
             self, "min_rows_per_bundled_input", min_rows_per_bundled_input
         )
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 

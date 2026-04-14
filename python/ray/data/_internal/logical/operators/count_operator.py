@@ -26,7 +26,6 @@ class Count(LogicalOperator):
 
     def __post_init__(self, input_op: LogicalOperator):
         assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
 
     @property

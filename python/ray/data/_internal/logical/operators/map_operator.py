@@ -376,7 +376,6 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
                     "All Project expressions must be named (use .alias(name) or col(name)), "
                     "or be a star() expression."
                 )
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
