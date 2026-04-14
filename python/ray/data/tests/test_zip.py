@@ -153,6 +153,37 @@ def test_zip_preserve_order(ray_start_regular_shared):
     ), result
 
 
+def test_zip_does_not_free_shared_materialized_blocks(ray_start_regular_shared):
+    """Regression test: ZipOperator should not free blocks from a materialized
+    dataset that is shared with another consumer.
+
+    Previously, ZipOperator._zip() called _split_at_indices() without specifying
+    owned_by_consumer, which defaulted to True. This caused ray.internal.free()
+    to be called on blocks that were shared with other operators in the DAG,
+    leading to ObjectFreedError.
+    """
+    # Create a dataset with multiple blocks and materialize it.
+    # The materialized blocks have owns_blocks=False.
+    ds = ray.data.range(20, override_num_blocks=4).materialize()
+
+    # Consumer 1: a map_batches that uses the same materialized dataset.
+    mapped_ds = ds.map_batches(lambda batch: batch, batch_format="pandas")
+
+    # Consumer 2: zip the same materialized dataset with another dataset.
+    # This triggers _split_at_indices inside ZipOperator._zip().
+    # The other dataset has a different number of blocks to force block splitting.
+    other_ds = ray.data.range(20, override_num_blocks=2)
+    zipped = other_ds.zip(ds)
+
+    # Consuming the zipped result should not raise ObjectFreedError.
+    result = zipped.take_all()
+    assert len(result) == 20
+
+    # The mapped_ds should also work fine (blocks not freed by the zip).
+    result2 = mapped_ds.take_all()
+    assert len(result2) == 20
+
+
 if __name__ == "__main__":
     import sys
 
