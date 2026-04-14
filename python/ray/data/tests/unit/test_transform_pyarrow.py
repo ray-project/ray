@@ -45,7 +45,7 @@ def test_try_defragment_table():
 
     assert len(t["id"].chunks) == 10
 
-    dt = try_combine_chunked_columns(t, min_chunks_to_combine=10)
+    dt = try_combine_chunked_columns(t)
 
     assert len(dt["id"].chunks) == 1
     assert dt == t
@@ -68,8 +68,8 @@ def test_try_combine_chunked_columns_min_chunks_to_combine():
     assert t["a"].num_chunks == 3
     assert t["b"].num_chunks == 3
 
-    # Threshold of 10 should NOT combine since 3 < 10.
-    result = try_combine_chunked_columns(t, min_chunks_to_combine=10)
+    # Default threshold (10) should NOT combine since 3 < 10.
+    result = try_combine_chunked_columns(t)
     assert result["a"].num_chunks == 3
     assert result["b"].num_chunks == 3
 
