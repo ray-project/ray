@@ -61,11 +61,6 @@ set -euo pipefail
 uv pip install --system --no-cache-dir --no-deps --index-strategy unsafe-best-match \
     -r /home/ray/python_depset.lock
 
-# Install ray-haproxy (vendored HAProxy binary) for experimental pip-based
-# HAProxy support. Gated behind RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1.
-# --no-deps: ray-haproxy is a standalone binary wheel with no Python dependencies.
-uv pip install --system --no-cache-dir --no-deps ray-haproxy
-
 git clone --branch=4.2.0 --depth=1 https://github.com/wg/wrk.git /tmp/wrk
 make -C /tmp/wrk -j
 sudo cp /tmp/wrk/wrk /usr/local/bin/wrk
