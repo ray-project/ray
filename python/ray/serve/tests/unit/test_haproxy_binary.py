@@ -6,59 +6,57 @@ import pytest
 
 from ray.serve._private.haproxy import get_haproxy_binary
 
-_ENV_VAR = "RAY_SERVE_HAPROXY_BINARY"
 _FLAG_PATH = "ray.serve._private.haproxy.RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY"
-
-
-def _clear_env(monkeypatch):
-    monkeypatch.delenv(_ENV_VAR, raising=False)
+_BINARY_PATH = "ray.serve._private.haproxy.RAY_SERVE_HAPROXY_BINARY_PATH"
 
 
 class TestGetHaproxyBinary:
     """Tests for get_haproxy_binary() resolution logic."""
 
-    # 0. Flag off → returns "haproxy" (system PATH, no change from default)
-    def test_flag_off_returns_system_haproxy(self):
-        with patch(_FLAG_PATH, False):
+    # 0. Flag off → returns RAY_SERVE_HAPROXY_BINARY_PATH (default "haproxy")
+    def test_flag_off_returns_default(self):
+        with patch(_FLAG_PATH, False), patch(_BINARY_PATH, "haproxy"):
             assert get_haproxy_binary() == "haproxy"
 
-    # 1. Env var — valid executable path
-    def test_env_var_valid(self, tmp_path, monkeypatch):
+    # 0b. Flag off with explicit path → returns that path
+    def test_flag_off_returns_explicit_path(self):
+        with patch(_FLAG_PATH, False), patch(_BINARY_PATH, "/usr/local/bin/haproxy"):
+            assert get_haproxy_binary() == "/usr/local/bin/haproxy"
+
+    # 1. Explicit binary path — valid executable
+    def test_explicit_binary_path_valid(self, tmp_path):
         binary = tmp_path / "haproxy"
         binary.write_bytes(b"")
         binary.chmod(binary.stat().st_mode | stat.S_IXUSR)
 
-        monkeypatch.setenv(_ENV_VAR, str(binary))
-        with patch(_FLAG_PATH, True):
+        with patch(_FLAG_PATH, True), patch(_BINARY_PATH, str(binary)):
             assert get_haproxy_binary() == str(binary)
 
-    # 2. Env var — path does not exist → FileNotFoundError
-    def test_env_var_nonexistent_raises(self, tmp_path, monkeypatch):
-        monkeypatch.setenv(_ENV_VAR, str(tmp_path / "no_such_file"))
-        with patch(_FLAG_PATH, True):
-            with pytest.raises(FileNotFoundError, match=_ENV_VAR):
+    # 2. Explicit binary path — does not exist → FileNotFoundError
+    def test_explicit_binary_path_nonexistent_raises(self, tmp_path):
+        with patch(_FLAG_PATH, True), patch(
+            _BINARY_PATH, str(tmp_path / "no_such_file")
+        ):
+            with pytest.raises(FileNotFoundError, match="HAPROXY_BINARY_PATH"):
                 get_haproxy_binary()
 
-    # 3. Env var — file exists but is not executable → FileNotFoundError
-    def test_env_var_not_executable_raises(self, tmp_path, monkeypatch):
+    # 3. Explicit binary path — not executable → FileNotFoundError
+    def test_explicit_binary_path_not_executable_raises(self, tmp_path):
         binary = tmp_path / "haproxy"
         binary.write_bytes(b"")
         binary.chmod(0o644)
 
-        monkeypatch.setenv(_ENV_VAR, str(binary))
-        with patch(_FLAG_PATH, True):
-            with pytest.raises(FileNotFoundError, match=_ENV_VAR):
+        with patch(_FLAG_PATH, True), patch(_BINARY_PATH, str(binary)):
+            with pytest.raises(FileNotFoundError, match="HAPROXY_BINARY_PATH"):
                 get_haproxy_binary()
 
     # 4. ray_haproxy package installed → uses bundled binary
-    def test_ray_haproxy_package_used(self, monkeypatch):
-        _clear_env(monkeypatch)
-
+    def test_ray_haproxy_package_used(self):
         fake_path = "/opt/ray_haproxy/bin/haproxy"
         mock_module = MagicMock()
         mock_module.get_haproxy_binary.return_value = fake_path
 
-        with patch(_FLAG_PATH, True):
+        with patch(_FLAG_PATH, True), patch(_BINARY_PATH, "haproxy"):
             with patch.dict("sys.modules", {"ray_haproxy": mock_module}):
                 result = get_haproxy_binary()
 
@@ -66,10 +64,8 @@ class TestGetHaproxyBinary:
         mock_module.get_haproxy_binary.assert_called_once()
 
     # 5. ray_haproxy not installed, system haproxy on PATH
-    def test_falls_back_to_system_path(self, monkeypatch):
-        _clear_env(monkeypatch)
-
-        with patch(_FLAG_PATH, True):
+    def test_falls_back_to_system_path(self):
+        with patch(_FLAG_PATH, True), patch(_BINARY_PATH, "haproxy"):
             with patch.dict("sys.modules", {"ray_haproxy": None}):
                 with patch(
                     "ray.serve._private.haproxy.shutil.which",
@@ -80,10 +76,8 @@ class TestGetHaproxyBinary:
         assert result == "/usr/bin/haproxy"
 
     # 6. ray_haproxy not installed, not on PATH → FileNotFoundError
-    def test_no_binary_raises(self, monkeypatch):
-        _clear_env(monkeypatch)
-
-        with patch(_FLAG_PATH, True):
+    def test_no_binary_raises(self):
+        with patch(_FLAG_PATH, True), patch(_BINARY_PATH, "haproxy"):
             with patch.dict("sys.modules", {"ray_haproxy": None}):
                 with patch(
                     "ray.serve._private.haproxy.shutil.which",
@@ -92,16 +86,14 @@ class TestGetHaproxyBinary:
                     with pytest.raises(FileNotFoundError, match=r"ray\[haproxy\]"):
                         get_haproxy_binary()
 
-    # 7. ray_haproxy installed but its binary is missing → falls through to PATH
-    def test_ray_haproxy_file_not_found_falls_through_to_path(self, monkeypatch):
-        _clear_env(monkeypatch)
-
+    # 7. ray_haproxy installed but binary missing → falls through to PATH
+    def test_ray_haproxy_file_not_found_falls_through_to_path(self):
         mock_module = MagicMock()
         mock_module.get_haproxy_binary.side_effect = FileNotFoundError(
             "bundled binary missing"
         )
 
-        with patch(_FLAG_PATH, True):
+        with patch(_FLAG_PATH, True), patch(_BINARY_PATH, "haproxy"):
             with patch.dict("sys.modules", {"ray_haproxy": mock_module}):
                 with patch(
                     "ray.serve._private.haproxy.shutil.which",
