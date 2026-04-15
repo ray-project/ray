@@ -1622,8 +1622,10 @@ def start_raylet(
     raylet_stderr_filepath: Optional[str] = None,
     dashboard_agent_stdout_filepath: Optional[str] = None,
     dashboard_agent_stderr_filepath: Optional[str] = None,
+    dashboard_agent_log_filepath: Optional[str] = None,
     runtime_env_agent_stdout_filepath: Optional[str] = None,
     runtime_env_agent_stderr_filepath: Optional[str] = None,
+    runtime_env_agent_log_filepath: Optional[str] = None,
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
@@ -1646,6 +1648,7 @@ def start_raylet(
         raylet_name: The name of the raylet socket to create.
         plasma_store_name: The name of the plasma store socket to connect
              to.
+        cluster_id: The cluster ID of this Ray cluster.
         worker_path: The path of the Python file that new worker
             processes will execute.
         setup_worker_path: The path of the Python file that will set up
@@ -1661,9 +1664,9 @@ def start_raylet(
         object_store_memory: The amount of memory (in bytes) to start the
             object store with.
         session_name: The current Ray session name.
+        is_head_node: whether this node is the head node.
         resource_isolation_config: Resource isolation configuration for reserving
             memory and cpu resources for ray system processes through cgroupv2
-        is_head_node: whether this node is the head node.
         min_worker_port: The lowest port number that workers will bind
             on. If not set, random ports will be chosen.
         max_worker_port: The highest port number that workers will bind
@@ -1693,13 +1696,19 @@ def start_raylet(
             dashboard agent stdout. If None, stdout is not redirected.
         dashboard_agent_stderr_filepath: The file path to dump
             dashboard agent stderr. If None, stderr is not redirected.
+        dashboard_agent_log_filepath: The file path for the dashboard agent
+            log file. If None, defaults to "dashboard_agent.log".
         runtime_env_agent_stdout_filepath: The file path to dump
             runtime env agent stdout. If None, stdout is not redirected.
         runtime_env_agent_stderr_filepath: The file path to dump
             runtime env agent stderr. If None, stderr is not redirected.
+        runtime_env_agent_log_filepath: The file path for the runtime env
+            agent log file. If None, defaults to "runtime_env_agent.log".
         huge_pages: Boolean flag indicating whether to start the Object
             Store with hugetlbfs support. Requires plasma_directory.
         fate_share: Whether to share fate between raylet and this process.
+        socket_to_use: The file descriptor of a socket to pass to the
+            raylet process. If None, no socket is passed.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to
@@ -1857,6 +1866,10 @@ def start_raylet(
         dashboard_agent_command.append(
             f"--stderr-filepath={dashboard_agent_stderr_filepath}"
         )
+    if dashboard_agent_log_filepath:
+        dashboard_agent_command.append(
+            f"--logging-filename={os.path.basename(dashboard_agent_log_filepath)}"
+        )
     if (
         dashboard_agent_stdout_filepath is None
         and dashboard_agent_stderr_filepath is None
@@ -1903,6 +1916,10 @@ def start_raylet(
     if runtime_env_agent_stderr_filepath:
         runtime_env_agent_command.append(
             f"--stderr-filepath={runtime_env_agent_stderr_filepath}"
+        )
+    if runtime_env_agent_log_filepath:
+        runtime_env_agent_command.append(
+            f"--logging-filename={os.path.basename(runtime_env_agent_log_filepath)}"
         )
     if (
         runtime_env_agent_stdout_filepath is None
@@ -2439,8 +2456,11 @@ def start_ray_client_server(
     ]
     if redis_username:
         command.append(f"--redis-username={redis_username}")
+    env_updates = {}
     if redis_password:
-        command.append(f"--redis-password={redis_password}")
+        # Use an environment variable to pass the Redis password to the client server.
+        # This avoids leaking it via process arguments.
+        env_updates[ray_constants.RAY_REDIS_PASSWORD_ENV] = redis_password
     if serialized_runtime_env_context:
         command.append(
             f"--serialized-runtime-env-context={serialized_runtime_env_context}"  # noqa: E501
@@ -2458,6 +2478,7 @@ def start_ray_client_server(
         stdout_file=stdout_file,
         stderr_file=stderr_file,
         fate_share=fate_share,
+        env_updates=env_updates,
     )
     return process_info
 
