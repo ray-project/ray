@@ -1,4 +1,4 @@
 numpy==1.23.5
-pyarrow==9.0.0
+pyarrow==14.0.1
 pymongoarrow==0.5.1
 pymongo==4.3.2

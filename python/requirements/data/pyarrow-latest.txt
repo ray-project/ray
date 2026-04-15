@@ -1,4 +1,4 @@
-pyarrow==23.0.1
+pyarrow==14.0.1
 hudi
 pylance
 modin==0.37.1

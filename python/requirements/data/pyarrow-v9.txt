@@ -1,4 +1,4 @@
-pyarrow==9.0.0
+pyarrow==14.0.1
 pandas==1.5.3
 datasets
 modin
