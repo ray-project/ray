@@ -229,12 +229,15 @@ class TaskManagerTest : public ::testing::Test {
   InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool node_died_ = false;
+  // These must be declared before manager_ because C++ initializes members in
+  // declaration order, and the TaskManager constructor records initial metric
+  // values via the reference it receives.
+  ray::observability::FakeGauge fake_task_by_state_counter_;
+  ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
   TaskManager manager_;
   int num_retries_ = 0;
   uint32_t last_delay_ms_ = 0;
   std::unordered_set<ObjectID> stored_in_plasma;
-  ray::observability::FakeGauge fake_task_by_state_counter_;
-  ray::observability::FakeGauge fake_total_lineage_bytes_gauge_;
 };
 
 class TaskManagerLineageTest : public TaskManagerTest {
