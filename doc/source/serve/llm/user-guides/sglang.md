@@ -10,7 +10,6 @@ This compatibility means you can:
 - Use SGLang's RadixAttention and other optimizations with Ray Serve's production features
 - Deploy SGLang models with autoscaling, multi-model serving, and advanced routing
 - Serve models across multiple nodes with tensor and pipeline parallelism
-- Run offline batch inference with SGLang through Ray Data
 
 :::{note}
 Community SGLang support is in early development. Track progress and provide feedback at [ray-project/ray#61114](https://github.com/ray-project/ray/issues/61114).
@@ -113,35 +112,15 @@ The `placement_group_strategy: "PACK"` fills GPUs on each node before moving to 
 RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_multinode_example:app
 ```
 
-## Batch inference
-
-Run offline batch inference using `SGLangEngineProcessorConfig` from `ray.data.llm`. This integrates SGLang with Ray Data for processing large datasets.
-
-::::{tab-set}
-
-:::{tab-item} Python
-:sync: python
-
-```{literalinclude} ../../../llm/doc_code/serve/sglang/sglang_batch_example.py
-:language: python
-:start-after: __sglang_batch_start__
-:end-before: __sglang_batch_end__
-```
-:::
-
-::::
-
-**Run:**
-
-```bash
-RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 python batch_sglang_example.py
-```
-
 ## Limitations
 
-- **Engine replicas:** Not supported
-- **Data parallelism (DP):** Requires a separate coordinator pattern; not supported in these examples
-- **Transcriptions and score:** Not implemented in `SGLangServer`
+- **Engine replicas:** SGLang does not support running multiple engine replicas within a single deployment. Each deployment runs one engine instance. To scale throughput, increase tensor or pipeline parallelism or deploy multiple independent models. See [ray-project/ray#62480](https://github.com/ray-project/ray/issues/62480) for tracking.
+- **Data parallelism (DP):** SGLang's data parallelism requires a separate coordinator pattern that is not yet integrated into the Ray Serve LLM deployment flow. Use tensor and pipeline parallelism for multi-GPU scaling instead.
+- **Transcriptions and score:** The `SGLangServer` does not implement the `/v1/audio/transcriptions` or `/v1/score` endpoints. Only chat completions, text completions, embeddings, tokenize, and detokenize are supported.
+- **Observability:** Engine-level metrics (e.g. KV cache utilization, request queue depth) are not yet exposed through Ray Serve's metrics endpoint.
+- **Prefill disaggregation:** Separating prefill and decode phases across different workers is not yet supported.
+- **Expert parallelism (EP):** Wide expert parallelism for Mixture-of-Experts models is not yet integrated.
+- **Elastic expert parallelism:** Dynamic scaling of expert parallel workers based on load is not yet supported.
 
 ## Dependencies
 
@@ -149,7 +128,7 @@ SGLang's in-process engine overrides Python signal handlers on startup. The `SGL
 
 ## See also
 
-- [SGLang supported models](https://docs.sglang.ai/supported_models/classify_models.html#supported-models)
+- [SGLang supported models](https://docs.sglang.io/supported_models/text_generation/generative_models.html)
 - [SGLang OpenAI compatibility](https://docs.sglang.ai/basic_usage/openai_api.html)
 - {doc}`../quick-start` - Basic LLM deployment examples
 - {doc}`cross-node-parallelism` - Cross-node parallelism with placement groups
