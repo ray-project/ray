@@ -95,10 +95,12 @@ python/deplocks/ci/macos_depset_py*
 # Raydepsets-generated lock files. These do NOT affect the macOS smoke
 # test (which only consumes macos_depset_py*, handled above), so we
 # deliberately omit macos_wheels here to avoid running mac tests on
-# unrelated lock updates.
+# unrelated lock updates. Otherwise mirrors the python/setup.py rule's
+# tag set so general dependency changes still fan out across CI.
 python/deplocks/
-@ ml tune train data
+@ ml tune train serve workflow data min_build
 @ python dashboard linux_wheels java
+@ python_dependencies
 ;
 
 python/setup.py
