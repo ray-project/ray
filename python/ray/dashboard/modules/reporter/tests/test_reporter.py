@@ -1472,5 +1472,62 @@ async def test_reporter_v2_autoscaler_emits_idle_nodes_metric(tmp_path):
     agent._get_cluster_stats_v2.assert_called_once()
 
 
+@pytest.mark.asyncio
+async def test_stale_cluster_node_metrics_zeroed_out(tmp_path):
+    """When a node type disappears from the autoscaler report, the
+    corresponding gauge should be explicitly set to 0 so Prometheus
+    does not retain the last non-zero value. Regression test for #50735."""
+    agent, captured = _make_reporter_agent_and_capture(tmp_path)
+    agent._get_cluster_stats_v2 = MagicMock()
+
+    node_type_a = "worker8"
+    node_type_b = "worker16"
+
+    # First report: both node types are active and pending.
+    v1_stats_both = {
+        "autoscaler_report": {
+            "active_nodes": {node_type_a: 3, node_type_b: 2},
+            "idle_nodes": None,
+            "pending_nodes": [
+                ("10.0.0.1", node_type_a, "PENDING"),
+                ("10.0.0.2", node_type_b, "PENDING"),
+            ],
+            "failed_nodes": [("10.0.0.3", node_type_a)],
+        }
+    }
+    await agent._async_compose_stats_payload(
+        json.dumps(v1_stats_both).encode(), autoscaler_v2_enabled=False
+    )
+    recs = captured["records"]
+    assert _find_metric_value(recs, "cluster_active_nodes", node_type_a) == 3
+    assert _find_metric_value(recs, "cluster_active_nodes", node_type_b) == 2
+    assert _find_metric_value(recs, "cluster_pending_nodes", node_type_a) == 1
+    assert _find_metric_value(recs, "cluster_pending_nodes", node_type_b) == 1
+    assert _find_metric_value(recs, "cluster_failed_nodes", node_type_a) == 1
+
+    # Second report: node_type_b disappears entirely.
+    v1_stats_only_a = {
+        "autoscaler_report": {
+            "active_nodes": {node_type_a: 1},
+            "idle_nodes": None,
+            "pending_nodes": [],
+            "failed_nodes": [],
+        }
+    }
+    await agent._async_compose_stats_payload(
+        json.dumps(v1_stats_only_a).encode(), autoscaler_v2_enabled=False
+    )
+    recs = captured["records"]
+
+    # node_type_a is still reported with its current value.
+    assert _find_metric_value(recs, "cluster_active_nodes", node_type_a) == 1
+
+    # node_type_b and stale node_type_a entries should be zeroed out.
+    assert _find_metric_value(recs, "cluster_active_nodes", node_type_b) == 0
+    assert _find_metric_value(recs, "cluster_pending_nodes", node_type_a) == 0
+    assert _find_metric_value(recs, "cluster_pending_nodes", node_type_b) == 0
+    assert _find_metric_value(recs, "cluster_failed_nodes", node_type_a) == 0
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

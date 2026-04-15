@@ -8,7 +8,7 @@ import sys
 import traceback
 from collections import defaultdict, namedtuple
 from concurrent.futures import ThreadPoolExecutor
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import requests
 from grpc.aio import ServicerContext
@@ -459,6 +459,14 @@ class ReporterAgent(
         # The last reported worker proc names (e.g., ray::*).
         self._latest_worker_proc_names = set()
         self._latest_gpu_worker_proc_names = set()
+        # Track previously reported node types per cluster metric so we can
+        # emit 0 when a node type disappears (gauges retain their last value).
+        self._prev_cluster_node_types: Dict[str, set] = {
+            "cluster_active_nodes": set(),
+            "cluster_idle_nodes": set(),
+            "cluster_failed_nodes": set(),
+            "cluster_pending_nodes": set(),
+        }
         self._network_stats_hist = [(0, (0.0, 0.0))]  # time, (sent, recv)
         self._disk_io_stats_hist = [
             (0, (0.0, 0.0, 0, 0))
@@ -1409,6 +1417,39 @@ class ReporterAgent(
 
         return records
 
+    def _report_cluster_node_metric(
+        self,
+        records: List[Record],
+        metric_key: str,
+        current_counts: Dict[str, int],
+    ):
+        """Emit gauge records for cluster node metrics, zeroing out stale
+        node types that are no longer present in the current report."""
+        current_node_types = set(current_counts.keys())
+        prev_node_types = self._prev_cluster_node_types[metric_key]
+
+        # Emit current counts
+        for node_type, count in current_counts.items():
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES[metric_key],
+                    value=count,
+                    tags={"node_type": node_type},
+                )
+            )
+
+        # Emit 0 for node types that were previously reported but are now gone
+        for node_type in prev_node_types - current_node_types:
+            records.append(
+                Record(
+                    gauge=METRICS_GAUGES[metric_key],
+                    value=0,
+                    tags={"node_type": node_type},
+                )
+            )
+
+        self._prev_cluster_node_types[metric_key] = current_node_types
+
     def _to_records(self, stats, cluster_stats) -> List[Record]:
         records_reported = []
         ip = stats["ip"]
@@ -1423,60 +1464,36 @@ class ReporterAgent(
         # Only report cluster stats on head node
         if "autoscaler_report" in cluster_stats and self._is_head_node:
             active_nodes = cluster_stats["autoscaler_report"]["active_nodes"]
-            for node_type, active_node_count in active_nodes.items():
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["cluster_active_nodes"],
-                        value=active_node_count,
-                        tags={"node_type": node_type},
-                    )
-                )
+            self._report_cluster_node_metric(
+                records_reported, "cluster_active_nodes", active_nodes
+            )
 
             # Emit cluster_idle_nodes only for autoscaler v2 (v1 has no "idle" state).
             idle_nodes = cluster_stats.get("autoscaler_report", {}).get("idle_nodes")
             if idle_nodes is not None:
-                for node_type, idle_node_count in idle_nodes.items():
-                    records_reported.append(
-                        Record(
-                            gauge=METRICS_GAUGES["cluster_idle_nodes"],
-                            value=idle_node_count,
-                            tags={"node_type": node_type},
-                        )
-                    )
+                self._report_cluster_node_metric(
+                    records_reported, "cluster_idle_nodes", idle_nodes
+                )
 
             failed_nodes = cluster_stats["autoscaler_report"]["failed_nodes"]
-            failed_nodes_dict = {}
+            failed_nodes_dict: Dict[str, int] = {}
             for node_ip, node_type in failed_nodes:
-                if node_type in failed_nodes_dict:
-                    failed_nodes_dict[node_type] += 1
-                else:
-                    failed_nodes_dict[node_type] = 1
-
-            for node_type, failed_node_count in failed_nodes_dict.items():
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["cluster_failed_nodes"],
-                        value=failed_node_count,
-                        tags={"node_type": node_type},
-                    )
+                failed_nodes_dict[node_type] = (
+                    failed_nodes_dict.get(node_type, 0) + 1
                 )
+            self._report_cluster_node_metric(
+                records_reported, "cluster_failed_nodes", failed_nodes_dict
+            )
 
             pending_nodes = cluster_stats["autoscaler_report"]["pending_nodes"]
-            pending_nodes_dict = {}
+            pending_nodes_dict: Dict[str, int] = {}
             for node_ip, node_type, status_message in pending_nodes:
-                if node_type in pending_nodes_dict:
-                    pending_nodes_dict[node_type] += 1
-                else:
-                    pending_nodes_dict[node_type] = 1
-
-            for node_type, pending_node_count in pending_nodes_dict.items():
-                records_reported.append(
-                    Record(
-                        gauge=METRICS_GAUGES["cluster_pending_nodes"],
-                        value=pending_node_count,
-                        tags={"node_type": node_type},
-                    )
+                pending_nodes_dict[node_type] = (
+                    pending_nodes_dict.get(node_type, 0) + 1
                 )
+            self._report_cluster_node_metric(
+                records_reported, "cluster_pending_nodes", pending_nodes_dict
+            )
 
         # -- CPU per node --
         cpu_usage = float(stats["cpu"])
