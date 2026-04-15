@@ -265,6 +265,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
         << ", because current resources can't satisfy the required resource. IsFailed: "
         << result_status.IsFailed() << " IsInfeasible: " << !is_feasible
         << " IsPartialSuccess: " << result_status.IsPartialSuccess();
+    resource_masker.reset();
     // If the placement group creation has failed,
     // but if it is not infeasible, it is retryable to create.
     failure_callback(placement_group, is_feasible);
