@@ -148,6 +148,7 @@ ray_cc_library(
         "//src/ray/pubsub:gcs_publisher",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -438,6 +439,7 @@ ray_cc_library(
         ":grpc_service_interfaces",
         ":grpc_services",
         ":metrics",
+        "//src/ray/util:clock",
         "//src/ray/core_worker_rpc_client:core_worker_client",
         "//src/ray/core_worker_rpc_client:core_worker_client_pool",
         "//src/ray/gcs/store_client",
