@@ -48,28 +48,34 @@ class ScopedResourceMasker {
           &committed_bundle_pairs)
       : scheduler_(scheduler) {
     auto &manager = scheduler_.GetClusterResourceManager();
+
+    // Aggregate requested resources by node.
+    absl::flat_hash_map<scheduling::NodeID, absl::flat_hash_map<std::string, double>>
+        aggregated_resources;
+
     for (const auto &pair : committed_bundle_pairs) {
       auto node_id = scheduling::NodeID(pair.first.Binary());
-
       if (!manager.HasNode(node_id)) {
-        // Check if node still exists
         continue;
       }
+      auto required_resource_map =
+          pair.second->GetRequiredResources().GetResourceSet().GetResourceMap();
+      for (const auto &entry : required_resource_map) {
+        aggregated_resources[node_id][entry.first] += entry.second;
+      }
+    }
 
-      auto bundle = pair.second;
+    for (const auto &[node_id, total_requested] : aggregated_resources) {
       absl::flat_hash_map<std::string, double> effective_resources;
       const auto &node_resources = manager.GetNodeResources(node_id);
-      auto required_resource_map =
-          bundle->GetRequiredResources().GetResourceSet().GetResourceMap();
 
-      for (const auto &entry : required_resource_map) {
+      for (const auto &entry : total_requested) {
         auto resource_id = scheduling::ResourceID(entry.first);
         double total = node_resources.total.Get(resource_id).Double();
         double available = node_resources.available.Get(resource_id).Double();
         double requested = entry.second;
 
-        // The amount of resources we can effectively add without
-        // exceeding the node's total capacity.
+        // Cap the addition so available never exceeds total capacity
         double room = std::max(0.0, total - available);
         double effective_add = std::min(requested, room);
 
@@ -195,7 +201,8 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
   scheduling_result = cluster_resource_scheduler_.SchedulePlacementGroup(
       primary_request_ptrs,
-      CreateSchedulingOptions(*placement_group, strategy, primary_request_ptrs));
+      CreateSchedulingOptions(
+          *placement_group, strategy, primary_request_ptrs, is_scheduling_all_bundles));
 
   is_feasible = is_feasible || !scheduling_result.status.IsInfeasible();
 
@@ -229,7 +236,10 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
 
       auto fallback_result = cluster_resource_scheduler_.SchedulePlacementGroup(
           fallback_request_ptrs,
-          CreateSchedulingOptions(*placement_group, strategy, fallback_request_ptrs));
+          CreateSchedulingOptions(*placement_group,
+                                  strategy,
+                                  fallback_request_ptrs,
+                                  is_scheduling_all_bundles));
 
       is_feasible = is_feasible || !fallback_result.status.IsInfeasible();
 
@@ -671,15 +681,24 @@ namespace {
 // Otherwise it scans the active requests (primary or fallbacks) for a domain trigger.
 std::optional<std::string> ExtractLabelDomain(
     const GcsPlacementGroup &placement_group,
-    const std::vector<const ResourceRequest *> &active_requests) {
+    const std::vector<const ResourceRequest *> &active_requests,
+    bool is_scheduling_all_bundles) {
   // Check if a domain was set for the PG, if so return it
   std::optional<std::string> label_domain = placement_group.GetLabelDomainKey();
-  if (label_domain.has_value() &&
-      placement_group.GetLabelDomainAssignment(label_domain.value()).has_value()) {
-    return label_domain;
+  if (label_domain.has_value()) {
+    // During a partial reschedule preserve the domain to maintain affinity
+    // for the currently placed bundles.
+    if (!is_scheduling_all_bundles) {
+      return label_domain;
+    }
+
+    // Explicitly set domains are PG-level and immutable
+    if (label_domain.value() != kGpuDomainLabelKey) {
+      return label_domain;
+    }
   }
 
-  // If no domain is set, check the active bundles for a domain trigger.
+  // If no explicit domain is set, check the active bundles for a domain trigger.
   for (const auto *request : active_requests) {
     for (const auto &constraint : request->GetLabelSelector().GetConstraints()) {
       if (IsGpuAcceleratorConstraint(constraint)) {
@@ -694,11 +713,12 @@ std::optional<std::string> ExtractLabelDomain(
 SchedulingOptions GcsPlacementGroupScheduler::CreateSchedulingOptions(
     const GcsPlacementGroup &placement_group,
     rpc::PlacementStrategy strategy,
-    const std::vector<const ResourceRequest *> &active_requests) {
+    const std::vector<const ResourceRequest *> &active_requests,
+    bool is_scheduling_all_bundles) {
   std::optional<std::pair<std::string, std::optional<std::string>>> target_label_domain;
 
   std::optional<std::string> label_domain =
-      ExtractLabelDomain(placement_group, active_requests);
+      ExtractLabelDomain(placement_group, active_requests, is_scheduling_all_bundles);
 
   if (label_domain.has_value()) {
     const std::string &label_domain_key = label_domain.value();

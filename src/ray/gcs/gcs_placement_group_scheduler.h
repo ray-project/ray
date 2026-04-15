@@ -463,7 +463,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   SchedulingOptions CreateSchedulingOptions(
       const GcsPlacementGroup &placement_group,
       rpc::PlacementStrategy strategy,
-      const std::vector<const ResourceRequest *> &active_requests);
+      const std::vector<const ResourceRequest *> &active_requests,
+      bool is_scheduling_all_bundles);
 
   /// Try to release bundle resource to cluster resource manager.
   ///
