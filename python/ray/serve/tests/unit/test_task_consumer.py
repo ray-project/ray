@@ -18,11 +18,10 @@ from ray.serve.task_consumer import task_consumer, task_handler
 class MockTaskProcessorAdapter(TaskProcessorAdapter):
     """Mock adapter for testing task processor functionality."""
 
-    _start_consumer_received: bool = False
-    _stop_consumer_received: bool = False
-
     def __init__(self, config: TaskProcessorConfig):
         self._config = config
+        self._start_consumer_received: bool = False
+        self._stop_consumer_received: bool = False
         self.register_task_handle_mock = MagicMock()
 
     def initialize(self, consumer_concurrency: int = 3):
