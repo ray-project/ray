@@ -133,4 +133,4 @@ SGLang's in-process engine overrides Python signal handlers on startup. The `SGL
 - [SGLang OpenAI compatibility](https://docs.sglang.ai/basic_usage/openai_api.html)
 - {doc}`../quick-start` - Basic LLM deployment examples
 - {doc}`cross-node-parallelism` - Cross-node parallelism with placement groups
-- [SGLang support tracking issue](https://github.com/ray-project/ray/issues/61114)
+
