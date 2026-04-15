@@ -552,12 +552,22 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
 
 void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
 #ifdef __linux__
+  std::ifstream original_oom_score_file;
   std::ofstream oom_score_file;
   std::string filename("/proc/" + std::to_string(pid) + "/oom_score_adj");
+  original_oom_score_file.open(filename, std::ifstream::in);
+  int original_oom_score_adj = 0;
+  if (original_oom_score_file.is_open()) {
+    original_oom_score_file >> original_oom_score_adj;
+  } else {
+    RAY_LOG(INFO) << "Failed to get OOM score adjustment for worker with PID " << pid
+                  << ", error: " << strerror(errno);
+  }
+  original_oom_score_file.close();
   oom_score_file.open(filename, std::ofstream::out);
-  int oom_score_adj = RayConfig::instance().worker_oom_score_adjustment();
-  oom_score_adj = std::max(oom_score_adj, -1000);
-  oom_score_adj = std::min(oom_score_adj, 1000);
+  int relative_oom_score_adj = RayConfig::instance().worker_oom_score_adjustment();
+  relative_oom_score_adj = std::max(relative_oom_score_adj, 0);
+  int oom_score_adj = std::min(original_oom_score_adj + relative_oom_score_adj, 1000);
   if (oom_score_file.is_open()) {
     // Adjust worker's OOM score so that the OS prioritizes killing these
     // processes over the raylet.
