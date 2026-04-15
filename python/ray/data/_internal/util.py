@@ -51,6 +51,7 @@ if TYPE_CHECKING:
 
     from ray.data._internal.compute import ComputeStrategy
     from ray.data._internal.execution.interfaces import ExecutionResources, RefBundle
+    from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
     from ray.data._internal.planner.exchange.sort_task_spec import SortKey
     from ray.data.block import (
         Block,
@@ -894,9 +895,17 @@ def find_partition_index(
         col_vals = table[col_name].to_numpy()[left:right]
         desired_val = desired[i]
 
-        # Handle null values - replace them with sentinel values
+        # Nulls and NaN sort last in Arrow, so they accumulate at the tail of
+        # col_vals. Strip them before np.searchsorted to avoid incorrect bounds.
+        # Use O(1) null_count as a fast path, and fall back to np.isnan for
+        # float columns that may contain NaN without Arrow nulls.
+        column = table[col_name]
+        if hasattr(column, "null_count") and column.null_count > 0:
+            col_vals = col_vals[~pd.isna(col_vals)]
+        elif col_vals.dtype.kind == "f" and np.isnan(col_vals).any():
+            col_vals = col_vals[~np.isnan(col_vals)]
         if desired_val is None:
-            desired_val = NULL_SENTINEL
+            return left + len(col_vals)
 
         prevleft = left
         if descending[i] is True:
@@ -1908,3 +1917,33 @@ def get_max_task_capacity(
 
     capacity = allocated_resources.floordiv(min_scheduling_resources)
     return min(capacity.cpu, capacity.gpu, capacity.memory)
+
+
+def explain_plan(logical_plan: "LogicalPlan") -> str:
+    """Return a string representation of the logical and physical plan."""
+    from ray.data._internal.dataset_repr import _format_operator_dag
+    from ray.data._internal.logical.optimizers import (
+        LogicalOptimizer,
+        PhysicalOptimizer,
+    )
+    from ray.data._internal.planner import create_planner
+
+    sections = []
+
+    def _add_section(title, plan):
+        plan_str, _ = _format_operator_dag(plan.dag, show_op_repr=True)
+        banner = f"\n-------- {title} --------\n"
+        sections.append(f"{banner}{plan_str}")
+
+    _add_section("Logical Plan", logical_plan)
+
+    optimized_logical = LogicalOptimizer().optimize(logical_plan)
+    _add_section("Logical Plan (Optimized)", optimized_logical)
+
+    physical_plan, _ = create_planner().plan(optimized_logical)
+    _add_section("Physical Plan", physical_plan)
+
+    optimized_physical = PhysicalOptimizer().optimize(physical_plan)
+    _add_section("Physical Plan (Optimized)", optimized_physical)
+
+    return "".join(sections)
