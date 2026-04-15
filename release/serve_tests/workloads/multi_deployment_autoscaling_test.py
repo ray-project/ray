@@ -42,7 +42,7 @@ def _make_application(
         "route_prefix": route,
         "deployments": [
             {
-                "name": "SimulatedMLInference",
+                "name": f"SimulatedMLInference_{app_name}",
                 "num_replicas": "auto",
                 "max_queued_requests": -1,
                 "graceful_shutdown_wait_loop_s": 2.0,
