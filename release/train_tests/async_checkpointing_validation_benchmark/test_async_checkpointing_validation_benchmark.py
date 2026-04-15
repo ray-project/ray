@@ -203,6 +203,9 @@ def validate_and_report(
     checkpoint_upload_mode = config["checkpoint_upload_mode"]
     validation_type = config["validation_type"]
     checkpoint_save_mode = config["checkpoint_save_mode"]
+    print(
+        f"========= VALIDATE_AND_REPORT: {epoch=}, {batch_idx=}, {checkpoint_upload_mode=}, {validation_type=}, {checkpoint_save_mode=}"
+    )
 
     if validate_within_trainer:
         test_dataloader = ray.train.get_dataset_shard("test").iter_torch_batches(
@@ -233,8 +236,7 @@ def validate_and_report(
     start_time = time.time()
 
     # DCP save is a distributed collective so all ranks must call it together.
-    ckpt_ref = None  # Only used by TORCH_DCP_ASYNC
-    iteration_checkpoint_dir = None
+    ckpt_ref = iteration_checkpoint_dir = None  # Only used by TORCH_DCP_ASYNC
     if checkpoint_save_mode in (
         CheckpointSaveMode.TORCH_DCP_SYNC,
         CheckpointSaveMode.TORCH_DCP_ASYNC,
@@ -310,13 +312,14 @@ def validate_and_report(
                 checkpoint, checkpoint_dir_name, upload_complete_ref=ckpt_ref
             ):
                 upload_complete_ref.result()
-                # todo (mark): this might be unnecessary as the data isn't moving so should be able to use `return checkpoint`
-                path = (
-                    ray.train.get_context()
-                    .get_storage()
-                    .build_checkpoint_path_from_name(checkpoint_dir_name)
-                )
-                return ray.train.Checkpoint.from_directory(path)
+                # # todo (mark): this might be unnecessary as the data isn't moving so should be able to use `return checkpoint`
+                # path = (
+                #     ray.train.get_context()
+                #     .get_storage()
+                #     .build_checkpoint_path_from_name(checkpoint_dir_name)
+                # )
+                # return ray.train.Checkpoint.from_directory(path)
+                return checkpoint
 
             ray.train.report(
                 metrics,
@@ -440,20 +443,19 @@ def run_training_with_validation(
 
     # Return metrics
     # TODO: consider measuring how long it takes to kick off validation,
-    # how long checkpoint upload takes, distribution of times
+    #   how long checkpoint upload takes, distribution of times
     train_func_metrics = result.best_checkpoints[-1][1]
-    metrics = {}
-    metrics["e2e_time"] = end_time - start_time
-    metrics["final_validation_waiting_time"] = (
-        end_time - train_func_metrics["train_func_return_time"]
-    )
-    metrics["total_report_blocked_time"] = sum(
-        train_func_metrics["report_blocked_times"]
-    )
-    metrics["total_validation_time"] = sum(
-        t[1]["validation_time"] for t in result.best_checkpoints[:-1]
-    )
-    metrics["final_score"] = result.best_checkpoints[-2][1]["score"]
+    metrics = {
+        "e2e_time": end_time - start_time,
+        "final_validation_waiting_time": (
+            end_time - train_func_metrics["train_func_return_time"]
+        ),
+        "total_report_blocked_time": sum(train_func_metrics["report_blocked_times"]),
+        "total_validation_time": sum(
+            m["validation_time"] for c, m in result.best_checkpoints[:-1]
+        ),
+        "final_score": result.best_checkpoints[-2][1]["score"],
+    }
     return metrics
 
 
@@ -464,6 +466,7 @@ def main():
     training_rows = train_dataset.count()
     consolidated_metrics = {}
     num_epochs = 10
+    print("======== sync_cp_inline_val_metrics")
     consolidated_metrics["sync_cp_inline_val_metrics"] = run_training_with_validation(
         CheckpointUploadMode.SYNC,
         ValidationType.INLINE,
@@ -473,6 +476,7 @@ def main():
         training_rows,
         CheckpointSaveMode.TORCH_SAVE,
     )
+    print("======== async_cp_torch_trainer_val_metrics")
     consolidated_metrics[
         "async_cp_torch_trainer_val_metrics"
     ] = run_training_with_validation(
@@ -484,6 +488,7 @@ def main():
         training_rows,
         CheckpointSaveMode.TORCH_SAVE,
     )
+    print("======== async_cp_map_batches_val_metrics")
     consolidated_metrics[
         "async_cp_map_batches_val_metrics"
     ] = run_training_with_validation(
@@ -495,6 +500,7 @@ def main():
         training_rows,
         CheckpointSaveMode.TORCH_SAVE,
     )
+    print("======== sync_dcp_map_batches_val_metrics")
     consolidated_metrics[
         "sync_dcp_map_batches_val_metrics"
     ] = run_training_with_validation(
@@ -506,6 +512,7 @@ def main():
         training_rows,
         CheckpointSaveMode.TORCH_DCP_SYNC,
     )
+    print("======== async_dcp_map_batches_val_metrics")
     consolidated_metrics[
         "async_dcp_map_batches_val_metrics"
     ] = run_training_with_validation(
