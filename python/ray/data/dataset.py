@@ -492,7 +492,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["default"]] = None,
+        batch_size: Union[int, None, Literal["default"], Literal["auto"]] = None,
         compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         zero_copy_batch: bool = True,
@@ -762,7 +762,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["default"]],
+        batch_size: Union[int, None, Literal["default"], Literal["auto"]],
         compute: Optional[ComputeStrategy],
         batch_format: Optional[str],
         zero_copy_batch: bool,
@@ -783,14 +783,18 @@ class Dataset:
         # `batch_size=None`, then `map_batches` raises a value error. So, to allow users
         # to call `map_groups` with  GPUs, we need a separate method that doesn't
         # perform batch size validation.
-
-        if batch_size == "default":
+        if batch_size is None or batch_size == "auto":
+            min_rows_per_bundled_input = None
+        elif batch_size == "default":
             warnings.warn(
                 "Passing 'default' to `map_batches` is deprecated and won't be "
                 "supported after September 2025. Use `batch_size=None` instead.",
                 DeprecationWarning,
             )
             batch_size = None
+            min_rows_per_bundled_input = None
+        else: # batch size is an int
+            min_rows_per_bundled_input = batch_size
 
         compute = get_compute_strategy(
             fn,
@@ -818,7 +822,7 @@ class Dataset:
             can_modify_num_rows=udf_modifying_row_count,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
-            min_rows_per_bundled_input=batch_size,
+            min_rows_per_bundled_input=min_rows_per_bundled_input,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
