@@ -1,4 +1,3 @@
 <!-- Security rules applying to all code -->
-- Never commit secrets, tokens, or credentials
-- All new gRPC endpoints and RPC handlers must support token-based authentication
-- New API calls must include auth token propagation (both C++ and Python sides)
+- Add token-based authentication to all new gRPC endpoints and RPC handlers to maintain Ray's security model
+- Propagate auth tokens in new API calls (both C++ and Python sides) so that end-to-end authentication remains consistent
