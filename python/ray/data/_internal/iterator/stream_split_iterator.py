@@ -349,11 +349,12 @@ class SplitCoordinator:
                 metadata = block[1]
                 num_rows = metadata.num_rows if metadata.num_rows else 0
                 self._num_rows_dispatched[output_split_idx] += num_rows
+                num_rows_total = self._num_rows_dispatched[output_split_idx]
 
             self._maybe_log_dispatch(
                 split_idx=output_split_idx,
                 epoch_id=epoch_id,
-                num_rows_dispatched=self._num_rows_dispatched[output_split_idx],
+                num_rows_dispatched=num_rows_total,
                 client_prefetched_bytes=client_prefetched_bytes,
             )
 
@@ -362,14 +363,16 @@ class SplitCoordinator:
                 [block], schema=schema, owns_blocks=next_bundle.owns_blocks
             )
         except StopIteration:
-            num_rows = self._num_rows_dispatched[output_split_idx]
+            with self._lock:
+                num_rows = self._num_rows_dispatched[output_split_idx]
             logger.debug(
                 f"Split {output_split_idx} epoch {epoch_id} finished, dispatched "
                 f"{num_rows} rows."
             )
             return None
         except Exception as e:
-            num_rows = self._num_rows_dispatched[output_split_idx]
+            with self._lock:
+                num_rows = self._num_rows_dispatched[output_split_idx]
             logger.warning(
                 f"Split {output_split_idx} epoch {epoch_id} get() failed after "
                 f"{num_rows} rows: {e}"
@@ -424,15 +427,15 @@ class SplitCoordinator:
         messages.
         """
         now = time.time()
-        if now - self._last_dispatch_log_time < self.DISPATCH_LOG_INTERVAL_S:
-            return
+        with self._lock:
+            if now - self._last_dispatch_log_time < self.DISPATCH_LOG_INTERVAL_S:
+                return
+            self._last_dispatch_log_time = now
 
         logger.debug(
             f"Split {split_idx} epoch {epoch_id} returned block: "
             f"{num_rows_dispatched=}, {client_prefetched_bytes=}"
         )
-
-        self._last_dispatch_log_time = now
 
     def shutdown_executor(self):
         """Shuts down the internal data executor."""
@@ -444,12 +447,12 @@ class SplitCoordinator:
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
-        logger.debug(
-            f"Split {split_idx} arriving at barrier for epoch {self._cur_epoch + 1}."
-        )
-
         # Decrement and await all clients to arrive here.
         with self._lock:
+            logger.debug(
+                f"Split {split_idx} arriving at barrier for epoch "
+                f"{self._cur_epoch + 1}."
+            )
             starting_epoch = self._cur_epoch
             self._unfinished_clients_in_epoch -= 1
 
