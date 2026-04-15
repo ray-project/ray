@@ -421,54 +421,53 @@ class SlicePlacementGroup:
     - Pod type: The TPU accelerator version and the number of chips in a topology. (e.g. v6e-128, v5p-8).
     - Accelerator topology: The physical topology representing the structure (e.g. 2x2x2, 16x16).
 
-        Args:
-            topology: The TPU topology string (e.g. "2x2x2").
-            accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
-            resources_per_bundle: Optionally specify the resources to include in every worker bundle.
-            strategy: PlacementGroup parameter. The strategy to create the placement group. Currently default to "SPREAD"
+    Args:
+        topology: The TPU topology string (e.g. "2x2x2").
+        accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
+        resources_per_bundle: Optionally specify the resources to include in every worker bundle.
+        strategy: PlacementGroup parameter. The strategy to create the placement group. Currently default to "SPREAD"
 
-             - "PACK": Packs Bundles into as few nodes as possible.
-             - "SPREAD": Places Bundles across distinct nodes as even as possible.
-             - "STRICT_PACK": Packs Bundles into one node. The group is
-               not allowed to span multiple nodes.
-             - "STRICT_SPREAD": Packs Bundles across distinct nodes.
+            - "PACK": Packs Bundles into as few nodes as possible.
+            - "SPREAD": Places Bundles across distinct nodes as even as possible.
+            - "STRICT_PACK": Packs Bundles into one node. The group is
+              not allowed to span multiple nodes.
+            - "STRICT_SPREAD": Packs Bundles across distinct nodes.
 
-            lifetime: PlacementGroup parameter. Either `None`, which defaults to the placement group
-                will fate share with its creator and will be deleted once its
-                creator is dead, or "detached", which means the placement group
-                will live as a global object independent of the creator.
+        name: PlacementGroup parameter. The name of the placement group.
+        lifetime: PlacementGroup parameter. Either `None`, which defaults to the placement group
+            will fate share with its creator and will be deleted once its
+            creator is dead, or "detached", which means the placement group
+            will live as a global object independent of the creator.
+        num_slices: Number of TPU slices in the SlicePlacementGroup. Defaults to 1 when unspecified.
+        chips_per_vm: An optional override for the number of chips per VM. Useful for resolving
+            ambiguous topologies (e.g. v6e 2x4) where the slice could physically consist of
+            a single 8-chip VM or two 4-chip VMs.
 
-            num_slices: Number of TPU slices in the SlicePlacementGroup. Defaults to 1 when unspecified.
-            chips_per_vm: An optional override for the number of chips per VM. Useful for resolving
-                ambiguous topologies (e.g. v6e 2x4) where the slice could physically consist of
-                a single 8-chip VM or two 4-chip VMs.
+    Examples:
 
-        Examples:
+    .. testcode:: python
+        :skipif: True
 
-        .. testcode:: python
-            :skipif: True
+        import ray
+        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        from ray.util.tpu import SlicePlacementGroup
 
-            import ray
-            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-            from ray.util.tpu import SlicePlacementGroup
+        slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
+        slice_pg = slice_handle.placement_group
+        ray.get(slice_pg.ready(), timeout=10)
 
-            slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
-            slice_pg = slice_handle.placement_group
-            ray.get(slice_pg.ready(), timeout=10)
+        @ray.remote(num_cpus=0, resources={'TPU': 4})
+        def spmd_task(world, rank):
+            print(f"Current TPU is rank {rank} of {world}")
 
-            @ray.remote(num_cpus=0, resources={'TPU': 4})
-            def spmd_task(world, rank):
-                print(f"Current TPU is rank {rank} of {world}")
-
-            tasks = [
-                spmd_task.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=slice_pg,
-                    )
-                ).remote(world=4, rank=i)
-                for i in range(slice_handle.num_hosts)
-            ]
-
+        tasks = [
+            spmd_task.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=slice_pg,
+                )
+            ).remote(world=4, rank=i)
+            for i in range(slice_handle.num_hosts)
+        ]
     """
 
     def __init__(
