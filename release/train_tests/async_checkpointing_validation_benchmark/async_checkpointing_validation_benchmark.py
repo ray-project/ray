@@ -206,9 +206,6 @@ def validate_and_report(
     checkpoint_upload_mode = config["checkpoint_upload_mode"]
     validation_type = config["validation_type"]
     checkpoint_save_mode = config["checkpoint_save_mode"]
-    print(
-        f"========= VALIDATE_AND_REPORT: {epoch=}, {batch_idx=}, {checkpoint_upload_mode=}, {validation_type=}, {checkpoint_save_mode=}"
-    )
 
     if validate_within_trainer:
         test_dataloader = ray.train.get_dataset_shard("test").iter_torch_batches(
@@ -239,7 +236,8 @@ def validate_and_report(
     start_time = time.time()
 
     # DCP save is a distributed collective so all ranks must call it together.
-    ckpt_ref = iteration_checkpoint_dir = None  # Only used by TORCH_DCP_ASYNC
+    ckpt_ref = None  # Only used by TORCH_DCP_ASYNC
+    iteration_checkpoint_dir = None  # Not used by TORCH_SAVE
     if checkpoint_save_mode in (
         CheckpointSaveMode.TORCH_DCP_SYNC,
         CheckpointSaveMode.TORCH_DCP_ASYNC,
@@ -295,6 +293,7 @@ def validate_and_report(
                     iteration_checkpoint_dir
                 ),
                 checkpoint_upload_mode=checkpoint_upload_mode,
+                delete_local_checkpoint_after_upload=True,
                 validation=validation,
             )
         elif checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_SYNC:
@@ -315,13 +314,6 @@ def validate_and_report(
                 checkpoint, checkpoint_dir_name, upload_complete_ref=ckpt_ref
             ):
                 upload_complete_ref.result()
-                # todo (mark): this might be unnecessary as the data isn't moving so should be able to use `return checkpoint`
-                # path = (
-                #     ray.train.get_context()
-                #     .get_storage()
-                #     .build_checkpoint_path_from_name(checkpoint_dir_name)
-                # )
-                # return ray.train.Checkpoint.from_directory(path)
                 return checkpoint
 
             ray.train.report(
