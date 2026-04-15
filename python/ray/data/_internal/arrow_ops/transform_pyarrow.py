@@ -132,6 +132,7 @@ def hash_partition(
     #       chunks w/in the individual columns, and therefore to improve performance
     #       we attempt to defragment the table to potentially combine some of those
     #       chunks into contiguous arrays.
+    # TODO: can we always combine chunks?
     table = try_combine_chunked_columns(table)
 
     return {
@@ -1104,24 +1105,34 @@ def to_numpy(
         )
 
 
-def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
+def try_combine_chunked_columns(
+    table: "pyarrow.Table",
+    min_chunks_to_combine: int = MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS,
+) -> "pyarrow.Table":
     """This method attempts to coalesce table by combining any of its
-    columns exceeding threshold of `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
-    chunks in its `ChunkedArray`.
+    columns with at least ``min_chunks_to_combine`` chunks in its
+    ``ChunkedArray``.
 
     This is necessary to improve performance for some operations (like `take`, etc)
     when dealing with `ChunkedArrays` w/ large number of chunks
 
     For more details check out https://github.com/apache/arrow/issues/35126
-    """
 
+    Args:
+        table: The PyArrow table to combine chunks for.
+        min_chunks_to_combine: Minimum number of chunks in a column to trigger
+            combining. Defaults to MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS.
+
+    Returns:
+        A new table with chunked columns combined where applicable.
+    """
     if table.num_columns == 0:
         return table
 
     new_column_values_arrays = []
 
     for col in table.columns:
-        if col.num_chunks >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS:
+        if col.num_chunks >= min_chunks_to_combine and col.num_chunks > 1:
             new_col = combine_chunked_array(col)
         else:
             new_col = col
