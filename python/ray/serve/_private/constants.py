@@ -814,6 +814,15 @@ if RAY_SERVE_ENABLE_HA_PROXY:
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
     "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
 )
+# Feature flag to use compact (low-cardinality) namespace tags on long poll metrics.
+# When enabled, metric tags use only the LongPollNamespace enum name
+# (e.g., "DEPLOYMENT_CONFIG") instead of the full key string which includes
+# per-deployment identifiers. This bounds metric cardinality to ~6 namespace types
+# instead of scaling with the number of deployments.
+# Recommended for workloads with a large number (>1000) of deployments.
+RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = get_env_bool(
+    "RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", "0"
+)
 # Key for the decision counters in default autoscaling policy state
 SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"
 # Key for the wall-clock timestamp when a scaling decision was first observed
