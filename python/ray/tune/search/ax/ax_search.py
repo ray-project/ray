@@ -26,8 +26,14 @@ from ray.tune.utils.util import flatten_dict, unflatten_list_dict
 try:
     import ax
     from ax.service.ax_client import AxClient
+
+    try:
+        # Newer Ax versions
+        from ax.service.ax_client import ObjectiveProperties
+    except Exception:
+        ObjectiveProperties = None
 except ImportError:
-    ax = AxClient = None
+    ax = AxClient = ObjectiveProperties = None
 
 # This exception only exists in newer Ax releases for python 3.7
 try:
@@ -192,39 +198,21 @@ class AxSearch(Searcher):
 
     def _setup_experiment(self):
         if self._metric is None and self._mode:
-            # If only a mode was passed, use anonymous metric
             self._metric = DEFAULT_METRIC
 
         if not self._ax:
             self._ax = AxClient(**self._ax_kwargs)
 
+        # Detect whether the AxClient already has an experiment attached.
         try:
-            exp = self._ax.experiment
+            _ = self._ax.experiment
             has_experiment = True
-        except ValueError:
+        except Exception:
             has_experiment = False
 
-        if not has_experiment:
-            if not self._space:
-                raise ValueError(
-                    "You have to create an Ax experiment by calling "
-                    "`AxClient.create_experiment()`, or you should pass an "
-                    "Ax search space as the `space` parameter to `AxSearch`, "
-                    "or pass a `param_space` dict to `tune.Tuner()`."
-                )
-            if self._mode not in ["min", "max"]:
-                raise ValueError(
-                    "Please specify the `mode` argument when initializing "
-                    "the `AxSearch` object or pass it to `tune.TuneConfig()`."
-                )
-            self._ax.create_experiment(
-                parameters=self._space,
-                objective_name=self._metric,
-                parameter_constraints=self._parameter_constraints,
-                outcome_constraints=self._outcome_constraints,
-                minimize=self._mode != "max",
-            )
-        else:
+        if has_experiment:
+            # User provided an already-initialized client; they must not also pass
+            # experiment-defining args to AxSearch.
             if any(
                 [
                     self._space,
@@ -235,30 +223,66 @@ class AxSearch(Searcher):
                 ]
             ):
                 raise ValueError(
-                    "If you create the Ax experiment yourself, do not pass "
-                    "values for these parameters to `AxSearch`: {}.".format(
-                        [
-                            "space",
-                            "parameter_constraints",
-                            "outcome_constraints",
-                            "mode",
-                            "metric",
-                        ]
+                    "If you create the Ax experiment yourself (by passing an AxClient "
+                    "with an experiment), do not pass values for these parameters to "
+                    "AxSearch: space, parameter_constraints, outcome_constraints, mode, metric."
+                )
+        else:
+            # AxSearch must create the experiment.
+            if not self._space:
+                raise ValueError(
+                    "You have to create an Ax experiment by calling "
+                    "`AxClient.create_experiment()`, or pass an Ax search space as "
+                    "`space` to AxSearch, or pass a `param_space` dict to `tune.Tuner()`."
+                )
+            if self._mode not in ["min", "max"]:
+                raise ValueError(
+                    "Please specify the `mode` argument when initializing the AxSearch "
+                    "object or pass it to `tune.TuneConfig()`."
+                )
+
+            minimize = self._mode != "max"
+
+            # New Ax API (objectives=...) vs old (objective_name/minimize)
+            try:
+                if ObjectiveProperties is None:
+                    raise TypeError(
+                        "ObjectiveProperties not available in this Ax version"
                     )
+
+                self._ax.create_experiment(
+                    parameters=self._space,
+                    objectives={self._metric: ObjectiveProperties(minimize=minimize)},
+                    parameter_constraints=self._parameter_constraints,
+                    outcome_constraints=self._outcome_constraints,
+                )
+            except TypeError:
+                self._ax.create_experiment(
+                    parameters=self._space,
+                    objective_name=self._metric,
+                    parameter_constraints=self._parameter_constraints,
+                    outcome_constraints=self._outcome_constraints,
+                    minimize=minimize,
                 )
 
         exp = self._ax.experiment
 
-        # Update mode and metric from experiment if it has been passed
-        self._mode = "min" if exp.optimization_config.objective.minimize else "max"
-        self._metric = exp.optimization_config.objective.metric.name
+        # Populate mode/metric from experiment (keep your existing logic here)
+        try:
+            obj = exp.optimization_config.objective
+            self._mode = "min" if obj.minimize else "max"
+            self._metric = obj.metric.name
+        except Exception:
+            objectives = exp.optimization_config.objective.objectives
+            first = objectives[0]
+            self._mode = "min" if first.minimize else "max"
+            self._metric = first.metric.name
 
         self._parameters = list(exp.parameters)
 
-        if self._ax._enforce_sequential_optimization:
+        if getattr(self._ax, "_enforce_sequential_optimization", False):
             logger.warning(
-                "Detected sequential enforcement. Be sure to use "
-                "a ConcurrencyLimiter."
+                "Detected sequential enforcement. Be sure to use a ConcurrencyLimiter."
             )
 
     def set_search_properties(
