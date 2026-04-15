@@ -258,10 +258,9 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
         key={`${index}list`}
         style={style}
         sx={(theme) => ({
-          // position: relative is set via sx (not an external CSS class) so
-          // MUI does not override it. This is required for the absolutely-
-          // positioned "Show details" button to anchor correctly to this row.
-          position: "relative",
+          // Explicitly create a stacking context so that the ::after pseudo-element
+          // with z-index: -1 stays behind the text but in front of the list background.
+          zIndex: 0,
           overflowX: "visible",
           whiteSpace: "nowrap",
           // Reveal the hidden button on row hover using a CSS-only selector.
@@ -280,6 +279,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
             right: "calc(-1 * var(--log-view-scroll-left, 0px))",
             width: "var(--log-view-scroll-left, 0px)",
             height: "100%",
+            zIndex: -1,
           },
           "&::before": {
             content: `"${i + 1}"`,
@@ -362,10 +362,13 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
       const scrollFunc = (event: any) => {
         const { target } = event;
         if (target) {
-          target.style.setProperty(
-            "--log-view-scroll-left",
-            `${target.scrollLeft ?? 0}px`,
-          );
+          const scrollLeft = `${target.scrollLeft ?? 0}px`;
+          if (
+            target.style.getPropertyValue("--log-view-scroll-left") !==
+            scrollLeft
+          ) {
+            target.style.setProperty("--log-view-scroll-left", scrollLeft);
+          }
         }
         if (
           target &&
