@@ -86,6 +86,9 @@ _TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
 _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
 
 _TEMPLATE_COLLECTIONS = {
+    "asynchronous_inference": {
+        "target": "serve/tutorials/asynchronous-inference",
+    },
     "audio-dataset-curation-llm-judge": {
         "target": "ray-overview/examples/e2e-audio",
     },
@@ -110,11 +113,20 @@ _TEMPLATE_COLLECTIONS = {
     "image-search-and-classification": {
         "target": "ray-overview/examples/e2e-multimodal-ai-workloads",
     },
+    "llm_batch_inference_text": {
+        "target": "data/examples/llm_batch_inference_text",
+    },
+    "llm_batch_inference_vision": {
+        "target": "data/examples/llm_batch_inference_vision",
+    },
     "langchain-agent-ray-serve": {
         "target": "ray-overview/examples/langchain_agent_ray_serve/content",
     },
     "llm_finetuning": {
         "target": "ray-overview/examples/llamafactory-llm-fine-tune",
+    },
+    "multi_agent_a2a": {
+        "target": "ray-overview/examples/multi_agent_a2a",
     },
     "mcp-ray-serve": {
         "target": "ray-overview/examples/mcp-ray-serve",
@@ -128,11 +140,20 @@ _TEMPLATE_COLLECTIONS = {
     "object-detection-video-processing": {
         "target": "ray-overview/examples/object-detection",
     },
+    "ray_train_workloads": {
+        "target": "train/tutorials",
+    },
     "pytorch-fsdp": {
         "target": "train/examples/pytorch/pytorch-fsdp",
     },
     "pytorch-profiling": {
         "target": "train/examples/pytorch/pytorch-profiling",
+    },
+    "tensor_parallel_dtensor": {
+        "target": "train/examples/pytorch/tensor_parallel_dtensor",
+    },
+    "tune_pytorch_asha": {
+        "target": "tune/examples/tune_pytorch_asha",
     },
     "unstructured_data_ingestion": {
         "target": "data/examples/unstructured_data_ingestion",
