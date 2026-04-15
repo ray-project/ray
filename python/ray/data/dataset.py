@@ -6919,21 +6919,39 @@ class Dataset:
         return self._plan.stats().to_summary()
 
     @DeveloperAPI
-    def get_stats_summary(self) -> DatasetStatsSummary:
+    def get_stats_summary(self, detail: bool = False) -> DatasetStatsSummary:
         """Get stats summary from dataset, handling both streaming and plan stats.
 
         After materialize() with streaming execution, stats are stored in
         _current_executor. This method returns the correct stats summary
         regardless of execution mode.
 
+        Args:
+            detail: If True, also collect scheduling overhead statistics
+                via the Ray State API.
+
         Returns:
             DatasetStatsSummary object containing execution statistics.
         """
         if self._current_executor:
-            return self._current_executor.get_stats().to_summary()
+            summary = self._current_executor.get_stats().to_summary()
         elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
-            return self._write_ds.get_stats_summary()
-        return self._plan.stats().to_summary()
+            summary = self._write_ds.get_stats_summary(detail=detail)
+        else:
+            summary = self._plan.stats().to_summary()
+
+        if detail:
+            from ray.data._internal.scheduling_overhead import (
+                collect_scheduling_overhead,
+            )
+
+            op_names = [op.operator_name for op in summary.operators_stats]
+            overhead_by_op = collect_scheduling_overhead(op_names)
+            for op in summary.operators_stats:
+                if op.operator_name in overhead_by_op:
+                    op.scheduling_overhead = overhead_by_op[op.operator_name]
+
+        return summary
 
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
