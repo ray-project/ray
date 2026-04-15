@@ -32,8 +32,8 @@ click-repl==0.3.0
 cloudpickle==2.2.0
 colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1733218098505/work
 colorful==0.5.5
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1770031329518/work/conda-src
-conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/conda-libmamba-solver_1770137318695/work/src
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1775855674855/work/conda-src
+conda-libmamba-solver @ file:///home/conda/feedstock_root/build_artifacts/conda-libmamba-solver_1775557888859/work/src
 conda-package-handling @ file:///home/conda/feedstock_root/build_artifacts/conda-package-handling_1736345463896/work
 conda_package_streaming @ file:///home/conda/feedstock_root/build_artifacts/conda-package-streaming_1729004031731/work
 cryptography==44.0.3
@@ -72,10 +72,11 @@ hyperframe @ file:///home/conda/feedstock_root/build_artifacts/hyperframe_173329
 idna==3.7
 importlib-metadata==6.11.0
 isodate==0.6.1
+izulu==0.50.0
 Jinja2==3.1.6
 jmespath==1.0.1
 jsonpatch @ file:///home/conda/feedstock_root/build_artifacts/jsonpatch_1733814567314/work
-jsonpointer @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_jsonpointer_1765026384/work
+jsonpointer @ file:///home/conda/feedstock_root/build_artifacts/bld/rattler-build_jsonpointer_1774311356/work
 jsonschema==4.23.0
 jsonschema-specifications==2024.10.1
 kombu==5.5.4
@@ -118,6 +119,7 @@ pyasn1==0.5.1
 pyasn1-modules==0.3.0
 pycosat @ file:///home/conda/feedstock_root/build_artifacts/pycosat_1757744612102/work
 pycparser==2.21
+pycron==3.2.0
 pydantic==2.12.4
 pydantic_core==2.41.5
 Pygments==2.18.0
@@ -129,7 +131,7 @@ python-dateutil==2.8.2
 python-dotenv==1.2.1
 pytz==2022.7.1
 PyYAML==6.0.3
-ray @ file:///home/ray/ray-3.0.0.dev0-cp310-cp310-manylinux2014_x86_64.whl#sha256=d75d2703f45316c0512c5ecefaa19d00fe83603590e8b4e7028490c19d451bb2
+ray @ file:///home/ray/ray-2.55.0-cp310-cp310-manylinux2014_x86_64.whl#sha256=2cf8c2a3f6cd947934cd75d99cf4b5615228fe6c0b42faa7a6926733a82c2467
 referencing==0.36.2
 requests==2.32.5
 rich==13.7.1
@@ -142,6 +144,8 @@ scipy==1.11.4
 six==1.16.0
 smart-open==6.2.0
 starlette==0.49.1
+taskiq==0.12.1
+taskiq-dependencies==1.5.7
 tensorboardX==2.6.2.2
 textual==4.0.0
 tqdm @ file:///home/conda/feedstock_root/build_artifacts/tqdm_1735661334605/work
