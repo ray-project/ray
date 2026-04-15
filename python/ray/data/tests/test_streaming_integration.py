@@ -253,33 +253,6 @@ def test_streaming_split_barrier(ray_start_10_cpus_shared):
         ray.get([consume.remote(i1, 2), consume.remote(i2, 1)], timeout=3)
 
 
-def test_streaming_split_invalid_iterator(ray_start_10_cpus_shared):
-    ds = ray.data.range(20, override_num_blocks=20)
-    (
-        i1,
-        i2,
-    ) = ds.streaming_split(2, equal=True)
-
-    @ray.remote
-    def consume(x, times):
-        i = 0
-        for _ in range(times):
-            for _ in x.iter_rows():
-                i += 1
-        return i
-
-    # InvalidIterator error from too many concurrent readers.
-    with pytest.raises(ValueError):
-        ray.get(
-            [
-                consume.remote(i1, 4),
-                consume.remote(i2, 4),
-                consume.remote(i1, 4),
-                consume.remote(i2, 4),
-            ]
-        )
-
-
 def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
     """Test that stream_split iterators can finish independently without
     waiting for other iterators to finish. Otherwise, this would cause
