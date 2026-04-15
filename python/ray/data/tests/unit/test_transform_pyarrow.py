@@ -21,7 +21,7 @@ from ray.data._internal.blocks.tensor_extensions.arrow import (
     _extension_array_concat_supported,
     create_arrow_fixed_shape_tensor_type,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
     ArrowConversionError,

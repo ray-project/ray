@@ -56,7 +56,7 @@ from ray.data._internal.physical.map_operator import (
 )
 from ray.data._internal.physical.map_transformer import MapTransformer
 from ray.data._internal.public_api.compute import ActorPoolStrategy
-from ray.data._internal.utils.heapdict import heapdict
+from ray.data._internal.physical.heapdict import heapdict
 from ray.data._internal.utils.remote_fn import _add_system_error_to_retry_exceptions
 from ray.data.block import Block, BlockMetadata
 from ray.data.context import (

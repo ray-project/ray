@@ -10,7 +10,7 @@ from ray.data._internal.planner.exchange.interfaces import (
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
 from ray.data._internal.utils.remote_fn import cached_remote_fn
-from ray.data._internal.utils.split import _split_at_indices
+from ray.data._internal.physical.split import _split_at_indices
 from ray.data._internal.utils.util import unzip
 from ray.data.block import (
     Block,

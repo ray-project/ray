@@ -8,7 +8,7 @@ from ray.data._internal.blocks.delegating_block_builder import DelegatingBlockBu
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.planner.plan_write_op import WRITE_UUID_KWARG_NAME
 from ray.data._internal.public_api.savemode import SaveMode
-from ray.data._internal.utils.arrow_utils import add_creatable_buckets_param_if_s3_uri
+from ray.data._internal.blocks.pyarrow_version_check import add_creatable_buckets_param_if_s3_uri
 from ray.data._internal.utils.util import (
     RetryingPyFileSystem,
     _is_local_scheme,

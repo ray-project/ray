@@ -3,7 +3,7 @@
 import pandas  # noqa
 from packaging.version import parse as parse_version
 
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 
 from ray.data._internal.public_api.compute import ActorPoolStrategy, TaskPoolStrategy
 from ray.data._internal.io.datasource.tfrecords_datasource import TFXReadOptions
@@ -13,7 +13,7 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
 )
 from ray.data._internal.observability.logging import configure_logging
-from ray.data._internal.utils.random_config import RandomSeedConfig
+from ray.data._internal.planner.random_config import RandomSeedConfig
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import (
     Dataset,

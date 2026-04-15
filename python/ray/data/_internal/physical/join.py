@@ -15,8 +15,8 @@ from ray.data._internal.physical.hash_shuffle import (
     ShuffleAggregation,
     _combine,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_ext_utils import _is_pa_extension_type
 from ray.data._internal.utils.util import GiB, MiB
 from ray.data.block import Block
 from ray.data.context import DataContext

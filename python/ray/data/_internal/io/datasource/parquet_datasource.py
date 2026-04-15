@@ -28,7 +28,7 @@ from ray.data._internal.observability.progress.progress_bar import ProgressBar
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     get_column_references,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data._internal.utils.remote_fn import cached_remote_fn
 from ray.data._internal.utils.util import (
     RetryingPyFileSystem,

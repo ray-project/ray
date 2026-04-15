@@ -15,7 +15,7 @@ from ray.data._internal.blocks.tensor_extensions.arrow import (
     unify_tensor_arrays,
     unify_tensor_types,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 
 try:
     import pyarrow
@@ -144,7 +144,7 @@ def take_table(
     extension arrays. This is exposed as a static method for easier use on
     intermediate tables, not underlying an ArrowBlockAccessor.
     """
-    from ray.data._internal.utils.transform_pyarrow import (
+    from ray.data._internal.blocks.pyarrow_ext_utils import (
         _concatenate_extension_column,
         _is_pa_extension_type,
     )
@@ -436,7 +436,7 @@ def _backfill_missing_fields(
         ArrowVariableShapedTensorArray,
         ArrowVariableShapedTensorType,
     )
-    from ray.data._internal.utils.transform_pyarrow import (
+    from ray.data._internal.blocks.pyarrow_ext_utils import (
         _is_native_tensor_type,
     )
 
@@ -1065,7 +1065,7 @@ def to_numpy(
 
     import pyarrow as pa
 
-    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+    from ray.data._internal.blocks.pyarrow_ext_utils import _is_native_tensor_type
 
     if isinstance(array, pa.Array):
         if pa.types.is_null(array.type):
@@ -1163,7 +1163,7 @@ def combine_chunked_array(
 
     import pyarrow as pa
 
-    from ray.data._internal.utils.transform_pyarrow import (
+    from ray.data._internal.blocks.pyarrow_ext_utils import (
         _concatenate_extension_column,
         _is_pa_extension_type,
     )
@@ -1246,7 +1246,7 @@ def _try_combine_chunks_safe(
 
     import pyarrow as pa
 
-    from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
+    from ray.data._internal.blocks.pyarrow_ext_utils import _is_pa_extension_type
 
     assert not _is_pa_extension_type(
         array.type

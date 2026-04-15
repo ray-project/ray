@@ -79,7 +79,7 @@ from ray.data._internal.observability.stats import DatasetStats
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.public_api.compute import ComputeStrategy
 from ray.data._internal.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data._internal.utils.remote_fn import cached_remote_fn
 from ray.data._internal.utils.util import (
     _autodetect_parallelism,

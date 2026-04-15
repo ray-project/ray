@@ -53,7 +53,7 @@ from ray.data._internal.physical.map_transformer import (
 )
 from ray.data._internal.public_api.compute import ActorPoolStrategy, ComputeStrategy
 from ray.data._internal.utils.compute import get_compute
-from ray.data._internal.utils.streaming_repartition import (
+from ray.data._internal.planner.streaming_repartition import (
     StreamingRepartitionRefBundler,
 )
 from ray.data._internal.utils.util import _truncated_repr

@@ -22,7 +22,7 @@ from pandas.api.types import is_object_dtype, is_scalar, is_string_dtype
 from ray.data._internal.blocks.numpy_support import convert_to_numpy
 from ray.data._internal.blocks.table_block import TableBlockAccessor, TableBlockBuilder
 from ray.data._internal.blocks.tensor_extensions.utils import _should_convert_to_tensor
-from ray.data._internal.utils.row import row_repr, row_repr_pretty, row_str
+from ray.data._internal.blocks.row import row_repr, row_repr_pretty, row_str
 from ray.data._internal.utils.util import is_null
 from ray.data.block import (
     Block,

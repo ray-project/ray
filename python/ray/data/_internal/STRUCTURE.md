@@ -19,6 +19,10 @@ _internal/
 │   ├── block_builder.py    #   Block building utilities
 │   ├── numpy_support.py    #   NumPy interop
 │   ├── output_buffer.py    #   Block output buffering
+│   ├── pyarrow_version_check.py  # PyArrow install/version checks
+│   ├── pyarrow_ext_utils.py      # PyArrow extension type helpers
+│   ├── row.py              #   Row display helpers (row_str, row_repr)
+│   ├── size_estimator.py   #   Serialization size sampling
 │   ├── arrow_ops/          #   Arrow/Polars transform helpers
 │   ├── tensor_extensions/  #   Arrow & Pandas tensor type extensions
 │   └── object_extensions/  #   Arrow & Pandas Python object extensions
@@ -69,8 +73,10 @@ _internal/
 ├── iteration/              # Dataset iteration and batching
 │   ├── iterator_impl.py    #   Core iterator implementation
 │   ├── stream_split_iterator.py  # Split-stream iteration
+│   ├── equalize.py          #   Equalize row counts across splits
 │   ├── batcher.py           #   Block batching logic
 │   ├── torch_iterable_dataset.py # PyTorch IterableDataset adapter
+│   ├── tensorflow_utils.py  #   NumPy/Arrow → TensorFlow conversion
 │   └── batching/            #   Batch assembly pipeline
 │       ├── block_batching.py
 │       ├── iter_batches.py
@@ -129,11 +135,13 @@ _internal/
 │   ├── map_transformer.py         # Transform function wrappers
 │   ├── task_pool_map_operator.py  # Task-pool execution
 │   ├── actor_pool_map_operator.py # Actor-pool execution
+│   ├── heapdict.py                # Vendored heap-based priority dict
 │   ├── hash_shuffle.py            # Hash shuffle operator
 │   ├── hash_aggregate.py          # Hash aggregate operator
 │   ├── join.py                    # Join operator
 │   ├── limit_operator.py          # Limit operator
 │   ├── output_splitter.py         # Output splitting for streaming_split
+│   ├── split.py                   # Block splitting by indices/row counts
 │   ├── union_operator.py          # Union operator
 │   ├── zip_operator.py            # Zip operator
 │   ├── input_data_buffer.py       # Leaf operator for materialized data
@@ -156,6 +164,8 @@ _internal/
 │   ├── sort.py             #   Sort planning
 │   ├── randomize_blocks.py #   Block randomization
 │   ├── aggregate.py        #   Aggregation planning
+│   ├── random_config.py    #   Random seed configuration
+│   ├── streaming_repartition.py  # Streaming repartition bundler
 │   ├── checkpoint/         #   Checkpoint read/write planning
 │   ├── exchange/           #   Exchange task specs (shuffle, sort, aggregate)
 │   └── plan_expression/    #   Expression evaluation planning
@@ -164,21 +174,11 @@ _internal/
 │   ├── compute.py          #   ComputeStrategy, TaskPoolStrategy, ActorPoolStrategy
 │   └── savemode.py         #   SaveMode enum
 │
-└── utils/                  # Shared internal utilities
+└── utils/                  # Shared cross-domain utilities
     ├── util.py             #   General helpers (autodetect parallelism, etc.)
-    ├── compute.py          #   [shim] → public_api/compute.py + get_compute()
-    ├── savemode.py         #   [shim] → public_api/savemode.py
-    ├── arrow_utils.py      #   PyArrow version checks
     ├── remote_fn.py        #   Cached remote function helpers
-    ├── split.py            #   Dataset splitting logic
-    ├── equalize.py         #   Block equalization
-    ├── streaming_repartition.py  # Streaming repartition bundler
-    ├── random_config.py    #   Random seed configuration
-    ├── size_estimator.py   #   Data size estimation
-    ├── heapdict.py         #   Heap-based dictionary
-    ├── row.py              #   Row type utilities
-    ├── tensorflow_utils.py #   TensorFlow conversion helpers
-    └── transform_pyarrow.py #  PyArrow transform utilities
+    ├── compute.py          #   [shim] → public_api/compute.py + get_compute()
+    └── savemode.py         #   [shim] → public_api/savemode.py
 ```
 
 ## Design Principles

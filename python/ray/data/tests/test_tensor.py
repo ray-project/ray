@@ -16,7 +16,7 @@ from ray.data._internal.blocks.tensor_extensions.arrow import (
 from ray.data._internal.blocks.tensor_extensions.utils import (
     _create_possibly_ragged_ndarray,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 from ray.data.dataset import Schema

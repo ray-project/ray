@@ -596,7 +596,7 @@ class DataIterator(abc.ABC):
         Returns:
             An iterator over TensorFlow Tensor batches.
         """
-        from ray.data._internal.utils.tensorflow_utils import (
+        from ray.data._internal.iteration.tensorflow_utils import (
             convert_ndarray_batch_to_tf_tensor_batch,
         )
 
@@ -940,7 +940,7 @@ class DataIterator(abc.ABC):
             A ``tf.data.Dataset`` that yields inputs and targets.
         """  # noqa: E501
 
-        from ray.data._internal.utils.tensorflow_utils import (
+        from ray.data._internal.iteration.tensorflow_utils import (
             convert_ndarray_to_tf_tensor,
             get_type_spec,
         )

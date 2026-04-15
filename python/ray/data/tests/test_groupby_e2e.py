@@ -15,7 +15,7 @@ from ray.data._internal.blocks.arrow_ops.transform_pyarrow import (
     combine_chunks,
 )
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data._internal.utils.util import is_nan
 from ray.data.aggregate import (
     AbsMax,

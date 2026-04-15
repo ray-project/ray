@@ -35,7 +35,7 @@ from ray.data._internal.physical.zip_operator import ZipOperator
 from ray.data._internal.planner import create_planner
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.public_api.compute import TaskPoolStrategy
-from ray.data._internal.utils.random_config import RandomSeedConfig
+from ray.data._internal.planner.random_config import RandomSeedConfig
 from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record, get_parquet_read_logical_op

@@ -24,7 +24,7 @@ from ray.data import read_iceberg
 from ray.data._internal.io.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.logical.operators import Filter, Project
 from ray.data._internal.logical.optimizers import LogicalOptimizer
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data._internal.utils.util import rows_same
 from ray.data.expressions import col
 from ray.data.tests.test_util import (

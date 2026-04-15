@@ -5,7 +5,7 @@ import pytest
 from pkg_resources import parse_version
 
 import ray
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data._internal.utils.util import rows_same
 from ray.data.datatype import DataType
 from ray.data.exceptions import UserCodeException

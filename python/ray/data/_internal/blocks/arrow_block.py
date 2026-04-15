@@ -25,8 +25,8 @@ from ray.data._internal.blocks.tensor_extensions.arrow import (
     convert_to_pyarrow_array,
     pyarrow_table_from_pydict,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
-from ray.data._internal.utils.row import row_repr, row_repr_pretty, row_str
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
+from ray.data._internal.blocks.row import row_repr, row_repr_pretty, row_str
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -462,7 +462,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     ) -> Iterator[Union[Mapping, np.ndarray]]:
         table = self._table
         if public_row_format:
-            from ray.data._internal.utils.transform_pyarrow import (
+            from ray.data._internal.blocks.pyarrow_ext_utils import (
                 _is_native_tensor_type,
             )
 
@@ -523,7 +523,7 @@ def _iter_rows_from_batch_with_tensors(
     Yields:
         Dict[str, Any]: Dictionaries mapping column names to values for each row.
     """
-    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+    from ray.data._internal.blocks.pyarrow_ext_utils import _is_native_tensor_type
 
     col_values = []
     for column in batch.columns:

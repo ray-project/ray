@@ -7,7 +7,7 @@ import pytest
 from packaging.version import parse as parse_version
 
 import ray
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data._internal.utils.util import rows_same
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_util import _check_usage_record

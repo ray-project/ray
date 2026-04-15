@@ -13,7 +13,7 @@ from ray.data._internal.physical.base_physical_operator import (
     NAryOperator,
 )
 from ray.data._internal.utils.remote_fn import cached_remote_fn
-from ray.data._internal.utils.split import _split_at_indices
+from ray.data._internal.physical.split import _split_at_indices
 from ray.data.block import (
     Block,
     BlockAccessor,

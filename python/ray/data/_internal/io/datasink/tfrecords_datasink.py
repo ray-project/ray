@@ -88,7 +88,7 @@ def _value_to_feature(
     import pyarrow as pa
     import tensorflow as tf
 
-    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+    from ray.data._internal.blocks.pyarrow_ext_utils import _is_native_tensor_type
 
     if isinstance(value, pa.ListScalar):
         # Use the underlying type of the ListScalar's value in

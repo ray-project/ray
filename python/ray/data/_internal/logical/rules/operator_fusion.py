@@ -35,7 +35,7 @@ from ray.data._internal.public_api.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
 )
-from ray.data._internal.utils.streaming_repartition import (
+from ray.data._internal.planner.streaming_repartition import (
     StreamingRepartitionRefBundler,
 )
 from ray.util.annotations import DeveloperAPI

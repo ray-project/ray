@@ -89,10 +89,10 @@ from ray.data._internal.tensor_extensions.arrow import (
     ArrowVariableShapedTensorType,
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data._internal.utils.equalize import _equalize
-from ray.data._internal.utils.random_config import RandomSeedConfig
+from ray.data._internal.iteration.equalize import _equalize
+from ray.data._internal.planner.random_config import RandomSeedConfig
 from ray.data._internal.utils.remote_fn import cached_remote_fn
-from ray.data._internal.utils.split import _get_num_rows, _split_at_indices
+from ray.data._internal.physical.split import _get_num_rows, _split_at_indices
 from ray.data._internal.utils.util import (
     AllToAllAPI,
     ConsumptionAPI,

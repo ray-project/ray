@@ -6,7 +6,7 @@ import pyarrow as pa
 
 import ray.data._internal.blocks.object_extensions.pandas
 from ray._common.serialization import pickle_dumps
-from ray.data._internal.utils.arrow_utils import _check_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import _check_pyarrow_version
 from ray.util.annotations import PublicAPI
 
 # First, assert Arrow version is w/in expected bounds

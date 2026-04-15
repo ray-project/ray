@@ -31,7 +31,7 @@ from ray.data._internal.io.datasource.parquet_datasource import (
     _coerce_pyarrow_fragment_batch_size,
     _read_batches_from,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data._internal.utils.util import rows_same
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext

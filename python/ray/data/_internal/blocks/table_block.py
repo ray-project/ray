@@ -16,7 +16,7 @@ from typing import (
 
 from ray._common.utils import env_integer
 from ray.data._internal.blocks.block_builder import BlockBuilder
-from ray.data._internal.utils.size_estimator import SizeEstimator
+from ray.data._internal.blocks.size_estimator import SizeEstimator
 from ray.data._internal.utils.util import (
     NULL_SENTINEL,
     find_partition_index,

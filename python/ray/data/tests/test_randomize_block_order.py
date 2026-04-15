@@ -7,7 +7,7 @@ from ray.data._internal.physical.base_physical_operator import (
 )
 from ray.data._internal.physical.map_operator import MapOperator
 from ray.data._internal.planner import create_planner
-from ray.data._internal.utils.random_config import RandomSeedConfig
+from ray.data._internal.planner.random_config import RandomSeedConfig
 from ray.data.context import DataContext
 from ray.data.tests.test_util import get_parquet_read_logical_op
 

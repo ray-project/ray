@@ -16,7 +16,7 @@ from ray.data._internal.planner.exchange.push_based_shuffle_task_scheduler impor
     PushBasedShuffleTaskScheduler,
 )
 from ray.data._internal.planner.exchange.shuffle_task_spec import ShuffleTaskSpec
-from ray.data._internal.utils.random_config import (
+from ray.data._internal.planner.random_config import (
     RandomSeedConfig,
     get_single_integer_random_seed,
 )

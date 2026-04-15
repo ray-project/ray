@@ -1,7 +1,7 @@
 from typing import List, Tuple
 
 from ray.data._internal.execution.interfaces import RefBundle
-from ray.data._internal.utils.split import _calculate_blocks_rows, _split_at_indices
+from ray.data._internal.physical.split import _calculate_blocks_rows, _split_at_indices
 from ray.data.block import (
     Block,
     BlockMetadata,

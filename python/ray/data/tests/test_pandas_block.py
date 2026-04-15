@@ -15,7 +15,7 @@ from ray.data._internal.blocks.pandas_block import (
     PandasBlockBuilder,
     PandasBlockColumnAccessor,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data._internal.utils.util import is_null
 from ray.data.context import DataContext
 

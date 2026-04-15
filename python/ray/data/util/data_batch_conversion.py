@@ -322,7 +322,7 @@ def _cast_tensor_columns_to_ndarrays(
     # to_pandas().
 
     if arrow_schema is not None:
-        from ray.data._internal.utils.transform_pyarrow import (
+        from ray.data._internal.blocks.pyarrow_ext_utils import (
             _is_native_tensor_type,
         )
 

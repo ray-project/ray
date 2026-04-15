@@ -17,7 +17,7 @@ from ray.data._internal.blocks.tensor_extensions.arrow import ArrowTensorArray
 from ray.data._internal.physical.base_physical_operator import (
     AllToAllOperator,
 )
-from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data._internal.blocks.pyarrow_version_check import get_pyarrow_version
 from ray.data.block import BlockExecStats, BlockMetadata
 from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE, DataContext, ShuffleStrategy

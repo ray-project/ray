@@ -20,8 +20,8 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
 from ray.data._internal.observability.stats import DatasetStats
 from ray.data._internal.planner.plan import ExecutionPlan
-from ray.data._internal.utils.equalize import _equalize
-from ray.data._internal.utils.split import (
+from ray.data._internal.iteration.equalize import _equalize
+from ray.data._internal.physical.split import (
     _drop_empty_block_split,
     _generate_global_split_results,
     _generate_per_block_split_indices,
