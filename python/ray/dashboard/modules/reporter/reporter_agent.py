@@ -1478,9 +1478,7 @@ class ReporterAgent(
             failed_nodes = cluster_stats["autoscaler_report"]["failed_nodes"]
             failed_nodes_dict: Dict[str, int] = {}
             for node_ip, node_type in failed_nodes:
-                failed_nodes_dict[node_type] = (
-                    failed_nodes_dict.get(node_type, 0) + 1
-                )
+                failed_nodes_dict[node_type] = failed_nodes_dict.get(node_type, 0) + 1
             self._report_cluster_node_metric(
                 records_reported, "cluster_failed_nodes", failed_nodes_dict
             )
@@ -1488,9 +1486,7 @@ class ReporterAgent(
             pending_nodes = cluster_stats["autoscaler_report"]["pending_nodes"]
             pending_nodes_dict: Dict[str, int] = {}
             for node_ip, node_type, status_message in pending_nodes:
-                pending_nodes_dict[node_type] = (
-                    pending_nodes_dict.get(node_type, 0) + 1
-                )
+                pending_nodes_dict[node_type] = pending_nodes_dict.get(node_type, 0) + 1
             self._report_cluster_node_metric(
                 records_reported, "cluster_pending_nodes", pending_nodes_dict
             )
