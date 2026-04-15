@@ -82,10 +82,8 @@ def test_actor_pool_scaling():
         if is_method:
             value = MagicMock(return_value=value)
         setattr(mock, attr, value)
-        try:
-            yield
-        finally:
-            setattr(mock, attr, original)
+        yield
+        setattr(mock, attr, original)
 
     def assert_autoscaling_action(
         *, delta: int, expected_reason: Optional[str], force: bool = False
@@ -238,7 +236,7 @@ def test_actor_pool_scaling():
 def autoscaler_max_upscaling_delta_setup():
     resource_manager = MagicMock(
         spec=ResourceManager,
-        get_raw_budget=MagicMock(return_value=None),
+        get_budget=MagicMock(return_value=None),
     )
 
     actor_pool = MagicMock(
