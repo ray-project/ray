@@ -165,6 +165,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
             _get_node_resource_spec_and_count
         ),
+        get_time: Callable[[], float] = time.time,
     ):
         assert cluster_scaling_up_delta > 0
         assert cluster_util_avg_window_s > 0
@@ -200,6 +201,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._requester_id = f"data-{execution_id}"
         self._autoscaling_coordinator = autoscaling_coordinator
         self._get_node_counts = get_node_counts
+        self._get_time = get_time
         self._autoscaling_enabled = is_autoscaling_enabled()
 
         # Send an empty request to register ourselves as soon as possible,
@@ -212,7 +214,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._resource_utilization_calculator.observe()
 
         # Limit the frequency of autoscaling requests.
-        now = time.time()
+        now = self._get_time()
         if now - self._last_request_time < self._min_gap_between_autoscaling_requests_s:
             return
 
@@ -228,15 +230,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 f"CPU={util.cpu:.2f}, GPU={util.gpu:.2f}, memory={util.memory:.2f}, "
                 f"object_store_memory={util.object_store_memory:.2f}."
             )
-            if self._should_keep_non_empty_request(now):
-                self._send_resource_request(
-                    self._last_non_empty_resource_request,
-                    update_non_empty_request_state=False,
-                )
-            else:
-                # Renew our registration on AutoscalingCoordinator without
-                # keeping explicit autoscaler demand alive.
-                self._send_resource_request([])
+            self._send_resource_request(None)
             return
 
         # We separate active bundles (existing nodes) from pending bundles (scale-up delta)
@@ -307,9 +301,19 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
     def _send_resource_request(
         self,
-        resource_request: List[ResourceDict],
-        update_non_empty_request_state: bool = True,
+        resource_request: Optional[List[ResourceDict]],
     ):
+        now = self._get_time()
+        update_non_empty_request_state = True
+        if resource_request is None:
+            if self._should_keep_non_empty_request(now):
+                resource_request = self._last_non_empty_resource_request
+                update_non_empty_request_state = False
+            else:
+                # Renew our registration on AutoscalingCoordinator without
+                # keeping explicit autoscaler demand alive.
+                resource_request = []
+
         # Make autoscaler resource request.
         self._autoscaling_coordinator.request_resources(
             requester_id=self._requester_id,
@@ -317,7 +321,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             expire_after_s=self.AUTOSCALING_REQUEST_EXPIRE_TIME_S,
             request_remaining=True,
         )
-        now = time.time()
         if resource_request and update_non_empty_request_state:
             self._last_non_empty_resource_request = [
                 bundle.copy() for bundle in resource_request

@@ -36,10 +36,6 @@ _IS_AUTOSCALING_ENABLED_PATH = (
     "default_cluster_autoscaler_v2.is_autoscaling_enabled"
 )
 
-_AUTOSCALER_TIME_PATH = (
-    "ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2.time.time"
-)
-
 
 class TestClusterAutoscaling:
     """Tests for cluster autoscaling functions in DefaultClusterAutoscalerV2."""
@@ -337,28 +333,28 @@ class TestClusterAutoscaling:
             def get(self):
                 return utilization_holder["u"]
 
-        with patch(_AUTOSCALER_TIME_PATH, get_time):
-            autoscaler = DefaultClusterAutoscalerV2(
-                resource_manager=MagicMock(),
-                resource_limits=ExecutionResources.inf(),
-                execution_id="test_low_util_grace",
-                resource_utilization_calculator=MutableUtilGauge(),
-                min_gap_between_autoscaling_requests_s=0,
-                low_util_request_release_delay_s=100,
-                autoscaling_coordinator=fake_coordinator,
-                get_node_counts=lambda: {node_resource_spec: 0},
-            )
-            autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
+            execution_id="test_low_util_grace",
+            resource_utilization_calculator=MutableUtilGauge(),
+            min_gap_between_autoscaling_requests_s=0,
+            low_util_request_release_delay_s=100,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {node_resource_spec: 0},
+            get_time=get_time,
+        )
+        autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
 
-            current_time["t"] = 10.0
-            autoscaler.try_trigger_scaling()
-            expected = ExecutionResources(cpu=1.0)
-            assert autoscaler.get_total_resources() == expected
+        current_time["t"] = 10.0
+        autoscaler.try_trigger_scaling()
+        expected = ExecutionResources(cpu=1.0)
+        assert autoscaler.get_total_resources() == expected
 
-            utilization_holder["u"] = ExecutionResources.zero()
-            current_time["t"] = 20.0
-            autoscaler.try_trigger_scaling()
-            assert autoscaler.get_total_resources() == expected
+        utilization_holder["u"] = ExecutionResources.zero()
+        current_time["t"] = 20.0
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == expected
 
     def test_low_utilization_after_grace_sends_empty_request(self):
         """After the grace window, low utilization renews with an empty request."""
@@ -382,27 +378,27 @@ class TestClusterAutoscaling:
             def get(self):
                 return utilization_holder["u"]
 
-        with patch(_AUTOSCALER_TIME_PATH, get_time):
-            autoscaler = DefaultClusterAutoscalerV2(
-                resource_manager=MagicMock(),
-                resource_limits=ExecutionResources.inf(),
-                execution_id="test_low_util_release",
-                resource_utilization_calculator=MutableUtilGauge(),
-                min_gap_between_autoscaling_requests_s=0,
-                low_util_request_release_delay_s=100,
-                autoscaling_coordinator=fake_coordinator,
-                get_node_counts=lambda: {node_resource_spec: 0},
-            )
-            autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
+            execution_id="test_low_util_release",
+            resource_utilization_calculator=MutableUtilGauge(),
+            min_gap_between_autoscaling_requests_s=0,
+            low_util_request_release_delay_s=100,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {node_resource_spec: 0},
+            get_time=get_time,
+        )
+        autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
 
-            current_time["t"] = 10.0
-            autoscaler.try_trigger_scaling()
-            assert autoscaler.get_total_resources() == ExecutionResources(cpu=1.0)
+        current_time["t"] = 10.0
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources(cpu=1.0)
 
-            utilization_holder["u"] = ExecutionResources.zero()
-            current_time["t"] = 200.0
-            autoscaler.try_trigger_scaling()
-            assert autoscaler.get_total_resources() == ExecutionResources.zero()
+        utilization_holder["u"] = ExecutionResources.zero()
+        current_time["t"] = 200.0
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources.zero()
 
     def test_get_node_resource_spec_and_count_skips_max_count_zero(self):
         """Test that node types with max_count=0 are skipped."""
