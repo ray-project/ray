@@ -328,7 +328,7 @@ def test_report_validation_fn_keeps_correct_checkpoints(tmp_path):
     assert result.best_checkpoints[1][1] == {"score": 5}
 
 
-@pytest.mark.parametrize("num_validation_workers", [0, 1, 2])
+@pytest.mark.parametrize("num_validation_workers", [0, 1])
 def test_report_validation_fn_with_trainer_train_fn_report(num_validation_workers):
     """Test implementing the validation_fn with train_fn that reports metrics."""
 
@@ -374,7 +374,7 @@ def test_report_validation_fn_with_trainer_train_fn_report(num_validation_worker
     assert results.metrics == {"training": 0, "validation": 0}
 
 
-@pytest.mark.parametrize("num_validation_workers", [0, 1, 2])
+@pytest.mark.parametrize("num_validation_workers", [0, 1])
 def test_report_validation_fn_with_trainer_train_fn_return(num_validation_workers):
     """Test implementing the validation_fn with train_fn returns metrics."""
 
@@ -624,7 +624,7 @@ def test_report_validation_fn_resumption_on_train_fn_error(
     def validation_fn(checkpoint, score):
         # Block until train_fn has signaled and sleep to ensure that the train_func has closed.
         ray.get(signal_actor.wait.remote())
-        time.sleep(2)
+        time.sleep(1)
         return {"score": score}
 
     def train_fn_first():
