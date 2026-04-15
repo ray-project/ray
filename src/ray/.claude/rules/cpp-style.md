@@ -10,6 +10,3 @@ paths:
 - Use absl::Mutex and absl::MutexLock, not std::mutex/std::lock_guard
 - Use absl::StrCat, absl::StrJoin, absl::StrFormat for string operations, not std::string +/+=
 - Formatting enforced via clang-format (run ./ci/lint/check-format.sh --fix)
-- Debug processes via RAY_{PROCESS_NAME}_{DEBUGGER}=1 env vars (gdb requires tmux: RAY_RAYLET_GDB=1 RAY_RAYLET_TMUX=1)
-- Set RAY_BACKEND_LOG_LEVEL=debug for verbose task execution and object transfer logs
-- Set RAY_event_stats=1 to dump ASIO event handler stats to debug_state.txt
