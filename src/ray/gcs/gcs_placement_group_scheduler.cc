@@ -667,13 +667,14 @@ GcsPlacementGroupScheduler::CreateSchedulingContext(
 namespace {
 // Retrieves the label domain for the placement group.
 // If already set, it returns the existing label domain for the PG.
-// Otherwise it scans all active requests (primary or fallbacks) for a domain trigger.
+// Otherwise it scans the active requests (primary or fallbacks) for a domain trigger.
 std::optional<std::string> ExtractLabelDomain(
     const GcsPlacementGroup &placement_group,
     const std::vector<const ResourceRequest *> &active_requests) {
-  // Check if a domain was requested for the PG.
+  // Check if a domain was set for the PG, if so return it
   std::optional<std::string> label_domain = placement_group.GetLabelDomainKey();
-  if (label_domain.has_value()) {
+  if (label_domain.has_value() &&
+      placement_group.GetLabelDomainAssignment(label_domain.value()).has_value()) {
     return label_domain;
   }
 
