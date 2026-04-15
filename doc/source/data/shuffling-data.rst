@@ -112,6 +112,7 @@ together for better randomness but requires more memory.
     row_bytes = 4096
     shuffle_memory = int(2**30)  # 1 GB shuffle window
     batch_size = int(shuffle_memory / row_bytes)
+
     ds = ray.data.range(1000)
     ds = ds.map_batches(
         random_shuffle,
@@ -120,13 +121,6 @@ together for better randomness but requires more memory.
         memory=shuffle_memory,
     )
     ds.take(10)
-    ds = ray.data.range(1000)
-    ds = ds.map_batches(
-        random_shuffle,
-        batch_size=batch_size,
-        batch_format="pyarrow",
-        memory=shuffle_memory,
-    )
 
 .. tip::
 
