@@ -1,5 +1,4 @@
 import os
-import tempfile
 from typing import Dict
 
 import numpy as np
@@ -169,10 +168,13 @@ class TestReadImages:
         finally:
             ctx.target_max_block_size = target_max_block_size
 
-    def test_unidentified_image_error(ray_start_regular_shared):
-        with tempfile.NamedTemporaryFile(suffix=".png") as file:
-            with pytest.raises(ValueError):
-                ray.data.read_images(paths=file.name).materialize()
+    def test_unidentified_image_error(ray_start_regular_shared, tmp_path):
+        path = str(tmp_path / "invalid.png")
+        with open(path, "wb") as file:
+            file.write(b"spam")  # Invalid bytes for a PNG file
+
+        with pytest.raises(ValueError):
+            ray.data.read_images(paths=file.name).materialize()
 
 
 class TestWriteImages:
