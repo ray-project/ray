@@ -1,0 +1,3 @@
+//python/ray/serve/tests:test_haproxy_pip_haproxy
+//python/ray/serve/tests:test_haproxy_api_pip_haproxy
+//python/ray/serve/tests:test_metrics_haproxy_pip_haproxy
