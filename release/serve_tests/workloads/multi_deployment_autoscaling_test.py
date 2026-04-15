@@ -186,7 +186,7 @@ LOAD_STAGES = [
 ]
 
 
-def assert_results(stats: Dict[str, Any]) -> None:
+def log_and_assert_results(stats: Dict[str, Any]) -> None:
     errors = stats["num_failures"]
     total = stats["total_requests"]
     p50 = stats["p50_latency"]
@@ -195,13 +195,13 @@ def assert_results(stats: Dict[str, Any]) -> None:
     # ToDo(kamil) - for now only report max_latency, once stable add checks.
     max_latency = stats["max_latency"]
 
-    # Assertions on the aggregated results
-    assert errors == 0, f"Expected 0 failures, got {errors} out of {total} requests."
-    assert p99 <= 200, f"p99 latency {p99:.1f}ms exceeds 200ms."
-    assert p50 <= 100, f"p50 latency {p50:.1f}ms exceeds 100ms."
-    assert total >= 2_000_000, f"Total requests {total} below minimum 2,000,000."
+    logger.info(
+        f"Aggregated: {total} requests, {errors} failures, "
+        f"p50={p50:.1f}ms, "
+        f"p99={p99:.1f}ms, "
+        f"max_latency={max_latency:.1f}ms"
+    )
 
-    # Per-stage assertions
     if "stages" in stats:
         for stage_name, stage_stats in stats["stages"].items():
             logger.info(
@@ -212,21 +212,37 @@ def assert_results(stats: Dict[str, Any]) -> None:
                 f"avg_users={stage_stats['avg_users']:.0f}"
             )
 
-        sustain = stats["stages"].get("sustain", {})
-        if sustain:
-            assert (
-                sustain["avg_rps"] >= 500
-            ), f"Sustain stage avg_rps {sustain['avg_rps']:.0f} below 500."
-            assert (
-                sustain["p99_latency"] <= 200
-            ), f"Sustain stage p99 {sustain['p99_latency']:.1f}ms exceeds 200ms."
+    # Per-stage assertions
+    stage_thresholds = {
+        "warmup": {"p99_latency": 200},
+        "ramp_up": {"p99_latency": 200, "avg_rps": 100},
+        "sustain": {"p99_latency": 200, "avg_rps": 1500},
+        "ramp_down": {"p99_latency": 200},
+    }
+    if "stages" in stats:
+        for stage_name, thresholds in stage_thresholds.items():
+            stage = stats["stages"].get(stage_name, {})
+            if not stage:
+                logger.warning(f"No results for stage: '{stage_name}'.")
+                continue
+            if "p99_latency" in thresholds:
+                assert stage["p99_latency"] <= thresholds["p99_latency"], (
+                    f"{stage_name} p99_latency={stage['p99_latency']:.1f}ms "
+                    f"exceeds: {thresholds['p99_latency']}ms."
+                )
+            if "avg_rps" in thresholds:
+                assert stage["avg_rps"] >= thresholds["avg_rps"], (
+                    f"{stage_name} avg_rps={stage['avg_rps']:.0f} "
+                    f"below: {thresholds['avg_rps']}."
+                )
 
-    logger.info(
-        f"Assertions passed: {total} requests, 0 failures, "
-        f"p50={p50:.1f}ms, "
-        f"p99={p99:.1f}ms, "
-        f"max_latency={max_latency:.1f}ms"
-    )
+    # Assertions on aggregated results
+    assert errors == 0, f"Expected 0 failures, got {errors} out of {total} requests."
+    assert p50 <= 100, f"p50 latency {p50:.1f}ms exceeds 100ms."
+    assert p99 <= 200, f"p99 latency {p99:.1f}ms exceeds 200ms."
+    assert total >= 2_000_000, f"Total requests {total} below minimum 2,000,000."
+
+    logger.info("All assertions passed.")
 
 
 def build_results(stats: Dict[str, Any], service_id: str) -> Dict[str, Any]:
@@ -344,13 +360,7 @@ def main(output_path: Optional[str]):
             stages=LOAD_STAGES,
         )
 
-        logger.info(
-            f"Load test done: {stats['total_requests']} requests, "
-            f"{stats['num_failures']} failures, "
-            f"p99={stats['p99_latency']:.1f}ms"
-        )
-
-        assert_results(stats)
+        log_and_assert_results(stats)
 
         results = build_results(stats, status.id)
         logger.info(f"Results: {json.dumps(results, indent=2)}")
