@@ -118,6 +118,16 @@ def test_from_arrow_refs(ray_start_regular_shared, sample_dataframes):
     assert "FromArrow" in ds.stats()
 
 
+def test_from_arrow_refs_empty_table_preserves_schema(ray_start_regular_shared):
+    empty_array = pa.array([], pa.int32())
+    empty_table = pa.table([empty_array], ["apples"])
+    empty_ref = ray.put(empty_table)
+    ds = ray.data.from_arrow_refs([empty_ref])
+    result_df = ds.to_pandas()
+    assert list(result_df.columns) == ["apples"]
+    assert len(result_df) == 0
+
+
 def test_to_arrow_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"id": list(range(n))})
