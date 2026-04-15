@@ -113,6 +113,31 @@ ray down example-full.yaml
 
 Congratulations, you have started a Ray cluster on Azure!
 
+### Using an existing VNET (Bring Your Own VNET)
+
+For data privacy, compliance, or enterprise networking scenarios, you can deploy Ray cluster nodes into a pre-existing Azure Virtual Network instead of having Ray create one automatically.
+
+To use an existing VNET and NSG, add `subnet_id` and optionally `nsg_id` to your provider configuration:
+
+```yaml
+provider:
+    type: azure
+    location: westus2
+    resource_group: my-resource-group
+    subscription_id: 00000000-0000-0000-0000-000000000000
+    subnet_id: /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/virtualNetworks/<vnet>/subnets/<subnet>
+    nsg_id: /subscriptions/<sub>/resourceGroups/<rg>/providers/Microsoft.Network/networkSecurityGroups/<nsg>
+```
+
+When `subnet_id` is set, Ray skips VNET and subnet creation entirely. When `nsg_id` is set, Ray skips NSG creation. If only `subnet_id` is provided without `nsg_id`, Ray creates a default NSG with SSH access.
+
+This allows Ray nodes to:
+- Inherit existing network security controls, route tables, and firewall rules.
+- Access data through private endpoints and service endpoints already configured in your VNET.
+- Operate within enterprise hub-and-spoke network topologies.
+
+When tearing down a cluster with `ray down`, user-provided VNET, subnet, and NSG resources are preserved.
+
 ## Using Azure portal
 
 Alternatively, you can deploy a cluster using Azure portal directly. Please note that autoscaling is done using Azure VM Scale Sets and not through the Ray autoscaler. This will deploy [Azure Data Science VMs (DSVM)](https://azure.microsoft.com/en-us/services/virtual-machines/data-science-virtual-machines/) for both the head node and the auto-scalable cluster managed by [Azure Virtual Machine Scale Sets](https://azure.microsoft.com/en-us/services/virtual-machine-scale-sets/).

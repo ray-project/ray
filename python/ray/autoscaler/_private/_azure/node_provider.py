@@ -670,7 +670,10 @@ class AzureNodeProvider(NodeProvider):
             time.sleep(0.1)
 
     def cleanup_cluster_resources(self):
-        """Delete shared cluster infrastructure (MSI, NSG, Subnet, VNet)."""
+        """Delete shared cluster infrastructure (MSI, NSG, Subnet, VNet).
+
+        Resources provided by the user (subnet_id, nsg_id) are not deleted.
+        """
 
         resource_group = self.provider_config["resource_group"]
 
@@ -678,13 +681,25 @@ class AzureNodeProvider(NodeProvider):
             resource_group, self.provider_config.get("msi")
         )
 
+        # Skip subnet/VNET cleanup if user provided their own subnet
+        use_existing_subnet = "subnet_id" in self.provider_config
         subnet_id = self.provider_config.get("subnet")
-        vnet_name = self._cleanup_subnet(resource_group, subnet_id)
+        vnet_name = None
+        if not use_existing_subnet:
+            vnet_name = self._cleanup_subnet(resource_group, subnet_id)
+        else:
+            logger.info("Skipping subnet/VNET cleanup (user-provided subnet_id)")
 
+        # Skip NSG cleanup if user provided their own NSG
+        use_existing_nsg = "nsg_id" in self.provider_config
         nsg_id = self.provider_config.get("nsg")
-        self._cleanup_nsg(resource_group, nsg_id)
+        if not use_existing_nsg:
+            self._cleanup_nsg(resource_group, nsg_id)
+        else:
+            logger.info("Skipping NSG cleanup (user-provided nsg_id)")
 
-        self._cleanup_vnet(resource_group, subnet_id, vnet_name)
+        if not use_existing_subnet:
+            self._cleanup_vnet(resource_group, subnet_id, vnet_name)
 
         self._cleanup_role_assignments(resource_group, msi_principal_id)
 
