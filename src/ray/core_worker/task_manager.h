@@ -233,6 +233,21 @@ class TaskManager : public TaskManagerInterface {
                    {"IsRetry", std::get<2>(key) ? "1" : "0"},
                    {"Source", "owner"}});
             });
+    // Initialize task metrics to 0 for each state so that the metric exists
+    // from startup. This ensures Prometheus rate() correctly captures the first
+    // state transition instead of treating it as a transition from null.
+    for (const auto &state : {rpc::TaskStatus::PENDING_ARGS_AVAIL,
+                              rpc::TaskStatus::PENDING_NODE_ASSIGNMENT,
+                              rpc::TaskStatus::SUBMITTED_TO_WORKER,
+                              rpc::TaskStatus::RUNNING,
+                              rpc::TaskStatus::FINISHED,
+                              rpc::TaskStatus::FAILED}) {
+      task_by_state_counter_.Record(0,
+                                    {{"State", rpc::TaskStatus_Name(state)},
+                                     {"Name", ""},
+                                     {"IsRetry", "0"},
+                                     {"Source", "owner"}});
+    }
     reference_counter_.SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           return RemoveLineageReference(object_id, ids_to_release);

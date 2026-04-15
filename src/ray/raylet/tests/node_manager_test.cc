@@ -82,7 +82,7 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
       const std::string &object_url,
       std::function<void(const ray::Status &)> callback) override {}
 
-  void FlushFreeObjects() override{};
+  void FlushFreeObjects() override {};
 
   bool ObjectPendingDeletion(const ObjectID &object_id) override {
     return objects_pending_deletion_->find(object_id) != objects_pending_deletion_->end();
@@ -485,6 +485,23 @@ class NodeManagerTest : public ::testing::Test {
   ray::observability::FakeCounter
       fake_node_manager_unexpected_worker_failure_total_count_;
 };
+
+TEST_F(NodeManagerTest, TestInitialEvictionMetricValues) {
+  // Verify that the NodeManager initializes memory manager worker eviction
+  // metrics to 0 at construction, so Prometheus rate() captures the first
+  // eviction event.
+  auto tag_to_value = fake_memory_manager_worker_eviction_total_count_.GetTagToValue();
+  for (const auto &type : {"MemoryManager.DriverEviction.Total",
+                           "MemoryManager.IdleWorkerEviction.Total",
+                           "MemoryManager.TaskEviction.Total",
+                           "MemoryManager.ActorEviction.Total"}) {
+    absl::flat_hash_map<std::string, std::string> expected_tags = {{"Type", type},
+                                                                   {"Name", ""}};
+    auto it = tag_to_value.find(expected_tags);
+    ASSERT_NE(it, tag_to_value.end()) << "Missing initial metric for type " << type;
+    ASSERT_EQ(it->second, 0) << "Expected 0 for initial metric of type " << type;
+  }
+}
 
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
