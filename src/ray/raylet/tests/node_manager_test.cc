@@ -82,7 +82,7 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
       const std::string &object_url,
       std::function<void(const ray::Status &)> callback) override {}
 
-  void FlushFreeObjects() override {};
+  void FlushFreeObjects() override{};
 
   bool ObjectPendingDeletion(const ObjectID &object_id) override {
     return objects_pending_deletion_->find(object_id) != objects_pending_deletion_->end();
