@@ -76,14 +76,12 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                 reason="pool exceeding max size",
             )
 
-        # get_raw_budget() returns Allocation - Usage without clamping to zero.
-        # A negative value means the pool genuinely exceeds its total allocation
-        # (reserved + shared), and we use it to force downscaling.
-        # A non-negative value represents the true remaining headroom, and we reuse
-        # it (clamped to zero per-dimension) for scale-up decisions.
-        budget = self._resource_manager.get_raw_budget(op)
-        if budget is not None:
-            over_budget_scale_down = _get_required_scale_down(actor_pool, budget)
+        allocation = self._resource_manager.get_allocation(op)
+        op_usage = self._resource_manager.get_op_usage(op)
+        if allocation is not None and op_usage is not None:
+            over_budget_scale_down = _get_required_scale_down(
+                actor_pool, allocation.subtract(op_usage)
+            )
             if over_budget_scale_down > 0:
                 max_can_release = actor_pool.current_size() - actor_pool.min_size()
                 num_to_scale_down = min(over_budget_scale_down, max_can_release)
@@ -116,16 +114,9 @@ class DefaultActorAutoscaler(ActorAutoscaler):
                     reason="operator exceeding resource quota"
                 )
 
-            # Clamp to zero: individual dimensions of raw budget can be negative for resources
-            # this pool doesn't use (e.g. CPU-over-budget but pool is GPU-only).
-            # _get_max_scale_up asserts non-negative inputs.
-            budget_for_scale_up = (
-                budget.max(ExecutionResources.zero()) if budget else None
-            )
+            budget = self._resource_manager.get_budget(op)
             budget_max_scale_up = (
-                _get_max_scale_up(actor_pool, budget_for_scale_up)
-                if budget_for_scale_up
-                else sys.maxsize
+                _get_max_scale_up(actor_pool, budget) if budget else sys.maxsize
             )
 
             # Determine maximum available scale up based on
@@ -321,14 +312,14 @@ def _get_max_scale_up(
 
 def _get_required_scale_down(
     actor_pool: AutoscalingActorPool,
-    raw_budget: ExecutionResources,
+    budget: ExecutionResources,
 ) -> int:
     """Get the number of actors that must be removed to fit within budget.
 
     Args:
         actor_pool: The actor pool to scale down.
-        raw_budget: The raw remaining budget (allocation - usage). Negative values
-            indicate the operator is over its allocation.
+        budget: The raw remaining budget (allocation - usage) (Note this is different
+            from the budget returned by `ResourceManager.get_budget()` and can be negative).
 
     Returns:
         The number of actors that need to be removed, or 0 if the pool
@@ -337,18 +328,16 @@ def _get_required_scale_down(
     per_actor = actor_pool.per_actor_resource_usage()
 
     required_cpu_scale_down = 0
-    if per_actor.cpu > 0 and raw_budget.cpu < 0:
-        required_cpu_scale_down = math.ceil(abs(raw_budget.cpu) / per_actor.cpu)
+    if per_actor.cpu > 0 and budget.cpu < 0:
+        required_cpu_scale_down = math.ceil(abs(budget.cpu) / per_actor.cpu)
 
     required_gpu_scale_down = 0
-    if per_actor.gpu > 0 and raw_budget.gpu < 0:
-        required_gpu_scale_down = math.ceil(abs(raw_budget.gpu) / per_actor.gpu)
+    if per_actor.gpu > 0 and budget.gpu < 0:
+        required_gpu_scale_down = math.ceil(abs(budget.gpu) / per_actor.gpu)
 
     required_memory_scale_down = 0
-    if per_actor.memory > 0 and raw_budget.memory < 0:
-        required_memory_scale_down = math.ceil(
-            abs(raw_budget.memory) / per_actor.memory
-        )
+    if per_actor.memory > 0 and budget.memory < 0:
+        required_memory_scale_down = math.ceil(abs(budget.memory) / per_actor.memory)
 
     return max(
         required_cpu_scale_down, required_gpu_scale_down, required_memory_scale_down

@@ -418,12 +418,12 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_budget(op)
 
-    def get_raw_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Return the true total budget (Allocation - Usage) without clamping to zero,
-        or None if the operator has unlimited budget."""
+    def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return the allocation of the given operator, or None if the operator
+        doesn't have a designated allocation."""
         if self._op_resource_allocator is None:
             return None
-        return self._op_resource_allocator.get_raw_budget(op)
+        return self._op_resource_allocator.get_allocation(op)
 
     def is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
@@ -664,17 +664,6 @@ class OpResourceAllocator(ABC):
         allocation is unlimited."""
         ...
 
-    @abstractmethod
-    def get_raw_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Returns the true total budget (Allocation - Usage) without clamping to zero,
-        or `None` if the operator has unlimited budget.
-
-        Unlike `get_budget()`, this value can be negative when the operator genuinely
-        exceeds its total allocation (reserved + shared portion). It is the correct
-        signal for detecting over-allocation in the actor autoscaler.
-        """
-        ...
-
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
         """Returns a list of operators eligible for allocation.
 
@@ -808,8 +797,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._total_shared = ExecutionResources.zero()
         # Resource budgets for each operator, excluding `_reserved_for_op_outputs`.
         self._op_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
-        # Raw budgets: (reserved + shared_allocated) - usage.
-        self._op_raw_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
         # Remaining memory budget for generating new task outputs, per operator.
         self._output_budgets: Dict[PhysicalOperator, float] = {}
         # Whether each operator has reserved the minimum resources to run
@@ -920,9 +907,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             return None
         return budget.add(self._resource_manager.get_op_usage(op))
 
-    def get_raw_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        return self._op_raw_budgets.get(op)
-
     def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
         """Get total reserved resources for an operator, including outputs reservation."""
         op_reserved = self._op_reserved[op]
@@ -962,13 +946,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         remaining_shared = self._update_reservation(limits)
 
         self._op_budgets.clear()
-        self._op_raw_budgets.clear()
         eligible_ops = self._resource_manager.get_eligible_ops()
         if len(eligible_ops) == 0:
             return
-
-        # Track per-op reservation excess for raw budget computation later.
-        op_reserved_exceeded_map: Dict[PhysicalOperator, ExecutionResources] = {}
 
         # Remaining of shared resources.
         remaining_shared = self._total_shared
@@ -1001,7 +981,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             op_reserved_exceeded = op_usage.subtract(op_reserved).max(
                 ExecutionResources.zero()
             )
-            op_reserved_exceeded_map[op] = op_reserved_exceeded
             remaining_shared = remaining_shared.subtract(op_reserved_exceeded)
 
         remaining_shared = remaining_shared.max(ExecutionResources.zero())
@@ -1065,8 +1044,3 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 self._op_budgets[op] = self._op_budgets[op].copy(
                     object_store_memory=float("inf")
                 )
-
-            # Raw budget = _op_budgets[op] - max(usage - reserved, 0).
-            self._op_raw_budgets[op] = self._op_budgets[op].subtract(
-                op_reserved_exceeded_map[op]
-            )
