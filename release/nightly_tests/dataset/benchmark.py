@@ -6,7 +6,7 @@ import os
 import time
 from enum import Enum
 from typing import Any, Callable, Dict, List, Union
-
+import dataclasses
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
 from ray.util.state import list_runtime_envs
@@ -30,13 +30,18 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     """Collect execution stats from a Dataset as a JSON-serializable dict.
     This is a subset from `get_stats_summary`, because we are only adding the ones
     we care about for the release tests."""
-    summary = ds.get_stats_summary()
+    summary = ds.get_stats_summary(detail=True)
     return {
         "operators": [
             {
                 "operator_name": op.operator_name,
                 "earliest_start_time": op.earliest_start_time,
                 "latest_end_time": op.latest_end_time,
+                "scheduling_overhead": [
+                    dataclasses.asdict(bucket) for bucket in op.scheduling_overhead
+                ]
+                if op.scheduling_overhead
+                else [],
             }
             for op in summary.operators_stats
         ],

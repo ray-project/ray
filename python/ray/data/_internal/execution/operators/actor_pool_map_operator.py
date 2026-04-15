@@ -75,6 +75,11 @@ _ACTOR_STATE_RESTARTING = gcs_pb2.ActorTableData.ActorState.RESTARTING
 LogicalActorId = str
 
 
+def get_map_worker_cls_name(op_name: str) -> str:
+    """Return the dynamic class name used for actor pool map workers."""
+    return f"MapWorker({op_name})"
+
+
 class ActorPoolMapOperator(MapOperator):
     """A MapOperator implementation that executes tasks on an actor pool.
 
@@ -162,7 +167,7 @@ class ActorPoolMapOperator(MapOperator):
         self._ray_actor_task_remote_args = self._apply_default_actor_task_remote_args(
             ray_actor_task_remote_args, self.data_context
         )
-        map_worker_cls_name = f"MapWorker({self.name})"
+        map_worker_cls_name = get_map_worker_cls_name(self.name)
         # We set the actor class name to include operator name to disambiguate
         # logs in the Actor Pool
         self._map_worker_cls_name = map_worker_cls_name
