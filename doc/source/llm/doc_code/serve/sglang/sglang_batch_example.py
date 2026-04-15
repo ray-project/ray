@@ -1,9 +1,4 @@
-"""Batch inference with SGLang using Ray Data.
-
-Usage:
-    RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 python batch_sglang_example.py
-"""
-
+# __sglang_batch_start__
 import ray
 from ray.data.llm import SGLangEngineProcessorConfig, build_processor
 
@@ -47,3 +42,4 @@ ds = processor(ds)
 for row in ds.take_all():
     print(f"Prompt: {row['prompt']}")
     print(f"Response: {row['response']}\n")
+# __sglang_batch_end__
