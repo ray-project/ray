@@ -337,7 +337,9 @@ class BatchMapTransformFn(MapTransformFn):
 
         self._batch_fn = batch_fn
 
-    def _compute_auto_batch_size(self, blocks: Iterable[Block]) -> Tuple[Optional[int], Iterable[Block]]:
+    def _compute_auto_batch_size(
+        self, blocks: Iterable[Block]
+    ) -> Tuple[Optional[int], Iterable[Block]]:
         """Peek at the first block to determine the batch size to use for this transform, for the 'auto' batch_size option"""
         target_batch_size = DataContext.get_current().default_batch_size_bytes
         blocks_iter = iter(blocks)
@@ -353,7 +355,9 @@ class BatchMapTransformFn(MapTransformFn):
             computed_batch_size = max(1, int(target_batch_size / bytes_per_row))
         else:
             computed_batch_size = None
-        chained_blocks = itertools.chain([first], blocks_iter) # Prepend the first (consumed) block back into the iterator
+        chained_blocks = itertools.chain(
+            [first], blocks_iter
+        )  # Prepend the first (consumed) block back into the iterator
         return computed_batch_size, chained_blocks
 
     def _pre_process(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:

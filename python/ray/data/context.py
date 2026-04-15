@@ -48,7 +48,7 @@ class ShuffleStrategy(str, enum.Enum):
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
 
 DEFAULT_BATCH_SIZE_BYTES: int = env_integer(
-    "RAY_DATA_DEFAULT_BATCH_SIZE_BYTES", 16 * 1024 * 1024 # 16 MiB
+    "RAY_DATA_DEFAULT_BATCH_SIZE_BYTES", 16 * 1024 * 1024  # 16 MiB
 )
 
 # We set a higher target block size because we have to materialize
