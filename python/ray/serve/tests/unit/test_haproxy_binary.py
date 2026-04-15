@@ -80,3 +80,9 @@ def test_nothing_available_raises_with_instructions(_mock_which):
     with patch.dict("sys.modules", {"ray_haproxy": None}):
         with pytest.raises(FileNotFoundError, match=r"ray\[haproxy\]"):
             get_haproxy_binary()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-s", __file__]))
