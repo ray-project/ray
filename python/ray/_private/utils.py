@@ -1660,14 +1660,17 @@ def parse_pg_formatted_resources_to_original(
 
 
 def validate_actor_state_name(actor_state_name):
-    from ray._private.custom_types import ACTOR_STATUS
-
     if actor_state_name is None:
         return
+
+    from ray._private.custom_types import ACTOR_STATUS
+
     if actor_state_name not in ACTOR_STATUS:
+        quoted = [f'"{s}"' for s in ACTOR_STATUS]
+        states_str = ", ".join(quoted[:-1]) + f", or {quoted[-1]}"
         raise ValueError(
             f'"{actor_state_name}" is not a valid actor state name, '
-            f"it must be one of the following: {', '.join(ACTOR_STATUS)}"
+            f"it must be one of the following: {states_str}"
         )
 
 
