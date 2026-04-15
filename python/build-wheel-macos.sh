@@ -12,6 +12,9 @@ NODE_VERSION="14"
 
 PY_MMS=("3.14")
 
+# Override commit SHA so ray.__commit__ matches the release commit
+export TRAVIS_COMMIT="58af3fc5cad7e74001b3f89bffd9052a9e7aa2bb"
+
 if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh
 

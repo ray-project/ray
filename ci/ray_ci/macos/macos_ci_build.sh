@@ -48,12 +48,11 @@ build() {
   # Upload the wheels and jars
   # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
   if [[ "$BUILDKITE_PULL_REQUEST" != "false" ]]; then exit 0; fi
-  # Upload to branch directory.
+  # Override branch/commit so wheels upload directly to the release path
+  export BUILDKITE_BRANCH="releases/2.55.0"
+  export BUILDKITE_COMMIT="58af3fc5cad7e74001b3f89bffd9052a9e7aa2bb"
+  # Upload to release directory.
   bazel run .buildkite:copy_files -- --destination branch_wheels --path "${PWD}/.whl"
-  bazel run .buildkite:copy_files -- --destination branch_jars --path "${PWD}/.jar/darwin"
-  # Upload to latest directory.
-  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination wheels --path "${PWD}/.whl" ; fi
-  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination jars --path "${PWD}/.jar/darwin" ; fi
 }
 
 build "$@"
