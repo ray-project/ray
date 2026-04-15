@@ -517,7 +517,7 @@ def main():
     safe_write_to_results_json(consolidated_metrics)
 
     # Assert final scores aren't too far off, which would imply an inaccurate comparison
-    # Example value: 0.55
+    # Example: {'async_dcp_map_batches': 0.56, 'sync_cp_inline': 0.57, 'async_cp_map_batches': 0.57, 'async_cp_torch_trainer': 0.58, 'sync_dcp_map_batches': 0.59}
     sync_final_score = consolidated_metrics["sync_cp_inline_val_metrics"]["final_score"]
     async_torchtrainer_final_score = consolidated_metrics[
         "async_cp_torch_trainer_val_metrics"
@@ -556,7 +556,7 @@ def main():
     assert abs(sync_final_score - async_dcp_final_score) < MAXIMUM_ALLOWED_ACCURACY_DIFF
 
     # Assert async checkpointing/validation e2e time is faster; add multipler to account for training time variance
-    # Example values: 1385s vs 1317s vs 1304s
+    # Example: {'async_cp_map_batches': 1346.26, 'sync_dcp_map_batches': 1350.58, 'async_dcp_map_batches': 1367.41, 'async_cp_torch_trainer': 1390.7, 'sync_cp_inline': 1571.73}
     sync_e2e_time = consolidated_metrics["sync_cp_inline_val_metrics"]["e2e_time"]
     async_torchtrainer_e2e_time = consolidated_metrics[
         "async_cp_torch_trainer_val_metrics"
@@ -595,7 +595,7 @@ def main():
     ), f"{async_dcp_e2e_time=}, {sync_e2e_time * MAXIMUM_ALLOWED_E2E_TIME_MULTIPLIER=} ({sync_e2e_time=})"
 
     # map_batches is faster than TorchTrainer. Note that inline is the fastest but is blocking
-    # Example values: 92s vs 387s vs 264s (gap between sync and async smaller if more data)
+    # Examples: {'async_dcp_map_batches': 1.39, 'async_cp_torch_trainer': 3.19, 'async_cp_map_batches': 3.27, 'sync_dcp_map_batches': 9.02, 'sync_cp_inline': 11.75}
     sync_validation_time = consolidated_metrics["sync_cp_inline_val_metrics"][
         "total_validation_time"
     ]
@@ -632,11 +632,11 @@ def main():
     # Example values: 3.66s vs 0.033s vs 0.028s
     assert async_torchtrainer_report_blocked_time < sync_report_blocked_time
     assert async_map_batches_report_blocked_time < sync_report_blocked_time
-    assert sync_report_blocked_time < sync_dcp_report_blocked_time
+    assert sync_dcp_report_blocked_time < sync_report_blocked_time
     assert async_dcp_report_blocked_time < sync_dcp_report_blocked_time
 
     # Assert sync blocking time (report + validation + final validation) is less than async blocking time (report + final validation)
-    # Example values of final validation blocking time: 40s vs 26s
+    # Example: {'async_dcp_map_batches': 25.52, 'async_cp_map_batches': 26.01, 'sync_cp_inline': 29.76, 'sync_dcp_map_batches': 31.52, 'async_cp_torch_trainer': 37.75}
     sync_final_validation_blocking_time = consolidated_metrics[
         "sync_cp_inline_val_metrics"
     ]["final_validation_waiting_time"]
@@ -679,7 +679,12 @@ def main():
                     (
                         k,
                         round(
-                            v["total_report_blocked_time"]
+                            (
+                                sync_report_blocked_time
+                                if k == "sync_cp_inline_val_metrics"
+                                else 0
+                            )
+                            + v["total_report_blocked_time"]
                             + v["final_validation_waiting_time"],
                             2,
                         ),
