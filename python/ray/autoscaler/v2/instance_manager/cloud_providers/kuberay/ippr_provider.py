@@ -186,9 +186,7 @@ class KubeRayIPPRProvider:
             worker_group_spec["groupName"]: worker_group_spec
             for worker_group_spec in ray_cluster["spec"].get("workerGroupSpecs", [])
         }
-        head_group_spec = ray_cluster["spec"].get("headGroupSpec")
-        if head_group_spec:
-            worker_groups["headgroup"] = head_group_spec
+        worker_groups["headgroup"] = ray_cluster["spec"]["headGroupSpec"]
 
         groups = {
             group_name: _build_ippr_group_spec(group_spec, worker_groups[group_name])
@@ -456,6 +454,9 @@ def _get_ippr_status_from_pod(
     Returns a tuple of (ippr_status, container_resource_snapshot). The snapshot
     contains both spec and status requests/limits used to construct resize
     patches that preserve the current QoS gap.
+
+    IPPRStatus includes the updated desired resources based on the failure messages of the previous resize request carried on the pod.
+    This function doesn't have any external side effects.
     """
     if not ippr_group_spec:
         return (None, None)
@@ -468,7 +469,7 @@ def _get_ippr_status_from_pod(
         else:
             # We need to substract other containers' resources when adjusting the
             # the new resource requests based on the capactity report from the Kubelet.
-            requests = (status.get("resources") or {}).get("requests")
+            requests = status.get("resources", {}).get("requests")
             if requests:
                 other_container_resources.append(requests)
 
@@ -581,7 +582,13 @@ def _apply_resize_suggestion(
     pod_status_limits: Dict[str, Any],
     other_container_resources: List[Dict[str, Any]],
 ) -> IPPRStatus:
-    """Parse Kubelet capacity reports and queue a suggested follow-up resize."""
+    """Parse Kubelet capacity reports and queue a suggested follow-up resize.
+
+    A suggested follow-up resize is taken from the failure message of the previous resize request on the pod.
+    For example, a message, "Node didn't have enough resource: cpu, requested: 8000, used: 5000, capacity: 9000",
+    means the pod can only have CPU request up to 4. For our suggested follow-up resize, we will set the suggested_max_cpu to
+    4 + (orignal cpu limit - original cpu request) to keep the gap.
+    """
     report = None
     if ippr_status.k8s_resize_message and ippr_status.k8s_resize_status == "deferred":
         report = re.search(
@@ -624,9 +631,16 @@ def _apply_resize_suggestion(
     #     - CPU request is 7 - 3 = 4 cores (aligned with the kubelet's report, and keep the gap 3 cores)
     #     - Mem limit is 10Gi
     #     - Mem request is 10Gi - 6Gi = 4Gi (aligned with the kubelet's report, and keep the gap 6Gi)
-    used = int(report.group(3) or "0")
-    capacity = int(report.group(4))
-    max_request = capacity - used
+
+    used = int(
+        report.group(3) or "0"
+    )  # this field is the used resource request capacity of the k8s node excluding the current pod.
+    capacity = int(
+        report.group(4)
+    )  # this field is the total resource request capacity of the k8s node.
+    max_request = (
+        capacity - used
+    )  # so this max_request is the remaining resource request capacity that this pod can still request.
     resource_name = report.group(1)
     suggested = _suggested_resize_limit(
         resource_name,

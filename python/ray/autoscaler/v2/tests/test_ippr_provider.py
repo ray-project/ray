@@ -750,6 +750,55 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         assert st.suggested_max_memory == 18 * Gi
         assert st.suggested_max_cpu == 2.0
 
+    def test_sync_ippr_status_pending_infeasible_memory_sets_suggestions_with_sidecars(
+        self,
+    ):
+        # Load specs
+        rc = _make_ray_cluster_with_ippr(
+            {"small-group": {"max-cpu": 8, "max-memory": "64Gi", "resize-timeout": 60}}
+        )
+        self.provider.validate_and_set_ippr_specs(rc)
+
+        # Memory: status limits=8Gi, requests=2Gi → diff=6Gi. Remaining = capacity (12Gi).
+        # suggested_max_memory = 12Gi + 6Gi = 18Gi.
+        pod = _make_pod(
+            name="ray-worker-1",
+            group="small-group",
+            kind=KUBERAY_KIND_WORKER,
+            container_name="ray-worker",
+            status_requests={"cpu": "1", "memory": str(2 * Gi)},
+            status_limits={"cpu": "2", "memory": str(8 * Gi)},
+            spec_requests={"cpu": "7", "memory": str(58 * Gi)},
+            spec_limits={"cpu": "8", "memory": str(64 * Gi)},
+            conditions=[
+                {
+                    "type": "PodResizePending",
+                    "status": "True",
+                    "reason": "Infeasible",
+                    "message": (
+                        f"Node didn't have enough capacity: memory, requested: {58 * Gi}, capacity: {12 * Gi}"
+                    ),
+                }
+            ],
+        )
+        pod["metadata"]["annotations"]["ray.io/ippr-status"] = json.dumps(
+            {"suggested-max-cpu": 2, "raylet-id": "0" * 56}
+        )
+        pod["status"]["containerStatuses"].append(
+            {
+                "name": "sidecar",
+                "resources": {
+                    "requests": {"memory": str(1 * Gi)},
+                },
+            }
+        )
+
+        self.provider.sync_ippr_status_from_pods([pod])
+        st = self.provider.get_ippr_statuses()["ray-worker-1"]
+        assert st.has_resize_request_to_send()
+        assert st.suggested_max_memory == 18 * Gi - 1 * Gi
+        assert st.suggested_max_cpu == 2.0
+
     def test_pending_message_unexpected_no_suggestions(self):
         rc = _make_ray_cluster_with_ippr(
             {"small-group": {"max-cpu": 8, "max-memory": "16Gi", "resize-timeout": 60}}
@@ -960,8 +1009,8 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         with pytest.raises(KeyError):
             _ = self.k8s.get_patches("pods/ray-worker-1/resize")
 
-    def test_do_ippr_requests_memory_limit_drops_below_spec_limit(self):
-        # Setup specs and pod with memory limits present; request downsize below spec limit
+    def test_do_ippr_requests_memory_limit(self):
+        # Setup specs and pod with memory limits present; k8s 1.35 supports downsize memory limit.
         rc = _make_ray_cluster_with_ippr(
             {"small-group": {"max-cpu": 8, "max-memory": "32Gi", "resize-timeout": 60}}
         )
