@@ -325,7 +325,7 @@ class SplitCoordinator:
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
             schema = next_bundle.schema
-            block = next_bundle.blocks[-1]
+            block, metadata = next_bundle.blocks[-1]
             next_bundle = RefBundle(
                 blocks=next_bundle.blocks[:-1],
                 schema=next_bundle.schema,
@@ -347,20 +347,21 @@ class SplitCoordinator:
 
                 # Track per-split row dispatch count.
                 metadata = block[1]
-                num_rows = metadata.num_rows if metadata.num_rows else 0
-                self._num_rows_dispatched[output_split_idx] += num_rows
-                num_rows_total = self._num_rows_dispatched[output_split_idx]
+                self._num_rows_dispatched[output_split_idx] += (
+                    metadata.num_rows if metadata.num_rows else 0
+                )
+                num_rows_dispatched = self._num_rows_dispatched[output_split_idx]
 
             self._maybe_log_dispatch(
                 split_idx=output_split_idx,
                 epoch_id=epoch_id,
-                num_rows_dispatched=num_rows_total,
+                num_rows_dispatched=num_rows_dispatched,
                 client_prefetched_bytes=client_prefetched_bytes,
             )
 
             returned_normally = True
             return RefBundle(
-                [block], schema=schema, owns_blocks=next_bundle.owns_blocks
+                [(block, metadata)], schema=schema, owns_blocks=next_bundle.owns_blocks
             )
         except StopIteration:
             with self._lock:
