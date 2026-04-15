@@ -418,6 +418,13 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_budget(op)
 
+    def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return the allocation of the given operator, or None if the operator
+        doesn't have a designated allocation."""
+        if self._op_resource_allocator is None:
+            return None
+        return self._op_resource_allocator.get_allocation(op)
+
     def is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
         return (
