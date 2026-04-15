@@ -1901,6 +1901,45 @@ TEST_F(TaskManagerTest, TestPeekObjectReady) {
   CompletePendingStreamingTask(spec, caller_address, 1);
 }
 
+// After all streamed chunks are consumed, the next index is the EOF sentinel.
+// It is not recorded in refs_written_to_stream_; Peek must still report ready
+// so callers align with TryReadNextItem (ObjectRefEndOfStream).
+TEST_F(TaskManagerTest, TestPeekObjectReadyAtEof) {
+  auto spec =
+      CreateTaskHelper(1, {}, /*dynamic_returns=*/true, /*is_streaming_generator=*/true);
+  auto generator_id = spec.ReturnId(0);
+  rpc::Address caller_address;
+  manager_.AddPendingTask(caller_address, spec, "", 0);
+
+  auto dynamic_return_id = ObjectID::FromIndex(spec.TaskId(), 2);
+  auto data = GenerateRandomBuffer();
+  auto req = GetIntermediateTaskReturn(
+      /*idx*/ 0,
+      /*finished*/ false,
+      generator_id,
+      /*dynamic_return_id*/ dynamic_return_id,
+      /*data*/ data,
+      /*set_in_plasma*/ false);
+  ASSERT_TRUE(manager_.HandleReportGeneratorItemReturns(
+      req, /*execution_signal_callback*/ [](Status, int64_t) {}));
+  CompletePendingStreamingTask(spec, caller_address, 1);
+
+  ObjectID obj_id;
+  ASSERT_TRUE(manager_.TryReadObjectRefStream(generator_id, &obj_id).ok());
+  ASSERT_EQ(obj_id, dynamic_return_id);
+
+  const auto eof_id = ObjectID::FromIndex(spec.TaskId(), 3);
+  {
+    auto [peek_id, ready] = manager_.PeekObjectRefStream(generator_id);
+    ASSERT_EQ(peek_id, eof_id);
+    ASSERT_TRUE(ready);
+  }
+  auto status = manager_.TryReadObjectRefStream(generator_id, &obj_id);
+  ASSERT_TRUE(status.IsObjectRefEndOfStream());
+
+  manager_.TryDelObjectRefStream(generator_id);
+}
+
 TEST_F(TaskManagerTest, TestObjectRefStreamMixture) {
   /**
    * Test the basic cases, but write and read are mixed up.
