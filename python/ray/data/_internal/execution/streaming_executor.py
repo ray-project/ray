@@ -334,27 +334,21 @@ class StreamingExecutor(Executor, threading.Thread):
         self, force: bool, exception: Optional[Exception] = None
     ) -> None:
         """Drain topology queues after operator shutdown (releases block refs)."""
-        output_op, _ = self._output_node
         for op, state in self._topology.items():
             if isinstance(op, InternalQueueOperatorMixin):
                 op.clear_internal_input_queue()
                 op.clear_internal_output_queue()
-
-            # Multi-split sink: only skip clearing the output queue on cooperative
-            # *success* shutdown (siblings may still be draining). Failure paths set
-            # OpState._exception; consumers will not drain leftover bundles, so clear
-            # to release pins.
-            is_live_multi_split_sink = (
-                op is output_op
-                and op.num_output_splits() > 1
-                and not force
-                and exception is None
-            )
-            clear_output = not is_live_multi_split_sink
-            if clear_output:
-                state.output_queue.clear()
+            # Input queues alias upstream output queues; clears the DAG except the sink.
             for inqueue in state.input_queues:
                 inqueue.clear()
+
+        output_op, _ = self._output_node
+        # Clear sink output unless cooperative multi-split success (splits may still read).
+        is_live_multi_split_sink = (
+            output_op.num_output_splits() > 1 and not force and exception is None
+        )
+        if not is_live_multi_split_sink:
+            self._topology[output_op].output_queue.clear()
 
     def run(self):
         """Run the control loop in a helper thread.
