@@ -33,6 +33,10 @@ python/deplocks/llm/*.lock
 @ llm
 ;
 
+python/deplocks/
+# pass
+;
+
 python/ray/data/
 .buildkite/data.rayci.yml
 ci/docker/data.build.Dockerfile
