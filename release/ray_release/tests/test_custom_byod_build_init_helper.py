@@ -193,7 +193,7 @@ def test_create_custom_build_yaml(mock_get_images_from_tests):
             assert "--python-depset" not in env_only_cmd
 
 
-_ECR = "029272617770.dkr.ecr.us-west-2.amazonaws.com"
+_ECR = get_global_config()["byod_ecr"]
 
 
 @pytest.mark.parametrize(

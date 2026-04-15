@@ -33,7 +33,6 @@ APT_PKGS=(
     less
 
     # For HAProxy
-    socat
     liblua5.3-0
 )
 
@@ -175,6 +174,7 @@ USER root
 
 # Copy HAProxy binary from builder stage
 COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
 
 # Install HAProxy runtime dependency and setup
 RUN <<EOF
