@@ -401,6 +401,7 @@ def run_multi_endpoint_master(
                 "name": stage_name,
                 "avg_rps": total.current_rps,
                 "p99_latency": total.get_current_response_time_percentile(0.99),
+                "max_latency": total.max_response_time,
                 "avg_users": master_runner.user_count,
             }
         )
@@ -491,6 +492,7 @@ def run_multi_endpoint_master(
         stages_dict[s["name"]] = {
             "avg_rps": s["avg_rps"],
             "p99_latency": s["p99_latency"],
+            "max_latency": s["max_latency"],
             "avg_users": s["avg_users"],
         }
 
@@ -502,6 +504,7 @@ def run_multi_endpoint_master(
         "p50_latency": total.get_response_time_percentile(0.5),
         "p90_latency": total.get_response_time_percentile(0.9),
         "p99_latency": total.get_response_time_percentile(0.99),
+        "max_latency": total.max_response_time,
         "avg_latency": total.avg_response_time,
         "avg_rps": total.total_rps,
         "per_endpoint": per_endpoint,

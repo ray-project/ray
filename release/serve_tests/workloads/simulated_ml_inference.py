@@ -12,7 +12,7 @@ class SimulatedMLInference:
         time.sleep(120)
 
     async def __call__(self, request):
-        _ = await asyncio.wait_for(request.json(), timeout=2)
+        _ = await asyncio.wait_for(request.json(), timeout=60)
         time.sleep(0.015)
         return {"ok": True}
 

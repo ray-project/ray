@@ -189,21 +189,26 @@ LOAD_STAGES = [
 def assert_results(stats: Dict[str, Any]) -> None:
     errors = stats["num_failures"]
     total = stats["total_requests"]
-    p99 = stats["p99_latency"]
     p50 = stats["p50_latency"]
+    p99 = stats["p99_latency"]
+
+    # ToDo(kamil) - for now only report max_latency, once stable add checks.
+    max_latency = stats["max_latency"]
 
     # Assertions on the aggregated results
     assert errors == 0, f"Expected 0 failures, got {errors} out of {total} requests."
     assert p99 <= 200, f"p99 latency {p99:.1f}ms exceeds 200ms."
     assert p50 <= 100, f"p50 latency {p50:.1f}ms exceeds 100ms."
-    assert total >= 1000, f"Total requests {total} below minimum 1000."
+    assert total >= 2_000_000, f"Total requests {total} below minimum 2,000,000."
 
     # Per-stage assertions
     if "stages" in stats:
         for stage_name, stage_stats in stats["stages"].items():
             logger.info(
-                f"Stage '{stage_name}': avg_rps={stage_stats['avg_rps']:.0f}, "
+                f"Stage '{stage_name}': "
+                f"avg_rps={stage_stats['avg_rps']:.0f}, "
                 f"p99={stage_stats['p99_latency']:.1f}ms, "
+                f"max_latency={stage_stats['max_latency']:.1f}ms, "
                 f"avg_users={stage_stats['avg_users']:.0f}"
             )
 
@@ -218,7 +223,9 @@ def assert_results(stats: Dict[str, Any]) -> None:
 
     logger.info(
         f"Assertions passed: {total} requests, 0 failures, "
-        f"p50={p50:.1f}ms, p99={p99:.1f}ms"
+        f"p50={p50:.1f}ms, "
+        f"p99={p99:.1f}ms, "
+        f"max_latency={max_latency:.1f}ms"
     )
 
 
@@ -237,6 +244,11 @@ def build_results(stats: Dict[str, Any], service_id: str) -> Dict[str, Any]:
         {
             "perf_metric_name": "p99_latency",
             "perf_metric_value": stats["p99_latency"],
+            "perf_metric_type": "LATENCY",
+        },
+        {
+            "perf_metric_name": "max_latency",
+            "perf_metric_value": stats["max_latency"],
             "perf_metric_type": "LATENCY",
         },
         {
@@ -275,6 +287,13 @@ def build_results(stats: Dict[str, Any], service_id: str) -> Dict[str, Any]:
                 {
                     "perf_metric_name": f"{stage_name}_p99_latency",
                     "perf_metric_value": stage_stats["p99_latency"],
+                    "perf_metric_type": "LATENCY",
+                }
+            )
+            metrics.append(
+                {
+                    "perf_metric_name": f"{stage_name}_max_latency",
+                    "perf_metric_value": stage_stats["max_latency"],
                     "perf_metric_type": "LATENCY",
                 }
             )
