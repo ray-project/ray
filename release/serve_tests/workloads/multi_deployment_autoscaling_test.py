@@ -38,7 +38,7 @@ def _make_application(
 ) -> Dict[str, Any]:
     return {
         "name": app_name,
-        "import_path": "simulated_ml_inference:app",
+        "import_path": f"simulated_ml_inference:{app_name}",
         "route_prefix": route,
         "deployments": [
             {
@@ -66,8 +66,8 @@ def _make_application(
 
 APPLICATIONS = [
     _make_application(
-        app_name="app-1",
-        route="/app-1/predict",
+        app_name="app_1",
+        route="/app_1/predict",
         num_cpus=1.0,
         max_ongoing_requests=1,
         min_replicas=10,
@@ -75,8 +75,8 @@ APPLICATIONS = [
         target_ongoing_requests=0.1,
     ),
     _make_application(
-        app_name="app-2",
-        route="/app-2/predict",
+        app_name="app_2",
+        route="/app_2/predict",
         num_cpus=1.0,
         max_ongoing_requests=1,
         min_replicas=20,
@@ -84,8 +84,8 @@ APPLICATIONS = [
         target_ongoing_requests=0.1,
     ),
     _make_application(
-        app_name="app-3",
-        route="/app-3/predict",
+        app_name="app_3",
+        route="/app_3/predict",
         num_cpus=1.0,
         max_ongoing_requests=1,
         min_replicas=15,
@@ -94,8 +94,8 @@ APPLICATIONS = [
         upscaling_factor=1.5,
     ),
     _make_application(
-        app_name="app-4",
-        route="/app-4/predict",
+        app_name="app_4",
+        route="/app_4/predict",
         num_cpus=2.0,
         max_ongoing_requests=1,
         min_replicas=250,
@@ -104,8 +104,8 @@ APPLICATIONS = [
         upscaling_factor=10.0,
     ),
     _make_application(
-        app_name="app-5",
-        route="/app-5/predict",
+        app_name="app_5",
+        route="/app_5/predict",
         num_cpus=2.0,
         max_ongoing_requests=1,
         min_replicas=250,
@@ -113,8 +113,8 @@ APPLICATIONS = [
         target_ongoing_requests=0.1,
     ),
     _make_application(
-        app_name="app-6",
-        route="/app-6/predict",
+        app_name="app_6",
+        route="/app_6/predict",
         num_cpus=2.0,
         max_ongoing_requests=1,
         min_replicas=50,
@@ -123,8 +123,8 @@ APPLICATIONS = [
         upscaling_factor=10.0,
     ),
     _make_application(
-        app_name="app-7",
-        route="/app-7/predict",
+        app_name="app_7",
+        route="/app_7/predict",
         num_cpus=2.0,
         max_ongoing_requests=1,
         min_replicas=50,
@@ -132,8 +132,8 @@ APPLICATIONS = [
         target_ongoing_requests=0.1,
     ),
     _make_application(
-        app_name="app-8",
-        route="/app-8/predict",
+        app_name="app_8",
+        route="/app_8/predict",
         num_cpus=0.3,
         max_ongoing_requests=5,
         min_replicas=1,
@@ -144,26 +144,26 @@ APPLICATIONS = [
 
 # (app-name, route, weight)
 WARMUP_ENDPOINTS = [
-    ("app-1", "/app-1/predict", 1),
-    ("app-2", "/app-2/predict", 1),
-    ("app-3", "/app-3/predict", 1),
-    ("app-4", "/app-4/predict", 1),
-    ("app-5", "/app-5/predict", 1),
-    ("app-6", "/app-6/predict", 1),
-    ("app-7", "/app-7/predict", 1),
-    ("app-8", "/app-8/predict", 1),
+    ("app_1", "/app_1/predict", 1),
+    ("app_2", "/app_2/predict", 1),
+    ("app_3", "/app_3/predict", 1),
+    ("app_4", "/app_4/predict", 1),
+    ("app_5", "/app_5/predict", 1),
+    ("app_6", "/app_6/predict", 1),
+    ("app_7", "/app_7/predict", 1),
+    ("app_8", "/app_8/predict", 1),
 ]
 
 # (app-name, route, weight)
 RAMP_ENDPOINTS = [
-    ("app-1", "/app-1/predict", 4),
-    ("app-2", "/app-2/predict", 1),
-    ("app-3", "/app-3/predict", 1),
-    ("app-4", "/app-4/predict", 38),
-    ("app-5", "/app-5/predict", 1),
-    ("app-6", "/app-6/predict", 62),
-    ("app-7", "/app-7/predict", 1),
-    ("app-8", "/app-8/predict", 1),
+    ("app_1", "/app_1/predict", 4),
+    ("app_2", "/app_2/predict", 1),
+    ("app_3", "/app_3/predict", 1),
+    ("app_4", "/app_4/predict", 38),
+    ("app_5", "/app_5/predict", 1),
+    ("app_6", "/app_6/predict", 62),
+    ("app_7", "/app_7/predict", 1),
+    ("app_8", "/app_8/predict", 1),
 ]
 
 WARMUP_SEC = 40
