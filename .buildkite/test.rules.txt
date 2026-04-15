@@ -85,6 +85,22 @@ python/ray/dashboard/
 @ dashboard linux_wheels python
 ;
 
+# The macOS smoke test installs this specific lock file
+# (ci/ray_ci/macos/macos_ci.sh), so changes here must still trigger
+# macos_wheels. Must precede the general python/deplocks/ rule below.
+python/deplocks/ci/macos_depset_py*
+@ macos_wheels
+;
+
+# Raydepsets-generated lock files. These do NOT affect the macOS smoke
+# test (which only consumes macos_depset_py*, handled above), so we
+# deliberately omit macos_wheels here to avoid running mac tests on
+# unrelated lock updates.
+python/deplocks/
+@ ml tune train data
+@ python dashboard linux_wheels java
+;
+
 python/setup.py
 python/requirements.txt
 python/requirements_compiled.txt
