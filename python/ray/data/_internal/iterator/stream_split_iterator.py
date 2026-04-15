@@ -346,7 +346,6 @@ class SplitCoordinator:
                 self._report_prefetched_bytes_to_executor()
 
                 # Track per-split row dispatch count.
-                metadata = block[1]
                 self._num_rows_dispatched[output_split_idx] += (
                     metadata.num_rows if metadata.num_rows else 0
                 )
