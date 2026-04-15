@@ -198,7 +198,7 @@ class SplitCoordinator:
         # Store the error raised from the `gen_epoch` call.
         self._gen_epoch_error: Optional[Exception] = None
 
-        logger.info(f"SplitCoordinator created: {n=}, {locality_hints=}")
+        logger.debug(f"SplitCoordinator created: {n=}, {locality_hints=}")
 
     def get_dataset_context(self) -> DataContext:
         return self._data_context
