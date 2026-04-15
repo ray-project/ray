@@ -668,7 +668,7 @@ def slice_placement_group(
             a topology, with the bundle resources set to the number of TPU in a host.
             Ex: Specifying {"TPU": 1} for a 4x4 topology would result in 16 bundles, each with 1 TPU.
             If resources_per_bundle=None for the same topology, there would be 4 bundles with 4 TPU each.
-        num_slices: The number of tpu slices within the placement group
+        num_slices: The number of tpu slices within the placement group.
         chips_per_vm: An optional override for the number of chips per TPU VM.
             Useful for ambiguous topologies like v6e 2x4 which have 1 host, but can be provisioned
             as either 1 VM (8 chips) or 2 VMs (4 chips each).
