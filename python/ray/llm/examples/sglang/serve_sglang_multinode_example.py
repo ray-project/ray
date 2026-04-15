@@ -7,9 +7,6 @@ Requirements:
 
 Usage:
     RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_multinode_example:app
-
-See the SGLang integration user guide for details:
-https://docs.ray.io/en/latest/serve/llm/user-guides/sglang.html
 """
 
 from ray import serve

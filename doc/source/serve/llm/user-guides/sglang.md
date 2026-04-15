@@ -114,13 +114,14 @@ RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_multinode_e
 
 ## Limitations
 
-- **Engine replicas:** SGLang does not support running multiple engine replicas within a single deployment. Each deployment runs one engine instance. To scale throughput, increase tensor or pipeline parallelism or deploy multiple independent models. See [ray-project/ray#62480](https://github.com/ray-project/ray/issues/62480) for tracking.
-- **Data parallelism (DP):** SGLang's data parallelism requires a separate coordinator pattern that is not yet integrated into the Ray Serve LLM deployment flow. Use tensor and pipeline parallelism for multi-GPU scaling instead.
-- **Transcriptions and score:** The `SGLangServer` does not implement the `/v1/audio/transcriptions` or `/v1/score` endpoints. Only chat completions, text completions, embeddings, tokenize, and detokenize are supported.
-- **Observability:** Engine-level metrics (e.g. KV cache utilization, request queue depth) are not yet exposed through Ray Serve's metrics endpoint.
-- **Prefill disaggregation:** Separating prefill and decode phases across different workers is not yet supported.
-- **Expert parallelism (EP):** Wide expert parallelism for Mixture-of-Experts models is not yet integrated.
-- **Elastic expert parallelism:** Dynamic scaling of expert parallel workers based on load is not yet supported.
+The following SGLang features are available upstream but not yet integrated into Ray Serve LLM. Community contributions are welcome:
+
+- **Engine replicas:** Multiple engine replicas within a single deployment. See [ray-project/ray#62480](https://github.com/ray-project/ray/issues/62480).
+- **Observability:** Engine-level metrics (e.g. KV cache utilization, request queue depth).
+- **Prefill disaggregation:** Separating prefill and decode phases across different workers.
+- **Wide EP:** Wide expert parallelism for Mixture-of-Experts models.
+- **Elastic EP:** Fault-tolerant expert parallelism with dynamic rank health tracking.
+- **Transcriptions and score:** The `/v1/audio/transcriptions` and `/v1/score` endpoints.
 
 ## Dependencies
 

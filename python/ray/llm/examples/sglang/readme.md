@@ -2,8 +2,6 @@
 
 This directory contains example scripts for using SGLang with Ray Serve LLM.
 
-For the full user guide, see the [SGLang integration documentation](https://docs.ray.io/en/latest/serve/llm/user-guides/sglang.html).
-
 ## Examples
 
 | File | Description |

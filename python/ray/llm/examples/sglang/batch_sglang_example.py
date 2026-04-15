@@ -2,9 +2,6 @@
 
 Usage:
     RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 python batch_sglang_example.py
-
-See the SGLang integration user guide for details:
-https://docs.ray.io/en/latest/serve/llm/user-guides/sglang.html
 """
 
 import ray
