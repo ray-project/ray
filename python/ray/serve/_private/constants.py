@@ -637,6 +637,12 @@ RAY_SERVE_LOG_CLIENT_ADDRESS = (
     os.environ.get("RAY_SERVE_LOG_CLIENT_ADDRESS", "0") == "1"
 )
 
+# Absolute path to the HAProxy binary. Defaults to bare "haproxy" (PATH lookup).
+# Set in Docker images to avoid PATH-resolution failures (e.g. broken mounts).
+RAY_SERVE_HAPROXY_BINARY_PATH = os.environ.get(
+    "RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy"
+)
+
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
 RAY_SERVE_HAPROXY_MAXCONN = int(os.environ.get("RAY_SERVE_HAPROXY_MAXCONN", "20000"))
@@ -808,6 +814,15 @@ if RAY_SERVE_ENABLE_HA_PROXY:
 # Feature flag to aggregate metrics at the controller instead of the replicas or handles.
 RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER = get_env_bool(
     "RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER", "0"
+)
+# Feature flag to use compact (low-cardinality) namespace tags on long poll metrics.
+# When enabled, metric tags use only the LongPollNamespace enum name
+# (e.g., "DEPLOYMENT_CONFIG") instead of the full key string which includes
+# per-deployment identifiers. This bounds metric cardinality to ~6 namespace types
+# instead of scaling with the number of deployments.
+# Recommended for workloads with a large number (>1000) of deployments.
+RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS = get_env_bool(
+    "RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", "0"
 )
 # Key for the decision counters in default autoscaling policy state
 SERVE_AUTOSCALING_DECISION_COUNTERS_KEY = "__decision_counters"

@@ -6,7 +6,6 @@ ray_cc_test(
     srcs = ["metric_with_open_telemetry_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/stats:stats_metric",
     ],
 )
@@ -22,7 +21,6 @@ ray_cc_test(
         "team:core",
     ],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/stats:stats_lib",
     ],
 )
@@ -33,7 +31,6 @@ ray_cc_test(
     srcs = ["percentile_tracker_test.cc"],
     tags = ["team:core"],
     deps = [
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/stats:percentile_tracker",
     ],
 )
