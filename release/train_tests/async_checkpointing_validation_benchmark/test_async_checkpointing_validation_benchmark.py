@@ -305,14 +305,14 @@ def validate_and_report(
                 validation=validation,
             )
         elif checkpoint_save_mode == CheckpointSaveMode.TORCH_DCP_ASYNC:
-            # Shards are being written directly to shared storage.
-            # Wait for the async save to finish in a background thread before
-            # marking the checkpoint as ready, but don't upload anything.
+            # Shards are written directly to shared storage. The `async_save`
+            # returns a future that will wait until all workers are complete.
+            # Internally it has a barrier before `future.result()` is returned.
             def wait_async_save(
                 checkpoint, checkpoint_dir_name, upload_complete_ref=ckpt_ref
             ):
                 upload_complete_ref.result()
-                # # todo (mark): this might be unnecessary as the data isn't moving so should be able to use `return checkpoint`
+                # todo (mark): this might be unnecessary as the data isn't moving so should be able to use `return checkpoint`
                 # path = (
                 #     ray.train.get_context()
                 #     .get_storage()
