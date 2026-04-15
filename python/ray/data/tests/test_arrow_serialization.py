@@ -14,9 +14,6 @@ import ray
 import ray.cloudpickle as pickle
 import ray.data
 import ray.train
-from ray._private.arrow_serialization import (
-    PicklableArrayPayload,
-)
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.extensions.object_extension import (
     ArrowPythonObjectArray,
@@ -510,19 +507,6 @@ def test_custom_arrow_data_serializer_disable(shutdown_only):
     assert d_view["a"].chunk(0).buffers()[1].size == t["a"].chunk(0).buffers()[1].size
     # Check that the serialized slice view is large
     assert len(s_view) > 0.8 * len(s_t)
-
-
-@pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("10.0.0"),
-    reason="FixedShapeTensorArray is not supported in PyArrow < 10.0.0",
-)
-def test_fixed_shape_tensor_array_serialization():
-    a = pa.FixedShapeTensorArray.from_numpy_ndarray(
-        np.arange(4 * 2 * 3).reshape(4, 2, 3)
-    )
-    payload = PicklableArrayPayload.from_array(a)
-    a2 = payload.to_array()
-    assert a == a2
 
 
 if __name__ == "__main__":

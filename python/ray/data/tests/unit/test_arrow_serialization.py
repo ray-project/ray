@@ -4,6 +4,7 @@ from unittest import mock
 import numpy as np
 import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 
 from ray._private.arrow_serialization import (
     PicklableArrayPayload,
@@ -14,7 +15,6 @@ from ray._private.arrow_serialization import (
     _copy_normal_buffer_if_needed,
     _copy_offsets_buffer_if_needed,
 )
-from ray.tests.conftest import *  # noqa
 
 
 @pytest.mark.parametrize(
@@ -137,6 +137,19 @@ def test_copy_offsets_buffer_if_needed(arr_type, expected_offset_type):
     )
     expected_offset_arr = pa.array([0, 3, 7], type=expected_offset_type)
     assert truncated_offset_arr.equals(expected_offset_arr)
+
+
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("10.0.0"),
+    reason="FixedShapeTensorArray is not supported in PyArrow < 10.0.0",
+)
+def test_fixed_shape_tensor_array_serialization():
+    a = pa.FixedShapeTensorArray.from_numpy_ndarray(
+        np.arange(4 * 2 * 3).reshape(4, 2, 3)
+    )
+    payload = PicklableArrayPayload.from_array(a)
+    a2 = payload.to_array()
+    assert a == a2
 
 
 class _VariableShapeTensorType(pa.ExtensionType):
