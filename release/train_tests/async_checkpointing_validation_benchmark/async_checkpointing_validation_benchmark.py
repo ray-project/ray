@@ -26,8 +26,11 @@ logger.setLevel(logging.INFO)
 
 
 class ValidationType(Enum):
+    # run synchronously with the training loop
     INLINE = "inline"
+    # run asynchronously with a torch trainer
     TORCH_TRAINER = "torch_trainer"
+    # run asynchronously with a map batches function
     MAP_BATCHES = "map_batches"
 
 
@@ -466,7 +469,6 @@ def main():
     training_rows = train_dataset.count()
     consolidated_metrics = {}
     num_epochs = 10
-    print("======== sync_cp_inline_val_metrics")
     consolidated_metrics["sync_cp_inline_val_metrics"] = run_training_with_validation(
         CheckpointUploadMode.SYNC,
         ValidationType.INLINE,
@@ -476,7 +478,6 @@ def main():
         training_rows,
         CheckpointSaveMode.TORCH_SAVE,
     )
-    print("======== async_cp_torch_trainer_val_metrics")
     consolidated_metrics[
         "async_cp_torch_trainer_val_metrics"
     ] = run_training_with_validation(
@@ -488,7 +489,6 @@ def main():
         training_rows,
         CheckpointSaveMode.TORCH_SAVE,
     )
-    print("======== async_cp_map_batches_val_metrics")
     consolidated_metrics[
         "async_cp_map_batches_val_metrics"
     ] = run_training_with_validation(
@@ -500,7 +500,6 @@ def main():
         training_rows,
         CheckpointSaveMode.TORCH_SAVE,
     )
-    print("======== sync_dcp_map_batches_val_metrics")
     consolidated_metrics[
         "sync_dcp_map_batches_val_metrics"
     ] = run_training_with_validation(
@@ -512,7 +511,6 @@ def main():
         training_rows,
         CheckpointSaveMode.TORCH_DCP_SYNC,
     )
-    print("======== async_dcp_map_batches_val_metrics")
     consolidated_metrics[
         "async_dcp_map_batches_val_metrics"
     ] = run_training_with_validation(
@@ -525,8 +523,6 @@ def main():
         CheckpointSaveMode.TORCH_DCP_ASYNC,
     )
     safe_write_to_results_json(consolidated_metrics)
-    for run_name, metrics in consolidated_metrics.items():
-        logger.info(f"{run_name}={metrics}")
 
     # Assert final scores aren't too far off, which would imply an inaccurate comparison
     # Example value: 0.55
@@ -544,10 +540,13 @@ def main():
         "final_score"
     ]
     logger.info(
-        "Validation metrics order=",
+        "Validation metrics order=%s",
         dict(
             sorted(
-                ((k, v["final_score"]) for k, v in consolidated_metrics.items()),
+                (
+                    (k, round(v["final_score"], 2))
+                    for k, v in consolidated_metrics.items()
+                ),
                 key=lambda a: a[1],
             )
         ),
@@ -580,10 +579,10 @@ def main():
         "e2e_time"
     ]
     logger.info(
-        "Total end-to-end time order=",
+        "Total end-to-end time order=%s",
         dict(
             sorted(
-                ((k, v["e2e_time"]) for k, v in consolidated_metrics.items()),
+                ((k, round(v["e2e_time"], 2)) for k, v in consolidated_metrics.items()),
                 key=lambda a: a[1],
             )
         ),
@@ -625,11 +624,11 @@ def main():
         "async_dcp_map_batches_val_metrics"
     ]["total_report_blocked_time"]
     logger.info(
-        "Total report blocked time order=",
+        "Total report blocked time order=%s",
         dict(
             sorted(
                 (
-                    (k, v["total_report_blocked_time"])
+                    (k, round(v["total_report_blocked_time"], 2))
                     for k, v in consolidated_metrics.items()
                 ),
                 key=lambda a: a[1],
@@ -641,7 +640,7 @@ def main():
     # Example values: 3.66s vs 0.033s vs 0.028s
     assert async_torchtrainer_report_blocked_time < sync_report_blocked_time
     assert async_map_batches_report_blocked_time < sync_report_blocked_time
-    assert sync_dcp_report_blocked_time < sync_report_blocked_time
+    assert sync_report_blocked_time < sync_dcp_report_blocked_time
     assert async_dcp_report_blocked_time < sync_dcp_report_blocked_time
 
     # Assert sync blocking time (report + validation + final validation) is less than async blocking time (report + final validation)
@@ -681,14 +680,17 @@ def main():
         async_dcp_report_blocked_time + async_dcp_final_validation_blocking_time
     )
     logger.info(
-        "Total validation blocking time order=",
+        "Total validation blocking time order=%s",
         dict(
             sorted(
                 (
                     (
                         k,
-                        v["total_report_blocked_time"]
-                        + v["final_validation_waiting_time"],
+                        round(
+                            v["total_report_blocked_time"]
+                            + v["final_validation_waiting_time"],
+                            2,
+                        ),
                     )
                     for k, v in consolidated_metrics.items()
                 ),
