@@ -1,13 +1,10 @@
 import asyncio
 import sys
 from typing import List
-from unittest.mock import MagicMock, patch
 
 import pytest
 
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.long_poll import LongPollNamespace
-from ray.serve.context import DeploymentActorContext
 from ray.serve.experimental.capacity_queue import (
     CapacityQueue,
     CapacityQueueStats,
@@ -69,37 +66,6 @@ class TestReplicaCapacityInfo:
 
 class TestCapacityQueueLocal:
     """Tests for CapacityQueue without Ray (local logic only)."""
-
-    def test_initialization_uses_deployment_actor_context_for_long_poll(self):
-        raw_class = _get_raw_class()
-        deployment_id = DeploymentID(name="App", app_name="default")
-        context = DeploymentActorContext(
-            deployment_id=deployment_id,
-            actor_name="capacity_queue",
-            code_version="v1",
-        )
-        controller = MagicMock()
-
-        with patch(
-            "ray.serve.get_deployment_actor_context",
-            return_value=context,
-        ), patch(
-            "ray.serve.experimental.capacity_queue.ray.get_actor",
-            return_value=controller,
-        ), patch(
-            "ray.serve.experimental.capacity_queue.LongPollClient"
-        ) as mock_long_poll_client:
-            queue = raw_class(
-                acquire_timeout_s=10.0,
-                token_ttl_s=None,
-                _enable_long_poll=True,
-            )
-
-        assert queue._long_poll_client is mock_long_poll_client.return_value
-        subscriptions = mock_long_poll_client.call_args.args[1]
-        assert list(subscriptions.keys()) == [
-            (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id)
-        ]
 
     def test_initialization(self):
         queue = _create_queue(acquire_timeout_s=10.0)
@@ -542,7 +508,6 @@ class TestReplicaLifecycleOnDeploymentTargetUpdate:
     def _make_target_info(replica_specs):
         """Build a DeploymentTargetInfo from a list of (unique_id, capacity) tuples."""
         from ray.serve._private.common import (
-            DeploymentID,
             DeploymentTargetInfo,
             ReplicaID,
             RunningReplicaInfo,

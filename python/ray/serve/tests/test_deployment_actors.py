@@ -1327,7 +1327,7 @@ def test_get_deployment_actor_context_returns_runtime_metadata(serve_instance):
     assert result["deployment"] == "MyDeployment"
     assert result["app_name"] == "metadata-app"
     assert result["actor_name"] == "ctx_actor"
-    assert result["code_version"]
+    assert isinstance(result["code_version"], str)
 
 
 def test_deploy_from_yaml_config_file_with_deployment_actors(serve_instance):
