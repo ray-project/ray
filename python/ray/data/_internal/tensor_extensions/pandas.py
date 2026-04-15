@@ -443,13 +443,29 @@ class TensorDtype(pd.api.extensions.ExtensionDtype):
             if array.num_chunks > 1:
                 # TODO(Clark): Remove concat and construct from list with
                 # shape.
+                # iterchunks() yields pa.Array (not pa.ChunkedArray), so
+                # to_numpy() defaults to zero_copy_only=True and raises if a copy
+                # is needed (e.g. nulls). pa.ChunkedArray.to_numpy() defaults to
+                # False because non-contiguous chunks always require a copy.
+                # https://arrow.apache.org/docs/python/generated/pyarrow.Array.html#pyarrow.Array.to_numpy
                 values = np.concatenate(
-                    [chunk.to_numpy() for chunk in array.iterchunks()]
+                    [
+                        chunk.to_numpy(zero_copy_only=False)
+                        for chunk in array.iterchunks()
+                    ]
                 )
             else:
-                values = array.chunk(0).to_numpy()
+                # chunk(0) returns pa.Array with zero_copy_only=True by default
+                values = array.chunk(0).to_numpy(zero_copy_only=False)
         else:
-            values = array.to_numpy()
+            values = array.to_numpy(zero_copy_only=False)
+
+        # For ARROW_NATIVE format (pa.fixed_shape_tensor), to_numpy() flattens the
+        # inner tensor dimensions (e.g. shape (3,2,2,2) becomes (3,8)). Stack to collapse the object array into a real numeric array and then reshape to match the dimensions of the tensor from the metadata
+        if self.element_shape and all(s is not None for s in self.element_shape):
+            if values.dtype == object:
+                values = np.stack(values)
+            values = values.reshape((-1,) + self.element_shape)
 
         return TensorArray(values)
 
@@ -774,11 +790,22 @@ class TensorArray(
                     # Try to convert ndarrays of ndarrays/TensorArrayElements with an
                     # opaque object type to a properly typed ndarray of ndarrays.
                     values = _create_possibly_ragged_ndarray(values)
-                else:
+                else:  # If any of the values in the array do not conform to the expected types, raise an error
+                    # Find the first offending value in the array
+                    offending = next(
+                        v
+                        for v in values
+                        if not (
+                            isinstance(v, (np.ndarray, TensorArrayElement, Sequence))
+                            and not isinstance(v, str)
+                        )
+                    )
+                    # Raise an error with the type and value of the offending element
                     raise TypeError(
                         "Expected a well-typed ndarray or an object-typed ndarray of "
-                        "ndarray pointers, but got an object-typed ndarray whose "
-                        f"subndarrays are of type {type(values[0])}."
+                        "ndarray pointers, but got an object-typed ndarray containing "
+                        f"an unsupported element of type {type(offending)} "
+                        f"(value: {offending!r})."
                     )
         elif isinstance(values, TensorArray):
             raise TypeError("Use the copy() method to create a copy of a TensorArray.")

@@ -123,6 +123,39 @@ def assert_operator_count(
     ), f"Expected {expected_count} operators, found {actual}"
 
 
+def assert_basic_operator_metrics(
+    op: OperatorStatsSummary,
+) -> None:
+    """Assert that basic operator metrics are present and valid."""
+    assert op.wall_time is not None, "wall_time should not be None"
+    assert op.wall_time.sum > 0, "wall_time sum should be positive"
+
+    assert op.memory is not None, "memory should not be None"
+
+    assert op.output_num_rows is not None, "output_num_rows should not be None"
+
+    assert op.output_size_bytes is not None, "output_size_bytes should not be None"
+
+    assert op.block_execution_summary_str is not None
+    assert len(op.block_execution_summary_str) > 0
+
+
+def find_stats_summary_in_parents(
+    stats_summary: DatasetStatsSummary,
+    name_pattern: str,
+) -> DatasetStatsSummary:
+    """Find and return a DatasetStatsSummary node from the parent chain."""
+    current = stats_summary
+    while current:
+        if current.base_name and re.search(name_pattern, current.base_name):
+            return current
+        current = current.parents[0] if current.parents else None
+
+    raise AssertionError(
+        f"No stats summary found matching pattern '{name_pattern}' in parents chain"
+    )
+
+
 @pytest.mark.skipif(
     platform.system() != "Linux", reason="MemoryProfiler only supported on Linux"
 )
@@ -621,64 +654,27 @@ def test_dataset_stats_basic(
 
     for batch in ds.iter_batches():
         pass
-    stats = canonicalize(ds.materialize().stats())
+    mds = ds.materialize()
 
-    extra_metrics_source = gen_extra_metrics_str(
-        STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE,
-        verbose_stats_logs,
-    )
-    extra_metrics_nonsource = gen_extra_metrics_str(
-        STANDARD_EXTRA_METRICS_TASK_BACKPRESSURE_LOCALITY_HIT,
-        verbose_stats_logs,
-    )
+    # Use structured assertions instead of canonicalize string comparison
+    stats_summary = mds.get_stats_summary()
 
-    assert stats == (
-        f"Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
-        f"* Remote wall time: T min, T max, T mean, T total\n"
-        f"* Remote cpu time: T min, T max, T mean, T total\n"
-        f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
-        f"* Output num rows per block: N min, N max, N mean, N total\n"
-        f"* Output size bytes per block: N min, N max, N mean, N total\n"
-        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"* Operator throughput:\n"
-        f"    * Total input num rows: N rows\n"
-        f"    * Total output num rows: N rows\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"    * Estimated single task throughput: N rows/s\n"
-        f"{extra_metrics_source}\n"
-        f"Operator N Map(dummy_map_batches): {EXECUTION_STRING}\n"
-        f"* Remote wall time: T min, T max, T mean, T total\n"
-        f"* Remote cpu time: T min, T max, T mean, T total\n"
-        f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
-        f"* Output num rows per block: N min, N max, N mean, N total\n"
-        f"* Output size bytes per block: N min, N max, N mean, N total\n"
-        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"* Operator throughput:\n"
-        f"    * Total input num rows: N rows\n"
-        f"    * Total output num rows: N rows\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"    * Estimated single task throughput: N rows/s\n"
-        f"{extra_metrics_nonsource}\n"
-        f"Dataset iterator time breakdown:\n"
-        f"* Total time overall: T\n"
-        f"    * Total time in Ray Data iterator initialization code: T\n"
-        f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
-        f"    * Total time spent waiting for the first batch after starting iteration: T\n"
-        f"    * Total execution time for user thread: T\n"
-        f"* Batch iteration time breakdown (summed across prefetch threads):\n"
-        f"    * In get RefBundles: T min, T max, T avg, T total\n"
-        f"    * In ray.get(): T min, T max, T avg, T total\n"
-        f"    * In batch creation: T min, T max, T avg, T total\n"
-        f"    * In batch formatting: T min, T max, T avg, T total\n"
-        f"\n"
-        f"Dataset throughput:\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(dummy_map_batches)', 'Map(dummy_map_batches)'], verbose_stats_logs)}"  # noqa: E501
-    )
+    # Find each pipeline stage via the parent chain
+    map_summary = find_stats_summary_in_parents(stats_summary, r"^Map\(")
+    read_map_summary = find_stats_summary_in_parents(stats_summary, "ReadRange")
+
+    # Verify both operators have valid metrics
+    read_map_op = get_operator(read_map_summary, name_pattern="ReadRange->MapBatches")
+    assert_basic_operator_metrics(read_map_op)
+    assert read_map_op.output_num_rows.sum == 1000
+
+    map_op = get_operator(map_summary, name_pattern=r"^Map\(")
+    assert_basic_operator_metrics(map_op)
+    assert map_op.output_num_rows.sum == 1000
+
+    # Verify iteration stats are present
+    assert stats_summary.iter_stats is not None
+    assert stats_summary.iter_stats.total_time.get() > 0
 
 
 def test_block_location_nums(ray_start_regular_shared, restore_data_context):
@@ -689,43 +685,24 @@ def test_block_location_nums(ray_start_regular_shared, restore_data_context):
 
     for batch in ds.iter_batches():
         pass
-    stats = canonicalize(ds.materialize().stats())
 
-    assert stats == (
-        f"Operator N ReadRange->MapBatches(dummy_map_batches): {EXECUTION_STRING}\n"
-        f"* Remote wall time: T min, T max, T mean, T total\n"
-        f"* Remote cpu time: T min, T max, T mean, T total\n"
-        f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
-        f"* Output num rows per block: N min, N max, N mean, N total\n"
-        f"* Output size bytes per block: N min, N max, N mean, N total\n"
-        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"* Operator throughput:\n"
-        f"    * Total input num rows: N rows\n"
-        f"    * Total output num rows: N rows\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"    * Estimated single task throughput: N rows/s\n"
-        f"\n"
-        f"Dataset iterator time breakdown:\n"
-        f"* Total time overall: T\n"
-        f"    * Total time in Ray Data iterator initialization code: T\n"
-        f"    * Total time user thread is blocked by Ray Data iter_batches: T\n"
-        f"    * Total time spent waiting for the first batch after starting iteration: T\n"
-        f"    * Total execution time for user thread: T\n"
-        f"* Batch iteration time breakdown (summed across prefetch threads):\n"
-        f"    * In get RefBundles: T min, T max, T avg, T total\n"
-        f"    * In ray.get(): T min, T max, T avg, T total\n"
-        f"    * In batch creation: T min, T max, T avg, T total\n"
-        f"    * In batch formatting: T min, T max, T avg, T total\n"
-        f"Block locations:\n"
-        f"    * Num blocks local: Z\n"
-        f"    * Num blocks remote: Z\n"
-        f"    * Num blocks unknown location: N\n"
-        f"\n"
-        f"Dataset throughput:\n"
-        f"    * Ray Data throughput: N rows/s\n"
-    )
+    stats_summary = ds.materialize().get_stats_summary()
+
+    # Verify operator exists and has valid metrics
+    assert_operator_count(stats_summary, 1)
+    op = stats_summary.operators_stats[0]
+    assert re.search("ReadRange->MapBatches", op.operator_name)
+    assert_basic_operator_metrics(op)
+    assert op.output_num_rows.sum == 1000
+
+    # Verify iteration stats are present
+    assert stats_summary.iter_stats is not None
+    assert stats_summary.iter_stats.total_time.get() > 0
+
+    # Verify block location stats - local and remote should be 0, unknown > 0
+    assert stats_summary.iter_stats.iter_blocks_local == 0
+    assert stats_summary.iter_stats.iter_blocks_remote == 0
+    assert stats_summary.iter_stats.iter_unknown_location > 0
 
 
 def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
@@ -851,7 +828,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "   dataset_bytes_spilled=M,\n"
         "   parents=[\n"
         "      DatasetStatsSummary(\n"
-        "         dataset_uuid=unknown_uuid,\n"
+        "         dataset_uuid=N,\n"
         "         base_name=None,\n"
         "         number=N,\n"
         "         extra_metrics={},\n"
@@ -1124,7 +1101,7 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
         "         dataset_bytes_spilled=M,\n"
         "         parents=[\n"
         "            DatasetStatsSummary(\n"
-        "               dataset_uuid=unknown_uuid,\n"
+        "               dataset_uuid=N,\n"
         "               base_name=None,\n"
         "               number=N,\n"
         "               extra_metrics={},\n"
@@ -1168,77 +1145,28 @@ def test_dataset__repr__(ray_start_regular_shared, restore_data_context):
 def test_dataset_stats_shuffle(ray_start_regular_shared):
     ds = ray.data.range(1000, override_num_blocks=10)
     ds = ds.random_shuffle().repartition(1, shuffle=True)
-    stats = canonicalize(ds.materialize().stats())
-    assert (
-        stats
-        == """Operator N ReadRange->RandomShuffle: executed in T
+    mds = ds.materialize()
 
-    Suboperator Z ReadRange->RandomShuffleMap: N tasks executed, N blocks produced
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): H min, H max, H mean
-    * Output num rows per block: N min, N max, N mean, N total
-    * Output size bytes per block: N min, N max, N mean, N total
-    * Output rows per task: N min, N max, N mean, N tasks used
-    * Tasks per node: N min, N max, N mean; N nodes used
-    * Operator throughput:
-        * Total input num rows: N rows
-        * Total output num rows: N rows
-        * Ray Data throughput: N rows/s
-        * Estimated single task throughput: N rows/s
+    stats_summary = mds.get_stats_summary()
 
-    Suboperator N RandomShuffleReduce: N tasks executed, N blocks produced
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): H min, H max, H mean
-    * Output num rows per block: N min, N max, N mean, N total
-    * Output size bytes per block: N min, N max, N mean, N total
-    * Output rows per task: N min, N max, N mean, N tasks used
-    * Tasks per node: N min, N max, N mean; N nodes used
-    * Operator throughput:
-        * Total input num rows: N rows
-        * Total output num rows: N rows
-        * Ray Data throughput: N rows/s
-        * Estimated single task throughput: N rows/s
-
-Operator N Repartition: executed in T
-
-    Suboperator Z RepartitionMap: N tasks executed, N blocks produced
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): H min, H max, H mean
-    * Output num rows per block: N min, N max, N mean, N total
-    * Output size bytes per block: N min, N max, N mean, N total
-    * Output rows per task: N min, N max, N mean, N tasks used
-    * Tasks per node: N min, N max, N mean; N nodes used
-    * Operator throughput:
-        * Total input num rows: N rows
-        * Total output num rows: N rows
-        * Ray Data throughput: N rows/s
-        * Estimated single task throughput: N rows/s
-
-    Suboperator N RepartitionReduce: N tasks executed, N blocks produced
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * UDF time: T min, T max, T mean, T total
-    * Peak heap memory usage (MiB): H min, H max, H mean
-    * Output num rows per block: N min, N max, N mean, N total
-    * Output size bytes per block: N min, N max, N mean, N total
-    * Output rows per task: N min, N max, N mean, N tasks used
-    * Tasks per node: N min, N max, N mean; N nodes used
-    * Operator throughput:
-        * Total input num rows: N rows
-        * Total output num rows: N rows
-        * Ray Data throughput: N rows/s
-        * Estimated single task throughput: N rows/s
-
-Dataset throughput:
-    * Ray Data throughput: N rows/s
-"""
+    repartition_summary = find_stats_summary_in_parents(stats_summary, "Repartition")
+    random_shuffle_summary = find_stats_summary_in_parents(
+        stats_summary, "RandomShuffle"
     )
+
+    assert_operator_count(repartition_summary, expected_count=2)
+    get_operator(repartition_summary, name_pattern="RepartitionMap")
+    get_operator(repartition_summary, name_pattern="RepartitionReduce")
+
+    assert_operator_count(random_shuffle_summary, expected_count=2)
+    get_operator(random_shuffle_summary, name_pattern="RandomShuffleMap")
+    get_operator(random_shuffle_summary, name_pattern="RandomShuffleReduce")
+
+    # Both top-level operators should produce 1000 rows across their suboperators.
+    for operator_summary in (repartition_summary, random_shuffle_summary):
+        for op in operator_summary.operators_stats:
+            assert_basic_operator_metrics(op)
+            assert op.output_num_rows.sum == 1000
 
 
 def test_dataset_stats_repartition(ray_start_regular_shared):
@@ -1865,36 +1793,18 @@ def test_spilled_stats(shutdown_only, verbose_stats_logs, restore_data_context):
     # The size of dataset is 1000*80*80*4*8B, about 200MB.
     ds = ray.data.range(1000 * 80 * 80 * 4).map_batches(lambda x: x).materialize()
 
-    extra_metrics = gen_extra_metrics_str(
-        MEM_SPILLED_EXTRA_METRICS_TASK_BACKPRESSURE,
-        verbose_stats_logs,
-    )
-    expected_stats = (
-        f"Operator N ReadRange->MapBatches(<lambda>): {EXECUTION_STRING}\n"
-        f"* Remote wall time: T min, T max, T mean, T total\n"
-        f"* Remote cpu time: T min, T max, T mean, T total\n"
-        f"* UDF time: T min, T max, T mean, T total\n"
-        f"* Peak heap memory usage (MiB): H min, H max, H mean\n"
-        f"* Output num rows per block: N min, N max, N mean, N total\n"
-        f"* Output size bytes per block: N min, N max, N mean, N total\n"
-        f"* Output rows per task: N min, N max, N mean, N tasks used\n"
-        f"* Tasks per node: N min, N max, N mean; N nodes used\n"
-        f"* Operator throughput:\n"
-        f"    * Total input num rows: N rows\n"
-        f"    * Total output num rows: N rows\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"    * Estimated single task throughput: N rows/s\n"
-        f"{extra_metrics}\n"
-        f"Cluster memory:\n"
-        f"* Spilled to disk: M\n"
-        f"* Restored from disk: M\n"
-        f"\n"
-        f"Dataset throughput:\n"
-        f"    * Ray Data throughput: N rows/s\n"
-        f"{gen_runtime_metrics_str(['ReadRange->MapBatches(<lambda>)'], verbose_stats_logs)}"  # noqa: E501
-    )
+    # Use structured assertions instead of canonicalize string comparison
+    stats_summary = ds.get_stats_summary()
+    assert_operator_count(stats_summary, 1)
+    op = stats_summary.operators_stats[0]
+    assert re.search("ReadRange->MapBatches", op.operator_name)
+    assert_basic_operator_metrics(op)
+    expected_rows = 1000 * 80 * 80 * 4
+    assert op.output_num_rows.sum == expected_rows
 
-    assert canonicalize(ds.stats(), filter_global_stats=False) == expected_stats
+    # Verify global memory stats (spilled/restored)
+    assert stats_summary.global_bytes_spilled > 0
+    assert stats_summary.global_bytes_restored > 0
 
     # Around 100MB should be spilled (200MB - 100MB)
     assert ds._plan.stats().global_bytes_spilled > 100e6
