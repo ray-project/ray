@@ -1,13 +1,4 @@
-"""Query client for an SGLang model served via Ray Serve LLM.
-
-Prerequisites:
-    Start a serving example first, e.g.:
-    RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_example:app
-
-Usage:
-    python query_example.py
-"""
-
+# __sglang_query_start__
 from openai import OpenAI
 
 client = OpenAI(base_url="http://localhost:8000/v1", api_key="fake-key")
@@ -33,3 +24,4 @@ completion_response = client.completions.create(
     max_tokens=30,
 )
 print(completion_response.choices[0].text)
+# __sglang_query_end__
