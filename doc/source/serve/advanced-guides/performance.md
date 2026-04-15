@@ -74,6 +74,14 @@ Ray Serve allows you to fine-tune the backoff behavior of the request router, wh
 - `RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER`: The multiplier applied to the backoff time after each retry. Default is `2`.
 - `RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S`: The maximum backoff time (in seconds) between retries. Default is `0.5`.
 
+### Set timeouts while probing replicas for queue length
+
+Ray Serve's request router probes replicas for their queue lengths to make intelligent load balancing decisions. You can tune the following environment variables to optimize this behavior for your workload:
+
+- `RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S`: The initial timeout (in seconds) for waiting for replicas to respond with their queue length information. Default is `0.1`.
+- `RAY_SERVE_MAX_QUEUE_LENGTH_RESPONSE_DEADLINE_S`: The maximum timeout (in seconds) for queue length responses. When retrying with exponential backoff, the deadline increases but is capped at this value. Default is `1.0`.
+- `RAY_SERVE_QUEUE_LENGTH_CACHE_TIMEOUT_S`: How long (in seconds) cached queue length information from replicas is considered valid. After this timeout, the cache entry expires and the router must probe the replica again. Default is `10.0`.
+
 ### Configure locality-based routing
 
 Ray Serve routes requests to replicas based on locality to reduce network latency. The system applies locality routing in two scenarios: proxy-to-replica communication (HTTP/gRPC requests) and inter-deployment communication (replica-to-replica calls through `DeploymentHandle`).
@@ -255,7 +263,7 @@ apt-get update -y && apt-get install -y --no-install-recommends \
     liblua5.3-dev libpcre3-dev libssl-dev zlib1g-dev
 
 # Build HAProxy from source
-export HAPROXY_VERSION="2.8.12"
+export HAPROXY_VERSION="2.8.20"
 curl -sSfL -o /tmp/haproxy.tar.gz \
   "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 mkdir -p /tmp/haproxy-build && tar -xzf /tmp/haproxy.tar.gz -C /tmp/haproxy-build --strip-components=1
@@ -265,13 +273,13 @@ make -C /tmp/haproxy-build install SBINDIR=/usr/local/bin
 rm -rf /tmp/haproxy-build /tmp/haproxy.tar.gz
 
 # Install runtime dependencies
-apt-get install -y --no-install-recommends socat liblua5.3-0
+apt-get install -y --no-install-recommends liblua5.3-0
 
 # Create required directories
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 ```
 
-The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependencies are `socat` (for the admin socket) and `liblua5.3-0` (Lua runtime library).
+The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependency is `liblua5.3-0` (Lua runtime library).
 
 (serve-interdeployment-grpc)=
 ### Use gRPC for interdeployment communication

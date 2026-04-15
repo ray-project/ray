@@ -382,6 +382,13 @@ class Node:
                     gcs_server_port=int(gcs_server_port) if gcs_server_port else 0
                 )
 
+        # For worker nodes, check version compatibility before spawning
+        # any processes (including the reaper). If the check fails (e.g.
+        # Ray / Python version mismatch) we raise immediately rather than
+        # leave orphaned child processes behind.
+        if not head and not connect_only:
+            self.check_version_info()
+
         if not connect_only and spawn_reaper and not self.kernel_fate_share:
             self.start_reaper_process()
         if not connect_only:
@@ -1075,6 +1082,7 @@ class Node:
             backup_count=self.backup_count,
             stdout_filepath=stdout_log_fname,
             stderr_filepath=stderr_log_fname,
+            proxy_server_url=self._ray_params.proxy_server_url,
         )
         assert ray_constants.PROCESS_TYPE_DASHBOARD not in self.all_processes
         if process_info is not None:
@@ -1174,6 +1182,18 @@ class Node:
             create_err=True,
         )
 
+        dashboard_agent_log_filepath = None
+        if dashboard_agent_stdout_filepath is not None:
+            dashboard_agent_log_filepath = self._get_log_file_name(
+                ray_constants.PROCESS_TYPE_DASHBOARD_AGENT, "log", unique=True
+            )
+
+        runtime_env_agent_log_filepath = None
+        if runtime_env_agent_stdout_filepath is not None:
+            runtime_env_agent_log_filepath = self._get_log_file_name(
+                ray_constants.PROCESS_TYPE_RUNTIME_ENV_AGENT, "log", unique=True
+            )
+
         self.resource_isolation_config.add_system_pids(
             self._get_system_processes_for_resource_isolation()
         )
@@ -1215,8 +1235,10 @@ class Node:
             raylet_stderr_filepath=raylet_stderr_filepath,
             dashboard_agent_stdout_filepath=dashboard_agent_stdout_filepath,
             dashboard_agent_stderr_filepath=dashboard_agent_stderr_filepath,
+            dashboard_agent_log_filepath=dashboard_agent_log_filepath,
             runtime_env_agent_stdout_filepath=runtime_env_agent_stdout_filepath,
             runtime_env_agent_stderr_filepath=runtime_env_agent_stderr_filepath,
+            runtime_env_agent_log_filepath=runtime_env_agent_log_filepath,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=None,

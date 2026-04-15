@@ -46,6 +46,7 @@ def generate_repartition_fn(
             map_transformer.override_target_max_block_size(None)
 
             def upstream_map_fn(blocks):
+                DataContext._set_current(data_context)
                 return map_transformer.apply_transform(blocks, ctx)
 
         shuffle_spec = ShuffleTaskSpec(

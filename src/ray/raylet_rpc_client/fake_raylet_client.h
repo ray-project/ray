@@ -103,11 +103,6 @@ class FakeRayletClient : public RayletClientInterface {
       reply.set_rejected(true);
       auto resources_data = reply.mutable_resources_data();
       resources_data->set_node_id(node_id.Binary());
-      resources_data->set_resources_normal_task_changed(true);
-      auto &normal_task_map = *(resources_data->mutable_resources_normal_task());
-      normal_task_map[kMemory_ResourceLabel] =
-          static_cast<double>(std::numeric_limits<int>::max());
-      resources_data->set_resources_normal_task_timestamp(absl::GetCurrentTimeNanos());
     }
 
     if (callbacks.size() == 0) {
@@ -240,9 +235,7 @@ class FakeRayletClient : public RayletClientInterface {
     }
   }
 
-  void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<WorkerBacklogReport> &backlog_reports) override {}
+  void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) override {}
 
   void GetResourceLoad(const ClientCallback<GetResourceLoadReply> &callback) override {}
 
