@@ -146,6 +146,7 @@ class RebundleQueue(BaseBundleQueue):
         from ray.data._internal.execution.interfaces import RefBundle
 
         merged_bundle = RefBundle.merge_ref_bundles(self._pending_bundles)
+        # Update the metrics
         self._ready_bundles.append(merged_bundle)
         self._on_enqueue_bundle(merged_bundle)
 
