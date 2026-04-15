@@ -1356,7 +1356,8 @@ def unique_post_fn(
 
         # Drop nulls if requested
         if drop_na_values:
-            values = pc.drop_null(values)
+            mask = pc.is_null(values, nan_is_null=True)
+            values = pc.filter(values, pc.invert(mask))
         else:
             if pc.any(pc.is_null(values, nan_is_null=True)).as_py():
                 raise ValueError(
