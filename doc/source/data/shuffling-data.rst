@@ -80,7 +80,7 @@ ordering of files. See :ref:`Shuffle the ordering of files <shuffling_file_order
 ``map_batches`` shuffle
 ~~~~~~~~~~~~~~~~~~~~~~~
 
-To shuffle data as a distributed pipeline stage, use :meth:`~ray.data.Dataset.map_batches`
+To shuffle data as a separate data stage, use :meth:`~ray.data.Dataset.map_batches`
 with a shuffle function that randomly permutes rows within each batch. Compared to local
 buffer shuffle, this approach has several advantages:
 
@@ -88,7 +88,7 @@ buffer shuffle, this approach has several advantages:
   that doesn't block downstream CPU/GPU processing.
 - Ray Data's resource management automatically schedules shuffle tasks based on available
   cluster resources (CPU, memory), avoiding resource contention.
-- The shuffle work can be **distributed across multiple machines**, making it more scalable
+- The shuffle work can happen in parallel across multiple machines, making it more scalable
   for large datasets.
 
 The ``batch_size`` parameter controls the shuffle window---a larger value shuffles more rows
@@ -110,8 +110,8 @@ together for better randomness but requires more memory.
         return batch.take(indices)
 
     row_bytes = 4096
-    batch_size = 244_000  # ~1 GB shuffle window
-    shuffle_memory = int(batch_size * row_bytes)
+    shuffle_memory = int(2**30)  # 1 GB shuffle window
+    batch_size = int(shuffle_memory / row_bytes)
 
     ds = ray.data.range(1000)
     ds = ds.map_batches(
@@ -165,8 +165,6 @@ workers, batch size 4096, 200 steps with 100 warmup):
      - 1,588,428
      - 90%
 
-The benchmark script is available at
-:download:`benchmark_local_vs_map_batches_shuffle.py <doc_code/benchmark_local_vs_map_batches_shuffle.py>`.
 
 Randomizing block order
 ~~~~~~~~~~~~~~~~~~~~~~~
