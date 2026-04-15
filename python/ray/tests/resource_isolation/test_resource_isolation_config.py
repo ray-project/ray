@@ -107,26 +107,26 @@ def test_enabled_resource_isolation_with_default_config_picks_min_values(monkeyp
     # 2) DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES
     # NOTE: if you change the DEFAULT_MIN_SYSTEM_* constants, you may need to modify this test.
     # if the total number of cpus is between [1,19] the system cgroup will a weight that is equal to 1 cpu core.
-    # if the total amount of memory is between [0.5GB, 4.8GB] the system cgroup will get 0.5GB + object store memory.
+    # if the total amount of memory is between [1GB, 9GB] the system cgroup will get 1GB + object store memory.
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 2)
     monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 0.5 * (1024**3)
+        common_utils, "get_system_memory", lambda *args, **kwargs: 1024**3
     )
     config = ResourceIsolationConfig(
         enable_resource_isolation=True, object_store_memory=0
     )
     assert config.system_reserved_cpu_weight == 5000
-    assert config.system_reserved_memory == 500 * (1024**2)
+    assert config.system_reserved_memory == 1024**3
 
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 19)
     monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 4.8 * (1024**3)
+        common_utils, "get_system_memory", lambda *args, **kwargs: 9 * (1024**3)
     )
     config = ResourceIsolationConfig(
         enable_resource_isolation=True, object_store_memory=0
     )
     assert config.system_reserved_cpu_weight == 526
-    assert config.system_reserved_memory == 500 * (1024**2)
+    assert config.system_reserved_memory == 1024**3
 
 
 def test_enabled_resource_isolation_with_default_config_values_scale_with_system(
@@ -137,16 +137,16 @@ def test_enabled_resource_isolation_with_default_config_values_scale_with_system
     # 2) DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION
     # NOTE: if you change the DEFAULT_SYSTEM_RESERVED_* constants, you may need to modify this test.
     # if the number of cpus on the system is [20,60] the reserved cpu cores will scale proportionately.
-    # if the amount of memory on the system is [5GB, 100GB] the reserved system memory will scale proportionately.
+    # if the amount of memory on the system is [10GB, 100GB] the reserved system memory will scale proportionately.
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 20)
     monkeypatch.setattr(
-        common_utils, "get_system_memory", lambda *args, **kwargs: 5 * (1024**3)
+        common_utils, "get_system_memory", lambda *args, **kwargs: 10 * (1024**3)
     )
     config = ResourceIsolationConfig(
         enable_resource_isolation=True, object_store_memory=0
     )
     assert config.system_reserved_cpu_weight == 500
-    assert config.system_reserved_memory == 536870912
+    assert config.system_reserved_memory == 1024**3
 
     monkeypatch.setattr(utils, "get_num_cpus", lambda *args, **kwargs: 59)
     monkeypatch.setattr(
@@ -156,7 +156,7 @@ def test_enabled_resource_isolation_with_default_config_values_scale_with_system
         enable_resource_isolation=True, object_store_memory=0
     )
     assert config.system_reserved_cpu_weight == 500
-    assert config.system_reserved_memory == 10630044057
+    assert config.system_reserved_memory == 10630044057  # 9.9GiB
 
 
 def test_enabled_resource_isolation_with_default_config_picks_max_values(monkeypatch):
@@ -234,9 +234,10 @@ def test_enabled_with_resource_overrides_gte_than_available_resources_raise_valu
     monkeypatch.setattr(
         common_utils, "get_system_memory", lambda *args, **kwargs: 10 * (1024**3)
     )
+    # 11GiB requested, 10GB available
     with pytest.raises(
         ValueError,
-        match="The total requested system_reserved_memory=11811160064 is greater than the amount of memory available=10737418240",
+        match=r"The total requested system_reserved_memory=11811160064 \(including object store memory\) is greater than the amount of memory available=10737418240\.",
     ):
         ResourceIsolationConfig(
             enable_resource_isolation=True,
@@ -286,7 +287,7 @@ def test_resource_isolation_enabled_with_partial_resource_overrides_and_defaults
     # (32 cpus * 0.05 (default))/10000 = 500
     assert override_cgroup_path_config.system_reserved_cpu_weight == 500
     # 64GB * 0.10 = 6.4GB
-    assert override_cgroup_path_config.system_reserved_memory == 6871947673
+    assert override_cgroup_path_config.system_reserved_memory == 6871947673  # 6.4GiB
 
     # Overriding system_reserved_cpu while using default cgroup_path and system_reserved_memory
     override_cpu_config: ResourceIsolationConfig = ResourceIsolationConfig(
@@ -296,7 +297,7 @@ def test_resource_isolation_enabled_with_partial_resource_overrides_and_defaults
     # defaults to /sys/fs/cgroup
     assert override_cpu_config.cgroup_path == "/sys/fs/cgroup"
     # 64GB * 0.10 = 6.4GB
-    assert override_cpu_config.system_reserved_memory == 6871947673
+    assert override_cpu_config.system_reserved_memory == 6871947673  # 6.4GiB
 
     # Overriding system_reserved_memory while using default cgroup_path and system_reserved_cpu
     override_memory_config: ResourceIsolationConfig = ResourceIsolationConfig(
@@ -304,7 +305,7 @@ def test_resource_isolation_enabled_with_partial_resource_overrides_and_defaults
         system_reserved_memory=5 * (1024**3),
         object_store_memory=0,
     )
-    assert override_memory_config.system_reserved_memory == 5368709120
+    assert override_memory_config.system_reserved_memory == 5368709120  # 5GiB
     # defaults to /sys/fs/cgroup
     assert override_memory_config.cgroup_path == "/sys/fs/cgroup"
     # (32 cpus * 0.05 (default))/10000 = 500
