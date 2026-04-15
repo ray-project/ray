@@ -793,7 +793,7 @@ class Dataset:
             )
             batch_size = None
             min_rows_per_bundled_input = None
-        else: # batch size is an int
+        else:  # batch size is an int
             min_rows_per_bundled_input = batch_size
 
         compute = get_compute_strategy(
