@@ -280,34 +280,16 @@ def _get_max_scale_up(
     assert budget.cpu >= 0 and budget.gpu >= 0 and budget.memory >= 0
 
     per_actor = actor_pool.per_actor_resource_usage()
-    num_cpus_per_actor = per_actor.cpu
-    num_gpus_per_actor = per_actor.gpu
-    memory_per_actor = per_actor.memory
-    assert num_cpus_per_actor >= 0 and num_gpus_per_actor >= 0 and memory_per_actor >= 0
+    assert per_actor.cpu >= 0 and per_actor.gpu >= 0 and per_actor.memory >= 0
 
-    max_cpu_scale_up: float = float("inf")
-    if num_cpus_per_actor > 0 and not math.isinf(budget.cpu):
-        max_cpu_scale_up = budget.cpu // num_cpus_per_actor
-
-    max_gpu_scale_up: float = float("inf")
-    if num_gpus_per_actor > 0 and not math.isinf(budget.gpu):
-        max_gpu_scale_up = budget.gpu // num_gpus_per_actor
-
-    max_memory_scale_up: float = float("inf")
-    if memory_per_actor > 0 and not math.isinf(budget.memory):
-        max_memory_scale_up = budget.memory // memory_per_actor
-
-    max_scale_up = min(max_cpu_scale_up, max_gpu_scale_up, max_memory_scale_up)
+    # floordiv handles per_actor.x == 0 → inf (no constraint from that resource)
+    # and budget.x == inf → inf. We ignore object_store_memory since it is not
+    # a per-actor declared resource.
+    divisions = budget.floordiv(per_actor)
+    max_scale_up = min(divisions.cpu, divisions.gpu, divisions.memory)
     if math.isinf(max_scale_up):
         return sys.maxsize
-    else:
-        assert not math.isnan(max_scale_up), (
-            budget,
-            num_cpus_per_actor,
-            num_gpus_per_actor,
-            memory_per_actor,
-        )
-        return int(max_scale_up)
+    return int(max_scale_up)
 
 
 def _get_required_scale_down(
@@ -318,8 +300,8 @@ def _get_required_scale_down(
 
     Args:
         actor_pool: The actor pool to scale down.
-        budget: The raw remaining budget (allocation - usage) (Note this is different
-            from the budget returned by `ResourceManager.get_budget()` and can be negative).
+        budget: The net remaining budget (allocation - usage). Can be negative
+            if the operator is over its allocation.
 
     Returns:
         The number of actors that need to be removed, or 0 if the pool
