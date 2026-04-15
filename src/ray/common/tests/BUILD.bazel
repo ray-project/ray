@@ -9,7 +9,6 @@ ray_cc_test(
         "//src/ray/common:asio",
         "//src/ray/common:io_context_monitor",
         "//src/ray/observability:fake_metric",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
