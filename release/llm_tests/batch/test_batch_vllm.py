@@ -48,7 +48,63 @@ def add_buffer_time_between_tests():
 def cleanup_ray_resources():
     """Automatically cleanup Ray resources between tests to prevent conflicts."""
     yield
+    _cleanup_gpu_processes()
     ray.shutdown()
+
+
+def _cleanup_gpu_processes():
+    """
+    Kill GPU processes on all nodes in the cluster. With Ray as the external orchestrator,
+    mp backend suffers from uncoordinated shutdown issues, leaving orphaned GPU processes.
+
+    TODO (jeffreywang): Remove this once https://github.com/vllm-project/vllm/pull/39846 lands.
+    """
+    if not ray.is_initialized():
+        return
+
+    @ray.remote(num_cpus=0)
+    def _remote_kill_gpu_processes():
+        import os
+        import signal
+
+        import pynvml
+
+        pids = set()
+        try:
+            pynvml.nvmlInit()
+            device_count = pynvml.nvmlDeviceGetCount()
+            for i in range(device_count):
+                handle = pynvml.nvmlDeviceGetHandleByIndex(i)
+                for proc in pynvml.nvmlDeviceGetComputeRunningProcesses(handle):
+                    pids.add(proc.pid)
+            pynvml.nvmlShutdown()
+        except Exception:
+            pass
+
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGKILL)
+            except (ProcessLookupError, ValueError):
+                pass
+
+    try:
+        nodes = ray.nodes()
+        refs = []
+        for node in nodes:
+            if not node.get("Alive", False):
+                continue
+            node_id = node["NodeID"]
+            refs.append(
+                _remote_kill_gpu_processes.options(
+                    scheduling_strategy=ray.util.scheduling_strategies.NodeAffinitySchedulingStrategy(
+                        node_id=node_id, soft=False
+                    ),
+                ).remote()
+            )
+        if refs:
+            ray.get(refs, timeout=30)
+    except Exception as e:
+        logging.warning(f"Failed to kill GPU processes on remote nodes: {e}")
 
 
 @pytest.mark.asyncio

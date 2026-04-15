@@ -327,7 +327,10 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
             },
         },
         experimental_configs={
-            "NIXL_SIDE_CHANNEL_PORT_BASE": 40000,  # Prefill port range
+            # Use ports below the Linux ephemeral range (32768-60999) to
+            # prevent conflicts with the vLLM DP coordinator's random TCP
+            # port allocations.
+            "NIXL_SIDE_CHANNEL_PORT_BASE": 15000,  # Prefill port range
         },
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
@@ -343,7 +346,7 @@ def test_llm_serve_prefill_decode_with_data_parallelism():
             },
         },
         experimental_configs={
-            "NIXL_SIDE_CHANNEL_PORT_BASE": 41000,  # Decode port range (different)
+            "NIXL_SIDE_CHANNEL_PORT_BASE": 16000,  # Decode port range (different)
         },
         runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
     )
