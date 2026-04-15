@@ -25,7 +25,7 @@ export RAY_DASHBOARD_ENABLE_PROFILING=1
 ```
 
 :::{warning}
-If your dashboard is accessible over a network without authentication, enabling profiling exposes side-effecting endpoints to potential abuse. Enable [token authentication](https://docs.ray.io/en/latest/ray-security/token-auth.html) when using profiling on an exposed dashboard.
+If your dashboard is accessible over a network without authentication, enabling profiling exposes side-effecting endpoints to potential abuse. Enable {ref}`token authentication <token-auth>` when using profiling on an exposed dashboard.
 :::
 
 (profiling-cpu)=
