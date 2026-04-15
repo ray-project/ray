@@ -300,6 +300,7 @@ def test_report_checkpoint_delete_storage_path(kwarg, tmp_path):
     ids=["delete_local_checkpoint_after_upload=True", "checkpoint_upload_mode=ASYNC"],
 )
 def test_report_checkpoint_delete_s3_storage_path(kwarg):
+    """Test that the trainer raises an error if a s3 checkpoint path is contains a s3 storage_path."""
     port, region = 5002, "us-west-2"
     with simulate_s3_bucket(port=port, region=region) as s3_uri:
         import boto3
@@ -332,7 +333,6 @@ def test_report_checkpoint_delete_s3_storage_path(kwarg):
             )
 
         for train_fn in [train_fn_equal_storage_path, train_fn_within_storage_path]:
-            print(f"{train_fn.__name__=}")
             trainer = DataParallelTrainer(
                 train_fn, run_config=RunConfig(storage_path=s3_storage_path)
             )
