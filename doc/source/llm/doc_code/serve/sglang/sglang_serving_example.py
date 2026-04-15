@@ -1,11 +1,7 @@
-"""Single-node SGLang serving example using Ray Serve LLM.
-
-Usage:
-    RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 serve run serve_sglang_example:app
-"""
+# __sglang_single_node_start__
+from ray.llm._internal.serve.engines.sglang import SGLangServer
 
 from ray import serve
-from ray.llm._internal.serve.engines.sglang import SGLangServer
 from ray.serve.llm import LLMConfig, build_openai_app
 
 llm_config = LLMConfig(
@@ -29,5 +25,5 @@ llm_config = LLMConfig(
 )
 
 app = build_openai_app({"llm_configs": [llm_config]})
-serve.start()
 serve.run(app, blocking=True)
+# __sglang_single_node_end__
