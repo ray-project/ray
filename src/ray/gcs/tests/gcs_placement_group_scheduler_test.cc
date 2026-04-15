@@ -1442,9 +1442,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPlacementGroupFallbackStrategySuccess
   auto *bundle_spec = spec->mutable_bundles(0);
   (*bundle_spec->mutable_label_selector())["type"] = "V100";
 
-  // Option 0: Primary
-  spec->add_fallback_strategy();
-
   // Option 1: Satisfiable fallback strategy
   auto *option = spec->add_fallback_strategy();
   auto *fallback_bundle1 = option->add_bundles();
@@ -1484,9 +1481,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPlacementGroupFallbackStrategyFailure
   // Set an unsatisfiable primary label selector for the first bundle
   auto *bundle_spec = spec->mutable_bundles(0);
   (*bundle_spec->mutable_label_selector())["type"] = "V100";
-
-  // Option 0: Primary
-  spec->add_fallback_strategy();
 
   // Option 1: Unsatisfiable fallback strategy
   auto *option = spec->add_fallback_strategy();
@@ -1616,10 +1610,6 @@ TEST_F(GcsPlacementGroupSchedulerTest,
     (*bundle->mutable_unit_resources())["CPU"] = 1.0;
   }
 
-  // Set a fallback strategy that overrides bundles to 2 bundles of 1 CPU each.
-  // Option 0: Primary attempt
-  spec->add_fallback_strategy();
-
   // Option 1: Fallback attempt (2 bundles override)
   auto *option1 = spec->add_fallback_strategy();
 
@@ -1655,7 +1645,7 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 
   // Verify that the active index is 1 (the fallback option)
-  ASSERT_EQ(2, placement_group->GetActiveSchedulingOptionIndex());
+  ASSERT_EQ(1, placement_group->GetActiveSchedulingOptionIndex());
 
   // Verify that the bundles list in PG is updated to the override bundles (size 2)
   ASSERT_EQ(2, placement_group->GetBundles().size());
@@ -1676,7 +1666,6 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPlacementGroupRescheduleResetsToPrima
 
   auto request = GenCreatePlacementGroupRequest("", rpc::PlacementStrategy::PACK, 3);
   auto *spec = request.mutable_placement_group_spec();
-  spec->add_fallback_strategy();                  // Option 0 (Primary)
   auto *option1 = spec->add_fallback_strategy();  // Option 1
   for (int i = 0; i < 2; ++i) {
     auto *bundle = option1->add_bundles();
@@ -1696,7 +1685,7 @@ TEST_F(GcsPlacementGroupSchedulerTest, TestPlacementGroupRescheduleResetsToPrima
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 
-  ASSERT_EQ(2, placement_group->GetActiveSchedulingOptionIndex());
+  ASSERT_EQ(1, placement_group->GetActiveSchedulingOptionIndex());
   ASSERT_EQ(2, placement_group->GetBundles().size());
 
   // Add a second node with 3 CPUs (so primary now fits)
@@ -1733,7 +1722,6 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   for (int i = 0; i < 2; ++i) {
     (*spec->mutable_bundles(i)->mutable_unit_resources())["CPU"] = 1.0;
   }
-  spec->add_fallback_strategy();  // Option 0 (Primary)
 
   auto placement_group = std::make_shared<GcsPlacementGroup>(request, "", counter_);
 
