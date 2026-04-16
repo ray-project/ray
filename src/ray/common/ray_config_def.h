@@ -70,7 +70,11 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// Threshold when the node is beyond the memory capacity. If the memory is above the
 /// memory_usage_threshold and free space is below the min_memory_free_bytes then
 /// it will start killing processes to free up the space.
-/// Ranging from [0, 1]
+/// Note: when resource isolation is enabled, the memory usage threshold is set to
+/// total memory - system reserved memory (can be specified in ray start) -
+/// kill_memory_buffer_bytes. Notice that the formula does not account for object store
+/// memory in system reserved memory. To configure the usage threshold, please adjust the
+/// system reserved memory in ray start command instead. Ranging from [0, 1]
 RAY_CONFIG(float, memory_usage_threshold, 0.95)
 
 /// The interval between runs of the memory usage monitor.
@@ -86,24 +90,35 @@ RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 /// means 6.4 GB of the memory will not be usable.
 RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 
+/// The amount of memory to free under the memory usage threshold when
+/// killing workers via the worker killing policy.
+RAY_CONFIG(uint64_t, kill_memory_buffer_bytes, 3ULL * 1024 * 1024 * 1024)  // 3GB
+
 /// The reserved memory bytes for system processes
-/// enforced via cgroup memory.low constraint which only
-/// reclaims the system processes' memory when nothing else can be reclaimed.
-/// Default is 0, meaning no memory.low constraint is applied.
-RAY_CONFIG(int64_t, system_memory_bytes_low, 0)
+/// enforced via cgroup memory.min constraint which guarantees
+/// that the system processes' memory will not be reclaimed under any conditions.
+/// Default is 0, meaning no memory.min constraint is applied.
+/// By default, if resource isolation is enabled, system reserved memory
+/// will be protected via memory.low instead. Only configure this value
+/// if you are certain that you want the min constraint protection.
+RAY_CONFIG(int64_t, system_memory_bytes_min, 0)
 
 /// The proportion of total memory the user processes are allowed to use.
 /// Enforced by the cgroup memory.high constraint which throttles the
 /// user processes' when the threshold is reached.
 /// Default is 1.0, meaning the user processes are allowed to use 100% of the total
-/// memory.
+/// memory. Only configure this value if you are confident that
+/// the configuration is desirable. Bad constraint configurations may
+/// lead to significant system performance degradation.
 RAY_CONFIG(float, user_memory_proportion_high, 1.0)
 
 /// The proportion of total memory the user processes are allowed to use.
 /// Enforced by the cgroup memory.max constraint which triggers the
 //. kernel OOM killer when the threshold is reached.
 /// Default is 1.0, meaning the user processes are allowed to use 100% of the total
-/// memory.
+/// memory. Only configure this value if you are confident that
+/// the configuration is desirable. Bad constraint configurations may
+/// lead to significant system performance degradation.
 RAY_CONFIG(float, user_memory_proportion_max, 1.0)
 
 /// The TTL for when the task failure entry is considered
@@ -300,6 +315,11 @@ RAY_CONFIG(int64_t, worker_register_timeout_seconds, 60)
 /// 0 means it will use the default (number of CPUs).
 RAY_CONFIG(int64_t, worker_maximum_startup_concurrency, 0)
 
+/// Maximum number of retries for pop worker before the task is
+/// cancelled. 0 means no retry (fail immediately), default is 5.
+/// Retries indefinitely if the value is -1.
+RAY_CONFIG(int32_t, pop_worker_max_retries, 5)
+
 /// The maximum number of workers to iterate whenever we analyze the resources usage.
 RAY_CONFIG(uint32_t, worker_max_resource_analysis_iteration, 128)
 
@@ -425,6 +445,13 @@ RAY_CONFIG(uint32_t, task_retry_delay_ms, 0)
 /// The base retry delay for exponential backoff when the task fails due to OOM.
 /// No delay if this value is zero.
 RAY_CONFIG(uint32_t, task_oom_retry_delay_base_ms, 1000)
+
+/// The base retry delay for exponential backoff when an actor task fails with
+/// ACTOR_UNAVAILABLE (e.g., actor is restarting or network error).
+RAY_CONFIG(uint32_t, task_actor_unavailable_retry_delay_base_ms, 100)
+
+/// The maximum retry delay for ACTOR_UNAVAILABLE exponential backoff.
+RAY_CONFIG(uint32_t, task_actor_unavailable_retry_max_delay_ms, 5000)
 
 /// Duration to wait between retrying to kill a task.
 RAY_CONFIG(uint32_t, cancellation_retry_ms, 2000)
@@ -735,6 +762,10 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
+/// Interval at which workers report their backlog of tasks with unresolved dependencies
+/// to the local raylet, used for autoscaling decisions.
+RAY_CONFIG(int64_t, report_worker_backlog_interval_ms, 1000)
+
 /// Starting timeout for core worker grpc server reconnection (will
 /// exponentially increase until the maximum timeout).
 RAY_CONFIG(uint32_t, core_worker_rpc_server_reconnect_timeout_base_s, 1)
@@ -980,7 +1011,7 @@ RAY_CONFIG(int64_t, nums_py_gcs_reconnect_retry, 5)
 RAY_CONFIG(int64_t, py_gcs_connect_timeout_s, 30)
 
 // The number of grpc clients between object managers.
-RAY_CONFIG(int, object_manager_client_connection_num, 4)
+RAY_CONFIG(int, object_manager_client_connection_num, 2)
 
 // The actual number of threads for object transfers through the object manager is this
 // number * 3. There num_threads started for each of these 3 things:
@@ -1075,4 +1106,11 @@ RAY_CONFIG(uint64_t, gcs_resource_broadcast_max_batch_delay_ms, 0)
 
 // Whether to enable/disable multiple gRPC connections to improve object transfer
 // throughput.
-RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, false)
+RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
+
+// The threshold of the memory usage in bytes for the idle worker to be considered as
+// a candidate for killing.
+// TODO: We should clean it up after the memory monitor is revamped.
+RAY_CONFIG(int64_t,
+           idle_worker_killing_memory_threshold_bytes,
+           1024 * 1024 * 1024)  // 1GB

@@ -2,7 +2,7 @@ group: data tests
 depends_on:
   - forge
   - oss-ci-base_ml-multipy
-  - ray-core-build
+  - ray-core-build(*)
   - ray-dashboard-build
 steps:
   # builds
@@ -23,14 +23,6 @@ steps:
       PYTHON: "{{matrix}}"
     tags: cibase
 
-  - name: databuild-multipy
-    label: "wanda: databuild-py{{matrix}}"
-    wanda: ci/docker/data.build.wanda.yaml
-    matrix: ["3.10", "3.12"]
-    env:
-      PYTHON: "{{matrix}}"
-    tags: cibase
-
   - name: datanbuild-multipy
     wanda: ci/docker/datan.build.wanda.yaml
     env:
@@ -45,10 +37,10 @@ steps:
     tags: cibase
 
   - name: datatfxbslbuild-multipy
-    label: "wanda: datatfxbslbuild-py3.10"
+    label: "wanda: datatfxbslbuild-py3.11"
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
     env:
-      PYTHON: "3.10"
+      PYTHON: "3.11"
     tags: cibase
 
   - name: datatfdsbuild-multipy
@@ -58,6 +50,24 @@ steps:
       PYTHON: "3.12"
       REQUIREMENTS_FILE: "datatfds_py3.12.lock"
     tags: cibase
+
+  - name: docgpubuild-py312
+    label: "wanda: docgpubuild-py3.12"
+    wanda: ci/docker/docgpu.build.wanda.yaml
+    env:
+      PYTHON: "3.12"
+    depends_on: oss-ci-base_gpu-multipy
+    tags: cibase
+
+  # type check
+  - label: ":python: pyrefly type check"
+    tags:
+      - data
+    instance_type: small
+    commands:
+      - bash ci/lint/pyrefly-check.sh
+    depends_on: data9build-multipy
+    job_env: data9build-py3.10
 
   # tests
   - label: ":database: data: arrow v9 tests"
@@ -70,7 +80,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name data9build-py3.10 --python-version 3.10
-        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
     depends_on: data9build-multipy
 
   - label: ":database: data: tensorflow-datasets tests"
@@ -97,7 +107,7 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --build-name data9build-py3.10 --python-version 3.10
         --only-tags data_non_parallel
-        --except-tags data_non_parallel_postmerge_only
+        --except-tags data_non_parallel_postmerge_only,cudf
     depends_on: data9build-multipy
 
   - label: ":database: data: arrow v23 tests"
@@ -111,7 +121,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datalbuild-py3.10 --python-version 3.10
-        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
     depends_on: datalbuild-multipy
 
   - label: ":database: data: arrow v23 tests (data_non_parallel)"
@@ -127,7 +137,7 @@ steps:
         --worker-id "$${BUILDKITE_PARALLEL_JOB}"
         --build-name datalbuild-py3.10 --python-version 3.10
         --only-tags data_non_parallel
-        --except-tags data_non_parallel_postmerge_only
+        --except-tags data_non_parallel_postmerge_only,cudf
     depends_on: datalbuild-multipy
 
   - label: ":database: data: arrow v23 py{{matrix.python}} tests ({{matrix.worker_id}})"
@@ -140,7 +150,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
         --build-name datalbuild-py{{matrix.python}} --python-version {{matrix.python}}
-        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
     depends_on: datalbuild-multipy
     matrix:
       setup:
@@ -157,7 +167,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --build-name datalbuild-py{{matrix.python}} --python-version {{matrix.python}}
         --only-tags data_non_parallel
-        --except-tags data_non_parallel_postmerge_only
+        --except-tags data_non_parallel_postmerge_only,cudf
     depends_on: datalbuild-multipy
     matrix:
       setup:
@@ -176,7 +186,7 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
         --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name datanbuild-py3.10 --python-version 3.10
-        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets
+        --except-tags data_integration,doctest,data_non_parallel,dask,needs_credentials,tensorflow_datasets,cudf
     depends_on: datanbuild-multipy
     soft_fail: true
 
@@ -191,7 +201,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --build-name datanbuild-py3.10 --python-version 3.10
         --only-tags data_non_parallel
-        --except-tags data_non_parallel_postmerge_only
+        --except-tags data_non_parallel_postmerge_only,cudf
     depends_on: datanbuild-multipy
     soft_fail: true
 
@@ -224,9 +234,9 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name databuild-py3.12 --python-version 3.12
+        --build-name datalbuild-py3.12 --python-version 3.12
         --only-tags dask
-    depends_on: databuild-multipy
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: TFRecords (tfx-bsl) tests"
     tags:
@@ -234,7 +244,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datatfxbslbuild-py3.10 --python-version 3.10
+        --build-name datatfxbslbuild-py3.11 --python-version 3.11
         --only-tags tfxbsl
     depends_on: datatfxbslbuild-multipy
 
@@ -246,19 +256,19 @@ steps:
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data
-        --build-name databuild-py3.10
+        --build-name datalbuild-py3.10
         --python-version 3.10
         --except-tags gpu
         --only-tags doctest
         --parallelism-per-worker 2
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
-        --build-name databuild-py3.10
+        --build-name datalbuild-py3.10
         --python-version 3.10
         --except-tags gpu,post_wheel_build,doctest,dask
         --parallelism-per-worker 2
         --skip-ray-installation
-    depends_on: databuild-multipy
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: dask doc tests"
     tags:
@@ -267,11 +277,11 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
-        --build-name databuild-py3.12
+        --build-name datalbuild-py3.12
         --python-version 3.12
         --only-tags dask
         --parallelism-per-worker 2
-    depends_on: databuild-multipy
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: doc gpu tests"
     tags:
@@ -294,6 +304,20 @@ steps:
         --skip-ray-installation
         --python-version 3.10
     depends_on: docgpubuild
+
+  - label: ":database: data: cuDF batch format tests"
+    tags:
+      - data
+      - gpu
+      - cudf
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
+        --build-name docgpubuild-py3.12
+        --only-tags cudf
+        --gpus 1
+        --python-version 3.12
+    depends_on: docgpubuild-py312
 
   - label: ":database: data: integration tests"
     tags:
@@ -365,10 +389,10 @@ steps:
     commands:
       - $(python ci/env/setup_credentials.py)
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name databuild-py3.10
+        --build-name datalbuild-py3.10
         --python-version 3.10
         --only-tags needs_credentials
         --test-env=SNOWFLAKE_USER --test-env=SNOWFLAKE_ACCOUNT
         --test-env=SNOWFLAKE_DATABASE --test-env=SNOWFLAKE_SCHEMA
         --test-env=SNOWFLAKE_WAREHOUSE --test-env=SNOWFLAKE_PRIVATE_KEY
-    depends_on: databuild-multipy
+    depends_on: datalbuild-multipy

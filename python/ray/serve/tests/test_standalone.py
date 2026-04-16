@@ -19,7 +19,6 @@ from ray._common.test_utils import run_string_as_driver, wait_for_condition
 from ray._raylet import GcsClient
 from ray.cluster_utils import Cluster, cluster_not_supported
 from ray.serve._private.constants import (
-    SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
     SERVE_PROXY_NAME,
@@ -27,7 +26,12 @@ from ray.serve._private.constants import (
 from ray.serve._private.default_impl import create_cluster_node_info_cache
 from ray.serve._private.http_util import set_socket_reuse_port
 from ray.serve._private.utils import block_until_http_ready, format_actor_name
-from ray.serve.config import DeploymentMode, HTTPOptions, ProxyLocation
+from ray.serve.config import (
+    DeploymentMode,
+    GangSchedulingConfig,
+    HTTPOptions,
+    ProxyLocation,
+)
 from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeApplicationSchema, ServeDeploySchema
 from ray.util.state import list_actors
@@ -75,306 +79,6 @@ def lower_slow_startup_threshold_and_reset():
         os.environ[
             "SERVE_SLOW_STARTUP_WARNING_PERIOD_S"
         ] = original_slow_startup_warning_period_s
-
-
-def test_shutdown(ray_shutdown):
-    ray.init(num_cpus=8)
-    serve.start(http_options=dict(port=8003))
-    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
-    cluster_node_info_cache.update()
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind())
-
-    actor_names = [
-        SERVE_CONTROLLER_NAME,
-        format_actor_name(
-            SERVE_PROXY_NAME,
-            cluster_node_info_cache.get_alive_nodes()[0][0],
-        ),
-    ]
-
-    def check_alive():
-        alive = True
-        for actor_name in actor_names:
-            try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-            except ValueError:
-                alive = False
-        return alive
-
-    wait_for_condition(check_alive)
-
-    serve.shutdown()
-
-    def check_dead():
-        for actor_name in actor_names:
-            try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-                return False
-            except ValueError:
-                pass
-        return True
-
-    wait_for_condition(check_dead)
-
-
-@pytest.mark.asyncio
-async def test_shutdown_async(ray_shutdown):
-    ray.init(num_cpus=8)
-    serve.start(http_options=dict(port=8003))
-    gcs_client = GcsClient(address=ray.get_runtime_context().gcs_address)
-    cluster_node_info_cache = create_cluster_node_info_cache(gcs_client)
-    cluster_node_info_cache.update()
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind())
-
-    actor_names = [
-        SERVE_CONTROLLER_NAME,
-        format_actor_name(
-            SERVE_PROXY_NAME,
-            cluster_node_info_cache.get_alive_nodes()[0][0],
-        ),
-    ]
-
-    def check_alive():
-        alive = True
-        for actor_name in actor_names:
-            try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-            except ValueError:
-                alive = False
-        return alive
-
-    wait_for_condition(check_alive)
-
-    await serve.shutdown_async()
-
-    def check_dead():
-        for actor_name in actor_names:
-            try:
-                ray.get_actor(actor_name, namespace=SERVE_NAMESPACE)
-                return False
-            except ValueError:
-                pass
-        return True
-
-    wait_for_condition(check_dead)
-
-
-def test_single_app_shutdown_actors(ray_shutdown):
-    """Tests serve.shutdown() works correctly in single-app case
-
-    Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    address = ray.init(num_cpus=8)["address"]
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app")
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:app:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    serve.shutdown()
-    wait_for_condition(check_dead)
-
-
-@pytest.mark.asyncio
-async def test_single_app_shutdown_actors_async(ray_shutdown):
-    """Tests serve.shutdown_async() works correctly in single-app case
-
-    Ensures that after deploying a (nameless) app using serve.run(), serve.shutdown_async()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    address = ray.init(num_cpus=8)["address"]
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app")
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:app:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    await serve.shutdown_async()
-    wait_for_condition(check_dead)
-
-
-def test_multi_app_shutdown_actors(ray_shutdown):
-    """Tests serve.shutdown() works correctly in multi-app case.
-
-    Ensures that after deploying multiple distinct applications, serve.shutdown()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    address = ray.init(num_cpus=8)["address"]
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app1", route_prefix="/app1")
-    serve.run(f.bind(), name="app2", route_prefix="/app2")
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:app1:f",
-        "ServeReplica:app2:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    serve.shutdown()
-    wait_for_condition(check_dead)
-
-
-@pytest.mark.asyncio
-async def test_multi_app_shutdown_actors_async(ray_shutdown):
-    """Tests serve.shutdown_async() works correctly in multi-app case.
-
-    Ensures that after deploying multiple distinct applications, serve.shutdown_async()
-    deletes all actors (controller, http proxy, all replicas) in the "serve" namespace.
-    """
-    address = ray.init(num_cpus=8)["address"]
-    serve.start(http_options=dict(port=8003))
-
-    @serve.deployment
-    def f():
-        pass
-
-    serve.run(f.bind(), name="app1", route_prefix="/app1")
-    serve.run(f.bind(), name="app2", route_prefix="/app2")
-
-    actor_names = {
-        "ServeController",
-        "ProxyActor",
-        "ServeReplica:app1:f",
-        "ServeReplica:app2:f",
-    }
-
-    def check_alive():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return {actor["class_name"] for actor in actors} == actor_names
-
-    def check_dead():
-        actors = list_actors(
-            address=address,
-            filters=[("ray_namespace", "=", SERVE_NAMESPACE), ("state", "=", "ALIVE")],
-        )
-        return len(actors) == 0
-
-    wait_for_condition(check_alive)
-    await serve.shutdown_async()
-    wait_for_condition(check_dead)
-
-
-def test_registered_cleanup_actors_killed_on_shutdown(ray_shutdown):
-    """Test that actors registered via _register_shutdown_cleanup_actor are killed.
-
-    This tests the internal actor registration API that allows deployments to register
-    auxiliary actors (like caches, coordinators, etc.) for cleanup on serve.shutdown().
-    """
-    ray.init(num_cpus=4)
-    serve.start()
-
-    # Create a detached actor that we'll register for cleanup
-    @ray.remote
-    class DummyActor:
-        def ping(self):
-            return "pong"
-
-    dummy_actor_name = "test_registered_cleanup_dummy"
-    dummy = DummyActor.options(
-        name=dummy_actor_name, namespace=SERVE_NAMESPACE, lifetime="detached"
-    ).remote()
-
-    # Verify actor is alive
-    assert ray.get(dummy.ping.remote()) == "pong"
-
-    # Register the actor with the controller for cleanup
-    controller = ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE)
-    ray.get(controller._register_shutdown_cleanup_actor.remote(dummy))
-
-    # Shutdown serve
-    serve.shutdown()
-
-    # Verify the registered actor is killed
-    def check_actor_dead():
-        try:
-            ray.get_actor(dummy_actor_name, namespace=SERVE_NAMESPACE)
-            return False
-        except ValueError:
-            return True
-
-    wait_for_condition(check_actor_dead)
 
 
 def test_deployment(ray_cluster):
@@ -665,53 +369,6 @@ def test_http_head_only(ray_cluster):
     assert all([actor.node_id == head_node.node_id for actor in actors])
 
 
-def test_serve_shutdown(ray_shutdown):
-    ray.init(namespace="serve")
-    serve.start()
-
-    @serve.deployment
-    class A:
-        def __call__(self, *args):
-            return "hi"
-
-    serve.run(A.bind())
-
-    assert len(serve.status().applications) == 1
-
-    serve.shutdown()
-    serve.start()
-
-    assert len(serve.status().applications) == 0
-
-    serve.run(A.bind())
-
-    assert len(serve.status().applications) == 1
-
-
-@pytest.mark.asyncio
-async def test_serve_shutdown_async(ray_shutdown):
-    ray.init(namespace="serve")
-    serve.start()
-
-    @serve.deployment
-    class A:
-        def __call__(self, *args):
-            return "hi"
-
-    serve.run(A.bind())
-
-    assert len(serve.status().applications) == 1
-
-    await serve.shutdown_async()
-    serve.start()
-
-    assert len(serve.status().applications) == 0
-
-    serve.run(A.bind())
-
-    assert len(serve.status().applications) == 1
-
-
 def test_instance_in_non_anonymous_namespace(ray_shutdown):
     # Can start instance in non-anonymous namespace.
     ray.init(namespace="foo")
@@ -823,6 +480,29 @@ def test_updating_status_message(lower_slow_startup_threshold_and_reset):
     def updating_message():
         deployment_status = (
             serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["f"]
+        )
+        message_substring = "more than 1s to be scheduled."
+        return (deployment_status.status == "UPDATING") and (
+            message_substring in deployment_status.message
+        )
+
+    wait_for_condition(updating_message, timeout=20)
+
+
+def test_gang_updating_status_message(lower_slow_startup_threshold_and_reset):
+    @serve.deployment(
+        num_replicas=4,
+        ray_actor_options={"num_cpus": 1},
+        gang_scheduling_config=GangSchedulingConfig(gang_size=2),
+    )
+    def g(*args):
+        pass
+
+    serve._run(g.bind(), _blocking=False)
+
+    def updating_message():
+        deployment_status = (
+            serve.status().applications[SERVE_DEFAULT_APP_NAME].deployments["g"]
         )
         message_substring = "more than 1s to be scheduled."
         return (deployment_status.status == "UPDATING") and (

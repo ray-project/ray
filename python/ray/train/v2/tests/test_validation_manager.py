@@ -1,4 +1,4 @@
-import time
+import asyncio
 import unittest.mock
 from unittest.mock import create_autospec
 
@@ -52,7 +52,7 @@ def test_before_controller_shutdown(mock_wait, monkeypatch):
     monkeypatch.setattr(ray, "get", lambda x: {"score": 1})
 
     # Call before_controller_shutdown
-    vm.before_controller_shutdown()
+    asyncio.run(vm.before_controller_shutdown())
     assert mock_wait.call_count == 2
     assert checkpoint_manager.update_checkpoints_with_metrics.mock_calls == [
         unittest.mock.call({checkpoint1: {"score": 1}}),
@@ -229,52 +229,6 @@ def test_checkpoint_validation_management_success_after_retry(tmp_path):
     assert vm._kick_off_validations() == 0
     checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
         {training_result.checkpoint: {"score": 100}}
-    )
-
-
-def test_checkpoint_validation_management_slow_validation_fn(tmp_path):
-    checkpoint_manager = create_autospec(CheckpointManager, instance=True)
-
-    def infinite_waiting_validation_fn(checkpoint):
-        while True:
-            time.sleep(1)
-
-    vm = validation_manager.ValidationManager(
-        checkpoint_manager=checkpoint_manager,
-        validation_config=ValidationConfig(fn=infinite_waiting_validation_fn),
-    )
-    timing_out_training_result = create_dummy_training_reports(
-        num_results=1,
-        storage_context=StorageContext(
-            storage_path=tmp_path,
-            experiment_dir_name="checkpoint_validation_management_slow_validation_fn_experiment",
-        ),
-    )[0]
-
-    vm.after_report(
-        training_report=_TrainingReport(
-            metrics=timing_out_training_result.metrics,
-            checkpoint=timing_out_training_result.checkpoint,
-            validation=True,
-        ),
-        metrics={},
-    )
-    assert vm._poll_validations() == 0
-    assert vm._kick_off_validations() == 1
-
-    # Finish the task by cancelling it
-    timing_out_task = next(iter(vm._pending_validations))
-    ray.cancel(timing_out_task)
-    with pytest.raises(ray.exceptions.TaskCancelledError):
-        ray.get(timing_out_task)
-
-    # Verify that poll processes finished task
-    assert vm._poll_validations() == 0
-    assert vm._kick_off_validations() == 0
-    checkpoint_manager.update_checkpoints_with_metrics.assert_called_once_with(
-        {
-            timing_out_training_result.checkpoint: {},
-        }
     )
 
 
