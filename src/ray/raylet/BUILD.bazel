@@ -189,7 +189,7 @@ ray_cc_library(
     name = "worker_killing_policy_factory",
     srcs = select({
         "//bazel:is_linux": [
-            "worker_killing_policy_by_time_factory.cc",
+            "worker_killing_policy_factory.cc",
         ],
         "//conditions:default": [
             "noop_worker_killing_policy_factory.cc",
@@ -205,6 +205,7 @@ ray_cc_library(
     ] + select({
         "//bazel:is_linux": [
             ":worker_killing_policy_by_time",
+            ":worker_killing_policy_group_by_owner",
         ],
         "//conditions:default": [
             ":noop_worker_killing_policy",

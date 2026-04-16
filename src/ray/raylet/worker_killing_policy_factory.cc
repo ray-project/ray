@@ -12,12 +12,14 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include "ray/raylet/worker_killing_policy_factory.h"
+
 #include <memory>
 
 #include "ray/common/memory_monitor_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/worker_killing_policy_by_time.h"
-#include "ray/raylet/worker_killing_policy_factory.h"
+#include "ray/raylet/worker_killing_policy_group_by_owner.h"
 
 namespace ray {
 
@@ -25,6 +27,10 @@ namespace raylet {
 
 std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create(
     bool resource_isolation_enabled, const CgroupManagerInterface &cgroup_manager) {
+  if (RayConfig::instance().WORKER_KILLING_POLICY_BY_GROUP()) {
+    return std::make_unique<GroupByOwnerIdWorkerKillingPolicy>();
+  }
+
   int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemorySnapshot(
                                    MemoryMonitorInterface::kDefaultCgroupPath)
                                    .total_bytes;

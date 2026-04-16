@@ -19,7 +19,7 @@ def leaks_memory():
 
 
 try:
-    ray.get(leaks_memory.remote())
+    ray.get(leaks_memory.options(max_retries=0).remote())
 except ray.exceptions.OutOfMemoryError as ex:
     print("task failed with OutOfMemoryError, which is expected")
 # __last_task_end__

@@ -307,7 +307,7 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
       << "Invalid configuration: usage_threshold must be <= 1";
 
   int64_t resolved_memory_threshold_bytes;
-  int64_t threshold_fraction = (int64_t)(total_memory_bytes * usage_threshold);
+  int64_t threshold_fraction = static_cast<int64_t>(total_memory_bytes * usage_threshold);
 
   if (min_memory_free_bytes > MemoryMonitorInterface::kNull) {
     int64_t threshold_absolute = total_memory_bytes - min_memory_free_bytes;
@@ -323,7 +323,8 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
     RAY_CHECK(result.ok()) << absl::StrFormat(
         "Failed to get user cgroup memory limit when setting up memory monitor: %s",
         result.ToString());
-    std::string user_memory_max_bytes_str = result.value();
+    std::string user_memory_max_bytes_str =
+        std::string(absl::StripAsciiWhitespace(result.value()));
     RAY_CHECK(!user_memory_max_bytes_str.empty()) << absl::StrFormat(
         "Failed to get memory.max constraint value from user cgroup %s. "
         "Please check that the cgroup path for resource isolation is correct.",
@@ -336,13 +337,13 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
       int64_t user_memory_max_bytes = std::stoll(user_memory_max_bytes_str);
       resolved_memory_threshold_bytes =
           user_memory_max_bytes -
-          static_cast<int64_t>(RayConfig::instance().kill_memory_buffer_bytes());
+          MemoryMonitorInterface::THRESHOLD_MONITOR_REACTION_BUFFER;
       RAY_CHECK_GE(resolved_memory_threshold_bytes, 0) << absl::StrFormat(
           "Available user task memory is less than the kill memory buffer bytes: "
           "%d < %d. Please consider using a host with more memory. If the current host "
           "memory size must be kept, please adjust the kill memory buffer size.",
           user_memory_max_bytes,
-          RayConfig::instance().kill_memory_buffer_bytes());
+          MemoryMonitorInterface::THRESHOLD_MONITOR_REACTION_BUFFER);
     }
   }
 
