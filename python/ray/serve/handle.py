@@ -1079,10 +1079,13 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
             response_serialization=response_serialization,
         )
 
-    def get_request_router(
+    def _get_request_router(
         self,
     ) -> Optional["ray.serve._private.request_router.request_router.RequestRouter"]:
-        """Expose the underlying request router for local routing decisions."""
+        """Temporary: expose the request router for direct-ingress routing.
+
+        TODO: Replace with DeploymentHandle.choose_replica() once #60865 lands.
+        """
         if self._router is None:
             return None
 
