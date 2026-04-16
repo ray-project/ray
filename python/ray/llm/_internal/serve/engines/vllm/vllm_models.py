@@ -2,7 +2,7 @@ import copy
 import dataclasses
 import os
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Literal, Optional
+from typing import Any, Dict, List, Optional
 
 from pydantic import ConfigDict, Field, PrivateAttr, field_validator, model_validator
 from vllm.engine.arg_utils import AsyncEngineArgs
@@ -50,36 +50,6 @@ TPU_ACCELERATOR_VALUES = {
     for name, member in AcceleratorType.__members__.items()
     if name.startswith("GOOGLE_TPU")
 }
-
-
-class BundleConfig(BaseModelExtended):
-    """Configuration for placement group bundle.
-
-    Note: Counts are floats to align with Ray resource typing.
-    """
-
-    CPU: float = Field(default=0.0, ge=0.0, description="Number of CPUs per bundle")
-    GPU: float = Field(default=0.0, ge=0.0, description="Number of GPUs per bundle")
-    TPU: float = Field(default=0.0, ge=0.0, description="Number of TPUs per bundle")
-
-    class Config:
-        extra = "allow"  # Allow arbitrary resource types
-
-
-class PlacementGroupConfig(BaseModelExtended):
-    """Configuration for placement group."""
-
-    bundles: List[BundleConfig] = Field(description="List of resource bundles")
-    strategy: Literal["PACK", "SPREAD", "STRICT_PACK", "STRICT_SPREAD"] = Field(
-        default="PACK", description="Placement group strategy"
-    )
-
-    @model_validator(mode="before")
-    @classmethod
-    def validate_bundles_exist(cls, values):
-        if isinstance(values, dict) and "bundles" not in values:
-            raise ValueError("placement_group_config must contain 'bundles'")
-        return values
 
 
 class AcceleratorBackend(ABC):
@@ -433,7 +403,7 @@ class VLLMEngineConfig(BaseModelExtended):
                 bundles = []
                 for _ in range(self.num_devices):
                     bundle = bundle_per_worker.copy()
-                    if self.accelerator_type and self.use_gpu:
+                    if self.accelerator_type and (self.use_gpu or self.use_tpu):
                         bundle.setdefault(self.ray_accelerator_type(), 0.001)
                     bundles.append(bundle)
                 return bundles
@@ -489,6 +459,10 @@ class VLLMEngineConfig(BaseModelExtended):
 
         # Check placement_group_config bundles for explicit TPU specification
         if self.placement_group_config:
+            bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
+            if bundle_per_worker:
+                return bundle_per_worker.get("TPU", 0) > 0
+
             bundles = self.placement_group_config.get("bundles", [])
             if bundles:
                 # If any bundle has TPU > 0, we use TPU
