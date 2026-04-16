@@ -25,7 +25,7 @@ Default test timeout: 180s (pytest.ini).
 ## Development Workflow
 
 - After making C++ or Cython changes, use /rebuild to determine the correct build steps
-- Before committing, use /lint to run the appropriate linters
+- After making code changes, use /lint to fix lint issues on modified files
 - When investigating CI failures, use /fetch-buildkite-logs to fetch and analyze build logs
 
 ## Contributing

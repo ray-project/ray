@@ -13,11 +13,6 @@
       "Bash(git log *)",
       "Bash(git branch *)"
     ],
-    "deny": [
-      "Bash(*&&*)",
-      "Bash(*||*)",
-      "Bash(*|*)",
-      "Bash(*;*)"
-    ]
+    "deny": []
   }
 }
