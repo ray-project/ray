@@ -303,26 +303,8 @@ class ExecutionPlan:
         assert bundle is not None
         return bundle
 
-    @property
-    def has_started_execution(self) -> bool:
-        """Return ``True`` if this plan has been partially or fully executed."""
-        return self._has_started_execution
-
-    def clear_cache(self) -> None:
-        """Clear the cache kept in the plan to the beginning state."""
-        self._cache.clear()
-
-    def stats(self) -> DatasetStats:
-        """Return stats for this plan.
-
-        If the plan isn't executed, an empty stats object will be returned.
-        """
-        if not self._cache.get_stats():
-            return DatasetStats(metadata={}, parent=None)
-        return self._cache.get_stats()
-
     def initial_stats(self) -> DatasetStats:
-        if self.has_computed_output():
+        if self._cache.get_bundle(self._logical_plan.dag) is not None:
             return self._cache.get_stats()
         # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
         # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
@@ -330,21 +312,7 @@ class ExecutionPlan:
         # "InputDataBuffer" physical operators, which will be ignored when generating
         # stats, see `StreamingExecutor._generate_stats`.
         # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
-        if self.has_lazy_input():
+        if self._logical_plan.has_lazy_input():
             return DatasetStats(metadata={}, parent=None)
         else:
             return self._in_stats
-
-    def has_lazy_input(self) -> bool:
-        """Return whether this plan has lazy input blocks."""
-        return self._logical_plan.has_lazy_input()
-
-    def has_computed_output(self) -> bool:
-        """Whether this plan has a computed snapshot for the final operator, i.e. for
-        the output of this plan.
-        """
-        return self._cache.get_bundle(self._logical_plan.dag) is not None
-
-    def require_preserve_order(self) -> bool:
-        """Whether this plan requires to preserve order."""
-        return self._logical_plan.require_preserve_order()
