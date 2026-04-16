@@ -195,29 +195,6 @@ class LLMServer(LLMServerProtocol):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
-        await self._register_direct_ingress_app()
-
-    async def _register_direct_ingress_app(self):
-        """Build vLLM's FastAPI app and register it for direct ingress serving."""
-        from vllm.entrypoints.openai.api_server import build_app, init_app_state
-
-        engine = self.engine
-        args = engine._vllm_args
-        supported_tasks = ("generate",)
-        if hasattr(engine._engine_client, "get_supported_tasks"):
-            supported_tasks = await engine._engine_client.get_supported_tasks()
-
-        app = build_app(args, supported_tasks=supported_tasks)
-        await init_app_state(
-            engine._engine_client,
-            app.state,
-            args,
-            supported_tasks=supported_tasks,
-        )
-
-        await serve.context.set_asgi_app(app)
-        logger.info("Registered vLLM FastAPI app for direct ingress serving")
-
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
     ):
