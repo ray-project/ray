@@ -295,7 +295,7 @@ const LogVirtualView: React.FC<LogVirtualViewProps> = ({
           .children.map((v) => value2react(v, index.toString(), keywords))}
         {/* Only render the button for structured (JSON) log lines.
             Plain text lines have no additional data to show in the dialog. */}
-        
+
         {formattedLogLine !== null && (
           <button
             className="log-line-details-btn"
