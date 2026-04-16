@@ -318,9 +318,6 @@ class BackendConfig:
     # When set, HAProxy queues excess requests instead of forwarding them all.
     max_server_conns: Optional[int] = None
 
-    # Router replica used for /internal/route requests for this backend.
-    router_server: Optional[ServerConfig] = None
-
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
 
@@ -724,22 +721,27 @@ class HAProxyApi(ProxyApi):
         config_dir = os.path.dirname(self.config_file_path)
         lua_path = os.path.join(config_dir, "direct_ingress_custom_request_routing.lua")
 
-        router_entries = []
+        router_group_entries = []
         for backend in backends:
-            if not backend.custom_request_routing or backend.router_server is None:
+            if not backend.custom_request_routing or not backend.router_servers:
                 continue
-            router_entries.append(
-                "    { path_prefix = "
-                f'{json.dumps(backend.path_prefix or "/")}, '
-                f"host = {json.dumps(backend.router_server.host)}, "
-                f"port = {backend.router_server.port} }}"
+            servers_lua = ", ".join(
+                f"{{ host = {json.dumps(s.host)}, port = {s.port} }}"
+                for s in backend.router_servers
+            )
+            router_group_entries.append(
+                f'    {{ path_prefix = {json.dumps(backend.path_prefix or "/")}, '
+                f"servers = {{ {servers_lua} }} }}"
             )
 
         routers_lua = (
-            "{\n" + ",\n".join(router_entries) + "\n}" if router_entries else "{}"
+            "{\n" + ",\n".join(router_group_entries) + "\n}"
+            if router_group_entries
+            else "{}"
         )
 
         lua_content = f"""local ROUTERS = {routers_lua}
+local rr_counter = 0
 
 local function path_matches(path, prefix)
     if prefix == "/" then
@@ -748,20 +750,20 @@ local function path_matches(path, prefix)
     return path == prefix or string.sub(path, 1, #prefix + 1) == prefix .. "/"
 end
 
-local function find_router(path)
-    for _, router in ipairs(ROUTERS) do
-        if path_matches(path, router.path_prefix) then
-            return router
+local function find_router_group(path)
+    for _, group in ipairs(ROUTERS) do
+        if path_matches(path, group.path_prefix) then
+            return group
         end
     end
     return nil
 end
 
-local function do_request(router, body)
+local function do_request(server, body)
     local sock = core.tcp()
     sock:settimeout(0.5)
 
-    local ok, err = sock:connect(router.host, tonumber(router.port))
+    local ok, err = sock:connect(server.host, tonumber(server.port))
     if not ok then
         return nil
     end
@@ -790,8 +792,8 @@ end
 
 core.register_action("route_direct_ingress_request", {{"http-req"}}, function(txn)
     local path = txn.sf:path()
-    local router = find_router(path)
-    if not router then
+    local group = find_router_group(path)
+    if not group then
         return
     end
 
@@ -800,7 +802,17 @@ core.register_action("route_direct_ingress_request", {{"http-req"}}, function(tx
         return
     end
 
-    local response = do_request(router, body)
+    -- Round-robin across router servers, trying each once on failure.
+    local n = #group.servers
+    local start = rr_counter
+    rr_counter = rr_counter + 1
+    local response = nil
+    for i = 0, n - 1 do
+        local server = group.servers[(start + i) % n + 1]
+        response = do_request(server, body)
+        if response then break end
+    end
+
     if not response then
         return
     end
@@ -1368,11 +1380,6 @@ class HAProxyManager(ProxyActorInterface):
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
 
-        # TODO: Round-robin or pass all router_servers to Lua for HA.
-        # Currently uses first router server; if it's down, requests pay the
-        # 500ms Lua timeout before falling back to standard routing.
-        router_server = router_servers[0] if custom_request_routing else None
-
         # When ingress bypass is active, the main targets are LLMServer replicas
         # serving vLLM's native app which uses /health not /-/healthz.
         health_path = None  # use default
@@ -1391,7 +1398,6 @@ class HAProxyManager(ProxyActorInterface):
             router_servers=router_servers,
             custom_request_routing=custom_request_routing,
             max_server_conns=None,
-            router_server=router_server,
             app_name=target_group.app_name,
             fallback_server=fallback_server,
             health_check_path=health_path,
