@@ -415,8 +415,8 @@ TEST(LocalDependencyResolverTest, TestCancelDependencyResolution) {
   io_context.Stop();
 }
 
-// Even if dependencies are already local, the ResolveDependencies callbacks are still
-// called asynchronously in the event loop as a different task.
+// Test that dependencies already in the store are resolved synchronously
+// via GetIfExists, without posting to the I/O event queue.
 TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
   auto store = DefaultCoreWorkerMemoryStoreWithThread::Create();
   auto task_manager = std::make_shared<MockTaskManager>();
@@ -433,12 +433,8 @@ TEST(LocalDependencyResolverTest, TestDependenciesAlreadyLocal) {
   TaskSpecification task;
   task.GetMutableMessage().add_args()->mutable_object_ref()->set_object_id(obj.Binary());
   bool ok = false;
-  std::promise<bool> dependencies_resolved;
-  resolver.ResolveDependencies(task, [&](Status) {
-    ok = true;
-    dependencies_resolved.set_value(true);
-  });
-  ASSERT_TRUE(dependencies_resolved.get_future().get());
+  resolver.ResolveDependencies(task, [&](Status) { ok = true; });
+  // Callback must have fired synchronously, before ResolveDependencies returned.
   ASSERT_TRUE(ok);
   // Check for leaks.
   ASSERT_EQ(resolver.NumPendingTasks(), 0);
@@ -500,8 +496,3 @@ TEST(LocalDependencyResolverTest, TestMixedTensorTransport) {
 
 }  // namespace core
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

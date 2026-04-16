@@ -123,12 +123,13 @@ This is why we combine TP with ZeRO in this tutorial—TP handles the fast GPU-t
 
 ## 1. Package and environment setup
 
-Install the required dependencies:
+DeepSpeed AutoTP requires PyTorch >= 2.4. Install the required dependencies:
 
 
 ```bash
 %%bash
-pip install "torch>=2.4" transformers datasets "deepspeed>=0.18.6"
+python -m pip install -U torch==2.9.1 torchvision==0.24.1 transformers==4.48.0 datasets==2.21.0
+python -m pip install -U --no-build-isolation deepspeed==0.18.9
 ```
 
 
@@ -732,6 +733,10 @@ storage_path = "/mnt/cluster_storage/ray_train_tp_autotp"  # Use persistent/shar
 run_config = RunConfig(
     name=experiment_name,
     storage_path=storage_path,
+    worker_runtime_env={
+        "pip": ["transformers==4.48.0", "datasets==2.21.0", "deepspeed==0.18.9"],
+        "env_vars": {"PIP_NO_BUILD_ISOLATION": "1"},
+    },
 )
 
 # Initialize and launch the trainer
@@ -757,7 +762,7 @@ if RUN_RESUME_DEMO:
         train_loop_per_worker=train_func,
         scaling_config=scaling_config,
         train_loop_config=resume_train_loop_config,
-        run_config=RunConfig(name=experiment_name, storage_path=storage_path),
+        run_config=run_config,
     )
     resume_result = resume_trainer.fit()
     print(f"Resumed metrics: {resume_result.metrics}")

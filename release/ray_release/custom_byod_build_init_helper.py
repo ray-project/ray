@@ -1,6 +1,8 @@
 import hashlib
+import json
 import os
-from typing import Dict, List, Optional, Tuple
+import re
+from typing import Dict, List, Optional, Set, Tuple
 
 import yaml
 
@@ -50,7 +52,9 @@ def get_images_from_tests(
     return list(custom_byod_images.values()), custom_image_test_names_map
 
 
-def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
+def create_custom_build_yaml(
+    destination_file: str, tests: List[Test], gpu_map: Dict[str, str]
+) -> None:
     """Create a yaml file for building custom BYOD images"""
     config = get_global_config()
     if (
@@ -119,26 +123,113 @@ def create_custom_build_yaml(destination_file: str, tests: List[Test]) -> None:
                 build_cmd,
             ],
         }
-        step["depends_on"] = get_prerequisite_step(image, base_image)
+        step["depends_on"] = get_prerequisite_step(image, base_image, gpu_map)
         build_config["steps"].append(step)
 
     with open(destination_file, "w") as f:
         yaml.dump(build_config, f, default_flow_style=False, sort_keys=False)
 
 
-def get_prerequisite_step(image: str, base_image: str) -> Optional[str]:
-    """Get the base image build step for a job that depends on it."""
+def _short_tag(gpu: str) -> str:
+    """Derive the short gpu tag from a full gpu string.
+
+    Examples: "cu12.3.2-cudnn9" → "cu123", "cpu" → "cpu".
+    """
+    if gpu in ("cpu", "tpu"):
+        return gpu
+    base = gpu.split("-", 1)[0]  # "cu12.3.2"
+    parts = base.split(".")  # ["cu12", "3", "2"]
+    return f"{parts[0]}{parts[1]}" if len(parts) >= 2 else base
+
+
+def build_short_gpu_map(ray_images_path: str) -> Dict[str, str]:
+    """Build short-tag → full-gpu map from ray-images.json."""
+    if not os.path.exists(ray_images_path):
+        raise FileNotFoundError(f"ray-images.json not found at {ray_images_path}")
+    with open(ray_images_path) as f:
+        images = json.load(f)
+    gpus: Set[str] = set()
+    for cfg in images.values():
+        gpus.update(
+            cfg.get("platforms", [])
+        )  # ray-images.json uses platforms instead of gpu.
+    result: Dict[str, str] = {}
+    for g in gpus:
+        short = _short_tag(g)
+        if short == "tpu":
+            continue  # tpu is not used in release build steps
+        if short in result:
+            raise ValueError(
+                f"Collision detected for short tag '{short}': "
+                f"'{result[short]}' and '{g}' both map to the same tag."
+            )
+        result[short] = g
+    return result
+
+
+def _sanitize_array_value(value: str) -> str:
+    """Strip non-alphanumeric characters, matching rayci's array key logic."""
+    return re.sub(r"[^a-zA-Z0-9]", "", value)
+
+
+def get_prerequisite_step(
+    image: str,
+    base_image: str,
+    gpu_map: Optional[Dict[str, str]] = None,
+) -> Optional[str]:
+    """Get the base image build step for a job that depends on it.
+
+    Returns the array-suffixed Buildkite step key for the publish step
+    that produces the base image.
+    """
+    if gpu_map is None:
+        gpu_map = {}
     config = get_global_config()
     image_repository, _ = image.split(":")
     image_name = image_repository.split("/")[-1]
     if base_image.startswith(ANYSCALE_RAY_IMAGE_PREFIX):
         return "forge"
+
+    # Parse base_image tag: {build_id}-py{ver}-{suffix}
+    _, tag = base_image.rsplit(":", 1)
+    tag_parts = tag.split("-")
+    py_index = None
+    for i, part in enumerate(tag_parts):
+        if re.match(r"^py\d+$", part):
+            py_index = i
+            break
+
     if image_name == "ray-ml":
-        return config["release_image_step_ray_ml"]
-    elif image_name == "ray-llm":
-        return config["release_image_step_ray_llm"]
+        bare_key = config["release_image_step_ray_ml"]
+        if py_index is None:
+            return bare_key
+        return f"{bare_key}--python{tag_parts[py_index][2:]}"
+
+    if image_name == "ray-llm":
+        bare_key = config["release_image_step_ray_llm"]
     else:
-        return config["release_image_step_ray"]
+        # ray: pick cpu or cuda key based on tag suffix
+        tag_suffix = "-".join(tag_parts[py_index + 1 :]) if py_index is not None else ""
+        if tag_suffix == "cpu":
+            bare_key = config["release_image_step_ray_cpu"]
+        else:
+            bare_key = config["release_image_step_ray_cuda"]
+
+    if py_index is None:
+        return bare_key
+
+    python_raw = tag_parts[py_index][2:]  # e.g., "310"
+    tag_suffix = "-".join(tag_parts[py_index + 1 :])  # e.g., "cu123" or "cpu"
+
+    if tag_suffix == "cpu":
+        # anyscalecpubuild has only a python dimension
+        return f"{bare_key}--python{python_raw}"
+
+    # cuda publish steps have gpu + python dimensions (alphabetical order)
+    full_gpu = gpu_map.get(tag_suffix, tag_suffix)
+    sanitized = _sanitize_array_value(full_gpu)
+
+    return f"{bare_key}--gpu{sanitized}-python{python_raw}"
 
 
 def _get_step_name(image: str, step_key: str, test_names: List[str]) -> str:

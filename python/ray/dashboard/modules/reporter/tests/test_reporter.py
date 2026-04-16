@@ -195,6 +195,13 @@ def test_fix_grpc_metrics():
     assert metric == expected_fixed_metric
 
 
+@pytest.fixture(autouse=True)
+def enable_profiling():
+    os.environ["RAY_DASHBOARD_ENABLE_PROFILING"] = "1"
+    yield
+    os.environ.pop("RAY_DASHBOARD_ENABLE_PROFILING", None)
+
+
 @pytest.fixture
 def enable_grpc_metrics_collection():
     os.environ["RAY_enable_grpc_metrics_collection_for"] = "gcs"

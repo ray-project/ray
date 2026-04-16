@@ -29,6 +29,7 @@ from ci.build.build_common import (
 # Configuration Constants
 SUPPORTED_PYTHON_VERSIONS = ("3.10", "3.11", "3.12", "3.13")
 RAYMAKE_SPEC = "ci/docker/ray-wheel.wanda.yaml"
+RAYCI_REGISTRY = "cr.ray.io/rayproject"
 
 
 @dataclass(frozen=True)
@@ -41,20 +42,43 @@ class BuildConfig:
     raymake_version: str
     manylinux_version: str
     commit: str
+    no_java: bool = False
+    no_dashboard: bool = False
 
     @property
     def build_env(self) -> dict[str, str]:
+        java_image = (
+            "scratch"
+            if self.no_java
+            else f"{RAYCI_REGISTRY}/ray-java-build{self.arch_suffix}"
+        )
+        dashboard_image = (
+            "scratch"
+            if self.no_dashboard
+            else f"{RAYCI_REGISTRY}/ray-dashboard{self.arch_suffix}"
+        )
+
         return {
             "PYTHON_VERSION": self.python_version,
             "MANYLINUX_VERSION": self.manylinux_version,
             "HOSTTYPE": self.hosttype,
             "ARCH_SUFFIX": self.arch_suffix,
+            "JDK_SUFFIX": "" if self.no_java else "-jdk",
             "BUILDKITE_COMMIT": self.commit,
             "IS_LOCAL_BUILD": "true",
+            "RAY_JAVA_IMAGE": java_image,
+            "RAY_DASHBOARD_IMAGE": dashboard_image,
         }
 
     @classmethod
-    def from_env(cls, python_version: str, output_dir: str) -> BuildConfig:
+    def from_env(
+        cls,
+        python_version: str,
+        output_dir: str,
+        *,
+        no_java: bool = False,
+        no_dashboard: bool = False,
+    ) -> BuildConfig:
         root = find_ray_root()
         host, suffix = cls._detect_platform()
 
@@ -76,6 +100,8 @@ class BuildConfig:
             raymake_version=raymake_version,
             manylinux_version=manylinux_version,
             commit=commit,
+            no_java=no_java,
+            no_dashboard=no_dashboard,
         )
 
     @staticmethod
@@ -94,6 +120,12 @@ class WheelBuilder:
         if not shutil.which("raymake"):
             raise BuildError("raymake not found. Run via ./build-wheel.sh")
 
+        excluded = []
+        if self.config.no_java:
+            excluded.append("java")
+        if self.config.no_dashboard:
+            excluded.append("dashboard")
+
         log.info("Build configuration:")
         summary = {
             "Python": self.config.python_version,
@@ -101,6 +133,7 @@ class WheelBuilder:
             "Commit": self.config.commit,
             "Raymake": self.config.raymake_version,
             "Manylinux": self.config.manylinux_version,
+            "Excluded": ", ".join(excluded) if excluded else "none",
             "Ray Root": self.config.ray_root,
             "Output Dir": self.config.output_dir,
         }
@@ -156,6 +189,19 @@ def main():
         help="Directory to store wheels (default: .whl)",
     )
 
+    parser.add_argument(
+        "--no-java",
+        action="store_true",
+        default=False,
+        help="Build wheel without Java JARs",
+    )
+    parser.add_argument(
+        "--no-dashboard",
+        action="store_true",
+        default=False,
+        help="Build wheel without the dashboard",
+    )
+
     if len(sys.argv) == 1:
         parser.print_help()
         sys.exit(0)
@@ -164,7 +210,12 @@ def main():
 
     try:
         builder = WheelBuilder(
-            BuildConfig.from_env(args.python_version, args.output_dir)
+            BuildConfig.from_env(
+                args.python_version,
+                args.output_dir,
+                no_java=args.no_java,
+                no_dashboard=args.no_dashboard,
+            )
         )
         output_dir = builder.config.output_dir
         if output_dir.exists():

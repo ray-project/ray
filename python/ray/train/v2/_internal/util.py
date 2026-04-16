@@ -290,7 +290,7 @@ async def wait_with_logging(
     predicate: Optional[Callable[[], bool]] = None,
     generate_warning_message: Optional[Callable[[], str]] = None,
     warn_interval_s: float = 60,
-    timeout_s: float = -1,
+    timeout_s: Optional[float] = None,
 ):
     """Waits for condition to be notified, logging warnings and eventually timing out.
 
@@ -303,7 +303,7 @@ async def wait_with_logging(
         generate_warning_message: A function that generates the warning message to log.
             If None, no warning is logged.
         warn_interval_s: The interval in seconds to log a warning.
-        timeout_s: The timeout in seconds.
+        timeout_s: The timeout in seconds. Defaults to``None`` to not time out.
     """
 
     async def _wait_loop():
@@ -326,7 +326,7 @@ async def wait_with_logging(
 
     await asyncio.wait_for(
         _wait_loop(),
-        timeout=timeout_s if timeout_s >= 0 else None,
+        timeout=timeout_s,
     )
 
 

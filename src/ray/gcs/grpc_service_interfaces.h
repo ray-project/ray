@@ -140,6 +140,10 @@ class InternalPubSubGcsServiceHandler {
                                 GcsPublishReply *reply,
                                 SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleReportJobError(ReportJobErrorRequest request,
+                                    ReportJobErrorReply *reply,
+                                    SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleGcsSubscriberPoll(GcsSubscriberPollRequest request,
                                        GcsSubscriberPollReply *reply,
                                        SendReplyCallback send_reply_callback) = 0;
@@ -168,10 +172,6 @@ class JobInfoGcsServiceHandler {
                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void AddJobFinishedListener(JobFinishListenerCallback listener) = 0;
-
-  virtual void HandleReportJobError(ReportJobErrorRequest request,
-                                    ReportJobErrorReply *reply,
-                                    SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleGetNextJobID(GetNextJobIDRequest request,
                                   GetNextJobIDReply *reply,

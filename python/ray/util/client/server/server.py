@@ -5,6 +5,7 @@ import inspect
 import json
 import logging
 import math
+import os
 import pickle
 import queue
 import threading
@@ -25,6 +26,7 @@ from ray._private import ray_constants
 from ray._private.client_mode_hook import disable_client_hook
 from ray._private.ray_constants import env_integer
 from ray._private.ray_logging import setup_logger
+from ray._private.ray_logging.logging_config import LoggingConfig
 from ray._private.services import canonicalize_bootstrap_address_or_die
 from ray._raylet import GcsClient
 from ray.job_config import JobConfig
@@ -128,6 +130,13 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 current_job_config = worker.core_worker.get_job_config()
             else:
                 extra_kwargs = json.loads(request.ray_init_kwargs or "{}")
+                # Reconstruct LoggingConfig from dict after InitRequest ray_init_kwargs is parsed from JSON on the server.
+                if "logging_config" in extra_kwargs and isinstance(
+                    extra_kwargs["logging_config"], dict
+                ):
+                    extra_kwargs["logging_config"] = LoggingConfig.from_dict(
+                        extra_kwargs["logging_config"]
+                    )
                 try:
                     self.ray_connect_handler(job_config, **extra_kwargs)
                 except Exception as e:
@@ -264,6 +273,7 @@ class RayletServicer(ray_client_pb2_grpc.RayletDriverServicer):
                 rtc = ray.get_runtime_context()
                 ctx.job_id = ray._common.utils.hex_to_binary(rtc.get_job_id())
                 ctx.node_id = ray._common.utils.hex_to_binary(rtc.get_node_id())
+                ctx.worker_id = ray._common.utils.hex_to_binary(rtc.get_worker_id())
                 ctx.namespace = rtc.namespace
                 ctx.capture_client_tasks = (
                     rtc.should_capture_child_tasks_in_placement_group
@@ -874,12 +884,6 @@ def main():
         help="username for connecting to Redis",
     )
     parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        help="Password for connecting to Redis",
-    )
-    parser.add_argument(
         "--runtime-env-agent-address",
         required=False,
         type=str,
@@ -894,16 +898,15 @@ def main():
         help="The hex ID of this node.",
     )
     args, _ = parser.parse_known_args()
+    redis_password = os.environ.get(ray_constants.RAY_REDIS_PASSWORD_ENV)
     setup_logger(ray_constants.LOGGER_LEVEL, ray_constants.LOGGER_FORMAT)
 
     ray_connect_handler = create_ray_handler(
-        args.address, args.redis_password, args.redis_username
+        args.address, redis_password, args.redis_username
     )
 
     hostport = build_address(args.host, args.port)
     args_str = str(args)
-    if args.redis_password:
-        args_str = args_str.replace(args.redis_password, "****")
     logger.info(f"Starting Ray Client server on {hostport}, args {args_str}")
     if args.mode == "proxy":
         server = serve_proxier(
@@ -911,7 +914,7 @@ def main():
             args.port,
             args.address,
             redis_username=args.redis_username,
-            redis_password=args.redis_password,
+            redis_password=redis_password,
             runtime_env_agent_address=args.runtime_env_agent_address,
             node_id=args.node_id,
         )

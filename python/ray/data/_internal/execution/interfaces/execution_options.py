@@ -34,8 +34,8 @@ class ExecutionResources:
         #       digit, hence we round the values here up to it
         self._cpu: Optional[float] = safe_round(cpu, 5)
         self._gpu: Optional[float] = safe_round(gpu, 5)
-        self._object_store_memory: Optional[float] = safe_round(object_store_memory)
-        self._memory: Optional[float] = safe_round(memory)
+        self._object_store_memory: Optional[float] = safe_round(object_store_memory, 0)
+        self._memory: Optional[float] = safe_round(memory, 0)
 
     @classmethod
     def from_resource_dict(
@@ -411,7 +411,7 @@ def safe_round(
 ) -> Optional[float]:
     if value is None:
         return None
-    elif math.isinf(value):
+    elif ndigits is None or math.isinf(value):
         return value
     else:
         return round(value, ndigits)

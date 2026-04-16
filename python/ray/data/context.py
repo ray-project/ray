@@ -71,6 +71,10 @@ DEFAULT_PANDAS_BLOCK_IGNORE_METADATA = env_bool(
     "RAY_DATA_PANDAS_BLOCK_IGNORE_METADATA", False
 )
 
+DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
+    "RAY_DATA_DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT", True
+)
+
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
@@ -622,6 +626,7 @@ class DataContext:
         enforce_schemas: Whether to enforce schema consistency across dataset operations.
         pandas_block_ignore_metadata: Whether to ignore pandas metadata when converting
             between Arrow and pandas formats for better type inference.
+        batch_to_block_arrow_format: Whether to convert Pandas batches to Arrow blocks by default when calling `BlockAccessor.batch_to_block`.
         gpu_shuffle_num_actors: Number of GPU actors (ranks) for GPU shuffle. Defaults
             to total GPUs available in the cluster.
         gpu_shuffle_rmm_pool_size: RMM GPU memory pool size for each rank. ``"auto"``
@@ -794,6 +799,8 @@ class DataContext:
     enforce_schemas: bool = DEFAULT_ENFORCE_SCHEMAS
 
     pandas_block_ignore_metadata: bool = DEFAULT_PANDAS_BLOCK_IGNORE_METADATA
+
+    batch_to_block_arrow_format: bool = DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT
 
     _checkpoint_config: Optional[CheckpointConfig] = None
 
@@ -984,11 +991,15 @@ class DataContext:
         from ray.data._internal.execution.callbacks.insert_issue_detectors import (
             IssueDetectionExecutionCallback,
         )
+        from ray.data._internal.execution.callbacks.resource_allocator_prometheus_callback import (
+            ResourceAllocatorPrometheusCallback,
+        )
         from ray.data._internal.execution.execution_callback import ExecutionCallback
 
         classes = [
             ExecutionIdxUpdateCallback,
             IssueDetectionExecutionCallback,
+            ResourceAllocatorPrometheusCallback,
         ]
 
         # Parse environment variable for custom callbacks

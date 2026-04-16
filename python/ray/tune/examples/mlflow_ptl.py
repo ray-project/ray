@@ -4,8 +4,8 @@ HPO, and MLflow autologging all together."""
 import os
 import tempfile
 
+import lightning.pytorch as pl
 import mlflow
-import pytorch_lightning as pl
 
 from ray import tune
 from ray.air.integrations.mlflow import setup_mlflow

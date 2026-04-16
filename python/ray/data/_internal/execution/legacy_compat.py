@@ -13,7 +13,6 @@ from ray.data._internal.execution.interfaces.executor import OutputIterator
 from ray.data._internal.execution.streaming_executor_state import Topology
 from ray.data._internal.logical.util import record_operators_usage
 from ray.data._internal.plan import ExecutionPlan
-from ray.data._internal.stats import DatasetStats
 
 logger = logging.getLogger(__name__)
 
@@ -114,7 +113,7 @@ def execute_to_ref_bundle(
     )
     ref_bundle = RefBundle.merge_ref_bundles(bundles)
     # Set the stats UUID after execution finishes.
-    _set_stats_uuid_recursive(executor.get_stats(), dataset_uuid)
+    executor.get_stats().set_uuid_recursive(dataset_uuid)
     return ref_bundle
 
 
@@ -140,10 +139,3 @@ def _execute_dag(
         executor._options.preserve_order = True
 
     return executor.execute(dag, initial_stats=stats, callbacks=callbacks)
-
-
-def _set_stats_uuid_recursive(stats: DatasetStats, dataset_uuid: str) -> None:
-    if not stats.dataset_uuid:
-        stats.dataset_uuid = dataset_uuid
-    for parent in stats.parents or []:
-        _set_stats_uuid_recursive(parent, dataset_uuid)

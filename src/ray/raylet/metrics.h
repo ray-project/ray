@@ -154,6 +154,20 @@ inline ray::stats::Count GetMemoryManagerWorkerEvictionTotalCountMetric() {
   };
 }
 
+inline ray::stats::Count GetNodeManagerUnexpectedWorkerFailureTotalCountMetric() {
+  return ray::stats::Count{
+      /*name=*/"node_manager_unexpected_worker_failure",
+      /*description=*/
+      "Total number of workers that disconnected from the raylet with a SYSTEM_ERROR "
+      "exit type. "
+      "This disconnect typically indicates that the worker process has unexpectedly "
+      "failed "
+      "due to either a ray system error or a kernel kill (e.g. OOM, SIGKILL).",
+      /*unit=*/"",
+      /*tag_keys=*/{"Type", "Name"},
+  };
+}
+
 inline ray::stats::Sum GetNumWorkersStartedMetric() {
   return ray::stats::Sum{
       /*name=*/"internal_num_processes_started",

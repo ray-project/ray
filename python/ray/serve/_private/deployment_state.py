@@ -5723,6 +5723,16 @@ class DeploymentStateManager:
             if deployment_state._replicas.count(states=[ReplicaState.STOPPING]) > 0:
                 continue
 
+            # Skip if deployment actors are configured but not yet ready.
+            # scale_deployment_replicas() defers replica creation until actors
+            # are ready, so PGs created here would be orphaned. Orphaned PGs
+            # accumulate every tick (~100ms) and consume cluster resources.
+            if (
+                deployment_state._get_deployment_actors_configs()
+                and not deployment_state._deployment_actors_satisfied_for_target()
+            ):
+                continue
+
             replica_config = deployment_state._target_state.info.replica_config
             gang_requests[deployment_id] = GangPlacementGroupRequest(
                 deployment_id=deployment_id,

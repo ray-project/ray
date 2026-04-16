@@ -1,4 +1,5 @@
 import atexit
+import dataclasses
 import faulthandler
 import functools
 import inspect
@@ -1693,6 +1694,14 @@ def init(
                 # builder
                 passed_kwargs[argument_name] = passed_value
         passed_kwargs.update(kwargs)
+
+        # Convert LoggingConfig to dict before client sends it over JSON
+        if "logging_config" in passed_kwargs and isinstance(
+            passed_kwargs["logging_config"], LoggingConfig
+        ):
+            lc = passed_kwargs["logging_config"]
+            passed_kwargs["logging_config"] = dataclasses.asdict(lc)
+
         builder._init_args(**passed_kwargs)
         ctx = builder.connect()
         from ray._common.usage import usage_lib
@@ -2039,21 +2048,6 @@ def init(
 
     for hook in _post_init_hooks:
         hook()
-
-    # Check and show accelerator override warning during driver initialization
-    from ray._private.ray_constants import env_bool
-
-    override_on_zero = env_bool(
-        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
-        True,
-    )
-    if override_on_zero and log_once("ray_accel_env_var_override_on_zero"):
-        warnings.warn(
-            "Tip: In future versions of Ray, Ray will no longer override accelerator "
-            "visible devices env var if num_gpus=0 or num_gpus=None (default). To enable "
-            "this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0",
-            FutureWarning,
-        )
 
     # Check for Pydantic v1 and emit deprecation warning
     from ray._common.pydantic_compat import PYDANTIC_MAJOR_VERSION

@@ -213,7 +213,7 @@ def main() -> None:
         parser.error("--model is required (except for -i --client mode)")
 
     if args.smoke:
-        from ray.llm._internal.serve.benchmark.multiturn_bench import run_smoke
+        from ray.llm._internal.serve.benchmark.runners import run_smoke
 
         sys.exit(run_smoke(args))
     elif args.interactive:
@@ -221,7 +221,7 @@ def main() -> None:
 
         sys.exit(run_interactive_server(args))
     elif args.concurrency or args.request_rate:
-        from ray.llm._internal.serve.benchmark.multiturn_bench import run_direct
+        from ray.llm._internal.serve.benchmark.runners import run_direct
 
         sys.exit(run_direct(args))
     else:

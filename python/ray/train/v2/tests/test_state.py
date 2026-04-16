@@ -300,7 +300,10 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
 
     # Create TrainStateActor with interesting runs and run attempts.
     # NOTE: TrainStateActor will poll for real but its updates are idempotent.
-    actor = TrainStateActor(enable_state_actor_reconciliation=True)
+    actor = TrainStateActor(
+        enable_state_actor_reconciliation=True,
+        controllers_to_poll_per_iteration=5,
+    )
     finished_controller_run = create_mock_train_run(
         status=RunStatus.FINISHED,
         controller_actor_id="finished_controller_id",

@@ -4,7 +4,13 @@ from typing import Dict
 
 import numpy as np
 import torch
-from benchmark import Benchmark, BenchmarkMetric
+from benchmark import (
+    Benchmark,
+    BenchmarkMetric,
+    RuntimeEnvSetupTracker,
+    collect_dataset_stats,
+    benchmark_py_modules,
+)
 from torchvision.models import ResNet50_Weights, resnet50
 
 import ray
@@ -143,6 +149,7 @@ def main(args):
         print(f"Total chaos killed: {dead_nodes}")
 
     # For structured output integration with internal tooling
+    results = collect_dataset_stats(ds)
     results = {
         BenchmarkMetric.RUNTIME: total_time,
         BenchmarkMetric.THROUGHPUT: throughput,
@@ -151,13 +158,14 @@ def main(args):
         "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
         "throughput_images_s_wo_metadata_fetch": throughput_without_metadata_fetch,
     }
+    results["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
 
     return results
 
 
 if __name__ == "__main__":
     args = parse_args()
-
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     benchmark = Benchmark()
     benchmark.run_fn("batch-inference", main, args)
     benchmark.write_result()

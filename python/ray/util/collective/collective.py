@@ -11,49 +11,48 @@ import numpy as np
 import ray
 from . import types
 from ray._common.network_utils import find_free_port, is_ipv6
+from ray.util.collective.backend_registry import (
+    _global_registry,
+    register_collective_backend,
+)
 
 logger = logging.getLogger(__name__)
 
 try:
     from ray.util.collective.collective_group.nccl_collective_group import NCCLGroup
 
-    _NCCL_AVAILABLE = True
-    _LOG_NCCL_WARNING = False
+    register_collective_backend("NCCL", NCCLGroup)
 except ImportError:
-    _NCCL_AVAILABLE = False
-    _LOG_NCCL_WARNING = True
-
+    pass
 
 try:
     from ray.util.collective.collective_group.torch_gloo_collective_group import (
         TorchGLOOGroup,
     )
 
-    _TORCH_DISTRIBUTED_AVAILABLE = True
+    register_collective_backend("GLOO", TorchGLOOGroup)
 except ImportError:
-    _TORCH_DISTRIBUTED_AVAILABLE = False
+    pass
 
 
 def nccl_available():
-    global _LOG_NCCL_WARNING
-    if ray.get_gpu_ids() and _LOG_NCCL_WARNING:
-        logger.warning(
-            "NCCL seems unavailable. Please install Cupy "
-            "following the guide at: "
-            "https://docs.cupy.dev/en/stable/install.html."
-        )
-        _LOG_NCCL_WARNING = False
-    return _NCCL_AVAILABLE
+    return is_backend_available("NCCL")
 
 
 def gloo_available():
-    # Since we use torch_gloo as the backend for Gloo,
-    # we can just return the availability of torch.distributed.
-    return _TORCH_DISTRIBUTED_AVAILABLE
+    return is_backend_available("GLOO")
 
 
-def torch_distributed_available():
-    return _TORCH_DISTRIBUTED_AVAILABLE
+def is_backend_available(backend: str) -> bool:
+    """Check if a collective backend is available.
+
+    Args:
+        backend: The name of the backend to check (e.g., "NCCL", "GLOO").
+
+    Returns:
+        True if the backend is available, False otherwise.
+    """
+    return _global_registry.check(backend)
 
 
 def get_address_and_port() -> Tuple[str, int]:
@@ -73,27 +72,31 @@ class GroupManager(object):
 
     def __init__(self):
         self._name_group_map = {}
+        self._registry = _global_registry
 
     def create_collective_group(
-        self, backend, world_size, rank, group_name, gloo_timeout
+        self, backend, world_size, rank, group_name, gloo_timeout=None
     ):
         """The entry to create new collective groups in the manager.
 
         Put the registration and the group information into the manager
         metadata as well.
         """
-        backend = types.Backend(backend)
-        if backend == types.Backend.GLOO:
+        backend = backend.upper()
+        backend_cls = self._registry.get(backend)
+
+        if not backend_cls.check_backend_availability():
+            raise RuntimeError(
+                f"Backend {backend} is not available. Please check the installation."
+            )
+
+        if backend == "GLOO":
             logger.debug(
                 "Creating torch.distributed GLOO group: '{}'...".format(group_name)
             )
-            g = TorchGLOOGroup(world_size, rank, group_name, gloo_timeout)
-        elif backend == types.Backend.NCCL:
-            _check_backend_availability(backend)
-            logger.debug("Creating NCCL group: '{}'...".format(group_name))
-            g = NCCLGroup(world_size, rank, group_name)
+            g = backend_cls(world_size, rank, group_name, gloo_timeout)
         else:
-            raise RuntimeError(f"Unexpected backend: {backend}")
+            g = backend_cls(world_size, rank, group_name)
 
         self._name_group_map[group_name] = g
         return self._name_group_map[group_name]
@@ -146,7 +149,7 @@ def is_group_initialized(group_name):
 def init_collective_group(
     world_size: int,
     rank: int,
-    backend=types.Backend.NCCL,
+    backend: types.Backend = types.Backend.NCCL,
     group_name: str = "default",
     gloo_timeout: int = 30000,
 ):
@@ -162,8 +165,7 @@ def init_collective_group(
         None
     """
     _check_inside_actor()
-    backend = types.Backend(backend)
-    _check_backend_availability(backend)
+
     global _group_mgr
     global _group_mgr_lock
 
@@ -173,7 +175,7 @@ def init_collective_group(
 
     with _group_mgr_lock:
         if _group_mgr.is_group_exist(group_name):
-            raise RuntimeError("Trying to initialize a group twice.")
+            raise RuntimeError("Trying to initialize a group a second time.")
 
         assert world_size > 0
         assert rank >= 0
@@ -205,8 +207,6 @@ def create_collective_group(
     Returns:
         None
     """
-    backend = types.Backend(backend)
-    _check_backend_availability(backend)
 
     name = "info_" + group_name
     try:
@@ -236,6 +236,19 @@ def create_collective_group(
         raise RuntimeError("Ranks must be non-negative.")
     if not all(ranks) < world_size:
         raise RuntimeError("Ranks cannot be greater than world_size.")
+
+    # Check if backend is registered and available
+    backend_upper = backend.upper()
+    if not _global_registry.is_registered(backend_upper):
+        raise RuntimeError(
+            f"Backend {backend_upper} is not registered. "
+            f"Please register it using register_collective_backend('{backend_upper}', YourBackendClass)."
+        )
+    if not _global_registry.check(backend_upper):
+        raise RuntimeError(
+            f"Backend {backend_upper} is registered but not available. "
+            f"Please check the installation requirements for this backend."
+        )
 
     # avoid a circular dependency
     from ray.util.collective.util import Info
@@ -751,7 +764,7 @@ def get_group_handle(group_name: str = "default"):
                     rank = int(os.environ["collective_rank"])
                     world_size = int(os.environ["collective_world_size"])
                     backend = os.environ["collective_backend"]
-                    gloo_timeout = os.getenv("collective_gloo_timeout", 30000)
+                    gloo_timeout = int(os.getenv("collective_gloo_timeout", 30000))
                     _group_mgr.create_collective_group(
                         backend, world_size, rank, group_name, gloo_timeout
                     )
@@ -778,17 +791,6 @@ def _check_single_tensor_input(tensor):
         "Unrecognized tensor type '{}'. Supported types are: "
         "np.ndarray, torch.Tensor, cupy.ndarray.".format(type(tensor))
     )
-
-
-def _check_backend_availability(backend: types.Backend):
-    """Check whether the backend is available."""
-    if backend == types.Backend.GLOO:
-        # Now we have deprecated pygloo, and use torch_gloo in all cases.
-        if not torch_distributed_available():
-            raise RuntimeError("torch.distributed is not available.")
-    elif backend == types.Backend.NCCL:
-        if not nccl_available():
-            raise RuntimeError("NCCL is not available.")
 
 
 def _check_inside_actor():

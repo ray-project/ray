@@ -304,6 +304,7 @@ class TestUseCpuLogic:
             use_cpu=True,
         )
         assert llm_config_cpu.use_cpu is True
+        assert llm_config_cpu.use_gpu is False
         engine_config = llm_config_cpu.get_engine_config()
         assert engine_config.use_gpu is False
 
@@ -313,19 +314,67 @@ class TestUseCpuLogic:
             use_cpu=False,
         )
         assert llm_config_gpu.use_cpu is False
+        assert llm_config_gpu.use_gpu is True
         engine_config_gpu = llm_config_gpu.get_engine_config()
         assert engine_config_gpu.use_gpu is True
 
-    def test_use_cpu_precedence_over_accelerator_type(self):
-        """Test that explicit use_cpu setting takes precedence over accelerator_type."""
-        # use_cpu=True should override GPU accelerator_type
-        llm_config_cpu_override = LLMConfig(
+    def test_accelerator_type_with_use_cpu_raises_error(self):
+        """Test that accelerator_type with use_cpu=True raises a validation error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                use_cpu=True,
+                accelerator_type="L4",
+            )
+
+    def test_accelerator_type_with_cpu_only_placement_group_raises_error(self):
+        """Test that accelerator_type with CPU-only placement_group_config raises error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={"bundles": [{"CPU": 4}]},
+            )
+
+    def test_accelerator_type_with_empty_bundles_raises_error(self):
+        """Test that accelerator_type with empty bundles list raises error."""
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="accelerator_type='L4' cannot be used with CPU-only configurations",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(model_id="test_model"),
+                accelerator_type="L4",
+                placement_group_config={"bundles": []},
+            )
+
+    def test_accelerator_type_with_gpu_placement_group_succeeds(self):
+        """Test that accelerator_type with GPU-containing placement_group_config succeeds."""
+        llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            use_cpu=True,
-            accelerator_type="L4",  # GPU type but use_cpu=True should take precedence
+            accelerator_type="L4",
+            placement_group_config={"bundles": [{"GPU": 1, "CPU": 4}]},
         )
-        engine_config = llm_config_cpu_override.get_engine_config()
-        assert engine_config.use_gpu is False  # use_cpu=True takes precedence
+        assert llm_config.accelerator_type == "L4"
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.use_gpu is True
+
+    def test_accelerator_type_with_use_cpu_false_succeeds(self):
+        """Test that accelerator_type with use_cpu=False succeeds."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="L4",
+            use_cpu=False,
+        )
+        assert llm_config.accelerator_type == "L4"
+        engine_config = llm_config.get_engine_config()
+        assert engine_config.use_gpu is True
 
 
 if __name__ == "__main__":

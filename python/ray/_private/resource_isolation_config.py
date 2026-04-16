@@ -63,6 +63,7 @@ class ResourceIsolationConfig:
         self.cgroup_path = cgroup_path
         self.system_reserved_memory = system_reserved_memory
         self.system_pids = ""
+        self.object_store_memory = object_store_memory
 
         # cgroupv2 cpu.weight calculated from system_reserved_cpu assumes ray uses all available cores.
         self.system_reserved_cpu_weight: int = None
@@ -287,7 +288,7 @@ class ResourceIsolationConfig:
         total_system_reserved_memory = system_reserved_memory + object_store_memory
         if total_system_reserved_memory > available_system_memory:
             raise ValueError(
-                f"The total requested system_reserved_memory={total_system_reserved_memory} is greater than "
-                f"the amount of memory available={available_system_memory}."
+                f"The total requested system_reserved_memory={total_system_reserved_memory} (including object store memory) "
+                f"is greater than the amount of memory available={available_system_memory}."
             )
         return total_system_reserved_memory

@@ -24,7 +24,7 @@ apt-get install -y --no-install-recommends \
     zlib1g-dev
 
 # Install HAProxy from source
-HAPROXY_VERSION="2.8.12"
+HAPROXY_VERSION="2.8.20"
 HAPROXY_BUILD_DIR=$(mktemp -d)
 curl -sSfL -o "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
@@ -88,7 +88,6 @@ APT_PKGS=(
     gnupg
 
     # For HAProxy
-    socat
     liblua5.3-0
 )
 
@@ -104,13 +103,14 @@ chown -R ray:"$(id -gn ray)" /run/haproxy
 EOF
 
 COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
 
 USER $RAY_UID
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
-COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
+COPY --chown=ray "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
+COPY --chown=ray "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]
 

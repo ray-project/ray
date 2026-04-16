@@ -23,6 +23,7 @@ from ray._private.ray_constants import (
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
     KV_NAMESPACE_DASHBOARD,
+    RAY_DASHBOARD_ENABLE_PROFILING,
     env_integer,
 )
 from ray.autoscaler._private.commands import debug_status
@@ -81,6 +82,26 @@ class ReportHead(SubprocessModule):
         self.cluster_metadata = None
 
         self._health_checker = HealthChecker(self.gcs_client)
+
+    def _profiling_disabled_response(self) -> aiohttp.web.Response:
+        return aiohttp.web.Response(
+            status=403,
+            text=(
+                "Profiling is disabled by default for security reasons. "
+                "To enable profiling, set the environment variable "
+                "RAY_DASHBOARD_ENABLE_PROFILING=1 on the Ray head node. "
+                "See https://docs.ray.io/en/latest/ray-observability/"
+                "user-guides/profiling.html for details."
+            ),
+        )
+
+    @routes.get("/api/profiling_enabled")
+    async def profiling_enabled(self, req: aiohttp.web.Request) -> aiohttp.web.Response:
+        return dashboard_optional_utils.rest_response(
+            status_code=dashboard_utils.HTTPStatusCode.OK,
+            message="",
+            profiling_enabled=RAY_DASHBOARD_ENABLE_PROFILING,
+        )
 
     @routes.get("/api/v0/cluster_metadata")
     async def get_cluster_metadata(self, req):
@@ -237,6 +258,8 @@ class ReportHead(SubprocessModule):
             ValueError: If the worker begins working on another task during the traceback retrieval.
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the traceback retrieval.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
         if "attempt_number" not in req.query:
@@ -328,6 +351,8 @@ class ReportHead(SubprocessModule):
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
             aiohttp.web.HTTPInternalServerError: If the CPU Flame Graph information for the task is not found.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
         if "task_id" not in req.query:
             raise ValueError("task_id is required")
         if "attempt_number" not in req.query:
@@ -416,6 +441,8 @@ class ReportHead(SubprocessModule):
             ip or node_id: Required. The IP address or hex ID of the node.
 
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
         pid = req.query.get("pid")
         ip = req.query.get("ip")
         node_id_hex = req.query.get("node_id")
@@ -473,6 +500,8 @@ class ReportHead(SubprocessModule):
             ValueError: If duration exceeds 60 seconds.
             aiohttp.web.HTTPInternalServerError: If there is an internal server error during the profile retrieval.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
         pid = req.query.get("pid")
         ip = req.query.get("ip")
         node_id_hex = req.query.get("node_id")
@@ -555,6 +584,8 @@ class ReportHead(SubprocessModule):
                     For example, trying to profile a non-Torch training process will
                     result in an error.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
 
         pid = req.query.get("pid")
         ip = req.query.get("ip")
@@ -646,6 +677,8 @@ class ReportHead(SubprocessModule):
             aiohttp.web.HTTPInternalServerError: If there is
                 an internal server error during the profile retrieval.
         """
+        if not RAY_DASHBOARD_ENABLE_PROFILING:
+            return self._profiling_disabled_response()
         is_task = "task_id" in req.query
 
         # Either is_task or not, we need to get ip and grpc_port.

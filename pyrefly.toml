@@ -32,6 +32,7 @@ ignore-missing-imports = [
     "mcap.*",
     "modin.*",
     "numpy.*",
+    "obstore.*",
     "pandas.*",
     "polars.*",
     "psutil.*",

@@ -196,7 +196,7 @@ def binary_to_task_id(binary_task_id):
     return ray.TaskID(binary_task_id)
 
 
-# TODO(qwang): Remove these hepler functions
+# TODO(qwang): Remove these helper functions
 # once we separate `WorkerID` from `UniqueID`.
 def compute_job_id_from_driver(driver_id):
     assert isinstance(driver_id, ray.WorkerID)
@@ -278,7 +278,7 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     original_visible_accelerator_env_vars = {}
     override_on_zero = env_bool(
         ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
-        True,
+        False,
     )
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_accelerator_ids().items()
@@ -699,7 +699,7 @@ def check_oversized_function(
 
 
 def is_main_thread():
-    return threading.current_thread().getName() == "MainThread"
+    return threading.current_thread().name == "MainThread"
 
 
 def detect_fate_sharing_support_win32():

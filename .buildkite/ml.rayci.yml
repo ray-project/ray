@@ -1,7 +1,7 @@
 group: ml tests
 depends_on:
   - forge
-  - ray-core-build
+  - ray-core-build(*)
   - ray-dashboard-build
 steps:
   # builds
@@ -30,8 +30,14 @@ steps:
       - "3.12"
     tags: cibase
 
-  - name: mllightning2gpubuild
-    wanda: ci/docker/mllightning2gpu.build.wanda.yaml
+  - name: mllightning1gpubuild
+    wanda: ci/docker/ml.build.wanda.yaml
+    env:
+      PYTHON: "3.10"
+      BASE_TYPE: "gpu"
+      BUILD_VARIANT: "lightning1gpubuild"
+      RAYCI_IS_GPU_BUILD: "true"
+    tags: cibase
     depends_on: oss-ci-base_gpu-multipy
 
   - name: mlgpubuild-multipy
@@ -285,16 +291,16 @@ steps:
         --skip-ray-installation
     depends_on: [ "mlbuild-multipy", "forge" ]
 
-  - label: ":train: ml: train gpu lightning 2.0 tests"
+  - label: ":train: ml: lightning 1.x compatibility tests"
     tags:
       - train_gpu
       - gpu
     instance_type: gpu-large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml
-        --build-name mllightning2gpubuild --python-version 3.10
-        --only-tags ptl_v2
-    depends_on: [ "mllightning2gpubuild", "forge" ]
+        --build-name mllightning1gpubuild-py3.10 --python-version 3.10
+        --only-tags ptl_v1
+    depends_on: [ "mllightning1gpubuild", "forge" ]
 
   - label: ":train: ml: flaky tests"
     key: ml_flaky_tests

@@ -71,6 +71,7 @@ GPTQ
 GPU(s)?
 hostfile
 http
+HAProxy
 HTTP
 Karpenter
 KServe
@@ -135,7 +136,7 @@ superset
 teardown
 tiktoken
 TPU(s)?
-tokenization
+[Tt]okenization
 uncaptured
 URI(s)?
 UUID

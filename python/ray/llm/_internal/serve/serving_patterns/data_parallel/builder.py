@@ -25,15 +25,20 @@ def build_dp_deployment(
     llm_config: LLMConfig,
     *,
     name_prefix: Optional[str] = None,
+    bind_kwargs: Optional[dict] = None,
     override_serve_options: Optional[dict] = None,
+    deployment_cls: Optional[type] = None,
 ) -> Application:
     """Build a data parallel attention LLM deployment.
 
     Args:
         llm_config: The LLM configuration.
         name_prefix: The prefix to add to the deployment name.
+        bind_kwargs: Optional extra kwargs to pass to the deployment constructor.
+            Used by PD disaggregation to inject prefill_server handles.
         override_serve_options: The optional serve options to override the
             default options.
+        deployment_cls: Optional deployment class to use. Defaults to DPServer.
 
     Returns:
         The Ray Serve Application for the data parallel attention LLM deployment.
@@ -41,8 +46,9 @@ def build_dp_deployment(
     return build_llm_deployment(
         llm_config,
         name_prefix=name_prefix,
+        bind_kwargs=bind_kwargs,
         override_serve_options=override_serve_options,
-        deployment_cls=DPServer,
+        deployment_cls=deployment_cls or DPServer,
     )
 
 

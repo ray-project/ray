@@ -2,7 +2,7 @@ import pytest
 import torch
 
 import ray
-from ray.train import ScalingConfig
+from ray.train import RunConfig, ScalingConfig
 from ray.train.constants import TORCH_PROCESS_GROUP_SHUTDOWN_TIMEOUT_S
 from ray.train.examples.pytorch.torch_linear_example import (
     train_func as linear_train_func,
@@ -10,6 +10,8 @@ from ray.train.examples.pytorch.torch_linear_example import (
 from ray.train.torch import TorchConfig, TorchTrainer
 from ray.train.torch.config import _is_backend_nccl
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
+from ray.train.v2.api.config import FailureConfig
+from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.train.v2.torch.torchft_config import TorchftConfig
 
 
@@ -152,6 +154,72 @@ def test_torchft_linear(ray_start_4_cpus):
     assert len(weights) == 2
     assert weights[0]["weight"] == pytest.approx(weights[1]["weight"], abs=1e-4)
     assert weights[0]["bias"] == pytest.approx(weights[1]["bias"], abs=1e-4)
+
+
+# TODO(tseah): Add test for lighthouse failures (e.g. lighthouse unreachable).
+
+
+@pytest.mark.skip(reason="TODO(tseah): enable this after CI has torchft dependencies")
+@pytest.mark.parametrize(
+    "min_replicas,max_failures,expect_error,expected_train_fn_calls",
+    [
+        # TODO(tseah): enable this after we have elastic training + torchft.
+        # (1, 0, False, 2),
+        (1, 1, False, 3),
+        (2, 0, True, 2),
+        (2, 1, False, 3),
+    ],
+)
+def test_torchft_linear_replica_failure(
+    ray_start_4_cpus, min_replicas, max_failures, expect_error, expected_train_fn_calls
+):
+    """Test torchft linear training behavior when a replica fails mid-training."""
+
+    from ray.train.v2.examples.pytorch.torchft_linear_example import (
+        train_func as torchft_linear_train_func,
+    )
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def increment(self):
+            self.count += 1
+            return self.count
+
+        def get_count(self):
+            return self.count
+
+    counter = Counter.remote()
+
+    def train_fn(config):
+        counter.increment.remote()
+        return torchft_linear_train_func(config)
+
+    trainer = TorchTrainer(
+        train_loop_per_worker=train_fn,
+        train_loop_config={
+            "num_steps": 20,
+            "error_step": 10,
+            "error_rank": 0,
+            "num_replicas": min_replicas,
+        },
+        scaling_config=ScalingConfig(num_workers=2),
+        torch_config=TorchftConfig(
+            backend="gloo", lighthouse_kwargs={"min_replicas": min_replicas}
+        ),
+        run_config=RunConfig(failure_config=FailureConfig(max_failures=max_failures)),
+    )
+    if expect_error:
+        with pytest.raises(WorkerGroupError):
+            trainer.fit()
+    else:
+        result = trainer.fit()
+        assert result.error is None
+    # Fewer train_fn calls indicate partial worker group restarts.
+    assert ray.get(counter.get_count.remote()) == expected_train_fn_calls
+    # TODO(tseah): Verify reporting and loading checkpoint after report is fixed.
 
 
 def test_is_backend_nccl():

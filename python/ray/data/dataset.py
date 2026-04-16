@@ -29,7 +29,10 @@ import ray.cloudpickle as pickle
 from ray._common.usage import usage_lib
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
-from ray.data._internal.dataset_repr import _build_dataset_ascii_repr
+from ray.data._internal.dataset_repr import (
+    build_dataset_ascii_repr,
+    build_dataset_summary_repr,
+)
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.clickhouse_datasink import (
     ClickHouseDatasink,
@@ -93,6 +96,7 @@ from ray.data._internal.util import (
     AllToAllAPI,
     ConsumptionAPI,
     _validate_rows_per_file_args,
+    explain_plan,
     get_compute_strategy,
     merge_resources_to_ray_remote_args,
 )
@@ -117,6 +121,7 @@ from ray.data.block import (
     _apply_batch_format,
     _take_first_non_empty_schema,
 )
+from ray.data.collate_fn import CollateFn
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider, SaveMode
 from ray.data.datasource.datasink import WriteResult, _gen_datasink_write_result
@@ -136,6 +141,7 @@ from ray.widgets.util import repr_with_fallback
 if TYPE_CHECKING:
     import daft
     import dask
+    import jax
     import mars
     import modin
     import pandas
@@ -5997,13 +6003,127 @@ class Dataset:
         )
 
     @ConsumptionAPI
+    @PublicAPI(stability="alpha")
+    def iter_jax_batches(
+        self,
+        *,
+        prefetch_batches: int = 1,
+        batch_size: int = 256,
+        dtypes: Optional[
+            Union["jax.typing.DTypeLike", Dict[str, "jax.typing.DTypeLike"]]
+        ] = None,
+        collate_fn: Optional[CollateFn] = None,
+        drop_last: bool = False,
+        local_shuffle_buffer_size: Optional[int] = None,
+        local_shuffle_seed: Optional[int] = None,
+        synchronize_batches: bool = False,
+        paddings: Optional[
+            Union[int, float, bool, Dict[str, Union[int, float, bool]]]
+        ] = None,
+    ) -> Iterable[Any]:
+        """Return an iterable over batches of data represented as JAX arrays.
+
+        This iterable yields batches of type ``Union["jax.Array", Dict[str, "jax.Array"]]``.
+        The returned batches will be the global view of the 1D data parallel JAX arrays (sharded along
+        the batch dimension) put on all the jax devices.
+        Data types are inferred from the underlying NumPy arrays,
+        unless specified via ``dtypes``.
+        For more flexibility, call :meth:`~Dataset.iter_batches` and manually convert
+        your data to JAX arrays.
+
+        .. note::
+            The returned JAX Arrays are sharded using an internal 1D mesh created by
+            Ray Data. If you are using these arrays within a `jax.set_mesh` context that
+            defines a different mesh (e.g., a multi-dimensional mesh or a different device
+            ordering), JAX may perform an implicit resharding (communication) when
+            the arrays are first used in a JAX operation. To minimize this overhead,
+            ensure your training loop's device ordering aligns with the one produced
+            by `jax.experimental.mesh_utils.create_device_mesh`.
+
+        Examples:
+
+            .. testcode::
+
+                import ray
+
+                ds = ray.data.read_csv("s3://anonymous@air-example-data/iris.csv")
+
+                jax_dataset = ds.iter_jax_batches(batch_size=2)
+                for batch in jax_dataset:
+                    print(batch["sepal length (cm)"], batch["target"])
+                    break
+
+            .. testoutput::
+                :options: +MOCK
+
+                [5.1 4.9] [0 0]
+
+        Args:
+            prefetch_batches: The number of batches to fetch ahead. Defaults to 1.
+            batch_size: The number of rows in each batch. Must be divisible
+                by the number of local devices. Defaults to 256.
+            dtypes: The JAX dtype(s) for the created array(s); if None, the dtype
+                will be inferred from the NumPy ndarray data.
+            collate_fn: [Alpha] A function to customize how data batches are collated
+                before being passed to the model. This is useful for last-mile data
+                formatting such as padding, masking, or packaging tensors into custom
+                data structures. The input to `collate_fn` may be:
+
+                1. pyarrow.Table, where you should provide a callable class that
+                   subclasses `ArrowBatchCollateFn` (recommended for best performance).
+                2. Dict[str, np.ndarray], where you should provide a callable class that
+                   subclasses `NumpyBatchCollateFn`
+                3. pd.DataFrame, where you should provide a callable class that
+                   subclasses `PandasBatchCollateFn`
+
+                The output must be a `np.ndarray` or `Dict[str, np.ndarray]`, and will be
+                automatically sharded across JAX-addressable devices.
+                Note: This function is called in a multi-threaded context; avoid using
+                thread-unsafe code.
+            drop_last: Whether to drop the last batch if it's incomplete. Defaults to False.
+            local_shuffle_buffer_size: If not ``None``, the data is randomly shuffled
+                using a local in-memory shuffle buffer, and this value serves as the
+                minimum number of rows that must be in the local in-memory shuffle
+                buffer in order to yield a batch. When there are no more rows to add to
+                the buffer, the remaining rows in the buffer are drained.
+                ``batch_size`` must also be specified when using local shuffling.
+            local_shuffle_seed: The seed to use for the local random shuffle.
+            synchronize_batches: Whether to synchronize batch shapes across all hosts.
+                Setting this to False can improve performance if you guarantee that all
+                hosts produce identical batch shapes and counts beforehand.
+                Setting this to True can help catch bugs where different hosts
+                produce different batch shapes.
+            paddings: The value to use for padding the last batch to `batch_size`.
+                If a dictionary is provided, it must map column names to padding values.
+                If not None, uneven batches will be padded with this value.
+                Must be castable to the user-provided dtypes.
+
+        Returns:
+            An iterable over JAX Array batches.
+
+        """  # noqa: E501
+        return self.iterator().iter_jax_batches(
+            prefetch_batches=prefetch_batches,
+            batch_size=batch_size,
+            dtypes=dtypes,
+            collate_fn=collate_fn,
+            drop_last=drop_last,
+            local_shuffle_buffer_size=local_shuffle_buffer_size,
+            local_shuffle_seed=local_shuffle_seed,
+            synchronize_batches=synchronize_batches,
+            paddings=paddings,
+        )
+
+    @ConsumptionAPI
     @Deprecated
     def iter_tf_batches(
         self,
         *,
         prefetch_batches: int = 1,
         batch_size: Optional[int] = 256,
-        dtypes: Optional[Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]] = None,
+        dtypes: Optional[
+            Union["tf.dtypes.DType", Dict[str, "tf.dtypes.DType"]]
+        ] = None,  # noqa: F821
         drop_last: bool = False,
         local_shuffle_buffer_size: Optional[int] = None,
         local_shuffle_seed: Optional[int] = None,
@@ -6793,27 +6913,45 @@ class Dataset:
             +- InputDataBuffer[Input]
             <BLANKLINE>
         """
-        print(self._plan.explain())
+        print(explain_plan(self._logical_plan))
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
         return self._plan.stats().to_summary()
 
     @DeveloperAPI
-    def get_stats_summary(self) -> DatasetStatsSummary:
+    def get_stats_summary(self, detail: bool = False) -> DatasetStatsSummary:
         """Get stats summary from dataset, handling both streaming and plan stats.
 
         After materialize() with streaming execution, stats are stored in
         _current_executor. This method returns the correct stats summary
         regardless of execution mode.
 
+        Args:
+            detail: If True, also collect scheduling overhead statistics
+                via the Ray State API.
+
         Returns:
             DatasetStatsSummary object containing execution statistics.
         """
         if self._current_executor:
-            return self._current_executor.get_stats().to_summary()
+            summary = self._current_executor.get_stats().to_summary()
         elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
-            return self._write_ds.get_stats_summary()
-        return self._plan.stats().to_summary()
+            summary = self._write_ds.get_stats_summary(detail=detail)
+        else:
+            summary = self._plan.stats().to_summary()
+
+        if detail:
+            from ray.data._internal.scheduling_overhead import (
+                collect_scheduling_overhead,
+            )
+
+            op_names = [op.operator_name for op in summary.operators_stats]
+            overhead_by_op = collect_scheduling_overhead(op_names)
+            for op in summary.operators_stats:
+                if op.operator_name in overhead_by_op:
+                    op.scheduling_overhead = overhead_by_op[op.operator_name]
+
+        return summary
 
     @ConsumptionAPI(pattern="Examples:")
     @DeveloperAPI
@@ -7149,10 +7287,10 @@ class Dataset:
     def _tabular_repr(self) -> str:
         schema = self.schema(fetch_if_missing=False)
         if schema is None or not isinstance(schema, Schema):
-            return self._plan.get_plan_as_string(self)
+            return build_dataset_summary_repr(self)
 
         is_materialized = isinstance(self, MaterializedDataset)
-        return _build_dataset_ascii_repr(self, schema, is_materialized)
+        return build_dataset_ascii_repr(self, schema, is_materialized)
 
     def __str__(self) -> str:
         return repr(self)

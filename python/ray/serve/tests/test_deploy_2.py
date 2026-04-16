@@ -15,6 +15,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import (
+    SharedFlag,
     check_deployment_status,
     check_num_replicas_eq,
     get_application_url,
@@ -174,18 +175,7 @@ def test_nonserializable_deployment(serve_instance):
 def test_deploy_application_unhealthy(serve_instance):
     """Test deploying an application that becomes unhealthy."""
 
-    @ray.remote
-    class Event:
-        def __init__(self):
-            self.is_set = False
-
-        def set(self):
-            self.is_set = True
-
-        def is_set(self):
-            return self.is_set
-
-    event = Event.remote()
+    event = SharedFlag.remote()
 
     @serve.deployment(health_check_period_s=1, health_check_timeout_s=3)
     class Model:

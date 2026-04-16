@@ -36,16 +36,31 @@ namespace raylet {
 class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
  public:
   /**
-   * @param usage_threshold The fraction to indicate max user memory usage.
-   *        Used to compute the memory usage threshold to free to.
-   * @param min_memory_free_bytes The minimum amount of memory to leave free.
-   *        Used to compute the memory usage threshold to free to.
+   * @param threshold_bytes The maximum memory usage threshold in bytes.
+   *        Used to determine the memory threshold to free to.
    * @param kill_buffer_bytes The amount of memory buffer under
    * the memory usage threshold to leave free after killing workers.
    */
-  TimeBasedWorkerKillingPolicy(float usage_threshold,
-                               int64_t min_memory_free_bytes,
-                               int64_t kill_buffer_bytes);
+  TimeBasedWorkerKillingPolicy(int64_t threshold_bytes, int64_t kill_buffer_bytes);
+
+  /**
+   * @brief This constructor should only be used in tests.
+   * @param threshold_bytes The maximum memory usage threshold in bytes.
+   *        Used to determine the memory threshold to free to.
+   * @param kill_buffer_bytes The amount of memory buffer under
+   * the memory usage threshold to leave free after killing workers.
+   * @param idle_worker_killing_memory_threshold_bytes The memory threshold for workers
+   * without lease (i.e. idle workers) to be considered for killing.
+   */
+  explicit TimeBasedWorkerKillingPolicy(
+      int64_t threshold_bytes,
+      int64_t kill_buffer_bytes,
+      int64_t idle_worker_killing_memory_threshold_bytes)
+      : workers_being_killed_(),
+        threshold_bytes_(threshold_bytes),
+        kill_buffer_bytes_(kill_buffer_bytes),
+        idle_worker_killing_memory_threshold_bytes_(
+            idle_worker_killing_memory_threshold_bytes) {}
 
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> SelectWorkersToKill(
       const std::vector<std::shared_ptr<WorkerInterface>> &workers,
@@ -85,15 +100,15 @@ class TimeBasedWorkerKillingPolicy : public WorkerKillingPolicyInterface {
   /// Targets to be killed.
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_being_killed_;
 
-  /// The max user memory usage fraction.
-  float usage_threshold_;
-
-  /// The min amount of free space to maintain before it is
-  /// exceeding the threshold.
-  int64_t min_memory_free_bytes_;
+  /// The memory usage threshold to free to in bytes.
+  int64_t threshold_bytes_;
 
   /// The kill memory buffer in bytes
   int64_t kill_buffer_bytes_;
+
+  /// The memory threshold for workers without lease (i.e. idle workers)
+  /// to be considered for killing in bytes.
+  int64_t idle_worker_killing_memory_threshold_bytes_;
 };
 
 }  // namespace raylet

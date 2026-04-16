@@ -9,6 +9,7 @@ from ray.data._internal.logical.operators import (
     AbstractOneToOne,
     Download,
     Limit,
+    Read,
     Union,
 )
 
@@ -190,6 +191,12 @@ class LimitPushdownRule(Rule):
         """Apply per-block limit to operators that support it."""
         if isinstance(op, AbstractMap):
             if is_dataclass(op):
+                if isinstance(op, Read):
+                    return replace(
+                        op,
+                        per_block_limit=limit,
+                        num_outputs=op.num_outputs,
+                    )
                 assert len(op.input_dependencies) == 1, len(op.input_dependencies)
                 return replace(
                     op,

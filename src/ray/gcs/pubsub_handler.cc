@@ -17,6 +17,9 @@
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_format.h"
+#include "ray/common/id.h"
+
 namespace ray {
 namespace gcs {
 
@@ -32,6 +35,25 @@ void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
     gcs_publisher_.GetPublisher().Publish(std::move(msg));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void InternalPubSubHandler::HandleReportJobError(
+    rpc::ReportJobErrorRequest request,
+    rpc::ReportJobErrorReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &job_id_binary = request.job_error().job_id();
+  if (job_id_binary.size() != JobID::Size()) {
+    send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                            "Invalid job_id: expected length %zu bytes, got %zu",
+                            JobID::Size(),
+                            job_id_binary.size())),
+                        nullptr,
+                        nullptr);
+    return;
+  }
+  const auto job_id = JobID::FromBinary(job_id_binary);
+  gcs_publisher_.PublishError(job_id.Hex(), std::move(*request.mutable_job_error()));
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 // Needs to use rpc::GcsSubscriberPollRequest and rpc::GcsSubscriberPollReply here,

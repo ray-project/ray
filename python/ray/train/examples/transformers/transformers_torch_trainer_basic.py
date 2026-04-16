@@ -68,10 +68,11 @@ def train_func(config):
     trainer.train()
 
 
-# [4] Build a Ray TorchTrainer to launch `train_func` on all workers
-# ==================================================================
-trainer = TorchTrainer(
-    train_func, scaling_config=ScalingConfig(num_workers=4, use_gpu=True)
-)
+if __name__ == "__main__":
+    # [4] Build a Ray TorchTrainer to launch `train_func` on all workers
+    # ==================================================================
+    trainer = TorchTrainer(
+        train_func, scaling_config=ScalingConfig(num_workers=4, use_gpu=True)
+    )
 
-trainer.fit()
+    trainer.fit()

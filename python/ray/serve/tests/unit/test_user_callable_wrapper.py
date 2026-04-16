@@ -10,6 +10,7 @@ from fastapi import FastAPI
 from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
+import ray.serve._private.replica as replica_module
 from ray import serve
 from ray.serve._private.common import (
     DeploymentID,
@@ -623,6 +624,40 @@ async def test_http_handler(
         "type": "http.response.body",
         "body": b"Hello b'\"world\"'!",
     }
+
+
+failing_init_app = FastAPI()
+
+
+@serve.ingress(failing_init_app)
+class FailingFastAPIRequestHandler:
+    def __init__(self):
+        raise RuntimeError("init failed")
+
+
+@pytest.mark.parametrize("run_user_code_in_separate_thread", [False, True])
+@pytest.mark.asyncio
+async def test_fastapi_init_failure_destructor_is_noop(
+    monkeypatch, run_user_code_in_separate_thread: bool
+):
+    logged_messages = []
+
+    def mock_exception(msg, *args, **kwargs):
+        logged_messages.append(msg)
+
+    monkeypatch.setattr(replica_module.logger, "exception", mock_exception)
+
+    user_callable_wrapper = _make_user_callable_wrapper(
+        FailingFastAPIRequestHandler,
+        run_user_code_in_separate_thread=run_user_code_in_separate_thread,
+    )
+
+    with pytest.raises(RuntimeError, match="init failed"):
+        await user_callable_wrapper.initialize_callable()
+
+    await user_callable_wrapper.call_destructor()
+
+    assert logged_messages == []
 
 
 class TestSeparateThread:

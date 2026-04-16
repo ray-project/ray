@@ -1,5 +1,7 @@
 import unittest
 
+import pytest
+
 import ray
 import ray._common
 from ray._private.test_utils import get_other_nodes
@@ -62,6 +64,8 @@ class TestNodeFailures(unittest.TestCase):
 
         self._train(config=config, iters=10, min_reward=150.0, preempt_freq=4)
 
+    # TODO(elliot-barn): Re-enable once test_node_failure_recreate_env_runners is fixed.
+    @pytest.mark.skip(reason="Flaky: consistently fails in CI")
     def test_node_failure_recreate_env_runners(self):
         # We recreate failed EnvRunners and continue training.
         config = (

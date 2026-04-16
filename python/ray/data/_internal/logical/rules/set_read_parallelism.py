@@ -107,12 +107,12 @@ class SetReadParallelismRule(Rule):
                 continue
             logical_op = plan.op_map[op]
             if isinstance(logical_op, Read):
-                self._apply(op, logical_op)
+                self._apply(plan, op, logical_op)
             ops += op.input_dependencies
 
         return plan
 
-    def _apply(self, op: PhysicalOperator, logical_op: Read):
+    def _apply(self, plan: PhysicalPlan, op: PhysicalOperator, logical_op: Read):
         estimated_in_mem_bytes = logical_op.infer_metadata().size_bytes
 
         (
@@ -134,7 +134,7 @@ class SetReadParallelismRule(Rule):
                 f"Using autodetected parallelism={detected_parallelism} "
                 f"for operator {logical_op.name} to satisfy {reason}."
             )
-        logical_op.set_detected_parallelism(detected_parallelism)
+        plan.op_map[op] = logical_op.set_detected_parallelism(detected_parallelism)
 
         if k is not None:
             logger.debug(

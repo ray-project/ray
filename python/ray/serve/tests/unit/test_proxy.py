@@ -16,7 +16,11 @@ from ray.serve._private.proxy import (
     ResponseStatus,
     gRPCProxy,
 )
-from ray.serve._private.proxy_request_response import ProxyRequest, gRPCStreamingType
+from ray.serve._private.proxy_request_response import (
+    ASGIProxyRequest,
+    ProxyRequest,
+    gRPCStreamingType,
+)
 from ray.serve._private.proxy_router import (
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
@@ -751,6 +755,65 @@ class TestHTTPProxy:
         )
         # Ensure after calling __call__, send.messages should be expected messages.
         assert send.messages == expected_messages
+
+    @pytest.mark.parametrize(
+        "header_key",
+        [
+            # Original underscore form (direct connection, no proxy)
+            b"serve_multiplexed_model_id",
+            # Hyphen form produced by proxies (nginx, AWS API Gateway, etc.)
+            # that convert underscores to hyphens in header names.
+            b"serve-multiplexed-model-id",
+            # Title-cased hyphen form produced by some proxies.
+            b"Serve-Multiplexed-Model-Id",
+        ],
+    )
+    def test_setup_request_context_multiplexed_model_id_header_normalization(
+        self, header_key: bytes
+    ):
+        """Test that setup_request_context_and_handle recognises the multiplexed
+        model ID header regardless of whether the key uses underscores or hyphens.
+
+        Proxies such as nginx and AWS API Gateway convert underscores to hyphens
+        (and may also title-case the name), so the header sent by the client as
+        ``serve_multiplexed_model_id`` can arrive at Ray Serve as
+        ``serve-multiplexed-model-id`` or ``Serve-Multiplexed-Model-Id``.
+        All three forms must be treated as equivalent.
+        """
+        import ray
+
+        model_id = "my-model-123"
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "root_path": "",
+            "headers": [
+                (header_key, model_id.encode()),
+                (b"x-request-id", b"test-request-id"),
+            ],
+            "client": ("127.0.0.1", 12345),
+        }
+        proxy_request = ASGIProxyRequest(
+            scope=scope,
+            receive=AsyncMock(),
+            send=AsyncMock(),
+        )
+
+        http_proxy = self.create_http_proxy()
+        http_proxy.setup_request_context_and_handle(
+            app_name="test_app",
+            handle=FakeHTTPHandle(messages=[]),
+            route="/",
+            proxy_request=proxy_request,
+            internal_request_id="fake-internal-id",
+        )
+
+        ctx = ray.serve.context._get_serve_request_context()
+        assert ctx.multiplexed_model_id == model_id, (
+            f"Header key {header_key!r} was not recognised; "
+            f"got multiplexed_model_id={ctx.multiplexed_model_id!r}"
+        )
 
 
 @pytest.mark.asyncio

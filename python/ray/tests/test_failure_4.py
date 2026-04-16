@@ -233,8 +233,6 @@ if __name__ == "__main__":
     out = run_string_as_driver(driver_script)
     assert "success" in out
 
-    import time
-
     time.sleep(5)
 
     # connect to the cluster
@@ -784,8 +782,6 @@ def test_shows_both_user_exception_system_error_same_time(ray_start_cluster):
         ray.get(f.remote())
 
     # Wait for the task info to be propagated.
-    import time
-
     time.sleep(1)
 
     tasks = list_tasks(filters=[("name", "=", "f")], detail=True)

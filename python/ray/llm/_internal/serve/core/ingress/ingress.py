@@ -346,13 +346,18 @@ async def _openai_json_wrapper(
 
     Yields:
         String chunks in OpenAI SSE format: "data: {json}\n\n", with a final
-        "data: [DONE]\n\n" to indicate completion.
+        "data: [DONE]\n\n" to indicate completion. If the upstream generator
+        already yields a "data: [DONE]" sentinel, it is not duplicated.
     """
+    done_sent = False
     async for response in generator:
         packet = _apply_openai_json_format(response)
+        if packet.strip().endswith("data: [DONE]"):
+            done_sent = True
         yield packet
 
-    yield "data: [DONE]\n\n"
+    if not done_sent:
+        yield "data: [DONE]\n\n"
 
 
 @asynccontextmanager

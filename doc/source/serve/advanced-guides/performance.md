@@ -263,7 +263,7 @@ apt-get update -y && apt-get install -y --no-install-recommends \
     liblua5.3-dev libpcre3-dev libssl-dev zlib1g-dev
 
 # Build HAProxy from source
-export HAPROXY_VERSION="2.8.12"
+export HAPROXY_VERSION="2.8.20"
 curl -sSfL -o /tmp/haproxy.tar.gz \
   "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 mkdir -p /tmp/haproxy-build && tar -xzf /tmp/haproxy.tar.gz -C /tmp/haproxy-build --strip-components=1
@@ -273,13 +273,13 @@ make -C /tmp/haproxy-build install SBINDIR=/usr/local/bin
 rm -rf /tmp/haproxy-build /tmp/haproxy.tar.gz
 
 # Install runtime dependencies
-apt-get install -y --no-install-recommends socat liblua5.3-0
+apt-get install -y --no-install-recommends liblua5.3-0
 
 # Create required directories
 mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
 ```
 
-The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependencies are `socat` (for the admin socket) and `liblua5.3-0` (Lua runtime library).
+The required build flags are `USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1`. The runtime dependency is `liblua5.3-0` (Lua runtime library).
 
 (serve-interdeployment-grpc)=
 ### Use gRPC for interdeployment communication

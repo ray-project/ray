@@ -435,8 +435,3 @@ TEST(StringAllocationTest, TestCopyWhenPassByPointer) {
   EXPECT_NE(allocation_address, address.node_id().c_str());
 }
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

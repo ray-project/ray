@@ -37,6 +37,10 @@ class InternalPubSubHandler : public rpc::InternalPubSubGcsServiceHandler {
                         rpc::GcsPublishReply *reply,
                         rpc::SendReplyCallback send_reply_callback) final;
 
+  void HandleReportJobError(rpc::ReportJobErrorRequest request,
+                            rpc::ReportJobErrorReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) final;
+
   void HandleGcsSubscriberPoll(rpc::GcsSubscriberPollRequest request,
                                rpc::GcsSubscriberPollReply *reply,
                                rpc::SendReplyCallback send_reply_callback) final;

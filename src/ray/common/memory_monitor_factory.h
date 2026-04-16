@@ -16,6 +16,7 @@
 
 #include <memory>
 
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/memory_monitor_interface.h"
 
 namespace ray {
@@ -37,10 +38,18 @@ class MemoryMonitorFactory {
    * On non-Linux platforms, creates a NoopMemoryMonitor that does nothing.
    *
    * @param kill_workers_callback function to execute when the memory usage is refreshed.
+   * @param resource_isolation_enabled When resource isolation is enabled, the
+   * memory monitor will work with the configured cgroup constraints to better
+   * enforce the memory usage limit.
+   * @param cgroup_manager When resource isolation is enabled, the monitor will determine
+   * the proper memory monitoring threshold based on the set cgroup constraints provided
+   * by the cgroup manager.
    * @return a unique pointer to the memory monitor instance.
    */
   static std::unique_ptr<MemoryMonitorInterface> Create(
-      KillWorkersCallback kill_workers_callback);
+      KillWorkersCallback kill_workers_callback,
+      bool resource_isolation_enabled,
+      const CgroupManagerInterface &cgroup_manager);
 };
 
 }  // namespace ray

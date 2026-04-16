@@ -86,9 +86,15 @@ python/ray/data/_internal/logging.py
 python/ray/data/_internal/logical/interfaces/logical_operator.py
 python/ray/data/_internal/logical/operators/from_operators.py
 python/ray/data/_internal/logical/operators/input_data_operator.py
+python/ray/data/_internal/logical/operators/count_operator.py
+python/ray/data/_internal/logical/operators/all_to_all_operator.py
+python/ray/data/_internal/logical/operators/join_operator.py
 python/ray/data/_internal/logical/operators/map_operator.py
+python/ray/data/_internal/logical/operators/n_ary_operator.py
 python/ray/data/_internal/logical/operators/one_to_one_operator.py
 python/ray/data/_internal/logical/operators/read_operator.py
+python/ray/data/_internal/logical/operators/streaming_split_operator.py
+python/ray/data/_internal/logical/operators/write_operator.py
 python/ray/data/_internal/logical/optimizers.py
 python/ray/data/_internal/logical/rules/combine_shuffles.py
 python/ray/data/_internal/logical/rules/configure_map_task_memory.py

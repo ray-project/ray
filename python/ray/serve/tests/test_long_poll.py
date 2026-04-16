@@ -7,6 +7,7 @@ from typing import Dict
 import pytest
 
 import ray
+import ray.serve._private.long_poll as long_poll_module
 from ray._common.test_utils import async_wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import (
@@ -22,6 +23,7 @@ from ray.serve._private.long_poll import (
     LongPollNamespace,
     LongPollState,
     UpdatedObject,
+    _get_metric_namespace_tag,
 )
 from ray.serve.generated.serve_pb2 import (
     DeploymentTargetInfo as DeploymentTargetInfoProto,
@@ -263,6 +265,245 @@ def test_listen_for_change_java(serve_instance):
         "SERVE_REPLICA::default#deployment_name#0",
         "SERVE_REPLICA::default#deployment_name#1",
     ]
+
+
+def test_listen_for_change_java_timeout_returns_empty_result(serve_instance):
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.5, 0.5)
+    )
+    ray.get(host.notify_changed.remote({"key_1": 999}))
+
+    initial_result = LongPollResult.FromString(
+        ray.get(
+            host.listen_for_change_java.remote(
+                LongPollRequest(keys_to_snapshot_ids={"key_1": -1}).SerializeToString()
+            )
+        )
+    )
+    snapshot_id = initial_result.updated_objects["key_1"].snapshot_id
+
+    timeout_result = LongPollResult.FromString(
+        ray.get(
+            host.listen_for_change_java.remote(
+                LongPollRequest(
+                    keys_to_snapshot_ids={"key_1": snapshot_id}
+                ).SerializeToString()
+            )
+        )
+    )
+
+    assert len(timeout_result.updated_objects) == 0
+
+
+def test_get_metric_namespace_tag(monkeypatch):
+    """Test _get_metric_namespace_tag in both default and compact modes.
+
+    When RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS is disabled (default), metric
+    tags use str(key) which preserves deployment-level granularity.
+    When enabled, tags use only the LongPollNamespace enum name to bound
+    cardinality for workloads with many deployments.
+    See https://github.com/ray-project/ray/issues/62299.
+    """
+    # --- Default mode (compact=False): str(key) is used ---
+    monkeypatch.setattr(
+        long_poll_module, "RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", False
+    )
+
+    # String keys pass through unchanged
+    assert _get_metric_namespace_tag("test_key") == "test_key"
+
+    # LongPollNamespace enum keys use str() representation
+    assert _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_CONFIG) == str(
+        LongPollNamespace.DEPLOYMENT_CONFIG
+    )
+
+    # Tuple keys include the full string (deployment name visible)
+    tuple_key = (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deployment1")
+    assert _get_metric_namespace_tag(tuple_key) == str(tuple_key)
+
+    # --- Compact mode (compact=True): low-cardinality tags ---
+    monkeypatch.setattr(
+        long_poll_module, "RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS", True
+    )
+
+    # String keys still pass through unchanged
+    assert _get_metric_namespace_tag("test_key") == "test_key"
+    assert _get_metric_namespace_tag("key_1") == "key_1"
+
+    # LongPollNamespace enum keys return just the name
+    assert (
+        _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_CONFIG)
+        == "DEPLOYMENT_CONFIG"
+    )
+    assert (
+        _get_metric_namespace_tag(LongPollNamespace.DEPLOYMENT_TARGETS)
+        == "DEPLOYMENT_TARGETS"
+    )
+    assert _get_metric_namespace_tag(LongPollNamespace.ROUTE_TABLE) == "ROUTE_TABLE"
+
+    # Tuple keys extract only the namespace, discarding per-deployment identifier
+    assert (
+        _get_metric_namespace_tag(
+            (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deployment1")
+        )
+        == "DEPLOYMENT_CONFIG"
+    )
+    assert (
+        _get_metric_namespace_tag(
+            (LongPollNamespace.DEPLOYMENT_TARGETS, "app2:deployment2")
+        )
+        == "DEPLOYMENT_TARGETS"
+    )
+
+    # Tuple keys with long deployment identifiers (the real-world case)
+    long_key = (
+        LongPollNamespace.DEPLOYMENT_CONFIG,
+        "Deployment(name='model', app='workday:perf-test-model-00005:"
+        "key-value-v1:baked-in:global:global:1')",
+    )
+    assert _get_metric_namespace_tag(long_key) == "DEPLOYMENT_CONFIG"
+
+    # All LongPollNamespace enum values should work, both bare and in tuples
+    for ns in LongPollNamespace:
+        assert _get_metric_namespace_tag(ns) == ns.name
+        assert _get_metric_namespace_tag((ns, "any_deployment")) == ns.name
+
+    # Defensive: tuple with non-enum first element falls back to str()
+    assert _get_metric_namespace_tag(("custom_ns", "value")) == "custom_ns"
+
+
+@pytest.mark.asyncio
+async def test_pending_clients_gauge_aggregates_across_keys(serve_instance):
+    """Test that pending_clients_by_namespace correctly aggregates across keys.
+
+    When compact metric tags are enabled and multiple keys share a namespace
+    tag (e.g., two DEPLOYMENT_CONFIG keys for different deployments), the gauge
+    must reflect the total pending clients for the namespace, not just the last
+    key's count.
+    See https://github.com/ray-project/ray/issues/62299.
+    """
+    host = (
+        ray.remote(LongPollHost)
+        .options(
+            runtime_env={"env_vars": {"RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS": "1"}}
+        )
+        .remote(listen_for_change_request_timeout_s=(0.5, 0.5))
+    )
+
+    key_a = (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deploy1")
+    key_b = (LongPollNamespace.DEPLOYMENT_CONFIG, "app2:deploy2")
+
+    # Notify initial values so the keys exist
+    ray.get(host.notify_changed.remote({key_a: "v1", key_b: "v2"}))
+
+    # Subscribe to both keys — this should register 2 pending clients
+    # for the DEPLOYMENT_CONFIG namespace
+    ref = host.listen_for_change.remote({key_a: -1, key_b: -1})
+    result = ray.get(ref)
+    assert key_a in result and key_b in result
+
+    # Now subscribe with up-to-date snapshot IDs so we actually block
+    snapshot_ids = {k: v.snapshot_id for k, v in result.items()}
+    ref = host.listen_for_change.remote(snapshot_ids)
+
+    # The pending clients count for DEPLOYMENT_CONFIG should be 2
+    # (one event per key). We can't read the gauge directly, but we
+    # verify the internal tracking counter.
+    counter = ray.get(
+        host._get_pending_clients_by_namespace.remote("DEPLOYMENT_CONFIG")
+    )
+    assert counter == 2, f"Expected 2 pending clients, got {counter}"
+
+    # Notify one key — should decrement by 1, not set to 0
+    ray.get(host.notify_changed.remote({key_a: "v1_updated"}))
+
+    # Wait for the listen_for_change to return
+    result2 = ray.get(ref)
+    assert key_a in result2
+
+    # After notification, the counter should have been decremented
+    counter_after = ray.get(
+        host._get_pending_clients_by_namespace.remote("DEPLOYMENT_CONFIG")
+    )
+    # Counter should be 0 now (both events cleaned up: one by notify_changed,
+    # one by the not_done cleanup in listen_for_change)
+    assert counter_after == 0, f"Expected 0 pending clients, got {counter_after}"
+
+
+@pytest.mark.asyncio
+async def test_pending_clients_gauge_non_compact_mode(serve_instance):
+    """Test pending_clients bookkeeping when RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS=0.
+
+    In non-compact mode, each key maps to its own namespace tag via str(key).
+    Verify that pending client counts are correctly incremented, decremented,
+    and cleaned up for each per-key tag, with no regressions in the new
+    bookkeeping logic.
+    See https://github.com/ray-project/ray/issues/62299.
+    """
+    host = (
+        ray.remote(LongPollHost)
+        .options(
+            runtime_env={"env_vars": {"RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS": "0"}}
+        )
+        .remote(listen_for_change_request_timeout_s=(0.5, 0.5))
+    )
+
+    key_a = (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deploy1")
+    key_b = (LongPollNamespace.DEPLOYMENT_CONFIG, "app2:deploy2")
+
+    # Notify initial values so the keys exist
+    ray.get(host.notify_changed.remote({key_a: "v1", key_b: "v2"}))
+
+    # Get initial snapshots
+    ref = host.listen_for_change.remote({key_a: -1, key_b: -1})
+    result = ray.get(ref)
+    assert key_a in result and key_b in result
+
+    # Subscribe with up-to-date snapshot IDs so we block (pending)
+    snapshot_ids = {k: v.snapshot_id for k, v in result.items()}
+    ref = host.listen_for_change.remote(snapshot_ids)
+
+    # In non-compact mode, each key has its own namespace tag (str(key)),
+    # so each should have exactly 1 pending client.
+    tag_a = str(key_a)
+    tag_b = str(key_b)
+    counter_a = ray.get(host._get_pending_clients_by_namespace.remote(tag_a))
+    counter_b = ray.get(host._get_pending_clients_by_namespace.remote(tag_b))
+    assert counter_a == 1, f"Expected 1 pending client for {tag_a}, got {counter_a}"
+    assert counter_b == 1, f"Expected 1 pending client for {tag_b}, got {counter_b}"
+
+    # Notify key_a — its pending count should drop, key_b unaffected
+    ray.get(host.notify_changed.remote({key_a: "v1_updated"}))
+    result2 = ray.get(ref)
+    assert key_a in result2
+
+    # After notification + cleanup, both counters should be 0
+    counter_a_after = ray.get(host._get_pending_clients_by_namespace.remote(tag_a))
+    counter_b_after = ray.get(host._get_pending_clients_by_namespace.remote(tag_b))
+    assert (
+        counter_a_after == 0
+    ), f"Expected 0 pending clients for {tag_a}, got {counter_a_after}"
+    assert (
+        counter_b_after == 0
+    ), f"Expected 0 pending clients for {tag_b}, got {counter_b_after}"
+
+    # Verify cleanup with timeout: subscribe and let it time out
+    snapshot_ids2 = {k: v.snapshot_id for k, v in result2.items()}
+    # Also include key_b's latest snapshot
+    snapshot_ids2[key_b] = result[key_b].snapshot_id
+    ref2 = host.listen_for_change.remote(snapshot_ids2)
+    timeout_result = ray.get(ref2)
+    assert timeout_result == LongPollState.TIME_OUT
+
+    # After timeout, all pending counters should be cleaned up to 0
+    counter_a_timeout = ray.get(host._get_pending_clients_by_namespace.remote(tag_a))
+    counter_b_timeout = ray.get(host._get_pending_clients_by_namespace.remote(tag_b))
+    assert (
+        counter_a_timeout == 0
+    ), f"Expected 0 after timeout for {tag_a}, got {counter_a_timeout}"
+    assert (
+        counter_b_timeout == 0
+    ), f"Expected 0 after timeout for {tag_b}, got {counter_b_timeout}"
 
 
 if __name__ == "__main__":

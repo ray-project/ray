@@ -32,9 +32,12 @@ def test_gpu_ids(shutdown_only):
         ]
         assert len(gpu_ids) == len(gpu_ids_from_runtime_context)
         assert len(neuron_core_ids) == 0
-        assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-            [str(i) for i in gpu_ids]  # noqa
-        )
+        if num_gpus_per_worker > 0:
+            assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
+                [str(i) for i in gpu_ids]  # noqa
+            )
+        else:
+            assert os.environ.get("CUDA_VISIBLE_DEVICES") is None
         for gpu_id in gpu_ids:
             assert gpu_id in range(num_gpus)
         return gpu_ids
@@ -69,18 +72,14 @@ def test_gpu_ids(shutdown_only):
         def __init__(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 0
-            assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]  # noqa
-            )
+            assert os.environ.get("CUDA_VISIBLE_DEVICES") is None
             # Set self.x to make sure that we got here.
             self.x = 1
 
         def test(self):
             gpu_ids = ray.get_gpu_ids()
             assert len(gpu_ids) == 0
-            assert os.environ["CUDA_VISIBLE_DEVICES"] == ",".join(
-                [str(i) for i in gpu_ids]
-            )
+            assert os.environ.get("CUDA_VISIBLE_DEVICES") is None
             return self.x
 
     @ray.remote(num_gpus=1)
@@ -556,9 +555,7 @@ def test_neuron_core_ids(shutdown_only):
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == 0
-            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
-                [str(i) for i in neuron_core_ids]  # noqa
-            )
+            assert os.environ.get("NEURON_RT_VISIBLE_CORES") is None
             # Set self.x to make sure that we got here.
             self.x = 0
 
@@ -567,9 +564,7 @@ def test_neuron_core_ids(shutdown_only):
                 "neuron_cores"
             ]
             assert len(neuron_core_ids) == 0
-            assert os.environ["NEURON_RT_VISIBLE_CORES"] == ",".join(
-                [str(i) for i in neuron_core_ids]  # noqa
-            )
+            assert os.environ.get("NEURON_RT_VISIBLE_CORES") is None
             return self.x
 
     @ray.remote(resources={"neuron_cores": 1})

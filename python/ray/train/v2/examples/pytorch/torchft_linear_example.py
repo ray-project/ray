@@ -1,5 +1,6 @@
 import argparse
 from datetime import timedelta
+from pathlib import Path
 
 import numpy as np
 import torch
@@ -40,7 +41,10 @@ def train_func(config):
     hidden_size = config.get("hidden_size", 1)
     lr = config.get("lr", 1e-2)
     num_steps = config.get("num_steps", 100)
+    num_replicas = config.get("num_replicas", 1)
     report_interval = config.get("report_interval", 10)
+    error_step = config.get("error_step")
+    error_rank = config.get("error_rank", 0)
 
     context = ray.train.get_context()
     world_rank = context.get_world_rank()
@@ -75,7 +79,7 @@ def train_func(config):
 
     manager = Manager(
         pg=pg,
-        min_replica_size=1,
+        min_replica_size=num_replicas,
         load_state_dict=load_state_dict,
         state_dict=state_dict,
         world_size=1,
@@ -125,6 +129,18 @@ def train_func(config):
         num_batches += 1
 
         step = manager.current_step()
+        if error_step is not None and step >= error_step and world_rank == error_rank:
+            marker = Path(
+                ray.train.get_context()
+                .get_storage()
+                .build_checkpoint_path_from_name("error_marker")
+            )
+            if not marker.exists():
+                marker.parent.mkdir(parents=True, exist_ok=True)
+                marker.touch()
+                raise RuntimeError(
+                    f"Simulated replica failure at step {step} on rank {world_rank}"
+                )
         if step % report_interval == 0 or step >= num_steps:
             avg_loss = running_loss / max(num_batches, 1)
             weight = model.module.weight.detach().flatten().tolist()
@@ -133,6 +149,10 @@ def train_func(config):
             results.append(result)
             running_loss = 0.0
             num_batches = 0
+
+    # Needed to avoid "split brain" where worker X dies, worker Y finishes, worker X resumes,
+    # and worker X gets stuck in loss.backward()
+    manager.shutdown()
 
     return results
 

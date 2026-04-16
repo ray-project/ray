@@ -12,6 +12,7 @@ Prefill/decode disaggregation <prefill-decode>
 KV cache offloading <kv-cache-offloading>
 Prefix-aware routing <prefix-aware-routing>
 Multi-LoRA deployment <multi-lora>
+SGLang integration <sglang>
 vLLM compatibility <vllm-compatibility>
 Fractional GPU serving <fractional-gpu>
 Observability and monitoring <observability>

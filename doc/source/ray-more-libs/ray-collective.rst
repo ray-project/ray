@@ -347,6 +347,12 @@ An example code utilizing the multi-GPU collective APIs is provided below:
 More Resources
 --------------
 
+.. toctree::
+    :hidden:
+    :caption: Custom Backends
+
+    ray-collective-custom-backend
+
 The following links provide helpful resources on how to efficiently leverage the ``ray.util.collective`` library.
 
 
@@ -358,4 +364,7 @@ API References
 --------------
 
 .. automodule:: ray.util.collective.collective
+    :members:
+
+.. automodule:: ray.util.collective.backend_registry
     :members:

@@ -1,5 +1,6 @@
 """Client tests that run their own init (as with init_and_serve) live here"""
 
+import json
 import random
 import subprocess
 import sys
@@ -11,8 +12,12 @@ import pytest
 import ray
 import ray.core.generated.ray_client_pb2 as ray_client_pb2
 import ray.util.client.server.server as ray_client_server
+from ray._private.ray_logging.logging_config import LoggingConfig
+from ray.cloudpickle.compat import pickle
 from ray.cluster_utils import cluster_not_supported
+from ray.job_config import JobConfig
 from ray.util.client import _ClientContext
+from ray.util.client.worker import prepare_init_request_args
 
 
 @ray.remote
@@ -192,6 +197,82 @@ def test_max_clients(init_and_serve):
     with pytest.raises(ConnectionError):
         api = _ClientContext()
         _ = api.connect("localhost:50051")
+
+
+@pytest.mark.parametrize(
+    "call_ray_start",
+    ["ray start --head --ray-client-server-port=50056"],
+    indirect=True,
+)
+def test_logging_config_in_client_mode(call_ray_start):
+    """logging_config reaches task workers (JobConfig) when using Ray Client."""
+
+    @ray.remote
+    def job_logging_encoding():
+        w = ray.get_runtime_context().worker
+        jlc = w.job_logging_config
+        return None if jlc is None else jlc.encoding
+
+    ray.init(
+        "ray://localhost:50056",
+        logging_config=LoggingConfig(encoding="TEXT", log_level="INFO"),
+        log_to_driver=False,
+        configure_logging=False,
+    )
+
+    assert ray.get(job_logging_encoding.remote()) == "TEXT"
+
+
+def test_prepare_init_request_args():
+    """``prepare_init_request_args`` copies kwargs, JSON-serializes logging config,
+    propagates it onto ``JobConfig``, and pickles the job for ``InitRequest``."""
+    # no job config, no ray init kwargs
+    serialized, kwargs = prepare_init_request_args(None, None)
+    assert serialized is None and kwargs == {}
+
+    # invalid logging config type
+    with pytest.raises(
+        TypeError, match="logging_config must be a dict or LoggingConfig"
+    ):
+        prepare_init_request_args(JobConfig(), {"logging_config": 42})
+
+    # ray init kwargs contains serialized logging config
+    lc = LoggingConfig(encoding="JSON", log_level="DEBUG")
+    orig = {"logging_config": lc, "num_cpus": 1}
+    job = JobConfig()
+    _, out = prepare_init_request_args(job, orig)
+    assert isinstance(orig["logging_config"], LoggingConfig)
+    assert isinstance(out["logging_config"], dict)
+    assert out["logging_config"]["encoding"] == "JSON"
+    assert orig["num_cpus"] == 1
+    json.dumps(out)
+    assert job.py_logging_config is not None
+    assert job.py_logging_config.encoding == "JSON"
+
+    # write logging config to JobConfig
+    job_dict = JobConfig()
+    prepare_init_request_args(
+        job_dict,
+        {"logging_config": {"encoding": "TEXT", "log_level": "ERROR"}},
+    )
+    assert job_dict.py_logging_config.encoding == "TEXT"
+    assert job_dict.py_logging_config.log_level == "ERROR"
+
+    # don't overwrite existing logging config on JobConfig
+    existing = LoggingConfig(encoding="TEXT")
+    job_keep = JobConfig()
+    job_keep.set_py_logging_config(existing)
+    prepare_init_request_args(
+        job_keep,
+        {"logging_config": LoggingConfig(encoding="JSON")},
+    )
+    assert job_keep.py_logging_config is existing
+
+    # pickle the job for InitRequest
+    job_pickle = JobConfig()
+    blob, _ = prepare_init_request_args(job_pickle, {})
+    assert isinstance(blob, bytes) and len(blob) > 0
+    assert isinstance(pickle.loads(blob), JobConfig)
 
 
 if __name__ == "__main__":
