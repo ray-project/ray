@@ -617,7 +617,7 @@ class OpenAiIngress(DeploymentProtocol):
         if handle is None:
             raise RuntimeError(f"No handle for model {model_id}")
 
-        request_router = handle.get_request_router()
+        request_router = handle._get_request_router()
         if request_router is None:
             raise RuntimeError(f"Request router not initialized for {model_id}")
 
