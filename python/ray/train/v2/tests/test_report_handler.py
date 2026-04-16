@@ -100,15 +100,7 @@ async def test_report_handler(
         checkpoint_handler.after_worker_group_poll_status(worker_group_status)
         assert fake_register_checkpoint.call_count == expected
 
-    checkpoint_handler.before_replica_group_shutdown(
-        worker_group.get_replica_groups()[0]
-    )
-    assert checkpoint_handler._num_workers == num_workers - 1
-    assert checkpoint_handler._training_report_queues == [
-        deque() for _ in range(num_workers - 1)
-    ]
     checkpoint_handler.after_replica_group_start(worker_group.get_replica_groups()[0])
-    assert checkpoint_handler._num_workers == num_workers
     assert checkpoint_handler._training_report_queues == [
         deque() for _ in range(num_workers)
     ]

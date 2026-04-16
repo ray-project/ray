@@ -20,12 +20,9 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
     """
 
     def __init__(self, report_callbacks: List[ReportCallback]):
-        # Number of workers in the current worker group. It is initialized
-        # to be None. It is set to the number of workers when it receives the
-        # worker group status for the first time.
-        # When a worker group shutdown, self._num_workers is set to None,
-        # waiting to be updated when a new worker group status is received again.
-        self._num_workers: Optional[int] = None
+        # We set the worker group after it has been started and remove it after it
+        # has been shut down.
+        self._worker_group: Optional[WorkerGroup] = None
         # A list of queues holding training reports from workers.
         self._training_report_queues: Optional[List[Deque[_TrainingReport]]] = None
 
@@ -33,7 +30,7 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
 
     def _assert_initialized(self):
         assert (
-            self._num_workers and self._training_report_queues
+            self._worker_group and self._training_report_queues
         ), "Need to call initialize state with `after_worker_group_start` first."
 
     # --------------------------
@@ -48,18 +45,16 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
         Wait for all workers to report training results to collect
         a consolidated training result.
         """
-        # Step 1: If self._num_workers is None, we need to initialize the number
-        # of workers and training_reports_queues from the worker group status. This
-        # happens when the handler receives the worker group status for the first time.
+        # Step 1: Assert that the worker group has been started and not shut down.
         self._assert_initialized()
 
-        assert self._num_workers == len(worker_group_status.worker_statuses), (
+        assert len(self._worker_group) == len(worker_group_status.worker_statuses), (
             f"The number of workers in the worker group has changed unexpectedly. "
-            f"Expected: {self._num_workers}, got: {len(worker_group_status.worker_statuses)}"
+            f"Expected: {len(self._worker_group)}, got: {len(worker_group_status.worker_statuses)}"
         )
 
         # Step 2: Update training_reports_queues with poll_results.
-        for i in range(self._num_workers):
+        for i in range(len(self._worker_group)):
             training_report = worker_group_status.worker_statuses[i].training_report
             if training_report:
                 self._training_report_queues[i].append(training_report)
@@ -111,15 +106,15 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
 
     def after_worker_group_start(self, worker_group: WorkerGroup) -> None:
         """Handle worker group start. Initialize internal states."""
-        self._num_workers = len(worker_group)
-        self._training_report_queues = [deque() for _ in range(self._num_workers)]
+        self._worker_group = worker_group
+        self._training_report_queues = [deque() for _ in range(len(self._worker_group))]
 
     def before_worker_group_shutdown(self, worker_group: WorkerGroup) -> None:
         """Handle worker group shutdown. Clear internal states.
 
         None of the partial reported results are valid at this point.
         """
-        self._num_workers = None
+        self._worker_group = None
         self._training_report_queues = None
 
     # --------------------------
@@ -129,13 +124,6 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
     def after_replica_group_start(self, replica_group: ReplicaGroup) -> None:
         """Handle replica group start. Initialize internal states."""
         self._assert_initialized()
-        self._num_workers += len(replica_group)
         # TODO: it might be possible to reuse existing queues.
         # For example, if 3/4 ddp workers reported a checkpoint, that checkpoint is usable.
-        self._training_report_queues = [deque() for _ in range(self._num_workers)]
-
-    def before_replica_group_shutdown(self, replica_group: ReplicaGroup) -> None:
-        """Handle replica group shutdown. Clear internal states."""
-        self._assert_initialized()
-        self._num_workers -= len(replica_group)
-        self._training_report_queues = [deque() for _ in range(self._num_workers)]
+        self._training_report_queues = [deque() for _ in range(len(self._worker_group))]
