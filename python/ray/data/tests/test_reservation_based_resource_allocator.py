@@ -206,7 +206,7 @@ class TestReservationOpResourceAllocator:
         assert allocator.get_allocation(o2) == ExecutionResources(4.5, 0, 150)
         assert allocator.get_allocation(o3) == ExecutionResources(4.5, 0, 150)
 
-    def test_stored_allocation_minus_usage_signals_over_cpu(self, restore_data_context):
+    def test_get_allocation_returns_signed_headroom_on_cpu(self, restore_data_context):
         """Allocation is reserved + op_shared; allocation - usage can go negative on CPU."""
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
@@ -261,7 +261,7 @@ class TestReservationOpResourceAllocator:
         net = allocator.get_allocation(o2).subtract(resource_manager.get_op_usage(o2))
         assert net.cpu > 0, net
 
-    def test_stored_allocation_includes_leftover_shared_for_uncapped_op(
+    def test_allocation_includes_leftover_shared_for_uncapped_op(
         self, restore_data_context
     ):
         """When capped ops leave shared pool remainder, uncapped op gets budget + allocation."""
