@@ -400,6 +400,107 @@ class OpenAiIngress(DeploymentProtocol):
             self._setup_handle_and_config_maps(llm_deployments=llm_deployments)
         )
 
+        self._direct_ingress_rr_counter = 0
+        self._ingress_bypass_rr_counter = 0
+        get_or_create_event_loop().create_task(
+            self._install_direct_ingress_middleware()
+        )
+
+    async def _install_direct_ingress_middleware(self):
+        while not hasattr(self, "_asgi_app"):
+            await asyncio.sleep(0.01)
+
+        original_app = self._asgi_app
+        ingress = self
+
+        async def direct_ingress_asgi_wrapper(scope, receive, send):
+            if scope["type"] == "http" and scope["path"] == "/internal/route":
+                if scope["method"] == "POST":
+                    await ingress._handle_route_endpoint(scope, receive, send)
+                    return
+
+            await original_app(scope, receive, send)
+
+        self._asgi_app = direct_ingress_asgi_wrapper
+        logger.info("Direct-ingress route middleware installed.")
+
+    async def _handle_route_endpoint(self, scope, receive, send):
+        import orjson
+
+        message = await receive()
+        body_bytes = message.get("body", b"")
+        if message.get("more_body", False):
+            parts = [body_bytes]
+            while True:
+                message = await receive()
+                parts.append(message.get("body", b""))
+                if not message.get("more_body", False):
+                    break
+            body_bytes = b"".join(parts)
+
+        try:
+            parsed = orjson.loads(body_bytes)
+        except Exception:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 400,
+                    "headers": [[b"content-type", b"application/json"]],
+                }
+            )
+            await send(
+                {"type": "http.response.body", "body": b'{"error":"invalid json"}'}
+            )
+            return
+
+        default_model_id = (
+            next(iter(self._llm_configs.keys())) if self._llm_configs else None
+        )
+        model = parsed.get("model", default_model_id)
+        if model and model not in self._llm_configs:
+            base = get_base_model_id(model)
+            if base not in self._llm_configs:
+                model = None
+        model_id = model or default_model_id
+
+        if model_id is None:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 404,
+                    "headers": [[b"content-type", b"application/json"]],
+                }
+            )
+            await send({"type": "http.response.body", "body": b'{"error":"no model"}'})
+            return
+
+        try:
+            host, port, replica_id = await self._pick_routed_direct_ingress_endpoint(
+                model_id
+            )
+        except Exception as e:
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 503,
+                    "headers": [[b"content-type", b"application/json"]],
+                }
+            )
+            await send(
+                {"type": "http.response.body", "body": f'{{"error":"{e}"}}'.encode()}
+            )
+            return
+
+        resp = orjson.dumps({"host": host, "port": port})
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [[b"content-type", b"application/json"]],
+            }
+        )
+        await send({"type": "http.response.body", "body": resp})
+
     async def _default_get_lora_model_metadata_func(
         self, model_id: str, llm_config: LLMConfig
     ) -> Dict[str, Any]:
@@ -487,6 +588,61 @@ class OpenAiIngress(DeploymentProtocol):
 
         # Return original model ID so multiplexed routing works correctly.
         return model
+
+    # TokenTracker removed — probing replicas directly for queue length
+    # is simpler and uses existing Ray Serve infrastructure.
+
+    async def _start_load_poller(self, replicas):
+        """Background task: poll all replica queue lengths periodically."""
+        import asyncio
+
+        while True:
+            for r in replicas:
+                try:
+                    load = await r.get_queue_len(deadline_s=0.5)
+                    self._di_load_cache[r.replica_id] = load
+                except Exception:
+                    pass
+            await asyncio.sleep(0.05)  # 50ms poll interval
+
+    async def _pick_routed_direct_ingress_endpoint(
+        self, model_id: str
+    ) -> Tuple[str, int, str]:
+        """Pick the least-loaded replica using background-polled queue lengths.
+
+        Returns (host, port, rid).
+        """
+        base_model_id = get_base_model_id(model_id)
+        handle = self._default_serve_handles.get(base_model_id)
+        if handle is None:
+            raise RuntimeError(f"No handle for model {model_id}")
+
+        request_router = handle.get_request_router()
+        if request_router is None:
+            raise RuntimeError(f"Request router not initialized for {model_id}")
+
+        # Get direct-ingress-enabled replicas from the request router.
+        direct_ingress_replicas = [
+            r
+            for r in request_router.curr_replicas.values()
+            if r.direct_ingress_endpoint is not None
+        ]
+        if not direct_ingress_replicas:
+            raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
+
+        # Start background load poller on first call.
+        if not hasattr(self, "_di_load_cache"):
+            self._di_load_cache = {}
+            asyncio.get_event_loop().create_task(
+                self._start_load_poller(direct_ingress_replicas)
+            )
+
+        # Least-connections: pick the replica with the lowest cached queue length.
+        best = min(
+            direct_ingress_replicas,
+            key=lambda r: self._di_load_cache.get(r.replica_id, float("inf")),
+        )
+        return (*best.direct_ingress_endpoint, best.replica_id.unique_id)
 
     async def _get_response(
         self,
