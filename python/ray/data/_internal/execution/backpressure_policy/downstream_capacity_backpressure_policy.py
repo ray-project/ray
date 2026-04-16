@@ -191,6 +191,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         utilized_budget_fraction = get_utilized_object_store_budget_fraction(
             self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
+        queue_ratio = self._get_queue_ratio(op)
         if (
             utilized_budget_fraction is not None
             and utilized_budget_fraction <= self.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
@@ -198,7 +199,6 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             # Utilized budget fraction is below threshold, so should skip backpressure.
             result = False
         else:
-            queue_ratio = self._get_queue_ratio(op)
             # Apply backpressure if queue ratio exceeds the threshold.
             result = queue_ratio > self._backpressure_capacity_ratio
 
@@ -208,7 +208,7 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
             downstream_capacity_bytes = self._get_downstream_capacity_size_bytes(op)
             logger.debug(
                 f"Backpressure change {op.name}: {prev} -> {result} "
-                f"(queue_ratio={self._get_queue_ratio(op):.2f}, {queue_size_bytes=}, "
+                f"(queue_ratio={queue_ratio:.2f}, {queue_size_bytes=}, "
                 f"{downstream_capacity_bytes=}, {utilized_budget_fraction=})"
             )
             self._prev_should_backpressure[op] = result
