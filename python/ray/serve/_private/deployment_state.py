@@ -47,6 +47,7 @@ from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
     CONTROLLER_MAX_CONCURRENCY,
     DEFAULT_LATENCY_BUCKET_MS,
+    DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -194,7 +195,9 @@ class DeploymentActorWrapper:
                 if has_async_methods(actor_cls):
                     actor_options["max_concurrency"] = CONTROLLER_MAX_CONCURRENCY
                 else:
-                    actor_options["max_concurrency"] = 100
+                    actor_options[
+                        "max_concurrency"
+                    ] = DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY
             self._handle = actor_cls.options(
                 name=self._actor_name,
                 namespace=SERVE_NAMESPACE,
