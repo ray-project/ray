@@ -116,6 +116,45 @@ from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+
+def _summarize_target(target: "Target") -> Dict[str, Any]:
+    return {
+        "name": target.name,
+        "ip": target.ip,
+        "port": target.port,
+        "instance_id": target.instance_id,
+    }
+
+
+def _summarize_target_groups(
+    target_groups: List["TargetGroup"],
+) -> List[Dict[str, Any]]:
+    return [
+        {
+            "app_name": target_group.app_name,
+            "route_prefix": target_group.route_prefix,
+            "protocol": str(target_group.protocol),
+            "targets": [_summarize_target(target) for target in target_group.targets],
+            "router_targets": [
+                _summarize_target(target) for target in target_group.router_targets
+            ],
+        }
+        for target_group in target_groups
+    ]
+
+
+def _summarize_fallback_targets(
+    fallback_targets: Optional[Dict["RequestProtocol", "Target"]],
+) -> Dict[str, Dict[str, Any]]:
+    if not fallback_targets:
+        return {}
+
+    return {
+        str(protocol): _summarize_target(target)
+        for protocol, target in fallback_targets.items()
+    }
+
+
 # Used for testing purposes only. If this is set, the controller will crash
 # after writing each checkpoint with the specified probability.
 _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
@@ -689,6 +728,11 @@ class ServeController:
         )
         self._last_broadcasted_fallback_targets = fallback_targets
 
+    def get_fallback_targets_for_proxy_manager(self) -> Dict[RequestProtocol, Target]:
+        if self.proxy_state_manager is None:
+            return {}
+        return self.proxy_state_manager.get_fallback_proxy_targets()
+
     def _create_control_loop_metrics(self):
         self.node_update_duration_gauge_s = metrics.Gauge(
             "serve_controller_node_update_duration_s",
@@ -1017,6 +1061,7 @@ class ServeController:
         self,
         name_to_deployment_args_list: Dict[str, List[bytes]],
         name_to_application_args: Dict[str, bytes],
+        name_to_router_deployment: Optional[Dict[str, str]] = None,
     ) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
@@ -1032,19 +1077,27 @@ class ServeController:
                 application arguments, where each item is bytes representing the serialized
                 protobuf `ApplicationArgs` object. `ApplicationArgs` contains the information
                 for the application.
+            name_to_router_deployment: Optional mapping of app names to router
+                deployment names for ingress bypass.
         """
+        if name_to_router_deployment is None:
+            name_to_router_deployment = {}
+
         name_to_deployment_args = {}
         for name, deployment_args_list in name_to_deployment_args_list.items():
+            router_dep = name_to_router_deployment.get(name)
             deployment_args_deserialized = []
             for deployment_args_bytes in deployment_args_list:
                 args = DeploymentArgs.FromString(deployment_args_bytes)
+                dep_name = args.deployment_name
                 deployment_args_deserialized.append(
                     {
-                        "deployment_name": args.deployment_name,
+                        "deployment_name": dep_name,
                         "deployment_config_proto_bytes": args.deployment_config,
                         "replica_config_proto_bytes": args.replica_config,
                         "deployer_job_id": args.deployer_job_id,
                         "ingress": args.ingress,
+                        "router": (router_dep is not None and dep_name == router_dep),
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
@@ -1423,14 +1476,11 @@ class ServeController:
 
         return target_groups
 
-    def _get_running_replica_details_for_ingress_deployment(
-        self, app_name: str
+    def _get_running_replica_details_for_deployment(
+        self, app_name: str, deployment_name: str
     ) -> List[ReplicaDetails]:
-        """Get running replica details for a specific application."""
-        ingress_deployment_name = (
-            self.application_state_manager.get_ingress_deployment_name(app_name)
-        )
-        deployment_id = DeploymentID(app_name=app_name, name=ingress_deployment_name)
+        """Get running replica details for a specific deployment in an app."""
+        deployment_id = DeploymentID(app_name=app_name, name=deployment_name)
         details = self.deployment_state_manager.get_deployment_details(deployment_id)
         if not details:
             return []
@@ -1447,6 +1497,17 @@ class ServeController:
             if replica_detail.replica_id in running_replica_ids
         ]
 
+    def _get_running_replica_details_for_ingress_deployment(
+        self, app_name: str
+    ) -> List[ReplicaDetails]:
+        """Get running replica details for the ingress deployment."""
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name)
+        )
+        return self._get_running_replica_details_for_deployment(
+            app_name, ingress_deployment_name
+        )
+
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
@@ -1456,8 +1517,22 @@ class ServeController:
         This function can return empty list if there are no running replicas.
         Or replicas have not fully initialized yet, where their ports are not
         allocated yet.
+
+        When a router deployment is configured (ingress bypass), the ingress
+        (OpenAiIngress) replicas go into router_targets for Lua routing,
+        and the LLMServer replicas (non-ingress, direct-ingress-enabled)
+        go into the main targets for data plane traffic.
         """
-        # Get running replicas for the ingress deployment
+        router_deployment_name = (
+            self.application_state_manager.get_router_deployment_name(app_name)
+        )
+
+        if router_deployment_name:
+            return self._get_target_groups_for_app_with_router(
+                app_name, route_prefix, router_deployment_name
+            )
+
+        # Standard mode: ingress deployment replicas are the targets
         replica_details = self._get_running_replica_details_for_ingress_deployment(
             app_name
         )
@@ -1494,6 +1569,62 @@ class ServeController:
                         app_name=app_name,
                     )
                 )
+
+        return target_groups
+
+    def _get_target_groups_for_app_with_router(
+        self,
+        app_name: str,
+        route_prefix: str,
+        router_deployment_name: str,
+    ) -> List[TargetGroup]:
+        """Create target groups for ingress bypass mode.
+
+        Router targets (IngressRouter/OpenAiIngress) serve /internal/route
+        for Lua routing decisions. Main targets (LLMServer) serve data plane
+        traffic via direct ingress.
+        """
+        # Router targets: the ingress deployment replicas (serve /internal/route)
+        router_replica_details = self._get_running_replica_details_for_deployment(
+            app_name, router_deployment_name
+        )
+        router_http_targets = (
+            self._get_targets_for_protocol(router_replica_details, RequestProtocol.HTTP)
+            if router_replica_details
+            else []
+        )
+
+        # Data plane targets: all non-router deployments with direct ingress ports.
+        # Iterate over all deployments in the app to find LLMServer replicas.
+        all_deployment_names = self.application_state_manager.get_deployments(app_name)
+
+        data_plane_details = []
+        for dep_name in all_deployment_names:
+            if dep_name == router_deployment_name:
+                continue
+            details = self._get_running_replica_details_for_deployment(
+                app_name, dep_name
+            )
+            data_plane_details.extend(details)
+
+        http_targets = self._get_targets_for_protocol(
+            data_plane_details, RequestProtocol.HTTP
+        )
+
+        if not http_targets and not router_http_targets:
+            return []
+
+        target_groups = []
+        if http_targets or router_http_targets:
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix=route_prefix,
+                    targets=http_targets,
+                    app_name=app_name,
+                    router_targets=router_http_targets,
+                )
+            )
 
         return target_groups
 

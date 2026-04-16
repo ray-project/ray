@@ -58,6 +58,10 @@ class BuiltApplication:
     # them in other deployments' init args/kwargs.
     deployment_handles: Dict[str, DeploymentHandle]
     external_scaler_enabled: bool
+    # Name of the router deployment for ingress bypass (if any).
+    # When set, the ingress deployment serves /internal/route for Lua routing,
+    # while LLMServer replicas serve data plane traffic via direct ingress.
+    router_deployment_name: Optional[str] = None
 
 
 def _make_deployment_handle_default(
