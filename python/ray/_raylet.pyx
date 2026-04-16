@@ -2850,7 +2850,7 @@ cdef class CoreWorker:
         self.event_loop_executor = None
 
         self._gc_thread = None
-        if RayConfig.instance().start_python_gc_manager_thread():
+        if RayConfig.instance().start_python_gc_manager_thread() and self.is_driver:
             self._gc_thread = PythonGCThread()
             self._gc_thread.start()
 
@@ -4596,7 +4596,10 @@ cdef class CoreWorker:
         return self.current_runtime_env
 
     def trigger_gc(self):
-        self._gc_thread.trigger_gc()
+        if self._gc_thread is not None:
+            self._gc_thread.trigger_gc()
+        else:
+            gc.collect()
 
     def get_pending_children_task_ids(self, parent_task_id: TaskID):
         cdef:
