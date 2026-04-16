@@ -2605,41 +2605,5 @@ def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance
     )
 
 
-def test_non_ingress_deployment_opt_in(_skip_if_ff_not_enabled, serve_instance):
-    """A non-ingress deployment that sets self.enable_direct_ingress = True
-    gets a direct ingress HTTP server using the standard Serve ASGI handler."""
-
-    @serve.deployment
-    class Backend:
-        def __init__(self):
-            self.enable_direct_ingress = True
-
-        async def __call__(self, request: Request):
-            return "from backend"
-
-    @serve.deployment
-    @serve.ingress(FastAPI())
-    class Ingress:
-        def __init__(self, backend):
-            self._backend = backend
-
-    serve.run(Ingress.bind(Backend.bind()))
-
-    # The backend replica should get a direct ingress port.
-    def _check_backend_has_port():
-        details = ray.get(
-            _get_global_client()._controller.get_serve_instance_details.remote()
-        )
-        for app in details.applications.values():
-            for dep in app.deployments.values():
-                if dep.name == "Backend":
-                    for replica in dep.replicas:
-                        if replica.port is not None:
-                            return True
-        return False
-
-    wait_for_condition(_check_backend_has_port, timeout=30)
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

@@ -1910,19 +1910,10 @@ class Replica:
         return self._deployment_config.max_queued_requests
 
     async def _maybe_start_direct_ingress_servers(self):
-        # Allow non-ingress deployments to opt in to direct ingress by
-        # setting self.enable_direct_ingress = True on the user callable
-        # (same getattr convention as check_health, reconfigure, etc.)
-        opted_in = getattr(
-            self._user_callable_wrapper.user_callable,
-            "enable_direct_ingress",
-            False,
-        )
-
-        if not RAY_SERVE_ENABLE_DIRECT_INGRESS and not opted_in:
+        if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
             return
 
-        if not self._ingress and not opted_in:
+        if not self._ingress:
             return
 
         async def allocate_and_start_server(start_server_fn, protocol):
