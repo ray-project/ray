@@ -173,41 +173,50 @@ def test_default_log_level_is_info(controller_logging):
     context = create_dummy_run_context()
     config = LoggingManager._get_controller_logger_config_dict(context)
     assert config["loggers"]["ray.train"]["level"] == "DEBUG"
-    assert config["handlers"]["console"]["level"] == "INFO"
-    assert config["handlers"]["file_train_app_controller"]["level"] == "INFO"
+    assert config["filters"]["train_log_level_filter"]["log_level"] == "INFO"
+    assert "level" not in config["handlers"]["console"]
+    assert "level" not in config["handlers"]["file_train_app_controller"]
     assert "level" not in config["handlers"]["file_train_sys_controller"]
 
 
 def test_log_level_from_run_config_controller(controller_logging):
-    """Test that log level from RunConfig applies to the controller's
-    console and app handlers."""
+    """Test that log level from RunConfig applies to the controller via filter."""
     context = _create_run_context_with_log_level("DEBUG")
     config = LoggingManager._get_controller_logger_config_dict(context)
     assert config["loggers"]["ray.train"]["level"] == "DEBUG"
-    assert config["handlers"]["console"]["level"] == "DEBUG"
-    assert config["handlers"]["file_train_app_controller"]["level"] == "DEBUG"
-    assert "level" not in config["handlers"]["file_train_sys_controller"]
+    assert config["filters"]["train_log_level_filter"]["log_level"] == "DEBUG"
+    assert "train_log_level_filter" in config["handlers"]["console"]["filters"]
+    assert (
+        "train_log_level_filter"
+        in config["handlers"]["file_train_app_controller"]["filters"]
+    )
 
 
 def test_log_level_from_run_config_worker(worker_logging):
-    """Test that log level from RunConfig applies to the worker's
-    console and app handlers."""
+    """Test that log level from RunConfig applies to the worker via filter."""
     context = _create_train_context_with_log_level("DEBUG")
     config = LoggingManager._get_worker_logger_config_dict(context)
     assert config["loggers"]["ray.train"]["level"] == "DEBUG"
-    assert config["handlers"]["console"]["level"] == "DEBUG"
-    assert config["handlers"]["file_train_app_worker"]["level"] == "DEBUG"
-    assert "level" not in config["handlers"]["file_train_sys_worker"]
+    assert config["filters"]["train_log_level_filter"]["log_level"] == "DEBUG"
+    assert "train_log_level_filter" in config["handlers"]["console"]["filters"]
+    assert (
+        "train_log_level_filter"
+        in config["handlers"]["file_train_app_worker"]["filters"]
+    )
+    assert "train_log_level_filter" not in config["handlers"][
+        "file_train_sys_worker"
+    ].get("filters", [])
 
 
 def test_sys_handlers_always_capture_all_levels(controller_logging):
-    """Test that sys handlers have no explicit level (capture all levels)
-    regardless of the configured log level."""
+    """Test that sys handlers are not affected by the log level filter."""
     context = _create_run_context_with_log_level("WARNING")
     config = LoggingManager._get_controller_logger_config_dict(context)
+    assert config["filters"]["train_log_level_filter"]["log_level"] == "WARNING"
+    assert "train_log_level_filter" not in config["handlers"][
+        "file_train_sys_controller"
+    ].get("filters", [])
     assert "level" not in config["handlers"]["file_train_sys_controller"]
-    assert config["handlers"]["console"]["level"] == "WARNING"
-    assert config["handlers"]["file_train_app_controller"]["level"] == "WARNING"
 
 
 def test_invalid_log_level_string_raises():

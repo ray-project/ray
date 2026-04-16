@@ -352,8 +352,11 @@ class LoggingConfig:
         log_level: The log level for Ray Train's internal ``ray.train`` logs
             on console output and application-level log files. System-level
             log files always capture all log levels (DEBUG and above).
-            This setting is independent of the logging configuration set by
-            ``ray.init()`` for the ``ray`` logger and the root logger.
+
+            Note: This setting does not affect the ``ray`` logger
+            (configured by ``ray.init()``) or the root logger (used by user
+            code in the training function). These three loggers are fully independent.
+
             Accepts a string (e.g., ``"DEBUG"``, ``"INFO"``, ``"WARNING"``).
             Defaults to ``"INFO"``.
     """
@@ -373,6 +376,7 @@ class LoggingConfig:
                 "Must be a valid logging level string "
                 "(e.g., 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')."
             )
+        self.log_level = self.log_level.upper()
 
 
 @dataclass
