@@ -1368,6 +1368,9 @@ class HAProxyManager(ProxyActorInterface):
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
 
+        # TODO: Round-robin or pass all router_servers to Lua for HA.
+        # Currently uses first router server; if it's down, requests pay the
+        # 500ms Lua timeout before falling back to standard routing.
         router_server = router_servers[0] if custom_request_routing else None
 
         # When ingress bypass is active, the main targets are LLMServer replicas
