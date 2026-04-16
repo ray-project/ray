@@ -120,6 +120,13 @@ class SharedCachedMetricsReporter:
         with cls._lock:
             existing = cls._instances.get(loop_id)
             if existing is not None and not existing._event_loop.is_closed():
+                if existing._interval_s != interval_s:
+                    logger.warning(
+                        "SharedCachedMetricsReporter interval mismatch: "
+                        f"existing={existing._interval_s}s, "
+                        f"requested={interval_s}s. "
+                        "Using the existing interval."
+                    )
                 return existing
             reporter = cls(event_loop, interval_s)
             cls._instances[loop_id] = reporter
@@ -132,29 +139,44 @@ class SharedCachedMetricsReporter:
             self._task = self._event_loop.create_task(self._report_forever())
 
     def deregister(self, manager: "RouterMetricsManager"):
-        """Deregister a metrics manager."""
+        """Deregister a metrics manager.
+
+        When the last manager is removed, the background task is cancelled
+        and this reporter is removed from the class-level ``_instances``
+        cache so that neither the task nor the event loop is leaked.
+        """
         self._managers.discard(manager)
+        if not self._managers and self._task is not None:
+            self._task.cancel()
+            self._task = None
+            with self._lock:
+                loop_id = id(self._event_loop)
+                if self._instances.get(loop_id) is self:
+                    self._instances.pop(loop_id, None)
 
     async def _report_forever(self):
         assert self._interval_s > 0
 
         consecutive_errors = 0
-        while True:
-            try:
-                await asyncio.sleep(self._interval_s)
-                for manager in list(self._managers):
-                    try:
-                        manager._report_cached_metrics()
-                    except Exception:
-                        logger.exception("Unexpected error reporting metrics.")
-                consecutive_errors = 0
-            except Exception:
-                logger.exception("Unexpected error in shared metrics reporter.")
+        try:
+            while True:
+                try:
+                    await asyncio.sleep(self._interval_s)
+                    for manager in list(self._managers):
+                        try:
+                            manager._report_cached_metrics()
+                        except Exception:
+                            logger.exception("Unexpected error reporting metrics.")
+                    consecutive_errors = 0
+                except Exception:
+                    logger.exception("Unexpected error in shared metrics reporter.")
 
-                # Exponential backoff starting at 1s and capping at 10s.
-                backoff_time_s = min(10, 2**consecutive_errors)
-                consecutive_errors += 1
-                await asyncio.sleep(backoff_time_s)
+                    # Exponential backoff starting at 1s and capping at 10s.
+                    backoff_time_s = min(10, 2**consecutive_errors)
+                    consecutive_errors += 1
+                    await asyncio.sleep(backoff_time_s)
+        except asyncio.CancelledError:
+            pass
 
 
 class RouterMetricsManager:

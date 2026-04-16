@@ -37,6 +37,7 @@ from ray.serve._private.router import (
     QUEUED_REQUESTS_KEY,
     AsyncioRouter,
     RouterMetricsManager,
+    SharedCachedMetricsReporter,
     SingletonThreadRouter,
 )
 from ray.serve._private.test_utils import FakeCounter, FakeGauge, MockTimer
@@ -1488,13 +1489,49 @@ class TestSharedCachedMetricsReporter:
         event_loop = asyncio.get_event_loop()
         manager = self._make_metrics_manager(event_loop)
         reporter = manager._shared_reporter
+        loop_id = id(event_loop)
 
         # Let registration callback run on the event loop.
         await asyncio.sleep(0)
         assert manager in reporter._managers
+        assert reporter._task is not None and not reporter._task.done()
 
         await manager.shutdown()
         assert manager not in reporter._managers
+
+        # Last manager removed: task should be cancelled and reporter
+        # should be removed from the class-level cache.
+        await asyncio.sleep(0)  # let cancellation propagate
+        assert reporter._task is None
+        assert loop_id not in SharedCachedMetricsReporter._instances
+
+    @pytest.mark.asyncio
+    async def test_reporter_recreated_after_full_cleanup(self):
+        """After all managers shut down, a new manager gets a fresh reporter."""
+        event_loop = asyncio.get_event_loop()
+        m1 = self._make_metrics_manager(event_loop, name_suffix="first")
+        reporter1 = m1._shared_reporter
+
+        await asyncio.sleep(0)
+        await m1.shutdown()
+        await asyncio.sleep(0)
+
+        # Create a new manager — should get a brand-new reporter.
+        m2 = self._make_metrics_manager(event_loop, name_suffix="second")
+        reporter2 = m2._shared_reporter
+        assert reporter2 is not reporter1
+
+        # New reporter should work correctly.
+        m2.inc_num_total_requests(route="/new")
+        await asyncio.sleep(RAY_SERVE_METRICS_EXPORT_INTERVAL_MS * 2 / 1000)
+        tags = {
+            "deployment": "depsecond",
+            "application": "appsecond",
+            "route": "/new",
+            "handle": "handlesecond",
+            "actor_id": "actorsecond",
+        }
+        assert m2.num_router_requests.get_count(tags) == 1
 
     @pytest.mark.asyncio
     async def test_shutdown_one_does_not_affect_others(self):
