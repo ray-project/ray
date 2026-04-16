@@ -797,6 +797,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._total_shared = ExecutionResources.zero()
         # Resource budgets for each operator, excluding `_reserved_for_op_outputs`.
         self._op_budgets: Dict[PhysicalOperator, ExecutionResources] = {}
+        # Resource allocations, i.e. total resources granted to each operator.
+        self._op_allocations: Dict[PhysicalOperator, ExecutionResources] = {}
         # Remaining memory budget for generating new task outputs, per operator.
         self._output_budgets: Dict[PhysicalOperator, float] = {}
         # Whether each operator has reserved the minimum resources to run
@@ -902,10 +904,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return self._output_budgets.get(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        budget = self.get_budget(op)
-        if budget is None:
-            return None
-        return budget.add(self._resource_manager.get_op_usage(op))
+        return self._op_allocations.get(op)
 
     def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
         """Get total reserved resources for an operator, including outputs reservation."""
@@ -946,6 +945,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         remaining_shared = self._update_reservation(limits)
 
         self._op_budgets.clear()
+        self._op_allocations.clear()
         eligible_ops = self._resource_manager.get_eligible_ops()
         if len(eligible_ops) == 0:
             return
@@ -1024,6 +1024,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 to_borrow,
             )
 
+            # allocation = reserved (i.e. resources reserved for the operator)
+            #   + shared (i.e. portion of remaining shared resources granted above)
+            self._op_allocations[op] = self._op_reserved[op].add(op_shared)
             self._op_budgets[op] = self._op_budgets[op].add(op_shared)
 
         # Give any remaining shared resources to the most downstream uncapped op.
@@ -1033,6 +1036,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 _, max_resource_usage = op.min_max_resource_requirements()
                 if max_resource_usage == ExecutionResources.inf():
                     self._op_budgets[op] = self._op_budgets[op].add(remaining_shared)
+                    self._op_allocations[op] = self._op_allocations[op].add(
+                        remaining_shared
+                    )
                     break
 
         # A materializing operator like `AllToAllOperator` waits for all its input
