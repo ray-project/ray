@@ -222,9 +222,18 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         # cumulative number of rows as that left block.
         # NOTE: _split_at_indices has a no-op fastpath if the blocks are already
         # aligned.
+        # Determine the ownership of the blocks being split, accounting for the
+        # potential swap above. We must not free blocks that are shared with
+        # other operators (e.g., when the input RefBundle has owns_blocks=False
+        # because it comes from a materialized dataset).
+        if input_side_inverted:
+            split_side_owned = all(b.owns_blocks for b in left_input)
+        else:
+            split_side_owned = all(b.owns_blocks for b in right_input)
         aligned_right_blocks_with_metadata = _split_at_indices(
             right_blocks_with_metadata,
             indices,
+            owned_by_consumer=split_side_owned,
             block_rows=right_block_rows,
         )
         del right_blocks_with_metadata
