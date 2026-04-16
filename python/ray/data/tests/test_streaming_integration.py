@@ -158,6 +158,59 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
     assert len(c1.out) == 10, c0.out
 
 
+def test_output_split_shutdown_preserves_sibling_split_queues(ray_start_10_cpus_shared):
+    """If one split consumer finishes first, executor shutdown must not clear the
+    other split's output queue; slower consumers still need those RefBundles.
+    """
+    executor = StreamingExecutor(DataContext.get_current())
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = OutputSplitter(o1, 2, equal=True, data_context=DataContext.get_current())
+    it = executor.execute(o2)
+
+    slow_ready = threading.Event()
+    slow_go = threading.Event()
+    c0_out: List[RefBundle] = []
+    c1_out: List[RefBundle] = []
+    thread_errors: List[BaseException] = []
+
+    def consume_split(idx: int, out: List[RefBundle], hold_before_reads: bool):
+        try:
+            if hold_before_reads:
+                slow_ready.set()
+                slow_go.wait()
+            while True:
+                try:
+                    out.append(it.get_next(output_split_idx=idx))
+                except StopIteration:
+                    break
+        except BaseException as e:
+            thread_errors.append(e)
+
+    t_slow = threading.Thread(target=consume_split, args=(1, c1_out, True))
+    t_fast = threading.Thread(target=consume_split, args=(0, c0_out, False))
+    t_slow.start()
+    assert slow_ready.wait(timeout=30)
+    t_fast.start()
+    t_fast.join(timeout=60)
+    assert not t_fast.is_alive()
+    slow_go.set()
+    t_slow.join(timeout=60)
+    assert not t_slow.is_alive()
+    assert not thread_errors, thread_errors
+
+    def get_outputs(out: List[RefBundle]):
+        outputs = []
+        for bundle in out:
+            for block_ref in bundle.block_refs:
+                ids: pd.Series = ray.get(block_ref)["id"]
+                outputs.extend(ids.values)
+        return outputs
+
+    assert get_outputs(c0_out) == list(range(0, 20, 2))
+    assert get_outputs(c1_out) == list(range(1, 20, 2))
+
+
 def test_streaming_split_e2e(ray_start_10_cpus_shared):
     def get_lengths(*iterators, use_iter_batches=True):
         lengths = []
