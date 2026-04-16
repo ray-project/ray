@@ -1,4 +1,6 @@
 """Tests for batch_size="auto" in BatchMapTransformFn and map_batches."""
+from typing import Optional
+
 import numpy as np
 import pandas as pd
 import pyarrow as pa
@@ -14,10 +16,14 @@ from ray.data._internal.output_buffer import OutputBlockSizeOption
 from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_map_batches,
 )
-from ray.data.block import BlockAccessor
+from ray.data.block import BatchFormat, BlockAccessor
 
 
-def _make_transformer(batch_size, batch_format="pyarrow", received_sizes=None):
+def _make_transformer(
+    batch_size,
+    batch_format: Optional[BatchFormat] = BatchFormat.ARROW,
+    received_sizes=None,
+):
     def identity(batch):
         if received_sizes is not None:
             received_sizes.append(len(batch))
@@ -53,11 +59,12 @@ def _collect_batches(transformer, blocks):
 def test_compute_auto_batch_size(restore_data_context, target_scale, expected):
     """Batch size scales with target; clamps to 1 when a single row exceeds it."""
     block = pa.table({"x": pa.array([42], type=pa.int64())})
-    fn = BatchMapTransformFn(lambda b, c: b, batch_size="auto", batch_format="pyarrow")
+    fn = BatchMapTransformFn(lambda b, c: b, batch_size="auto", batch_format=BatchFormat.ARROW)
     bytes_per_row = BlockAccessor.for_block(block).size_bytes()
     restore_data_context.default_batch_size_bytes = int(bytes_per_row * target_scale)
     computed, _ = fn._compute_auto_batch_size(iter([block]))
     if expected == "batched":
+        assert computed is not None
         assert computed >= 1
     else:
         assert computed == expected
@@ -124,7 +131,7 @@ def test_map_batches_auto_correctness(ray_start_regular_shared, restore_data_con
     bytes_per_row = width * 4  # float32
     restore_data_context.default_batch_size_bytes = bytes_per_row * 10  # ~10 rows/batch
 
-    def passthrough(batch: dict) -> dict:
+    def passthrough(batch):
         n = len(batch["data"])
         return {"data": batch["data"], "size": np.full(n, n, dtype=np.int32)}
 
