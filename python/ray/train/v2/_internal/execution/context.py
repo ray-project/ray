@@ -352,7 +352,8 @@ class TrainContext:
                 lambda: self.current_report_index == report_call_index - 1
             )
             logger.info(
-                f"Reporting training result {report_call_index}: {training_report}"
+                f"Reporting training result {report_call_index}: {training_report} "
+                f"from rank {self.get_world_rank()}"
             )
             # Update latest checkpoint as the persisted checkpoint.
             if training_report.checkpoint:
@@ -409,9 +410,18 @@ class TrainContext:
             report_call_index = self.report_call_index
 
             # Sync the checkpoint dir name across ranks.
-            checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
-                checkpoint_dir_name
-            )
+            try:
+                checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
+                    checkpoint_dir_name
+                )
+            except ray.exceptions.RayTaskError:
+                logger.warning(
+                    "Synchronization barrier was reset (likely due to a "
+                    "worker failure). Skipping this report."
+                )
+                # Keep report indexes aligned across workers.
+                self.report_call_index -= 1
+                return
 
             # Upload checkpoint, wait for turn, and report.
             if checkpoint_upload_mode == CheckpointUploadMode.SYNC:

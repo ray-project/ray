@@ -833,6 +833,19 @@ class WorkerGroup(ExecutionGroup):
                     w.distributed_context.world_rank, None
                 )
 
+        # Clear result queues on surviving workers to avoid mixed-generation
+        # results (some workers with old report, others with new report).
+        for i, rg in enumerate(self._replica_groups):
+            if i != replica_group_index and rg.is_active():
+                for w in rg.get_workers():
+                    ray.get(w.actor.clear_result_queue.remote())
+
+        # Reset the sync actor to unblock surviving workers that may be stuck
+        # at the synchronization barrier. This is a no-op if no workers are
+        # currently at the barrier (e.g., failure occurred after the barrier).
+        sync_actor = self._worker_group_state.sync_actor
+        ray.get(sync_actor.reset.remote())
+
         # Create new workers with old replica group state.
         pg = self._worker_group_state.placement_group_handle.placement_group
         new_workers = self._create_workers(

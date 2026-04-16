@@ -2,6 +2,7 @@ from collections import deque
 from typing import Deque, List, Optional
 
 from ray.train.v2._internal.execution.callback import (
+    ReplicaGroupCallback,
     ReportCallback,
     WorkerGroupCallback,
 )
@@ -10,9 +11,10 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
     WorkerGroupPollStatus,
 )
+from ray.train.v2._internal.execution.worker_group.execution_group import ReplicaGroup
 
 
-class ReportCallbackHandler(WorkerGroupCallback):
+class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
     """Consolidate training results from multiple workers and call
     subscribers implementing the `ReportCallback` interface sequentially.
     """
@@ -116,3 +118,19 @@ class ReportCallbackHandler(WorkerGroupCallback):
         """
         self._num_workers = None
         self._training_report_queues = None
+
+    # --------------------------
+    # ReplicaGroupCallback
+    # --------------------------
+
+    def after_replica_group_start(self, replica_group: ReplicaGroup) -> None:
+        """Handle replica group start. Initialize internal states."""
+        self._num_workers += len(replica_group)
+        # TODO: it might be possible to reuse existing queues.
+        # For example, if 3/4 ddp workers reported a checkpoint, that checkpoint is usable.
+        self._training_report_queues = [deque() for _ in range(self._num_workers)]
+
+    def before_replica_group_shutdown(self, replica_group: ReplicaGroup) -> None:
+        """Handle replica group shutdown. Clear internal states."""
+        self._num_workers -= len(replica_group)
+        self._training_report_queues = [deque() for _ in range(self._num_workers)]

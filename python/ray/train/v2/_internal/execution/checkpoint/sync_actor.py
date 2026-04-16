@@ -16,6 +16,12 @@ T = TypeVar("T", bound=Optional[object])
 logger = logging.getLogger(__name__)
 
 
+class SynchronizationBarrierResetError(Exception):
+    """Raised when the synchronization barrier is reset, e.g. due to a worker failure."""
+
+    pass
+
+
 BROADCAST_PERIODIC_WARNING = """
 `{caller_method_name}` has not been called by all {world_size} workers in the group.
 The workers have been waiting for {max_time_elapsed_s:.2f} s for the following ranks to join the `{caller_method_name}` call: {missing_ranks}.
@@ -43,6 +49,7 @@ class SynchronizationActor:
         self._world_size: int = 0
         self._condition = asyncio.Condition()
         self._reduced_data = None
+        self._reset = False
         # The time when workers from different ranks
         # enters the synchronization barrier.
         self._sync_start_times: List[Optional[float]] = []
@@ -71,6 +78,7 @@ class SynchronizationActor:
         if self._counter == 0:
             self._reduced_data = None
             self._world_size = 0
+            self._reset = False
 
     def _setup_or_validate_collective_op(self, world_size: int):
         """The setup method for the synchronization actor if it is not setup yet.
@@ -80,6 +88,8 @@ class SynchronizationActor:
         if self._world_size == 0:
             self._world_size = world_size
             self._sync_start_times = [None] * world_size
+            # Clear any stale reset flag from a previous barrier cycle.
+            self._reset = False
         elif world_size != self._world_size:
             raise ValueError(
                 f"Expected all callers to provide the same world size. \
@@ -128,6 +138,19 @@ class SynchronizationActor:
             warn_interval_env_var=COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
             warn_interval_s=self._warn_interval_s,
         )
+
+    async def reset(self):
+        """Reset the synchronization barrier, unblocking any waiting workers.
+
+        If no workers are currently at the barrier, this is a no-op.
+        Waiting workers will raise SynchronizationBarrierResetError.
+        The actor remains alive and usable for subsequent barriers.
+        """
+        async with self._condition:
+            if self._counter == 0:
+                return
+            self._reset = True
+            self._condition.notify_all()
 
     async def broadcast_from_rank_zero(
         self,
@@ -185,6 +208,11 @@ class SynchronizationActor:
                         warn_interval_s=self._warn_interval_s,
                         timeout_s=self._timeout_s,
                     )
+                    if self._reset:
+                        raise SynchronizationBarrierResetError(
+                            "Synchronization barrier was reset, likely due "
+                            "to a worker failure and replica group replacement."
+                        )
                     return self._reduced_data
                 except (asyncio.TimeoutError, TimeoutError) as e:
                     raise BroadcastCollectiveTimeoutError(
