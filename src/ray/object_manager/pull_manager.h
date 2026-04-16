@@ -121,6 +121,11 @@ class PullManager {
                         bool pending_creation,
                         size_t object_size);
 
+  /// Called for objects already in local plasma to skip the subscription
+  /// round-trip. Marks the object pullable with size=0 so it doesn't
+  /// consume pull bandwidth quota (already local, nothing to fetch).
+  void MarkObjectLocallyAvailable(const ObjectID &object_id);
+
   /// Cancel an existing pull request.
   ///
   /// \param request_id The request ID returned by Pull that should be canceled.

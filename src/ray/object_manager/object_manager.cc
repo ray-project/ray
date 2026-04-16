@@ -231,14 +231,29 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
                                     object_size);
   };
 
+  // When all objects are already local (e.g. worker's ray.get() after the
+  // raylet already fetched task args), skip pubsub entirely. This avoids
+  // a wasted round-trip to the driver/owner for every object.
+  bool all_local = !objects_to_locate.empty();
   for (const auto &ref : objects_to_locate) {
-    // Subscribe to object notifications. A notification will be received every
-    // time the set of node IDs for the object changes. Notifications will also
-    // be received if the list of locations is empty. The set of node IDs has
-    // no ordering guarantee between notifications.
-    auto object_id = ObjectRefToId(ref);
-    object_directory_->SubscribeObjectLocations(
-        object_directory_pull_callback_id_, object_id, ref.owner_address(), callback);
+    if (!local_objects_.contains(ObjectRefToId(ref))) {
+      all_local = false;
+      break;
+    }
+  }
+
+  if (all_local) {
+    // All-local: mark pullable directly. Bundle activates and pins in the
+    // same call stack (single-threaded IO), so no eviction is possible.
+    for (const auto &ref : objects_to_locate) {
+      pull_manager_->MarkObjectLocallyAvailable(ObjectRefToId(ref));
+    }
+  } else {
+    for (const auto &ref : objects_to_locate) {
+      auto object_id = ObjectRefToId(ref);
+      object_directory_->SubscribeObjectLocations(
+          object_directory_pull_callback_id_, object_id, ref.owner_address(), callback);
+    }
   }
 
   return request_id;

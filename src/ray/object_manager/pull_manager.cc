@@ -359,6 +359,35 @@ std::vector<ObjectID> PullManager::CancelPull(uint64_t request_id) {
   return object_ids_to_cancel_subscription;
 }
 
+void PullManager::MarkObjectLocallyAvailable(const ObjectID &object_id) {
+  auto it = object_pull_requests_.find(object_id);
+  if (it == object_pull_requests_.end()) {
+    return;
+  }
+
+  if (it->second.object_size_set) {
+    return;
+  }
+
+  // Size=0: local objects don't consume pull quota. Safe because the caller
+  // only invokes this when ALL objects are local, so the bundle activates and
+  // pins in the same call stack on the single-threaded IO context.
+  it->second.object_size = 0;
+  it->second.object_size_set = true;
+
+  for (auto &bundle_request_id : it->second.bundle_request_ids) {
+    BundlePullRequestQueue &bundles = GetBundlePullRequestQueue(bundle_request_id);
+    auto bundle_it = bundles.requests.find(bundle_request_id);
+    RAY_CHECK(bundle_it != bundles.requests.end());
+    bundle_it->second.MarkObjectAsPullable(object_id);
+    if (bundle_it->second.IsPullable()) {
+      bundles.MarkBundleAsPullable(bundle_request_id);
+    }
+  }
+
+  UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
+}
+
 void PullManager::OnLocationChange(const ObjectID &object_id,
                                    const std::unordered_set<NodeID> &client_ids,
                                    const std::string &spilled_url,
