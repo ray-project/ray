@@ -253,6 +253,96 @@ def _parse_args(
     return options, parser.rargs
 
 
+def _extract_uv_prefix_args(raw_args: List[str], command: List[str]) -> List[str]:
+    """Return uv arguments before command starts, preserving unknown uv flags.
+
+    We prefer using parser-provided command boundary when reliable, but fall back to
+    a positional scan for cases where unknown option handling can make `command`
+    effectively equal to the original args.
+    """
+    if not raw_args:
+        return []
+
+    # Usual case: command is a strict suffix of raw args.
+    if command and len(command) < len(raw_args):
+        return raw_args[: len(raw_args) - len(command)]
+
+    # Fallback: scan left-to-right, treating leading option-like tokens as uv args.
+    # Preserve unknown uv options (`--new-flag`, `--new-flag=value`) and values for
+    # known value-taking options (best-effort) until the command token boundary.
+    uv_args: List[str] = []
+    options_requiring_value = {
+        "--extra",
+        "--no-extra",
+        "--group",
+        "--no-group",
+        "--only-group",
+        "--env-file",
+        "--with",
+        "--with-editable",
+        "--with-requirements",
+        "--package",
+        "--index",
+        "--default-index",
+        "-i",
+        "--index-url",
+        "--extra-index-url",
+        "-f",
+        "--find-links",
+        "--keyring-provider",
+        "-P",
+        "--upgrade-package",
+        "--resolution",
+        "--prerelease",
+        "--fork-strategy",
+        "--exclude-newer",
+        "--reinstall-package",
+        "--link-mode",
+        "-C",
+        "--config-setting",
+        "--no-build-isolation-package",
+        "--no-build-package",
+        "--no-binary-package",
+        "--cache-dir",
+        "--refresh-package",
+        "-p",
+        "--python",
+        "--python-preference",
+        "--color",
+        "--allow-insecure-host",
+        "--directory",
+        "--project",
+        "--config-file",
+        "-m",
+        "--module",
+    }
+
+    i = 0
+    while i < len(raw_args):
+        token = raw_args[i]
+        if token == "--":
+            break
+
+        if token.startswith("-"):
+            uv_args.append(token)
+            # --flag=value style already carries value in same token.
+            if (
+                "=" not in token
+                and token in options_requiring_value
+                and i + 1 < len(raw_args)
+            ):
+                uv_args.append(raw_args[i + 1])
+                i += 2
+                continue
+            i += 1
+            continue
+
+        # First positional token is command boundary.
+        break
+
+    return uv_args
+
+
 def _check_working_dir_files(
     uv_run_args: optparse.Values, runtime_env: Dict[str, Any]
 ) -> None:
@@ -351,20 +441,16 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
             "'uv run' environment e.g. by including them in your pyproject.toml."
         )
 
-    # Extract the arguments uv_run_args of 'uv run' that are not part of the command.
-    args_to_parse = cmdline[2:]  # Remove 'uv run' prefix
-    original_length = len(
-        args_to_parse
-    )  # Save before parsing (parser modifies in-place)
-
+    # Extract arguments after `uv run`.
+    raw_args = cmdline[2:]  # Immutable snapshot for prefix reconstruction.
+    args_to_parse = raw_args.copy()  # Mutable copy for parser internals.
     parser = _create_uv_run_parser()
     (options, command) = _parse_args(parser, args_to_parse)
 
-    # Calculate how many arguments were consumed by the parser.
-    # Since disable_interspersed_args() is set, parsing stops at the first
-    # unrecognized argument (the command), so all consumed args are uv options.
-    args_consumed = original_length - len(command)
-    uv_run_args = cmdline[: 2 + args_consumed]
+    # Preserve uv prefix from original argv. Parsing is used only for semantic
+    # values (e.g. --python, --directory, --module).
+    uv_run_args = [cmdline[0], cmdline[1]]
+    uv_run_args.extend(_extract_uv_prefix_args(raw_args, command))
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.

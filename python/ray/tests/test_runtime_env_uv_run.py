@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import unittest
 from pathlib import Path
 
 import pytest
@@ -368,6 +369,161 @@ def test_uv_run_parser():
     assert command == ["--model", "Qwen/Qwen3-32B"]
 
 
+def test_uv_run_hook_keeps_equal_style_option_values():
+    """Regression: equal-style command args must not break uv prefix parsing."""
+    from ray._private.runtime_env.uv_runtime_env_hook import hook
+
+    cmdline = [
+        find_uv_bin(),
+        "run",
+        "-m",
+        "ray.util.client.server",
+        "--address=172.18.0.2:6379",
+        "--host=127.0.0.1",
+        "--port=23007",
+        "--mode=specific-server",
+    ]
+
+    with unittest.mock.patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
+        return_value=cmdline,
+    ):
+        runtime_env = hook({})
+
+    py_executable = runtime_env["py_executable"]
+    # Hook always strips "-m/--module" from uv prefix before producing py_executable.
+    assert " -m " not in py_executable
+    assert "python" in py_executable.split()
+    # Command-specific args should not be injected into the uv prefix.
+    assert "--address=172.18.0.2:6379" not in py_executable
+    assert "--host=127.0.0.1" not in py_executable
+    assert "--port=23007" not in py_executable
+    assert "--mode=specific-server" not in py_executable
+
+
+def test_uv_run_hook_preserves_count_flags():
+    """Regression: count flags should not serialize as '--verbose 2'."""
+    from ray._private.runtime_env.uv_runtime_env_hook import hook
+
+    cmdline = [
+        find_uv_bin(),
+        "run",
+        "-vv",
+        "-m",
+        "ray._private.runtime_env.uv_runtime_env_hook",
+        "--extra-args",
+    ]
+
+    with unittest.mock.patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
+        return_value=cmdline,
+    ):
+        runtime_env = hook({})
+
+    py_executable = runtime_env["py_executable"]
+    assert "--verbose 2" not in py_executable
+    assert "-vv" in py_executable
+
+
+def test_uv_run_hook_preserves_unknown_uv_options():
+    """Unknown uv options should not be dropped when deriving uv prefix."""
+    from ray._private.runtime_env.uv_runtime_env_hook import hook
+
+    cmdline = [
+        find_uv_bin(),
+        "run",
+        "--new-uv-flag=example",
+        "--no-project",
+        "-m",
+        "ray._private.runtime_env.uv_runtime_env_hook",
+        "--extra-args",
+    ]
+
+    with unittest.mock.patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
+        return_value=cmdline,
+    ):
+        runtime_env = hook({})
+
+    py_executable = runtime_env["py_executable"]
+    assert "--new-uv-flag=example" in py_executable
+    assert "--no-project" in py_executable
+
+
+def test_uv_run_hook_preserves_unknown_option_before_known_option():
+    """Unknown uv option before known options should not zero out prefix extraction."""
+    from ray._private.runtime_env.uv_runtime_env_hook import hook
+
+    cmdline = [
+        find_uv_bin(),
+        "run",
+        "--new-uv-flag=example",
+        "--project",
+        ".",
+        "-m",
+        "ray._private.runtime_env.uv_runtime_env_hook",
+        "--extra-args",
+    ]
+
+    with unittest.mock.patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
+        return_value=cmdline,
+    ):
+        runtime_env = hook({})
+
+    py_executable = runtime_env["py_executable"]
+    assert "--new-uv-flag=example" in py_executable
+    assert "--project ." in py_executable
+
+
+def test_uv_run_hook_does_not_absorb_command_flags_after_script():
+    """Flags after script name belong to command, not uv prefix."""
+    from ray._private.runtime_env.uv_runtime_env_hook import hook
+
+    cmdline = [
+        find_uv_bin(),
+        "run",
+        "--no-project",
+        "my_script.py",
+        "--python",
+        "3.10",
+    ]
+
+    with unittest.mock.patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
+        return_value=cmdline,
+    ):
+        runtime_env = hook({})
+
+    py_executable = runtime_env["py_executable"]
+    # --python after script is command-specific and must not be treated as uv arg.
+    assert "--python 3.10" not in py_executable
+    assert "--no-project" in py_executable
+
+
+def test_uv_run_hook_boundary_not_confused_by_repeated_command_token():
+    """Boundary detection should not truncate uv args on token collisions."""
+    from ray._private.runtime_env.uv_runtime_env_hook import hook
+
+    cmdline = [
+        find_uv_bin(),
+        "run",
+        "--project",
+        "my_script.py",
+        "my_script.py",
+        "--flag",
+    ]
+
+    with unittest.mock.patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
+        return_value=cmdline,
+    ):
+        runtime_env = hook({})
+
+    py_executable = runtime_env["py_executable"]
+    assert "--project my_script.py" in py_executable
+
+
 @pytest.mark.skipif(sys.platform == "win32", reason="Not ported to Windows yet.")
 def test_uv_run_runtime_env_hook_e2e(shutdown_only, temp_dir):
     tmp_dir = Path(temp_dir)
@@ -550,9 +706,9 @@ def test_uv_run_ray_client_mode(call_ray_start, tmp_working_dir):
         conn_info = context.client_worker.connection_info()
         runtime_env = conn_info.get("job_config", {}).get("runtime_env", {})
         assert "py_executable" in runtime_env, "UV hook should set py_executable"
-        assert (
-            "uv run" in runtime_env["py_executable"]
-        ), "py_executable should contain 'uv run'"
+        assert "uv run" in runtime_env["py_executable"], (
+            "py_executable should contain 'uv run'"
+        )
 
         @ray.remote
         def emojize():
@@ -562,9 +718,9 @@ def test_uv_run_ray_client_mode(call_ray_start, tmp_working_dir):
 
         # This should work because UV hook detected and propagated UV config
         result = ray.get(emojize.remote())
-        assert (
-            result == "Ray rocks 👍"
-        ), "UV should have installed emoji package on workers"
+        assert result == "Ray rocks 👍", (
+            "UV should have installed emoji package on workers"
+        )
 
     finally:
         ray.shutdown()
