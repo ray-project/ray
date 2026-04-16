@@ -102,8 +102,8 @@ class TestReservationOpResourceAllocator:
         # o1 and o4 are not handled.
         assert o1 not in allocator._op_reserved
         assert o4 not in allocator._op_reserved
-        assert o1 not in allocator._op_budgets
-        assert o4 not in allocator._op_budgets
+        assert allocator.get_allocation(o1) is None
+        assert allocator.get_allocation(o4) is None
         # Test reserved resources for o2 and o3.
         assert allocator._op_reserved[o2] == ExecutionResources(4, 0, 125)
         assert allocator._op_reserved[o3] == ExecutionResources(4, 0, 125)
@@ -112,8 +112,8 @@ class TestReservationOpResourceAllocator:
         # 50% of the global limits are shared.
         assert allocator._total_shared == ExecutionResources(8, 0, 500)
         # Test budgets.
-        assert allocator._op_budgets[o2] == ExecutionResources(8, 0, 375)
-        assert allocator._op_budgets[o3] == ExecutionResources(8, 0, 375)
+        assert allocator.get_budget(o2) == ExecutionResources(8, 0, 375)
+        assert allocator.get_budget(o3) == ExecutionResources(8, 0, 375)
         # Test max_task_output_bytes_to_read.
         assert allocator.max_task_output_bytes_to_read(o2) == 500
         assert allocator.max_task_output_bytes_to_read(o3) == 500
@@ -150,9 +150,9 @@ class TestReservationOpResourceAllocator:
         # remaining shared = 1000/2 - 275 = 225
         # Test budgets.
         # memory_budget[o2] = 0 + 225/2 = 113 (rounded up)
-        assert allocator._op_budgets[o2] == ExecutionResources(3, 0, 113)
+        assert allocator.get_budget(o2) == ExecutionResources(3, 0, 113)
         # memory_budget[o3] = 95 + 225/2 = 207 (rounded down)
-        assert allocator._op_budgets[o3] == ExecutionResources(5, 0, 207)
+        assert allocator.get_budget(o3) == ExecutionResources(5, 0, 207)
         # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 112.5 + 25 = 138 (rounded up)
         assert allocator.max_task_output_bytes_to_read(o2) == 138
@@ -192,9 +192,9 @@ class TestReservationOpResourceAllocator:
 
         # Test budgets.
         # memory_budget[o2] = 0 + 100/2 = 50
-        assert allocator._op_budgets[o2] == ExecutionResources(1.5, 0, 50)
+        assert allocator.get_budget(o2) == ExecutionResources(1.5, 0, 50)
         # memory_budget[o3] = 70 + 100/2 = 120
-        assert allocator._op_budgets[o3] == ExecutionResources(2.5, 0, 120)
+        assert allocator.get_budget(o3) == ExecutionResources(2.5, 0, 120)
         # Test max_task_output_bytes_to_read.
         # max_task_output_bytes_to_read(o2) = 50 + 0 = 50
         assert allocator.max_task_output_bytes_to_read(o2) == 50
@@ -306,7 +306,7 @@ class TestReservationOpResourceAllocator:
         allocator.update_budgets(limits=global_limits)
 
         # Leftover CPU should be reflected in both budget and allocation for uncapped o3.
-        assert allocator.get_allocation(o3).cpu == allocator._op_budgets[o3].cpu
+        assert allocator.get_allocation(o3).cpu == allocator.get_budget(o3).cpu
         assert allocator.get_allocation(o3).cpu > allocator._op_reserved[o3].cpu
 
     def test_reserve_min_resource_requirements(self, restore_data_context):
@@ -534,10 +534,10 @@ class TestReservationOpResourceAllocator:
         #       remaining_shared = (5.5, 0)
         # - After loop, remaining (5.5, 0) given to most downstream op (o3):
         #       o3 budget = (8.5, 110) + (5.5, 0) = (14, 110)
-        assert allocator._op_budgets[o2] == ExecutionResources(
+        assert allocator.get_budget(o2) == ExecutionResources(
             cpu=2, object_store_memory=110
         )
-        assert allocator._op_budgets[o3] == ExecutionResources(
+        assert allocator.get_budget(o3) == ExecutionResources(
             cpu=14, object_store_memory=110
         )
 
@@ -591,10 +591,10 @@ class TestReservationOpResourceAllocator:
         # Both ops are capped (max cpu=4), so remaining CPU is not given to any op.
         # o2: reserved_remaining (2, 10) + capped op_shared (0, 100) = (2, 110)
         # o3: reserved_remaining (2, 10) + capped op_shared (0, 100) = (2, 110)
-        assert allocator._op_budgets[o2] == ExecutionResources(
+        assert allocator.get_budget(o2) == ExecutionResources(
             cpu=2, object_store_memory=110
         )
-        assert allocator._op_budgets[o3] == ExecutionResources(
+        assert allocator.get_budget(o3) == ExecutionResources(
             cpu=2, object_store_memory=110
         )
 
@@ -629,15 +629,15 @@ class TestReservationOpResourceAllocator:
         allocator.update_budgets(
             limits=global_limits,
         )
-        assert o1 not in allocator._op_budgets
-        assert o2 in allocator._op_budgets
-        assert o3 not in allocator._op_budgets
+        assert allocator.get_allocation(o1) is None
+        assert allocator.get_allocation(o2) is not None
+        assert allocator.get_allocation(o3) is None
 
         o2.mark_execution_finished()
         allocator.update_budgets(
             limits=global_limits,
         )
-        assert o2 not in allocator._op_budgets
+        assert allocator.get_allocation(o2) is None
 
     def test_gpu_allocation(self, restore_data_context):
         """Test GPU allocation for GPU vs non-GPU operators.
@@ -689,8 +689,8 @@ class TestReservationOpResourceAllocator:
 
         # Both unbounded operators get shared GPU allocation
         # GPU flows through normal allocation, both get GPU budget > 0
-        assert allocator._op_budgets[o2].gpu > 0
-        assert allocator._op_budgets[o3].gpu > 0
+        assert allocator.get_budget(o2).gpu > 0
+        assert allocator.get_budget(o3).gpu > 0
 
     def test_multiple_gpu_operators(self, restore_data_context):
         """Test GPU allocation for multiple GPU operators."""
@@ -738,8 +738,8 @@ class TestReservationOpResourceAllocator:
         # Both operators are capped at their max of 1 GPU
         # o2: using 1 GPU, reserved 1, so reserved_remaining = 0, gets 0 shared (capped)
         # o3: using 0 GPU, reserved 1, so reserved_remaining = 1, gets 0 shared (capped)
-        assert allocator._op_budgets[o2].gpu == 0
-        assert allocator._op_budgets[o3].gpu == 1
+        assert allocator.get_budget(o2).gpu == 0
+        assert allocator.get_budget(o3).gpu == 1
 
     def test_gpu_usage_exceeds_global_limits(self, restore_data_context):
         """Test that GPU budget is 0 when usage exceeds limits."""
@@ -780,7 +780,7 @@ class TestReservationOpResourceAllocator:
 
         # When usage (2) exceeds limits (1), the budget should be 0
         # because reserved_remaining = reserved - usage = negative, clamped to 0
-        assert allocator._op_budgets[o2].gpu == 0
+        assert allocator.get_budget(o2).gpu == 0
 
     def test_gpu_unbounded_operator_can_autoscale(self, restore_data_context):
         """Test that unbounded GPU operators (max_size=None) get GPU budget for autoscaling.
@@ -826,9 +826,9 @@ class TestReservationOpResourceAllocator:
 
         # The unbounded GPU operator should get GPU budget > 0 so it can autoscale
         # With 8 GPUs available and 1 used, there should be budget for more
-        assert allocator._op_budgets[o2].gpu > 0, (
+        assert allocator.get_budget(o2).gpu > 0, (
             f"Unbounded GPU operator should get GPU budget for autoscaling, "
-            f"but got {allocator._op_budgets[o2].gpu}"
+            f"but got {allocator.get_budget(o2).gpu}"
         )
 
     def test_actor_pool_gpu_operator_gets_gpu_budget_in_cpu_pipeline(
@@ -952,11 +952,11 @@ class TestReservationOpResourceAllocator:
         )
 
         # o2 is capped at 2 GPUs (its max)
-        assert allocator._op_budgets[o2].gpu == 2
+        assert allocator.get_budget(o2).gpu == 2
 
         # o3 (unbounded) gets remaining GPUs after o2's excess is returned
         # With 8 total GPUs and o2 capped at 2, o3 gets 6
-        assert allocator._op_budgets[o3].gpu == 6
+        assert allocator.get_budget(o3).gpu == 6
 
     @pytest.mark.parametrize("max_actors", [4, float("inf")])
     def test_gpu_not_reserved_for_non_gpu_operators(
@@ -1212,7 +1212,7 @@ class TestReservationOpResourceAllocator:
         """
         allocator = resource_manager._op_resource_allocator
 
-        assert set(allocator._op_budgets.keys()) == {o6, o8}
+        assert set(allocator._op_allocations.keys()) == {o6, o8}
         assert set(allocator._op_reserved.keys()) == {o6, o8}
         assert allocator._op_reserved[o6] == ExecutionResources(
             cpu=3, object_store_memory=200
@@ -1225,12 +1225,12 @@ class TestReservationOpResourceAllocator:
         assert allocator._total_shared == ExecutionResources(
             cpu=6, object_store_memory=800
         )
-        assert allocator._op_budgets[o6] == ExecutionResources(
+        assert allocator.get_budget(o6) == ExecutionResources(
             cpu=6, object_store_memory=600
         )
         # object_store_memory budget is unlimited, since join is a materializing
         # operator
-        assert allocator._op_budgets[o8] == ExecutionResources(
+        assert allocator.get_budget(o8) == ExecutionResources(
             cpu=6, object_store_memory=float("inf")
         )
 
@@ -1255,12 +1255,12 @@ class TestReservationOpResourceAllocator:
 
         resource_manager._update_allocated_budgets()
 
-        assert allocator._op_budgets[o6] == ExecutionResources(
+        assert allocator.get_budget(o6) == ExecutionResources(
             cpu=4, object_store_memory=350
         )
         # object_store_memory budget is unlimited, since join is a materializing
         # operator
-        assert allocator._op_budgets[o8] == ExecutionResources(
+        assert allocator.get_budget(o8) == ExecutionResources(
             cpu=4, object_store_memory=float("inf")
         )
 
@@ -1281,7 +1281,7 @@ class TestReservationOpResourceAllocator:
         | op8 | 50/163           | 50/163           | 0            |
         +-----+------------------+------------------+--------------+
         """
-        assert set(allocator._op_budgets.keys()) == {o6, o8}
+        assert set(allocator._op_allocations.keys()) == {o6, o8}
         assert set(allocator._op_reserved.keys()) == {o6, o8}
         assert allocator._op_reserved[o6] == ExecutionResources(
             cpu=3.75, object_store_memory=213
@@ -1295,12 +1295,12 @@ class TestReservationOpResourceAllocator:
             cpu=7.5, object_store_memory=850
         )
         # object_store_memory budget = 0 + (850 - 87) / 2 = 381 (rounded down)
-        assert allocator._op_budgets[o6] == ExecutionResources(
+        assert allocator.get_budget(o6) == ExecutionResources(
             cpu=5.5, object_store_memory=381
         )
         # object_store_memory budget is unlimited, since join is a materializing
         # operator
-        assert allocator._op_budgets[o8] == ExecutionResources(
+        assert allocator.get_budget(o8) == ExecutionResources(
             cpu=5.5, object_store_memory=float("inf")
         )
 
