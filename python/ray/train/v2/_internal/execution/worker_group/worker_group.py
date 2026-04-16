@@ -835,10 +835,13 @@ class WorkerGroup(ExecutionGroup):
 
         # Clear result queues on surviving workers to avoid mixed-generation
         # results (some workers with old report, others with new report).
+        clear_tasks = []
         for i, rg in enumerate(self._replica_groups):
             if i != replica_group_index and rg.is_active():
                 for w in rg.get_workers():
-                    ray.get(w.actor.clear_result_queue.remote())
+                    clear_tasks.append(w.actor.clear_result_queue.remote())
+        if clear_tasks:
+            ray.get(clear_tasks)
 
         # Reset the sync actor to unblock surviving workers that may be stuck
         # at the synchronization barrier. This is a no-op if no workers are

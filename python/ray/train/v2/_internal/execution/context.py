@@ -16,7 +16,10 @@ from ray.train.v2._internal.constants import (
     CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
     DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S,
 )
-from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
+from ray.train.v2._internal.execution.checkpoint.sync_actor import (
+    SynchronizationActor,
+    SynchronizationBarrierResetError,
+)
 from ray.train.v2._internal.execution.storage import StorageContext, delete_fs_path
 from ray.train.v2._internal.execution.training_report import (
     _TrainingReport,
@@ -414,7 +417,9 @@ class TrainContext:
                 checkpoint_dir_name = self._sync_checkpoint_dir_name_across_ranks(
                     checkpoint_dir_name
                 )
-            except ray.exceptions.RayTaskError:
+            except ray.exceptions.RayTaskError as e:
+                if not isinstance(e.cause, SynchronizationBarrierResetError):
+                    raise e
                 logger.warning(
                     "Synchronization barrier was reset (likely due to a "
                     "worker failure). Skipping this report."

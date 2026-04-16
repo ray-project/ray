@@ -31,6 +31,11 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
 
         self._report_callbacks = report_callbacks
 
+    def _assert_initialized(self):
+        assert (
+            self._num_workers and self._training_report_queues
+        ), "Need to call initialize state with `after_worker_group_start` first."
+
     # --------------------------
     # WorkerGroupCallback
     # --------------------------
@@ -46,9 +51,7 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
         # Step 1: If self._num_workers is None, we need to initialize the number
         # of workers and training_reports_queues from the worker group status. This
         # happens when the handler receives the worker group status for the first time.
-        assert (
-            self._num_workers and self._training_report_queues
-        ), "Need to call initialize state with `after_worker_group_start` first."
+        self._assert_initialized()
 
         assert self._num_workers == len(worker_group_status.worker_statuses), (
             f"The number of workers in the worker group has changed unexpectedly. "
@@ -125,6 +128,7 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
 
     def after_replica_group_start(self, replica_group: ReplicaGroup) -> None:
         """Handle replica group start. Initialize internal states."""
+        self._assert_initialized()
         self._num_workers += len(replica_group)
         # TODO: it might be possible to reuse existing queues.
         # For example, if 3/4 ddp workers reported a checkpoint, that checkpoint is usable.
@@ -132,5 +136,6 @@ class ReportCallbackHandler(ReplicaGroupCallback, WorkerGroupCallback):
 
     def before_replica_group_shutdown(self, replica_group: ReplicaGroup) -> None:
         """Handle replica group shutdown. Clear internal states."""
+        self._assert_initialized()
         self._num_workers -= len(replica_group)
         self._training_report_queues = [deque() for _ in range(self._num_workers)]
