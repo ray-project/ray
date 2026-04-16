@@ -133,6 +133,7 @@ steps:
         --image-type ray
         --upload
     depends_on:
+      - forge
       - ray-anyscale-cpu-build($)
     array:
       python:
@@ -154,6 +155,7 @@ steps:
         --image-type ray
         --upload
     depends_on:
+      - forge
       - ray-anyscale-cuda-build($)
     array:
       gpu:
@@ -204,6 +206,7 @@ steps:
         --image-type ray-llm
         --upload
     depends_on:
+      - forge
       - ray-llm-anyscale-cuda-build($)
     array:
       gpu:
@@ -249,6 +252,7 @@ steps:
         --image-type ray-ml
         --upload
     depends_on:
+      - forge
       - ray-ml-anyscale-cuda-build($)
     array:
       python:
