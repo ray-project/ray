@@ -76,9 +76,9 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
     - Preprocess (Custom Function)
     - PrepareMultimodal (Optional, for VLM / Omni models)
     - ChatTemplate (Applies chat template to messages)
-    - Tokenize (Converts text to token IDs)
+    - Tokenize (Optional -- converts text to token IDs)
     - LLM Engine (vLLM/SGLang inference on GPU)
-    - Detokenize (Converts token IDs back to text)
+    - Detokenize (Optional -- converts token IDs back to text)
     - Postprocess (Custom Function)
          |
          v
@@ -319,6 +319,37 @@ Query deployed models with an OpenAI-compatible API:
     :start-after: __openai_example_start__
     :end-before: __openai_example_end__
 
+.. _tokenization_disaggregation:
+
+Tokenization disaggregation
+---------------------------
+
+By default, tokenization and detokenization run as **separate CPU stages** in the processor pipeline. This offloads tokenizer work from the GPU stage, allowing independent scaling of CPU and GPU stages.
+
+.. note::
+    When the detokenize stage is enabled, set ``detokenize=False`` in ``sampling_params`` so the engine returns raw token IDs for the CPU stage to decode. When disabled, set ``detokenize=True`` so the engine decodes the output itself.
+
+**Disaggregated (default)**: tokenize and detokenize as separate CPU stages:
+
+.. literalinclude:: doc_code/working-with-llms/tokenization_disaggregation_example.py
+    :language: python
+    :start-after: __disaggregated_tokenization_start__
+    :end-before: __disaggregated_tokenization_end__
+
+Alternatively, you can disable these stages so the vLLM engine handles tokenization and detokenization internally.
+
+**Aggregated**: the vLLM engine handles tokenization internally:
+
+.. literalinclude:: doc_code/working-with-llms/tokenization_aggregation_example.py
+    :language: python
+    :start-after: __aggregated_tokenization_start__
+    :end-before: __aggregated_tokenization_end__
+
+.. tip::
+    Disaggregated tokenization is most beneficial when the tokenizer is a bottleneck, for example, with large vocabularies or long sequences.
+    If the GPU engine is already saturated, the overhead of extra stages may not help.
+
+
 .. _custom_tokenizers:
 
 Custom tokenizers
@@ -358,61 +389,6 @@ Build a processor with built-in stages disabled and compose the full pipeline:
 
 .. note::
     This example uses a standard model because models that truly require vLLM's custom tokenizer are too large for Ray CI environments. The pattern is identical — just replace ``MODEL_ID`` and set ``tokenizer_mode`` explicitly.
-
-.. _troubleshooting:
-
-Troubleshooting
----------------
-
-GPU memory and CUDA OOM
-~~~~~~~~~~~~~~~~~~~~~~~
-
-If you encounter CUDA out of memory errors, try these strategies:
-
-- **Reduce batch size**: Start with 8-16 and increase gradually
-- **Lower ``max_num_batched_tokens``**: Reduce from 4096 to 2048 or 1024
-- **Decrease ``max_model_len``**: Use shorter context lengths
-- **Set ``gpu_memory_utilization``**: Use 0.75-0.85 instead of default 0.90
-
-.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
-    :language: python
-    :start-after: __gpu_memory_config_example_start__
-    :end-before: __gpu_memory_config_example_end__
-
-Model loading at scale
-~~~~~~~~~~~~~~~~~~~~~~
-
-.. _model_cache:
-
-For large clusters, HuggingFace downloads may be rate-limited. Cache models to S3 or GCS:
-
-.. code-block:: bash
-
-    python -m ray.llm.utils.upload_model \
-        --model-source facebook/opt-350m \
-        --bucket-uri gs://my-bucket/path/to/model
-
-Then reference the remote path in your config:
-
-.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
-    :language: python
-    :start-after: __s3_config_example_start__
-    :end-before: __s3_config_example_end__
-
-
-C/C++ runtime dependencies incompatibility
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. admonition:: Known issue
-
-   Ray 2.55 installs vLLM 0.18.0. Depending on the conda environment, you may encounter
-   incompatibilities with native runtime libraries (for example, ``libstdc++``, ``CXXABI``, ``ICU``).
-
-   In such cases, configure ``LD_LIBRARY_PATH`` to prefer the conda environment's libraries over system libraries.
-
-   .. code-block:: shell
-
-      export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 .. _resiliency:
 
@@ -591,6 +567,63 @@ For multi-turn conversations or complex agentic workflows, share a vLLM engine a
     :end-before: __shared_vllm_engine_config_example_end__
 
 ----
+
+.. _troubleshooting:
+
+Troubleshooting
+---------------
+
+GPU memory and CUDA OOM
+~~~~~~~~~~~~~~~~~~~~~~~
+
+If you encounter CUDA out of memory errors, try these strategies:
+
+- **Reduce batch size**: Start with 8-16 and increase gradually
+- **Lower ``max_num_batched_tokens``**: Reduce from 4096 to 2048 or 1024
+- **Decrease ``max_model_len``**: Use shorter context lengths
+- **Set ``gpu_memory_utilization``**: Use 0.75-0.85 instead of default 0.90
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __gpu_memory_config_example_start__
+    :end-before: __gpu_memory_config_example_end__
+
+Model loading at scale
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. _model_cache:
+
+For large clusters, HuggingFace downloads may be rate-limited. Cache models to S3 or GCS:
+
+.. code-block:: bash
+
+    python -m ray.llm.utils.upload_model \
+        --model-source facebook/opt-350m \
+        --bucket-uri gs://my-bucket/path/to/model
+
+Then reference the remote path in your config:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __s3_config_example_start__
+    :end-before: __s3_config_example_end__
+
+
+C/C++ runtime dependencies incompatibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. admonition:: Known issue
+
+   Ray 2.55 installs vLLM 0.18.0. Depending on the conda environment, you may encounter
+   incompatibilities with native runtime libraries (for example, ``libstdc++``, ``CXXABI``, ``ICU``).
+
+   In such cases, override just the ``libstdc++`` library from your conda environment with ``LD_LIBRARY_PATH``:
+
+   .. code-block:: shell
+
+      mkdir -p "${CONDA_PREFIX}/lib-overrides"
+      ln -sf "${CONDA_PREFIX}/lib/libstdc++.so.6" "${CONDA_PREFIX}/lib-overrides/libstdc++.so.6"
+      export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib-overrides${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 **Usage data collection**: Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see :ref:`Ray usage stats <ref-usage-stats>`.
 
