@@ -1,3 +1,4 @@
+import logging
 import math
 import time
 from dataclasses import replace
@@ -23,6 +24,8 @@ from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR = env_float(
     "RAY_DATA_DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR", 2
@@ -92,6 +95,11 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
         self._locality_hits = 0
         self._locality_misses = 0
+
+        logger.debug(
+            f"OutputSplitter created: {n=}, {equal=}, {locality_hints=}, "
+            f"{self._max_buffer_size=}"
+        )
 
     def num_outputs_total(self) -> Optional[int]:
         # OutputSplitter does not change the number of blocks,

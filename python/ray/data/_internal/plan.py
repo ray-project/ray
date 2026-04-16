@@ -146,12 +146,6 @@ class ExecutionPlan:
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
-    def initial_num_blocks(self) -> Optional[int]:
-        """Get the estimated number of blocks from the logical plan
-        after applying execution plan optimizations, but prior to
-        fully executing the dataset."""
-        return self._logical_plan.initial_num_blocks()
-
     @omit_traceback_stdout
     def execute_to_iterator(
         self,
@@ -331,21 +325,13 @@ class ExecutionPlan:
         # "InputDataBuffer" physical operators, which will be ignored when generating
         # stats, see `StreamingExecutor._generate_stats`.
         # TODO(hchen): Unify the logic by saving the initial stats in `InputDataBuffer
-        if self.has_lazy_input():
+        if self._logical_plan.has_lazy_input():
             return DatasetStats(metadata={}, parent=None)
         else:
             return self._in_stats
-
-    def has_lazy_input(self) -> bool:
-        """Return whether this plan has lazy input blocks."""
-        return self._logical_plan.has_lazy_input()
 
     def has_computed_output(self) -> bool:
         """Whether this plan has a computed snapshot for the final operator, i.e. for
         the output of this plan.
         """
         return self._cache.get_bundle(self._logical_plan.dag) is not None
-
-    def require_preserve_order(self) -> bool:
-        """Whether this plan requires to preserve order."""
-        return self._logical_plan.require_preserve_order()
