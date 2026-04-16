@@ -66,7 +66,6 @@ if TYPE_CHECKING:
     from pyarrow.dataset import ParquetFileFragment
 
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
-    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 # Type aliases for tensor column schema
 ColumnName = str
 # Shape of the tensor
