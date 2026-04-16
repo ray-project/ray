@@ -490,6 +490,61 @@ class OpenAiIngress(DeploymentProtocol):
         # Return original model ID so multiplexed routing works correctly.
         return model
 
+    # TokenTracker removed — probing replicas directly for queue length
+    # is simpler and uses existing Ray Serve infrastructure.
+
+    async def _start_load_poller(self, replicas):
+        """Background task: poll all replica queue lengths periodically."""
+        import asyncio
+
+        while True:
+            for r in replicas:
+                try:
+                    load = await r.get_queue_len(deadline_s=0.5)
+                    self._di_load_cache[r.replica_id] = load
+                except Exception:
+                    pass
+            await asyncio.sleep(0.05)  # 50ms poll interval
+
+    async def _pick_routed_direct_ingress_endpoint(
+        self, model_id: str
+    ) -> Tuple[str, int, str]:
+        """Pick the least-loaded replica using background-polled queue lengths.
+
+        Returns (host, port, rid).
+        """
+        base_model_id = get_base_model_id(model_id)
+        handle = self._default_serve_handles.get(base_model_id)
+        if handle is None:
+            raise RuntimeError(f"No handle for model {model_id}")
+
+        request_router = handle.get_request_router()
+        if request_router is None:
+            raise RuntimeError(f"Request router not initialized for {model_id}")
+
+        # Get direct-ingress-enabled replicas from the request router.
+        direct_ingress_replicas = [
+            r
+            for r in request_router.curr_replicas.values()
+            if r.direct_ingress_endpoint is not None
+        ]
+        if not direct_ingress_replicas:
+            raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
+
+        # Start background load poller on first call.
+        if not hasattr(self, "_di_load_cache"):
+            self._di_load_cache = {}
+            asyncio.get_event_loop().create_task(
+                self._start_load_poller(direct_ingress_replicas)
+            )
+
+        # Least-connections: pick the replica with the lowest cached queue length.
+        best = min(
+            direct_ingress_replicas,
+            key=lambda r: self._di_load_cache.get(r.replica_id, float("inf")),
+        )
+        return (*best.direct_ingress_endpoint, best.replica_id.unique_id)
+
     async def _get_response(
         self,
         *,
