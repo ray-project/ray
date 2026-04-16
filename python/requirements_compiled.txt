@@ -591,6 +591,7 @@ fsspec==2023.12.1
     #   getdaft
     #   gradio-client
     #   huggingface-hub
+    #   lightning
     #   modin
     #   pyiceberg
     #   pytorch-lightning
@@ -857,10 +858,12 @@ itsdangerous==2.1.2
     # via flask
 izulu==0.50.0
     # via taskiq
-jax==0.4.22 ; python_version < "3.12" and sys_platform != "darwin"
+jax==0.4.33 ; python_version < "3.12" and sys_platform != "darwin"
     # via -r python/requirements/ml/dl-cpu-requirements.txt
-jaxlib==0.4.22 ; python_version < "3.12" and sys_platform != "darwin"
-    # via -r python/requirements/ml/dl-cpu-requirements.txt
+jaxlib==0.4.33 ; python_version < "3.12" and sys_platform != "darwin"
+    # via
+    #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   jax
 jedi==0.19.1
     # via ipython
 jinja2==3.1.6
@@ -1000,8 +1003,12 @@ libclang==18.1.1
     # via tensorflow
 lightgbm==4.6.0
     # via -r python/requirements/ml/core-requirements.txt
+lightning==2.6.1
+    # via -r python/requirements/ml/tune-test-requirements.txt
 lightning-utilities==0.11.2
-    # via pytorch-lightning
+    # via
+    #   lightning
+    #   pytorch-lightning
 linear-operator==0.4.0
     # via
     #   botorch
@@ -1410,6 +1417,7 @@ packaging==24.2
     #   jupytext
     #   knack
     #   kombu
+    #   lightning
     #   lightning-utilities
     #   matplotlib
     #   mlflow-skinny
@@ -1815,7 +1823,7 @@ python-multipart==0.0.6
 python-snappy==0.7.2
     # via -r python/requirements/ml/data-test-requirements.txt
 pytorch-lightning==1.8.6
-    # via -r python/requirements/ml/tune-test-requirements.txt
+    # via lightning
 pytorch-ranger==0.1.1
     # via torch-optimizer
 pytz==2022.7.1
@@ -1848,6 +1856,7 @@ pyyaml==6.0.3
     #   jupytext
     #   knack
     #   kubernetes
+    #   lightning
     #   ml-collections
     #   mlflow-skinny
     #   mosaicml
@@ -2280,6 +2289,7 @@ torch==2.7.0
     #   botorch
     #   deepspeed
     #   fairscale
+    #   lightning
     #   linear-operator
     #   mosaicml
     #   pyro-ppl
@@ -2307,6 +2317,7 @@ torch-spline-conv==1.2.2
 torchmetrics==0.10.3
     # via
     #   -r python/requirements/ml/dl-cpu-requirements.txt
+    #   lightning
     #   mosaicml
     #   pytorch-lightning
 torchtext==0.18.0
@@ -2341,6 +2352,7 @@ tqdm==4.67.1
     #   getdaft
     #   huggingface-hub
     #   hyperopt
+    #   lightning
     #   mosaicml
     #   moviepy
     #   optuna
@@ -2415,6 +2427,7 @@ typing-extensions==4.15.0
     #   gymnasium
     #   huggingface-hub
     #   lance-namespace-urllib3-client
+    #   lightning
     #   lightning-utilities
     #   mlflow-skinny
     #   mypy

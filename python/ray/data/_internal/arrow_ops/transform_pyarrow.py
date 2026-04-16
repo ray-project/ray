@@ -80,10 +80,19 @@ def _hash_partition(
     num_partitions: int,
 ) -> np.ndarray:
 
-    partitions = np.zeros((table.num_rows,), dtype=np.int64)
+    # NOTE: We special casing-scenario of single column with integer type
+    #       short-circuiting the need for hashing the column and instead
+    #       using values as is for partitioning
+    if len(table.columns) == 1 and pyarrow.types.is_integer(table.column(0).type):
+        target_column = table.column(0)
+        partitions = (target_column.to_numpy() % num_partitions).astype(np.int64)
+    else:
+        # Otherwise fallback to invoking __hash__ on Pyarrow scalars filling out
+        # target table
+        partitions = np.zeros((table.num_rows,), dtype=np.int64)
 
-    for i, _tuple in enumerate(zip(*table.columns)):
-        partitions[i] = hash(_tuple) % num_partitions
+        for i, _tuple in enumerate(zip(*table.columns)):
+            partitions[i] = hash(_tuple) % num_partitions
 
     # Convert to ndarray to compute hash partition indices
     # more efficiently
@@ -122,6 +131,7 @@ def hash_partition(
     #       chunks w/in the individual columns, and therefore to improve performance
     #       we attempt to defragment the table to potentially combine some of those
     #       chunks into contiguous arrays.
+    # TODO: can we always combine chunks?
     table = try_combine_chunked_columns(table)
 
     return {
@@ -1094,24 +1104,34 @@ def to_numpy(
         )
 
 
-def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
+def try_combine_chunked_columns(
+    table: "pyarrow.Table",
+    min_chunks_to_combine: int = MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS,
+) -> "pyarrow.Table":
     """This method attempts to coalesce table by combining any of its
-    columns exceeding threshold of `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
-    chunks in its `ChunkedArray`.
+    columns with at least ``min_chunks_to_combine`` chunks in its
+    ``ChunkedArray``.
 
     This is necessary to improve performance for some operations (like `take`, etc)
     when dealing with `ChunkedArrays` w/ large number of chunks
 
     For more details check out https://github.com/apache/arrow/issues/35126
-    """
 
+    Args:
+        table: The PyArrow table to combine chunks for.
+        min_chunks_to_combine: Minimum number of chunks in a column to trigger
+            combining. Defaults to MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS.
+
+    Returns:
+        A new table with chunked columns combined where applicable.
+    """
     if table.num_columns == 0:
         return table
 
     new_column_values_arrays = []
 
     for col in table.columns:
-        if col.num_chunks >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS:
+        if col.num_chunks >= min_chunks_to_combine and col.num_chunks > 1:
             new_col = combine_chunked_array(col)
         else:
             new_col = col
