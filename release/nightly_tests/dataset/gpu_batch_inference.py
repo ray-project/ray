@@ -42,6 +42,16 @@ def parse_args():
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--preprocess-batch-size",
+        type=lambda v: "auto" if v == "auto" else int(v),
+        default=None,
+        help=(
+            "Batch size for the CPU preprocessing stage. "
+            "Use 'auto' to let Ray Data pick based on data size. "
+            "Defaults to 90 (fits ~128 MiB per batch for 256x256 float64 images)."
+        ),
+    )
     return parser.parse_args()
 
 
@@ -58,7 +68,9 @@ def main(args):
     # memory usage 8x. Each processed image is about 1.5 MiB (256×256×3×8 bytes). Since
     # our target block size is 128 MiB, we set the batch size to around 90 images (128
     # MiB / 1.5) to avoid running out of memory.
-    PREPROCESS_BATCH_SIZE = 90
+    PREPROCESS_BATCH_SIZE = (
+        args.preprocess_batch_size if args.preprocess_batch_size is not None else 90
+    )
     # Largest batch that can fit on a T4.
     INFERENCE_BATCH_SIZE = 900
 
