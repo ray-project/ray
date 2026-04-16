@@ -537,14 +537,19 @@ def update_operator_states(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.
-    # For each op, if all of its downstream operators have completed.
+    # For each op, if all of its downstream operators have completed,
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
 
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.has_completed() for dep in op.output_dependencies
         )
-        if dependents_completed:
+        # For terminal operators (no output dependencies, e.g. OutputSplitter),
+        # mark execution finished once the operator has fully completed so that
+        # internal queues are properly cleared via clear_internal_input_queue()
+        # and clear_internal_output_queue().
+        terminal_completed = len(op.output_dependencies) == 0 and op.has_completed()
+        if dependents_completed or terminal_completed:
             op.mark_execution_finished()
 
         # Drain external input queue if current operator is execution finished.

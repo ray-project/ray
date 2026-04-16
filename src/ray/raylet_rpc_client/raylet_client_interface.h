@@ -97,11 +97,8 @@ class RayletClientInterface {
 
   /// Report the backlog size of a given worker and a given scheduling class to the
   /// raylet.
-  /// \param worker_id The ID of the worker that reports the backlog size.
-  /// \param backlog_reports The backlog report for each scheduling class
-  virtual void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
+  /// \param request The request containing the worker ID and the backlog reports.
+  virtual void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) = 0;
 
   virtual void GetWorkerFailureCause(
       const LeaseID &lease_id,

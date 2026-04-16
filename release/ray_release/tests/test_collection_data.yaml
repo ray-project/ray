@@ -6,6 +6,7 @@
   cluster:
     byod: {}
     cluster_compute: cpt_autoscaling_1-3_aws.yaml
+    anyscale_sdk_2026: true
   run:
     timeout: 3600
     script: test_script.py

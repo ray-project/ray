@@ -201,6 +201,48 @@
   variations:
     - __suffix__: aws
 
+#######################
+# SSH sanity checks
+#######################
+
+- name: ssh_sanity_check
+  python: "3.11"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 600
+    script: bash sanity_check_ssh.sh
+
+  variations:
+    - __suffix__: aws
+
+- name: ssh_sanity_check_llm
+  python: "3.11"
+  team: llm
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: llm-cu128
+    # Doesn't need GPUs to run ssh sanity check
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 600
+    script: bash sanity_check_ssh.sh
+
+  variations:
+    - __suffix__: aws
 
 #######################
 # Cluster scaling tests
@@ -224,10 +266,13 @@
 
   variations:
     - __suffix__: aws
+      cluster:
+        anyscale_sdk_2026: true
     - __suffix__: gce
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: cpt_autoscaling_1-3_gce.yaml
     - __suffix__: kuberay
       env: kuberay
@@ -821,6 +866,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -858,6 +904,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -897,6 +944,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -938,6 +986,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -977,6 +1026,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1016,6 +1066,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1055,6 +1106,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1094,6 +1146,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1133,6 +1186,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1176,6 +1230,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_4_xlarge.yaml
@@ -1206,6 +1261,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_4_xlarge.yaml
@@ -1235,6 +1291,7 @@
   working_dir: jobs_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_4_xlarge.yaml
@@ -1260,6 +1317,7 @@
   frequency: nightly
   working_dir: jobs_tests
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_gpu_node.yaml
@@ -1285,6 +1343,7 @@
   frequency: nightly
   working_dir: jobs_tests
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_gpu_worker.yaml
@@ -1629,6 +1688,8 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -1671,6 +1732,10 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu=True --skip_train_step=True --skip_validation_step=True --num_epochs=5 --max_failures=4 --image_classification_data_format=parquet
         prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
       cluster:
+        byod:
+          runtime_env:
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=0  # Workers are intentionally killed
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
 
     - __suffix__: skip_training.parquet.fault_tolerance.preserve_order
@@ -1679,6 +1744,10 @@
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --mock_gpu=True --skip_train_step=True --skip_validation_step=True --num_epochs=5 --max_failures=4 --image_classification_data_format=parquet --preserve_order=True
         prepare: python setup_chaos.py --kill-interval 480 --max-to-kill 2 --kill-delay 360
       cluster:
+        byod:
+          runtime_env:
+            - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+            - RAYTEST_FAIL_ON_WORKER_OOM=0  # Workers are intentionally killed
         cluster_compute: compute_configs/compute_mock_gpu_4x4_aws.yaml
 
     - __suffix__: full_training.s3_url
@@ -1776,6 +1845,10 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -1805,6 +1878,10 @@
       runtime_env:
         # Enable verbose stats for resource manager
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
+        # Fail the test if a node dies
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
@@ -1832,6 +1909,9 @@
 
   cluster:
     byod:
+      runtime_env:
+        # Fail the test if a worker OOMs
+        - RAYTEST_FAIL_ON_WORKER_OOM=1
       type: gpu
       post_build_script: byod_install_torchrec.sh
     cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
@@ -2727,6 +2807,7 @@
   frequency: nightly-3x
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
@@ -2743,6 +2824,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
 
 #- name: many_nodes_multi_master_test
@@ -2848,6 +2930,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2876,6 +2959,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2899,6 +2983,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2922,6 +3007,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2939,6 +3025,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: distributed_gce.yaml
 
 - name: many_actors_smoke_test
@@ -2949,6 +3036,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2970,6 +3058,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2987,6 +3076,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: distributed_gce.yaml
 
 - name: many_pgs
@@ -2998,6 +3088,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -3015,6 +3106,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: distributed_gce.yaml
 
 
@@ -3026,6 +3118,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -3047,6 +3140,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -3548,6 +3642,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       runtime_env:
@@ -3576,6 +3671,7 @@
   frequency: manual
   team: serve
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl.yaml
 
   run:
