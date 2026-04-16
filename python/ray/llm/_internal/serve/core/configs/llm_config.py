@@ -52,6 +52,36 @@ GPUType = AcceleratorType
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 
+def _compute_use_gpu(
+    use_cpu: Optional[bool],
+    placement_group_config: Optional[Dict[str, Any]],
+) -> bool:
+    """Returns True if the configuration resolves to GPU usage.
+
+    Priority order:
+    1. Explicit use_cpu flag
+    2. placement_group_config GPU bundles
+    3. Default to True — all supported accelerator types are GPU-capable
+    """
+    # Explicit use_cpu setting takes precedence over all other configurations
+    if isinstance(use_cpu, bool):
+        return not use_cpu
+
+    # Check placement_group_config for explicit GPU specification
+    if placement_group_config:
+        bundle_per_worker = placement_group_config.get("bundle_per_worker")
+        if bundle_per_worker:
+            return bundle_per_worker.get("GPU", 0) > 0
+
+        # Check bundles list (empty list → no GPUs → CPU-only)
+        bundles = placement_group_config.get("bundles")
+        if bundles is not None:
+            return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
+
+    # All supported accelerator types are GPU-capable; default to GPU.
+    return True
+
+
 logger = get_logger(__name__)
 
 
@@ -381,6 +411,11 @@ class LLMConfig(BaseModelExtended):
     def max_request_context_length(self) -> Optional[int]:
         return self.engine_kwargs.get("max_model_len")
 
+    @property
+    def use_gpu(self) -> bool:
+        """Returns True if configured to use GPU resources."""
+        return _compute_use_gpu(self.use_cpu, self.placement_group_config)
+
     @field_validator("accelerator_type")
     def validate_accelerator_type(cls, value: Optional[str]):
         if value is None:
@@ -477,6 +512,22 @@ class LLMConfig(BaseModelExtended):
                 "Engine metrics require log stats to be enabled."
             )
 
+        return self
+
+    @model_validator(mode="after")
+    def _validate_accelerator_type_with_gpu_mode(self):
+        """Validate that accelerator_type is not set when use_gpu resolves to False.
+
+        This catches the case where accelerator_type would be silently ignored because
+        the configuration resolves to CPU-only mode (via use_cpu=True or
+        placement_group_config with no GPUs).
+        """
+        if self.accelerator_type and not self.use_gpu:
+            raise ValueError(
+                f"accelerator_type='{self.accelerator_type}' cannot be used with "
+                "CPU-only configurations. Either remove accelerator_type, set "
+                "use_cpu=False, or ensure placement_group_config bundles include GPUs."
+            )
         return self
 
     def multiplex_config(self) -> ServeMultiplexConfig:

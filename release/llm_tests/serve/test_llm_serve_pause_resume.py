@@ -128,7 +128,7 @@ def test_pause_resume_lifecycle():
             f"{BASE_URL}/pause",
             json={
                 "model": MODEL_ID,
-                "options": {"wait_for_inflight_requests": False, "clear_cache": True},
+                "options": {"mode": "abort", "clear_cache": True},
             },
             timeout=60,
         )
