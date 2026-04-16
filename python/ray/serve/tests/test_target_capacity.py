@@ -669,9 +669,16 @@ class TestTargetCapacityUpdateAndServeStatus:
         # buildkite, but need to investigate why it fails locally.
         app_name = "controlled_app"
         deployment_name = "controlled"
+        # Keep min_replicas=10 so integer rounding aligns with
+        # get_capacity_adjusted_num_replicas (which applies max(1, ...));
+        # int(0.1 * min_replicas) = 1 matches the autoscaler floor at
+        # target_capacity=10. initial must be > min so the cap=None step
+        # triggers DOWNSCALING (from initial to min). Reduce initial/max from
+        # 30/70 to 12/20 so the cap=100 upscale only creates ~11 new replicas
+        # (was 29), avoiding Ray scheduling timeouts in CI.
         min_replicas = 10
-        initial_replicas = 30
-        max_replicas = 70
+        initial_replicas = 12
+        max_replicas = 20
 
         lifecycle_signal = SignalActor.options(
             name="lifecycle_signal", namespace=SERVE_NAMESPACE
