@@ -1148,9 +1148,6 @@ class HAProxyManager(ProxyActorInterface):
         self._draining_start_time: Optional[float] = None
 
         self.event_loop = get_or_create_event_loop()
-        self._controller_handle = ray.get_actor(
-            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-        )
 
         self._target_groups: List[TargetGroup] = []
 
@@ -1163,7 +1160,7 @@ class HAProxyManager(ProxyActorInterface):
         self._reload_lock = asyncio.Lock()
 
         self.long_poll_client = long_poll_client or LongPollClient(
-            self._controller_handle,
+            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
             {
                 LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
                 LongPollNamespace.TARGET_GROUPS: self.update_target_groups,
