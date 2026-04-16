@@ -332,29 +332,70 @@ SchedulingResult BundleStrictPackSchedulingPolicy::Schedule(
     return SchedulingResult::Infeasible();
   }
 
-  std::pair<scheduling::NodeID, const Node *> best_node(scheduling::NodeID::Nil(),
-                                                        nullptr);
+  // Try each candidate node by allocating bundles one by one (per-bundle
+  // SubtractNodeAvailableResources).
+  // TODO: This avoids the aggregated-request problem and prepares for
+  // upcoming per-instance availability tracking, where a summed demand
+  // would be falsely rejected by strict per-instance capacity checks.
+  auto try_allocate_all_bundles = [&](scheduling::NodeID node_id) -> bool {
+    std::vector<const ResourceRequest *> allocated_requests;
+    allocated_requests.reserve(resource_request_list.size());
+
+    const auto &node_resources = cluster_resource_manager_.GetNodeResources(node_id);
+
+    for (const auto *request : resource_request_list) {
+      if (node_resources.IsAvailable(*request)) {
+        RAY_CHECK(
+            cluster_resource_manager_.SubtractNodeAvailableResources(node_id, *request));
+        allocated_requests.push_back(request);
+      } else {
+        for (const auto *prev_request : allocated_requests) {
+          RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
+              node_id, prev_request->GetResourceSet()));
+        }
+        return false;
+      }
+    }
+
+    for (const auto *request : allocated_requests) {
+      RAY_CHECK(cluster_resource_manager_.AddNodeAvailableResources(
+          node_id, request->GetResourceSet()));
+    }
+
+    return true;
+  };
+
+  scheduling::NodeID best_node_id = scheduling::NodeID::Nil();
   if (!options.bundle_strict_pack_soft_target_node_id_.IsNil()) {
-    if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id_)) {
-      best_node = GetBestNode(
-          aggregated_resource_request,
-          absl::flat_hash_map<scheduling::NodeID, const ray::Node *>{
-              {options.bundle_strict_pack_soft_target_node_id_,
-               candidate_nodes[options.bundle_strict_pack_soft_target_node_id_]}},
-          options);
+    if (candidate_nodes.contains(options.bundle_strict_pack_soft_target_node_id_) &&
+        try_allocate_all_bundles(options.bundle_strict_pack_soft_target_node_id_)) {
+      best_node_id = options.bundle_strict_pack_soft_target_node_id_;
     }
   }
 
-  if (best_node.first.IsNil()) {
-    best_node = GetBestNode(aggregated_resource_request, candidate_nodes, options);
+  if (best_node_id.IsNil()) {
+    // Score viable candidates per-bundle using the existing scorer.
+    // try_allocate_all_bundles already verified all bundles fit, so each
+    // individual Score(bundle) will pass IsAvailable.
+    double best_score = -1;
+    for (const auto &[node_id, node] : candidate_nodes) {
+      if (!try_allocate_all_bundles(node_id)) {
+        continue;
+      }
+      double score = 0;
+      for (const auto *request : resource_request_list) {
+        score += node_scorer_->Score(*request, node->GetLocalView());
+      }
+      if (best_node_id.IsNil() || score > best_score) {
+        best_score = score;
+        best_node_id = node_id;
+      }
+    }
   }
 
-  // Select the node with the highest score.
-  // `StrictPackSchedule` does not need to consider the scheduling context, because it
-  // only schedules to a node and triggers rescheduling when node dead.
   std::vector<scheduling::NodeID> result_nodes;
-  if (!best_node.first.IsNil()) {
-    result_nodes.resize(resource_request_list.size(), best_node.first);
+  if (!best_node_id.IsNil()) {
+    result_nodes.resize(resource_request_list.size(), best_node_id);
   }
   if (result_nodes.empty()) {
     // Can't meet the scheduling requirements temporarily.
