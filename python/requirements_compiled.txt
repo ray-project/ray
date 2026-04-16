@@ -1037,7 +1037,7 @@ lz4==4.4.5
     #   -r python/requirements/test-requirements.txt
     #   clickhouse-connect
     #   dask
-mako==1.3.0
+mako==1.3.11
     # via alembic
 markdown==3.5.1
     # via tensorboard
