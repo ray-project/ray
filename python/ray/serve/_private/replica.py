@@ -182,6 +182,18 @@ from ray.util import metrics as ray_metrics
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+@ray.remote(num_cpus=0)
+class _DirectIngressRegistry:
+    def __init__(self):
+        self._endpoints = {}
+
+    def register(self, replica_tag: str, host: str, port: int):
+        self._endpoints[replica_tag] = (host, port)
+
+    def get_all(self):
+        return list(self._endpoints.values())
+
+
 def _wrap_grpc_call(f):
     """Decorator that processes grpc methods."""
 
@@ -1130,12 +1142,81 @@ class Replica:
 
         self._num_queued_requests = 0
 
+        # Deferred ASGI app for ingress bypass: stored by set_asgi_app(),
+        # started after port allocation in _on_initialized().
+        self._pending_custom_asgi_app: Optional[ASGIApp] = None
+        self._replica_initialized = False  # True after _on_initialized() completes
+
+        # Register the set_asgi_app callback so user callables can call
+        # ray.serve.context.set_asgi_app() during their __init__ or start().
+        # If called before _on_initialized, we store it for later.
+        # If called after _on_initialized (e.g. during reconfigure/start),
+        # we allocate a port and start the HTTP server immediately.
+        async def _on_set_asgi_app(app):
+            self._pending_custom_asgi_app = app
+            if self._replica_initialized:
+                # _on_initialized already ran — start the server now.
+                logger.info(
+                    "Custom ASGI app registered post-init; "
+                    "starting direct ingress HTTP server now."
+                )
+                await self._start_direct_ingress_for_custom_app()
+            else:
+                logger.info(
+                    "Custom ASGI app registered via set_asgi_app(); "
+                    "will start after port allocation in _on_initialized."
+                )
+
+        ray.serve.context._set_asgi_app_callback(_on_set_asgi_app)
+
+        # Register ongoing request count callbacks so custom ASGI apps
+        # (e.g. direct-ingress vLLM) can update the replica's request
+        # counter. This makes the counter visible to the request router's
+        # get_num_ongoing_requests() probe for load-aware routing.
+        from ray.serve._private.common import RequestMetadata, RequestProtocol
+
+        _direct_ingress_metadata = RequestMetadata(
+            request_id="",
+            internal_request_id="",
+            _request_protocol=RequestProtocol.HTTP,
+            is_direct_ingress=True,
+        )
+
+        def _inc():
+            self._metrics_manager.inc_num_ongoing_requests(_direct_ingress_metadata)
+
+        def _dec():
+            self._metrics_manager.dec_num_ongoing_requests(_direct_ingress_metadata)
+
+        ray.serve.context._set_ongoing_requests_callbacks(_inc, _dec)
+
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
 
     def get_num_ongoing_requests(self) -> int:
         return self._metrics_manager.get_num_ongoing_requests()
+
+    def _register_direct_ingress_endpoint(self, port: Optional[int]):
+        if port is None:
+            return
+
+        try:
+            registry = _DirectIngressRegistry.options(
+                name="_llm_direct_ingress_registry",
+                namespace="serve",
+                lifetime="detached",
+                get_if_exists=True,
+            ).remote()
+            ray.get(
+                registry.register.remote(
+                    self._replica_id.unique_id,
+                    ray.util.get_node_ip_address(),
+                    port,
+                )
+            )
+        except Exception:
+            logger.exception("Failed to register direct ingress endpoint")
 
     def get_metadata(self) -> ReplicaMetadata:
         current_rank = ray.serve.context._get_internal_replica_context().rank
@@ -1640,7 +1721,80 @@ class Replica:
                     # For gRPC requests, wrap exception with user-set status code
                     raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
 
+    async def _start_direct_ingress_for_custom_app(self):
+        """Allocate a port and start the direct ingress HTTP server for a custom ASGI app.
+
+        Called when set_asgi_app() fires after _on_initialized() has completed
+        (i.e. during reconfigure/start). At this point we know ports can be
+        allocated from the controller.
+        """
+        if self._http_port is not None:
+            logger.warning("Direct ingress HTTP server already running, skipping")
+            return
+
+        # Fetch HTTP options if not already fetched
+        if self._http_options is None:
+            self._http_options, self._grpc_options = ray.get(
+                [
+                    self._controller_handle.get_http_config.remote(),
+                    self._controller_handle.get_grpc_config.remote(),
+                ]
+            )
+
+        app_to_serve = self._pending_custom_asgi_app
+
+        async def start_http_server(port):
+            options = configure_http_middlewares(
+                configure_http_options_with_defaults(
+                    HTTPOptions(**{**self._http_options.model_dump(), "port": port})
+                )
+            )
+            return await start_asgi_http_server(
+                app_to_serve,
+                options,
+                event_loop=self._event_loop,
+                enable_so_reuseport=False,
+            )
+
+        # Allocate port and start server with retries
+        is_port_in_use = False
+        for _ in range(RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT):
+            port = await self._controller_handle.allocate_replica_port.remote(
+                self._node_id, self._replica_id.unique_id, RequestProtocol.HTTP
+            )
+            logger.info(f"Allocated port {port} for custom ASGI app")
+            try:
+                self._direct_ingress_http_server_task = await start_http_server(port)
+                self._http_port = port
+                self._register_direct_ingress_endpoint(port)
+                logger.info(
+                    f"Direct ingress HTTP server with custom ASGI app started on port {port}"
+                )
+                return
+            except RuntimeError as e:
+                logger.warning(f"Failed to start on port {port}: {e}. Retrying...")
+                if isinstance(e.__cause__, OSError) and e.__cause__.errno in (
+                    errno.EADDRINUSE,
+                    errno.EADDRNOTAVAIL,
+                ):
+                    is_port_in_use = True
+                else:
+                    is_port_in_use = False
+                await self._controller_handle.release_replica_port.remote(
+                    self._node_id,
+                    self._replica_id.unique_id,
+                    port,
+                    RequestProtocol.HTTP,
+                    block_port=True,
+                )
+
+        err = "Failed to start custom ASGI app direct ingress after retries"
+        if is_port_in_use:
+            err += " (port in use)"
+        raise RuntimeError(err)
+
     async def _on_initialized(self):
+        self._replica_initialized = True
         await self._maybe_start_direct_ingress_servers()
 
         current_rank = ray.serve.context._get_internal_replica_context().rank
@@ -1911,10 +2065,45 @@ class Replica:
 
     async def _maybe_start_direct_ingress_servers(self):
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            # Even without global direct ingress, start if a custom app was registered
+            if self._pending_custom_asgi_app is None:
+                return
+
+        has_custom_app = self._pending_custom_asgi_app is not None
+        if not self._ingress and not has_custom_app:
             return
 
-        if not self._ingress:
-            return
+        # Determine which ASGI app to serve: custom (from set_asgi_app) or default
+        asgi_app_to_serve = (
+            self._pending_custom_asgi_app
+            if has_custom_app
+            else self._direct_ingress_asgi
+        )
+        if has_custom_app:
+            logger.info("Starting direct ingress HTTP server with custom ASGI app")
+            # Wrap with request counting middleware so the replica's
+            # num_ongoing_requests counter reflects direct-ingress traffic.
+            # This makes the request router's choose_replicas() load-aware.
+            inner_app = asgi_app_to_serve
+            metrics_mgr = self._metrics_manager
+            _di_metadata = RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                _request_protocol=RequestProtocol.HTTP,
+                is_direct_ingress=True,
+            )
+
+            async def _counting_mw(scope, receive, send):
+                if scope["type"] == "http":
+                    metrics_mgr.inc_num_ongoing_requests(_di_metadata)
+                    try:
+                        await inner_app(scope, receive, send)
+                    finally:
+                        metrics_mgr.dec_num_ongoing_requests(_di_metadata)
+                else:
+                    await inner_app(scope, receive, send)
+
+            asgi_app_to_serve = _counting_mw
 
         async def allocate_and_start_server(start_server_fn, protocol):
             """Attempt to allocate a port and start the server with retries."""
@@ -1984,7 +2173,7 @@ class Replica:
             )
 
             return await start_asgi_http_server(
-                self._direct_ingress_asgi,
+                asgi_app_to_serve,
                 options,
                 event_loop=self._event_loop,
                 enable_so_reuseport=False,
@@ -1997,6 +2186,8 @@ class Replica:
             start_server_fn=start_http_server,
             protocol=RequestProtocol.HTTP,
         )
+        if has_custom_app:
+            self._register_direct_ingress_endpoint(self._http_port)
 
         # Allocate and start gRPC server if enabled
         if grpc_enabled:
@@ -2538,6 +2729,7 @@ class Replica:
         response_started = False
         response_finished = False
         first_message_peeked = False
+        first_body_chunk_logged = False
 
         with self._wrap_request(request_metadata) as status_code_callback:
             self._num_queued_requests += 1
@@ -2546,11 +2738,19 @@ class Replica:
                 nonlocal response_started
                 nonlocal response_finished
                 nonlocal first_message_peeked
+                nonlocal first_body_chunk_logged
 
                 if not first_message_peeked:
                     first_message_peeked = True
                     if msg["type"] == "http.response.start":
                         status_code_callback(str(msg["status"]))
+
+                if (
+                    msg["type"] == "http.response.body"
+                    and not first_body_chunk_logged
+                    and msg.get("body", b"")
+                ):
+                    first_body_chunk_logged = True
 
                 await send(msg)
                 response_started = True

@@ -26,7 +26,10 @@ HAPROXY_CONFIG_TEMPLATE = """global
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
-    {%- if config.enable_hap_optimization %}
+    {%- if has_custom_request_routing and lua_script_path %}
+    lua-load-per-thread {{ lua_script_path }}
+    {%- endif %}
+    {%- if config.enable_server_state_persistence %}
     server-state-base {{ config.server_state_base }}
     server-state-file {{ config.server_state_file }}
     {%- endif %}
@@ -49,7 +52,7 @@ defaults
     # Set TCP_NODELAY on all connections
     option http-no-delay
     {%- endif %}
-    {%- if config.enable_hap_optimization %}
+    {%- if config.enable_idle_close_on_response %}
     option idle-close-on-response
     {%- endif %}
     # Normalize 502 and 504 errors to 500 per Serve's default behavior
@@ -57,7 +60,7 @@ defaults
     errorfile 502 {{ config.error_file_path }}
     errorfile 504 {{ config.error_file_path }}
     {%- endif %}
-    {%- if config.enable_hap_optimization %}
+    {%- if config.enable_server_state_persistence %}
     load-server-state-from-file global
     {%- endif %}
     balance {{ config.balance_algorithm }}
@@ -77,10 +80,18 @@ frontend http_frontend
     # Inject unique reload ID as header to track which HAProxy instance handled the request (testing only)
     http-request set-header x-haproxy-reload-id {{ config.reload_id }}
     {%- endif %}
+    {%- if has_custom_request_routing %}
+    option http-buffer-request
+    acl is_streaming_path path /v1/chat/completions /v1/completions
+    http-request lua.route_direct_ingress_request if is_streaming_path METH_POST
+    {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
+    {%- if backend.custom_request_routing %}
+    use_backend {{ backend.name or 'unknown' }}-custom-routed if is_{{ backend.name or 'unknown' }} { var(txn.custom_request_routed) -m found }
+    {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
     default_backend default_backend
@@ -123,7 +134,6 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
-    # Servers in this backend
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
     {%- endfor %}
@@ -131,6 +141,34 @@ backend {{ backend.name or 'unknown' }}
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
     {%- endif %}
+{%- if backend.custom_request_routing %}
+backend {{ backend.name or 'unknown' }}-custom-routed
+    log global
+    http-reuse always
+    {%- if backend.timeout_connect_s is not none %}
+    timeout connect {{ backend.timeout_connect_s }}s
+    {%- endif %}
+    {%- if backend.timeout_server_s is not none %}
+    timeout server {{ backend.timeout_server_s }}s
+    {%- endif %}
+    {%- if backend.timeout_http_keep_alive_s is not none %}
+    timeout http-keep-alive {{ backend.timeout_http_keep_alive_s }}s
+    {%- endif %}
+    {%- if hc.health_path %}
+    option httpchk GET {{ hc.health_path }}
+    http-check expect status 200
+    {%- endif %}
+    {{ hc.default_server_directive }}
+    {%- for server in backend.servers %}
+    use-server {{ server.routing_key }} if { var(txn.direct_ingress_target) -m str "{{ server.routing_key }}" }
+    {%- endfor %}
+    {%- for server in backend.servers %}
+    server {{ server.routing_key }} {{ server.host }}:{{ server.port }} check{% if backend.max_server_conns %} maxconn {{ backend.max_server_conns }}{% endif %}
+    {%- endfor %}
+    {%- if backend.fallback_server %}
+    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
+    {%- endif %}
+{%- endif %}
 {%- endfor %}
 listen stats
   bind *:{{ config.stats_port }}
