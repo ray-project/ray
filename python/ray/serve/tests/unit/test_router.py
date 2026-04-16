@@ -1434,6 +1434,95 @@ class TestRouterMetricsManager:
         metrics_manager.metrics_pusher.register_or_update_task.assert_called()
 
 
+class TestSharedCachedMetricsReporter:
+    def _make_metrics_manager(self, event_loop, name_suffix=""):
+        return RouterMetricsManager(
+            DeploymentID(name=f"dep{name_suffix}", app_name=f"app{name_suffix}"),
+            f"handle{name_suffix}",
+            f"actor{name_suffix}",
+            DeploymentHandleSource.UNKNOWN,
+            Mock(),
+            FakeCounter(
+                tag_keys=("deployment", "route", "application", "handle", "actor_id")
+            ),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            FakeGauge(tag_keys=("deployment", "application", "handle", "actor_id")),
+            event_loop=event_loop,
+        )
+
+    @pytest.mark.asyncio
+    async def test_multiple_managers_share_single_reporter(self):
+        """Multiple RouterMetricsManagers on the same event loop share one task."""
+        event_loop = asyncio.get_event_loop()
+        num_managers = 5
+        managers = [
+            self._make_metrics_manager(event_loop, name_suffix=str(i))
+            for i in range(num_managers)
+        ]
+
+        # All managers should reference the same SharedCachedMetricsReporter.
+        reporters = {m._shared_reporter for m in managers}
+        assert len(reporters) == 1
+
+        # Increment metrics on each manager.
+        for i, m in enumerate(managers):
+            m.inc_num_total_requests(route=f"/route-{i}")
+
+        # Wait for the shared reporter to flush.
+        await asyncio.sleep(RAY_SERVE_METRICS_EXPORT_INTERVAL_MS * 2 / 1000)
+
+        # All managers should have their metrics reported.
+        for i, m in enumerate(managers):
+            tags = {
+                "deployment": f"dep{i}",
+                "application": f"app{i}",
+                "route": f"/route-{i}",
+                "handle": f"handle{i}",
+                "actor_id": f"actor{i}",
+            }
+            assert m.num_router_requests.get_count(tags) == 1
+
+    @pytest.mark.asyncio
+    async def test_deregister_on_shutdown(self):
+        """Shutting down a manager deregisters it from the shared reporter."""
+        event_loop = asyncio.get_event_loop()
+        manager = self._make_metrics_manager(event_loop)
+        reporter = manager._shared_reporter
+
+        # Let registration callback run on the event loop.
+        await asyncio.sleep(0)
+        assert manager in reporter._managers
+
+        await manager.shutdown()
+        assert manager not in reporter._managers
+
+    @pytest.mark.asyncio
+    async def test_shutdown_one_does_not_affect_others(self):
+        """Shutting down one manager does not disrupt reporting for others."""
+        event_loop = asyncio.get_event_loop()
+        m1 = self._make_metrics_manager(event_loop, name_suffix="1")
+        m2 = self._make_metrics_manager(event_loop, name_suffix="2")
+
+        # Let registration happen.
+        await asyncio.sleep(0)
+
+        # Shut down m1.
+        await m1.shutdown()
+
+        # m2 should still have its metrics reported.
+        m2.inc_num_total_requests(route="/alive")
+        await asyncio.sleep(RAY_SERVE_METRICS_EXPORT_INTERVAL_MS * 2 / 1000)
+
+        tags = {
+            "deployment": "dep2",
+            "application": "app2",
+            "route": "/alive",
+            "handle": "handle2",
+            "actor_id": "actor2",
+        }
+        assert m2.num_router_requests.get_count(tags) == 1
+
+
 class TestSingletonThreadRouter:
     @pytest.fixture
     def setup_singleton_thread_router(
