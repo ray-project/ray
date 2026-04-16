@@ -62,9 +62,7 @@ class LabelDomainSchedulingPolicyInterface {
    * @brief Checks whether a set of bundles can be placed on the given nodes.
    *
    * @details Checks that every bundle is individually feasible on
-   * at least one candidate node, and the aggregate resource demand across
-   * all bundles does not exceed the aggregate total resources of the candidate
-   * nodes.
+   * at least one candidate node.
    *
    * @param resource_request_list The resource requirements for each bundle.
    * @param candidate_nodes The candidate nodes to check against.

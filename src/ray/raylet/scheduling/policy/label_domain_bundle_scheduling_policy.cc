@@ -34,21 +34,6 @@ bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
     }
   }
 
-  // Check that aggregate demand does not exceed aggregate capacity.
-  ResourceSet aggregate_demand;
-  for (const ResourceRequest *request : resource_request_list) {
-    aggregate_demand += request->GetResourceSet();
-  }
-  for (auto resource_id : aggregate_demand.ResourceIds()) {
-    FixedPoint total_capacity;
-    for (const auto &[node_id, node] : candidate_nodes) {
-      total_capacity += node->GetLocalView().total.Get(resource_id);
-    }
-    if (total_capacity < aggregate_demand.Get(resource_id)) {
-      return false;
-    }
-  }
-
   return true;
 }
 
