@@ -228,10 +228,4 @@ def build_openai_app(builder_config: dict) -> Application:
         **ingress_cls_config.ingress_extra_kwargs,
     )
 
-    # If any LLMConfig has ingress_bypass enabled, mark the application
-    # so that the ingress deployment becomes the router for Lua routing.
-    if any(getattr(c, "ingress_bypass", False) for c in llm_configs):
-        app._ingress_bypass = True
-        logger.info("Ingress bypass enabled: ingress deployment will serve as router")
-
     return app
