@@ -7082,7 +7082,7 @@ class Dataset:
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
         plan_copy = self._plan.deep_copy()
-        logical_plan_copy = copy.copy(self._plan._logical_plan)
+        logical_plan_copy = copy.copy(self._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
         ds._plan._cache.clear()
         ds._set_uuid(self._get_uuid())
@@ -7326,9 +7326,10 @@ class Dataset:
 
         If the dataset hasn't been executed, returns an empty stats object.
         """
-        if not self._plan._cache.get_stats():
+        stats = self._plan._cache.get_stats()
+        if not stats:
             return DatasetStats(metadata={}, parent=None)
-        return self._plan._cache.get_stats()
+        return stats
 
     def has_computed_output(self) -> bool:
         """Whether this dataset has cached output from a prior execution."""
