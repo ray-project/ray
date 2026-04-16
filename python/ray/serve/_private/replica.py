@@ -1130,32 +1130,13 @@ class Replica:
 
         self._num_queued_requests = 0
 
-        # Deferred ASGI app for ingress bypass: stored by set_asgi_app(),
-        # started after port allocation in _on_initialized().
-        self._pending_custom_asgi_app: Optional[ASGIApp] = None
-        self._replica_initialized = False  # True after _on_initialized() completes
-
-        # Register the set_asgi_app callback so user callables can call
-        # ray.serve.context.set_asgi_app() during their __init__ or start().
-        # If called before _on_initialized, we store it for later.
-        # If called after _on_initialized (e.g. during reconfigure/start),
-        # we allocate a port and start the HTTP server immediately.
-        async def _on_set_asgi_app(app):
-            self._pending_custom_asgi_app = app
-            if self._replica_initialized:
-                # _on_initialized already ran — start the server now.
-                logger.info(
-                    "Custom ASGI app registered post-init; "
-                    "starting direct ingress HTTP server now."
-                )
-                await self._start_direct_ingress_for_custom_app()
-            else:
-                logger.info(
-                    "Custom ASGI app registered via set_asgi_app(); "
-                    "will start after port allocation in _on_initialized."
-                )
-
-        ray.serve.context._set_asgi_app_callback(_on_set_asgi_app)
+        # Custom ASGI app for ingress bypass: user code calls
+        # ray.serve.context.set_asgi_app(app) during __init__ or start(),
+        # and _maybe_start_direct_ingress_servers() picks it up at init time.
+        self._pending_custom_asgi_app = None
+        ray.serve.context._set_asgi_app_callback(
+            lambda app: setattr(self, "_pending_custom_asgi_app", app)
+        )
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -1667,102 +1648,7 @@ class Replica:
                     # For gRPC requests, wrap exception with user-set status code
                     raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
 
-    async def _allocate_and_start_server(self, start_server_fn, protocol):
-        """Attempt to allocate a port and start the server with retries."""
-        is_port_in_use = False
-        for _ in range(RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT):
-            port = await self._controller_handle.allocate_replica_port.remote(
-                self._node_id, self._replica_id.unique_id, protocol
-            )
-            logger.info(f"Allocated port {port} for {protocol}")
-
-            try:
-                server_task = await start_server_fn(port)
-                logger.info(f"Successfully started {protocol} server on port {port}")
-                return port, server_task
-            except RuntimeError as e:
-                logger.warning(
-                    f"Failed to start {protocol} server on port {port}: {e}. "
-                    "Retrying..."
-                )
-
-                # `start_asgi_http_server` raises a RuntimeError with the
-                # original OSError as the cause.
-                if isinstance(e.__cause__, OSError) and e.__cause__.errno in (
-                    errno.EADDRINUSE,
-                    errno.EADDRNOTAVAIL,
-                ):
-                    is_port_in_use = True
-                else:
-                    is_port_in_use = False
-
-                # Block the port to avoid retrying it on other replicas.
-                await self._controller_handle.release_replica_port.remote(
-                    self._node_id,
-                    self._replica_id.unique_id,
-                    port,
-                    protocol,
-                    block_port=True,
-                )
-
-        err_msg = f"Failed to allocate and start {protocol} server after retries"
-        if is_port_in_use:
-            err_msg = (
-                f"Failed to start {protocol} server: port already in use. "
-                "Suggestion: Ensure that the Ray Serve direct ingress port "
-                "ranges do not overlap with the Ray worker port range "
-                "(min_worker_port to max_worker_port)."
-            )
-
-        raise RuntimeError(err_msg)
-
-    async def _start_direct_ingress_for_custom_app(self):
-        """Allocate a port and start the direct ingress HTTP server for a custom ASGI app.
-
-        Called when set_asgi_app() fires after _on_initialized() has completed
-        (i.e. during reconfigure/start). At this point we know ports can be
-        allocated from the controller.
-        """
-        if self._http_port is not None:
-            logger.warning("Direct ingress HTTP server already running, skipping")
-            return
-
-        # Fetch HTTP options if not already fetched
-        if self._http_options is None:
-            self._http_options, self._grpc_options = await asyncio.gather(
-                self._controller_handle.get_http_config.remote(),
-                self._controller_handle.get_grpc_config.remote(),
-            )
-
-        app_to_serve = self._pending_custom_asgi_app
-
-        async def start_http_server(port):
-            options = configure_http_middlewares(
-                configure_http_options_with_defaults(
-                    HTTPOptions(**{**self._http_options.model_dump(), "port": port})
-                )
-            )
-            return await start_asgi_http_server(
-                app_to_serve,
-                options,
-                event_loop=self._event_loop,
-                enable_so_reuseport=False,
-            )
-
-        (
-            self._http_port,
-            self._direct_ingress_http_server_task,
-        ) = await self._allocate_and_start_server(
-            start_server_fn=start_http_server,
-            protocol=RequestProtocol.HTTP,
-        )
-        logger.info(
-            f"Direct ingress HTTP server with custom ASGI app started on "
-            f"port {self._http_port}"
-        )
-
     async def _on_initialized(self):
-        self._replica_initialized = True
         await self._maybe_start_direct_ingress_servers()
 
         current_rank = ray.serve.context._get_internal_replica_context().rank
@@ -2032,46 +1918,62 @@ class Replica:
         return self._deployment_config.max_queued_requests
 
     async def _maybe_start_direct_ingress_servers(self):
-        if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
-            # Even without global direct ingress, start if a custom app was registered
-            if self._pending_custom_asgi_app is None:
-                return
-
         has_custom_app = self._pending_custom_asgi_app is not None
+
+        if not RAY_SERVE_ENABLE_DIRECT_INGRESS and not has_custom_app:
+            return
+
         if not self._ingress and not has_custom_app:
             return
 
-        # Determine which ASGI app to serve: custom (from set_asgi_app) or default
-        asgi_app_to_serve = (
-            self._pending_custom_asgi_app
-            if has_custom_app
-            else self._direct_ingress_asgi
-        )
-        if has_custom_app:
-            logger.info("Starting direct ingress HTTP server with custom ASGI app")
-            # Wrap with request counting middleware so the replica's
-            # num_ongoing_requests counter reflects direct-ingress traffic.
-            # This makes the request router's choose_replicas() load-aware.
-            inner_app = asgi_app_to_serve
-            metrics_mgr = self._metrics_manager
-            _di_metadata = RequestMetadata(
-                request_id="",
-                internal_request_id="",
-                _request_protocol=RequestProtocol.HTTP,
-                is_direct_ingress=True,
-            )
+        async def allocate_and_start_server(start_server_fn, protocol):
+            """Attempt to allocate a port and start the server with retries."""
+            is_port_in_use = False
+            for _ in range(RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT):
+                port = await self._controller_handle.allocate_replica_port.remote(
+                    self._node_id, self._replica_id.unique_id, protocol
+                )
+                logger.info(f"Allocated port {port} for {protocol}")
 
-            async def _counting_mw(scope, receive, send):
-                if scope["type"] == "http":
-                    metrics_mgr.inc_num_ongoing_requests(_di_metadata)
-                    try:
-                        await inner_app(scope, receive, send)
-                    finally:
-                        metrics_mgr.dec_num_ongoing_requests(_di_metadata)
-                else:
-                    await inner_app(scope, receive, send)
+                try:
+                    server_task = await start_server_fn(port)
+                    logger.info(
+                        f"Successfully started {protocol} server on port {port}"
+                    )
+                    return port, server_task
+                except RuntimeError as e:
+                    logger.warning(
+                        f"Failed to start {protocol} server on port {port}: {e}. Retrying..."
+                    )
 
-            asgi_app_to_serve = _counting_mw
+                    # `start_asgi_http_server` raises a RuntimeError with the original OSError as the cause.
+                    if isinstance(e.__cause__, OSError) and e.__cause__.errno in (
+                        errno.EADDRINUSE,
+                        errno.EADDRNOTAVAIL,
+                    ):
+                        is_port_in_use = True
+                    else:
+                        is_port_in_use = False
+
+                    # setting block_port to True because we are concluding that the port is
+                    # in use by another service on the same node. Blocking port here is a small
+                    # optimization to avoid trying to start the server on a the same port
+                    # multiple times by other replicas.
+                    await self._controller_handle.release_replica_port.remote(
+                        self._node_id,
+                        self._replica_id.unique_id,
+                        port,
+                        protocol,
+                        block_port=True,
+                    )
+
+            err_msg = f"Failed to allocate and start {protocol} server after retries"
+            if is_port_in_use:
+                err_msg = f"""
+                Failed to start {protocol} server: port already in use. Suggestion: Ensure that the Ray Serve direct ingress port ranges do not overlap with the Ray worker port range (min_worker_port to max_worker_port).
+                """
+
+            raise RuntimeError(err_msg)
 
         # Fetch configs
         self._http_options, self._grpc_options = ray.get(
@@ -2082,6 +1984,33 @@ class Replica:
         )
 
         grpc_enabled = is_grpc_enabled(self._grpc_options)
+
+        # Choose which ASGI app to serve: custom (from set_asgi_app) or default.
+        # Wrap custom apps with counting middleware so the replica's
+        # num_ongoing_requests counter reflects direct-ingress traffic,
+        # making the request router's choose_replicas() load-aware.
+        if has_custom_app:
+            inner_app = self._pending_custom_asgi_app
+            metrics_mgr = self._metrics_manager
+            _di_metadata = RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                _request_protocol=RequestProtocol.HTTP,
+                is_direct_ingress=True,
+            )
+
+            async def asgi_app_to_serve(scope, receive, send):
+                if scope["type"] == "http":
+                    metrics_mgr.inc_num_ongoing_requests(_di_metadata)
+                    try:
+                        await inner_app(scope, receive, send)
+                    finally:
+                        metrics_mgr.dec_num_ongoing_requests(_di_metadata)
+                else:
+                    await inner_app(scope, receive, send)
+
+        else:
+            asgi_app_to_serve = self._direct_ingress_asgi
 
         # Allocate and start HTTP server
         async def start_http_server(port):
@@ -2101,10 +2030,11 @@ class Replica:
         (
             self._http_port,
             self._direct_ingress_http_server_task,
-        ) = await self._allocate_and_start_server(
+        ) = await allocate_and_start_server(
             start_server_fn=start_http_server,
             protocol=RequestProtocol.HTTP,
         )
+
         # Allocate and start gRPC server if enabled
         if grpc_enabled:
 
@@ -2122,7 +2052,7 @@ class Replica:
             (
                 self._grpc_port,
                 self._direct_ingress_grpc_server_task,
-            ) = await self._allocate_and_start_server(
+            ) = await allocate_and_start_server(
                 start_server_fn=start_grpc_server_fn,
                 protocol=RequestProtocol.GRPC,
             )

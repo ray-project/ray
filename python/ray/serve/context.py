@@ -139,22 +139,18 @@ def _set_asgi_app_callback(callback):
     _SET_ASGI_APP_CALLBACK = callback
 
 
-async def set_asgi_app(app):
-    """Set a custom ASGI app for direct ingress HTTP serving.
+def set_asgi_app(app):
+    """Register a custom ASGI app for direct ingress HTTP serving.
 
-    Call this from within a deployment's initialization to serve a custom
-    ASGI app on the replica's direct ingress HTTP port. The app is stored
-    and started after the replica's port allocation completes.
-
-    This enables the "ingress bypass" pattern where HAProxy routes requests
-    directly to the replica's custom app, bypassing the standard Ray Serve
-    request handling pipeline.
+    Call this from within a deployment's ``__init__`` or ``start()`` to serve
+    a custom ASGI app on the replica's direct ingress HTTP port, bypassing
+    the standard Ray Serve request handling pipeline.
     """
     if _SET_ASGI_APP_CALLBACK is None:
         raise RuntimeError(
             "set_asgi_app can only be called from within a running Serve replica"
         )
-    await _SET_ASGI_APP_CALLBACK(app)
+    _SET_ASGI_APP_CALLBACK(app)
 
 
 def _get_deployment_actor(actor_name: str):
