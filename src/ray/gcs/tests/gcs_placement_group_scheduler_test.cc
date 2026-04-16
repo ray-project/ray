@@ -1742,7 +1742,10 @@ TEST_F(GcsPlacementGroupSchedulerTest,
   ASSERT_TRUE(raylet_clients_[0]->GrantCommitBundleResources());
   WaitPlacementGroupPendingDone(1, GcsPlacementGroupStatus::SUCCESS);
 
-  success_placement_groups_.clear();
+  {
+    absl::MutexLock lock(&placement_group_requests_mutex_);
+    success_placement_groups_.clear();
+  }
   raylet_clients_[0]->commit_callbacks.clear();
 
   // Simulate a reschedule scenario where the bundles are unplaced
