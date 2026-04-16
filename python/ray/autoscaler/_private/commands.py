@@ -498,27 +498,9 @@ def teardown_cluster(
 
     provider = _get_node_provider(config["provider"], config["cluster_name"])
 
-    def _nodes_to_teardown(get_nodes):
-        """Return nodes to tear down, respecting --keep-min-workers and
-        --workers-only.  *get_nodes* is called with a tag filter dict and
-        must return a list of node ids (e.g. provider.non_terminated_nodes
-        or provider.nodes_for_teardown)."""
-        workers = get_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
-
-        if keep_min_workers:
-            min_workers = config.get("min_workers", 0)
-            if len(workers) > min_workers:
-                workers = random.sample(workers, len(workers) - min_workers)
-            else:
-                workers = []
-
-        if workers_only:
-            return workers
-
-        head = get_nodes({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
-        return head + workers
-
     def remaining_nodes():
+        workers = provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+
         if keep_min_workers:
             min_workers = config.get("min_workers", 0)
             cli_logger.print(
@@ -527,13 +509,21 @@ def teardown_cluster(
                 cf.bold(min_workers),
                 cf.bold("--keep-min-workers"),
             )
+            if len(workers) > min_workers:
+                workers = random.sample(workers, len(workers) - min_workers)
+            else:
+                workers = []
+
         # todo: it's weird to kill the head node but not all workers
         if workers_only:
             cli_logger.print(
                 "The head node will not be shut down. " + cf.dimmed("(due to {})"),
                 cf.bold("--workers-only"),
             )
-        return _nodes_to_teardown(provider.nodes_for_teardown)
+            return workers
+
+        head = provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
+        return head + workers
 
     def run_docker_stop(node, container_name):
         try:
@@ -568,21 +558,6 @@ def teardown_cluster(
 
     container_name = config.get("docker", {}).get("container_name")
     if container_name:
-        # Start with A (which already respects --keep-min-workers and
-        # --workers-only).  On top of that, include nodes the provider
-        # knows about but reports as terminated.  This handles
-        # LocalNodeProvider where the invoking machine's state file
-        # marks workers as terminated even though the head's autoscaler
-        # started them and their Docker containers are still running.
-        # For cloud providers this adds nothing because nodes_for_teardown
-        # delegates to non_terminated_nodes.
-        #
-        # _nodes_to_teardown with nodes_for_teardown applies the same
-        # --keep-min-workers / --workers-only filtering used for A,
-        # so the two paths stay in sync automatically.
-        all_teardown = set(_nodes_to_teardown(provider.nodes_for_teardown))
-        docker_stop_nodes = list(set(A) | all_teardown)
-
         # This is to ensure that the parallel SSH calls below do not mess with
         # the users terminal.
         output_redir = cmd_output_util.is_output_redirected()
@@ -591,7 +566,7 @@ def teardown_cluster(
         cmd_output_util.set_allow_interactive(False)
 
         with ThreadPoolExecutor(max_workers=MAX_PARALLEL_SHUTDOWN_WORKERS) as executor:
-            for node in docker_stop_nodes:
+            for node in A:
                 executor.submit(
                     run_docker_stop, node=node, container_name=container_name
                 )
