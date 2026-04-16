@@ -84,12 +84,6 @@ class MemoryMonitorInterface {
   static constexpr int64_t kNull = -1;
   /// The logging frequency. Decoupled from how often the monitor runs.
   static constexpr uint32_t kLogIntervalMs = 5000;
-
-  // Threshold monitor is poll based and may miss memory bursts occuring between polls.
-  // This buffer is used to provide time for the threshold monitor to react before
-  // memory max is reached under resource isolation.
-  static constexpr int64_t THRESHOLD_MONITOR_REACTION_BUFFER =
-      2LL * 1024 * 1024 * 1024;  // 2GB
 };
 
 }  // namespace ray

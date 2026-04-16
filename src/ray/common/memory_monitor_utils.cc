@@ -337,13 +337,14 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
       int64_t user_memory_max_bytes = std::stoll(user_memory_max_bytes_str);
       resolved_memory_threshold_bytes =
           user_memory_max_bytes -
-          MemoryMonitorInterface::THRESHOLD_MONITOR_REACTION_BUFFER;
+          RayConfig::instance().threshold_monitor_reaction_buffer_bytes();
       RAY_CHECK_GE(resolved_memory_threshold_bytes, 0) << absl::StrFormat(
           "Available user task memory is less than the kill memory buffer bytes: "
           "%d < %d. Please consider using a host with more memory. If the current host "
-          "memory size must be kept, please adjust the kill memory buffer size.",
+          "memory size must be kept, please adjust the threshold monitor reaction buffer "
+          "size.",
           user_memory_max_bytes,
-          MemoryMonitorInterface::THRESHOLD_MONITOR_REACTION_BUFFER);
+          RayConfig::instance().threshold_monitor_reaction_buffer_bytes());
     }
   }
 
