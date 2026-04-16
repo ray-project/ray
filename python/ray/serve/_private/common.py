@@ -679,6 +679,7 @@ class RunningReplicaInfo:
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                     str(self.routing_stats),
+                    str(self.direct_ingress_http_port),
                 ]
             )
         )

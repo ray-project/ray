@@ -1659,7 +1659,7 @@ class DeploymentReplica:
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
             port=self._actor._internal_grpc_port,
-            direct_ingress_http_port=self._actor._http_port,
+            direct_ingress_http_port=self._actor._http_port or None,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
