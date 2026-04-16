@@ -262,6 +262,7 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
 void ObjectManager::CancelPull(uint64_t request_id) {
   const auto objects_to_cancel = pull_manager_->CancelPull(request_id);
   for (const auto &object_id : objects_to_cancel) {
+    // No-op for objects that took the all-local path and were never subscribed.
     object_directory_->UnsubscribeObjectLocations(object_directory_pull_callback_id_,
                                                   object_id);
   }

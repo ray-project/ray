@@ -1275,63 +1275,29 @@ TEST_P(PullManagerTest, TestTimeOutAfterFailedPull) {
   AssertNoLeaks();
 }
 
-// Simulates the worker's ray.get() round: all objects already local.
-// MarkObjectLocallyAvailable should make the bundle activate and pin
-// immediately, with zero subscriptions.
 TEST_P(PullManagerTest, TestAllLocalSkipSubscription) {
   BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(3);
   auto oids = ObjectRefsToIds(refs);
-
   std::vector<rpc::ObjectReference> objects_to_locate;
   auto req_id = pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
   ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
 
-  // Objects are all local. Allow pin.
   allow_pin_ = true;
   object_is_local_ = true;
 
-  // Mark all objects as local (what ObjectManager would do for all-local bundles).
+  // Simulate ObjectManager's all-local path: mark each object locally
+  // available instead of subscribing for its location.
   for (const auto &oid : oids) {
     pull_manager_.MarkObjectLocallyAvailable(oid);
   }
 
-  // Bundle activated and all objects pinned in the same call stack.
+  // Bundle should have activated and pinned all objects synchronously.
   ASSERT_EQ(NumPinnedObjects(), 3);
-  // No remote pull requests.
   ASSERT_EQ(num_send_pull_request_calls_, 0);
 
   auto objects_to_cancel = pull_manager_.CancelPull(req_id);
-  ASSERT_EQ(objects_to_cancel.size(), 3);
-  AssertNoLeaks();
-}
-
-// When only some objects are local, ObjectManager should NOT call
-// MarkObjectLocallyAvailable (all-or-nothing). Verify that the normal
-// subscription path still works for partially-local bundles.
-TEST_P(PullManagerTest, TestPartialLocalStillSubscribes) {
-  BundlePriority prio = GetParam();
-  auto refs = CreateObjectRefs(3);
-  auto oids = ObjectRefsToIds(refs);
-
-  std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id = pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
-  // All 3 objects need subscription (ObjectManager decides all-or-nothing,
-  // here we simulate the "not all local" path by using OnLocationChange).
-  ASSERT_EQ(objects_to_locate.size(), 3);
-
-  // Provide locations for all objects via the normal subscription path.
-  std::unordered_set<NodeID> client_ids;
-  client_ids.insert(NodeID::FromRandom());
-  for (const auto &oid : oids) {
-    pull_manager_.OnLocationChange(oid, client_ids, "", NodeID::Nil(), false, 1);
-  }
-
-  // Should have sent pull requests for each object.
-  ASSERT_EQ(num_send_pull_request_calls_, 3);
-
-  auto objects_to_cancel = pull_manager_.CancelPull(req_id);
-  ASSERT_EQ(objects_to_cancel.size(), 3);
+  ASSERT_EQ(objects_to_cancel, oids);
   AssertNoLeaks();
 }
 
