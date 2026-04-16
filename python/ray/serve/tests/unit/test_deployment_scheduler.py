@@ -199,17 +199,24 @@ def test_deployment_scheduling_info():
     assert info.required_resources == Resources({"CPU": 100, "GPU": 100})
     assert not info.is_non_strict_pack_pg()
 
+    # PACK with a GPU bundle: required_resources is bundle 0, not
+    # actor_resources. A CPU-only node must not fit the replica, or the
+    # compaction planner will try to migrate GPU replicas onto CPU nodes.
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=Resources({"CPU": 1}),
         placement_group_bundles=[
-            Resources({"CPU": 100}),
-            Resources({"GPU": 100}),
+            Resources({"CPU": 1, "GPU": 1, "accelerator_type:L4": 0.001}),
+            Resources({"CPU": 1, "GPU": 1, "accelerator_type:L4": 0.001}),
         ],
         placement_group_strategy="PACK",
     )
-    assert info.required_resources == Resources({"CPU": 2, "GPU": 1})
+    assert info.required_resources == Resources(
+        {"CPU": 1, "GPU": 1, "accelerator_type:L4": 0.001}
+    )
+    # A CPU-only node cannot host this replica.
+    assert not Resources({"CPU": 64}).can_fit(info.required_resources)
     assert info.is_non_strict_pack_pg()
 
 
@@ -921,6 +928,45 @@ def test_schedule_passes_placement_group_options():
 
     # bundle_label_selector should be passed to request.
     assert pg_request.bundle_label_selector == test_labels
+
+
+def test_schedule_pins_actor_to_bundle_0():
+    """Replicas with a placement group must be scheduled with
+    placement_group_bundle_index=0. This is the contract that
+    required_resources relies on and that ReplicaConfig validates against.
+    """
+    cluster_node_info_cache = MockClusterNodeInfoCache()
+
+    class MockPG:
+        def wait(self, *args):
+            return True
+
+    scheduler = default_impl.create_deployment_scheduler(
+        cluster_node_info_cache,
+        head_node_id_override="fake-head-node-id",
+        create_placement_group_fn_override=lambda request: MockPG(),
+    )
+
+    dep_id = DeploymentID(name="pin_test")
+    scheduler.on_deployment_created(dep_id, SpreadDeploymentSchedulingPolicy())
+
+    captured_handles = []
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r1", dep_id),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r1"},
+        actor_init_args=(),
+        on_scheduled=lambda handle, **kwargs: captured_handles.append(handle),
+        placement_group_bundles=[{"CPU": 1, "GPU": 1}, {"CPU": 1, "GPU": 1}],
+        placement_group_strategy="PACK",
+    )
+    scheduler.schedule(upscales={dep_id: [req]}, downscales={})
+
+    assert len(captured_handles) == 1
+    strategy = captured_handles[0]._options["scheduling_strategy"]
+    assert isinstance(strategy, PlacementGroupSchedulingStrategy)
+    assert strategy.placement_group_bundle_index == 0
 
 
 def test_filter_nodes_by_label_selector():
