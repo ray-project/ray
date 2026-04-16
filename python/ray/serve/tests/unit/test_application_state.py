@@ -1786,7 +1786,7 @@ class TestOverrideDeploymentInfo:
         assert actors[1]._serialized_actor_class == b""  # Not in map, stays empty
 
     def test_override_router_flag(self, info):
-        """router=True in config should set DeploymentInfo.router."""
+        """router=True in config should flow through to DeploymentConfig."""
         config = ServeApplicationSchema(
             name="default",
             import_path="test.import.path",
@@ -1799,7 +1799,7 @@ class TestOverrideDeploymentInfo:
         )
 
         updated_infos = override_deployment_info({"A": info}, config)
-        assert updated_infos["A"].router is True
+        assert updated_infos["A"].deployment_config.router is True
 
     def test_override_multiple_routers_raises(self, info):
         """More than one deployment with router=True should raise ValueError."""

@@ -1817,9 +1817,6 @@ def override_deployment_info(
         )
         override_options["replica_config"] = replica_config
 
-        # Extract router flag (not part of deployment config)
-        is_router = options.pop("router", False)
-
         if "gang_scheduling_config" in options:
             gang_scheduling_config = options.get("gang_scheduling_config")
             if gang_scheduling_config and isinstance(gang_scheduling_config, dict):
@@ -1874,9 +1871,6 @@ def override_deployment_info(
         options.pop("name", None)
         original_options.update(options)
         override_options["deployment_config"] = DeploymentConfig(**original_options)
-        # Set router flag if specified in config
-        if is_router:
-            override_options["router"] = True
         deployment_infos[deployment_name] = info.update(**override_options)
 
         deployment_config = deployment_infos[deployment_name].deployment_config
@@ -1903,7 +1897,7 @@ def override_deployment_info(
 
     # Validate that at most one deployment is marked as router
     router_deployments = [
-        name for name, info in deployment_infos.items() if info.router
+        name for name, info in deployment_infos.items() if info.deployment_config.router
     ]
     if len(router_deployments) > 1:
         raise ValueError(
