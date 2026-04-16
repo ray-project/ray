@@ -182,18 +182,6 @@ from ray.util import metrics as ray_metrics
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@ray.remote(num_cpus=0)
-class _DirectIngressRegistry:
-    def __init__(self):
-        self._endpoints = {}
-
-    def register(self, replica_tag: str, host: str, port: int):
-        self._endpoints[replica_tag] = (host, port)
-
-    def get_all(self):
-        return list(self._endpoints.values())
-
-
 def _wrap_grpc_call(f):
     """Decorator that processes grpc methods."""
 
@@ -1197,27 +1185,6 @@ class Replica:
     def get_num_ongoing_requests(self) -> int:
         return self._metrics_manager.get_num_ongoing_requests()
 
-    def _register_direct_ingress_endpoint(self, port: Optional[int]):
-        if port is None:
-            return
-
-        try:
-            registry = _DirectIngressRegistry.options(
-                name="_llm_direct_ingress_registry",
-                namespace="serve",
-                lifetime="detached",
-                get_if_exists=True,
-            ).remote()
-            ray.get(
-                registry.register.remote(
-                    self._replica_id.unique_id,
-                    ray.util.get_node_ip_address(),
-                    port,
-                )
-            )
-        except Exception:
-            logger.exception("Failed to register direct ingress endpoint")
-
     def get_metadata(self) -> ReplicaMetadata:
         current_rank = ray.serve.context._get_internal_replica_context().rank
         # Extract route patterns from ASGI app if available
@@ -1734,11 +1701,9 @@ class Replica:
 
         # Fetch HTTP options if not already fetched
         if self._http_options is None:
-            self._http_options, self._grpc_options = ray.get(
-                [
-                    self._controller_handle.get_http_config.remote(),
-                    self._controller_handle.get_grpc_config.remote(),
-                ]
+            self._http_options, self._grpc_options = await asyncio.gather(
+                self._controller_handle.get_http_config.remote(),
+                self._controller_handle.get_grpc_config.remote(),
             )
 
         app_to_serve = self._pending_custom_asgi_app
@@ -1766,7 +1731,6 @@ class Replica:
             try:
                 self._direct_ingress_http_server_task = await start_http_server(port)
                 self._http_port = port
-                self._register_direct_ingress_endpoint(port)
                 logger.info(
                     f"Direct ingress HTTP server with custom ASGI app started on port {port}"
                 )
@@ -2186,9 +2150,6 @@ class Replica:
             start_server_fn=start_http_server,
             protocol=RequestProtocol.HTTP,
         )
-        if has_custom_app:
-            self._register_direct_ingress_endpoint(self._http_port)
-
         # Allocate and start gRPC server if enabled
         if grpc_enabled:
 
@@ -2729,7 +2690,6 @@ class Replica:
         response_started = False
         response_finished = False
         first_message_peeked = False
-        first_body_chunk_logged = False
 
         with self._wrap_request(request_metadata) as status_code_callback:
             self._num_queued_requests += 1
@@ -2738,19 +2698,11 @@ class Replica:
                 nonlocal response_started
                 nonlocal response_finished
                 nonlocal first_message_peeked
-                nonlocal first_body_chunk_logged
 
                 if not first_message_peeked:
                     first_message_peeked = True
                     if msg["type"] == "http.response.start":
                         status_code_callback(str(msg["status"]))
-
-                if (
-                    msg["type"] == "http.response.body"
-                    and not first_body_chunk_logged
-                    and msg.get("body", b"")
-                ):
-                    first_body_chunk_logged = True
 
                 await send(msg)
                 response_started = True
