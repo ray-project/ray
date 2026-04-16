@@ -422,16 +422,14 @@ CoreWorker::CoreWorker(
              const TaskOptions &task_options,
              TaskCompletionCallback on_complete,
              const ActorPoolID &pool_id,
-             const TaskID &pool_task_id,
-             const std::vector<rpc::ObjectReference> &return_refs) {
+             const TaskID &pool_task_id) {
         return this->SubmitActorTaskForPool(actor_id,
                                             function,
                                             std::move(args),
                                             task_options,
                                             std::move(on_complete),
                                             pool_id,
-                                            pool_task_id,
-                                            return_refs);
+                                            pool_task_id);
       },
       *worker_context_,
       rpc_address_,
@@ -2836,8 +2834,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
     const TaskOptions &task_options,
     TaskCompletionCallback on_complete,
     const ActorPoolID &pool_id,
-    const TaskID &pool_task_id,
-    const std::vector<rpc::ObjectReference> &return_refs) {
+    const TaskID &pool_task_id) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
 
   if (!actor_task_submitter_->CheckActorExists(actor_id)) {
@@ -2860,8 +2857,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
   actor_manager_->SubscribeActorState(actor_id);
 
   // Build TaskSpec using the pool-scoped TaskID. ObjectIDs derived from this
-  // TaskID (via ObjectID::FromIndex) are pool-scoped, matching the pre-created
-  // return_refs. The actor routing uses the actor_id in actor_task_spec.
+  // TaskID (via ObjectID::FromIndex) are pool-scoped. The actor routing uses
+  // the actor_id in actor_task_spec.
   // Note: we do NOT call GetNextTaskIndex() here because the pool_task_id was
   // already generated with a task index in SubmitTaskToPool. Using 0 as the
   // parent_task_counter avoids wasting a task index.

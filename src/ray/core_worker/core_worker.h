@@ -1230,8 +1230,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       const TaskOptions &task_options,
       TaskCompletionCallback on_complete,
       const ActorPoolID &pool_id,
-      const TaskID &pool_task_id,
-      const std::vector<rpc::ObjectReference> &return_refs);
+      const TaskID &pool_task_id);
 
  public:
   /// Get the expected return ids of the next task.

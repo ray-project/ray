@@ -633,7 +633,6 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
   auto args_for_submit = CloneArgs(pool_task.args);
   RayFunction function = pool_task.function;
   TaskOptions options = pool_task.options;
-  auto return_refs = pool_task.return_refs;
 
   TrackPoolTask(std::move(pool_task));
 
@@ -646,8 +645,7 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
                                options,
                                nullptr,
                                pool_id,
-                               pool_task_id,
-                               return_refs);
+                               pool_task_id);
 }
 
 void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,

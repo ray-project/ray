@@ -60,7 +60,6 @@ using TaskCompletionCallback =
 /// \param on_complete Callback to invoke when the task completes.
 /// \param pool_id The actor pool this task belongs to.
 /// \param pool_task_id The pool-scoped TaskID used as the task's TaskID.
-/// \param return_refs Pre-created pool-scoped ObjectRefs.
 /// \return Object references for the task's return values.
 using SubmitActorTaskCallback = std::function<std::vector<rpc::ObjectReference>(
     const ActorID &actor_id,
@@ -69,8 +68,7 @@ using SubmitActorTaskCallback = std::function<std::vector<rpc::ObjectReference>(
     const TaskOptions &task_options,
     TaskCompletionCallback on_complete,
     const ActorPoolID &pool_id,
-    const TaskID &pool_task_id,
-    const std::vector<rpc::ObjectReference> &return_refs)>;
+    const TaskID &pool_task_id)>;
 
 /// Configuration for an actor pool.
 struct ActorPoolConfig {
