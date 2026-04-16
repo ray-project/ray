@@ -249,6 +249,10 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
       pull_manager_->MarkObjectLocallyAvailable(ObjectRefToId(ref));
     }
   } else {
+    // Subscribe to object notifications. A notification will be received every
+    // time the set of node IDs for the object changes. Notifications will also
+    // be received if the list of locations is empty. The set of node IDs has
+    // no ordering guarantee between notifications.
     for (const auto &ref : objects_to_locate) {
       auto object_id = ObjectRefToId(ref);
       object_directory_->SubscribeObjectLocations(
