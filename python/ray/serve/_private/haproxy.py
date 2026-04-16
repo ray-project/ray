@@ -490,6 +490,10 @@ class HAProxyConfig:
     # Enable HAProxy optimizations (server state persistence, etc.)
     # Disabled by default to prevent test suite interference
     enable_hap_optimization: bool = RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG
+    use_graceful_reload_handoff: bool = True
+    enable_reload_socket_transfer: bool = RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG
+    enable_server_state_persistence: bool = RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG
+    enable_idle_close_on_response: bool = RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG
     maxconn: int = RAY_SERVE_HAPROXY_MAXCONN
     nbthread: int = RAY_SERVE_HAPROXY_NBTHREAD
     stats_port: int = RAY_SERVE_HAPROXY_STATS_PORT
@@ -741,17 +745,25 @@ class HAProxyApi(ProxyApi):
 
             await self._wait_for_hap_availability(old_proc)
 
-            # Save server state if optimization is enabled
-            if self.cfg.enable_hap_optimization:
+            # Save server state if persistence is enabled.
+            if self.cfg.enable_server_state_persistence:
                 await self._save_server_state()
 
             # Start new HAProxy process with -sf flag to gracefully take over from old process
-            # Use -x socket transfer for seamless reloads if optimization is enabled
+            # Use -x socket transfer for seamless reloads if enabled.
             reload_args = ["-sf", str(old_proc.pid)]
-            if self.cfg.enable_hap_optimization:
+            used_x = False
+            if self.cfg.enable_reload_socket_transfer:
                 reload_args.extend(["-x", self.cfg.socket_path])
+                used_x = True
 
             self._proc = await self._start_and_wait_for_haproxy(*reload_args)
+            self._reload_count += 1
+            self._last_reload_mode = {
+                "mode": "graceful",
+                "used_sf": True,
+                "used_x": used_x,
+            }
 
             # Track old process so we can ensure it's cleaned up during shutdown
             if old_proc is not None:
@@ -763,6 +775,30 @@ class HAProxyApi(ProxyApi):
         except Exception as e:
             logger.error(f"HAProxy graceful reload failed: {e}")
             raise
+
+    async def _hard_reload(self) -> None:
+        """Perform a hard restart without graceful handoff."""
+        try:
+            old_proc = self._proc
+            if old_proc is not None and old_proc.returncode is None:
+                old_proc.kill()
+                await old_proc.wait()
+            self._proc = await self._start_and_wait_for_haproxy()
+            self._reload_count += 1
+            self._last_reload_mode = {
+                "mode": "hard",
+                "used_sf": False,
+                "used_x": False,
+            }
+        except Exception as e:
+            logger.error(f"HAProxy hard reload failed: {e}")
+            raise
+
+    async def _reload_with_config(self) -> None:
+        if self.cfg.use_graceful_reload_handoff:
+            await self._graceful_reload()
+        else:
+            await self._hard_reload()
 
     async def _wait_for_hap_availability(
         self, proc: asyncio.subprocess.Process, timeout_s: int = 5
@@ -1066,7 +1102,7 @@ class HAProxyApi(ProxyApi):
     async def reload(self) -> None:
         try:
             self._generate_config_file_internal()
-            await self._graceful_reload()
+            await self._reload_with_config()
         except Exception as e:
             raise RuntimeError(f"Failed to update and reload HAProxy: {e}")
 
@@ -1119,6 +1155,17 @@ class HAProxyApi(ProxyApi):
             # Treat as unhealthy instead of raising.
             return False
 
+    def get_reload_debug_summary(self) -> Dict[str, Any]:
+        return {
+            "reload_count": self._reload_count,
+            "last_reload_mode": dict(self._last_reload_mode),
+            "use_graceful_reload_handoff": self.cfg.use_graceful_reload_handoff,
+            "enable_reload_socket_transfer": (self.cfg.enable_reload_socket_transfer),
+            "enable_server_state_persistence": (
+                self.cfg.enable_server_state_persistence
+            ),
+        }
+
 
 @ray.remote(num_cpus=0)
 class HAProxyManager(ProxyActorInterface):
@@ -1149,6 +1196,9 @@ class HAProxyManager(ProxyActorInterface):
         self._draining_start_time: Optional[float] = None
 
         self.event_loop = get_or_create_event_loop()
+        self._controller_handle = ray.get_actor(
+            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
 
         self._target_groups: List[TargetGroup] = []
 
@@ -1161,7 +1211,7 @@ class HAProxyManager(ProxyActorInterface):
         self._reload_lock = asyncio.Lock()
 
         self.long_poll_client = long_poll_client or LongPollClient(
-            ray.get_actor(SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE),
+            self._controller_handle,
             {
                 LongPollNamespace.GLOBAL_LOGGING_CONFIG: self._update_logging_config,
                 LongPollNamespace.TARGET_GROUPS: self.update_target_groups,
