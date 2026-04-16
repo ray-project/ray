@@ -183,11 +183,6 @@ class DeploymentActorWrapper:
             # Serve recreates deployment actors after failed health checks instead
             # of relying on Ray actor restarts.
             actor_options["max_restarts"] = 0
-            # Don't override max_concurrency — let Ray core use its defaults
-            # (1 for sync actors, 1000 for async). Previously this was set to
-            # CONTROLLER_MAX_CONCURRENCY (15,000) which caused sync actors to
-            # create 15,000 OS threads via BoundedExecutor, stalling or
-            # crashing worker startup under CI resource contention.
             self._handle = actor_cls.options(
                 name=self._actor_name,
                 namespace=SERVE_NAMESPACE,
