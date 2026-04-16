@@ -202,6 +202,7 @@ ray_cc_library(
     deps = [
         ":worker_killing_policy_interface",
         "//src/ray/common:ray_config",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
     ] + select({
         "//bazel:is_linux": [
             ":worker_killing_policy_by_time",
