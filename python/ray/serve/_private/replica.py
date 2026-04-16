@@ -1157,27 +1157,6 @@ class Replica:
 
         ray.serve.context._set_asgi_app_callback(_on_set_asgi_app)
 
-        # Register ongoing request count callbacks so custom ASGI apps
-        # (e.g. direct-ingress vLLM) can update the replica's request
-        # counter. This makes the counter visible to the request router's
-        # get_num_ongoing_requests() probe for load-aware routing.
-        from ray.serve._private.common import RequestMetadata, RequestProtocol
-
-        _direct_ingress_metadata = RequestMetadata(
-            request_id="",
-            internal_request_id="",
-            _request_protocol=RequestProtocol.HTTP,
-            is_direct_ingress=True,
-        )
-
-        def _inc():
-            self._metrics_manager.inc_num_ongoing_requests(_direct_ingress_metadata)
-
-        def _dec():
-            self._metrics_manager.dec_num_ongoing_requests(_direct_ingress_metadata)
-
-        ray.serve.context._set_ongoing_requests_callbacks(_inc, _dec)
-
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests

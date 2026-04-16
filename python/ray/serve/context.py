@@ -32,8 +32,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
 _SET_ASGI_APP_CALLBACK = None
-_INC_NUM_ONGOING_REQUESTS_CALLBACK = None
-_DEC_NUM_ONGOING_REQUESTS_CALLBACK = None
 
 
 @DeveloperAPI
@@ -157,33 +155,6 @@ async def set_asgi_app(app):
             "set_asgi_app can only be called from within a running Serve replica"
         )
     await _SET_ASGI_APP_CALLBACK(app)
-
-
-def _set_ongoing_requests_callbacks(inc_callback, dec_callback):
-    """Set by Replica to allow custom ASGI apps to track ongoing requests."""
-    global _INC_NUM_ONGOING_REQUESTS_CALLBACK, _DEC_NUM_ONGOING_REQUESTS_CALLBACK
-    _INC_NUM_ONGOING_REQUESTS_CALLBACK = inc_callback
-    _DEC_NUM_ONGOING_REQUESTS_CALLBACK = dec_callback
-
-
-def inc_num_ongoing_requests():
-    """Increment the ongoing request count for this replica.
-
-    Call this from direct-ingress ASGI middleware when a request starts.
-    The count is visible to the request router's `get_num_ongoing_requests()`
-    probe, enabling load-aware routing decisions for bypassed requests.
-    """
-    if _INC_NUM_ONGOING_REQUESTS_CALLBACK is not None:
-        _INC_NUM_ONGOING_REQUESTS_CALLBACK()
-
-
-def dec_num_ongoing_requests():
-    """Decrement the ongoing request count for this replica.
-
-    Call this from direct-ingress ASGI middleware when a request completes.
-    """
-    if _DEC_NUM_ONGOING_REQUESTS_CALLBACK is not None:
-        _DEC_NUM_ONGOING_REQUESTS_CALLBACK()
 
 
 def _get_deployment_actor(actor_name: str):
