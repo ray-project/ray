@@ -1667,6 +1667,55 @@ class Replica:
                     # For gRPC requests, wrap exception with user-set status code
                     raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
 
+    async def _allocate_and_start_server(self, start_server_fn, protocol):
+        """Attempt to allocate a port and start the server with retries."""
+        is_port_in_use = False
+        for _ in range(RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT):
+            port = await self._controller_handle.allocate_replica_port.remote(
+                self._node_id, self._replica_id.unique_id, protocol
+            )
+            logger.info(f"Allocated port {port} for {protocol}")
+
+            try:
+                server_task = await start_server_fn(port)
+                logger.info(f"Successfully started {protocol} server on port {port}")
+                return port, server_task
+            except RuntimeError as e:
+                logger.warning(
+                    f"Failed to start {protocol} server on port {port}: {e}. "
+                    "Retrying..."
+                )
+
+                # `start_asgi_http_server` raises a RuntimeError with the
+                # original OSError as the cause.
+                if isinstance(e.__cause__, OSError) and e.__cause__.errno in (
+                    errno.EADDRINUSE,
+                    errno.EADDRNOTAVAIL,
+                ):
+                    is_port_in_use = True
+                else:
+                    is_port_in_use = False
+
+                # Block the port to avoid retrying it on other replicas.
+                await self._controller_handle.release_replica_port.remote(
+                    self._node_id,
+                    self._replica_id.unique_id,
+                    port,
+                    protocol,
+                    block_port=True,
+                )
+
+        err_msg = f"Failed to allocate and start {protocol} server after retries"
+        if is_port_in_use:
+            err_msg = (
+                f"Failed to start {protocol} server: port already in use. "
+                "Suggestion: Ensure that the Ray Serve direct ingress port "
+                "ranges do not overlap with the Ray worker port range "
+                "(min_worker_port to max_worker_port)."
+            )
+
+        raise RuntimeError(err_msg)
+
     async def _start_direct_ingress_for_custom_app(self):
         """Allocate a port and start the direct ingress HTTP server for a custom ASGI app.
 
@@ -1700,41 +1749,17 @@ class Replica:
                 enable_so_reuseport=False,
             )
 
-        # Allocate port and start server with retries
-        is_port_in_use = False
-        for _ in range(RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT):
-            port = await self._controller_handle.allocate_replica_port.remote(
-                self._node_id, self._replica_id.unique_id, RequestProtocol.HTTP
-            )
-            logger.info(f"Allocated port {port} for custom ASGI app")
-            try:
-                self._direct_ingress_http_server_task = await start_http_server(port)
-                self._http_port = port
-                logger.info(
-                    f"Direct ingress HTTP server with custom ASGI app started on port {port}"
-                )
-                return
-            except RuntimeError as e:
-                logger.warning(f"Failed to start on port {port}: {e}. Retrying...")
-                if isinstance(e.__cause__, OSError) and e.__cause__.errno in (
-                    errno.EADDRINUSE,
-                    errno.EADDRNOTAVAIL,
-                ):
-                    is_port_in_use = True
-                else:
-                    is_port_in_use = False
-                await self._controller_handle.release_replica_port.remote(
-                    self._node_id,
-                    self._replica_id.unique_id,
-                    port,
-                    RequestProtocol.HTTP,
-                    block_port=True,
-                )
-
-        err = "Failed to start custom ASGI app direct ingress after retries"
-        if is_port_in_use:
-            err += " (port in use)"
-        raise RuntimeError(err)
+        (
+            self._http_port,
+            self._direct_ingress_http_server_task,
+        ) = await self._allocate_and_start_server(
+            start_server_fn=start_http_server,
+            protocol=RequestProtocol.HTTP,
+        )
+        logger.info(
+            f"Direct ingress HTTP server with custom ASGI app started on "
+            f"port {self._http_port}"
+        )
 
     async def _on_initialized(self):
         self._replica_initialized = True
@@ -2048,55 +2073,6 @@ class Replica:
 
             asgi_app_to_serve = _counting_mw
 
-        async def allocate_and_start_server(start_server_fn, protocol):
-            """Attempt to allocate a port and start the server with retries."""
-            is_port_in_use = False
-            for _ in range(RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT):
-                port = await self._controller_handle.allocate_replica_port.remote(
-                    self._node_id, self._replica_id.unique_id, protocol
-                )
-                logger.info(f"Allocated port {port} for {protocol}")
-
-                try:
-                    server_task = await start_server_fn(port)
-                    logger.info(
-                        f"Successfully started {protocol} server on port {port}"
-                    )
-                    return port, server_task
-                except RuntimeError as e:
-                    logger.warning(
-                        f"Failed to start {protocol} server on port {port}: {e}. Retrying..."
-                    )
-
-                    # `start_asgi_http_server` raises a RuntimeError with the original OSError as the cause.
-                    if isinstance(e.__cause__, OSError) and e.__cause__.errno in (
-                        errno.EADDRINUSE,
-                        errno.EADDRNOTAVAIL,
-                    ):
-                        is_port_in_use = True
-                    else:
-                        is_port_in_use = False
-
-                    # setting block_port to True because we are concluding that the port is
-                    # in use by another service on the same node. Blocking port here is a small
-                    # optimization to avoid trying to start the server on a the same port
-                    # multiple times by other replicas.
-                    await self._controller_handle.release_replica_port.remote(
-                        self._node_id,
-                        self._replica_id.unique_id,
-                        port,
-                        protocol,
-                        block_port=True,
-                    )
-
-            err_msg = f"Failed to allocate and start {protocol} server after retries"
-            if is_port_in_use:
-                err_msg = f"""
-                Failed to start {protocol} server: port already in use. Suggestion: Ensure that the Ray Serve direct ingress port ranges do not overlap with the Ray worker port range (min_worker_port to max_worker_port).
-                """
-
-            raise RuntimeError(err_msg)
-
         # Fetch configs
         self._http_options, self._grpc_options = ray.get(
             [
@@ -2125,7 +2101,7 @@ class Replica:
         (
             self._http_port,
             self._direct_ingress_http_server_task,
-        ) = await allocate_and_start_server(
+        ) = await self._allocate_and_start_server(
             start_server_fn=start_http_server,
             protocol=RequestProtocol.HTTP,
         )
@@ -2146,7 +2122,7 @@ class Replica:
             (
                 self._grpc_port,
                 self._direct_ingress_grpc_server_task,
-            ) = await allocate_and_start_server(
+            ) = await self._allocate_and_start_server(
                 start_server_fn=start_grpc_server_fn,
                 protocol=RequestProtocol.GRPC,
             )
