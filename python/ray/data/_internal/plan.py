@@ -145,12 +145,6 @@ class ExecutionPlan:
         plan_copy._dataset_name = self._dataset_name
         return plan_copy
 
-    def initial_num_blocks(self) -> Optional[int]:
-        """Get the estimated number of blocks from the logical plan
-        after applying execution plan optimizations, but prior to
-        fully executing the dataset."""
-        return self._logical_plan.initial_num_blocks()
-
     @omit_traceback_stdout
     def execute_to_iterator(
         self,

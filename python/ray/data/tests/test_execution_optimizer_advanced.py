@@ -117,14 +117,18 @@ def test_repartition_e2e(
         assert "RepartitionReduce" in ds_stats.metadata
 
     ds = ray.data.range(10000, override_num_blocks=10).repartition(20, shuffle=shuffle)
-    assert ds._plan.initial_num_blocks() == 20, ds._plan.initial_num_blocks()
+    assert (
+        ds._logical_plan.initial_num_blocks() == 20
+    ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(10000))
     assert ds._block_num_rows() == [500] * 20, ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
 
     # Test num_output_blocks > num_rows to trigger empty block handling.
     ds = ray.data.range(20, override_num_blocks=10).repartition(40, shuffle=shuffle)
-    assert ds._plan.initial_num_blocks() == 40, ds._plan.initial_num_blocks()
+    assert (
+        ds._logical_plan.initial_num_blocks() == 40
+    ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(20))
     if shuffle:
         assert ds._block_num_rows() == [10] * 2 + [0] * (40 - 2), ds._block_num_rows()
@@ -134,7 +138,9 @@ def test_repartition_e2e(
 
     # Test case where number of rows does not divide equally into num_output_blocks.
     ds = ray.data.range(22).repartition(4, shuffle=shuffle)
-    assert ds._plan.initial_num_blocks() == 4, ds._plan.initial_num_blocks()
+    assert (
+        ds._logical_plan.initial_num_blocks() == 4
+    ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(22))
     if shuffle:
         assert ds._block_num_rows() == [9, 9, 4, 0], ds._block_num_rows()
@@ -144,7 +150,9 @@ def test_repartition_e2e(
 
     # Test case where we do not split on repartitioning.
     ds = ray.data.range(10, override_num_blocks=1).repartition(1, shuffle=shuffle)
-    assert ds._plan.initial_num_blocks() == 1, ds._plan.initial_num_blocks()
+    assert (
+        ds._logical_plan.initial_num_blocks() == 1
+    ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(10))
     assert ds._block_num_rows() == [10], ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
