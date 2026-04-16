@@ -12,4 +12,3 @@ etils==1.5.2; python_version < '3.12'
 torchmetrics==0.10.3
 # torchtext 0.18.0 has no cp313 wheel; guard until a cp313-compatible version is available
 torchtext==0.18.0; python_version < '3.13'
-
