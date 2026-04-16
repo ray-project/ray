@@ -219,6 +219,13 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.HeavyWeight,
     )
 
+    # If True, this deployment serves as the router for ingress bypass mode.
+    # The router receives /internal/route requests from HAProxy for routing decisions.
+    router: bool = Field(
+        default=False,
+        update_type=DeploymentOptionUpdateType.HeavyWeight,
+    )
+
     # Contains the names of deployment options manually set by the user
     user_configured_option_names: Set[str] = set()
 

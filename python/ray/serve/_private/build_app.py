@@ -104,6 +104,16 @@ def build_app(
         default_runtime_env=default_runtime_env,
         make_deployment_handle=make_deployment_handle,
     )
+    # Determine router deployment name from code-level config.
+    # Priority: explicit router=True decorator, then legacy _ingress_bypass
+    router_deployment_name = None
+    for deployment in deployments:
+        if deployment._deployment_config.router:
+            router_deployment_name = deployment.name
+            break
+    if router_deployment_name is None and getattr(app, "_ingress_bypass", False):
+        router_deployment_name = deployment_names[app]
+
     return BuiltApplication(
         name=name,
         route_prefix=route_prefix,
@@ -114,6 +124,7 @@ def build_app(
             deployment_names[app]: handle for app, handle in handles.items()
         },
         external_scaler_enabled=external_scaler_enabled,
+        router_deployment_name=router_deployment_name,
     )
 
 
