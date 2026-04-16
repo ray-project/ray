@@ -55,6 +55,10 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_FAIL_ON_RANK_ERROR,
     RAY_SERVE_FORCE_STOP_UNHEALTHY_REPLICAS,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     REPLICA_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -100,6 +104,47 @@ from ray.util import metrics as ray_metrics
 from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+_RESERVED_INTERNAL_DEPLOYMENT_CONTEXT_ENV_VARS = {
+    RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
+}
+
+
+def _validate_no_reserved_internal_deployment_context_env_vars(
+    env_vars: Dict[str, Any],
+) -> None:
+    conflicting_keys = sorted(
+        _RESERVED_INTERNAL_DEPLOYMENT_CONTEXT_ENV_VARS.intersection(env_vars)
+    )
+    if conflicting_keys:
+        raise ValueError(
+            "Users may not set reserved Ray Serve deployment actor context env vars: "
+            + ", ".join(conflicting_keys)
+        )
+
+
+def _inject_internal_deployment_context_env_vars(
+    runtime_env: Optional[Dict[str, Any]],
+    deployment_id: DeploymentID,
+    actor_name: str,
+    code_version: str,
+) -> Dict[str, Any]:
+    runtime_env = copy(runtime_env) if runtime_env else {}
+    env_vars = dict(runtime_env.get("env_vars", {}))
+    _validate_no_reserved_internal_deployment_context_env_vars(env_vars)
+    env_vars.update(
+        {
+            RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR: deployment_id.app_name,
+            RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR: deployment_id.name,
+            RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR: actor_name,
+            RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR: code_version,
+        }
+    )
+    runtime_env["env_vars"] = env_vars
+    return runtime_env
 
 
 class DeploymentActorState(Enum):
@@ -179,8 +224,13 @@ class DeploymentActorWrapper:
             merged_runtime_env = override_runtime_envs_except_env_vars(
                 deployment_runtime_env, actor_runtime_env
             )
-            if merged_runtime_env:
-                actor_options["runtime_env"] = merged_runtime_env
+            merged_runtime_env = _inject_internal_deployment_context_env_vars(
+                merged_runtime_env,
+                deployment_id=self._deployment_id,
+                actor_name=self._config.name,
+                code_version=self._code_version,
+            )
+            actor_options["runtime_env"] = merged_runtime_env
             # Serve recreates deployment actors after failed health checks instead
             # of relying on Ray actor restarts.
             actor_options["max_restarts"] = 0
@@ -5721,6 +5771,16 @@ class DeploymentStateManager:
             # haven't been released yet, so PG creation would likely fail or
             # block waiting for resources. We'll retry next reconciliation loop.
             if deployment_state._replicas.count(states=[ReplicaState.STOPPING]) > 0:
+                continue
+
+            # Skip if deployment actors are configured but not yet ready.
+            # scale_deployment_replicas() defers replica creation until actors
+            # are ready, so PGs created here would be orphaned. Orphaned PGs
+            # accumulate every tick (~100ms) and consume cluster resources.
+            if (
+                deployment_state._get_deployment_actors_configs()
+                and not deployment_state._deployment_actors_satisfied_for_target()
+            ):
                 continue
 
             replica_config = deployment_state._target_state.info.replica_config
