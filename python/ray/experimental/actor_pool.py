@@ -158,11 +158,6 @@ class ActorPool:
 
         # Register the pool
         self._pool_id: ActorPoolID = self._core_worker.register_actor_pool(
-            max_retry_attempts=retry.max_attempts,
-            retry_backoff_ms=retry.backoff_ms,
-            retry_backoff_multiplier=retry.backoff_multiplier,
-            max_retry_backoff_ms=retry.max_backoff_ms,
-            retry_on_system_errors=retry.retry_on_system_errors,
             max_tasks_in_flight_per_actor=max_tasks_in_flight_per_actor,
             min_size=min_size,
             max_size=max_size,
@@ -362,7 +357,6 @@ class ActorPool:
             Dictionary with:
             - total_tasks_submitted: Total tasks submitted to the pool
             - total_tasks_failed: Total tasks that failed
-            - total_tasks_retried: Total tasks that were retried
             - num_actors: Current number of actors
             - backlog_size: Number of queued tasks
             - total_in_flight: Total in-flight tasks

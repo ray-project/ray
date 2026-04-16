@@ -42,14 +42,14 @@ namespace core {
 /// This enables cross-actor retry by allowing the pool to re-enqueue failed tasks.
 ///
 /// \param pool_id The ID of the actor pool.
-/// \param work_item_id The ID of the work item within the pool.
+/// \param pool_task_id The ID of the pool task within the pool.
 /// \param task_id The ID of the completed task.
 /// \param actor_id The ID of the actor that executed the task.
 /// \param status The completion status (OK for success, error for failure).
 /// \param error_info Error information if the task failed (nullptr on success).
 using PoolTaskCompletionCallback =
     std::function<void(const ActorPoolID &pool_id,
-                       const TaskID &work_item_id,
+                       const TaskID &pool_task_id,
                        const TaskID &task_id,
                        const ActorID &actor_id,
                        const Status &status,
@@ -59,7 +59,7 @@ using PoolTaskCompletionCallback =
 /// pushed to an actor. This keeps per-actor in-flight accounting aligned with
 /// the submitter path, including redirected retries.
 using PoolTaskSubmittedCallback =
-    std::function<void(const ActorID &actor_id, const TaskID &work_item_id)>;
+    std::function<void(const ActorID &actor_id, const TaskID &pool_task_id)>;
 
 // Interface for testing.
 class ActorTaskSubmitterInterface {

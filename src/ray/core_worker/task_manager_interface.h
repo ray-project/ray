@@ -184,6 +184,24 @@ class TaskManagerInterface {
   /// object recovery comes back from the executing worker. We mark the attempt as failed
   /// and resubmit it, so we can recover the intermediate return.
   virtual void MarkGeneratorFailedAndResubmit(const TaskID &task_id) = 0;
+
+  /// Pre-register ObjectRefs for a pool task before actor selection.
+  /// Creates reference counter entries so the caller can hold ObjectRefs immediately,
+  /// even before a TaskSpec exists. The TaskSpec will be registered later via
+  /// AddPendingTask when the task is dispatched to an actor.
+  ///
+  /// \param[in] caller_address The rpc address of the calling task.
+  /// \param[in] pool_task_id The pool-scoped TaskID (created via ForPoolTask).
+  /// \param[in] num_returns Number of return values.
+  /// \param[in] call_site Call site string for debugging.
+  /// \param[in] is_streaming_generator Whether this is a streaming generator task.
+  /// \return ObjectRefs for the task's return values.
+  virtual std::vector<rpc::ObjectReference> RegisterPoolTaskReturnValues(
+      const rpc::Address &caller_address,
+      const TaskID &pool_task_id,
+      size_t num_returns,
+      const std::string &call_site,
+      bool is_streaming_generator) = 0;
 };
 
 }  // namespace core

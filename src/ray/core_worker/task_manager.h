@@ -226,6 +226,13 @@ class TaskManager : public TaskManagerInterface {
                                                    const std::string &call_site,
                                                    int max_retries = 0) override;
 
+  std::vector<rpc::ObjectReference> RegisterPoolTaskReturnValues(
+      const rpc::Address &caller_address,
+      const TaskID &pool_task_id,
+      size_t num_returns,
+      const std::string &call_site,
+      bool is_streaming_generator) override;
+
   std::optional<rpc::ErrorType> ResubmitTask(const TaskID &task_id,
                                              std::vector<ObjectID> *task_deps) override;
 

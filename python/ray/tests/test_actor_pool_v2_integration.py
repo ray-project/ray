@@ -6,7 +6,11 @@ import pytest
 
 import ray
 from ray._common.test_utils import wait_for_condition
-from ray._raylet import STREAMING_GENERATOR_RETURN, ObjectRefGenerator
+from ray._raylet import (
+    STREAMING_GENERATOR_RETURN,
+    ObjectRefGenerator,
+    TaskID as PyTaskID,
+)
 from ray.experimental.actor_pool import ActorPool, RetryPolicy
 
 
@@ -285,6 +289,14 @@ def test_actor_pool_streaming_generator_fault_tolerance(
         assert second_actor_id in initial_actor_ids
         # retry/reconstruction should use a new actor, from the existing pool actors
         assert first_actor_id != second_actor_id
+
+        # Verify the generator ref is pool-scoped.
+        gen_ref_binary = gen._generator_ref.binary()
+        task_id_binary = gen_ref_binary[: PyTaskID.size()]
+        task_id = PyTaskID(task_id_binary)
+        assert (
+            task_id.is_pool_task_id()
+        ), "Generator ObjectRef should have a pool-scoped TaskID"
         assert (
             snapshot["actor_id_to_node_id"][first_actor_id]
             != snapshot["actor_id_to_node_id"][second_actor_id]
@@ -496,6 +508,13 @@ def test_actor_pool_non_streaming_fault_tolerance(
         assert first_actor_id in initial_actor_ids
         assert second_actor_id in initial_actor_ids
         assert first_actor_id != second_actor_id
+
+        # Verify the ObjectRef is pool-scoped
+        obj_binary = ref.binary()
+        # ObjectID = [TaskID (24 bytes) | ObjectIndex (4 bytes)]
+        task_id_binary = obj_binary[: PyTaskID.size()]
+        task_id = PyTaskID(task_id_binary)
+        assert task_id.is_pool_task_id(), "ObjectRef should have a pool-scoped TaskID"
         assert (
             snapshot["actor_id_to_node_id"][first_actor_id]
             != snapshot["actor_id_to_node_id"][second_actor_id]

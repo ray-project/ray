@@ -78,6 +78,14 @@ class MockTaskManagerInterface : public TaskManagerInterface {
   MOCK_METHOD(bool, IsTaskPending, (const TaskID &task_id), (const, override));
   MOCK_METHOD(bool, IsTaskCanceled, (const TaskID &task_id), (const, override));
   MOCK_METHOD(void, MarkGeneratorFailedAndResubmit, (const TaskID &task_id), (override));
+  MOCK_METHOD(std::vector<rpc::ObjectReference>,
+              RegisterPoolTaskReturnValues,
+              (const rpc::Address &caller_address,
+               const TaskID &pool_task_id,
+               size_t num_returns,
+               const std::string &call_site,
+               bool is_streaming_generator),
+              (override));
 };
 
 }  // namespace core

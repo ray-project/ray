@@ -143,9 +143,9 @@ ray_cc_library(
 )
 
 ray_cc_library(
-    name = "actor_pool_work_queue",
-    srcs = ["actor_pool_work_queue.cc"],
-    hdrs = ["actor_pool_work_queue.h"],
+    name = "actor_pool_task_queue",
+    srcs = ["actor_pool_task_queue.cc"],
+    hdrs = ["actor_pool_task_queue.h"],
     deps = [
         ":common",
         "//src/ray/common:id",
@@ -158,7 +158,7 @@ ray_cc_library(
     srcs = ["actor_pool_manager.cc"],
     hdrs = ["actor_pool_manager.h"],
     deps = [
-        ":actor_pool_work_queue",
+        ":actor_pool_task_queue",
         ":common",
         ":lease_policy",
         ":task_manager_interface",

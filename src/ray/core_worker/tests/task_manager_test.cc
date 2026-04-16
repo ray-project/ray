@@ -867,7 +867,7 @@ TEST_F(TaskManagerLineageTest, TestPoolTaskLineagePinned) {
   // Tag as pool task.
   ActorPoolID pool_id = ActorPoolID::FromRandom();
   spec.GetMutableMessage().set_actor_pool_id(pool_id.Binary());
-  spec.GetMutableMessage().set_actor_pool_work_item_id(
+  spec.GetMutableMessage().set_actor_pool_task_id(
       TaskID::FromRandom(JobID::Nil()).Binary());
 
   manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/0);
@@ -931,7 +931,7 @@ TEST_F(TaskManagerLineageTest, TestPoolTaskRetargetMovesActorDependency) {
 
   ActorPoolID pool_id = ActorPoolID::FromRandom();
   spec.GetMutableMessage().set_actor_pool_id(pool_id.Binary());
-  spec.GetMutableMessage().set_actor_pool_work_item_id(
+  spec.GetMutableMessage().set_actor_pool_task_id(
       TaskID::FromRandom(JobID::Nil()).Binary());
 
   manager_.AddPendingTask(caller_address, spec, "", /*max_retries=*/0);

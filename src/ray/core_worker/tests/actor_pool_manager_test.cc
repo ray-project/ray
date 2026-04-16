@@ -15,6 +15,7 @@
 #include "ray/core_worker/actor_pool_manager.h"
 
 #include <memory>
+#include <string>
 #include <utility>
 #include <vector>
 
@@ -26,6 +27,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
+#include "ray/core_worker/context.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/reference_counter.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
@@ -111,8 +113,8 @@ class ActorPoolManagerTest : public ::testing::Test {
         gcs_client_, *mock_task_submitter_, *reference_counter_);
 
     // Create ActorPoolManager with minimal constructor (no callbacks)
-    pool_manager_ = std::make_unique<ActorPoolManager>(
-        *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+    pool_manager_ =
+        std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   }
 
   void TearDown() override {
@@ -122,12 +124,8 @@ class ActorPoolManagerTest : public ::testing::Test {
   }
 
   // Helper to create a pool with default config
-  ActorPoolID CreateTestPool(int32_t max_retry_attempts = 3) {
+  ActorPoolID CreateTestPool() {
     ActorPoolConfig config;
-    config.max_retry_attempts = max_retry_attempts;
-    config.retry_backoff_ms = 100;
-    config.retry_on_system_errors = true;
-
     return pool_manager_->RegisterPool(config);
   }
 
@@ -183,57 +181,57 @@ TEST_F(ActorPoolManagerTest, UnregisterPoolRemovesPool) {
   EXPECT_FALSE(pool_manager_->HasPool(pool_id));
 }
 
-TEST_F(ActorPoolManagerTest, UnregisterPoolCleansTrackedWorkItems) {
+TEST_F(ActorPoolManagerTest, UnregisterPoolCleansTrackedPoolTasks) {
   auto pool_id = CreateTestPool();
 
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    PoolWorkItem work_item;
-    work_item.pool_id = pool_id;
-    work_item.work_item_id = TaskID::FromRandom(JobID());
-    pool_manager_->TrackWorkItem(std::move(work_item));
+    PoolTask pool_task;
+    pool_task.pool_id = pool_id;
+    pool_task.pool_task_id = TaskID::FromRandom(JobID());
+    pool_manager_->TrackPoolTask(std::move(pool_task));
   }
 
   pool_manager_->UnregisterPool(pool_id);
 
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    EXPECT_TRUE(pool_manager_->work_items_.empty());
-    EXPECT_EQ(pool_manager_->pool_to_work_items_.find(pool_id),
-              pool_manager_->pool_to_work_items_.end());
+    EXPECT_TRUE(pool_manager_->pool_tasks_.empty());
+    EXPECT_EQ(pool_manager_->pool_to_tasks_.find(pool_id),
+              pool_manager_->pool_to_tasks_.end());
   }
 }
 
-TEST_F(ActorPoolManagerTest, UnregisterPoolOnlyCleansItsOwnTrackedWorkItems) {
+TEST_F(ActorPoolManagerTest, UnregisterPoolOnlyCleansItsOwnTrackedPoolTasks) {
   auto pool_id1 = CreateTestPool();
   auto pool_id2 = CreateTestPool();
-  TaskID pool2_work_item_id = TaskID::FromRandom(JobID());
+  TaskID pool2_pool_task_id = TaskID::FromRandom(JobID());
 
   {
     absl::MutexLock lock(&pool_manager_->mu_);
 
-    PoolWorkItem pool1_work_item;
-    pool1_work_item.pool_id = pool_id1;
-    pool1_work_item.work_item_id = TaskID::FromRandom(JobID());
-    pool_manager_->TrackWorkItem(std::move(pool1_work_item));
+    PoolTask pool1_pool_task;
+    pool1_pool_task.pool_id = pool_id1;
+    pool1_pool_task.pool_task_id = TaskID::FromRandom(JobID());
+    pool_manager_->TrackPoolTask(std::move(pool1_pool_task));
 
-    PoolWorkItem pool2_work_item;
-    pool2_work_item.pool_id = pool_id2;
-    pool2_work_item.work_item_id = pool2_work_item_id;
-    pool_manager_->TrackWorkItem(std::move(pool2_work_item));
+    PoolTask pool2_pool_task;
+    pool2_pool_task.pool_id = pool_id2;
+    pool2_pool_task.pool_task_id = pool2_pool_task_id;
+    pool_manager_->TrackPoolTask(std::move(pool2_pool_task));
   }
 
   pool_manager_->UnregisterPool(pool_id1);
 
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    EXPECT_EQ(pool_manager_->work_items_.size(), 1);
-    EXPECT_TRUE(pool_manager_->work_items_.contains(pool2_work_item_id));
-    EXPECT_EQ(pool_manager_->pool_to_work_items_.find(pool_id1),
-              pool_manager_->pool_to_work_items_.end());
-    auto pool2_it = pool_manager_->pool_to_work_items_.find(pool_id2);
-    ASSERT_NE(pool2_it, pool_manager_->pool_to_work_items_.end());
-    EXPECT_TRUE(pool2_it->second.contains(pool2_work_item_id));
+    EXPECT_EQ(pool_manager_->pool_tasks_.size(), 1);
+    EXPECT_TRUE(pool_manager_->pool_tasks_.contains(pool2_pool_task_id));
+    EXPECT_EQ(pool_manager_->pool_to_tasks_.find(pool_id1),
+              pool_manager_->pool_to_tasks_.end());
+    auto pool2_it = pool_manager_->pool_to_tasks_.find(pool_id2);
+    ASSERT_NE(pool2_it, pool_manager_->pool_to_tasks_.end());
+    EXPECT_TRUE(pool2_it->second.contains(pool2_pool_task_id));
   }
 }
 
@@ -306,7 +304,6 @@ TEST_F(ActorPoolManagerTest, RemoveNonExistentActorIsSafe) {
 // Test: Pool with initial actors
 TEST_F(ActorPoolManagerTest, RegisterPoolWithInitialActors) {
   ActorPoolConfig config;
-  config.max_retry_attempts = 3;
 
   std::vector<ActorID> initial_actors = {
       CreateActorID(),
@@ -341,7 +338,7 @@ TEST_F(ActorPoolManagerTest, PoolStatsInitialValues) {
 
   EXPECT_EQ(stats.total_tasks_submitted, 0);
   EXPECT_EQ(stats.total_tasks_failed, 0);
-  EXPECT_EQ(stats.total_tasks_retried, 0);
+
   EXPECT_EQ(stats.num_actors, 1);
   EXPECT_EQ(stats.backlog_size, 0);
   EXPECT_EQ(stats.total_in_flight, 0);
@@ -355,7 +352,7 @@ TEST_F(ActorPoolManagerTest, PoolStatsForNonExistentPoolReturnsZeros) {
 
   EXPECT_EQ(stats.total_tasks_submitted, 0);
   EXPECT_EQ(stats.total_tasks_failed, 0);
-  EXPECT_EQ(stats.total_tasks_retried, 0);
+
   EXPECT_EQ(stats.num_actors, 0);
   EXPECT_EQ(stats.backlog_size, 0);
 }
@@ -412,9 +409,6 @@ TEST_F(ActorPoolManagerTest, MultiplePoolsWithDifferentActors) {
 // Test: Pool config is stored correctly
 TEST_F(ActorPoolManagerTest, PoolConfigIsStored) {
   ActorPoolConfig config;
-  config.max_retry_attempts = 5;
-  config.retry_backoff_ms = 500;
-  config.retry_on_system_errors = false;
   config.min_size = 2;
   config.max_size = 10;
   config.initial_size = 4;
@@ -441,9 +435,6 @@ TEST_F(ActorPoolManagerTest, SubmitTaskWithNoActorsQueuesWork) {
 
   auto refs =
       pool_manager_->SubmitTaskToPool(pool_id, function, std::move(args), options);
-
-  // No actors available, should return empty (work queued)
-  EXPECT_TRUE(refs.empty());
 
   // Backlog should have the queued work
   auto stats = pool_manager_->GetPoolStats(pool_id);
@@ -611,10 +602,6 @@ class ActorPoolManagerLocalityTest : public ::testing::Test {
   // Helper to create a pool with default config
   ActorPoolID CreateTestPool(int32_t max_tasks_in_flight = 2) {
     ActorPoolConfig config;
-    config.max_retry_attempts = 3;
-    config.retry_backoff_ms = 100;
-    config.retry_on_system_errors = true;
-
     config.max_tasks_in_flight_per_actor = max_tasks_in_flight;
     return pool_manager_->RegisterPool(config);
   }
@@ -655,8 +642,8 @@ TEST_F(ActorPoolManagerLocalityTest, LocalitySelectsDataLocalActor) {
   locality_provider_ = std::make_unique<MockLocalityDataProvider>(
       absl::flat_hash_map<ObjectID, LocalityData>{{obj1, data1}});
 
-  pool_manager_ = std::make_unique<ActorPoolManager>(
-      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_ =
+      std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   // Set locality provider directly (it's a private member, but we have FRIEND_TEST)
   pool_manager_->locality_data_provider_ = locality_provider_.get();
 
@@ -683,8 +670,8 @@ TEST_F(ActorPoolManagerLocalityTest, LocalityTiebreakerIsLoad) {
   locality_provider_ = std::make_unique<MockLocalityDataProvider>(
       absl::flat_hash_map<ObjectID, LocalityData>{{obj1, data1}});
 
-  pool_manager_ = std::make_unique<ActorPoolManager>(
-      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_ =
+      std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   pool_manager_->locality_data_provider_ = locality_provider_.get();
 
   auto pool_id = CreateTestPool();
@@ -712,8 +699,8 @@ TEST_F(ActorPoolManagerLocalityTest, NoLocalityDataFallsBackToLoad) {
   // No locality data for any objects
   locality_provider_ = std::make_unique<MockLocalityDataProvider>();
 
-  pool_manager_ = std::make_unique<ActorPoolManager>(
-      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_ =
+      std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   pool_manager_->locality_data_provider_ = locality_provider_.get();
 
   auto pool_id = CreateTestPool();
@@ -742,8 +729,8 @@ TEST_F(ActorPoolManagerLocalityTest, EmptyArgIdsFallsBackToLoad) {
 
   locality_provider_ = std::make_unique<MockLocalityDataProvider>();
 
-  pool_manager_ = std::make_unique<ActorPoolManager>(
-      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_ =
+      std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   pool_manager_->locality_data_provider_ = locality_provider_.get();
 
   auto pool_id = CreateTestPool();
@@ -772,8 +759,8 @@ TEST_F(ActorPoolManagerLocalityTest, RequireAvailableCapacityReturnsNilWhenFull)
 
   locality_provider_ = std::make_unique<MockLocalityDataProvider>();
 
-  pool_manager_ = std::make_unique<ActorPoolManager>(
-      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_ =
+      std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   pool_manager_->locality_data_provider_ = locality_provider_.get();
 
   auto pool_id = CreateTestPool(/*max_tasks_in_flight=*/1);
@@ -801,8 +788,8 @@ TEST_F(ActorPoolManagerLocalityTest, EqualRankSelectionsRotateAcrossActors) {
 
   locality_provider_ = std::make_unique<MockLocalityDataProvider>();
 
-  pool_manager_ = std::make_unique<ActorPoolManager>(
-      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_ =
+      std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   pool_manager_->locality_data_provider_ = locality_provider_.get();
 
   auto pool_id = CreateTestPool(/*max_tasks_in_flight=*/2);
@@ -839,8 +826,8 @@ TEST_F(ActorPoolManagerLocalityTest, LargerDataNodeWins) {
   locality_provider_ = std::make_unique<MockLocalityDataProvider>(
       absl::flat_hash_map<ObjectID, LocalityData>{{obj1, data1}, {obj2, data2}});
 
-  pool_manager_ = std::make_unique<ActorPoolManager>(
-      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_ =
+      std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   pool_manager_->locality_data_provider_ = locality_provider_.get();
 
   auto pool_id = CreateTestPool();
@@ -857,8 +844,8 @@ TEST_F(ActorPoolManagerLocalityTest, LargerDataNodeWins) {
 // Test: Null provider falls back to load
 TEST_F(ActorPoolManagerLocalityTest, NullProviderFallsBackToLoad) {
   // No locality provider at all
-  pool_manager_ = std::make_unique<ActorPoolManager>(
-      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_ =
+      std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   // locality_data_provider_ is already nullptr
 
   auto pool_id = CreateTestPool();
@@ -894,8 +881,8 @@ TEST_F(ActorPoolManagerLocalityTest,
   locality_provider_ = std::make_unique<MockLocalityDataProvider>(
       absl::flat_hash_map<ObjectID, LocalityData>{{obj, data}});
 
-  pool_manager_ = std::make_unique<ActorPoolManager>(
-      *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+  pool_manager_ =
+      std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   pool_manager_->locality_data_provider_ = locality_provider_.get();
 
   auto pool_id = CreateTestPool(/*max_tasks_in_flight=*/1);
@@ -924,7 +911,7 @@ TEST_F(ActorPoolManagerLocalityTest,
     pool_manager_->pools_[pool_id].actor_states[actor2].is_alive = true;
   }
 
-  pool_manager_->DrainWorkQueue(pool_id);
+  pool_manager_->DrainTaskQueue(pool_id);
 
   stats = pool_manager_->GetPoolStats(pool_id);
   EXPECT_EQ(stats.backlog_size, 0);
@@ -1041,15 +1028,15 @@ TEST_F(ActorPoolManagerTest, OnTaskFailedMarksActorDead) {
     pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 1;
   }
 
-  // Create a work item in work_items_ so OnTaskFailed can find it
-  TaskID work_item_id = TaskID::FromRandom(JobID());
+  // Create a pool task in pool_tasks_ so OnTaskFailed can find it
+  TaskID pool_task_id = TaskID::FromRandom(JobID());
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    PoolWorkItem work_item;
-    work_item.pool_id = pool_id;
-    work_item.work_item_id = work_item_id;
-    work_item.attempt_number = 0;
-    pool_manager_->TrackWorkItem(std::move(work_item));
+    PoolTask pool_task;
+    pool_task.pool_id = pool_id;
+    pool_task.pool_task_id = pool_task_id;
+    pool_task.attempt_number = 0;
+    pool_manager_->TrackPoolTask(std::move(pool_task));
   }
 
   // Simulate task failure with ACTOR_DIED error
@@ -1058,7 +1045,7 @@ TEST_F(ActorPoolManagerTest, OnTaskFailedMarksActorDead) {
   error_info.set_error_message("Actor died");
 
   pool_manager_->OnPoolTaskComplete(pool_id,
-                                    work_item_id,
+                                    pool_task_id,
                                     TaskID::FromRandom(JobID()),
                                     actor1,
                                     Status::IOError("actor died"),
@@ -1080,21 +1067,21 @@ TEST_F(ActorPoolManagerTest, OnTaskFailedMarksActorDead) {
 TEST_F(ActorPoolManagerTest, LateTaskCompletionAfterUnregisterIsIgnoredWithoutLeak) {
   auto pool_id = CreateTestPool();
   auto actor_id = CreateActorID();
-  TaskID work_item_id = TaskID::FromRandom(JobID());
+  TaskID pool_task_id = TaskID::FromRandom(JobID());
 
   pool_manager_->AddActorToPool(pool_id, actor_id, NodeID::FromRandom());
 
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    PoolWorkItem work_item;
-    work_item.pool_id = pool_id;
-    work_item.work_item_id = work_item_id;
-    pool_manager_->TrackWorkItem(std::move(work_item));
+    PoolTask pool_task;
+    pool_task.pool_id = pool_id;
+    pool_task.pool_task_id = pool_task_id;
+    pool_manager_->TrackPoolTask(std::move(pool_task));
   }
 
   pool_manager_->UnregisterPool(pool_id);
   pool_manager_->OnPoolTaskComplete(pool_id,
-                                    work_item_id,
+                                    pool_task_id,
                                     TaskID::FromRandom(JobID()),
                                     actor_id,
                                     Status::OK(),
@@ -1102,9 +1089,9 @@ TEST_F(ActorPoolManagerTest, LateTaskCompletionAfterUnregisterIsIgnoredWithoutLe
 
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    EXPECT_TRUE(pool_manager_->work_items_.empty());
-    EXPECT_EQ(pool_manager_->pool_to_work_items_.find(pool_id),
-              pool_manager_->pool_to_work_items_.end());
+    EXPECT_TRUE(pool_manager_->pool_tasks_.empty());
+    EXPECT_EQ(pool_manager_->pool_to_tasks_.find(pool_id),
+              pool_manager_->pool_to_tasks_.end());
   }
 }
 
@@ -1242,6 +1229,148 @@ TEST_F(ActorPoolManagerTest, FullDeathRestartRecoveryCycle) {
   EXPECT_EQ(stats.backlog_size, 0);
   // All 3 items get submitted (in_flight incremented)
   EXPECT_EQ(stats.total_in_flight, 3);
+}
+
+// ForPoolTask produces pool-scoped TaskIDs
+TEST_F(ActorPoolManagerTest, ForPoolTaskProducesPoolScopedIds) {
+  JobID job_id = JobID::FromInt(42);
+  TaskID parent_task = TaskID::FromRandom(job_id);
+  ActorPoolID pool_id = ActorPoolID::Of(job_id);
+
+  TaskID pool_task_id = TaskID::ForPoolTask(job_id, parent_task, 1, pool_id);
+
+  EXPECT_TRUE(pool_task_id.IsPoolTaskId());
+  EXPECT_FALSE(pool_task_id.IsNil());
+
+  // Different counter produces different IDs
+  TaskID pool_task_id2 = TaskID::ForPoolTask(job_id, parent_task, 2, pool_id);
+  EXPECT_NE(pool_task_id, pool_task_id2);
+  EXPECT_TRUE(pool_task_id2.IsPoolTaskId());
+
+  // Regular actor task should NOT be pool-scoped
+  ActorID actor_id = ActorID::Of(job_id, parent_task, 1);
+  TaskID actor_task_id = TaskID::ForActorTask(job_id, parent_task, 1, actor_id);
+  EXPECT_FALSE(actor_task_id.IsPoolTaskId());
+}
+
+// ActorPoolID::Of has reserved prefix and correct JobID
+TEST_F(ActorPoolManagerTest, ActorPoolIdOfHasReservedPrefix) {
+  JobID job_id = JobID::FromInt(99);
+  ActorPoolID pool_id = ActorPoolID::Of(job_id);
+
+  EXPECT_TRUE(pool_id.IsPoolId());
+  EXPECT_FALSE(pool_id.IsNil());
+  EXPECT_EQ(pool_id.JobId(), job_id);
+
+  // FromRandom also has pool prefix
+  ActorPoolID random_pool = ActorPoolID::FromRandom();
+  EXPECT_TRUE(random_pool.IsPoolId());
+}
+
+// SubmitTaskToPool returns non-empty refs when queued (no actors)
+TEST_F(ActorPoolManagerTest, SubmitTaskReturnsPoolScopedRefsWhenNoActors) {
+  auto pool_id = CreateTestPool();
+
+  RayFunction function;
+  std::vector<std::unique_ptr<TaskArg>> args;
+  TaskOptions options;
+
+  auto refs =
+      pool_manager_->SubmitTaskToPool(pool_id, function, std::move(args), options);
+
+  // Even with no actors, should return refs
+  EXPECT_FALSE(refs.empty());
+
+  // Verify the returned refs are pool-scoped
+  for (const auto &ref : refs) {
+    ObjectID obj_id = ObjectID::FromBinary(ref.object_id());
+    TaskID task_id = obj_id.TaskId();
+    EXPECT_TRUE(task_id.IsPoolTaskId());
+  }
+
+  // Task should be queued
+  auto stats = pool_manager_->GetPoolStats(pool_id);
+  EXPECT_EQ(stats.backlog_size, 1);
+}
+
+// SubmitTaskToPool returns pool-scoped refs when actor is available
+TEST_F(ActorPoolManagerTest, SubmitTaskReturnsPoolScopedRefsWhenActorAvailable) {
+  auto pool_id = CreateTestPool();
+  auto actor_id = ActorID::Of(JobID::FromInt(1),
+                              TaskID::ForDriverTask(JobID::FromInt(1)),
+                              /*counter=*/0);
+  pool_manager_->AddActorToPool(pool_id, actor_id, NodeID::FromRandom());
+  pool_manager_->OnActorAlive(actor_id, NodeID::FromRandom());
+
+  RayFunction function;
+  std::vector<std::unique_ptr<TaskArg>> args;
+  TaskOptions options;
+
+  auto refs =
+      pool_manager_->SubmitTaskToPool(pool_id, function, std::move(args), options);
+
+  // Should return pool-scoped refs
+  EXPECT_FALSE(refs.empty());
+  ObjectID obj_id = ObjectID::FromBinary(refs[0].object_id());
+  EXPECT_TRUE(obj_id.TaskId().IsPoolTaskId());
+}
+
+// Oversubmit returns all refs immediately
+TEST_F(ActorPoolManagerTest, OversubmitReturnsAllRefsImmediately) {
+  auto pool_id = CreateTestPool();
+
+  // Submit 5 tasks to a pool with no actors — all should return refs
+  std::vector<std::vector<rpc::ObjectReference>> all_refs;
+  for (int i = 0; i < 5; i++) {
+    RayFunction function;
+    std::vector<std::unique_ptr<TaskArg>> args;
+    TaskOptions options;
+
+    auto refs =
+        pool_manager_->SubmitTaskToPool(pool_id, function, std::move(args), options);
+
+    EXPECT_FALSE(refs.empty());
+    EXPECT_TRUE(ObjectID::FromBinary(refs[0].object_id()).TaskId().IsPoolTaskId());
+    all_refs.push_back(refs);
+  }
+
+  // All 5 tasks should be queued
+  auto stats = pool_manager_->GetPoolStats(pool_id);
+  EXPECT_EQ(stats.backlog_size, 5);
+
+  // All returned refs should be unique
+  absl::flat_hash_set<std::string> unique_ids;
+  for (const auto &refs : all_refs) {
+    unique_ids.insert(refs[0].object_id());
+  }
+  EXPECT_EQ(unique_ids.size(), 5);
+}
+
+// Queued tasks drain with pool-scoped refs preserved
+TEST_F(ActorPoolManagerTest, QueuedTasksDrainWithPoolScopedRefs) {
+  auto pool_id = CreateTestPool();
+
+  // Submit task to empty pool
+  RayFunction function;
+  std::vector<std::unique_ptr<TaskArg>> args;
+  TaskOptions options;
+
+  auto refs =
+      pool_manager_->SubmitTaskToPool(pool_id, function, std::move(args), options);
+  EXPECT_FALSE(refs.empty());
+  EXPECT_EQ(pool_manager_->GetPoolStats(pool_id).backlog_size, 1);
+
+  // Add actor — AddActorToPool marks it alive and drains the queue
+  JobID job_id = JobID::FromInt(1);
+  auto actor_id = ActorID::Of(job_id, TaskID::ForDriverTask(job_id), 0);
+  pool_manager_->AddActorToPool(pool_id, actor_id, NodeID::FromRandom());
+  // Note: don't call OnActorAlive here — AddActorToPool already sets is_alive=true
+  // and drains. OnActorAlive would reset num_tasks_in_flight to 0.
+
+  auto stats = pool_manager_->GetPoolStats(pool_id);
+  EXPECT_EQ(stats.backlog_size, 0);
+  // Task was submitted to the actor (in_flight incremented in minimal mode)
+  EXPECT_EQ(stats.total_in_flight, 1);
 }
 
 }  // namespace core

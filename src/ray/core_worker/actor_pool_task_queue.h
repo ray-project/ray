@@ -29,13 +29,13 @@
 namespace ray {
 namespace core {
 
-/// Represents a work item in the actor pool queue.
-struct PoolWorkItem {
-  /// The actor pool that owns this work item.
+/// Represents a pool task in the actor pool queue.
+struct PoolTask {
+  /// The actor pool that owns this pool task.
   ActorPoolID pool_id;
 
-  /// Unique ID for this work item.
-  TaskID work_item_id;
+  /// Unique ID for this pool task.
+  TaskID pool_task_id;
 
   /// The function to execute.
   RayFunction function;
@@ -49,10 +49,14 @@ struct PoolWorkItem {
   /// Task options (num_returns, resources, etc).
   TaskOptions options;
 
-  /// Number of times this work item has been attempted.
+  /// Pre-created ObjectRefs tied to pool_task_id. Returned to caller immediately
+  /// at submission time, before any actor is selected.
+  std::vector<rpc::ObjectReference> return_refs;
+
+  /// Number of times this pool task has been attempted.
   int32_t attempt_number = 0;
 
-  /// Timestamp when this work item was enqueued (in milliseconds).
+  /// Timestamp when this pool task was enqueued (in milliseconds).
   int64_t enqueued_at_ms = 0;
 
   /// Whether the task has been pushed to the actor via gRPC (OnTaskSubmitted fired).
@@ -60,29 +64,31 @@ struct PoolWorkItem {
   /// counted in num_tasks_in_flight. GetOccupiedTaskSlots includes these as pending.
   bool pushed_to_actor = false;
 
-  PoolWorkItem() = default;
+  PoolTask() = default;
 
   /// Move constructor.
-  PoolWorkItem(PoolWorkItem &&other) noexcept
+  PoolTask(PoolTask &&other) noexcept
       : pool_id(std::move(other.pool_id)),
-        work_item_id(std::move(other.work_item_id)),
+        pool_task_id(std::move(other.pool_task_id)),
         function(std::move(other.function)),
         args(std::move(other.args)),
         arg_ids(std::move(other.arg_ids)),
         options(std::move(other.options)),
+        return_refs(std::move(other.return_refs)),
         attempt_number(other.attempt_number),
         enqueued_at_ms(other.enqueued_at_ms),
         pushed_to_actor(other.pushed_to_actor) {}
 
   /// Move assignment.
-  PoolWorkItem &operator=(PoolWorkItem &&other) noexcept {
+  PoolTask &operator=(PoolTask &&other) noexcept {
     if (this != &other) {
       pool_id = std::move(other.pool_id);
-      work_item_id = std::move(other.work_item_id);
+      pool_task_id = std::move(other.pool_task_id);
       function = std::move(other.function);
       args = std::move(other.args);
       arg_ids = std::move(other.arg_ids);
       options = std::move(other.options);
+      return_refs = std::move(other.return_refs);
       attempt_number = other.attempt_number;
       enqueued_at_ms = other.enqueued_at_ms;
       pushed_to_actor = other.pushed_to_actor;
@@ -91,25 +97,25 @@ struct PoolWorkItem {
   }
 
   // Delete copy constructor and assignment
-  PoolWorkItem(const PoolWorkItem &) = delete;
-  PoolWorkItem &operator=(const PoolWorkItem &) = delete;
+  PoolTask(const PoolTask &) = delete;
+  PoolTask &operator=(const PoolTask &) = delete;
 };
 
 /// Abstract interface for actor pool work queues.
 /// Different implementations can provide different ordering semantics.
-class PoolWorkQueue {
+class PoolTaskQueue {
  public:
-  virtual ~PoolWorkQueue() = default;
+  virtual ~PoolTaskQueue() = default;
 
-  /// Enqueue a work item.
+  /// Enqueue a pool task.
   ///
-  /// \param item The work item to enqueue.
-  virtual void Push(PoolWorkItem item) = 0;
+  /// \param item The pool task to enqueue.
+  virtual void Push(PoolTask item) = 0;
 
-  /// Dequeue a work item.
+  /// Dequeue a pool task.
   ///
-  /// \return The work item, or nullopt if no work is available.
-  virtual std::optional<PoolWorkItem> Pop() = 0;
+  /// \return The pool task, or nullopt if no work is available.
+  virtual std::optional<PoolTask> Pop() = 0;
 
   /// Check if any work is available.
   ///
@@ -121,21 +127,21 @@ class PoolWorkQueue {
   /// \return The queue depth.
   virtual size_t Size() const = 0;
 
-  /// Clear all work items from the queue.
+  /// Clear all pool tasks from the queue.
   virtual void Clear() = 0;
 };
 
 /// Unordered work queue implementation.
 /// Work items are processed in FIFO order with no ordering guarantees.
 /// This is the simplest and highest-throughput implementation.
-class UnorderedPoolWorkQueue : public PoolWorkQueue {
+class FifoPoolTaskQueue : public PoolTaskQueue {
  public:
-  UnorderedPoolWorkQueue() = default;
-  ~UnorderedPoolWorkQueue() override = default;
+  FifoPoolTaskQueue() = default;
+  ~FifoPoolTaskQueue() override = default;
 
-  void Push(PoolWorkItem item) override;
+  void Push(PoolTask item) override;
 
-  std::optional<PoolWorkItem> Pop() override;
+  std::optional<PoolTask> Pop() override;
 
   bool HasWork() const override;
 
@@ -144,7 +150,7 @@ class UnorderedPoolWorkQueue : public PoolWorkQueue {
   void Clear() override;
 
  private:
-  std::deque<PoolWorkItem> queue_;
+  std::deque<PoolTask> queue_;
 };
 
 }  // namespace core

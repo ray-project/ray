@@ -108,11 +108,6 @@ cdef extern from "ray/core_worker/generator_waiter.h" nogil:
 
 cdef extern from "ray/core_worker/actor_pool_manager.h" namespace "ray::core" nogil:
     cdef cppclass CActorPoolConfig "ray::core::ActorPoolConfig":
-        int32_t max_retry_attempts
-        int32_t retry_backoff_ms
-        float retry_backoff_multiplier
-        int32_t max_retry_backoff_ms
-        c_bool retry_on_system_errors
         int32_t max_tasks_in_flight_per_actor
         int32_t min_size
         int32_t max_size
@@ -121,7 +116,6 @@ cdef extern from "ray/core_worker/actor_pool_manager.h" namespace "ray::core" no
     cdef cppclass CPoolStats "ray::core::PoolStats":
         int64_t total_tasks_submitted
         int64_t total_tasks_failed
-        int64_t total_tasks_retried
         int32_t num_actors
         size_t backlog_size
         int32_t total_in_flight

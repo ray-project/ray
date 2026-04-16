@@ -44,14 +44,14 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "actor_pool_work_queue_test",
+    name = "actor_pool_task_queue_test",
     size = "medium",
-    srcs = ["actor_pool_work_queue_test.cc"],
+    srcs = ["actor_pool_task_queue_test.cc"],
     tags = ["team:core"],
     deps = [
         "//src/ray/common:id",
         "//src/ray/common:task_common",
-        "//src/ray/core_worker:actor_pool_work_queue",
+        "//src/ray/core_worker:actor_pool_task_queue",
         "@com_google_googletest//:gtest_main",
     ],
 )

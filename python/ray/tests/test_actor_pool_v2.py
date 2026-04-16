@@ -11,6 +11,7 @@ not the existing ray.util.ActorPool (tested in test_actor_pool.py).
 import pytest
 
 import ray
+from ray._raylet import TaskID as PyTaskID
 from ray.experimental.actor_pool import ActorPool, RetryPolicy
 
 
@@ -157,6 +158,57 @@ class TestActorPoolV2Submit:
         for i, result in enumerate(results):
             assert f"msg_{i}" in result
             assert "worker" in result
+
+        pool.shutdown()
+
+    def test_submit_returns_refs_when_oversubmitted(self, ray_start):
+        """Submit more tasks than pool capacity, verify all refs return
+        immediately and all eventually resolve. Refs should be pool-scoped."""
+        pool = ActorPool(SimpleWorker, size=2)
+
+        # Submit 10 tasks (5x the pool size)
+        refs = [pool.submit("process", i) for i in range(10)]
+
+        # All refs should be returned immediately (not None)
+        assert len(refs) == 10
+        for ref in refs:
+            assert ref is not None
+            task_id_binary = ref.binary()[: PyTaskID.size()]
+            task_id = PyTaskID(task_id_binary)
+            assert (
+                task_id.is_pool_task_id()
+            ), "ObjectRef should have a pool-scoped TaskID"
+
+        # All should eventually resolve with correct results
+        results = ray.get(refs, timeout=30)
+        assert results == [i * 2 for i in range(10)]
+
+        pool.shutdown()
+
+    def test_scale_drains_queued_tasks(self, ray_start):
+        """Create pool with 1 actor at max capacity, submit extra tasks that
+        queue at pool level, scale up, verify queued tasks drain and resolve."""
+        pool = ActorPool(SimpleWorker, size=1, max_tasks_in_flight_per_actor=1)
+
+        assert len(pool.actors) == 1
+
+        # Submit 3 tasks — first goes to actor, rest queue at pool level
+        refs = [pool.submit("process", i) for i in range(3)]
+        assert len(refs) == 3
+
+        # All refs should be pool-scoped
+        for ref in refs:
+            task_id_binary = ref.binary()[: PyTaskID.size()]
+            task_id = PyTaskID(task_id_binary)
+            assert task_id.is_pool_task_id()
+
+        # Scale up to 2 actors — queued tasks should drain to new actor
+        pool.scale(1)
+        assert len(pool.actors) == 2
+
+        # All refs should resolve with correct results
+        results = ray.get(refs, timeout=30)
+        assert results == [0, 2, 4]
 
         pool.shutdown()
 

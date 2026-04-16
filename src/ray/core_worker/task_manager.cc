@@ -266,6 +266,11 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   }
 
   // Add new owned objects for the return values of the task.
+  // For pool tasks whose refs were pre-registered via RegisterPoolTaskReturnValues,
+  // skip AddOwnedObject to avoid double-registration. We detect this by checking
+  // if the first return ObjectID already has a reference.
+  bool pool_task_refs_preregistered = spec.IsPoolTask() && spec.NumReturns() > 0 &&
+                                      reference_counter_.HasReference(spec.ReturnId(0));
   size_t num_returns = spec.NumReturns();
   std::vector<rpc::ObjectReference> returned_refs;
   returned_refs.reserve(num_returns);
@@ -274,7 +279,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   auto tensor_transport = spec.TensorTransport();
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
-    if (!spec.IsActorCreationTask()) {
+    if (!spec.IsActorCreationTask() && !pool_task_refs_preregistered) {
       LineageReconstructionEligibility lineage_eligibility;
       if (max_retries == 0) {
         lineage_eligibility = LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES;
@@ -320,8 +325,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   reference_counter_.UpdateSubmittedTaskReferences(return_ids, task_deps);
 
   // If it is a generator task, create an object ref stream.
+  // Skip for pool tasks — stream was already created in RegisterPoolTaskReturnValues.
   // The language frontend is responsible for calling DeleteObjectRefStream.
-  if (spec.IsStreamingGenerator()) {
+  if (spec.IsStreamingGenerator() && !pool_task_refs_preregistered) {
     const auto generator_id = spec.ReturnId(0);
     RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
     absl::MutexLock lock(&object_ref_stream_ops_mu_);
@@ -347,6 +353,53 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       spec,
       rpc::TaskStatus::PENDING_ARGS_AVAIL,
       /* include_task_info */ true));
+
+  return returned_refs;
+}
+
+std::vector<rpc::ObjectReference> TaskManager::RegisterPoolTaskReturnValues(
+    const rpc::Address &caller_address,
+    const TaskID &pool_task_id,
+    size_t num_returns,
+    const std::string &call_site,
+    bool is_streaming_generator) {
+  RAY_LOG(DEBUG) << "Pre-registering " << num_returns << " return refs for pool task "
+                 << pool_task_id;
+
+  std::vector<rpc::ObjectReference> returned_refs;
+  returned_refs.reserve(num_returns);
+
+  for (size_t i = 0; i < num_returns; i++) {
+    auto return_id = ObjectID::FromIndex(pool_task_id, i + 1);
+    // Register as owned with lineage reconstruction eligible
+    reference_counter_.AddOwnedObject(return_id,
+                                      /*contained_ids=*/{},
+                                      caller_address,
+                                      call_site,
+                                      -1,
+                                      LineageReconstructionEligibility::ELIGIBLE,
+                                      /*add_local_ref=*/true,
+                                      /*pinned_at_node_id=*/std::optional<NodeID>(),
+                                      /*tensor_transport=*/std::nullopt);
+
+    rpc::ObjectReference ref;
+    ref.set_object_id(return_id.Binary());
+    ref.mutable_owner_address()->CopyFrom(caller_address);
+    ref.set_call_site(call_site);
+    returned_refs.push_back(std::move(ref));
+  }
+
+  // For streaming generators, create the ObjectRefStream.
+  if (is_streaming_generator && num_returns > 0) {
+    const auto generator_id = ObjectID::FromIndex(pool_task_id, 1);
+    RAY_LOG(DEBUG) << "Create object ref stream for pool task " << generator_id;
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    auto inserted =
+        object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
+    ref_stream_execution_signal_callbacks_.emplace(
+        generator_id, std::vector<ExecutionSignalCallback>());
+    RAY_CHECK(inserted.second);
+  }
 
   return returned_refs;
 }
