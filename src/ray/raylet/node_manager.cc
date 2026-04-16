@@ -1787,22 +1787,12 @@ void NodeManager::HandleReportWorkerBacklog(
     WorkerPoolInterface &worker_pool,
     LocalLeaseManagerInterface &local_lease_manager) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  if (worker_pool.GetRegisteredWorker(worker_id) == nullptr &&
-      worker_pool.GetRegisteredDriver(worker_id) == nullptr) {
-    // The worker is already disconnected.
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    return;
+  if (worker_pool.GetRegisteredDriver(worker_id) != nullptr ||
+      worker_pool.GetRegisteredWorker(worker_id) != nullptr) {
+    // Worker is still alive according to the raylet.
+    local_lease_manager.SetWorkerBacklog(std::move(request));
   }
 
-  local_lease_manager.ClearWorkerBacklog(worker_id);
-  std::unordered_set<SchedulingClass> seen;
-  for (const auto &backlog_report : request.backlog_reports()) {
-    const LeaseSpecification lease_spec(backlog_report.lease_spec());
-    const SchedulingClass scheduling_class = lease_spec.GetSchedulingClass();
-    RAY_CHECK(seen.find(scheduling_class) == seen.end());
-    local_lease_manager.SetWorkerBacklog(
-        scheduling_class, worker_id, backlog_report.backlog_size());
-  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
