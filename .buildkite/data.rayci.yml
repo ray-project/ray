@@ -48,7 +48,6 @@ steps:
     wanda: ci/docker/datatfds.build.wanda.yaml
     env:
       PYTHON: "3.12"
-      REQUIREMENTS_FILE: "datatfds_py3.12.lock"
     tags: cibase
 
   - name: docgpubuild-py312
