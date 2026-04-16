@@ -231,9 +231,11 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
                                     object_size);
   };
 
-  // When all objects are already local (e.g. worker's ray.get() after the
-  // raylet already fetched task args), skip pubsub entirely. This avoids
-  // a wasted round-trip to the driver/owner for every object.
+  // Skip subscription when all objects are already local. This is common
+  // because workers re-pull task args the raylet already fetched (objects
+  // could get evicted in between, so the worker pull is needed as a safety
+  // net, but normally they are still local). Subscribing would just add
+  // unnecessary overhead on the driver IO thread.
   bool all_local = !objects_to_locate.empty();
   for (const auto &ref : objects_to_locate) {
     if (!local_objects_.contains(ObjectRefToId(ref))) {
@@ -243,8 +245,6 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
   }
 
   if (all_local) {
-    // All-local: mark pullable directly. Bundle activates and pins in the
-    // same call stack (single-threaded IO), so no eviction is possible.
     for (const auto &ref : objects_to_locate) {
       pull_manager_->MarkObjectLocallyAvailable(ObjectRefToId(ref));
     }
@@ -262,7 +262,6 @@ uint64_t ObjectManager::Pull(const std::vector<rpc::ObjectReference> &object_ref
 void ObjectManager::CancelPull(uint64_t request_id) {
   const auto objects_to_cancel = pull_manager_->CancelPull(request_id);
   for (const auto &object_id : objects_to_cancel) {
-    // No-op for objects that took the all-local path and were never subscribed.
     object_directory_->UnsubscribeObjectLocations(object_directory_pull_callback_id_,
                                                   object_id);
   }

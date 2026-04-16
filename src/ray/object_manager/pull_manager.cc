@@ -369,9 +369,7 @@ void PullManager::MarkObjectLocallyAvailable(const ObjectID &object_id) {
     return;
   }
 
-  // Size=0: local objects don't consume pull quota. Safe because the caller
-  // only invokes this when ALL objects are local, so the bundle activates and
-  // pins in the same call stack on the single-threaded IO context.
+  // Size=0 so these objects that already in local don't consume pull quota.
   it->second.object_size = 0;
   it->second.object_size_set = true;
 
