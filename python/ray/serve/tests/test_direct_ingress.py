@@ -2605,5 +2605,81 @@ def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance
     )
 
 
+def test_custom_direct_ingress_app(_skip_if_ff_not_enabled, serve_instance):
+    """A deployment that sets self.direct_ingress_app gets a direct ingress
+    HTTP server serving the custom app."""
+
+    @serve.deployment
+    class CustomAppDeployment:
+        def __init__(self):
+            async def my_app(scope, receive, send):
+                assert scope["type"] == "http"
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 200,
+                        "headers": [[b"content-type", b"text/plain"]],
+                    }
+                )
+                await send(
+                    {
+                        "type": "http.response.body",
+                        "body": b"hello from custom app",
+                    }
+                )
+
+            self.direct_ingress_app = my_app
+
+        async def __call__(self, request: Request):
+            return "fallback"
+
+    serve.run(CustomAppDeployment.bind())
+
+    # The replica should get a direct ingress port allocated.
+    http_ports = get_http_ports()
+    assert len(http_ports) >= 1
+
+    # Requests to the direct ingress port should hit the custom ASGI app.
+    for port in http_ports:
+        r = httpx.get(f"http://127.0.0.1:{port}/")
+        r.raise_for_status()
+        assert r.text == "hello from custom app"
+
+
+def test_custom_direct_ingress_app_without_global_flag(serve_instance):
+    """A deployment with direct_ingress_app starts a direct ingress server
+    even when RAY_SERVE_ENABLE_DIRECT_INGRESS is not set."""
+
+    @serve.deployment
+    class CustomAppNoFlag:
+        def __init__(self):
+            async def my_app(scope, receive, send):
+                assert scope["type"] == "http"
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 200,
+                        "headers": [[b"content-type", b"text/plain"]],
+                    }
+                )
+                await send({"type": "http.response.body", "body": b"custom no flag"})
+
+            self.direct_ingress_app = my_app
+
+        async def __call__(self, request: Request):
+            return "fallback"
+
+    serve.run(CustomAppNoFlag.bind())
+
+    # Even without the global flag, the custom app should get a port.
+    http_ports = get_http_ports()
+    assert len(http_ports) >= 1
+
+    for port in http_ports:
+        r = httpx.get(f"http://127.0.0.1:{port}/")
+        r.raise_for_status()
+        assert r.text == "custom no flag"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
