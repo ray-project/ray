@@ -2,7 +2,7 @@ import asyncio
 import logging
 import time
 from dataclasses import dataclass, field
-from typing import Any, Callable, Dict, List, Optional, Set
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set
 
 from ray.serve._private.common import ReplicaID, RequestMetadata
 from ray.serve._private.constants import (
@@ -10,6 +10,9 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
 )
 from ray.util.annotations import PublicAPI
+
+if TYPE_CHECKING:
+    from ray.serve._private.request_router.replica_wrapper import RunningReplica
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -55,6 +58,37 @@ class PendingRequest:
     def reset_future(self):
         """Reset the `asyncio.Future`, must be called if this request is re-used."""
         self.future = asyncio.Future()
+
+
+@dataclass
+class ReplicaSelection:
+    """Represents a selected replica from choose_replica() context manager.
+
+    Tracks whether dispatch() was called and provides timing information for
+    metrics collection.
+    """
+
+    replica: "RunningReplica"  # Forward reference to avoid circular import
+    """The selected replica to dispatch the request to."""
+
+    selection_start_time: float = field(default_factory=time.monotonic)
+    """Monotonic timestamp (seconds) when this selection's slot was reserved.
+    Used internally to compute serve_selection_dispatch_gap_ms."""
+
+    _dispatched: bool = field(default=False, repr=False)
+    """Internal flag tracking whether dispatch() was called."""
+
+    _release_callback: Optional[Callable[[], None]] = field(default=None, repr=False)
+    """Optional callback to release the reserved slot."""
+
+    def _mark_dispatched(self):
+        """Mark this selection as dispatched."""
+        self._dispatched = True
+
+    def _release_slot(self):
+        """Release the reserved slot if a callback was provided."""
+        if self._release_callback is not None:
+            self._release_callback()
 
 
 @dataclass(frozen=True)
