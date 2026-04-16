@@ -76,12 +76,12 @@ def plan_read_op_with_checkpoint_filter(
         data_context=data_context,
         name="CheckpointFilter",
         compute_strategy=ActorPoolStrategy(
-            min_size=data_context.checkpoint_actor_pool_min_size,
-            max_size=data_context.checkpoint_actor_pool_max_size,
+            min_size=checkpoint_config.checkpoint_actor_pool_min_size,
+            max_size=checkpoint_config.checkpoint_actor_pool_max_size,
         ),
         ray_remote_args={
             "memory": max(
-                data_context.checkpoint_actor_memory_bytes,
+                checkpoint_config.checkpoint_actor_memory_bytes,
                 int(checkpointed_ids_size * CHECKPOINT_MEMORY_SAFETY_FACTOR),
             )
         },

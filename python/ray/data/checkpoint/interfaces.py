@@ -70,6 +70,9 @@ class CheckpointConfig:
 
     DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR = "RAY_DATA_CHECKPOINT_PATH_BUCKET"
     DEFAULT_CHECKPOINT_PATH_DIR = "ray_data_checkpoint"
+    CHECKPOINT_ACTOR_POOL_MIN_SIZE = 1
+    CHECKPOINT_ACTOR_POOL_MAX_SIZE = 10
+    CHECKPOINT_ACTOR_MEMORY_BYTES = 1 * 1024**3
 
     def __init__(
         self,
@@ -110,6 +113,9 @@ class CheckpointConfig:
         self.delete_checkpoint_on_success: bool = delete_checkpoint_on_success
         self.write_num_threads: int = write_num_threads
         self.checkpoint_path_partition_filter = checkpoint_path_partition_filter
+        self.checkpoint_actor_pool_min_size = self.CHECKPOINT_ACTOR_POOL_MIN_SIZE
+        self.checkpoint_actor_pool_max_size = self.CHECKPOINT_ACTOR_POOL_MAX_SIZE
+        self.checkpoint_actor_memory_bytes = self.CHECKPOINT_ACTOR_MEMORY_BYTES
 
     def _get_default_checkpoint_path(self) -> str:
         artifact_storage = os.environ.get(self.DEFAULT_CHECKPOINT_PATH_BUCKET_ENV_VAR)
