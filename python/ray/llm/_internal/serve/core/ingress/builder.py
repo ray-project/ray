@@ -134,14 +134,22 @@ def build_openai_app(builder_config: dict) -> Application:
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
+    # If ingress bypass is enabled, create a dedicated LLMRouter deployment
+    # that handles /internal/route for HAProxy Lua routing decisions.
+    # The LLMRouter is the top-level app; OpenAiIngress is still created
+    # but is not the ingress for HAProxy traffic.
+    if any(getattr(c, "ingress_bypass", False) for c in llm_configs):
+        from ray.llm._internal.serve.core.ingress.router import LLMRouter
+
+        logger.info("Ingress bypass enabled: creating LLMRouter deployment")
+
+        app = serve.deployment(LLMRouter, router=True).bind(
+            llm_deployments=llm_deployments,
+        )
+        return app
+
     app = serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
     )
-
-    # If any LLMConfig has ingress_bypass enabled, mark the application
-    # so that the ingress deployment becomes the router for Lua routing.
-    if any(getattr(c, "ingress_bypass", False) for c in llm_configs):
-        app._ingress_bypass = True
-        logger.info("Ingress bypass enabled: ingress deployment will serve as router")
 
     return app
