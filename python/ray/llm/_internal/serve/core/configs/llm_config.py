@@ -228,16 +228,6 @@ class LLMConfig(BaseModelExtended):
             return load_class(value)
         return value
 
-    ingress_bypass: bool = Field(
-        default=False,
-        description=(
-            "Enable ingress bypass mode. When True, LLMServer replicas serve "
-            "vLLM's FastAPI app directly via Ray Serve direct ingress, and "
-            "HAProxy Lua routes requests to them, bypassing the Serve ingress "
-            "from the per-token streaming path."
-        ),
-    )
-
     experimental_configs: Dict[str, Any] = Field(
         default_factory=dict,
         description="Experimental configurations for Ray Serve LLM. This is a "

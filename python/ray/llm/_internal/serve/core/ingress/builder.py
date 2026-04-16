@@ -10,6 +10,7 @@ from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
 )
 from ray.llm._internal.common.utils.import_utils import load_class
+from ray.llm._internal.serve.constants import RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.core.ingress.ingress import (
     OpenAiIngress,
@@ -134,14 +135,12 @@ def build_openai_app(builder_config: dict) -> Application:
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
-    # If ingress bypass is enabled, create a dedicated LLMRouter deployment
-    # that handles /internal/route for HAProxy Lua routing decisions.
-    # The LLMRouter is the top-level app; OpenAiIngress is still created
-    # but is not the ingress for HAProxy traffic.
-    if any(getattr(c, "ingress_bypass", False) for c in llm_configs):
+    # If direct streaming is enabled via env var, create a dedicated LLMRouter
+    # deployment that handles /internal/route for HAProxy Lua routing decisions.
+    if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
         from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
-        logger.info("Ingress bypass enabled: creating LLMRouter deployment")
+        logger.info("Direct streaming enabled: creating LLMRouter deployment")
 
         app = serve.deployment(LLMRouter, router=True).bind(
             llm_deployments=llm_deployments,
