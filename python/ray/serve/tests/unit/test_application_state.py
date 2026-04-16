@@ -1785,6 +1785,44 @@ class TestOverrideDeploymentInfo:
         assert actors[0]._serialized_actor_class == serialized_1
         assert actors[1]._serialized_actor_class == b""  # Not in map, stays empty
 
+    def test_override_router_flag(self, info):
+        """router=True in config should set DeploymentInfo.router."""
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    router=True,
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        assert updated_infos["A"].router is True
+
+    def test_override_multiple_routers_raises(self, info):
+        """More than one deployment with router=True should raise ValueError."""
+        info_b = DeploymentInfo(
+            route_prefix="/",
+            version="123",
+            deployment_config=DeploymentConfig(num_replicas=1),
+            replica_config=ReplicaConfig.create(lambda x: x),
+            start_time_ms=0,
+            deployer_job_id="",
+        )
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(name="A", router=True),
+                DeploymentSchema(name="B", router=True),
+            ],
+        )
+
+        with pytest.raises(ValueError, match="Multiple deployments marked as router"):
+            override_deployment_info({"A": info, "B": info_b}, config)
+
 
 @patch(
     "ray.serve._private.application_state.get_app_code_version",

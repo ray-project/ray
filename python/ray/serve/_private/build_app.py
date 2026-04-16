@@ -58,6 +58,9 @@ class BuiltApplication:
     # them in other deployments' init args/kwargs.
     deployment_handles: Dict[str, DeploymentHandle]
     external_scaler_enabled: bool
+    # Name of the router deployment for ingress bypass (if any).
+    # When set, this deployment serves /internal/route for HAProxy Lua routing.
+    router_deployment_name: Optional[str] = None
 
 
 def _make_deployment_handle_default(
