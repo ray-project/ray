@@ -16,6 +16,16 @@ if sys.platform != "linux" and sys.platform != "darwin":
 USE_GPU = os.environ.get("RAY_PYTEST_USE_GPU") == "1"
 
 
+@pytest.fixture
+def override_accelerator_env_on_zero(monkeypatch):
+    """Restore pre-#62492 behavior: Ray overrides CUDA_VISIBLE_DEVICES to "" for
+    actors with num_gpus=0, so torch ops on such actors raise "No CUDA GPUs are
+    available" as these tests expect. Must be listed before ray_start_regular in
+    test signatures so the env var is set before Ray spawns workers.
+    """
+    monkeypatch.setenv("RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO", "1")
+
+
 @ray.remote
 class Actor:
     def echo_device(self, tensor: torch.Tensor) -> str:
@@ -172,7 +182,9 @@ class TestDriverToWorkerDeviceGPU:
         compiled_dag = dag.experimental_compile()
         return compiled_dag.execute(tensor_input)
 
-    def test_src_cpu_tensor_dst_cpu_node(self, ray_start_regular):
+    def test_src_cpu_tensor_dst_cpu_node(
+        self, override_accelerator_env_on_zero, ray_start_regular
+    ):
         actor = Actor.remote()
         ref = run_driver_to_worker_dag(actor, "cuda", torch.tensor([1]))
         with pytest.raises(
@@ -181,7 +193,9 @@ class TestDriverToWorkerDeviceGPU:
             ray.get(ref)
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
-    def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
+    def test_src_gpu_tensor_dst_cpu_node(
+        self, override_accelerator_env_on_zero, ray_start_regular
+    ):
         actor = Actor.remote()
         ref = run_driver_to_worker_dag(actor, "cuda", torch.tensor([1], device="cuda"))
         with pytest.raises(
@@ -202,7 +216,9 @@ class TestDriverToWorkerDeviceGPU:
         assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
-    def test_src_mix_tensors_dst_cpu_node(self, ray_start_regular):
+    def test_src_mix_tensors_dst_cpu_node(
+        self, override_accelerator_env_on_zero, ray_start_regular
+    ):
         actor = Actor.remote()
         tensor_dict = {
             "cpu_tensor": torch.tensor([1]),
@@ -242,7 +258,9 @@ class TestDriverToWorkerDeviceDefault:
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
-    def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
+    def test_src_gpu_tensor_dst_cpu_node(
+        self, override_accelerator_env_on_zero, ray_start_regular
+    ):
         actor = Actor.remote()
         ref = run_driver_to_worker_dag(
             actor, "default", torch.tensor([1], device="cuda")
@@ -267,7 +285,9 @@ class TestDriverToWorkerDeviceDefault:
         assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
-    def test_src_mix_tensors_dst_cpu_node(self, ray_start_regular):
+    def test_src_mix_tensors_dst_cpu_node(
+        self, override_accelerator_env_on_zero, ray_start_regular
+    ):
         actor = Actor.remote()
         tensor_dict = {
             "cpu_tensor": torch.tensor([1]),
@@ -361,7 +381,9 @@ class TestWorkerToWorkerDeviceGPU:
     """Tests worker to worker tensor transport with GPU device."""
 
     @pytest.mark.parametrize("gpu_device", ["gpu", "cuda"])
-    def test_src_cpu_tensor_dst_cpu_node(self, ray_start_regular, gpu_device):
+    def test_src_cpu_tensor_dst_cpu_node(
+        self, override_accelerator_env_on_zero, ray_start_regular, gpu_device
+    ):
         sender = Actor.remote()
         receiver = Actor.remote()
         ref = run_worker_to_worker_dag(sender, receiver, gpu_device, "cpu")
@@ -378,7 +400,9 @@ class TestWorkerToWorkerDeviceGPU:
         assert ray.get(ref) == "cuda:0"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
-    def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
+    def test_src_gpu_tensor_dst_cpu_node(
+        self, override_accelerator_env_on_zero, ray_start_regular
+    ):
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.remote()
         ref = run_worker_to_worker_dag(sender, receiver, "cuda", "cuda")
@@ -400,7 +424,9 @@ class TestWorkerToWorkerDeviceGPU:
             run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
-    def test_src_mix_tensors_dst_cpu_node(self, ray_start_regular):
+    def test_src_mix_tensors_dst_cpu_node(
+        self, override_accelerator_env_on_zero, ray_start_regular
+    ):
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options().remote()
         ref = run_worker_to_worker_dag(
@@ -449,7 +475,9 @@ class TestWorkerToWorkerDeviceDefault:
         assert ray.get(ref) == "cpu"
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
-    def test_src_gpu_tensor_dst_cpu_node(self, ray_start_regular):
+    def test_src_gpu_tensor_dst_cpu_node(
+        self, override_accelerator_env_on_zero, ray_start_regular
+    ):
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.remote()
         ref = run_worker_to_worker_dag(sender, receiver, "default", "cuda")
@@ -471,7 +499,9 @@ class TestWorkerToWorkerDeviceDefault:
             run_worker_to_worker_dag(sender, receiver, "cpu", "cpu")
 
     @pytest.mark.skipif(not USE_GPU, reason="Test requires GPU")
-    def test_src_mix_tensors_dst_cpu_node(self, ray_start_regular):
+    def test_src_mix_tensors_dst_cpu_node(
+        self, override_accelerator_env_on_zero, ray_start_regular
+    ):
         sender = Actor.options(num_gpus=1).remote()
         receiver = Actor.options().remote()
         ref = run_worker_to_worker_dag(
