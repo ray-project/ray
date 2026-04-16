@@ -53,7 +53,7 @@ defaults
     # Set TCP_NODELAY on all connections
     option http-no-delay
     {%- endif %}
-    {%- if config.enable_hap_optimization %}
+    {%- if config.enable_idle_close_on_response %}
     option idle-close-on-response
     {%- endif %}
     # Normalize 502 and 504 errors to 500 per Serve's default behavior
@@ -61,7 +61,7 @@ defaults
     errorfile 502 {{ config.error_file_path }}
     errorfile 504 {{ config.error_file_path }}
     {%- endif %}
-    {%- if config.enable_hap_optimization %}
+    {%- if config.enable_server_state_persistence %}
     load-server-state-from-file global
     {%- endif %}
     balance {{ config.balance_algorithm }}
@@ -147,7 +147,6 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
-    # Servers in this backend
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
     {%- endfor %}
