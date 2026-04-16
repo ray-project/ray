@@ -222,11 +222,9 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
   // Stored once in the pool task so DrainTaskQueue and RetryPoolTask
   // can reuse them without re-serializing args.
   for (const auto &arg : pool_task.args) {
-    rpc::TaskArg arg_proto;
-    arg->ToProto(&arg_proto);
-    if (arg_proto.has_object_ref()) {
-      pool_task.arg_ids.push_back(
-          ObjectID::FromBinary(arg_proto.object_ref().object_id()));
+    auto obj_id = arg->GetObjectId();
+    if (!obj_id.IsNil()) {
+      pool_task.arg_ids.push_back(obj_id);
     }
   }
 
@@ -691,6 +689,9 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
   RAY_LOG(INFO) << "Pool task " << pool_task_id << " failed terminally on actor "
                 << failed_actor_id << ". Error: " << error_info.error_message();
   FailPoolTask(pool_task_id, error_info);
+
+  // A slot freed up on this actor (or the actor died) — drain queued tasks.
+  DrainTaskQueue(pool_id);
 }
 
 void ActorPoolManager::OnTaskSucceeded(const ActorPoolID &pool_id,
@@ -847,10 +848,13 @@ void ActorPoolManager::DrainTaskQueue(const ActorPoolID &pool_id) {
       break;
     }
 
-    ActorID actor = SelectActorFromPool(pool_id, pool_task->arg_ids);
+    ActorID actor = SelectActorFromPool(pool_id,
+                                        pool_task->arg_ids,
+                                        /*exclude_actor_id=*/ActorID::Nil(),
+                                        /*require_available_capacity=*/true);
     if (actor.IsNil()) {
-      // No actors available — push the item back and stop draining.
-      task_queue->Push(std::move(*pool_task));
+      // No actors with capacity — push the item back and stop draining.
+      task_queue->PushFront(std::move(*pool_task));
       break;
     }
 

@@ -21,6 +21,8 @@ namespace core {
 
 void FifoPoolTaskQueue::Push(PoolTask item) { queue_.push_back(std::move(item)); }
 
+void FifoPoolTaskQueue::PushFront(PoolTask item) { queue_.push_front(std::move(item)); }
+
 std::optional<PoolTask> FifoPoolTaskQueue::Pop() {
   if (queue_.empty()) {
     return std::nullopt;

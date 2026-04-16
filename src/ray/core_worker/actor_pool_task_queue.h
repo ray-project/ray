@@ -107,10 +107,15 @@ class PoolTaskQueue {
  public:
   virtual ~PoolTaskQueue() = default;
 
-  /// Enqueue a pool task.
+  /// Enqueue a pool task at the back.
   ///
   /// \param item The pool task to enqueue.
   virtual void Push(PoolTask item) = 0;
+
+  /// Enqueue a pool task at the front (preserves FIFO for re-queued tasks).
+  ///
+  /// \param item The pool task to enqueue.
+  virtual void PushFront(PoolTask item) = 0;
 
   /// Dequeue a pool task.
   ///
@@ -140,6 +145,8 @@ class FifoPoolTaskQueue : public PoolTaskQueue {
   ~FifoPoolTaskQueue() override = default;
 
   void Push(PoolTask item) override;
+
+  void PushFront(PoolTask item) override;
 
   std::optional<PoolTask> Pop() override;
 

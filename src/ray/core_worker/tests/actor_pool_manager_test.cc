@@ -1224,11 +1224,11 @@ TEST_F(ActorPoolManagerTest, FullDeathRestartRecoveryCycle) {
   // Actor restarts
   pool_manager_->OnActorAlive(actor1, NodeID::FromRandom());
 
-  // All queued work should have been drained
+  // With max_tasks_in_flight_per_actor=1, only 1 task drains to the actor.
+  // The remaining 2 stay in the pool backlog until the first completes.
   stats = pool_manager_->GetPoolStats(pool_id);
-  EXPECT_EQ(stats.backlog_size, 0);
-  // All 3 items get submitted (in_flight incremented)
-  EXPECT_EQ(stats.total_in_flight, 3);
+  EXPECT_EQ(stats.backlog_size, 2);
+  EXPECT_EQ(stats.total_in_flight, 1);
 }
 
 // ForPoolTask produces pool-scoped TaskIDs

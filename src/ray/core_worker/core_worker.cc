@@ -2862,8 +2862,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
   // Build TaskSpec using the pool-scoped TaskID. ObjectIDs derived from this
   // TaskID (via ObjectID::FromIndex) are pool-scoped, matching the pre-created
   // return_refs. The actor routing uses the actor_id in actor_task_spec.
+  // Note: we do NOT call GetNextTaskIndex() here because the pool_task_id was
+  // already generated with a task index in SubmitTaskToPool. Using 0 as the
+  // parent_task_counter avoids wasting a task index.
   TaskSpecBuilder builder;
-  const auto next_task_index = worker_context_->GetNextTaskIndex();
 
   const std::unordered_map<std::string, double> required_resources;
   const auto task_name = task_options.name.empty()
@@ -2877,7 +2879,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
                       pool_task_id,  // Use pool-scoped TaskID
                       task_name,
                       worker_context_->GetCurrentTaskID(),
-                      next_task_index,
+                      /*parent_task_counter=*/0,
                       GetCallerId(),
                       rpc_address_,
                       function,
