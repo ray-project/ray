@@ -350,7 +350,7 @@ class BatchMapTransformFn(MapTransformFn):
         accessor = BlockAccessor.for_block(first)
         num_rows = accessor.num_rows()
         block_size = accessor.size_bytes()
-        if num_rows > 0:
+        if num_rows > 0 and block_size > 0:
             bytes_per_row = block_size / num_rows
             computed_batch_size = max(1, int(target_batch_size / bytes_per_row))
         else:
