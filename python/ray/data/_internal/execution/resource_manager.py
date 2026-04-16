@@ -648,7 +648,11 @@ class OpResourceAllocator(ABC):
         has unlimited budget. Budget is the remaining capacity an operator can
         consume before hitting backpressure:
 
-            Budget = max(Allocation - Usage, 0)
+            Budget = Allocation - min(Reserved, AdjustedUsage)   [component-wise, ≥ 0]
+
+        where AdjustedUsage is the operator's internal object-store memory plus
+        the portion of output memory that exceeds the output-only reservation.
+        Equivalently: max(Reserved - AdjustedUsage, 0) + SharedPortion.
 
         Note: budget is clamped to zero, so it cannot signal over-allocation.
         Use get_allocation() and compare against get_op_usage() directly when
@@ -791,7 +795,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
         # Memory reserved exclusively for the outputs of each operator.
         # "Op outputs" refer to blocks that have been taken out of an operator,
-        # i.e., `RessourceManager._mem_op_outputs`.
+        # i.e., `ResourceManager._mem_op_outputs`.
         #
         # Note, if we don't reserve memory for op outputs, all the budget may be used by
         # the pending task outputs, and/or op's internal output buffers (the latter can
@@ -800,7 +804,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._reserved_for_op_outputs: Dict[PhysicalOperator, float] = {}
         # Total shared resources.
         self._total_shared = ExecutionResources.zero()
-        # Resource allocations, i.e. total resources granted to each operator.
+        # Resource allocations per operator: _op_reserved[op] + the shared portion
+        # granted to this op. Does NOT include _reserved_for_op_outputs; that portion
+        # is accounted for separately in max_task_output_bytes_to_read().
         self._op_allocations: Dict[PhysicalOperator, ExecutionResources] = {}
         # Remaining memory budget for generating new task outputs, per operator.
         self._output_budgets: Dict[PhysicalOperator, float] = {}
@@ -927,10 +933,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         #        = allocation - min(reserved, adjusted_usage)  [component-wise]
         budget = allocation.subtract(adjusted_usage.min(self._op_reserved[op]))
 
-        # A materializing operator like `AllToAllOperator` waits for all its input
-        # operator's outputs before processing data. This often forces the input
-        # operator to exceed its object store memory budget. To prevent deadlock, we
-        # disable object store memory backpressure for the input operator.
+        # A blocking materializing operator (e.g. `AllToAllOperator`) must accumulate
+        # all of its input data before it can produce any output. This causes its
+        # input buffer to grow beyond its object-store memory budget. To prevent
+        # deadlock we disable object-store memory backpressure for the materializing
+        # operator itself.
         if self._resource_manager._is_blocking_materializing_op(op):
             return budget.copy(object_store_memory=float("inf"))
         return budget
@@ -976,8 +983,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         *,
         limits: ExecutionResources,
     ):
-        # Remaining resources to be distributed across operators
-        remaining_shared = self._update_reservation(limits)
+        # Compute per-op reservations and store leftover in self._total_shared.
+        self._update_reservation(limits)
 
         op_budgets = {}
         self._op_allocations.clear()
@@ -985,7 +992,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if len(eligible_ops) == 0:
             return
 
-        # Remaining of shared resources.
+        # Remaining shared resources after per-op reservations.
         remaining_shared = self._total_shared
         for op in eligible_ops:
             op_usage = self._get_adjusted_op_usage(op)
