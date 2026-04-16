@@ -13,5 +13,3 @@ torchmetrics==0.10.3
 # torchtext 0.18.0 has no cp313 wheel; guard until a cp313-compatible version is available
 torchtext==0.18.0; python_version < '3.13'
 
-# JAX frontend (pure-Python); jaxlib CUDA backend comes from dl-gpu via GCS find-links
-jax==0.4.28; sys_platform != 'darwin'
