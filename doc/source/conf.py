@@ -410,6 +410,9 @@ exclude_patterns = [
             f"_collections/{coll['target']}/**/*.ipynb",
         )
     ],
+    # ray_train_workloads bundles sub-folder READMEs that aren't part of any
+    # toctree (only the notebooks are). Exclude them to avoid orphan warnings.
+    "_collections/train/tutorials/**/README.*",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
