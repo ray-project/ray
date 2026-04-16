@@ -75,6 +75,13 @@ logger = logging.getLogger(__name__)
 BlockTransformer = Callable[[Block], Block]
 
 
+# Isolate shuffle map workers into a dedicated worker pool so that
+# ReadParquet/Project tasks don't run on the same workers. Without this,
+# shared memory pages from object store accesses (mmap'd during
+# combine_chunks) accumulate across task types and inflate worker RSS.
+_SHUFFLE_MAP_RUNTIME_ENV = {"env_vars": {"RAY_DATA_SHUFFLE_MAP_WORKER": "1"}}
+
+
 @ray.remote
 def _shuffle_map(
     *blocks: Block,
@@ -445,6 +452,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         map_refs = _shuffle_map.options(
             **shuffle_task_resources,
             num_returns=self._num_partitions + 1,
+            runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         ).remote(
             *block_refs,
             key_columns=self._key_columns,
