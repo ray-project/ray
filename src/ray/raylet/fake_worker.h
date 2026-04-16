@@ -48,9 +48,14 @@ class FakeWorker : public WorkerInterface {
   rpc::WorkerType GetWorkerType() const override { return rpc::WorkerType::WORKER; }
   int Port() const override { return port_; }
   void SetOwnerAddress(const rpc::Address &address) override {}
-  void GrantLease(const RayLease &granted_lease) override {}
+  void GrantLease(const RayLease &granted_lease) override {
+    granted_lease_ = granted_lease;
+  }
   void GrantLeaseId(const LeaseID &lease_id) override { lease_id_ = lease_id; }
-  const RayLease &GetGrantedLease() const override { return *granted_lease_; }
+  const RayLease &GetGrantedLease() const override {
+    RAY_CHECK(granted_lease_.has_value());
+    return *granted_lease_;
+  }
   absl::Time GetGrantedLeaseTime() const override { return absl::InfiniteFuture(); }
   std::optional<bool> GetIsGpu() const override { return std::nullopt; }
   std::optional<bool> GetIsActorWorker() const override { return std::nullopt; }
