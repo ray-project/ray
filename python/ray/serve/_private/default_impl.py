@@ -242,18 +242,7 @@ def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
 
 
 def get_controller_impl():
-    import os
-
     from ray.serve._private.controller import ServeController
-
-    controller_env_vars = {}
-    if os.environ.get("RAY_SERVE_THROUGHPUT_OPTIMIZED"):
-        controller_env_vars["RAY_SERVE_THROUGHPUT_OPTIMIZED"] = os.environ[
-            "RAY_SERVE_THROUGHPUT_OPTIMIZED"
-        ]
-    controller_runtime_env = (
-        {"env_vars": controller_env_vars} if controller_env_vars else {}
-    )
 
     controller_impl = ray.remote(
         name=SERVE_CONTROLLER_NAME,
@@ -265,7 +254,6 @@ def get_controller_impl():
         resources={HEAD_NODE_RESOURCE_NAME: 0.001},
         max_concurrency=CONTROLLER_MAX_CONCURRENCY,
         enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
-        runtime_env=controller_runtime_env,
     )(ServeController)
 
     return controller_impl
