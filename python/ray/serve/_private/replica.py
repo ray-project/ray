@@ -1910,18 +1910,19 @@ class Replica:
         return self._deployment_config.max_queued_requests
 
     async def _maybe_start_direct_ingress_servers(self):
-        # Check if the user callable set a direct_ingress_app attribute
-        # during __init__ or start() (follows the hasattr/getattr convention
-        # used for check_health, reconfigure, etc.)
-        custom_app = getattr(
-            self._user_callable_wrapper.user_callable, "direct_ingress_app", None
+        # Allow non-ingress deployments to opt in to direct ingress by
+        # setting self.enable_direct_ingress = True on the user callable
+        # (same getattr convention as check_health, reconfigure, etc.)
+        opted_in = getattr(
+            self._user_callable_wrapper.user_callable,
+            "enable_direct_ingress",
+            False,
         )
-        has_custom_app = custom_app is not None
 
-        if not RAY_SERVE_ENABLE_DIRECT_INGRESS and not has_custom_app:
+        if not RAY_SERVE_ENABLE_DIRECT_INGRESS and not opted_in:
             return
 
-        if not self._ingress and not has_custom_app:
+        if not self._ingress and not opted_in:
             return
 
         async def allocate_and_start_server(start_server_fn, protocol):
@@ -1983,33 +1984,6 @@ class Replica:
 
         grpc_enabled = is_grpc_enabled(self._grpc_options)
 
-        # Choose which ASGI app to serve: custom (from direct_ingress_app
-        # attribute) or default. Wrap custom apps with counting middleware
-        # so the replica's num_ongoing_requests counter reflects
-        # direct-ingress traffic, making choose_replicas() load-aware.
-        if has_custom_app:
-            inner_app = custom_app
-            metrics_mgr = self._metrics_manager
-            _di_metadata = RequestMetadata(
-                request_id="",
-                internal_request_id="",
-                _request_protocol=RequestProtocol.HTTP,
-                is_direct_ingress=True,
-            )
-
-            async def asgi_app_to_serve(scope, receive, send):
-                if scope["type"] == "http":
-                    metrics_mgr.inc_num_ongoing_requests(_di_metadata)
-                    try:
-                        await inner_app(scope, receive, send)
-                    finally:
-                        metrics_mgr.dec_num_ongoing_requests(_di_metadata)
-                else:
-                    await inner_app(scope, receive, send)
-
-        else:
-            asgi_app_to_serve = self._direct_ingress_asgi
-
         # Allocate and start HTTP server
         async def start_http_server(port):
             options = configure_http_middlewares(
@@ -2019,7 +1993,7 @@ class Replica:
             )
 
             return await start_asgi_http_server(
-                asgi_app_to_serve,
+                self._direct_ingress_asgi,
                 options,
                 event_loop=self._event_loop,
                 enable_so_reuseport=False,

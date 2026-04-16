@@ -2605,80 +2605,40 @@ def test_stuck_requests_are_force_killed(_skip_if_ff_not_enabled, serve_instance
     )
 
 
-def test_custom_direct_ingress_app(_skip_if_ff_not_enabled, serve_instance):
-    """A deployment that sets self.direct_ingress_app gets a direct ingress
-    HTTP server serving the custom app."""
+def test_non_ingress_deployment_opt_in(_skip_if_ff_not_enabled, serve_instance):
+    """A non-ingress deployment that sets self.enable_direct_ingress = True
+    gets a direct ingress HTTP server using the standard Serve ASGI handler."""
 
     @serve.deployment
-    class CustomAppDeployment:
+    class Backend:
         def __init__(self):
-            async def my_app(scope, receive, send):
-                assert scope["type"] == "http"
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 200,
-                        "headers": [[b"content-type", b"text/plain"]],
-                    }
-                )
-                await send(
-                    {
-                        "type": "http.response.body",
-                        "body": b"hello from custom app",
-                    }
-                )
-
-            self.direct_ingress_app = my_app
+            self.enable_direct_ingress = True
 
         async def __call__(self, request: Request):
-            return "fallback"
-
-    serve.run(CustomAppDeployment.bind())
-
-    # The replica should get a direct ingress port allocated.
-    http_ports = get_http_ports()
-    assert len(http_ports) >= 1
-
-    # Requests to the direct ingress port should hit the custom ASGI app.
-    for port in http_ports:
-        r = httpx.get(f"http://127.0.0.1:{port}/")
-        r.raise_for_status()
-        assert r.text == "hello from custom app"
-
-
-def test_custom_direct_ingress_app_without_global_flag(serve_instance):
-    """A deployment with direct_ingress_app starts a direct ingress server
-    even when RAY_SERVE_ENABLE_DIRECT_INGRESS is not set."""
+            return "from backend"
 
     @serve.deployment
-    class CustomAppNoFlag:
-        def __init__(self):
-            async def my_app(scope, receive, send):
-                assert scope["type"] == "http"
-                await send(
-                    {
-                        "type": "http.response.start",
-                        "status": 200,
-                        "headers": [[b"content-type", b"text/plain"]],
-                    }
-                )
-                await send({"type": "http.response.body", "body": b"custom no flag"})
+    @serve.ingress(FastAPI())
+    class Ingress:
+        def __init__(self, backend):
+            self._backend = backend
 
-            self.direct_ingress_app = my_app
+    serve.run(Ingress.bind(Backend.bind()))
 
-        async def __call__(self, request: Request):
-            return "fallback"
+    # The backend replica should get a direct ingress port.
+    def _check_backend_has_port():
+        details = ray.get(
+            _get_global_client()._controller.get_serve_instance_details.remote()
+        )
+        for app in details.applications.values():
+            for dep in app.deployments.values():
+                if dep.name == "Backend":
+                    for replica in dep.replicas:
+                        if replica.port is not None:
+                            return True
+        return False
 
-    serve.run(CustomAppNoFlag.bind())
-
-    # Even without the global flag, the custom app should get a port.
-    http_ports = get_http_ports()
-    assert len(http_ports) >= 1
-
-    for port in http_ports:
-        r = httpx.get(f"http://127.0.0.1:{port}/")
-        r.raise_for_status()
-        assert r.text == "custom no flag"
+    wait_for_condition(_check_backend_has_port, timeout=30)
 
 
 if __name__ == "__main__":
