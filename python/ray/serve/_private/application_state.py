@@ -1932,4 +1932,17 @@ def override_deployment_info(
         ):
             deployment.route_prefix = app_route_prefix
 
+    # Validate that at most one deployment is marked as the HTTP router.
+    http_router_deployments = [
+        name
+        for name, info in deployment_infos.items()
+        if info.deployment_config.http_router
+    ]
+    if len(http_router_deployments) > 1:
+        raise ValueError(
+            f"Multiple deployments marked as http_router: {http_router_deployments}. "
+            "Only one deployment per application can be the HTTP router for "
+            "ingress bypass mode."
+        )
+
     return deployment_infos
