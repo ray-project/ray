@@ -8,6 +8,8 @@ to that LLMServer replica's direct ingress port.
 import asyncio
 from typing import Dict, List, Tuple
 
+from starlette.responses import JSONResponse
+
 from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
@@ -52,8 +54,6 @@ class LLMRouter:
         try:
             parsed = orjson.loads(body)
         except Exception:
-            from starlette.responses import JSONResponse
-
             return JSONResponse({"error": "invalid json"}, status_code=400)
 
         default_model_id = (
@@ -67,30 +67,34 @@ class LLMRouter:
         model_id = model or default_model_id
 
         if model_id is None:
-            from starlette.responses import JSONResponse
-
             return JSONResponse({"error": "no model"}, status_code=404)
 
         try:
             host, port, replica_id = await self._pick_replica(model_id)
         except Exception as e:
-            from starlette.responses import JSONResponse
-
             return JSONResponse({"error": str(e)}, status_code=503)
-
-        from starlette.responses import JSONResponse
 
         return JSONResponse({"host": host, "port": port})
 
-    async def _start_load_poller(self, replicas):
-        """Background task: poll all replica queue lengths periodically."""
+    async def _start_load_poller(self):
+        """Background task: poll replica queue lengths periodically.
+
+        Refreshes the replica list from the request router each iteration
+        so scaling events are reflected.
+        """
         while True:
-            for r in replicas:
-                try:
-                    load = await r.get_queue_len(deadline_s=0.5)
-                    self._di_load_cache[r.replica_id] = load
-                except Exception:
-                    pass
+            for handle in self._default_serve_handles.values():
+                request_router = handle._get_request_router()
+                if request_router is None:
+                    continue
+                for r in request_router.curr_replicas.values():
+                    if r.direct_ingress_endpoint is None:
+                        continue
+                    try:
+                        load = await r.get_queue_len(deadline_s=0.5)
+                        self._di_load_cache[r.replica_id] = load
+                    except Exception:
+                        pass
             await asyncio.sleep(0.05)
 
     async def _pick_replica(self, model_id: str) -> Tuple[str, int, str]:
@@ -117,9 +121,7 @@ class LLMRouter:
 
         if not self._load_poller_started:
             self._load_poller_started = True
-            asyncio.get_event_loop().create_task(
-                self._start_load_poller(direct_ingress_replicas)
-            )
+            asyncio.get_event_loop().create_task(self._start_load_poller())
 
         best = min(
             direct_ingress_replicas,

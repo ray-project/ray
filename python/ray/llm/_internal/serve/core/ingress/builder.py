@@ -142,7 +142,7 @@ def build_openai_app(builder_config: dict) -> Application:
 
         logger.info("Direct streaming enabled: creating LLMRouter deployment")
 
-        app = serve.deployment(LLMRouter, router=True).bind(
+        app = serve.deployment(LLMRouter, router=True, max_ongoing_requests=1000,).bind(
             llm_deployments=llm_deployments,
         )
         return app
