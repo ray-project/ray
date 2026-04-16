@@ -565,7 +565,7 @@ void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
   }
   original_oom_score_file.close();
   oom_score_file.open(filename, std::ofstream::out);
-  int relative_oom_score_adj = RayConfig::instance().worker_oom_score_adjustment();
+  int relative_oom_score_adj = std::min(RayConfig::instance().worker_oom_score_adjustment(), 1000);
   relative_oom_score_adj = std::max(relative_oom_score_adj, 0);
   int oom_score_adj = std::min(original_oom_score_adj + relative_oom_score_adj, 1000);
   if (oom_score_file.is_open()) {
