@@ -29,7 +29,7 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- if has_custom_request_routing and lua_script_path %}
     lua-load-per-thread {{ lua_script_path }}
     {%- endif %}
-    {%- if config.enable_server_state_persistence %}
+    {%- if config.enable_hap_optimization %}
     server-state-base {{ config.server_state_base }}
     server-state-file {{ config.server_state_file }}
     {%- endif %}
@@ -52,7 +52,7 @@ defaults
     # Set TCP_NODELAY on all connections
     option http-no-delay
     {%- endif %}
-    {%- if config.enable_idle_close_on_response %}
+    {%- if config.enable_hap_optimization %}
     option idle-close-on-response
     {%- endif %}
     # Normalize 502 and 504 errors to 500 per Serve's default behavior
@@ -60,7 +60,7 @@ defaults
     errorfile 502 {{ config.error_file_path }}
     errorfile 504 {{ config.error_file_path }}
     {%- endif %}
-    {%- if config.enable_server_state_persistence %}
+    {%- if config.enable_hap_optimization %}
     load-server-state-from-file global
     {%- endif %}
     balance {{ config.balance_algorithm }}
@@ -82,8 +82,7 @@ frontend http_frontend
     {%- endif %}
     {%- if has_custom_request_routing %}
     option http-buffer-request
-    acl is_streaming_path path /v1/chat/completions /v1/completions
-    http-request lua.route_direct_ingress_request if is_streaming_path METH_POST
+    http-request lua.route_direct_ingress_request if METH_POST
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
