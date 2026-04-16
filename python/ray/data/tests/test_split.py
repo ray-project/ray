@@ -350,7 +350,7 @@ def test_split_proportionately(ray_start_regular_shared_2_cpus):
 
 def test_split(ray_start_regular_shared_2_cpus):
     ds = ray.data.range(20, override_num_blocks=10)
-    assert ds._plan.initial_num_blocks() == 10
+    assert ds._logical_plan.initial_num_blocks() == 10
     assert ds.sum() == 190
     assert ds._block_num_rows() == [2] * 10
 
