@@ -15,7 +15,6 @@ from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 import ray
 from ray import ObjectRef, cloudpickle
 from ray._common import ray_constants
-from ray._private.async_compat import has_async_methods
 from ray.actor import ActorHandle
 from ray.exceptions import (
     RayActorError,
@@ -45,9 +44,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
-    CONTROLLER_MAX_CONCURRENCY,
     DEFAULT_LATENCY_BUCKET_MS,
-    DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_UNHEALTHY_THRESHOLD,
@@ -186,18 +183,11 @@ class DeploymentActorWrapper:
             # Serve recreates deployment actors after failed health checks instead
             # of relying on Ray actor restarts.
             actor_options["max_restarts"] = 0
-            # Allow deployment actors to handle concurrent calls from multiple
-            # replicas without blocking. For async actor classes Ray uses
-            # lightweight coroutines, so a high limit is safe. For synchronous
-            # classes each concurrency slot maps to an OS thread, so we cap the
-            # default to avoid creating thousands of threads on startup.
-            if "max_concurrency" not in actor_options:
-                if has_async_methods(actor_cls):
-                    actor_options["max_concurrency"] = CONTROLLER_MAX_CONCURRENCY
-                else:
-                    actor_options[
-                        "max_concurrency"
-                    ] = DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY
+            # Don't override max_concurrency — let Ray core use its defaults
+            # (1 for sync actors, 1000 for async). Previously this was set to
+            # CONTROLLER_MAX_CONCURRENCY (15,000) which caused sync actors to
+            # create 15,000 OS threads via BoundedExecutor, stalling or
+            # crashing worker startup under CI resource contention.
             self._handle = actor_cls.options(
                 name=self._actor_name,
                 namespace=SERVE_NAMESPACE,

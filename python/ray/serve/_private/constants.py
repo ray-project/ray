@@ -228,12 +228,6 @@ CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
     "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY", 15_000
 )
 
-#: Default max_concurrency for synchronous deployment-scoped actors.
-#: For sync actors, each concurrency slot maps to an OS thread via
-#: BoundedExecutor, so this must stay bounded to avoid creating
-#: thousands of threads on startup.
-DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY = 100
-
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
