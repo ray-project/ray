@@ -296,10 +296,9 @@ TEST_F(
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(result.value());
 
   // When resource isolation is enabled, GetMemoryThreshold uses
-  // memory.max - kill_memory_buffer_bytes regardless of other parameters.
+  // memory.max - THRESHOLD_MONITOR_REACTION_BUFFER regardless of other parameters.
   int64_t expected_threshold =
-      user_memory_max_bytes -
-      static_cast<int64_t>(RayConfig::instance().kill_memory_buffer_bytes());
+      user_memory_max_bytes - MemoryMonitorInterface::THRESHOLD_MONITOR_REACTION_BUFFER;
   ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
                 /*total_memory_bytes=*/16LL * 1024 * 1024 * 1024,
                 /*usage_threshold=*/0.5,
