@@ -603,19 +603,10 @@ class OpenAiIngress(DeploymentProtocol):
     async def _pick_routed_direct_ingress_endpoint(
         self, model_id: str
     ) -> Tuple[str, int, str]:
-        """Pick a replica via P2C with background-polled load and return
-        (host, port, rid).
+        """Pick the least-loaded replica using background-polled queue lengths.
 
-        Uses power-of-two-choices: pick 2 random replicas, compare their
-        cached queue lengths (refreshed every 50ms by background poller),
-        route to the lighter one.
-
-        No per-request RPCs — routing decisions use cached load data,
-        keeping the routing path fast and preserving request delivery
-        timing patterns.
+        Returns (host, port, rid).
         """
-        import asyncio
-
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -641,24 +632,9 @@ class OpenAiIngress(DeploymentProtocol):
                 self._start_load_poller(direct_ingress_replicas)
             )
 
-        # P2C: pick 2 random candidates.
-        replica_tiers = await request_router.choose_replicas(
-            candidate_replicas=direct_ingress_replicas,
-            pending_request=None,
-        )
-        if not replica_tiers or not replica_tiers[0]:
-            raise RuntimeError(f"P2C returned no candidates for {model_id}")
-        candidates = [
-            r for r in replica_tiers[0] if r.direct_ingress_endpoint is not None
-        ]
-        if not candidates:
-            raise RuntimeError(
-                f"P2C candidates have no direct-ingress endpoints for {model_id}"
-            )
-
-        # Compare using background-polled cache (no per-request RPC).
+        # Least-connections: pick the replica with the lowest cached queue length.
         best = min(
-            candidates,
+            direct_ingress_replicas,
             key=lambda r: self._di_load_cache.get(r.replica_id, float("inf")),
         )
         return (*best.direct_ingress_endpoint, best.replica_id.unique_id)
