@@ -182,8 +182,13 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
                                        pool_id);
 
     // Pre-register ObjectRefs with TaskManager so caller gets refs immediately.
-    bool is_streaming = (task_options.num_returns == -1);
-    size_t num_returns = is_streaming ? 1 : static_cast<size_t>(task_options.num_returns);
+    // kStreamingGeneratorReturn (-2) indicates a streaming generator; -1 means
+    // dynamic returns.  Both require exactly one return ObjectRef.
+    bool is_streaming = (task_options.num_returns == kStreamingGeneratorReturn);
+    bool returns_dynamic = (task_options.num_returns == -1);
+    size_t num_returns = (is_streaming || returns_dynamic)
+                             ? 1
+                             : static_cast<size_t>(task_options.num_returns);
     return_refs = task_manager_.RegisterPoolTaskReturnValues(rpc_address_,
                                                              pool_task_id,
                                                              num_returns,
@@ -198,7 +203,8 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
     pool_task_id =
         TaskID::ForPoolTask(JobID::FromInt(0), TaskID::Nil(), test_counter++, pool_id);
     // Build return refs without TaskManager registration.
-    size_t num_returns = (task_options.num_returns == -1)
+    size_t num_returns = (task_options.num_returns == kStreamingGeneratorReturn ||
+                          task_options.num_returns == -1)
                              ? 1
                              : static_cast<size_t>(task_options.num_returns);
     for (size_t i = 0; i < num_returns; i++) {
