@@ -82,7 +82,7 @@ extensions = [
 
 # -- sphinx-collections: pull external template files at build time -----------
 
-_TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
+_TEMPLATES_CI_BASE = "https://templates.dev.ci.ray.io"
 _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
 
 _TEMPLATE_COLLECTIONS = {
