@@ -1130,14 +1130,6 @@ class Replica:
 
         self._num_queued_requests = 0
 
-        # Custom ASGI app for ingress bypass: user code calls
-        # ray.serve.context.set_asgi_app(app) during __init__ or start(),
-        # and _maybe_start_direct_ingress_servers() picks it up at init time.
-        self._pending_custom_asgi_app = None
-        ray.serve.context._set_asgi_app_callback(
-            lambda app: setattr(self, "_pending_custom_asgi_app", app)
-        )
-
     @property
     def max_ongoing_requests(self) -> int:
         return self._deployment_config.max_ongoing_requests
@@ -1918,7 +1910,13 @@ class Replica:
         return self._deployment_config.max_queued_requests
 
     async def _maybe_start_direct_ingress_servers(self):
-        has_custom_app = self._pending_custom_asgi_app is not None
+        # Check if the user callable set a direct_ingress_app attribute
+        # during __init__ or start() (follows the hasattr/getattr convention
+        # used for check_health, reconfigure, etc.)
+        custom_app = getattr(
+            self._user_callable_wrapper.user_callable, "direct_ingress_app", None
+        )
+        has_custom_app = custom_app is not None
 
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS and not has_custom_app:
             return
@@ -1985,12 +1983,12 @@ class Replica:
 
         grpc_enabled = is_grpc_enabled(self._grpc_options)
 
-        # Choose which ASGI app to serve: custom (from set_asgi_app) or default.
-        # Wrap custom apps with counting middleware so the replica's
-        # num_ongoing_requests counter reflects direct-ingress traffic,
-        # making the request router's choose_replicas() load-aware.
+        # Choose which ASGI app to serve: custom (from direct_ingress_app
+        # attribute) or default. Wrap custom apps with counting middleware
+        # so the replica's num_ongoing_requests counter reflects
+        # direct-ingress traffic, making choose_replicas() load-aware.
         if has_custom_app:
-            inner_app = self._pending_custom_asgi_app
+            inner_app = custom_app
             metrics_mgr = self._metrics_manager
             _di_metadata = RequestMetadata(
                 request_id="",
