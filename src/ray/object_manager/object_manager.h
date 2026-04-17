@@ -496,6 +496,15 @@ class ObjectManager : public ObjectManagerInterface,
   /// Callback invoked when a push completes (for move semantics).
   std::function<void(const ObjectID &)> on_push_complete_;
 
+  /// Per-push ack tracking for move semantics. Tracks how many chunks
+  /// have been acknowledged by the remote node.
+  struct PushAckState {
+    int64_t total_chunks;
+    int64_t acked_chunks = 0;
+    bool failed = false;
+  };
+  absl::flat_hash_map<std::pair<ObjectID, NodeID>, PushAckState> push_ack_tracking_;
+
   /// Object pull manager.
   std::unique_ptr<PullManager> pull_manager_;
 

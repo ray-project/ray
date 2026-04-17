@@ -98,19 +98,10 @@ ObjectManager::ObjectManager(
       get_spilled_object_url_(std::move(get_spilled_object_url)),
       pull_retry_timer_(*main_service_,
                         boost::posix_time::milliseconds(config.timer_freq_ms)),
-      push_manager_(std::make_unique<PushManager>(
-          /* max_chunks_in_flight= */ std::max(
-              static_cast<int64_t>(1L),
-              static_cast<int64_t>(config_.max_bytes_in_flight /
-                                   config_.object_chunk_size)),
-          /* push_complete_fn= */
-          [this](const ObjectID &object_id, const NodeID &dest_node_id) {
-            RAY_LOG(DEBUG) << "Push complete for " << object_id << " to " << dest_node_id
-                           << ", invoking move semantic callback";
-            if (on_push_complete_) {
-              on_push_complete_(object_id);
-            }
-          })),
+      push_manager_(std::make_unique<PushManager>(/* max_chunks_in_flight= */ std::max(
+          static_cast<int64_t>(1L),
+          static_cast<int64_t>(config_.max_bytes_in_flight /
+                               config_.object_chunk_size)))),
       object_manager_client_factory_(std::move(object_manager_client_factory)) {
   RAY_CHECK_GT(config_.rpc_service_threads_number, 0);
 
@@ -469,8 +460,14 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
       << ", total data size: " << chunk_reader->GetObject().GetObjectSize();
 
   auto push_id = UniqueID::FromRandom();
+  auto num_chunks = chunk_reader->GetNumChunks();
+
+  // Register for per-push ack tracking (move semantics).
+  auto push_key = std::make_pair(object_id, node_id);
+  push_ack_tracking_[push_key] = {num_chunks, 0, /*failed=*/false};
+
   push_manager_->StartPush(
-      node_id, object_id, chunk_reader->GetNumChunks(), [=](int64_t chunk_id) {
+      node_id, object_id, num_chunks, [=](int64_t chunk_id) {
         rpc_service_.post(
             [=]() {
               // Post to the multithreaded RPC event loop so that data is copied
@@ -484,8 +481,27 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                   [=](const Status &status) {
                     // Post back to the main event loop because the
                     // PushManager is not thread-safe.
-                    main_service_->post([this]() { push_manager_->OnChunkComplete(); },
-                                        "ObjectManager.Push");
+                    main_service_->post(
+                        [this, object_id, node_id, status]() {
+                          push_manager_->OnChunkComplete();
+                          // Track per-push ack for move semantics.
+                          auto key = std::make_pair(object_id, node_id);
+                          auto it = push_ack_tracking_.find(key);
+                          if (it != push_ack_tracking_.end()) {
+                            if (!status.ok()) {
+                              it->second.failed = true;
+                            }
+                            it->second.acked_chunks++;
+                            if (it->second.acked_chunks == it->second.total_chunks) {
+                              bool success = !it->second.failed;
+                              push_ack_tracking_.erase(it);
+                              if (success && on_push_complete_) {
+                                on_push_complete_(object_id);
+                              }
+                            }
+                          }
+                        },
+                        "ObjectManager.Push");
                   },
                   chunk_reader,
                   from_disk);
