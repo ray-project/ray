@@ -302,12 +302,17 @@ class SplitCoordinator:
                     timeout=BLOCKED_CLIENT_WARN_TIMEOUT,
                 ):
                     if log_once(f"stream_split_blocked_{split_idx}_{target_epoch}"):
+                        ready = sorted(self._ready_consumers)
+                        pending = sorted(
+                            set(range(self._num_splits)) - self._ready_consumers
+                        )
                         logger.warning(
                             f"StreamSplitDataIterator(split={split_idx}) "
                             f"blocked waiting on other clients for at least "
-                            f"{BLOCKED_CLIENT_WARN_TIMEOUT}s. All clients must "
-                            "read from the DataIterator splits at the same "
-                            "time."
+                            f"{BLOCKED_CLIENT_WARN_TIMEOUT}s. "
+                            f"Ready splits: {ready}; waiting on splits: "
+                            f"{pending}. All clients must read from the "
+                            "DataIterator splits at the same time."
                         )
 
         if self._gen_epoch_error is not None:
