@@ -758,6 +758,7 @@ def _map_task(
         )
 
         blocks_iter = _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
+        yielded_schema: bool = False
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in map_transformer.apply_transform(blocks_iter, ctx):
@@ -792,9 +793,9 @@ def _map_task(
                             task_wall_time_s=task_dur_s
                         ),
                     ),
-                    # TODO only pass schema w/ the first block
-                    schema=block_schema,
+                    schema=block_schema if not yielded_schema else None,
                 )
+                yielded_schema = True
 
                 # Reset trackers
                 blk_exec_stats_builder = BlockExecStats.builder()
