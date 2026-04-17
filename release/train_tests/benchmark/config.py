@@ -86,6 +86,10 @@ class BenchmarkConfig(BaseModel):
     # Training
     num_epochs: int = 1
     skip_train_step: bool = False
+    # Simulates a slow training consumer by sleeping for this many seconds
+    # after each training step. Used to benchmark dataloader behavior under
+    # consumer back-pressure. 0 disables the sleep.
+    train_step_sleep_s: float = 0.0
 
     # Checkpointing
     checkpoint_every_n_steps: int = -1
