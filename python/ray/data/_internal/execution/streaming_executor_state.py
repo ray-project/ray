@@ -802,9 +802,6 @@ def dedupe_schemas_with_validation(
 
     from ray.data.block import _is_empty_schema
 
-    if bundle.schema is None:
-        return old_schema, diverged
-
     if _is_empty_schema(old_schema):
         return bundle, diverged
 
@@ -812,8 +809,8 @@ def dedupe_schemas_with_validation(
     if old_schema == bundle.schema:
         return bundle, diverged
 
-    diverged = True
-    if enforce_schemas:
+    if enforce_schemas and bundle.schema is not None:
+        diverged = True
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 
     return (
