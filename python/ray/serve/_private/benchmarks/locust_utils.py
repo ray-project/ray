@@ -338,7 +338,7 @@ def run_multi_endpoint_worker(
     )
     all_classes = warmup_classes + ramp_classes
 
-    env = Environment(user_classes=all_classes, events=locust.events)
+    env = Environment(user_classes=all_classes, events=locust.events, stop_timeout=120)
     runner = env.create_worker_runner(
         master_host=master_address, master_port=MASTER_PORT
     )
@@ -435,6 +435,7 @@ def run_multi_endpoint_master(
         user_classes=all_classes,
         shape_class=MultiEndpointLoadShape(),
         events=locust.events,
+        stop_timeout=120,
     )
     master_runner = master_env.create_master_runner(
         master_bind_host="*", master_bind_port=MASTER_PORT

@@ -338,7 +338,7 @@ def main(output_path: Optional[str]):
     )
 
     with start_service(
-        "proxy-autoscaling",
+        service_name="multi-deployment-autoscaling",
         compute_config=compute_config,
         applications=APPLICATIONS,
         working_dir="workloads",
