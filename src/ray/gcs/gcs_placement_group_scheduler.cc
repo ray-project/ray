@@ -686,15 +686,33 @@ std::optional<std::string> ExtractLabelDomain(
   // Check if a domain was set for the PG, if so return it
   std::optional<std::string> label_domain = placement_group.GetLabelDomainKey();
   if (label_domain.has_value()) {
-    // During a partial reschedule preserve the domain to maintain affinity
-    // for the currently placed bundles.
-    if (!is_scheduling_all_bundles) {
+    const std::string &key = label_domain.value();
+
+    // If the label domain is not GPU-related, return it. Only GPU Accelerator
+    // label domains are dynamically injected, so if a non-GPU label domain is
+    // set it's explicitly required by the PG.
+    if (key != kGpuDomainLabelKey) {
       return label_domain;
     }
 
-    // Explicitly set domains are PG-level and immutable
-    if (label_domain.value() != kGpuDomainLabelKey) {
+    // During a partial reschedule preserve the domain to maintain affinity
+    // for the currently placed bundles.
+    if (placement_group.GetLabelDomainAssignment(key).has_value()) {
       return label_domain;
+    }
+
+    // If a label domain is set with no assignment, verify that the current active
+    // requests require a labl domain.
+    for (const auto *request : active_requests) {
+      for (const auto &constraint : request->GetLabelSelector().GetConstraints()) {
+        if (key == kGpuDomainLabelKey) {
+          if (IsGpuAcceleratorConstraint(constraint)) {
+            return label_domain;
+          }
+        } else if (constraint.key == key) {
+          return label_domain;
+        }
+      }
     }
   }
 
