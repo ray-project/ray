@@ -47,10 +47,6 @@ class ShuffleStrategy(str, enum.Enum):
 # fraction set by Ray core), assuming typical memory:core ratio of 4:1.
 DEFAULT_TARGET_MAX_BLOCK_SIZE = 128 * 1024 * 1024
 
-DEFAULT_BATCH_SIZE_BYTES: int = env_integer(
-    "RAY_DATA_DEFAULT_BATCH_SIZE_BYTES", 16 * 1024 * 1024  # 16 MiB
-)
-
 # We set a higher target block size because we have to materialize
 # all input blocks anyway, so there is no performance advantage to having
 # smaller blocks. Setting a larger block size allows avoiding overhead from an
@@ -481,7 +477,6 @@ class DataContext:
     Args:
         target_max_block_size: The max target block size in bytes for reads and
             transformations. If `None`, this means the block size is infinite.
-        default_batch_size_bytes: The default batch size in bytes for map_batches and other batch-based operators.
         target_min_block_size: Ray Data avoids creating blocks smaller than this
             size in bytes on read. This takes precedence over
             ``read_op_min_num_blocks``.
@@ -643,7 +638,6 @@ class DataContext:
 
     # `None` means the block size is infinite.
     target_max_block_size: Optional[int] = DEFAULT_TARGET_MAX_BLOCK_SIZE
-    default_batch_size_bytes: int = DEFAULT_BATCH_SIZE_BYTES
     target_min_block_size: int = DEFAULT_TARGET_MIN_BLOCK_SIZE
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK

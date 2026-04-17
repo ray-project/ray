@@ -16,11 +16,15 @@ from typing import (
     Union,
 )
 
+from ray._common.utils import env_integer
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data.block import BatchFormat, Block, BlockAccessor, DataBatch
-from ray.data.context import DataContext
+
+_DEFAULT_BATCH_SIZE_BYTES: int = env_integer(
+    "RAY_DATA_DEFAULT_BATCH_SIZE_BYTES", 16 * 1024 * 1024  # 16 MiB
+)
 
 # Allowed input/output data types for a MapTransformFn.
 Row = Dict[str, Any]
@@ -331,7 +335,7 @@ def _compute_auto_batch_size(
 ) -> Tuple[Optional[int], Iterable[Block]]:
     """Peek at the first non-empty block to determine the batch size to use for the
     'auto' batch_size option."""
-    target_batch_size = DataContext.get_current().default_batch_size_bytes
+    target_batch_size = _DEFAULT_BATCH_SIZE_BYTES
     sample, blocks = _peek_first_nonempty_block(blocks)
     if sample is None:
         return None, blocks
