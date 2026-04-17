@@ -164,7 +164,7 @@ def _shuffle_map(
 
 @ray.remote
 def _shuffle_reduce(
-    *blocks: Block,
+    block_refs: List[ObjectRef],
     target_max_block_size: Optional[int] = None,
     should_sort: bool = False,
     key_columns: Optional[List[str]] = None,
@@ -174,8 +174,13 @@ def _shuffle_reduce(
     This is a streaming generator that yields ``(block, metadata)`` pairs,
     compatible with :class:`DataOpTask`.
 
+    Block refs are resolved incrementally via ``ray.get()`` one at a time so
+    that only one input shard needs to be in memory at any moment.  Each shard
+    is freed immediately after concatenation, reducing peak object-store
+    pressure and avoiding unnecessary spilling.
+
     Args:
-        *blocks: Partition shards.
+        block_refs: Object references to the partition shards.
         target_max_block_size: If set, output blocks are reshaped to this
             target size.
         should_sort: Whether to sort the output by ``key_columns``.
@@ -184,13 +189,16 @@ def _shuffle_reduce(
     start_time_s = time.perf_counter()
     exec_stats_builder = BlockExecStats.builder()
 
-    if not blocks:
+    if not block_refs:
         return
 
-    # Concatenate into a single block.
+    # Concatenate shards incrementally – resolve one ref at a time to keep
+    # peak memory low and allow earlier object freeing.
     builder = ArrowBlockBuilder()
-    for block in blocks:
+    for ref in block_refs:
+        block = ray.get(ref)
         builder.add_block(block)
+        del block
     result = builder.build()
 
     if result.num_rows == 0:
@@ -675,10 +683,9 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
             block_gen = _shuffle_reduce.options(
                 **reduce_resources,
-                scheduling_strategy="SPREAD",
                 num_returns="streaming",
             ).remote(
-                *shard_refs,
+                shard_refs,
                 target_max_block_size=target_max_block_size,
                 should_sort=self._should_sort,
                 key_columns=self._key_columns if self._should_sort else None,
