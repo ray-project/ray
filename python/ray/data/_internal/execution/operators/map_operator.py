@@ -2,6 +2,7 @@ import copy
 import functools
 import itertools
 import logging
+import pickle
 import time
 from abc import ABC, abstractmethod
 from dataclasses import replace
@@ -784,7 +785,7 @@ def _map_task(
                 # TODO figure out a better way to track task total duration
                 task_dur_s = time.perf_counter() - task_start_s
 
-                yield BlockMetadataWithSchema.from_metadata(
+                bm = BlockMetadataWithSchema.from_metadata(
                     replace(
                         block_meta,
                         exec_stats=exec_stats,
@@ -795,6 +796,7 @@ def _map_task(
                     # TODO only pass schema w/ the first block
                     schema=block_schema,
                 )
+                yield pickle.dumps(bm)
 
                 # Reset trackers
                 blk_exec_stats_builder = BlockExecStats.builder()

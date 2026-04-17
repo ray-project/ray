@@ -1,5 +1,6 @@
 import abc
 import logging
+import pickle
 import time
 import uuid
 from abc import ABC, abstractmethod
@@ -252,7 +253,7 @@ class DataOpTask(OpTask):
                 # block metadata to this node. So, if we set the timeout to 0, `ray.get`
                 # will timeout and possible cancel the download. To avoid this issue,
                 # we set the timeout to a small non-zero value.
-                meta_with_schema: "BlockMetadataWithSchema" = ray.get(
+                meta_with_schema_bytes: bytes = ray.get(
                     self._pending_meta_ref, timeout=METADATA_GET_TIMEOUT_S
                 )
             except ray.exceptions.GetTimeoutError:
@@ -268,6 +269,9 @@ class DataOpTask(OpTask):
                 )
                 break
 
+            meta_with_schema: "BlockMetadataWithSchema" = pickle.loads(
+                meta_with_schema_bytes
+            )
             meta = meta_with_schema.metadata
             self._output_ready_callback(
                 RefBundle(
