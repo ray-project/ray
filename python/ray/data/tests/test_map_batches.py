@@ -550,7 +550,7 @@ def test_map_batches_block_bundling_auto(
     num_blocks = max(10, 2 * batch_size // block_size)
     ds = ray.data.range(num_blocks * block_size, override_num_blocks=num_blocks)
     # Confirm that we have the expected number of initial blocks.
-    assert ds._plan.initial_num_blocks() == num_blocks
+    assert ds._logical_plan.initial_num_blocks() == num_blocks
 
     # Blocks should be bundled up to the batch size.
     ds1 = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
@@ -562,11 +562,11 @@ def test_map_batches_block_bundling_auto(
         / max(math.ceil(batch_size / block_size), 1)
     )
 
-    assert ds1._plan.initial_num_blocks() == num_expected_blocks
+    assert ds1._logical_plan.initial_num_blocks() == num_expected_blocks
 
     # Blocks should not be bundled up when batch_size is not specified.
     ds2 = ds.map_batches(lambda x: x).materialize()
-    assert ds2._plan.initial_num_blocks() == num_blocks
+    assert ds2._logical_plan.initial_num_blocks() == num_blocks
 
 
 @pytest.mark.parametrize(
@@ -594,11 +594,11 @@ def test_map_batches_block_bundling_skewed_manual(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
-    assert ds._plan.initial_num_blocks() == num_blocks
+    assert ds._logical_plan.initial_num_blocks() == num_blocks
     ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
 
     # Blocks should be bundled up to the batch size.
-    assert ds._plan.initial_num_blocks() == expected_num_blocks
+    assert ds._logical_plan.initial_num_blocks() == expected_num_blocks
 
 
 BLOCK_BUNDLING_SKEWED_TEST_CASES = [
@@ -623,7 +623,7 @@ def test_map_batches_block_bundling_skewed_auto(
         [pd.DataFrame({"a": [1] * block_size}) for block_size in block_sizes]
     )
     # Confirm that we have the expected number of initial blocks.
-    assert ds._plan.initial_num_blocks() == num_blocks
+    assert ds._logical_plan.initial_num_blocks() == num_blocks
     ds = ds.map_batches(lambda x: x, batch_size=batch_size).materialize()
 
     curr = 0
@@ -637,7 +637,7 @@ def test_map_batches_block_bundling_skewed_auto(
         num_out_blocks += 1
 
     # Blocks should be bundled up to the batch size.
-    assert ds._plan.initial_num_blocks() == num_out_blocks
+    assert ds._logical_plan.initial_num_blocks() == num_out_blocks
 
 
 def test_map_batches_preserve_empty_blocks(
@@ -646,7 +646,7 @@ def test_map_batches_preserve_empty_blocks(
     ds = ray.data.range(10, override_num_blocks=10)
     ds = ds.map_batches(lambda x: [])
     ds = ds.map_batches(lambda x: x)
-    assert ds._plan.initial_num_blocks() == 10, ds
+    assert ds._logical_plan.initial_num_blocks() == 10, ds
 
 
 def test_map_batches_combine_empty_blocks(

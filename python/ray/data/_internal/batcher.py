@@ -1,6 +1,8 @@
 import warnings
 from typing import Optional
 
+import numpy as np
+
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
@@ -15,6 +17,11 @@ from ray.util import log_once
 # frequent compactions. Setting this to higher values increases memory usage but
 # reduces compaction frequency.
 SHUFFLE_BUFFER_COMPACTION_RATIO = 1.5
+
+# Ratio of remaining compacted rows to shuffle_buffer_min_size at which
+# compaction (and re-shuffling of indices) is triggered. Experiments show 0.5
+# is a good trade-off between throughput and randomness.
+SHUFFLE_BUFFER_COMPACTION_THRESHOLD = 0.5
 
 
 class BatcherInterface:
@@ -160,24 +167,29 @@ class Batcher(BatcherInterface):
 
 
 class ShufflingBatcher(BatcherInterface):
-    """Chunks blocks into shuffled batches, using a local in-memory shuffle buffer."""
+    """Chunks blocks into shuffled batches, using a local in-memory shuffle buffer.
 
-    # Implementation Note:
-    #
-    # This shuffling batcher lazily builds a shuffle buffer from added blocks, and once
-    # a batch is requested via .next_batch(), it concatenates the blocks into a concrete
-    # shuffle buffer and randomly shuffles the entire buffer.
-    #
-    # Adding of more blocks can be intermixed with retrieving batches, but it should be
-    # noted that we can end up performing two expensive operations on each retrieval:
-    #  1. Build added blocks into a concrete shuffle buffer.
-    #  2. Shuffling the entire buffer.
-    # To amortize the overhead of this process, we only shuffle the blocks after a
-    # delay designated by SHUFFLE_BUFFER_COMPACTION_RATIO.
-    #
-    # Similarly, adding blocks is very cheap. Each added block will be appended to a
-    # list, with concatenation of the underlying data delayed until the next batch
-    # compaction.
+    Uses an **incremental index** approach: on each compaction a permutation
+    array is generated over the buffer rows, and each ``next_batch()`` call
+    gathers a small slice of that permutation via ``take``.
+
+    Properties of this approach:
+
+    * **Memory-efficient** -- the data buffer is kept as-is; only a
+      lightweight int64 index array is allocated on top.
+    * **Smooth per-batch latency** -- each ``take`` operates on a small
+      slice of indices, so per-batch work is short and uniform, making it
+      easy to hide behind prefetch threads.
+
+    Example with ``batch_size=3`` and a 9-row buffer::
+
+        buffer:  [A, B, C, D, E, F, G, H, I]
+        indices: [4, 7, 1, 0, 8, 3, 6, 2, 5]   # random permutation
+
+        next_batch() -> take([4, 7, 1]) -> [E, H, B]   # batch_head 0 -> 3
+        next_batch() -> take([0, 8, 3]) -> [A, I, D]   # batch_head 3 -> 6
+        next_batch() -> take([6, 2, 5]) -> [G, C, F]   # batch_head 6 -> 9
+    """
 
     def __init__(
         self,
@@ -201,17 +213,22 @@ class ShufflingBatcher(BatcherInterface):
         if batch_size is None:
             raise ValueError("Must specify a batch_size if using a local shuffle.")
         self._batch_size = batch_size
-        self._shuffle_seed = shuffle_seed
+        self._rng = np.random.default_rng(shuffle_seed)
         if shuffle_buffer_min_size < batch_size:
             # Round it up internally to `batch_size` since our algorithm requires it.
             # This is harmless since it only offers extra randomization.
             shuffle_buffer_min_size = batch_size
-        self._min_rows_to_yield_batch = shuffle_buffer_min_size
+        self._shuffle_buffer_min_size = shuffle_buffer_min_size
+
+        self._min_rows_to_yield_batch = max(
+            1, int(shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_THRESHOLD)
+        )
         self._min_rows_to_trigger_compaction = int(
             shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_RATIO
         )
         self._builder = DelegatingBlockBuilder()
         self._shuffle_buffer: Block = None
+        self._shuffled_indices: Optional[np.ndarray] = None
         self._batch_head = 0
         self._done_adding = False
 
@@ -242,7 +259,7 @@ class ShufflingBatcher(BatcherInterface):
                 "store memory, but the shuffle buffer is estimated to use "
                 f"{memory_string(self._estimated_min_nbytes_in_buffers)}. If you don't "
                 f"decrease the shuffle buffer size from "
-                f"{self._min_rows_to_yield_batch} rows, you might encounter spilling."
+                f"{self._shuffle_buffer_min_size} rows, you might encounter spilling."
             )
 
         block_accessor = BlockAccessor.for_block(block)
@@ -289,7 +306,7 @@ class ShufflingBatcher(BatcherInterface):
         if not self._done_adding:
             # Delay pulling of batches until the buffer is large enough in order to
             # amortize compaction overhead.
-            return (
+            return num_rows >= self._batch_size and (
                 self._num_compacted_rows() >= self._min_rows_to_yield_batch
                 or num_rows - self._batch_size >= self._min_rows_to_trigger_compaction
             )
@@ -304,16 +321,10 @@ class ShufflingBatcher(BatcherInterface):
         return self._num_compacted_rows() + self._num_uncompacted_rows()
 
     def _num_compacted_rows(self) -> int:
-        """Return number of unyielded rows in the compacted (shuffle) buffer."""
+        """Return number of unyielded rows in the compacted buffer."""
         if self._shuffle_buffer is None:
             return 0
-        # The size of the concrete (materialized) shuffle buffer, adjusting
-        # for the batch head position, which also serves as a counter of the number
-        # of already-yielded rows from the current concrete shuffle buffer.
-        return max(
-            0,
-            BlockAccessor.for_block(self._shuffle_buffer).num_rows() - self._batch_head,
-        )
+        return max(0, len(self._shuffled_indices) - self._batch_head)
 
     def _num_uncompacted_rows(self) -> int:
         """Return number of unyielded rows in the uncompacted buffer."""
@@ -326,48 +337,39 @@ class ShufflingBatcher(BatcherInterface):
             A batch represented as a Block.
         """
         assert self.has_batch() or (self._done_adding and self.has_any())
-        # Add rows in the builder to the shuffle buffer. Note that we delay compaction
-        # as much as possible to amortize the concatenation overhead. Compaction is
-        # only necessary when the materialized buffer size falls below the min size.
         if self._num_uncompacted_rows() > 0 and (
             self._done_adding
             or self._num_compacted_rows() <= self._min_rows_to_yield_batch
         ):
-            if self._shuffle_buffer is not None:
-                if self._batch_head > 0:
-                    # Compact the materialized shuffle buffer.
-                    block = BlockAccessor.for_block(self._shuffle_buffer)
-                    self._shuffle_buffer = block.slice(
-                        self._batch_head, block.num_rows()
-                    )
-                # Add the unyielded rows from the existing shuffle buffer.
-                self._builder.add_block(self._shuffle_buffer)
-            # Build the new shuffle buffer.
-            self._shuffle_buffer = self._builder.build()
-            self._shuffle_buffer = BlockAccessor.for_block(
-                self._shuffle_buffer
-            ).random_shuffle(self._shuffle_seed)
-            if self._shuffle_seed is not None:
-                self._shuffle_seed += 1
-
-            if isinstance(
-                BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
+            if self._shuffle_buffer is not None and self._batch_head < len(
+                self._shuffled_indices
             ):
+                remaining_indices = self._shuffled_indices[self._batch_head :]
+                remaining_block = BlockAccessor.for_block(self._shuffle_buffer).take(
+                    remaining_indices
+                )
+                self._builder.add_block(remaining_block)
+            self._shuffle_buffer = self._builder.build()
+
+            accessor = BlockAccessor.for_block(self._shuffle_buffer)
+            if isinstance(accessor, ArrowBlockAccessor):
                 self._shuffle_buffer = try_combine_chunked_columns(
                     self._shuffle_buffer, min_chunks_to_combine=1
                 )
+                accessor = BlockAccessor.for_block(self._shuffle_buffer)
 
-            # Reset the builder.
+            num_rows = accessor.num_rows()
+            self._shuffled_indices = self._rng.permutation(num_rows)
+
             self._builder = DelegatingBlockBuilder()
             self._batch_head = 0
 
         assert self._shuffle_buffer is not None
-        buffer_size = BlockAccessor.for_block(self._shuffle_buffer).num_rows()
-        # Truncate the batch to the buffer size, if necessary.
-        batch_size = min(self._batch_size, buffer_size)
-        slice_start = self._batch_head
+        assert self._shuffled_indices is not None
+        remaining = len(self._shuffled_indices) - self._batch_head
+        batch_size = min(self._batch_size, remaining)
+        batch_indices = self._shuffled_indices[
+            self._batch_head : self._batch_head + batch_size
+        ]
         self._batch_head += batch_size
-        # Yield the shuffled batch.
-        return BlockAccessor.for_block(self._shuffle_buffer).slice(
-            slice_start, self._batch_head
-        )
+        return BlockAccessor.for_block(self._shuffle_buffer).take(batch_indices)
