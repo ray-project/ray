@@ -311,6 +311,35 @@ class RowMapTransformFn(MapTransformFn):
         return f"RowMapTransformFn({self._row_fn})"
 
 
+def _peek_first_nonempty_block(
+    blocks: Iterable[Block],
+) -> Tuple[Optional[BlockAccessor], Iterable[Block]]:
+    """Advance the iterator past leading empty blocks to find the first non-empty block,
+    returning the corresponding accessor and a reconstructed iterator of all blocks."""
+    blocks_iter = iter(blocks)
+    consumed = []
+    for block in blocks_iter:
+        consumed.append(block)
+        accessor = BlockAccessor.for_block(block)
+        if accessor.num_rows() > 0 and accessor.size_bytes() > 0:
+            return accessor, itertools.chain(consumed, blocks_iter)
+    return None, iter(consumed)
+
+
+def _compute_auto_batch_size(
+    blocks: Iterable[Block],
+) -> Tuple[Optional[int], Iterable[Block]]:
+    """Peek at the first non-empty block to determine the batch size to use for the
+    'auto' batch_size option."""
+    target_batch_size = DataContext.get_current().default_batch_size_bytes
+    sample, blocks = _peek_first_nonempty_block(blocks)
+    if sample is None:
+        return None, blocks
+    bytes_per_row = sample.size_bytes() / sample.num_rows()
+    computed_batch_size = max(1, int(target_batch_size / bytes_per_row))
+    return computed_batch_size, blocks
+
+
 class BatchMapTransformFn(MapTransformFn):
     """A batch-to-batch MapTransformFn."""
 
@@ -333,43 +362,16 @@ class BatchMapTransformFn(MapTransformFn):
         self._batch_size = batch_size
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
-        self._ensure_copy = not zero_copy_batch and batch_size is not None
 
         self._batch_fn = batch_fn
 
-    def _compute_auto_batch_size(
-        self, blocks: Iterable[Block]
-    ) -> Tuple[Optional[int], Iterable[Block]]:
-        """Peek at the first block to determine the batch size to use for this transform, for the 'auto' batch_size option"""
-        target_batch_size = DataContext.get_current().default_batch_size_bytes
-        blocks_iter = iter(blocks)
-        first = next(blocks_iter, None)
-        if first is None:
-            return None, iter([])
-
-        accessor = BlockAccessor.for_block(first)
-        num_rows = accessor.num_rows()
-        block_size = accessor.size_bytes()
-        if num_rows > 0 and block_size > 0:
-            bytes_per_row = block_size / num_rows
-            computed_batch_size = max(1, int(target_batch_size / bytes_per_row))
-        else:
-            computed_batch_size = None
-        chained_blocks = itertools.chain(
-            [first], blocks_iter
-        )  # Prepend the first (consumed) block back into the iterator
-        return computed_batch_size, chained_blocks
-
     def _pre_process(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:
         # TODO make batch-udf zero-copy by default
-        batch_size_input = self._batch_size
-        batch_size = None
-        if batch_size_input == "auto":
-            computed_batch_size, blocks = self._compute_auto_batch_size(blocks)
-            batch_size = computed_batch_size
+        if self._batch_size == "auto":
+            batch_size, blocks = _compute_auto_batch_size(blocks)
         else:
-            batch_size = batch_size_input
-        ensure_copy = not self._zero_copy_batch and batch_size_input is not None
+            batch_size = self._batch_size
+        ensure_copy = not self._zero_copy_batch and batch_size is not None
         return batch_blocks(
             blocks=iter(blocks),
             stats=None,
