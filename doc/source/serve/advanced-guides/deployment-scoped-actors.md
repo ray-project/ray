@@ -95,4 +95,8 @@ Ray Serve health-checks deployment-scoped actors, and deployment health depends 
 - If the actor constructor keeps failing, the deployment fails to deploy.
 - `actor_options` on the deployment actor let you reserve different resources or override parts of the deployment `runtime_env`.
 
+:::{note}
+Deployment-scoped actors follow Ray actor concurrency semantics. If the actor uses threaded execution, Ray defaults `max_concurrency` to `1`. If the actor is an async actor, Ray defaults `max_concurrency` to `1000`. If those defaults don't fit your workload, set `max_concurrency` explicitly in `actor_options`.
+:::
+
 Even though the actor can survive replica restarts and controller restarts, it isn't a substitute for durable external storage.
