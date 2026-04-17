@@ -3,6 +3,8 @@ import sys
 import pytest
 
 import ray
+from ray.llm._internal.serve.core.configs.accelerators import TPUAccelerator
+from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.tests.conftest import _ray_start_cluster
 from ray.util.placement_group import PlacementGroup, placement_group_table
@@ -203,6 +205,50 @@ def test_compute_use_gpu_with_tpu_and_use_cpu_false():
         )
         is True
     )
+
+
+def test_tpu_slice_placement_group_creation_heterogeneous_tpu_bundles_fail():
+    """
+    Verifies that a ValueError is raised when heterogeneous TPU bundles are provided.
+    """
+
+    config = VLLMEngineConfig(
+        model_id="test-tpu-model",
+        accelerator_type="TPU-V6E",
+        topology="4x4",
+        placement_group_config={
+            "bundles": [{"TPU": 4}, {"TPU": 2}],
+        },
+    )
+    accelerator = TPUAccelerator(config)
+    with pytest.raises(ValueError, match="Heterogeneous TPU bundles are not supported"):
+        accelerator.create_placement_group(name="test-pg")
+
+
+def test_tpu_slice_placement_group_creation_cpu_driver_homogeneous_tpu_bundles_pass(
+    ray_tpu_cluster,
+):
+    """
+    Verifies that CPU-only driver bundles are ignored and do not trigger the error
+    if subsequent TPU bundles are homogeneous.
+    """
+
+    config = VLLMEngineConfig(
+        model_id="test-tpu-model",
+        accelerator_type="TPU-V6E",
+        topology="4x4",
+        placement_group_config={
+            "bundles": [{"CPU": 2}, {"TPU": 4}, {"TPU": 4}],
+        },
+    )
+    accelerator = TPUAccelerator(config)
+
+    pg = accelerator.create_placement_group(name="test-pg")
+
+    # Verify that it created a valid placement group
+    assert isinstance(pg, PlacementGroup)
+
+    ray.util.remove_placement_group(pg)
 
 
 if __name__ == "__main__":

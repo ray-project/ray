@@ -1,7 +1,7 @@
 import copy
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Union
 
 import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.serve.observability.logging import get_logger
@@ -23,7 +23,7 @@ TPU_ACCELERATOR_VALUES = {
 def _compute_use_gpu(
     use_cpu: Optional[bool],
     placement_group_config: Optional[Dict[str, Any]],
-    accelerator_type: Optional[AcceleratorType] = None,
+    accelerator_type: Optional[Union[str, AcceleratorType]] = None,
 ) -> bool:
     """Returns True if the configuration resolves to GPU usage.
 
@@ -50,7 +50,7 @@ def _compute_use_gpu(
     # If the user explicitly requested a TPU, it's not a GPU.
     if accelerator_type:
         accel_str = getattr(accelerator_type, "value", str(accelerator_type))
-        if accel_str.startswith("GOOGLE_TPU") or accel_str.startswith("TPU"):
+        if accel_str in TPU_ACCELERATOR_VALUES:
             return False
 
     # All remaining accelerator types are GPU-capable.
@@ -60,7 +60,7 @@ def _compute_use_gpu(
 def _compute_use_tpu(
     use_cpu: Optional[bool],
     placement_group_config: Optional[Dict[str, Any]],
-    accelerator_type: Optional[AcceleratorType] = None,
+    accelerator_type: Optional[Union[str, AcceleratorType]] = None,
 ) -> bool:
     """Returns True if the configuration resolves to TPU usage."""
     if isinstance(use_cpu, bool) and use_cpu:
@@ -79,7 +79,7 @@ def _compute_use_tpu(
         return False
 
     accel_str = getattr(accelerator_type, "value", str(accelerator_type))
-    return accel_str.startswith("GOOGLE_TPU") or accel_str.startswith("TPU")
+    return accel_str in TPU_ACCELERATOR_VALUES
 
 
 class AcceleratorBackend(ABC):
@@ -156,11 +156,26 @@ class TPUAccelerator(AcceleratorBackend):
             f"Provisioning TPU Slice Placement Group: {version} with topology {topology}"
         )
 
-        worker_bundle = (
-            self.config.placement_bundles[-1]
-            if self.config.placement_bundles
-            else {"TPU": 1}
-        )
+        placement_bundles = self.config.placement_bundles
+        if placement_bundles:
+            # 1. Filter out CPU-only driver bundles
+            tpu_bundles = [b for b in placement_bundles if b.get("TPU", 0) > 0]
+
+            if not tpu_bundles:
+                worker_bundle = {"TPU": 1}
+            else:
+                # 2. Safely grab the first actual TPU bundle
+                worker_bundle = tpu_bundles[0]
+
+                # 3. Raise an error ONLY if the TPU bundles are heterogeneous (fixes the bug!)
+                if any(b != worker_bundle for b in tpu_bundles):
+                    raise ValueError(
+                        "Heterogeneous TPU bundles are not supported when `topology` is set. "
+                        "A multi-host TPU slice requires homogeneous resource bundles across all workers. "
+                        "Please use `bundle_per_worker` in `placement_group_config` to define uniform worker resources."
+                    )
+        else:
+            worker_bundle = {"TPU": 1}
 
         slice_pg_wrapper = slice_placement_group(
             topology=topology,
