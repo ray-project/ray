@@ -13,7 +13,7 @@ steps:
       PYTHON_VERSION: "{{array.python}}"
       IMAGE_TYPE: "ray"
     depends_on:
-      - raycpubaseextra(*)
+      - raycpubaseextra($)
 
   - name: raycudabaseextra-testdeps
     label: "wanda: ray.py{{array.python}}.cu{{array.cuda}}.base-extra-testdeps"
@@ -35,7 +35,7 @@ steps:
       CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "ray"
     depends_on:
-      - raycudabaseextra(*)
+      - raycudabaseextra($)
 
   - name: ray-llmbaseextra-testdeps
     label: "wanda: ray.py{{array.python}}.llm.base-extra-testdeps (cuda {{array.cuda}})"
@@ -54,7 +54,7 @@ steps:
       CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "ray-llm"
     depends_on:
-      - ray-llmbaseextra(*)
+      - ray-llmbaseextra($)
 
   - name: ray-mlcudabaseextra-testdeps
     label: "wanda: ray.py{{array.python}}.cu{{array.cuda}}.ml.base-extra-testdeps"
@@ -69,7 +69,7 @@ steps:
       CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "ray-ml"
     depends_on:
-      - ray-mlcudabaseextra(*)
+      - ray-mlcudabaseextra($)
 
   - name: ray-anyscale-cpu-build
     label: "wanda: ray-anyscale py{{array.python}} cpu"
