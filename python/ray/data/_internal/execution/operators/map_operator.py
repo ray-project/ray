@@ -795,9 +795,9 @@ def _map_task(
                     ),
                     schema=block_schema if not yielded_schema else None,
                 )
-                yielded_schema = True
 
                 # Reset trackers
+                yielded_schema = True
                 blk_exec_stats_builder = BlockExecStats.builder()
                 profiler.reset()
 
