@@ -466,48 +466,47 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
   auto push_key = std::make_pair(object_id, node_id);
   push_ack_tracking_[push_key] = {num_chunks, 0, /*failed=*/false};
 
-  push_manager_->StartPush(
-      node_id, object_id, num_chunks, [=](int64_t chunk_id) {
-        rpc_service_.post(
-            [=]() {
-              // Post to the multithreaded RPC event loop so that data is copied
-              // off of the main thread.
-              SendObjectChunk(
-                  push_id,
-                  object_id,
-                  node_id,
-                  chunk_id,
-                  rpc_client,
-                  [=](const Status &status) {
-                    // Post back to the main event loop because the
-                    // PushManager is not thread-safe.
-                    main_service_->post(
-                        [this, object_id, node_id, status]() {
-                          push_manager_->OnChunkComplete();
-                          // Track per-push ack for move semantics.
-                          auto key = std::make_pair(object_id, node_id);
-                          auto it = push_ack_tracking_.find(key);
-                          if (it != push_ack_tracking_.end()) {
-                            if (!status.ok()) {
-                              it->second.failed = true;
-                            }
-                            it->second.acked_chunks++;
-                            if (it->second.acked_chunks == it->second.total_chunks) {
-                              bool success = !it->second.failed;
-                              push_ack_tracking_.erase(it);
-                              if (success && on_push_complete_) {
-                                on_push_complete_(object_id);
-                              }
-                            }
+  push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
+    rpc_service_.post(
+        [=]() {
+          // Post to the multithreaded RPC event loop so that data is copied
+          // off of the main thread.
+          SendObjectChunk(
+              push_id,
+              object_id,
+              node_id,
+              chunk_id,
+              rpc_client,
+              [=](const Status &status) {
+                // Post back to the main event loop because the
+                // PushManager is not thread-safe.
+                main_service_->post(
+                    [this, object_id, node_id, status]() {
+                      push_manager_->OnChunkComplete();
+                      // Track per-push ack for move semantics.
+                      auto key = std::make_pair(object_id, node_id);
+                      auto it = push_ack_tracking_.find(key);
+                      if (it != push_ack_tracking_.end()) {
+                        if (!status.ok()) {
+                          it->second.failed = true;
+                        }
+                        it->second.acked_chunks++;
+                        if (it->second.acked_chunks == it->second.total_chunks) {
+                          bool success = !it->second.failed;
+                          push_ack_tracking_.erase(it);
+                          if (success && on_push_complete_) {
+                            on_push_complete_(object_id);
                           }
-                        },
-                        "ObjectManager.Push");
-                  },
-                  chunk_reader,
-                  from_disk);
-            },
-            "ObjectManager.Push");
-      });
+                        }
+                      }
+                    },
+                    "ObjectManager.Push");
+              },
+              chunk_reader,
+              from_disk);
+        },
+        "ObjectManager.Push");
+  });
 }
 
 void ObjectManager::SendObjectChunk(
