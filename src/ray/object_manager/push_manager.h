@@ -31,8 +31,11 @@ class PushManager {
   ///
   /// \param max_chunks_in_flight Max number of chunks allowed to be in flight
   ///                             from this PushManager (this raylet).
-  explicit PushManager(int64_t max_chunks_in_flight)
-      : max_chunks_in_flight_(max_chunks_in_flight) {
+  explicit PushManager(
+      int64_t max_chunks_in_flight,
+      std::function<void(const ObjectID &, const NodeID &)> push_complete_fn = nullptr)
+      : max_chunks_in_flight_(max_chunks_in_flight),
+        push_complete_fn_(std::move(push_complete_fn)) {
     RAY_CHECK_GT(max_chunks_in_flight_, 0);
   };
 
@@ -125,6 +128,9 @@ class PushManager {
 
   /// Max number of chunks in flight allowed.
   const int64_t max_chunks_in_flight_;
+
+  /// Called when all chunks of a push have been sent.
+  std::function<void(const ObjectID &, const NodeID &)> push_complete_fn_;
 
   /// Running count of chunks in flight, used to limit progress of in_flight_pushes_.
   int64_t chunks_in_flight_ = 0;

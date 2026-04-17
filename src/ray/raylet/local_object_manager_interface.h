@@ -67,6 +67,9 @@ class LocalObjectManagerInterface {
   virtual bool HasLocallySpilledObjects() const = 0;
 
   virtual std::string DebugString() const = 0;
+
+  /// Release an object (e.g., after move semantics push completion).
+  virtual void ReleaseFreedObject(const ObjectID &) = 0;
 };
 
 };  // namespace raylet

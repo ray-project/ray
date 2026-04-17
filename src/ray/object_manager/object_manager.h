@@ -210,6 +210,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// local object manager. False otherwise.
   bool IsPlasmaObjectSpillable(const ObjectID &object_id) override;
 
+  /// Set a callback that is invoked when a push to another node completes.
+  /// Used to implement move semantics (free local copy after push).
+  void SetOnPushComplete(std::function<void(const ObjectID &)> fn) {
+    on_push_complete_ = std::move(fn);
+  }
+
   /// Consider pushing an object to a remote object manager. This object manager
   /// may choose to ignore the Push call (e.g., if Push is called twice in a row
   /// on the same object, the second one might be ignored).
@@ -486,6 +492,9 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Object push manager.
   std::unique_ptr<PushManager> push_manager_;
+
+  /// Callback invoked when a push completes (for move semantics).
+  std::function<void(const ObjectID &)> on_push_complete_;
 
   /// Object pull manager.
   std::unique_ptr<PullManager> pull_manager_;
