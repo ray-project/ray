@@ -85,6 +85,8 @@ def test_custom_image_build_and_test_init_with_block_step(
             custom_build_jobs_output_file,
             "--test-jobs-output-file",
             test_jobs_output_file,
+            "--selection-block-threshold",
+            "5",
         ],
         catch_exceptions=False,
     )

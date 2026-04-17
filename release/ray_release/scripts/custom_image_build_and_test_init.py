@@ -89,6 +89,12 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     type=str,
     help="The output file for the test jobs json file",
 )
+@click.option(
+    "--selection-block-threshold",
+    type=int,
+    default=0,
+    help="Number of tests to trigger before asking for confirmation when manually triggered; set to 0 to disable blocking regardless of the number of tests.",
+)
 def main(
     test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
@@ -99,6 +105,7 @@ def main(
     run_per_test: int = 1,
     custom_build_jobs_output_file: str = None,
     test_jobs_output_file: str = None,
+    selection_block_threshold: int = 0,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -180,8 +187,11 @@ def main(
     # If the build is manually triggered and there are more than 5 tests
     # Ask user to confirm before launching the tests.
     block_step = None
-    if test_filters and len(tests) >= 5 and os.environ.get("AUTOMATIC", "") != "1":
-        block_step = generate_block_step(len(tests))
+
+    is_automatic = os.environ.get("AUTOMATIC", "") == "1"
+    if not is_automatic and test_filters and selection_block_threshold > 0:
+        if len(tests) >= selection_block_threshold:
+            block_step = generate_block_step(len(tests))
 
     steps = get_step_for_test_group(
         grouped_tests,
