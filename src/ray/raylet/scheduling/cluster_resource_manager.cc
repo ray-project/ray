@@ -304,6 +304,18 @@ void ClusterResourceManager::SetNodeLabels(
   it->second.GetMutableLocalView()->labels = std::move(labels);
 }
 
+const absl::flat_hash_map<std::string, std::string>
+    &ClusterResourceManager::GetNodeLabels(scheduling::NodeID node_id) const {
+  const auto &node = map_find_or_die(nodes_, node_id);
+  return node.GetLocalView().labels;
+}
+
+FixedPoint ClusterResourceManager::GetNodeTotalResources(
+    scheduling::NodeID node_id, scheduling::ResourceID resource_id) const {
+  const auto &node = map_find_or_die(nodes_, node_id);
+  return node.GetLocalView().total.Get(resource_id);
+}
+
 void ClusterResourceManager::RecordMetrics() const {
   local_resource_view_node_count_gauge_.Record(static_cast<double>(nodes_.size()));
 }
