@@ -759,9 +759,11 @@ def _map_task(
 
         blocks_iter = _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
 
-        # NOTE: We avoid the cost of deduping schemas in the task because we
-        # each block slice should have the same schema, since each slice originates
-        # from the UDF's output block, and slicing preserves the schema.
+        # NOTE: We avoid the cost of deduping schemas in the task because
+        # each yielded block should have the same schema, since each one
+        # is a slice of the UDF's single output block, and we know that
+        # slicing preserves the schema (so all yielded blocks will have
+        # the same schema)
         yielded_schema: bool = False
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
