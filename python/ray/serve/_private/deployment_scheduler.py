@@ -248,9 +248,9 @@ class DeploymentSchedulingInfo:
         ):
             return sum(self.placement_group_bundles, Resources())
         elif self.placement_group_bundles is not None:
-            return copy.deepcopy(self.placement_group_bundles[0])
+            return Resources(self.placement_group_bundles[0])
         else:
-            required = self.actor_resources
+            required = Resources(self.actor_resources)
 
             # Using implicit resource (resources that every node
             # implicitly has and total is 1)
