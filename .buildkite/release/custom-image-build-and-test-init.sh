@@ -66,4 +66,15 @@ BUILD_WORKSPACE_DIRECTORY="${PWD}" bazel-bin/release/custom_image_build_and_test
   --test-jobs-output-file .buildkite/release/release_tests.json \
   --rayci-select-output-file /tmp/rayci_select.txt
 
-buildkite-agent pipeline upload .buildkite/release/release_tests.json
+# release_tests_*.json are chunked to stay under Buildkite's per-upload job
+# limit; upload each chunk in order so inter-step dependencies resolve.
+i=0
+while [[ -f ".buildkite/release/release_tests_${i}.json" ]]; do
+    echo "Uploading .buildkite/release/release_tests_${i}.json"
+    buildkite-agent pipeline upload ".buildkite/release/release_tests_${i}.json"
+    i=$((i + 1))
+done
+if [[ $i -eq 0 ]]; then
+    echo "No release test chunks found at .buildkite/release/release_tests_*.json" >&2
+    exit 1
+fi
