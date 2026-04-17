@@ -644,6 +644,72 @@ TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
   }
 }
 
+TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
+  auto fake_raylet = std::make_shared<ipc::FakeRayletIpcClient>();
+  // Build a ReferenceCounter with minimal dependencies.
+  rpc::Address addr;
+  addr.set_ip_address("127.0.0.1");
+  auto is_node_dead = [](const NodeID &) { return false; };
+  ReferenceCounter ref_counter(addr,
+                               /*object_info_publisher=*/nullptr,
+                               /*object_info_subscriber=*/nullptr,
+                               is_node_dead,
+                               *std::make_shared<ray::observability::FakeGauge>(),
+                               *std::make_shared<ray::observability::FakeGauge>());
+
+  // Fake plasma client that records Get calls.
+  std::vector<std::vector<ObjectID>> observed_batches;
+  class RecordingPlasmaGetClient : public plasma::FakePlasmaClient {
+   public:
+    explicit RecordingPlasmaGetClient(std::vector<std::vector<ObjectID>> *observed)
+        : observed_(observed) {}
+    Status Get(const std::vector<ObjectID> &object_ids,
+               int64_t timeout_ms,
+               std::vector<plasma::ObjectBuffer> *object_buffers) override {
+      if (observed_ != nullptr) {
+        observed_->push_back(object_ids);
+      }
+      object_buffers->resize(object_ids.size());
+      for (size_t i = 0; i < object_ids.size(); i++) {
+        uint8_t byte = 0;
+        auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
+        (*object_buffers)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
+        (*object_buffers)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
+      }
+      return Status::OK();
+    }
+
+   private:
+    std::vector<std::vector<ObjectID>> *observed_;
+  };
+
+  auto fake_plasma = std::make_shared<RecordingPlasmaGetClient>(&observed_batches);
+
+  CoreWorkerPlasmaStoreProvider provider(
+      /*store_socket=*/"",
+      fake_raylet,
+      /*check_signals=*/[] { return Status::OK(); },
+      /*warmup=*/false,
+      /*store_client=*/fake_plasma,
+      /*fetch_batch_size=*/2,
+      /*get_current_call_site=*/nullptr);
+
+  // Build a set of 5 object ids.
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
+  const auto owner_addresses = ref_counter.GetOwnerAddresses(ids);
+
+  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
+
+  ASSERT_TRUE(provider.Get(ids, owner_addresses, /*timeout_ms=*/-1, &results).ok());
+
+  // Assert: batches seen by plasma Get are [2,2,1].
+  ASSERT_EQ(observed_batches.size(), 3U);
+  EXPECT_EQ(observed_batches[0].size(), 2U);
+  EXPECT_EQ(observed_batches[1].size(), 2U);
+  EXPECT_EQ(observed_batches[2].size(), 1U);
+}
+
 namespace {
 
 class RecordingFakeRaylet : public ipc::FakeRayletIpcClient {
