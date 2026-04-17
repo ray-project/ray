@@ -333,7 +333,7 @@ def _peek_first_nonempty_block(
 def _compute_auto_batch_size(
     blocks: Iterable[Block],
 ) -> Tuple[Optional[int], Iterable[Block]]:
-    """Peek at the first non-empty block to determine the batch size to use for the
+    """Peek at the first non-empty block to estimate the batch size to use for the
     'auto' batch_size option."""
     target_batch_size = _DEFAULT_BATCH_SIZE_BYTES
     sample, blocks = _peek_first_nonempty_block(blocks)
