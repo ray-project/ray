@@ -394,7 +394,7 @@ class FuseOperators(Rule):
             fn_kwargs=up_logical_op.fn_kwargs,
             fn_constructor_args=up_logical_op.fn_constructor_args,
             fn_constructor_kwargs=up_logical_op.fn_constructor_kwargs,
-            min_rows_per_bundled_input=batch_size,
+            min_rows_per_bundled_input=min_rows,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
