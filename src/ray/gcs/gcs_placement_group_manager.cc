@@ -735,12 +735,13 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
         // ScheduleUnplacedBundles within the scheduler.
         if (iter->second->AllUnplacedBundles() &&
             iter->second->GetLabelDomainKey().has_value()) {
-          auto infeasible_pg_iter = std::find_if(
-              infeasible_placement_groups_.begin(),
-              infeasible_placement_groups_.end(),
-              [pg_id = iter->second->GetPlacementGroupID()](const std::shared_ptr<GcsPlacementGroup> &pg) {
-                return pg_id == pg->GetPlacementGroupID();
-              });
+          auto infeasible_pg_iter =
+              std::find_if(infeasible_placement_groups_.begin(),
+                           infeasible_placement_groups_.end(),
+                           [pg_id = iter->second->GetPlacementGroupID()](
+                               const std::shared_ptr<GcsPlacementGroup> &pg) {
+                             return pg_id == pg->GetPlacementGroupID();
+                           });
 
           if (infeasible_pg_iter != infeasible_placement_groups_.end()) {
             AddToPendingQueue(*infeasible_pg_iter);
