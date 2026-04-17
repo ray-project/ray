@@ -831,7 +831,8 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletTransientError) {
   // The worker should NOT crash; instead it should schedule a retry.
   ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
 
-  // Advance the io_context to trigger the execute_after retry timer. Wait for the retry to be requested.
+  // Advance the io_context to trigger the execute_after retry timer. Wait for the retry
+  // to be requested.
   io_context.run_one();
   // A new lease request should be issued (retry).
   ASSERT_EQ(raylet_client->num_workers_requested, 2);
@@ -851,22 +852,27 @@ TEST_F(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletTransientError) {
 TEST_F(NormalTaskSubmitterTest, TestWorkerHandleLocalRayletDied) {
   auto submitter =
       CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2),
-                                WorkerType::WORKER, nullptr, nullptr, kLongTimeout,
+                                WorkerType::WORKER,
+                                nullptr,
+                                nullptr,
+                                kLongTimeout,
                                 /*max_local_lease_transient_retries=*/10,
                                 /*local_lease_retry_base_ms=*/0);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   submitter.SubmitTask(task1);
 
-  ASSERT_DEATH({
-    // Fail 10 times to exhaust the retries.
-    for (int i = 0; i < 10; ++i) {
-      raylet_client->FailWorkerLeaseDueToGrpcUnavailable();
-      io_context.run_one(); // wait for the execute_after backoff timer
-    }
-    // The 11th failure triggers QuickExit()
-    raylet_client->FailWorkerLeaseDueToGrpcUnavailable();
-  }, "");
+  ASSERT_DEATH(
+      {
+        // Fail 10 times to exhaust the retries.
+        for (int i = 0; i < 10; ++i) {
+          raylet_client->FailWorkerLeaseDueToGrpcUnavailable();
+          io_context.run_one();  // wait for the execute_after backoff timer
+        }
+        // The 11th failure triggers QuickExit()
+        raylet_client->FailWorkerLeaseDueToGrpcUnavailable();
+      },
+      "");
 }
 
 // Non-retryable gRPC error (CANCELLED) should skip retries entirely
@@ -924,11 +930,14 @@ TEST_F(NormalTaskSubmitterTest, TestDriverHandleLocalRayletTransientError) {
 // 11 consecutive UNAVAILABLE errors on the local raylet should exceed the 10-retry
 // limit and fail all queued tasks for the driver.
 TEST_F(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
-  auto submitter = CreateNormalTaskSubmitter(
-      std::make_shared<StaticLeaseRequestRateLimiter>(2), WorkerType::DRIVER,
-      nullptr, nullptr, kLongTimeout,
-      /*max_local_lease_transient_retries=*/10,
-      /*local_lease_retry_base_ms=*/0);
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2),
+                                WorkerType::DRIVER,
+                                nullptr,
+                                nullptr,
+                                kLongTimeout,
+                                /*max_local_lease_transient_retries=*/10,
+                                /*local_lease_retry_base_ms=*/0);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
@@ -955,13 +964,13 @@ TEST_F(NormalTaskSubmitterTest, TestDriverHandleLocalRayletDied) {
   // Because it failed all tasks for that scheduling key, num_fail_pending_task_calls
   // should jump to 3 (all tasks in the queue are failed).
   ASSERT_EQ(task_manager->num_fail_pending_task_calls, 3);
-  
+
   // Outstanding lease callbacks must also be failed so the system drops them
   // and properly cleans up the SchedulingKeyEntry (avoiding memory leaks).
   while (raylet_client->FailWorkerLeaseDueToGrpcUnavailable()) {
     // drain remaining leases
   }
-  
+
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
   // Check that there are no entries left in the scheduling_key_entries_ hashmap.
@@ -986,15 +995,15 @@ TEST_F(NormalTaskSubmitterTest, TestDriverHandleLocalRayletNonRetryableError) {
 
   // Fail ONE lease with a non-retryable error, which immediately fails all tasks.
   ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcNonRetryable());
-  
+
   ASSERT_EQ(task_manager->num_fail_pending_task_calls, 3);
-  ASSERT_EQ(raylet_client->num_workers_requested, 2); // No retries issued.
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);  // No retries issued.
 
   // Outstanding lease callbacks must also be failed to avoid memory leaks.
   while (raylet_client->FailWorkerLeaseDueToGrpcNonRetryable()) {
     // drain remaining leases
   }
-  
+
   ASSERT_EQ(worker_client->callbacks.size(), 0);
 
   // Check that there are no entries left in the hashmap.
@@ -1006,11 +1015,14 @@ TEST_F(NormalTaskSubmitterTest, TestDriverHandleLocalRayletNonRetryableError) {
 // at retry count == max-1, the second callback must be absorbed by the
 // retry_pending flag rather than falling through to QuickExit/fail-all.
 TEST_F(NormalTaskSubmitterTest, TestDriverConcurrentLeaseFailuresAbsorbed) {
-  auto submitter = CreateNormalTaskSubmitter(
-      std::make_shared<StaticLeaseRequestRateLimiter>(2), WorkerType::DRIVER,
-      nullptr, nullptr, kLongTimeout,
-      /*max_local_lease_transient_retries=*/10,
-      /*local_lease_retry_base_ms=*/0);
+  auto submitter =
+      CreateNormalTaskSubmitter(std::make_shared<StaticLeaseRequestRateLimiter>(2),
+                                WorkerType::DRIVER,
+                                nullptr,
+                                nullptr,
+                                kLongTimeout,
+                                /*max_local_lease_transient_retries=*/10,
+                                /*local_lease_retry_base_ms=*/0);
 
   TaskSpecification task1 = BuildEmptyTaskSpec();
   TaskSpecification task2 = BuildEmptyTaskSpec();
