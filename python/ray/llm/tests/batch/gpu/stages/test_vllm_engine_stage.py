@@ -258,12 +258,22 @@ async def test_vllm_wrapper_semaphore(model_llama_3_2_216M):
 
 
 @pytest.mark.asyncio
-async def test_vllm_wrapper_forwards_lora_request_to_generate():
-    """Regression test: lora_request must be forwarded to engine.generate().
+@pytest.mark.parametrize(
+    "task_type",
+    [
+        vLLMTaskType.GENERATE,
+        vLLMTaskType.EMBED,
+        vLLMTaskType.CLASSIFY,
+        vLLMTaskType.SCORE,
+    ],
+)
+async def test_vllm_wrapper_forwards_lora_request(task_type):
+    """Regression test: lora_request must be forwarded to the vLLM engine.
 
     A prior bug populated vLLMEngineRequest.lora_request correctly but never
     passed it to the vLLM engine, causing per-row LoRA adapters to be
-    silently dropped.
+    silently dropped. GENERATE dispatches to engine.generate(); pooling task
+    types (EMBED / CLASSIFY / SCORE) dispatch to engine.encode().
     """
 
     async def finished_stream():
@@ -274,46 +284,6 @@ async def test_vllm_wrapper_forwards_lora_request_to_generate():
     wrapper = vLLMEngineWrapper.__new__(vLLMEngineWrapper)
     wrapper.engine = MagicMock()
     wrapper.engine.generate = MagicMock(return_value=finished_stream())
-    wrapper.task_type = vLLMTaskType.GENERATE
-
-    sentinel_lora = object()
-    request = vLLMEngineRequest(
-        request_id=0,
-        idx_in_batch=0,
-        prompt="hello",
-        prompt_token_ids=None,
-        images=[],
-        multimodal_data=None,
-        mm_processor_kwargs=None,
-        multimodal_uuids=None,
-        params=MagicMock(),
-        tokenization_kwargs=None,
-        lora_request=sentinel_lora,
-    )
-
-    await wrapper._generate_async(request)
-
-    wrapper.engine.generate.assert_called_once()
-    assert wrapper.engine.generate.call_args.kwargs.get("lora_request") is sentinel_lora
-
-
-@pytest.mark.asyncio
-@pytest.mark.parametrize(
-    "task_type",
-    [vLLMTaskType.EMBED, vLLMTaskType.CLASSIFY, vLLMTaskType.SCORE],
-)
-async def test_vllm_wrapper_forwards_lora_request_to_encode(task_type):
-    """Regression test: lora_request must be forwarded to engine.encode() for
-    pooling task types (EMBED / CLASSIFY / SCORE).
-    """
-
-    async def finished_stream():
-        output = MagicMock()
-        output.finished = True
-        yield output
-
-    wrapper = vLLMEngineWrapper.__new__(vLLMEngineWrapper)
-    wrapper.engine = MagicMock()
     wrapper.engine.encode = MagicMock(return_value=finished_stream())
     wrapper.task_type = task_type
 
@@ -334,8 +304,12 @@ async def test_vllm_wrapper_forwards_lora_request_to_encode(task_type):
 
     await wrapper._generate_async(request)
 
-    wrapper.engine.encode.assert_called_once()
-    assert wrapper.engine.encode.call_args.kwargs.get("lora_request") is sentinel_lora
+    expected = (
+        wrapper.engine.generate
+        if task_type == vLLMTaskType.GENERATE
+        else wrapper.engine.encode
+    )
+    assert expected.call_args.kwargs.get("lora_request") is sentinel_lora
 
 
 @pytest.mark.asyncio
