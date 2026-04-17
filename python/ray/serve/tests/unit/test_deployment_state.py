@@ -7515,32 +7515,35 @@ def test_pending_migration_prevents_in_transition_clear(
 class TestIsGangDeploymentProperty:
     """Tests for DeploymentState._is_gang_deployment property."""
 
-    def test_is_gang_deployment_true_when_gang_config_set(
-        self, mock_deployment_state_manager
+    @pytest.mark.parametrize(
+        "gang_scheduling_config, expected_value",
+        [
+            pytest.param(GangSchedulingConfig(gang_size=2), True, id="gang"),
+            pytest.param(None, False, id="non-gang"),
+        ],
+    )
+    def test_is_gang_deployment(
+        self,
+        mock_deployment_state_manager,
+        gang_scheduling_config,
+        expected_value,
     ):
-        """_is_gang_deployment returns True when deployment has a GangSchedulingConfig."""
+        """_is_gang_deployment reflects whether gang scheduling is configured."""
         create_dsm, _, _, _ = mock_deployment_state_manager
-        dsm: DeploymentStateManager = create_dsm(
-            create_placement_group_fn_override=lambda *args, **kwargs: Mock(),
-        )
-        b_info, _ = deployment_info(
-            num_replicas=2,
-            gang_scheduling_config=GangSchedulingConfig(gang_size=2),
-        )
-        dsm.deploy(TEST_DEPLOYMENT_ID, b_info)
-        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-        assert ds._is_gang_deployment is True
 
-    def test_is_gang_deployment_false_when_no_gang_config(
-        self, mock_deployment_state_manager
-    ):
-        """_is_gang_deployment returns False for a regular (non-gang) deployment."""
-        create_dsm, _, _, _ = mock_deployment_state_manager
-        dsm: DeploymentStateManager = create_dsm()
-        b_info, _ = deployment_info(num_replicas=2)
+        create_dsm_kwargs = {}
+        deployment_info_kwargs = {"num_replicas": 2}
+        if gang_scheduling_config is not None:
+            create_dsm_kwargs[
+                "create_placement_group_fn_override"
+            ] = lambda *args, **kwargs: Mock()
+            deployment_info_kwargs["gang_scheduling_config"] = gang_scheduling_config
+
+        dsm: DeploymentStateManager = create_dsm(**create_dsm_kwargs)
+        b_info, _ = deployment_info(**deployment_info_kwargs)
         dsm.deploy(TEST_DEPLOYMENT_ID, b_info)
         ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
-        assert ds._is_gang_deployment is False
+        assert ds._is_gang_deployment is expected_value
 
 
 class TestScaleDeploymentGangReplicas:
