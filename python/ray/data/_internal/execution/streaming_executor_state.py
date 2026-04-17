@@ -263,6 +263,7 @@ class OpState:
             diverged
             and not self._warned_on_schema_divergence
             and self.op.data_context.enforce_schemas
+            and ref.schema is not None
         ):
             warning_message = _build_schemas_mismatch_warning(self._schema, ref.schema)
             logger.warning(warning_message)
@@ -809,8 +810,8 @@ def dedupe_schemas_with_validation(
     if old_schema == bundle.schema:
         return bundle, diverged
 
-    if enforce_schemas and bundle.schema is not None:
-        diverged = True
+    diverged = True
+    if enforce_schemas:
         old_schema = unify_schemas_with_validation([old_schema, bundle.schema])
 
     return (
