@@ -1001,6 +1001,60 @@ TEST_F(NormalTaskSubmitterTest, TestDriverHandleLocalRayletNonRetryableError) {
   ASSERT_TRUE(submitter.CheckNoSchedulingKeyEntriesPublic());
 }
 
+// Concurrent lease failures at the retry boundary should not cause premature
+// permanent failure. When two in-flight lease requests fail simultaneously
+// at retry count == max-1, the second callback must be absorbed by the
+// retry_pending flag rather than falling through to QuickExit/fail-all.
+TEST_F(NormalTaskSubmitterTest, TestDriverConcurrentLeaseFailuresAbsorbed) {
+  auto submitter = CreateNormalTaskSubmitter(
+      std::make_shared<StaticLeaseRequestRateLimiter>(2), WorkerType::DRIVER,
+      nullptr, nullptr, kLongTimeout,
+      /*max_local_lease_transient_retries=*/10,
+      /*local_lease_retry_base_ms=*/0);
+
+  TaskSpecification task1 = BuildEmptyTaskSpec();
+  TaskSpecification task2 = BuildEmptyTaskSpec();
+  TaskSpecification task3 = BuildEmptyTaskSpec();
+
+  submitter.SubmitTask(task1);
+  submitter.SubmitTask(task2);
+  submitter.SubmitTask(task3);
+  // With rate limiter of 2, there should be 2 pending lease requests.
+  ASSERT_EQ(raylet_client->num_workers_requested, 2);
+
+  // Exhaust retries to 9 (one short of the limit) using serial failures.
+  for (int i = 0; i < 9; ++i) {
+    raylet_client->FailWorkerLeaseDueToGrpcUnavailable();
+    io_context.run_one();  // fires the backoff timer, issues new lease request
+  }
+  // After 9 rounds, the retry counter is at 9. No tasks should be failed yet.
+  ASSERT_EQ(task_manager->num_fail_pending_task_calls, 0);
+
+  // Now simulate concurrent failure: fail the 10th round, which bumps
+  // retries to 10 and sets retry_pending=true.
+  ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
+  // Do NOT call io_context.run_one() here — the retry timer is pending.
+
+  // Fail the second concurrent lease request. Without the fix, this would
+  // see retries(10) >= max(10) and retry_pending wouldn't be checked,
+  // causing it to fall through to the permanent failure path.
+  // With the fix, the second callback is absorbed because retry_pending=true.
+  ASSERT_TRUE(raylet_client->FailWorkerLeaseDueToGrpcUnavailable());
+
+  // No tasks should be failed — both failures were absorbed.
+  ASSERT_EQ(task_manager->num_fail_pending_task_calls, 0);
+
+  // Now let the retry timer fire. This will issue new lease requests.
+  io_context.run_one();
+
+  // Grant a lease to prove the system is still functional.
+  ASSERT_TRUE(raylet_client->GrantWorkerLease("localhost", 1234, local_node_id));
+  ASSERT_EQ(worker_client->callbacks.size(), 1);
+  ASSERT_TRUE(worker_client->ReplyPushTask());
+  ASSERT_EQ(task_manager->num_tasks_complete, 1);
+  ASSERT_EQ(task_manager->num_fail_pending_task_calls, 0);
+}
+
 TEST_F(NormalTaskSubmitterTest, TestConcurrentWorkerLeases) {
   int64_t concurrency = 10;
   auto rateLimiter = std::make_shared<StaticLeaseRequestRateLimiter>(concurrency);

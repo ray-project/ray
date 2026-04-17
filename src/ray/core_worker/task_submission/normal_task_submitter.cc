@@ -462,7 +462,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
             RequestNewWorkerIfNeeded(scheduling_key);
           } else if (IsGrpcRetryableStatus(status) &&
-                     sched_entry.local_lease_transient_retries < max_local_lease_transient_retries_) {
+                     (sched_entry.local_lease_transient_retries <
+                          max_local_lease_transient_retries_ ||
+                      sched_entry.local_lease_retry_pending)) {
             if (!sched_entry.local_lease_retry_pending) {
               // A lease request to the local raylet failed with a transient gRPC
               // error (e.g., UNAVAILABLE). This may be caused by a temporary
