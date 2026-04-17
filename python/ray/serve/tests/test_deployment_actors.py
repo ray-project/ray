@@ -144,6 +144,20 @@ class FailingDeploymentActor:
             raise RuntimeError("Deployment actor init failed")
 
 
+@ray.remote
+class DeploymentActorContextActor:
+    """Reads deployment actor runtime context for testing."""
+
+    def get_context(self):
+        ctx = serve.get_deployment_actor_context()
+        return {
+            "deployment": ctx.deployment,
+            "app_name": ctx.app_name,
+            "actor_name": ctx.actor_name,
+            "code_version": ctx.code_version,
+        }
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -1283,6 +1297,37 @@ def test_get_deployment_actor_outside_replica_raises(serve_instance):
     """get_deployment_actor called outside replica raises RayServeException."""
     with pytest.raises(RayServeException, match="may only be called from within"):
         serve.get_deployment_actor("counter")
+
+
+def test_get_deployment_actor_context_outside_actor_raises(serve_instance):
+    """get_deployment_actor_context called outside actor raises RayServeException."""
+    with pytest.raises(RayServeException, match="may only be called from within"):
+        serve.get_deployment_actor_context()
+
+
+def test_get_deployment_actor_context_returns_runtime_metadata(serve_instance):
+    """Deployment actors can read deployment metadata via context API."""
+
+    @serve.deployment(
+        deployment_actors=[
+            DeploymentActorConfig(
+                name="ctx_actor",
+                actor_class=DeploymentActorContextActor,
+            ),
+        ],
+    )
+    class MyDeployment:
+        def __call__(self):
+            actor = serve.get_deployment_actor("ctx_actor")
+            return ray.get(actor.get_context.remote())
+
+    handle = serve.run(MyDeployment.bind(), name="metadata-app")
+    result = handle.remote().result()
+
+    assert result["deployment"] == "MyDeployment"
+    assert result["app_name"] == "metadata-app"
+    assert result["actor_name"] == "ctx_actor"
+    assert isinstance(result["code_version"], str)
 
 
 def test_deploy_from_yaml_config_file_with_deployment_actors(serve_instance):
