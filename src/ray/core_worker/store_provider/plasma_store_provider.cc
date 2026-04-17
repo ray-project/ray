@@ -258,6 +258,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   std::vector<ipc::ScopedResponse> get_request_cleanup_handlers;
   absl::flat_hash_map<ObjectID, int64_t> remaining_object_id_to_idx;
 
+  // TODO(57923): Need to understand if batching is necessary. If it's necessary,
+  // then the reason needs to be documented.
   bool got_exception = false;
   int64_t num_total_objects = static_cast<int64_t>(object_ids.size());
   for (int64_t i = 0; i < num_total_objects; i++) {
@@ -265,8 +267,6 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   }
 
   // Try plasma first; hit the raylet only for what's missing.
-  // TODO(57923): Need to understand if batching is necessary. If it's necessary,
-  // then the reason needs to be documented.
   for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
     std::vector<ObjectID> batch_ids;
     for (int64_t i = start; i < start + fetch_batch_size_ && i < num_total_objects; i++) {
