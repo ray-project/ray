@@ -1,6 +1,7 @@
 import asyncio
 import os
 from typing import List
+from unittest.mock import patch
 
 import httpx
 import pytest
@@ -15,7 +16,7 @@ from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.request_router import RequestRouter
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.handle import DeploymentHandle
-from ray.serve.multiplex import _ModelMultiplexWrapper
+from ray.serve.multiplex import _MultiplexWrapper
 
 
 def _get_request_router(handle: DeploymentHandle) -> RequestRouter:
@@ -52,27 +53,27 @@ class TestMultiplexWrapper:
             return model_id
 
         with pytest.raises(RuntimeError, match="can only be used within a deployment"):
-            _ModelMultiplexWrapper(model_load_func, None, max_num_models_per_replica=2)
+            _MultiplexWrapper(model_load_func, None, size_per_replica=2, name="model")
 
     async def test_push_model_ids_info(self, start_serve_with_context):
         async def model_load_func(model_id: str):
             return model_id
 
-        multiplexer = _ModelMultiplexWrapper(
-            model_load_func, None, max_num_models_per_replica=1
+        multiplexer = _MultiplexWrapper(
+            model_load_func, None, size_per_replica=1, name="model"
         )
         await multiplexer.metrics_pusher.graceful_shutdown()
-        assert multiplexer._push_multiplexed_replica_info is False
-        multiplexer._push_multiplexed_replica_info = True
-        multiplexer._push_model_ids_info()
-        assert multiplexer._push_multiplexed_replica_info is False
+        assert multiplexer._push_replica_info is False
+        multiplexer._push_replica_info = True
+        multiplexer._push_ids_info()
+        assert multiplexer._push_replica_info is False
 
     async def test_collect_model_ids(self):
-        multiplexer = _ModelMultiplexWrapper(None, None, max_num_models_per_replica=1)
-        multiplexer.models = {"1": "1", "2": "2"}
-        assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == ["1", "2"]
-        multiplexer._model_load_tasks = {"3"}
-        assert sorted(multiplexer._get_loading_and_loaded_model_ids()) == [
+        multiplexer = _MultiplexWrapper(None, None, size_per_replica=1, name="model")
+        multiplexer.entries = {"1": "1", "2": "2"}
+        assert sorted(multiplexer._get_loading_and_loaded_ids()) == ["1", "2"]
+        multiplexer._load_tasks = {"3"}
+        assert sorted(multiplexer._get_loading_and_loaded_ids()) == [
             "1",
             "2",
             "3",
@@ -84,39 +85,39 @@ class TestMultiplexWrapper:
         async def model_load_func(model_id: str):
             return model_id
 
-        multiplexer = _ModelMultiplexWrapper(
-            model_load_func, None, max_num_models_per_replica=2
+        multiplexer = _MultiplexWrapper(
+            model_load_func, None, size_per_replica=2, name="model"
         )
         await multiplexer.metrics_pusher.graceful_shutdown()
 
         # Load model1
-        await multiplexer.load_model("1")
-        assert multiplexer.models == {"1": "1"}
-        assert multiplexer._push_multiplexed_replica_info
-        multiplexer._push_multiplexed_replica_info = False
+        await multiplexer.load("1")
+        assert multiplexer.entries == {"1": "1"}
+        assert multiplexer._push_replica_info
+        multiplexer._push_replica_info = False
 
         # Load model2
-        await multiplexer.load_model("2")
-        assert multiplexer.models == {"1": "1", "2": "2"}
-        assert multiplexer._push_multiplexed_replica_info
-        multiplexer._push_multiplexed_replica_info = False
+        await multiplexer.load("2")
+        assert multiplexer.entries == {"1": "1", "2": "2"}
+        assert multiplexer._push_replica_info
+        multiplexer._push_replica_info = False
 
         # Load model3, model1 should be unloaded
-        await multiplexer.load_model("3")
-        assert multiplexer.models == {"2": "2", "3": "3"}
-        assert multiplexer._push_multiplexed_replica_info
-        multiplexer._push_multiplexed_replica_info = False
+        await multiplexer.load("3")
+        assert multiplexer.entries == {"2": "2", "3": "3"}
+        assert multiplexer._push_replica_info
+        multiplexer._push_replica_info = False
 
         # reload model2, model2 should be moved to the end of the LRU cache
         # _push_multiplexed_replica_info should be False.
-        await multiplexer.load_model("2")
-        assert multiplexer.models == {"3": "3", "2": "2"}
-        assert multiplexer._push_multiplexed_replica_info is False
+        await multiplexer.load("2")
+        assert multiplexer.entries == {"3": "3", "2": "2"}
+        assert multiplexer._push_replica_info is False
 
         # Load model4, model3 should be unloaded
-        await multiplexer.load_model("4")
-        assert multiplexer._push_multiplexed_replica_info
-        assert multiplexer.models == {"2": "2", "4": "4"}
+        await multiplexer.load("4")
+        assert multiplexer._push_replica_info
+        assert multiplexer.entries == {"2": "2", "4": "4"}
 
     async def test_bad_call_multiplexed_func(self, start_serve_with_context):
         """Test bad call to multiplexed function"""
@@ -124,13 +125,13 @@ class TestMultiplexWrapper:
         async def model_load_func(model_id: str):
             return model_id
 
-        multiplexer = _ModelMultiplexWrapper(
-            model_load_func, None, max_num_models_per_replica=2
+        multiplexer = _MultiplexWrapper(
+            model_load_func, None, size_per_replica=2, name="model"
         )
         with pytest.raises(TypeError):
-            await multiplexer.load_model(1)
+            await multiplexer.load(1)
         with pytest.raises(TypeError):
-            await multiplexer.load_model()
+            await multiplexer.load()
 
     async def test_unload_model_call_del(self, start_serve_with_context):
         class MyModel:
@@ -146,14 +147,14 @@ class TestMultiplexWrapper:
         async def model_load_func(model_id: str) -> MyModel:
             return MyModel(model_id)
 
-        multiplexer = _ModelMultiplexWrapper(
-            model_load_func, None, max_num_models_per_replica=1
+        multiplexer = _MultiplexWrapper(
+            model_load_func, None, size_per_replica=1, name="model"
         )
         await multiplexer.metrics_pusher.graceful_shutdown()
-        await multiplexer.load_model("1")
-        assert multiplexer.models == {"1": MyModel("1")}
+        await multiplexer.load("1")
+        assert multiplexer.entries == {"1": MyModel("1")}
         with pytest.raises(Exception, match="1 is dead"):
-            await multiplexer.load_model("2")
+            await multiplexer.load("2")
 
     async def test_push_model_ids_info_after_unload_model(self):
         """
@@ -168,22 +169,22 @@ class TestMultiplexWrapper:
             await signal.wait.remote()
             return
 
-        multiplexer = _ModelMultiplexWrapper(
-            model_load_func, None, max_num_models_per_replica=1
+        multiplexer = _MultiplexWrapper(
+            model_load_func, None, size_per_replica=1, name="model"
         )
         await multiplexer.metrics_pusher.graceful_shutdown()
-        await multiplexer.load_model("1")
-        assert multiplexer._push_multiplexed_replica_info
-        multiplexer._push_multiplexed_replica_info = False
+        await multiplexer.load("1")
+        assert multiplexer._push_replica_info
+        multiplexer._push_replica_info = False
 
         loop = get_or_create_event_loop()
-        loop.create_task(multiplexer.load_model("2"))
+        loop.create_task(multiplexer.load("2"))
         # _push_multiplexed_replica_info is True right after model1 is unloaded.
         # and model2 is not finished loading.
         await asyncio.sleep(1)
-        assert len(multiplexer.models) == 0
-        assert "2" in multiplexer._model_load_tasks
-        assert multiplexer._push_multiplexed_replica_info
+        assert len(multiplexer.entries) == 0
+        assert "2" in multiplexer._load_tasks
+        assert multiplexer._push_replica_info
         signal.send.remote()
 
     async def test_load_models_concurrently(self, start_serve_with_context):
@@ -199,31 +200,99 @@ class TestMultiplexWrapper:
             await signal.wait.remote()
             return
 
-        multiplexer = _ModelMultiplexWrapper(
-            model_load_func, None, max_num_models_per_replica=1
+        multiplexer = _MultiplexWrapper(
+            model_load_func, None, size_per_replica=1, name="model"
         )
         await multiplexer.metrics_pusher.graceful_shutdown()
 
         loop = get_or_create_event_loop()
         tasks = [
-            loop.create_task(multiplexer.load_model("1")),
-            loop.create_task(multiplexer.load_model("2")),
-            loop.create_task(multiplexer.load_model("3")),
+            loop.create_task(multiplexer.load("1")),
+            loop.create_task(multiplexer.load("2")),
+            loop.create_task(multiplexer.load("3")),
         ]
         await asyncio.sleep(1)
-        assert len(multiplexer.models) == 0
-        assert len(multiplexer._model_load_tasks) == len(tasks)
-        assert multiplexer._push_multiplexed_replica_info
+        assert len(multiplexer.entries) == 0
+        assert len(multiplexer._load_tasks) == len(tasks)
+        assert multiplexer._push_replica_info
         signal.send.remote()
         done, _ = await asyncio.wait(tasks, timeout=1)
         assert len(done) == len(tasks)
-        assert len(multiplexer.models) == 1
-        assert "3" in multiplexer.models
-        assert len(multiplexer._model_load_tasks) == 0
+        assert len(multiplexer.entries) == 1
+        assert "3" in multiplexer.entries
+        assert len(multiplexer._load_tasks) == 0
+
+    async def test_multiplex_wrapper_session_dimension_passthrough(
+        self, start_serve_with_context
+    ):
+        """LRU caching works for a custom dimension (e.g. "session") whose
+        loader is a passthrough (returns None — the LRU just tracks the IDs
+        so the router/controller knows which sessions this replica has seen).
+        """
+
+        async def session_load_func(session_id: str):
+            return None  # passthrough — LRU tracks the ID, stores None
+
+        multiplexer = _MultiplexWrapper(
+            session_load_func, None, size_per_replica=2, name="session"
+        )
+        await multiplexer.metrics_pusher.graceful_shutdown()
+        assert multiplexer._name == "session"
+
+        # First two sessions fill the cache.
+        await multiplexer.load("user_a")
+        await multiplexer.load("user_b")
+        assert multiplexer.entries == {"user_a": None, "user_b": None}
+        assert multiplexer._push_replica_info  # controller notified
+
+        # Third session evicts user_a (LRU).
+        multiplexer._push_replica_info = False
+        await multiplexer.load("user_c")
+        assert multiplexer.entries == {"user_b": None, "user_c": None}
+        assert multiplexer._push_replica_info
+
+        # Reusing user_b is a cache hit: no new load, no push flag, moves to MRU.
+        multiplexer._push_replica_info = False
+        await multiplexer.load("user_b")
+        assert list(multiplexer.entries.keys()) == ["user_c", "user_b"]
+        assert multiplexer._push_replica_info is False
+
+        # Next new session evicts user_c (now LRU).
+        await multiplexer.load("user_d")
+        assert multiplexer.entries == {"user_b": None, "user_d": None}
+
+        # Per-dimension reporting: the RequestRoutingInfo emitted by this
+        # wrapper is keyed by its `name`, not a hardcoded "model".
+        multiplexer._push_replica_info = True
+        with patch("ray.serve.multiplex._get_global_client") as mock_client:
+            multiplexer._push_ids_info()
+        info = mock_client.return_value.record_request_routing_info.call_args[0][0]
+        assert set(info.multiplex_dim_to_ids) == {"session"}
+        assert sorted(info.multiplex_dim_to_ids["session"]) == ["user_b", "user_d"]
 
 
 class TestBasicAPI:
     def test_decorator_validation(self):
+        @serve.multiplexed(name="model", size_per_replica=1)
+        async def _ok_module_level(model: str):
+            return
+
+        @serve.deployment
+        class _OkDeployment:
+            @serve.multiplexed(name="model", size_per_replica=1)
+            async def load(self, model: str):
+                return
+
+        with pytest.raises(TypeError):
+            serve.multiplexed(name="model", size_per_replica="1")
+
+        with pytest.raises(ValueError):
+            serve.multiplexed(name="model", size_per_replica=0)
+
+        with pytest.raises(ValueError, match="cannot be combined"):
+            serve.multiplexed(max_num_models_per_replica=1, name="model")
+
+    def test_decorator_validation_backward_compat(self):
         @serve.multiplexed
         async def get_model(model: str):
             return
@@ -296,12 +365,13 @@ class TestBasicAPI:
                 def get_model(self):
                     return
 
-    def test_get_multiplexed_model_id(self):
-        """Test get_multiplexed_model_id() API"""
+    def test_get_multiplexed_id(self):
+        assert serve.get_multiplexed_id("model") == ""
         assert serve.get_multiplexed_model_id() == ""
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(multiplex_ids={"model": "1"})
         )
+        assert serve.get_multiplexed_id("model") == "1"
         assert serve.get_multiplexed_model_id() == "1"
 
 
@@ -310,7 +380,7 @@ def test_request_routing_info(serve_instance):
 
     @serve.deployment
     class MyModel:
-        @serve.multiplexed(max_num_models_per_replica=2)
+        @serve.multiplexed(name="model", size_per_replica=2)
         async def get_model(self, model_id: str):
             return
 
@@ -329,10 +399,8 @@ def test_request_routing_info(serve_instance):
 
         request_router = _get_request_router(handle)
         for replica in request_router.curr_replicas.values():
-            if (
-                replica.replica_id != replica_id
-                or model_ids != replica.multiplexed_model_ids
-            ):
+            replica_model_ids = replica.multiplex_dim_to_ids.get("model", set())
+            if replica.replica_id != replica_id or model_ids != replica_model_ids:
                 return False
 
         return True
@@ -370,7 +438,7 @@ def check_model_id_in_replicas(handle: DeploymentHandle, model_id: str) -> bool:
 
     request_router = _get_request_router(handle)
     replica_to_model_ids = {
-        tag: replica.multiplexed_model_ids
+        tag: replica.multiplex_dim_to_ids.get("model", set())
         for tag, replica in request_router.curr_replicas.items()
     }
     msg = (
@@ -386,12 +454,12 @@ def test_multiplexed_e2e(serve_instance):
 
     @serve.deployment(num_replicas=2)
     class Model:
-        @serve.multiplexed(max_num_models_per_replica=1)
+        @serve.multiplexed(name="model", size_per_replica=1)
         async def get_model(self, tag):
             return tag
 
         async def __call__(self, request):
-            tag = serve.get_multiplexed_model_id()
+            tag = serve.get_multiplexed_id("model")
             await self.get_model(tag)
             # return pid to check if the same model is used
             return os.getpid()
@@ -411,7 +479,7 @@ def test_multiplexed_e2e(serve_instance):
 
     for _ in range(10):
         assert (
-            handle.options(multiplexed_model_id="1").remote("blabla").result()
+            handle.options(multiplex_ids={"model": "1"}).remote("blabla").result()
             == initial_pid
         )
 
@@ -421,12 +489,12 @@ def test_multiplexed_lru_policy(serve_instance):
 
     @serve.deployment
     class Model:
-        @serve.multiplexed(max_num_models_per_replica=2)
+        @serve.multiplexed(name="model", size_per_replica=2)
         async def get_model(self, tag):
             return tag
 
         async def __call__(self, request):
-            tag = serve.get_multiplexed_model_id()
+            tag = serve.get_multiplexed_id("model")
             await self.get_model(tag)
             # return pid to check if the same model is used
             return os.getpid()
@@ -456,18 +524,18 @@ def test_multiplexed_multiple_replicas(serve_instance):
 
     @serve.deployment(num_replicas=2, max_ongoing_requests=1)
     class Model:
-        @serve.multiplexed(max_num_models_per_replica=2)
+        @serve.multiplexed(name="model", size_per_replica=2)
         async def get_model(self, tag):
             return tag
 
         async def __call__(self):
-            tag = serve.get_multiplexed_model_id()
+            tag = serve.get_multiplexed_id("model")
             await self.get_model(tag)
             await signal.wait.remote()
             # return pid to check if the same model is used
             return os.getpid()
 
-    handle = serve.run(Model.bind()).options(multiplexed_model_id="1")
+    handle = serve.run(Model.bind()).options(multiplex_ids={"model": "1"})
 
     # Each request should go to different replicas.
     pid1_ref = handle.remote()
@@ -483,14 +551,14 @@ def test_multiplexed_multiple_replicas(serve_instance):
 
 def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
     """
-    Verify that `.options(multiplexed_model_id="foo")` on a ServeHandle sets it in the
-    downstream but does not update the model ID in the caller.
+    Verify that `.options(multiplex_ids={"model": "foo"})` on a ServeHandle sets it
+    in the downstream but does not update the model ID in the caller.
     """
 
     @serve.deployment
     class Downstream:
         def __call__(self):
-            return serve.get_multiplexed_model_id()
+            return serve.get_multiplexed_id("model")
 
     @serve.deployment
     class Upstream:
@@ -498,20 +566,22 @@ def test_setting_model_id_on_handle_does_not_set_it_locally(serve_instance):
             self._h = downstream
 
         async def __call__(self):
-            model_id_before = serve.get_multiplexed_model_id()
+            model_id_before = serve.get_multiplexed_id("model")
 
             # Make a call with another model ID, verify it's set properly.
-            other_model_id = await self._h.options(multiplexed_model_id="bar").remote()
+            other_model_id = await self._h.options(
+                multiplex_ids={"model": "bar"}
+            ).remote()
             assert other_model_id == "bar"
 
             # Model ID shouldn't change after the handle call.
-            model_id_after = serve.get_multiplexed_model_id()
+            model_id_after = serve.get_multiplexed_id("model")
             assert model_id_before == model_id_after
 
             return model_id_before
 
     handle = serve.run(Upstream.bind(Downstream.bind()))
-    assert handle.options(multiplexed_model_id="foo").remote().result() == "foo"
+    assert handle.options(multiplex_ids={"model": "foo"}).remote().result() == "foo"
 
 
 def test_replica_upgrade_to_cleanup_resource(serve_instance):
@@ -548,12 +618,12 @@ def test_replica_upgrade_to_cleanup_resource(serve_instance):
         def __init__(self, record_handle):
             self.record_handle = record_handle
 
-        @serve.multiplexed(max_num_models_per_replica=1)
+        @serve.multiplexed(name="model", size_per_replica=1)
         async def get_model(self, tag):
             return MyModel(tag, self.record_handle)
 
         async def __call__(self, request):
-            tag = serve.get_multiplexed_model_id()
+            tag = serve.get_multiplexed_id("model")
             await self.get_model(tag)
             # return pid to check if the same model is used
             return os.getpid()
@@ -582,14 +652,14 @@ def test_multiplexed_with_batching_splits_by_model_id(serve_instance):
         def __init__(self):
             self.batch_info = []
 
-        @serve.multiplexed(max_num_models_per_replica=3)
+        @serve.multiplexed(name="model", size_per_replica=3)
         async def get_model(self, model_id: str):
             return model_id
 
         @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.0)
         async def batched_predict(self, inputs: List[str]):
             # Get the model ID from the request context
-            model_id = serve.get_multiplexed_model_id()
+            model_id = serve.get_multiplexed_id("model")
 
             # Record the batch info for verification
             batch_size = len(inputs)
@@ -622,7 +692,9 @@ def test_multiplexed_with_batching_splits_by_model_id(serve_instance):
     for i in range(6):
         # Alternate between model_a and model_b
         model_id = "model_a" if i % 2 == 0 else "model_b"
-        refs.append(handle.options(multiplexed_model_id=model_id).remote(f"input_{i}"))
+        refs.append(
+            handle.options(multiplex_ids={"model": model_id}).remote(f"input_{i}")
+        )
 
     # Wait for all results
     results = [ref.result() for ref in refs]
@@ -669,7 +741,7 @@ def test_multiplexed_with_batching_same_model_batches_together(serve_instance):
 
         @serve.batch(max_batch_size=10, batch_wait_timeout_s=1.0)
         async def batched_predict(self, inputs: List[str]):
-            model_id = serve.get_multiplexed_model_id()
+            model_id = serve.get_multiplexed_id("model")
             self.batch_sizes.append((model_id, len(inputs)))
             await signal.wait.remote()
             return [f"{model_id}:{inp}" for inp in inputs]
@@ -686,7 +758,7 @@ def test_multiplexed_with_batching_same_model_batches_together(serve_instance):
     refs = []
     for i in range(5):
         refs.append(
-            handle.options(multiplexed_model_id="same_model").remote(f"input_{i}")
+            handle.options(multiplex_ids={"model": "same_model"}).remote(f"input_{i}")
         )
 
     # Wait for the batch to form
@@ -720,7 +792,7 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
         def __init__(self):
             self.model_id_readings = []
 
-        @serve.multiplexed(max_num_models_per_replica=5)
+        @serve.multiplexed(name="model", size_per_replica=5)
         async def get_model(self, model_id: str):
             return model_id
 
@@ -730,7 +802,7 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
             await signal_barrier.wait.remote()
 
             # Phase 2: NOW read the model_id.
-            model_id_read = serve.get_multiplexed_model_id()
+            model_id_read = serve.get_multiplexed_id("model")
 
             # Record for verification
             self.model_id_readings.append(
@@ -760,7 +832,7 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
     for model_id in model_ids:
         for i in range(requests_per_model):
             refs.append(
-                handle.options(multiplexed_model_id=model_id).remote(
+                handle.options(multiplex_ids={"model": model_id}).remote(
                     f"{model_id}_input_{i}"
                 )
             )
@@ -801,6 +873,68 @@ def test_multiplexed_batching_concurrent_subbatches_context_isolation(serve_inst
         f"read the same model_id because they share context. "
         f"Full readings: {readings}"
     )
+
+
+def test_multiplexed_multi_dim(serve_instance):
+    @serve.deployment(num_replicas=1)
+    class TwoDim:
+        @serve.multiplexed(name="model", size_per_replica=5)
+        async def load_model(self, model_id: str):
+            return ("model", model_id)
+
+        @serve.multiplexed(name="session", size_per_replica=5)
+        async def load_session(self, session_id: str):
+            return ("session", session_id)
+
+        async def __call__(self, _):
+            model_id = serve.get_multiplexed_id("model")
+            session_id = serve.get_multiplexed_id("session")
+
+            if model_id:
+                await self.load_model(model_id)
+            if session_id:
+                await self.load_session(session_id)
+            return "ok"
+
+        def cache_snapshot(self):
+            # MRU order per dimension: `entries` is an OrderedDict keyed in
+            # insertion (access) order.
+            wrappers = getattr(self, "__serve_multiplex_wrapper", {})
+            return {name: list(w.entries.keys()) for name, w in wrappers.items()}
+
+    handle = serve.run(TwoDim.bind())
+
+    # Only model dim touched — session LRU must stay empty.
+    handle.options(multiplex_ids={"model": "m1"}).remote(None).result()
+    assert handle.cache_snapshot.remote().result() == {"model": ["m1"]}
+
+    # Both dims touched in one request — both LRUs gain their id.
+    handle.options(multiplex_ids={"model": "m2", "session": "s1"}).remote(None).result()
+    assert handle.cache_snapshot.remote().result() == {
+        "model": ["m1", "m2"],
+        "session": ["s1"],
+    }
+
+    # Touch model "m1" again — model LRU moves m1 to MRU; session stays put.
+    handle.options(multiplex_ids={"model": "m1"}).remote(None).result()
+    assert handle.cache_snapshot.remote().result() == {
+        "model": ["m2", "m1"],
+        "session": ["s1"],
+    }
+
+    # Touch only session "s2" — session LRU grows; model LRU unchanged.
+    handle.options(multiplex_ids={"session": "s2"}).remote(None).result()
+    assert handle.cache_snapshot.remote().result() == {
+        "model": ["m2", "m1"],
+        "session": ["s1", "s2"],
+    }
+
+    # Request with no multiplex ids at all — nothing moves.
+    handle.remote(None).result()
+    assert handle.cache_snapshot.remote().result() == {
+        "model": ["m2", "m1"],
+        "session": ["s1", "s2"],
+    }
 
 
 if __name__ == "__main__":

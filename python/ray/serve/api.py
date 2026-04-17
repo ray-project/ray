@@ -1,6 +1,7 @@
 import collections
 import inspect
 import logging
+import warnings
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
@@ -61,7 +62,7 @@ from ray.serve.context import (
 from ray.serve.deployment import Application, Deployment
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
-from ray.serve.multiplex import _ModelMultiplexWrapper
+from ray.serve.multiplex import _MultiplexWrapper
 from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -924,27 +925,31 @@ def delete(name: str, _blocking: bool = True):
 
 @PublicAPI(stability="beta")
 def multiplexed(
-    func: Optional[Callable[..., Any]] = None, max_num_models_per_replica: int = 3
+    func: Optional[Callable[..., Any]] = None,
+    max_num_models_per_replica: Optional[int] = None,
+    name: Optional[str] = None,
+    size_per_replica: int = 3,
 ):
-    """Wrap a callable or method used to load multiplexed models in a replica.
+    """Wrap a callable or method used to load multiplexed resources in a replica.
 
     The function can be standalone function or a method of a class. The
-    function must have exactly one argument, the model id of type `str` for the
-    model to be loaded.
+    function must have exactly one argument, the resource id of type `str` for the
+    resource to be loaded.
 
     It is required to define the function with `async def` and the function must be
     an async function. It is recommended to define coroutines for long running
     IO tasks in the function to avoid blocking the event loop.
 
-    The multiplexed function is called to load a model with the given model ID when
-    necessary.
-
-    When the number of models in one replica is larger than max_num_models_per_replica,
-    the models will be unloaded using an LRU policy.
+    The multiplexed function is called to load a resource with the given ID when
+    necessary. When the number of cached resources exceeds ``size_per_replica``,
+    the least-recently-used entry is evicted.
 
     If you want to release resources after the model is loaded, you can define
     a `__del__` method in your model class. The `__del__` method will be called when
     the model is unloaded.
+
+    Multiple multiplexed dimensions can be defined on the same deployment class by
+    using different ``name`` values:
 
     Example:
 
@@ -954,37 +959,59 @@ def multiplexed(
 
             @serve.deployment
             class MultiplexedDeployment:
-
-                def __init__(self):
-                    # Define s3 base path to load models.
-                    self.s3_base_path = "s3://my_bucket/my_models"
-
-                @serve.multiplexed(max_num_models_per_replica=5)
+                @serve.multiplexed(name="model", size_per_replica=5)
                 async def load_model(self, model_id: str) -> Any:
-                    # Load model with the given tag
-                    # You can use any model loading library here
-                    # and return the loaded model. load_from_s3 is
-                    # a placeholder function.
                     return load_from_s3(model_id)
 
+                @serve.multiplexed(name="session", size_per_replica=10)
+                async def load_session(self, session_id: str):
+                    pass  # no-op is valid: just tracks the session in the LRU
+
                 async def __call__(self, request):
-                    # Get the model_id from the request context.
-                    model_id = serve.get_multiplexed_model_id()
-                    # Load the model for the requested model_id.
-                    # If the model is already cached locally,
-                    # this will just be a dictionary lookup.
+                    model_id = serve.get_multiplexed_id("model")
                     model = await self.load_model(model_id)
                     return model(request)
 
-
     Args:
-        max_num_models_per_replica: the maximum number of models
-            to be loaded on each replica. By default, it is 3, which
-            means that each replica can cache up to 3 models. You can
-            set it to a larger number if you have enough memory on
-            the node resource, in opposite, you can set it to a smaller
-            number if you want to save memory on the node resource.
+        name: The name of this multiplex dimension (e.g. "model", "session").
+            Each dimension has its own independent LRU cache.
+        size_per_replica: the maximum number of entries to cache per replica
+            for this dimension. By default, it is 3. Set to -1 for unlimited.
+            Set it to a greater value if you have enough memory on the node resource.
+            By contrast, set it to a smaller value if you want to save memory on the
+            node resource.
+        max_num_models_per_replica: Deprecated. Use ``size_per_replica`` instead.
     """
+    # TODO (jeffreywang): Deprecate max_num_models_per_replica in Ray 2.58.
+    # Tracks whether the user came through the legacy path; drives whether the
+    # wrapper emits legacy metric names or the generalized `dimension`-tagged
+    # ones. A call that passes neither `name` nor `max_num_models_per_replica`
+    # (the bare `@serve.multiplexed` / `@serve.multiplexed()` form) is treated
+    # as the legacy model-only path with size 3.
+    use_multiplex_model_legacy_metrics = False
+    if max_num_models_per_replica is not None and name is not None:
+        raise ValueError(
+            "`max_num_models_per_replica` cannot be combined with `name`. "
+            "Use the new API instead: "
+            "@serve.multiplexed(name='model', size_per_replica=N)"
+        )
+
+    if max_num_models_per_replica is not None:
+        if not isinstance(max_num_models_per_replica, int):
+            raise TypeError("max_num_models_per_replica must be an integer.")
+        if max_num_models_per_replica != -1 and max_num_models_per_replica <= 0:
+            raise ValueError("max_num_models_per_replica must be positive.")
+        warnings.warn(
+            "`max_num_models_per_replica` is deprecated and will be removed in "
+            "Ray 2.58. Use `name` and `size_per_replica` instead."
+        )
+        name = "model"
+        size_per_replica = max_num_models_per_replica
+        use_multiplex_model_legacy_metrics = True
+    elif name is None:
+        # TODO (jeffreywang): Remove this in Ray 2.58 as bare `@serve.multiplexed` form is deprecated.
+        name = "model"
+        use_multiplex_model_legacy_metrics = True
 
     if func is not None:
         if not callable(func):
@@ -1006,11 +1033,14 @@ def multiplexed(
                 "with at least one 'model_id: str' argument."
             )
 
-    if not isinstance(max_num_models_per_replica, int):
-        raise TypeError("max_num_models_per_replica must be an integer.")
+    if not isinstance(size_per_replica, int):
+        raise TypeError("size_per_replica must be an integer.")
 
-    if max_num_models_per_replica != -1 and max_num_models_per_replica <= 0:
-        raise ValueError("max_num_models_per_replica must be positive.")
+    if size_per_replica != -1 and size_per_replica <= 0:
+        raise ValueError("size_per_replica must be positive.")
+
+    if not isinstance(name, str) or not name:
+        raise ValueError("name must be a non-empty string.")
 
     def _multiplex_decorator(func: Callable):
         @wraps(func)
@@ -1043,18 +1073,28 @@ def multiplexed(
                     )
                 multiplex_object = self
                 model_id = args[1]
-            multiplex_attr = "__serve_multiplex_wrapper"
-            # If the multiplexed function is called for the first time,
-            # create a model multiplex wrapper and cache it in the multiplex object.
-            if not hasattr(multiplex_object, multiplex_attr):
-                model_multiplex_wrapper = _ModelMultiplexWrapper(
-                    func, self, max_num_models_per_replica
-                )
-                setattr(multiplex_object, multiplex_attr, model_multiplex_wrapper)
-            else:
-                model_multiplex_wrapper = getattr(multiplex_object, multiplex_attr)
-            return await model_multiplex_wrapper.load_model(model_id)
 
+            # Store wrappers per dimension in a dict on the target object.
+            wrappers_attr = "__serve_multiplex_wrapper"
+            if not hasattr(multiplex_object, wrappers_attr):
+                setattr(multiplex_object, wrappers_attr, {})
+            wrappers_dict = getattr(multiplex_object, wrappers_attr)
+
+            if name not in wrappers_dict:
+                wrappers_dict[name] = _MultiplexWrapper(
+                    func,
+                    self,
+                    name,
+                    size_per_replica,
+                    multiplex_model_legacy_metrics=use_multiplex_model_legacy_metrics,
+                )
+
+            return await wrappers_dict[name].load(model_id)
+
+        # Tag the wrapper with its dimension name so replica startup /
+        # get_multiplexed_id can discover the set of registered dimensions
+        # on this deployment.
+        _multiplex_wrapper._serve_multiplex_dimension = name
         return _multiplex_wrapper
 
     return _multiplex_decorator(func) if callable(func) else _multiplex_decorator
@@ -1093,16 +1133,73 @@ def get_multiplexed_model_id() -> str:
             def my_deployment_function(request):
                 assert serve.get_multiplexed_model_id() == "model_1"
     """
-    # First check if we're inside a batch context. If so, get the model ID
-    # from the batch request context. All requests in a batch are guaranteed
-    # to have the same multiplexed_model_id (batches are split by model ID).
+    warnings.warn(
+        "`serve.get_multiplexed_model_id()` is deprecated and will be removed "
+        "in Ray 2.58. Use `serve.get_multiplexed_id('model')` instead."
+    )
+    return get_multiplexed_id("model")
+
+
+@PublicAPI(stability="beta")
+def get_multiplexed_id(name: str) -> str:
+    """Get the multiplex ID for the given dimension from the current request.
+
+    This is used with a function decorated with ``@serve.multiplexed(name=...)``
+    to retrieve the dimension's ID for the current request.
+
+    When called from within a batched function (decorated with ``@serve.batch``),
+    this returns the multiplex ID that is common to all requests in the current
+    batch. This works because batches are automatically split by multiplex IDs
+    to ensure all requests in a batch target the same resource.
+
+    Example:
+
+    .. code-block:: python
+
+            from ray import serve
+
+            @serve.deployment
+            class MyDeployment:
+                @serve.multiplexed(name="model", size_per_replica=5)
+                async def load_model(self, model_id: str):
+                    return load_from_s3(model_id)
+
+                async def __call__(self, request):
+                    model_id = serve.get_multiplexed_id("model")
+                    model = await self.load_model(model_id)
+                    return model(request)
+
+    Args:
+        name: The multiplex dimension name. Must match a ``@serve.multiplexed(name=...)``
+              decorator on the deployment.
+
+    Returns:
+        The multiplex ID string for the given dimension, or "" if the dimension
+        is registered but the current request did not carry an ID for it.
+
+    Raises:
+        KeyError: if ``name`` does not match any registered multiplex
+            dimension on the current replica.
+    """
+    replica_ctx = ray.serve.context._get_internal_replica_context()
+    if (
+        replica_ctx is not None
+        and replica_ctx._multiplex_dimensions
+        and name not in replica_ctx._multiplex_dimensions
+    ):
+        raise KeyError(
+            f"'{name}' is not a registered multiplex dimension on this deployment."
+        )
+
+    # Inside a @serve.batch handler, read from the batch context. All requests
+    # in a sub-batch share the same multiplex IDs (batches are split by them
+    # upstream), so index [0] is representative.
     batch_request_context = ray.serve.context._get_serve_batch_request_context()
     if batch_request_context:
-        return batch_request_context[0].multiplexed_model_id
-
-    # Fall back to the regular request context
-    _request_context = ray.serve.context._get_serve_request_context()
-    return _request_context.multiplexed_model_id
+        ctx = batch_request_context[0]
+    else:
+        ctx = ray.serve.context._get_serve_request_context()
+    return ctx.multiplex_ids.get(name, "")
 
 
 @PublicAPI(stability="alpha")

@@ -1,4 +1,5 @@
 import os
+import warnings
 from typing import List
 
 from ray.serve._private.constants_utils import (
@@ -120,7 +121,7 @@ DEFAULT_LATENCY_BUCKET_MS = [
 
 # Example usage:
 # RAY_SERVE_REQUEST_LATENCY_BUCKET_MS="1,2,3,4"
-# RAY_SERVE_MODEL_LOAD_LATENCY_BUCKET_MS="1,2,3,4"
+# RAY_SERVE_MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS="1,2,3,4"
 #: Histogram buckets for request latency.
 REQUEST_LATENCY_BUCKETS_MS = parse_latency_buckets(
     get_env_str(
@@ -129,12 +130,38 @@ REQUEST_LATENCY_BUCKETS_MS = parse_latency_buckets(
     ),
     DEFAULT_LATENCY_BUCKET_MS,
 )
-#: Histogram buckets for model load/unload latency.
-MODEL_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
-    get_env_str(
-        "RAY_SERVE_MODEL_LOAD_LATENCY_BUCKETS_MS",
-        get_env_str("MODEL_LOAD_LATENCY_BUCKETS_MS", ""),
-    ),
+
+
+def _resolve_multiplexed_load_latency_buckets_env() -> str:
+    """Resolve the env var for multiplex entry load/unload latency buckets.
+
+    Prefers the generalized name; falls back to the legacy
+    `*_MODEL_LOAD_*` names with a deprecation warning.
+    """
+    new_var = get_env_str("RAY_SERVE_MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS", "")
+    if new_var:
+        return new_var
+
+    legacy_prefixed = get_env_str("RAY_SERVE_MODEL_LOAD_LATENCY_BUCKETS_MS", "")
+    legacy_unprefixed = get_env_str("MODEL_LOAD_LATENCY_BUCKETS_MS", "")
+    legacy = legacy_prefixed or legacy_unprefixed
+    if legacy:
+        legacy_env_name = (
+            "RAY_SERVE_MODEL_LOAD_LATENCY_BUCKETS_MS"
+            if legacy_prefixed
+            else "MODEL_LOAD_LATENCY_BUCKETS_MS"
+        )
+        warnings.warn(
+            f"`{legacy_env_name}` is deprecated and will be removed in Ray 2.58. "
+            "Use `RAY_SERVE_MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS` instead."
+        )
+    return legacy
+
+
+#: Histogram buckets for multiplex entry load/unload latency (across all
+#: multiplex dimensions: model, session, etc.).
+MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS = parse_latency_buckets(
+    _resolve_multiplexed_load_latency_buckets_env(),
     DEFAULT_LATENCY_BUCKET_MS,
 )
 

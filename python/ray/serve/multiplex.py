@@ -8,7 +8,7 @@ from typing import Any, Callable, List, Set
 from ray.serve import metrics
 from ray.serve._private.common import ReplicaID, RequestRoutingInfo
 from ray.serve._private.constants import (
-    MODEL_LOAD_LATENCY_BUCKETS_MS,
+    MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS,
     PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
@@ -19,84 +19,138 @@ from ray.serve.context import _get_global_client, _get_internal_replica_context
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-class _ModelMultiplexWrapper:
-    """A wrapper class that wraps the model load function and
-    provides the LRU caching functionality.
+class _MultiplexWrapper:
+    """Wraps a user-defined loader for a single multiplex dimension and
+    provides LRU caching of its loaded entries.
 
-    The model multiplexer is a wrapper class that wraps the model load function
-    and provides the LRU caching functionality, and the model load function should
-    be a coroutine function that takes the model ID as the first argument and
-    returns the user-constructed model object.
-    The model multiplexer will also ensure that the number of models on the current
-    replica does not exceed the specified limit.
-    The model will be unloaded in the LRU order, the model multiplexer will call the
-    model's __del__ attribute if it exists to clean up the model resources eagerly.
-
+    Each multiplex dimension (e.g. "model", "session") gets its own wrapper
+    instance with its own independent LRU cache. The wrapper periodically
+    reports its cached IDs (keyed by dimension name) to the controller so
+    the router can make dimension-aware routing decisions.
     """
 
     _PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME = "push_multiplexed_model_ids"
 
     def __init__(
         self,
-        model_load_func: Callable[[str], Any],
+        load_func: Callable[[str], Any],
         self_arg: Any,
-        max_num_models_per_replica: int,
+        name: str,
+        size_per_replica: int,
+        multiplex_model_legacy_metrics: bool = False,
     ):
-        """Initialize the model multiplexer.
+        """Initialize the multiplex wrapper.
+
         Args:
-            model_load_func: the model load async function.
-            self_arg: self argument when model_load_func is class method.
-            max_num_models_per_replica: the maximum number of models to be loaded on the
-                current replica. If it is -1, there is no limit for the number of models
-                per replica.
+            load_func: the async load function.
+            self_arg: self argument when load_func is a class method.
+            name: the multiplex dimension name (e.g. "model", "session").
+            size_per_replica: the maximum number of entries to cache on the
+                current replica. If -1, the cache size is unbounded.
+            multiplex_model_legacy_metrics: if True, emit the original multiplexed model
+                metric names (e.g. `serve_multiplexed_model_load_latency_ms`) without
+                a `dimension` tag. Used for the deprecated `max_num_models_per_replica`
+                path to preserve dashboard compatibility. If False, emit the generalized
+                metric names (e.g. `serve_multiplexed_load_latency_ms`) with a `dimension`
+                tag so multiple dimensions share one series.
         """
 
         ServeUsageTag.MULTIPLEXED_API_USED.record("1")
+        self._name = name
+        self._multiplex_model_legacy_metrics = multiplex_model_legacy_metrics
 
-        self.models = OrderedDict()
-        self._func: Callable = model_load_func
+        # OrderedDict used as LRU cache of loaded entries (id -> user object).
+        self.entries: OrderedDict[str, Any] = OrderedDict()
+        self._func: Callable = load_func
         self.self_arg: Any = self_arg
-        self.max_num_models_per_replica: int = max_num_models_per_replica
+        self.size_per_replica: int = size_per_replica
 
-        # log MODEL_LOAD_LATENCY_BUCKET_MS
-        logger.debug(f"MODEL_LOAD_LATENCY_BUCKET_MS: {MODEL_LOAD_LATENCY_BUCKETS_MS}")
-        self.model_load_latency_ms = metrics.Histogram(
-            "serve_multiplexed_model_load_latency_ms",
-            description="The time it takes to load a model.",
-            boundaries=MODEL_LOAD_LATENCY_BUCKETS_MS,
+        logger.debug(
+            f"MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS: {MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS}"
         )
-        self.model_unload_latency_ms = metrics.Histogram(
-            "serve_multiplexed_model_unload_latency_ms",
-            description="The time it takes to unload a model.",
-            boundaries=MODEL_LOAD_LATENCY_BUCKETS_MS,
-        )
-        self.num_models_gauge = metrics.Gauge(
-            "serve_num_multiplexed_models",
-            description="The number of models loaded on the current replica.",
-        )
-
-        self.registered_model_gauge = metrics.Gauge(
-            "serve_registered_multiplexed_model_id",
-            description="The model id registered on the current replica.",
-            tag_keys=("model_id",),
-        )
-        self.get_model_requests_counter = metrics.Counter(
-            "serve_multiplexed_get_model_requests_counter",
-            description="The counter for get model requests on the current replica.",
-        )
-        self.models_unload_counter = metrics.Counter(
-            "serve_multiplexed_models_unload_counter",
-            description="The counter for unloaded models on the current replica.",
-        )
-        self.models_load_counter = metrics.Counter(
-            "serve_multiplexed_models_load_counter",
-            description="The counter for loaded models on the current replica.",
-        )
+        if multiplex_model_legacy_metrics:
+            self._metric_dimension_tag: dict = {}
+            self.load_latency_ms = metrics.Histogram(
+                "serve_multiplexed_model_load_latency_ms",
+                description="The time it takes to load a model.",
+                boundaries=MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS,
+            )
+            self.unload_latency_ms = metrics.Histogram(
+                "serve_multiplexed_model_unload_latency_ms",
+                description="The time it takes to unload a model.",
+                boundaries=MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS,
+            )
+            self.num_entries_gauge = metrics.Gauge(
+                "serve_num_multiplexed_models",
+                description="The number of models loaded on the current replica.",
+            )
+            self.registered_entry_gauge = metrics.Gauge(
+                "serve_registered_multiplexed_model_id",
+                description="The model id registered on the current replica.",
+                tag_keys=("model_id",),
+            )
+            self.get_entry_requests_counter = metrics.Counter(
+                "serve_multiplexed_get_model_requests_counter",
+                description=(
+                    "The counter for get model requests on the current replica."
+                ),
+            )
+            self.entries_unload_counter = metrics.Counter(
+                "serve_multiplexed_models_unload_counter",
+                description=("The counter for unloaded models on the current replica."),
+            )
+            self.entries_load_counter = metrics.Counter(
+                "serve_multiplexed_models_load_counter",
+                description=("The counter for loaded models on the current replica."),
+            )
+        else:
+            self._metric_dimension_tag = {"dimension": name}
+            self.load_latency_ms = metrics.Histogram(
+                "serve_multiplexed_load_latency_ms",
+                description="The time it takes to load a multiplexed entry.",
+                boundaries=MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS,
+                tag_keys=("dimension",),
+            )
+            self.unload_latency_ms = metrics.Histogram(
+                "serve_multiplexed_unload_latency_ms",
+                description="The time it takes to unload a multiplexed entry.",
+                boundaries=MULTIPLEXED_LOAD_LATENCY_BUCKETS_MS,
+                tag_keys=("dimension",),
+            )
+            self.num_entries_gauge = metrics.Gauge(
+                "serve_multiplexed_num_entries",
+                description="Number of entries cached on the current replica.",
+                tag_keys=("dimension",),
+            )
+            self.registered_entry_gauge = metrics.Gauge(
+                "serve_multiplexed_registered_id",
+                description="The id registered on the current replica.",
+                tag_keys=("dimension", "id"),
+            )
+            self.get_entry_requests_counter = metrics.Counter(
+                "serve_multiplexed_get_requests_counter",
+                description=(
+                    "The counter for get-entry requests on the current replica."
+                ),
+                tag_keys=("dimension",),
+            )
+            self.entries_unload_counter = metrics.Counter(
+                "serve_multiplexed_unload_counter",
+                description=(
+                    "The counter for unloaded entries on the current replica."
+                ),
+                tag_keys=("dimension",),
+            )
+            self.entries_load_counter = metrics.Counter(
+                "serve_multiplexed_load_counter",
+                description=("The counter for loaded entries on the current replica."),
+                tag_keys=("dimension",),
+            )
 
         context = _get_internal_replica_context()
         if context is None:
             raise RuntimeError(
-                "`@serve.multiplex` can only be used within a deployment "
+                "`@serve.multiplexed` can only be used within a deployment "
                 "(failed to retrieve Serve replica context)."
             )
 
@@ -105,51 +159,57 @@ class _ModelMultiplexWrapper:
         self._replica_id: ReplicaID = context.replica_id
 
         # Whether to push the multiplexed replica info to the controller.
-        self._push_multiplexed_replica_info: bool = False
+        self._push_replica_info: bool = False
 
-        # Model cache lock to ensure that only one model is loading/unloading at a time.
-        self._model_cache_lock = asyncio.Lock()
-        # The set of model IDs that are being loaded. This is used to early push
-        # model ids info to the controller. The tasks will be added when there is cache
-        # miss, and will be removed when the model is loaded successfully or
-        # failed to load.
-        self._model_load_tasks: Set[str] = set()
+        # Cache lock to ensure that only one entry is loading/unloading at a time.
+        self._cache_lock = asyncio.Lock()
+        # The set of IDs that are being loaded. This is used to push IDs info
+        # to the controller early so that requests can be routed to the replica
+        # before the load completes.
+        self._load_tasks: Set[str] = set()
 
         self.metrics_pusher = MetricsPusher()
         self.metrics_pusher.register_or_update_task(
             self._PUSH_MULTIPLEXED_MODEL_IDS_TASK_NAME,
-            self._push_model_ids_info,
+            self._push_ids_info,
             PUSH_MULTIPLEXED_MODEL_IDS_INTERVAL_S,
         )
         self.metrics_pusher.start()
 
-    def _get_loading_and_loaded_model_ids(self) -> List[str]:
-        """Get the model IDs of the loaded models & loading models in the replica.
-        This is to push the model id information early to the controller, so that
-        requests can be routed to the replica.
-        """
-        models_list = set(self.models.keys())
-        models_list.update(self._model_load_tasks)
-        return list(models_list)
+    def _get_loading_and_loaded_ids(self) -> List[str]:
+        """Get the IDs of loaded + currently-loading entries on this replica.
 
-    def _push_model_ids_info(self):
+        This is used to push IDs info early to the controller so that requests
+        can be routed to this replica before an in-flight load completes.
+        """
+        ids = set(self.entries.keys())
+        ids.update(self._load_tasks)
+        return list(ids)
+
+    def _push_ids_info(self):
         """Push the multiplexed replica info to the controller."""
         try:
-            self.num_models_gauge.set(len(self.models))
+            self.num_entries_gauge.set(
+                len(self.entries), tags=self._metric_dimension_tag or None
+            )
 
-            for model_id in self.models:
-                self.registered_model_gauge.set(1, tags={"model_id": model_id})
-
-            if self._push_multiplexed_replica_info:
-                _get_global_client().record_request_routing_info(
-                    RequestRoutingInfo(
-                        replica_id=self._replica_id,
-                        multiplex_dim_to_ids={
-                            "model": self._get_loading_and_loaded_model_ids()
-                        },
-                    )
+            for entry_id in self.entries:
+                # Legacy model multiplexing tag key is "model_id"; new tag key is "id".
+                tags = (
+                    {"model_id": entry_id}
+                    if self._multiplex_model_legacy_metrics
+                    else {**self._metric_dimension_tag, "id": entry_id}
                 )
-                self._push_multiplexed_replica_info = False
+                self.registered_entry_gauge.set(1, tags=tags)
+
+            if self._push_replica_info:
+                ids_list = self._get_loading_and_loaded_ids()
+                info = RequestRoutingInfo(
+                    replica_id=self._replica_id,
+                    multiplex_dim_to_ids={self._name: ids_list},
+                )
+                _get_global_client().record_request_routing_info(info)
+                self._push_replica_info = False
         except Exception as e:
             logger.warning(
                 "Failed to push the multiplexed replica info "
@@ -157,108 +217,114 @@ class _ModelMultiplexWrapper:
             )
 
     async def shutdown(self):
-        """Unload all the models when the model multiplexer is deleted."""
-        while len(self.models) > 0:
+        """Unload all entries when the wrapper is deleted."""
+        while len(self.entries) > 0:
             try:
-                await self.unload_model_lru()
+                await self._unload_lru()
             except Exception as e:
                 logger.exception(
-                    f"Failed to unload model. Error: {e}",
+                    f"Failed to unload entry. Error: {e}",
                 )
 
-    async def load_model(self, model_id: str) -> Any:
-        """Load the model if it is not loaded yet, and return
-            the user-constructed model object.
+    async def load(self, multiplex_id: str) -> Any:
+        """Load the entry if it's not loaded yet, and return the user object.
 
         Args:
-            model_id: the model ID.
+            multiplex_id: the ID of the entry to load.
 
         Returns:
-            The user-constructed model object.
+            The user-constructed object for this ID.
         """
 
-        if not isinstance(model_id, str):
-            raise TypeError("The model ID must be a string.")
+        if not isinstance(multiplex_id, str):
+            raise TypeError("The multiplex ID must be a string.")
 
-        if not model_id:
-            raise ValueError("The model ID cannot be empty.")
+        if not multiplex_id:
+            raise ValueError("The multiplex ID cannot be empty.")
 
-        self.get_model_requests_counter.inc()
+        self.get_entry_requests_counter.inc(tags=self._metric_dimension_tag or None)
 
-        if model_id in self.models:
-            # Move the model to the end of the OrderedDict to mark it as
+        if multiplex_id in self.entries:
+            # Move the entry to the end of the OrderedDict to mark it as
             # most-recently-used. Using move_to_end() instead of pop()+reinsert
             # avoids a race condition where concurrent coroutines could see the
             # key as missing during the brief window between pop and reinsert.
-            self.models.move_to_end(model_id)
-            return self.models[model_id]
+            self.entries.move_to_end(multiplex_id)
+            return self.entries[multiplex_id]
         else:
             # Set the flag to push the multiplexed replica info to the controller
-            # before loading the model. This is to make sure we can push the model
-            # id info to the controller/router early, so that requests can be routed to
-            # the replica.
-            self._push_multiplexed_replica_info = True
-            self._model_load_tasks.add(model_id)
-            async with self._model_cache_lock:
-                # Check if the model has been loaded by another request.
-                if model_id in self.models:
-                    return self.models[model_id]
+            # before loading. This is to make sure we can push the ID info to the
+            # controller/router early, so that requests can be routed here.
+            self._push_replica_info = True
+            self._load_tasks.add(multiplex_id)
+            async with self._cache_lock:
+                # Check if the entry has been loaded by another request.
+                if multiplex_id in self.entries:
+                    return self.entries[multiplex_id]
                 try:
-                    # If the number of models per replica is specified, check
-                    # if the number of models on the current replica has
-                    # reached the limit.
+                    # If the cache has reached its size limit, evict the LRU.
                     if (
-                        self.max_num_models_per_replica > 0
-                        and len(self.models) >= self.max_num_models_per_replica
+                        self.size_per_replica > 0
+                        and len(self.entries) >= self.size_per_replica
                     ):
-                        # Unload the least recently used model.
-                        await self.unload_model_lru()
-                        self._push_multiplexed_replica_info = True
+                        await self._unload_lru()
+                        self._push_replica_info = True
 
-                    # Load the model.
-                    logger.debug(f"Loading model '{model_id}'.")
-                    self.models_load_counter.inc()
+                    logger.debug(f"Loading entry '{multiplex_id}'.")
+                    self.entries_load_counter.inc(
+                        tags=self._metric_dimension_tag or None
+                    )
                     load_start_time = time.time()
                     if self.self_arg is None:
-                        self.models[model_id] = await self._func(model_id)
+                        self.entries[multiplex_id] = await self._func(multiplex_id)
                     else:
-                        self.models[model_id] = await self._func(
-                            self.self_arg, model_id
+                        self.entries[multiplex_id] = await self._func(
+                            self.self_arg, multiplex_id
                         )
                     load_latency_ms = (time.time() - load_start_time) * 1000.0
                     logger.debug(
-                        f"Successfully loaded model '{model_id}' in "
+                        f"Successfully loaded entry '{multiplex_id}' in "
                         f"{load_latency_ms:.1f}ms."
                     )
-                    self._model_load_tasks.discard(model_id)
-                    self.model_load_latency_ms.observe(load_latency_ms)
-                    return self.models[model_id]
+                    self._load_tasks.discard(multiplex_id)
+                    self.load_latency_ms.observe(
+                        load_latency_ms, tags=self._metric_dimension_tag or None
+                    )
+                    return self.entries[multiplex_id]
                 except Exception as e:
                     logger.error(
-                        f"Failed to load model '{model_id}'. Error: {e}",
+                        f"Failed to load entry '{multiplex_id}'. Error: {e}",
                     )
-                    self._model_load_tasks.discard(model_id)
+                    self._load_tasks.discard(multiplex_id)
                     raise e
 
-    async def unload_model_lru(self) -> None:
-        """Unload the least recently used model."""
+    async def _unload_lru(self) -> None:
+        """Unload the least recently used entry."""
 
-        self.models_unload_counter.inc()
+        self.entries_unload_counter.inc(tags=self._metric_dimension_tag or None)
         unload_start_time = time.time()
-        model_id, model = self.models.popitem(last=False)
-        logger.debug(f"Unloading model '{model_id}'.")
+        multiplex_id, entry = self.entries.popitem(last=False)
+        logger.debug(f"Unloading entry '{multiplex_id}'.")
 
-        # If the model has __del__ attribute, call it.
-        # This is to clean up the model resources eagerly.
-        if hasattr(model, "__del__"):
-            if not inspect.iscoroutinefunction(model.__del__):
-                await asyncio.get_running_loop().run_in_executor(None, model.__del__)
+        # If the entry object defines __del__, call it so the user can free
+        # resources eagerly.
+        if hasattr(entry, "__del__"):
+            if not inspect.iscoroutinefunction(entry.__del__):
+                await asyncio.get_running_loop().run_in_executor(None, entry.__del__)
             else:
-                await model.__del__()
-            model.__del__ = lambda _: None
+                await entry.__del__()
+            entry.__del__ = lambda _: None
         unload_latency_ms = (time.time() - unload_start_time) * 1000.0
-        self.model_unload_latency_ms.observe(unload_latency_ms)
-        logger.debug(
-            f"Successfully unloaded model '{model_id}' in {unload_latency_ms:.1f}ms."
+        self.unload_latency_ms.observe(
+            unload_latency_ms, tags=self._metric_dimension_tag or None
         )
-        self.registered_model_gauge.set(0, tags={"model_id": model_id})
+        logger.debug(
+            f"Successfully unloaded entry '{multiplex_id}' in "
+            f"{unload_latency_ms:.1f}ms."
+        )
+        tags = (
+            {"model_id": multiplex_id}
+            if self._multiplex_model_legacy_metrics
+            else {**self._metric_dimension_tag, "id": multiplex_id}
+        )
+        self.registered_entry_gauge.set(0, tags=tags)
