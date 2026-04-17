@@ -202,16 +202,18 @@ def test_deployment_scheduling_info():
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=Resources({"CPU": 1}),
         placement_group_bundles=[
-            Resources({"CPU": 100, "GPU": 1}),
-            Resources({"GPU": 100}),
+            # Bundle 0 hosts the actor's CPU plus the CPU+GPU for a child
+            # task/actor captured into the PG.
+            Resources({"CPU": 2, "GPU": 1}),
+            Resources({"CPU": 1, "GPU": 1}),
         ],
         placement_group_strategy="PACK",
     )
     # Actor is pinned as a subset of bundle 0, so required_resources is
-    # bundle 0 rather than actor_resources.
-    assert info.required_resources == Resources({"CPU": 100, "GPU": 1})
+    # bundle 0's full reservation, not just actor_resources.
+    assert info.required_resources == Resources({"CPU": 2, "GPU": 1})
     assert info.is_non_strict_pack_pg()
 
 
