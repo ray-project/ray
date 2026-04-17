@@ -253,8 +253,8 @@ class DeploymentSchedulingInfo:
             return Resources(self.placement_group_bundles[0])
         else:
             # Copy so the implicit_resource assignment below doesn't mutate
-            # self.actor_resources.
-            required = Resources(self.actor_resources)
+            # self.actor_resources. `or {}` handles the Optional typing.
+            required = Resources(self.actor_resources or {})
 
             # Using implicit resource (resources that every node
             # implicitly has and total is 1)
