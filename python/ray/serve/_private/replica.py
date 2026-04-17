@@ -3715,12 +3715,8 @@ class UserCallableWrapper:
                     run_sync_methods_in_threadpool_override=False,
                 )
 
-            # Shut down all multiplex dimension wrappers.
             if hasattr(self._callable, "__serve_multiplex_wrapper"):
-                for wrapper in getattr(
-                    self._callable, "__serve_multiplex_wrapper"
-                ).values():
-                    await wrapper.shutdown()
+                await getattr(self._callable, "__serve_multiplex_wrapper").shutdown()
 
         except Exception as e:
             logger.exception(f"Exception during graceful shutdown of replica: {e}")
