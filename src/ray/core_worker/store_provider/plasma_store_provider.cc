@@ -266,7 +266,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     remaining_object_id_to_idx[object_ids[i]] = i;
   }
 
-  // Per batch: try plasma first; ask raylet only for what's still missing.
+  // map objects already in the local object store into the
+  // worker's address space directly, and collect the ones that aren't.
   for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
     std::vector<ObjectID> batch_ids;
     std::vector<rpc::Address> batch_owner_addresses;
@@ -280,6 +281,8 @@ Status CoreWorkerPlasmaStoreProvider::Get(
                                                 results,
                                                 &got_exception));
 
+    // For the objects that aren't in the local object store, send a request
+    // to the raylet to pull them.
     std::vector<ObjectID> missing_ids;
     std::vector<rpc::Address> missing_owner_addresses;
     for (size_t j = 0; j < batch_ids.size(); j++) {
@@ -298,7 +301,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     return Status::OK();
   }
 
-  // Wait for remaining objects to arrive.
+  // polling object store until every remaining object becomes local (or we time out). 
   bool should_break = false;
   bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;

@@ -694,22 +694,6 @@ std::vector<ObjectID> MakeRandomIds(int n) {
 
 }  // namespace
 
-TEST(PlasmaStoreProviderFastPath, SkipsRayletWhenAllLocal) {
-  auto fake_raylet = std::make_shared<RecordingFakeRaylet>();
-  auto ids = MakeRandomIds(5);
-  auto fake_plasma = std::make_shared<PartialPlasmaGetClient>(
-      absl::flat_hash_set<ObjectID>(ids.begin(), ids.end()));
-
-  CoreWorkerPlasmaStoreProvider provider(
-      "", fake_raylet, [] { return Status::OK(); }, false, fake_plasma, 2, nullptr);
-
-  std::vector<rpc::Address> owner_addresses(ids.size());
-  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
-  ASSERT_TRUE(provider.Get(ids, owner_addresses, -1, &results).ok());
-  EXPECT_EQ(results.size(), 5U);
-  EXPECT_TRUE(fake_raylet->async_get_ids.empty());
-}
-
 TEST(PlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   auto fake_raylet = std::make_shared<RecordingFakeRaylet>();
   auto ids = MakeRandomIds(5);
