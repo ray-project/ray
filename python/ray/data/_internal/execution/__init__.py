@@ -27,11 +27,6 @@ def create_resource_allocator(
 ) -> Optional["OpResourceAllocator"]:
     """Creates ``OpResourceAllocator`` instances.``"""
 
-    if not data_context.op_resource_reservation_enabled:
-        # This is a historical kill-switch to disable resource allocator, that
-        # will be soon deprecated and removed.
-        return None
-
     logger.debug(
         f"Using op resource allocator version: "
         f"{DEFAULT_USE_OP_RESOURCE_ALLOCATOR_VERSION!r}"

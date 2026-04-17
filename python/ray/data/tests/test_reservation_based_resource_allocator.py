@@ -40,7 +40,6 @@ class TestReservationOpResourceAllocator:
             yield
 
     def test_basic(self, restore_data_context):
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -81,7 +80,6 @@ class TestReservationOpResourceAllocator:
             side_effect=mock_get_global_limits
         )
 
-        assert resource_manager.op_resource_allocator_enabled()
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
@@ -208,7 +206,6 @@ class TestReservationOpResourceAllocator:
     def test_reserve_min_resource_requirements(self, restore_data_context):
         """Test that we'll reserve at least min_resource_requirements
         for each operator."""
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         global_limits = ExecutionResources(cpu=7, gpu=0, object_store_memory=800)
@@ -361,7 +358,6 @@ class TestReservationOpResourceAllocator:
         We cap op_shared so that total allocation <= max_resource_usage.
         Excess shared resources should remain available for other operators.
         """
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -439,7 +435,6 @@ class TestReservationOpResourceAllocator:
 
     def test_budget_capped_by_max_resource_usage_all_capped(self, restore_data_context):
         """Test when all operators are capped, remaining shared resources are not given."""
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -496,7 +491,6 @@ class TestReservationOpResourceAllocator:
 
     def test_only_handle_eligible_ops(self, restore_data_context):
         """Test that we only handle non-completed map ops."""
-        DataContext.get_current().op_resource_reservation_enabled = True
 
         input = make_ref_bundles([[x] for x in range(1)])
         o1 = InputDataBuffer(DataContext.get_current(), input)
@@ -517,7 +511,6 @@ class TestReservationOpResourceAllocator:
             return_value=ExecutionResources.zero()
         )
 
-        assert resource_manager.op_resource_allocator_enabled()
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
@@ -541,7 +534,6 @@ class TestReservationOpResourceAllocator:
         With unified allocation (no GPU special-casing), GPU flows through
         the normal shared allocation path just like CPU and memory.
         """
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -590,7 +582,6 @@ class TestReservationOpResourceAllocator:
 
     def test_multiple_gpu_operators(self, restore_data_context):
         """Test GPU allocation for multiple GPU operators."""
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -684,7 +675,6 @@ class TestReservationOpResourceAllocator:
         This is a regression test for the bug where ActorPoolStrategy(min_size=1, max_size=None)
         with GPU actors would not get any GPU budget, preventing autoscaling.
         """
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -743,7 +733,6 @@ class TestReservationOpResourceAllocator:
         actors doesn't need new GPUs). The fix uses min_scheduling_resources()
         which returns the per-actor GPU requirement.
         """
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         # Build pipeline: Input -> Read -> Preprocess -> Infer(GPU) -> Write
@@ -805,7 +794,6 @@ class TestReservationOpResourceAllocator:
 
         With unified allocation, bounded operator is capped, unbounded gets remaining.
         """
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -866,7 +854,6 @@ class TestReservationOpResourceAllocator:
         Non-GPU operators (Read, Write) should have 0 GPUs reserved, ensuring
         all GPUs are available for GPU operators (Infer1, Infer2).
         """
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -950,7 +937,6 @@ class TestReservationOpResourceAllocator:
 
     def test_reservation_accounts_for_completed_ops(self, restore_data_context):
         """Test that resource reservation properly accounts for completed ops."""
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
@@ -1038,7 +1024,6 @@ class TestReservationOpResourceAllocator:
                 v
                 o8 (ZipOperator) <-- o7 (InputDataBuffer, completed)
         """
-        DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
