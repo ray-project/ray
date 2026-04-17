@@ -373,6 +373,12 @@ def run_multi_endpoint_master(
         stats_printer,
     )
 
+    # sliding window for metrics; default is 10s
+    locust.stats.CURRENT_RESPONSE_TIME_PERCENTILE_WINDOW = 30
+
+    # default interval is 2s
+    locust.stats.CONSOLE_STATS_INTERVAL_SEC = 10
+
     warmup_classes = _build_user_classes(
         warmup_endpoints, host_url, token, payload, user_class_name_prefix="warmup"
     )
@@ -383,6 +389,8 @@ def run_multi_endpoint_master(
 
     stage_stats = []
     prev_stage = [None]
+    stage_start_requests = 0
+    stage_start_time = 0.0
 
     def _get_stage(run_time):
         if not stages:
@@ -393,18 +401,24 @@ def run_multi_endpoint_master(
         return None
 
     def _capture_stage_stats(stage_name):
+        nonlocal stage_start_requests, stage_start_time
+        now = time.time()
         total = master_runner.stats.total
         if total.num_requests == 0:
             return
+        requests_in_stage = total.num_requests - stage_start_requests
+        duration = max(1, now - stage_start_time)
         stage_stats.append(
             {
                 "name": stage_name,
-                "avg_rps": total.current_rps,
+                "avg_rps": requests_in_stage / duration,
                 "p99_latency": total.get_current_response_time_percentile(0.99),
                 "max_latency": total.max_response_time,
                 "avg_users": master_runner.user_count,
             }
         )
+        stage_start_requests = total.num_requests
+        stage_start_time = now
 
     class MultiEndpointLoadShape(LoadTestShape):
         def tick(cls):
@@ -457,6 +471,8 @@ def run_multi_endpoint_master(
     gevent.spawn(stats_printer(master_env.stats))
     gevent.spawn(stats_history, master_runner)
 
+    stage_start_requests = master_runner.stats.num_requests
+    stage_start_time = time.time()
     master_runner.start_shape()
     master_runner.shape_greenlet.join()
     master_runner.quit()
