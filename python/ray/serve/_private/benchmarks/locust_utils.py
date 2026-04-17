@@ -338,7 +338,7 @@ def run_multi_endpoint_worker(
     )
     all_classes = warmup_classes + ramp_classes
 
-    env = Environment(user_classes=all_classes, events=locust.events, stop_timeout=120)
+    env = Environment(user_classes=all_classes, events=locust.events, stop_timeout=60)
     runner = env.create_worker_runner(
         master_host=master_address, master_port=MASTER_PORT
     )
@@ -374,10 +374,10 @@ def run_multi_endpoint_master(
     )
 
     # sliding window for metrics; default is 10s
-    locust.stats.CURRENT_RESPONSE_TIME_PERCENTILE_WINDOW = 30
+    locust.stats.CURRENT_RESPONSE_TIME_PERCENTILE_WINDOW = 20
 
     # default interval is 2s
-    locust.stats.CONSOLE_STATS_INTERVAL_SEC = 10
+    locust.stats.CONSOLE_STATS_INTERVAL_SEC = 5
 
     warmup_classes = _build_user_classes(
         warmup_endpoints, host_url, token, payload, user_class_name_prefix="warmup"
@@ -441,6 +441,9 @@ def run_multi_endpoint_master(
             if ramp_users <= 0 and ramp_time >= ramp_profile[-1][0]:
                 if prev_stage[0] is not None:
                     _capture_stage_stats(prev_stage[0])
+                # Bump stop_timeout for end-of-test drain
+                # During the test, a small stop_timeout keeps stage transitions fast.
+                master_runner.environment.stop_timeout = 60
                 return None
 
             return total_users, ramp_spawn_rate, ramp_classes
@@ -449,7 +452,9 @@ def run_multi_endpoint_master(
         user_classes=all_classes,
         shape_class=MultiEndpointLoadShape(),
         events=locust.events,
-        stop_timeout=120,
+        # Small stop_timeout for fast stage transitions;
+        # bumped to 60 at end-of-test.
+        stop_timeout=5,
     )
     master_runner = master_env.create_master_runner(
         master_bind_host="*", master_bind_port=MASTER_PORT
@@ -475,6 +480,7 @@ def run_multi_endpoint_master(
     stage_start_time = time.time()
     master_runner.start_shape()
     master_runner.shape_greenlet.join()
+    gevent.sleep(2)
     master_runner.quit()
 
     # Print stats
