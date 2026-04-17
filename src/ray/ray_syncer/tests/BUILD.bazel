@@ -11,7 +11,6 @@ ray_cc_test(
     ],
     deps = [
         "//src/mock/ray/ray_syncer:mock_ray_syncer",
-        "//src/ray/common:ray_gtest_main",
         "//src/ray/common:test_utils",
         "//src/ray/ray_syncer",
         "//src/ray/rpc:grpc_server",

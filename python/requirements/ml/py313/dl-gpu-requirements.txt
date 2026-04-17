@@ -17,11 +17,9 @@ torch-spline-conv==1.2.2+pt27cu128
 torch-geometric==2.5.3
 
 cupy-cuda12x==13.6.0; sys_platform != 'darwin'
-cudf-cu12>=24.12.0; sys_platform != 'darwin'
+cudf-cu12>=24.12.0; sys_platform != 'darwin' and python_version >= '3.11'
 nixl==0.4.0; sys_platform != 'darwin'
 
-# Keep in sync with dl-cpu-requirements.txt (NCCL bound for torch 2.7+cu128).
-nvidia-nccl-cu12>=2.26.2,<3; platform_system == "Linux" and platform_machine == "x86_64"
-
-# CUDA 12 for JAX 0.9.x: plugin stack on PyPI (cp313). Do not use legacy jax_cuda_releases jaxlib+X+cuda12.cudnn89 (no cp313 there; conflicts with jaxlib==0.9.2).
-jax-cuda12-plugin[with-cuda]==0.9.2; sys_platform != 'darwin'
+jax==0.4.33; sys_platform != 'darwin'
+jaxlib==0.4.33; sys_platform != 'darwin'
+jax-cuda12-plugin[cuda12]==0.4.33; sys_platform != 'darwin'

@@ -29,9 +29,8 @@ testcontainers[kafka]
 pyarrow
 torch
 tensorflow
-# Match python/requirements/ml/py313/dl-cpu-requirements.txt (standalone DATA_PROCESSING_TESTING installs omit dl-cpu). JAX 0.9.2 + cp313 per Strategy B (see dl-cpu/dl-gpu comments).
-jax==0.9.2; sys_platform != 'darwin'
-jaxlib==0.9.2; sys_platform != 'darwin'
+jax
+jaxlib
 tensorflow-datasets
 tensorflow-metadata>=1.17.0
 tf-keras
