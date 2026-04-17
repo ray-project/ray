@@ -492,7 +492,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["auto"]] = None,
+        batch_size: Union[int, None, Literal["default"], Literal["auto"]] = None,
         compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         zero_copy_batch: bool = True,
@@ -729,7 +729,7 @@ class Dataset:
             A new :class:`Dataset` with the transformation applied to each batch.
         """  # noqa: E501
         use_gpus = num_gpus is not None and num_gpus > 0
-        if use_gpus and (batch_size is None or batch_size == "auto"):
+        if use_gpus and (batch_size is None or batch_size == "default" or batch_size == "auto"):
             raise ValueError(
                 "You must provide `batch_size` to `map_batches` when requesting GPUs. "
                 "The optimal batch size depends on the model, data, and GPU used. "
@@ -764,7 +764,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["auto"]],
+        batch_size: Union[int, None, Literal["default"], Literal["auto"]],
         compute: Optional[ComputeStrategy],
         batch_format: Optional[str],
         zero_copy_batch: bool,
@@ -786,6 +786,14 @@ class Dataset:
         # to call `map_groups` with  GPUs, we need a separate method that doesn't
         # perform batch size validation.
         if batch_size is None or batch_size == "auto":
+            min_rows_per_bundled_input = None
+        elif batch_size == "default":
+            warnings.warn(
+                "Passing 'default' to `map_batches` is deprecated and won't be "
+                "supported after September 2025. Use `batch_size=None` instead.",
+                DeprecationWarning,
+            )
+            batch_size = None
             min_rows_per_bundled_input = None
         else:  # batch size is an int
             min_rows_per_bundled_input = batch_size
