@@ -761,7 +761,7 @@ def _map_task(
 
         # NOTE: We avoid the cost of deduping schemas in the task because we
         # each block slice should have the same schema, since each slice originates
-        # from the UDF's output block.
+        # from the UDF's output block, and slicing preserves the schema.
         yielded_schema: bool = False
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
