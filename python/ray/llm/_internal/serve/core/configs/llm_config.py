@@ -386,7 +386,9 @@ class LLMConfig(BaseModelExtended):
     @property
     def use_gpu(self) -> bool:
         """Returns True if configured to use GPU resources."""
-        return _compute_use_gpu(self.use_cpu, self.placement_group_config)
+        return _compute_use_gpu(
+            self.use_cpu, self.placement_group_config, self.accelerator_type
+        )
 
     @property
     def use_tpu(self) -> bool:
