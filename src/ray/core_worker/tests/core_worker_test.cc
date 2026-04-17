@@ -660,17 +660,17 @@ class RecordingFakeRaylet : public ipc::FakeRayletIpcClient {
   std::vector<std::vector<rpc::Address>> async_get_owners;
 };
 
-// First Get call returns data only for ids in `local_`. Subsequent calls
-// return data for every id, simulating remote objects arriving locally after
-// the slow-path AsyncGetObjects fires.
+// Non-blocking probes (timeout_ms == 0) only return data for ids in `local_`.
+// Blocking polls (timeout_ms > 0) return data for every id, simulating remote
+// objects arriving locally after the slow-path AsyncGetObjects fires.
 class PartialPlasmaGetClient : public plasma::FakePlasmaClient {
  public:
   explicit PartialPlasmaGetClient(absl::flat_hash_set<ObjectID> local)
       : local_(std::move(local)) {}
   Status Get(const std::vector<ObjectID> &ids,
-             int64_t,
+             int64_t timeout_ms,
              std::vector<plasma::ObjectBuffer> *out) override {
-    const bool all_ready = call_count_++ > 0;
+    const bool all_ready = timeout_ms > 0;
     out->resize(ids.size());
     for (size_t i = 0; i < ids.size(); i++) {
       if (!all_ready && !local_.count(ids[i])) continue;
@@ -684,7 +684,6 @@ class PartialPlasmaGetClient : public plasma::FakePlasmaClient {
 
  private:
   absl::flat_hash_set<ObjectID> local_;
-  int call_count_ = 0;
 };
 
 std::vector<ObjectID> MakeRandomIds(int n) {

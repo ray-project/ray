@@ -265,15 +265,24 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   }
 
   // Try plasma first; hit the raylet only for what's missing.
-  RAY_RETURN_NOT_OK(GetObjectsFromPlasmaStore(remaining_object_id_to_idx,
-                                              object_ids,
-                                              /*timeout_ms=*/0,
-                                              results,
-                                              &got_exception));
+  // TODO(57923): Need to understand if batching is necessary. If it's necessary,
+  // then the reason needs to be documented.
+  for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
+    std::vector<ObjectID> batch_ids;
+    for (int64_t i = start; i < start + fetch_batch_size_ && i < num_total_objects; i++) {
+      batch_ids.push_back(object_ids[i]);
+    }
+    RAY_RETURN_NOT_OK(GetObjectsFromPlasmaStore(remaining_object_id_to_idx,
+                                                batch_ids,
+                                                /*timeout_ms=*/0,
+                                                results,
+                                                &got_exception));
+  }
   if (remaining_object_id_to_idx.empty() || got_exception) {
     return Status::OK();
   }
 
+  // Slow path: ask raylet to pull only the missing objects.
   for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
     std::vector<ObjectID> batch_ids;
     std::vector<rpc::Address> batch_owner_addresses;
@@ -289,6 +298,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     get_request_cleanup_handlers.emplace_back(std::move(status_or_cleanup.value()));
   }
 
+  // Wait for remaining objects to arrive.
   bool should_break = false;
   bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;
