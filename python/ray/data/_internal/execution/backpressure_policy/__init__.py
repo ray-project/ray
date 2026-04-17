@@ -5,6 +5,9 @@ from .downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
 from .resource_budget_backpressure_policy import ResourceBudgetBackpressurePolicy
+from .user_specified_task_limit_backpressure_policy import (
+    UserSpecifiedTaskLimitBackpressurePolicy,
+)
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -16,6 +19,7 @@ if TYPE_CHECKING:
 ENABLED_BACKPRESSURE_POLICIES = [
     ResourceBudgetBackpressurePolicy,
     DownstreamCapacityBackpressurePolicy,
+    UserSpecifiedTaskLimitBackpressurePolicy,
 ]
 ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY = "backpressure_policies.enabled"
 
@@ -36,5 +40,6 @@ __all__ = [
     "BackpressurePolicy",
     "DownstreamCapacityBackpressurePolicy",
     "ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY",
+    "UserSpecifiedTaskLimitBackpressurePolicy",
     "get_backpressure_policies",
 ]
