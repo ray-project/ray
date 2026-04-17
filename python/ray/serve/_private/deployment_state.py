@@ -45,7 +45,7 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
-    CONTROLLER_MAX_CONCURRENCY,
+    DEFAULT_ASYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY,
     DEFAULT_LATENCY_BUCKET_MS,
     DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S,
@@ -239,17 +239,19 @@ class DeploymentActorWrapper:
             # Choose a safe default for max_concurrency when the user hasn't
             # specified one. Sync deployment actors materialize max_concurrency
             # as OS threads via the C++ BoundedExecutor, so unbounded values
-            # (e.g. CONTROLLER_MAX_CONCURRENCY=15000) crash workers (#62661).
+            # crash workers (#62661); use a safe sync-actor-specific default.
             # Without any default, sync actors fall back to Ray Core's default
             # of 1, which silently serializes deployment-actor calls (#62708).
-            # Async actors use lightweight fibers and can keep the larger cap.
+            # Async actors use lightweight fibers and get their own constant
+            # so deployment-actor concurrency is not coupled to the
+            # controller-specific CONTROLLER_MAX_CONCURRENCY env var.
             if "max_concurrency" not in actor_options:
                 try:
                     user_cls = actor_cls.__ray_metadata__.modified_class
                 except AttributeError:
                     user_cls = actor_cls
                 actor_options["max_concurrency"] = (
-                    CONTROLLER_MAX_CONCURRENCY
+                    DEFAULT_ASYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY
                     if has_async_methods(user_cls)
                     else DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY
                 )
