@@ -258,16 +258,17 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   std::vector<ipc::ScopedResponse> get_request_cleanup_handlers;
   absl::flat_hash_map<ObjectID, int64_t> remaining_object_id_to_idx;
 
-  // TODO(57923): Need to understand if batching is necessary. If it's necessary,
-  // then the reason needs to be documented.
   bool got_exception = false;
   int64_t num_total_objects = static_cast<int64_t>(object_ids.size());
   for (int64_t i = 0; i < num_total_objects; i++) {
     remaining_object_id_to_idx[object_ids[i]] = i;
   }
 
-  // map objects already in the local object store into the
-  // worker's address space directly, and collect the ones that aren't.
+  // TODO(57923): Need to understand if batching is necessary. If it's necessary,
+  // then the reason needs to be documented.
+  //
+  // Map objects already in the local object store into the worker's address
+  // space directly, and collect the ones that aren't.
   for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
     int64_t end = std::min(start + fetch_batch_size_, num_total_objects);
     std::vector<ObjectID> batch_ids(object_ids.begin() + start,
@@ -284,11 +285,15 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     std::vector<ObjectID> ids_to_pull;
     std::vector<rpc::Address> owner_addresses_to_pull;
     for (int64_t i = start; i < end; i++) {
-      if (!remaining_object_id_to_idx.contains(object_ids[i])) continue;
+      if (!remaining_object_id_to_idx.contains(object_ids[i])) {
+        continue;
+      }
       ids_to_pull.push_back(object_ids[i]);
       owner_addresses_to_pull.push_back(owner_addresses[i]);
     }
-    if (ids_to_pull.empty()) continue;
+    if (ids_to_pull.empty()) {
+      continue;
+    }
     StatusOr<ipc::ScopedResponse> status_or_cleanup = raylet_ipc_client_->AsyncGetObjects(
         ids_to_pull, owner_addresses_to_pull, get_request_counter_.fetch_add(1));
     RAY_RETURN_NOT_OK(status_or_cleanup.status());
@@ -299,7 +304,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
     return Status::OK();
   }
 
-  // polling object store until every remaining object becomes local (or we time out). 
+  // Poll the object store until every remaining object becomes local (or we time out).
   bool should_break = false;
   bool timed_out = false;
   int64_t remaining_timeout = timeout_ms;
