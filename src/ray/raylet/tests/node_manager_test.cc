@@ -487,6 +487,65 @@ class NodeManagerTest : public ::testing::Test {
       fake_node_manager_unexpected_worker_failure_total_count_;
 };
 
+TEST_F(NodeManagerTest, HandleIsLocalWorkerDeadUnknownWorker) {
+  WorkerID worker_id = WorkerID::FromRandom();
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+      .WillOnce(Return(nullptr));
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredDriver(worker_id))
+      .WillOnce(Return(nullptr));
+  rpc::IsLocalWorkerDeadRequest request;
+  request.set_worker_id(worker_id.Binary());
+  rpc::IsLocalWorkerDeadReply reply;
+  bool replied = false;
+  node_manager_->HandleIsLocalWorkerDead(
+      request,
+      &reply,
+      [&](Status, std::function<void()> success, std::function<void()> failure) {
+        replied = true;
+      });
+  EXPECT_TRUE(replied);
+  EXPECT_TRUE(reply.is_dead());
+}
+
+TEST_F(NodeManagerTest, HandleIsLocalWorkerDeadRegisteredDriver) {
+  WorkerID worker_id = WorkerID::FromRandom();
+  auto driver = std::make_shared<MockWorker>(worker_id, 10);
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id))
+      .WillOnce(Return(nullptr));
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredDriver(worker_id)).WillOnce(Return(driver));
+  rpc::IsLocalWorkerDeadRequest request;
+  request.set_worker_id(worker_id.Binary());
+  rpc::IsLocalWorkerDeadReply reply;
+  bool replied = false;
+  node_manager_->HandleIsLocalWorkerDead(
+      request,
+      &reply,
+      [&](Status, std::function<void()> success, std::function<void()> failure) {
+        replied = true;
+      });
+  EXPECT_TRUE(replied);
+  EXPECT_FALSE(reply.is_dead());
+}
+
+TEST_F(NodeManagerTest, HandleIsLocalWorkerDeadRegisteredWorker) {
+  WorkerID worker_id = WorkerID::FromRandom();
+  auto worker = std::make_shared<MockWorker>(worker_id, 10);
+  // || short-circuits: GetRegisteredDriver is never called when worker is found.
+  EXPECT_CALL(mock_worker_pool_, GetRegisteredWorker(worker_id)).WillOnce(Return(worker));
+  rpc::IsLocalWorkerDeadRequest request;
+  request.set_worker_id(worker_id.Binary());
+  rpc::IsLocalWorkerDeadReply reply;
+  bool replied = false;
+  node_manager_->HandleIsLocalWorkerDead(
+      request,
+      &reply,
+      [&](Status, std::function<void()> success, std::function<void()> failure) {
+        replied = true;
+      });
+  EXPECT_TRUE(replied);
+  EXPECT_FALSE(reply.is_dead());
+}
+
 TEST_F(NodeManagerTest, TestRegisterGcsAndCheckSelfAlive) {
   EXPECT_CALL(*mock_gcs_client_->mock_node_accessor,
               AsyncSubscribeToNodeAddressAndLivenessChange(_, _))
