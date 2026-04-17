@@ -552,23 +552,42 @@ std::tuple<const ProcessInterface &, WorkerID> WorkerPool::StartWorkerProcess(
 
 void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
 #ifdef __linux__
-  std::ifstream original_oom_score_file;
-  std::ofstream oom_score_file;
   std::string filename("/proc/" + std::to_string(pid) + "/oom_score_adj");
-  original_oom_score_file.open(filename, std::ifstream::in);
+
+  // Read the worker's current oom_score_adj as the baseline for the
+  // additive adjustment. If the read fails for any reason (the /proc
+  // entry is not yet visible, the file is unreadable, the parse fails,
+  // etc.), bail out rather than silently writing `0 + delta`: on
+  // hardened deployments where the raylet runs with a negative
+  // oom_score_adj the worker inherits that negative value, and writing
+  // `0 + delta` would make the worker much more kernel-OOM-killable
+  // than the operator configured.
+  std::ifstream original_oom_score_file(filename, std::ifstream::in);
+  if (!original_oom_score_file.is_open()) {
+    RAY_LOG(WARNING) << "Cannot read OOM score for worker with PID " << pid
+                     << "; skipping OOM score adjustment, error: "
+                     << strerror(errno);
+    return;
+  }
   int original_oom_score_adj = 0;
-  if (original_oom_score_file.is_open()) {
-    original_oom_score_file >> original_oom_score_adj;
-  } else {
-    RAY_LOG(INFO) << "Failed to get OOM score adjustment for worker with PID " << pid
-                  << ", error: " << strerror(errno);
+  original_oom_score_file >> original_oom_score_adj;
+  if (original_oom_score_file.fail()) {
+    RAY_LOG(WARNING) << "Failed to parse OOM score for worker with PID " << pid
+                     << "; skipping OOM score adjustment";
+    return;
   }
   original_oom_score_file.close();
-  oom_score_file.open(filename, std::ofstream::out);
+
   int relative_oom_score_adj =
       std::min(RayConfig::instance().worker_oom_score_adjustment(), 1000);
   relative_oom_score_adj = std::max(relative_oom_score_adj, 0);
-  int oom_score_adj = std::min(original_oom_score_adj + relative_oom_score_adj, 1000);
+  // Clamp to the kernel-accepted range [-1000, 1000]. The previous code
+  // clamped only the upper bound, which silently accepted out-of-range
+  // inputs if either term was negative.
+  int oom_score_adj =
+      std::clamp(original_oom_score_adj + relative_oom_score_adj, -1000, 1000);
+
+  std::ofstream oom_score_file(filename, std::ofstream::out);
   if (oom_score_file.is_open()) {
     // Adjust worker's OOM score so that the OS prioritizes killing these
     // processes over the raylet.
