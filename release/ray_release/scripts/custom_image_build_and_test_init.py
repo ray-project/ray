@@ -19,7 +19,11 @@ from ray_release.config import (
     read_and_validate_release_test_collection,
 )
 from ray_release.configs.global_config import init_global_config
-from ray_release.custom_byod_build_init_helper import create_custom_build_yaml
+from ray_release.custom_byod_build_init_helper import (
+    build_short_gpu_map,
+    collect_rayci_select_keys,
+    create_custom_build_yaml,
+)
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
 
@@ -86,6 +90,11 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     type=str,
     help="The output file for the test jobs json file",
 )
+@click.option(
+    "--rayci-select-output-file",
+    type=str,
+    help="Output file for RAYCI_SELECT (comma-separated base-image publish step keys).",
+)
 def main(
     test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
@@ -96,6 +105,7 @@ def main(
     run_per_test: int = 1,
     custom_build_jobs_output_file: str = None,
     test_jobs_output_file: str = None,
+    rayci_select_output_file: str = None,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -137,11 +147,17 @@ def main(
             "not return any tests to run. Adjust your filters."
         )
     tests = [test for test, _ in filtered_tests]
+
+    gpu_map = build_short_gpu_map(os.path.join(_bazel_workspace_dir, "ray-images.json"))
+
     # Generate custom image build steps
     create_custom_build_yaml(
         os.path.join(_bazel_workspace_dir, custom_build_jobs_output_file),
         tests,
+        gpu_map,
     )
+
+    rayci_select_keys = collect_rayci_select_keys(tests, gpu_map)
 
     # Generate test job steps
     grouped_tests = group_tests(filtered_tests)
@@ -185,6 +201,7 @@ def main(
         global_config=global_config,
         is_concurrency_limit=not no_concurrency_limit,
         block_step_key=block_step["key"] if block_step else None,
+        gpu_map=gpu_map,
     )
     steps = [{"group": "block", "steps": [block_step]}] + steps if block_step else steps
 
@@ -200,6 +217,15 @@ def main(
             "wt",
         ) as fp:
             json.dump(steps, fp)
+
+        # Only emit RAYCI_SELECT when a filter narrows the test set; an unfiltered
+        # run (e.g. full nightly) wants the complete image pipeline.
+        if rayci_select_output_file and test_filters:
+            with open(
+                os.path.join(_bazel_workspace_dir, rayci_select_output_file),
+                "wt",
+            ) as fp:
+                fp.write(",".join(sorted(rayci_select_keys)))
 
         settings["frequency"] = settings["frequency"].value
         settings["priority"] = settings["priority"].value
