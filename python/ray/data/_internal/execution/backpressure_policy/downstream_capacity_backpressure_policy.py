@@ -101,12 +101,16 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         resource_manager: "ResourceManager",
     ):
         super().__init__(data_context, topology, resource_manager)
+
         self._backpressure_capacity_ratio = (
             self._data_context.downstream_capacity_backpressure_ratio
         )
+        self._prev_should_backpressure: dict["PhysicalOperator", bool] = {}
+
         if self._backpressure_capacity_ratio is not None:
             logger.debug(
-                f"DownstreamCapacityBackpressurePolicy enabled with backpressure capacity ratio: {self._backpressure_capacity_ratio}"
+                "DownstreamCapacityBackpressurePolicy enabled with backpressure "
+                f"capacity ratio: {self._backpressure_capacity_ratio}"
             )
 
     def _get_queue_size_bytes(self, op: "PhysicalOperator") -> int:
@@ -187,16 +191,29 @@ class DownstreamCapacityBackpressurePolicy(BackpressurePolicy):
         utilized_budget_fraction = get_utilized_object_store_budget_fraction(
             self._resource_manager, op, consider_downstream_ineligible_ops=True
         )
+        queue_ratio = self._get_queue_ratio(op)
         if (
             utilized_budget_fraction is not None
             and utilized_budget_fraction <= self.OBJECT_STORE_BUDGET_UTIL_THRESHOLD
         ):
             # Utilized budget fraction is below threshold, so should skip backpressure.
-            return False
+            result = False
+        else:
+            # Apply backpressure if queue ratio exceeds the threshold.
+            result = queue_ratio > self._backpressure_capacity_ratio
 
-        queue_ratio = self._get_queue_ratio(op)
-        # Apply backpressure if queue ratio exceeds the threshold.
-        return queue_ratio > self._backpressure_capacity_ratio
+        prev = self._prev_should_backpressure.get(op)
+        if prev != result:
+            queue_size_bytes = self._get_queue_size_bytes(op)
+            downstream_capacity_bytes = self._get_downstream_capacity_size_bytes(op)
+            logger.debug(
+                f"Backpressure change {op.name}: {prev} -> {result} "
+                f"(queue_ratio={queue_ratio:.2f}, {queue_size_bytes=}, "
+                f"{downstream_capacity_bytes=}, {utilized_budget_fraction=})"
+            )
+            self._prev_should_backpressure[op] = result
+
+        return result
 
     def can_add_input(self, op: "PhysicalOperator") -> bool:
         """Determine if we can add input to the operator based on
