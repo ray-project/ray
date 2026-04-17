@@ -1275,32 +1275,6 @@ TEST_P(PullManagerTest, TestTimeOutAfterFailedPull) {
   AssertNoLeaks();
 }
 
-TEST_P(PullManagerTest, TestAllLocalSkipSubscription) {
-  BundlePriority prio = GetParam();
-  auto refs = CreateObjectRefs(3);
-  auto oids = ObjectRefsToIds(refs);
-  std::vector<rpc::ObjectReference> objects_to_locate;
-  auto req_id = pull_manager_.Pull(refs, prio, {"", false}, &objects_to_locate);
-  ASSERT_EQ(ObjectRefsToIds(objects_to_locate), oids);
-
-  allow_pin_ = true;
-  object_is_local_ = true;
-
-  // Simulate ObjectManager's all-local path: mark each object locally
-  // available instead of subscribing for its location.
-  for (const auto &oid : oids) {
-    pull_manager_.MarkObjectLocallyAvailable(oid);
-  }
-
-  // Bundle should have activated and pinned all objects synchronously.
-  ASSERT_EQ(NumPinnedObjects(), 3);
-  ASSERT_EQ(num_send_pull_request_calls_, 0);
-
-  auto objects_to_cancel = pull_manager_.CancelPull(req_id);
-  ASSERT_EQ(objects_to_cancel, oids);
-  AssertNoLeaks();
-}
-
 INSTANTIATE_TEST_SUITE_P(WorkerOrTaskRequests,
                          PullManagerTest,
                          testing::Values(BundlePriority::GET_REQUEST,
