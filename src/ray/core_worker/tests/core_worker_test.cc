@@ -764,8 +764,8 @@ TEST(PlasmaStoreProviderFastPath, SkipsEmptyBatchInSlowPath) {
 TEST(PlasmaStoreProviderFastPath, BatchesSlowPathAsyncGetObjects) {
   auto fake_raylet = std::make_shared<RecordingFakeRaylet>();
   auto ids = MakeRandomIds(5);
-  auto fake_plasma = std::make_shared<PartialPlasmaGetClient>(
-      absl::flat_hash_set<ObjectID>{});
+  auto fake_plasma =
+      std::make_shared<PartialPlasmaGetClient>(absl::flat_hash_set<ObjectID>{});
 
   CoreWorkerPlasmaStoreProvider provider(
       "", fake_raylet, [] { return Status::OK(); }, false, fake_plasma, 2, nullptr);
