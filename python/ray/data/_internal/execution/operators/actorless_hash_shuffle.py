@@ -114,7 +114,11 @@ def _shuffle_map(
         A tuple of ``(BlockMetadata, List[int], Dict)`` and the partition
         shards (``pa.Table``) or ``None`` for empty partitions.
     """
+    import time as _time
+
     stats = BlockExecStats.builder()
+
+    t0 = _time.perf_counter()
 
     # Concatenate multiple blocks when pre-map merge is active.
     # Use pa.concat_tables for zero-copy: the result references the input
@@ -138,6 +142,8 @@ def _shuffle_map(
 
     assert isinstance(block, pa.Table), f"Expected pa.Table, got {type(block)}"
 
+    t1 = _time.perf_counter()
+
     # Defragment chunked tables before hash-partitioning. Blocks from
     # parquet reads or pre-map merge concatenation can have multiple chunks
     # per column (e.g., 8 chunks from parquet row groups). The downstream
@@ -146,9 +152,13 @@ def _shuffle_map(
     if any(col.num_chunks > 1 for col in block.columns):
         block = block.combine_chunks()
 
+    t2 = _time.perf_counter()
+
     block_partitions = hash_partition(
         block, hash_cols=key_columns, num_partitions=num_partitions
     )
+
+    t3 = _time.perf_counter()
 
     shards = [None] * num_partitions
     non_empty_pids = []
@@ -158,6 +168,15 @@ def _shuffle_map(
             shards[pid_key] = shard
             non_empty_pids.append(pid_key)
             shard_sizes[pid_key] = (shard.num_rows, shard.nbytes)
+
+    t4 = _time.perf_counter()
+
+    logger.info(
+        f"_shuffle_map profiling: rows={block.num_rows}, "
+        f"prep={t1-t0:.3f}s, combine_chunks={t2-t1:.3f}s, "
+        f"hash_partition={t3-t2:.3f}s, build_shards={t4-t3:.3f}s, "
+        f"total={t4-t0:.3f}s"
+    )
 
     return (input_block_metadata, non_empty_pids, shard_sizes), *shards
 
