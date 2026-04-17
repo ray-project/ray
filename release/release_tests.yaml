@@ -204,7 +204,6 @@
   working_dir: hello_world_tests
 
   cluster:
-    anyscale_sdk_2026: true
     cluster_compute: hello_world_compute_config.yaml
 
   run:
@@ -222,7 +221,6 @@
   working_dir: hello_world_tests
 
   cluster:
-    anyscale_sdk_2026: true
     byod:
       type: llm-cu128
     # Doesn't need GPUs to run ssh sanity check
