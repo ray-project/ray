@@ -269,30 +269,29 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   // map objects already in the local object store into the
   // worker's address space directly, and collect the ones that aren't.
   for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
-    std::vector<ObjectID> batch_ids;
-    std::vector<rpc::Address> batch_owner_addresses;
-    for (int64_t i = start; i < start + fetch_batch_size_ && i < num_total_objects; i++) {
-      batch_ids.push_back(object_ids[i]);
-      batch_owner_addresses.push_back(owner_addresses[i]);
-    }
+    int64_t end = std::min(start + fetch_batch_size_, num_total_objects);
+    std::vector<ObjectID> batch_ids(object_ids.begin() + start,
+                                    object_ids.begin() + end);
+    // GetObjectsFromPlasmaStore erases any id it successfully retrieves from
+    // `remaining_object_id_to_idx`, so ids that remain in the map after this
+    // call are not in the local object store and need to be pulled from the
+    // raylet.
     RAY_RETURN_NOT_OK(GetObjectsFromPlasmaStore(remaining_object_id_to_idx,
                                                 batch_ids,
                                                 /*timeout_ms=*/0,
                                                 results,
                                                 &got_exception));
 
-    // For the objects that aren't in the local object store, send a request
-    // to the raylet to pull them.
-    std::vector<ObjectID> missing_ids;
-    std::vector<rpc::Address> missing_owner_addresses;
-    for (size_t j = 0; j < batch_ids.size(); j++) {
-      if (!remaining_object_id_to_idx.contains(batch_ids[j])) continue;
-      missing_ids.push_back(batch_ids[j]);
-      missing_owner_addresses.push_back(batch_owner_addresses[j]);
+    std::vector<ObjectID> ids_to_pull;
+    std::vector<rpc::Address> owner_addresses_to_pull;
+    for (int64_t i = start; i < end; i++) {
+      if (!remaining_object_id_to_idx.contains(object_ids[i])) continue;
+      ids_to_pull.push_back(object_ids[i]);
+      owner_addresses_to_pull.push_back(owner_addresses[i]);
     }
-    if (missing_ids.empty()) continue;
+    if (ids_to_pull.empty()) continue;
     StatusOr<ipc::ScopedResponse> status_or_cleanup = raylet_ipc_client_->AsyncGetObjects(
-        missing_ids, missing_owner_addresses, get_request_counter_.fetch_add(1));
+        ids_to_pull, owner_addresses_to_pull, get_request_counter_.fetch_add(1));
     RAY_RETURN_NOT_OK(status_or_cleanup.status());
     get_request_cleanup_handlers.emplace_back(std::move(status_or_cleanup.value()));
   }

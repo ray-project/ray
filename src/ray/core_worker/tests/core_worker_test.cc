@@ -644,7 +644,68 @@ TEST_F(CoreWorkerTest, ActorTaskCancelDuringDepResolution) {
   }
 }
 
-TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
+namespace {
+
+// Records every `Get` call's id list in `observed_batches`. Returns a non-null
+// buffer only for ids in `local_`; other positions are left empty, matching
+// real plasma's "miss" behavior for objects not in the local store.
+class RecordingPlasmaGetClient : public plasma::FakePlasmaClient {
+ public:
+  explicit RecordingPlasmaGetClient(absl::flat_hash_set<ObjectID> local = {})
+      : local_(std::move(local)) {}
+  void MarkLocal(const std::vector<ObjectID> &ids) {
+    for (const auto &id : ids) local_.insert(id);
+  }
+  Status Get(const std::vector<ObjectID> &ids,
+             int64_t /*timeout_ms*/,
+             std::vector<plasma::ObjectBuffer> *out) override {
+    observed_batches.push_back(ids);
+    out->resize(ids.size());
+    for (size_t i = 0; i < ids.size(); i++) {
+      if (!local_.count(ids[i])) continue;
+      uint8_t byte = 0;
+      auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
+      (*out)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
+      (*out)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
+    }
+    return Status::OK();
+  }
+  std::vector<std::vector<ObjectID>> observed_batches;
+
+ private:
+  absl::flat_hash_set<ObjectID> local_;
+};
+
+// Records every AsyncGetObjects call. If wired to a RecordingPlasmaGetClient,
+// also marks the requested ids local there, mimicking the real raylet pulling
+// remote objects into local plasma.
+class RecordingFakeRaylet : public ipc::FakeRayletIpcClient {
+ public:
+  explicit RecordingFakeRaylet(std::shared_ptr<RecordingPlasmaGetClient> plasma = nullptr)
+      : plasma_(std::move(plasma)) {}
+  StatusOr<ipc::ScopedResponse> AsyncGetObjects(
+      const std::vector<ObjectID> &object_ids,
+      const std::vector<rpc::Address> &,
+      int64_t) override {
+    async_get_ids.push_back(object_ids);
+    if (plasma_) plasma_->MarkLocal(object_ids);
+    return ipc::ScopedResponse();
+  }
+  std::vector<std::vector<ObjectID>> async_get_ids;
+
+ private:
+  std::shared_ptr<RecordingPlasmaGetClient> plasma_;
+};
+
+std::vector<ObjectID> MakeRandomIds(int n) {
+  std::vector<ObjectID> ids;
+  for (int i = 0; i < n; i++) ids.push_back(ObjectID::FromRandom());
+  return ids;
+}
+
+}  // namespace
+
+TEST(CoreWorkerPlasmaStoreProviderGetTest, CallsPlasmaGetInCorrectBatches) {
   auto fake_raylet = std::make_shared<ipc::FakeRayletIpcClient>();
   // Build a ReferenceCounter with minimal dependencies.
   rpc::Address addr;
@@ -657,33 +718,10 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
                                *std::make_shared<ray::observability::FakeGauge>(),
                                *std::make_shared<ray::observability::FakeGauge>());
 
-  // Fake plasma client that records Get calls.
-  std::vector<std::vector<ObjectID>> observed_batches;
-  class RecordingPlasmaGetClient : public plasma::FakePlasmaClient {
-   public:
-    explicit RecordingPlasmaGetClient(std::vector<std::vector<ObjectID>> *observed)
-        : observed_(observed) {}
-    Status Get(const std::vector<ObjectID> &object_ids,
-               int64_t timeout_ms,
-               std::vector<plasma::ObjectBuffer> *object_buffers) override {
-      if (observed_ != nullptr) {
-        observed_->push_back(object_ids);
-      }
-      object_buffers->resize(object_ids.size());
-      for (size_t i = 0; i < object_ids.size(); i++) {
-        uint8_t byte = 0;
-        auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
-        (*object_buffers)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
-        (*object_buffers)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
-      }
-      return Status::OK();
-    }
-
-   private:
-    std::vector<std::vector<ObjectID>> *observed_;
-  };
-
-  auto fake_plasma = std::make_shared<RecordingPlasmaGetClient>(&observed_batches);
+  auto ids = MakeRandomIds(5);
+  const auto owner_addresses = ref_counter.GetOwnerAddresses(ids);
+  auto fake_plasma = std::make_shared<RecordingPlasmaGetClient>(
+      absl::flat_hash_set<ObjectID>(ids.begin(), ids.end()));
 
   CoreWorkerPlasmaStoreProvider provider(
       /*store_socket=*/"",
@@ -694,88 +732,38 @@ TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, CallsPlasmaGetInCorrectBatches) {
       /*fetch_batch_size=*/2,
       /*get_current_call_site=*/nullptr);
 
-  // Build a set of 5 object ids.
-  std::vector<ObjectID> ids;
-  for (int i = 0; i < 5; i++) ids.push_back(ObjectID::FromRandom());
-  const auto owner_addresses = ref_counter.GetOwnerAddresses(ids);
-
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
-
   ASSERT_TRUE(provider.Get(ids, owner_addresses, /*timeout_ms=*/-1, &results).ok());
 
   // Assert: batches seen by plasma Get are [2,2,1].
-  ASSERT_EQ(observed_batches.size(), 3U);
-  EXPECT_EQ(observed_batches[0].size(), 2U);
-  EXPECT_EQ(observed_batches[1].size(), 2U);
-  EXPECT_EQ(observed_batches[2].size(), 1U);
+  ASSERT_EQ(fake_plasma->observed_batches.size(), 3U);
+  EXPECT_EQ(fake_plasma->observed_batches[0].size(), 2U);
+  EXPECT_EQ(fake_plasma->observed_batches[1].size(), 2U);
+  EXPECT_EQ(fake_plasma->observed_batches[2].size(), 1U);
 }
 
-namespace {
-
-class RecordingFakeRaylet : public ipc::FakeRayletIpcClient {
- public:
-  StatusOr<ipc::ScopedResponse> AsyncGetObjects(
-      const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &,
-      int64_t) override {
-    async_get_ids.push_back(object_ids);
-    return ipc::ScopedResponse();
-  }
-  std::vector<std::vector<ObjectID>> async_get_ids;
-};
-
-// Non-blocking probes (timeout_ms == 0) only return data for ids in `local_`.
-// Blocking polls (timeout_ms > 0) return data for every id, simulating remote
-// objects arriving locally after the slow-path AsyncGetObjects fires.
-class PartialPlasmaGetClient : public plasma::FakePlasmaClient {
- public:
-  explicit PartialPlasmaGetClient(absl::flat_hash_set<ObjectID> local)
-      : local_(std::move(local)) {}
-  Status Get(const std::vector<ObjectID> &ids,
-             int64_t timeout_ms,
-             std::vector<plasma::ObjectBuffer> *out) override {
-    const bool all_ready = timeout_ms > 0;
-    out->resize(ids.size());
-    for (size_t i = 0; i < ids.size(); i++) {
-      if (!all_ready && !local_.count(ids[i])) continue;
-      uint8_t byte = 0;
-      auto parent = std::make_shared<LocalMemoryBuffer>(&byte, 1, /*copy_data=*/true);
-      (*out)[i].data = SharedMemoryBuffer::Slice(parent, 0, 1);
-      (*out)[i].metadata = SharedMemoryBuffer::Slice(parent, 0, 1);
-    }
-    return Status::OK();
-  }
-
- private:
-  absl::flat_hash_set<ObjectID> local_;
-};
-
-std::vector<ObjectID> MakeRandomIds(int n) {
-  std::vector<ObjectID> ids;
-  for (int i = 0; i < n; i++) ids.push_back(ObjectID::FromRandom());
-  return ids;
-}
-
-}  // namespace
-
-TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, SendsOnlyRemoteIdsToRayletOnMixed) {
-  auto fake_raylet = std::make_shared<RecordingFakeRaylet>();
+TEST(CoreWorkerPlasmaStoreProviderGetTest, SendsOnlyRemoteIdsToRayletOnMixed) {
   auto ids = MakeRandomIds(5);
-  auto fake_plasma = std::make_shared<PartialPlasmaGetClient>(
+  auto fake_plasma = std::make_shared<RecordingPlasmaGetClient>(
       absl::flat_hash_set<ObjectID>{ids[0], ids[2], ids[4]});
+  // Wire raylet into plasma: AsyncGetObjects marks the requested ids local,
+  // mimicking the real raylet pulling remote objects into local plasma.
+  auto fake_raylet = std::make_shared<RecordingFakeRaylet>(fake_plasma);
 
   CoreWorkerPlasmaStoreProvider provider(
       "", fake_raylet, [] { return Status::OK(); }, false, fake_plasma, 10, nullptr);
 
   std::vector<rpc::Address> owner_addresses(ids.size());
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
-  ASSERT_TRUE(provider.Get(ids, owner_addresses, -1, &results).ok());
+  ASSERT_TRUE(provider.Get(ids, owner_addresses, /*timeout_ms=*/-1, &results).ok());
   EXPECT_EQ(results.size(), 5U);
 
+  // Raylet should receive exactly one pull request, containing exactly the
+  // non-local ids. Compare as a set to avoid depending on iteration order.
   ASSERT_EQ(fake_raylet->async_get_ids.size(), 1U);
-  ASSERT_EQ(fake_raylet->async_get_ids[0].size(), 2U);
-  EXPECT_EQ(fake_raylet->async_get_ids[0][0], ids[1]);
-  EXPECT_EQ(fake_raylet->async_get_ids[0][1], ids[3]);
+  absl::flat_hash_set<ObjectID> pulled(fake_raylet->async_get_ids[0].begin(),
+                                       fake_raylet->async_get_ids[0].end());
+  EXPECT_EQ(pulled, (absl::flat_hash_set<ObjectID>{ids[1], ids[3]}));
 }
 
 class CoreWorkerPubsubWorkerObjectEvictionChannelTest
