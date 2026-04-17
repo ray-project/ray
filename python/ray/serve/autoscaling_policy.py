@@ -295,13 +295,15 @@ def _apply_app_level_autoscaling_config(
         final_decisions: Dict[DeploymentID, int] = {}
         final_state: Dict[DeploymentID, Dict] = {}
         for dep_id, ctx in contexts.items():
+            custom_policy_state_per_deployment = (
+                updated_custom_policy_state.get(dep_id) or {}
+            ).copy()
             if dep_id not in desired_num_replicas_dict:
-                final_state[dep_id] = state_per_deployment[dep_id]
+                final_state[dep_id] = _merge_user_state_with_internal_state(
+                    state_per_deployment[dep_id],
+                    custom_policy_state_per_deployment,
+                )
                 continue
-
-            custom_policy_state_per_deployment = updated_custom_policy_state.get(
-                dep_id, {}
-            )
             # Cold start fast path: 0 replicas bypasses delay logic for immediate scale-up
             cold_start_replicas = _get_cold_start_scale_up_replicas(ctx)
             if cold_start_replicas is not None:
