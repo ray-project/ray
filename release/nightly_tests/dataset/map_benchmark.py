@@ -37,9 +37,9 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--batch-size",
-        type=lambda v: "auto" if v == "auto" else int(v),
+        type=int,
         default=10_000,
-        help="Batch size to use with 'map_batches'. Use 'auto' to let Ray Data pick based on data size.",
+        help="Batch size to use with 'map_batches'.",
     )
     parser.add_argument(
         "--map-batches-sleep-ms",

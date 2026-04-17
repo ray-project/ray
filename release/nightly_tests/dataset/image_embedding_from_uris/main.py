@@ -74,16 +74,6 @@ def parse_args() -> argparse.Namespace:
             "every minute with a grace period."
         ),
     )
-    parser.add_argument(
-        "--preprocess-batch-size",
-        type=lambda v: "auto" if v == "auto" else int(v),
-        default=None,
-        help=(
-            "Batch size for the CPU patch-processing stage (ProcessPatches). "
-            "Use 'auto' to let Ray Data pick based on data size. "
-            "Defaults to Ray Data's built-in default."
-        ),
-    )
     return parser.parse_args()
 
 
@@ -228,9 +218,7 @@ def main(args: argparse.Namespace):
             .filter(lambda row: row["image"].size != 0)
             .map(process_image)
             .flat_map(patch_image)
-            .map_batches(
-                ProcessPatches(transform), batch_size=args.preprocess_batch_size
-            )
+            .map_batches(ProcessPatches(transform))
             .map_batches(
                 EmbedPatches,
                 num_gpus=1,
