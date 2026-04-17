@@ -319,14 +319,15 @@ class ActorPoolMapOperator(MapOperator):
             and the actual resource usage for this actor.
         """
         assert self._actor_cls is not None
-        actual_remote_args = self._merge_ray_remote_args()
+        actual_remote_args = dict(self._merge_ray_remote_args())
+        extra_labels = actual_remote_args.pop("_labels", {})
         actor_resource_usage = ExecutionResources(
             cpu=actual_remote_args.get("num_cpus", 0),
             gpu=actual_remote_args.get("num_gpus", 0),
             memory=actual_remote_args.get("memory", 0),
         )
         actor = self._actor_cls.options(
-            _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels},
+            _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels, **extra_labels},
             **actual_remote_args
         ).remote(
             ctx=self._data_context_ref,
@@ -445,11 +446,9 @@ class ActorPoolMapOperator(MapOperator):
         Returns:
             The merged remote args used to create the actor class.
         """
-        if not self._ray_remote_args_fn:
-            return self._ray_remote_args
-
         remote_args = self._ray_remote_args.copy()
-        remote_args.update(self._ray_remote_args_fn())
+        if self._ray_remote_args_fn:
+            remote_args.update(self._ray_remote_args_fn())
         return remote_args
 
     def has_next(self) -> bool:
