@@ -738,7 +738,7 @@ void GcsPlacementGroupManager::OnNodeDead(const NodeID &node_id) {
           auto infeasible_pg_iter = std::find_if(
               infeasible_placement_groups_.begin(),
               infeasible_placement_groups_.end(),
-              [&pg_id = iter->second->GetPlacementGroupID()](const std::shared_ptr<GcsPlacementGroup> &pg) {
+              [pg_id = iter->second->GetPlacementGroupID()](const std::shared_ptr<GcsPlacementGroup> &pg) {
                 return pg_id == pg->GetPlacementGroupID();
               });
 
