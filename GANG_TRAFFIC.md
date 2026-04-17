@@ -50,7 +50,9 @@ class RunningReplicaInfo:
        Used during gang restructure."""
 ```
 
-`is_paused` must be included in `RunningReplicaInfo.__post_init__`'s hash computation so LongPoll broadcast de-duplication does not miss pause/unpause transitions.
+**Gotchas**
+- `is_paused` must be included in `RunningReplicaInfo.__post_init__`'s hash computation so LongPoll broadcast de-duplication does not miss pause/unpause transitions.
+- `DeploymentReplica` carries the durable `_is_paused` bit (read by `get_running_replica_info()` each broadcast) since `RunningReplicaInfo` is frozen and reconstructed every tick.
 
 ### Router-side filter
 
