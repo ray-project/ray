@@ -173,5 +173,37 @@ def test_tpu_slice_placement_group_creation_bundle_per_worker(ray_tpu_cluster):
         assert bundle["accelerator_type:TPU-V6E"] == 0.001
 
 
+def test_compute_use_gpu_with_tpu_and_use_cpu_false():
+    """
+    Verifies that _compute_use_gpu returns False for TPU configurations
+    even when use_cpu=False is explicitly set.
+    """
+    from ray.llm._internal.serve.core.configs.accelerators import _compute_use_gpu
+
+    # Test with use_cpu=False and TPU accelerator
+    assert (
+        _compute_use_gpu(
+            use_cpu=False, placement_group_config=None, accelerator_type="TPU-V6E"
+        )
+        is False
+    )
+
+    # Test with use_cpu=None and TPU accelerator
+    assert (
+        _compute_use_gpu(
+            use_cpu=None, placement_group_config=None, accelerator_type="TPU-V6E"
+        )
+        is False
+    )
+
+    # Test with use_cpu=False and GPU accelerator (should return True by default)
+    assert (
+        _compute_use_gpu(
+            use_cpu=False, placement_group_config=None, accelerator_type="A10G"
+        )
+        is True
+    )
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

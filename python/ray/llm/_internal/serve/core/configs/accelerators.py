@@ -12,13 +12,6 @@ AcceleratorType = Enum("AcceleratorType", vars(accelerators))
 logger = get_logger(__name__)
 
 
-# Set of GPU string values from Ray's known accelerators.
-GPU_ACCELERATOR_VALUES = {
-    member.value
-    for name, member in AcceleratorType.__members__.items()
-    if name.startswith(("NVIDIA", "AMD", "INTEL", "METAX"))
-}
-
 # Set of TPU string values from Ray's known accelerators.
 TPU_ACCELERATOR_VALUES = {
     member.value
@@ -37,11 +30,11 @@ def _compute_use_gpu(
     Priority order:
     1. Explicit use_cpu flag
     2. placement_group_config GPU bundles
-    3. Default to True — all supported accelerator types are GPU-capable
+    3. Default to True if not explicitly CPU or TPU.
     """
-    # Explicit use_cpu setting takes precedence over all other configurations
-    if isinstance(use_cpu, bool):
-        return not use_cpu
+    # If explicitly requesting CPU, it's not GPU.
+    if isinstance(use_cpu, bool) and use_cpu:
+        return False
 
     # Check placement_group_config for explicit GPU specification
     if placement_group_config:
@@ -60,6 +53,7 @@ def _compute_use_gpu(
         if accel_str.startswith("GOOGLE_TPU") or accel_str.startswith("TPU"):
             return False
 
+    # All remaining accelerator types are GPU-capable.
     return True
 
 
