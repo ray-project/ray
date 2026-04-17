@@ -219,6 +219,7 @@ class CheckpointManager(abc.ABC):
             filesystem=self.filesystem,
             partition_filter=self.checkpoint_path_partition_filter,
         )
+        checkpoint_ds.set_name("load_checkpoint")
 
         # Manually disable checkpointing for loading the checkpoint metadata
         # to avoid recursively restoring checkpoints.
