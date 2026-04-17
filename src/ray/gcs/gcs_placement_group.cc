@@ -182,9 +182,17 @@ std::optional<std::string> GcsPlacementGroup::GetLabelDomainAssignment(
 
 void GcsPlacementGroup::SetLabelDomainAssignment(const std::string &label_key,
                                                  const std::string &label_value) {
+  if (placement_group_table_data_.label_domain_key().empty()) {
+    placement_group_table_data_.set_label_domain_key(label_key);
+  } else {
+    // Prevent silently overwriting the label domain key during assignment.
+    RAY_CHECK(placement_group_table_data_.label_domain_key() == label_key)
+        << "Attempted to silently overwrite PG label_domain_key '"
+        << placement_group_table_data_.label_domain_key()
+        << "' with a conflicting assignment key '" << label_key << "'";
+  }
   (*placement_group_table_data_.mutable_label_domain_assignments())[label_key] =
       label_value;
-  placement_group_table_data_.set_label_domain_key(label_key);
 }
 
 void GcsPlacementGroup::ClearLabelDomainAssignments() {
