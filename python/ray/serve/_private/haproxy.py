@@ -28,6 +28,7 @@ from ray.serve._private.constants import (
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
+    RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -545,7 +546,7 @@ class HAProxyApi(ProxyApi):
         self, *extra_args: str, timeout_s: int = 5
     ) -> asyncio.subprocess.Process:
         # Build command args
-        args = ["haproxy", "-db", "-f", self.config_file_path]
+        args = [RAY_SERVE_HAPROXY_BINARY_PATH, "-db", "-f", self.config_file_path]
 
         if not self.cfg.enable_so_reuseport:
             args.append("-dR")
@@ -760,43 +761,40 @@ class HAProxyApi(ProxyApi):
         server_stats = await self.get_all_stats()
         return HAProxyStats(backend_to_servers=server_stats)
 
-    # TODO: use socket library instead of subprocess
     async def _send_socket_command(self, command: str) -> str:
-        """Send a command to the HAProxy stats socket via subprocess."""
+        """Send a command to the HAProxy stats socket via Unix domain socket."""
         try:
-            # Check if a socket file exists
             if not os.path.exists(self.cfg.socket_path):
                 raise RuntimeError(
                     f"HAProxy socket file does not exist: {self.cfg.socket_path}."
                 )
 
-            proc = await asyncio.create_subprocess_exec(
-                "socat",
-                "-",
-                f"UNIX-CONNECT:{self.cfg.socket_path}",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(f"{command}\n".encode("utf-8")), timeout=5.0
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_unix_connection(self.cfg.socket_path),
+                    timeout=5.0,
                 )
             except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
                 raise RuntimeError(
-                    f"Timeout while sending command '{command}' to HAProxy socket"
+                    f"Timeout connecting to HAProxy socket: {self.cfg.socket_path}"
                 )
 
-            if proc.returncode != 0:
-                err = stderr.decode("utf-8", errors="ignore").strip()
-                raise RuntimeError(
-                    f"Command '{command}' failed with code {proc.returncode}: {err}"
-                )
+            try:
+                writer.write(f"{command}\n".encode("utf-8"))
+                await writer.drain()
 
-            result = stdout.decode("utf-8", errors="ignore")
+                # Read until EOF (HAProxy closes connection after response)
+                try:
+                    result_bytes = await asyncio.wait_for(reader.read(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    raise RuntimeError(
+                        f"Timeout while sending command '{command}' to HAProxy socket"
+                    )
+            finally:
+                writer.close()
+                await writer.wait_closed()
+
+            result = result_bytes.decode("utf-8", errors="ignore")
             logger.debug(f"Socket command '{command}' returned {len(result)} chars.")
             return result
         except Exception as e:

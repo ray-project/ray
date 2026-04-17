@@ -201,6 +201,48 @@
   variations:
     - __suffix__: aws
 
+#######################
+# SSH sanity checks
+#######################
+
+- name: ssh_sanity_check
+  python: "3.11"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 600
+    script: bash sanity_check_ssh.sh
+
+  variations:
+    - __suffix__: aws
+
+- name: ssh_sanity_check_llm
+  python: "3.11"
+  team: llm
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    byod:
+      type: llm-cu128
+    # Doesn't need GPUs to run ssh sanity check
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 600
+    script: bash sanity_check_ssh.sh
+
+  variations:
+    - __suffix__: aws
 
 #######################
 # Cluster scaling tests
@@ -811,6 +853,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -848,6 +891,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -887,6 +931,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -928,6 +973,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -967,6 +1013,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1006,6 +1053,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1045,6 +1093,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1084,6 +1133,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1123,6 +1173,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
@@ -1166,6 +1217,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_4_xlarge.yaml
@@ -1196,6 +1248,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_4_xlarge.yaml
@@ -1225,6 +1278,7 @@
   working_dir: jobs_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_4_xlarge.yaml
@@ -1250,6 +1304,7 @@
   frequency: nightly
   working_dir: jobs_tests
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_gpu_node.yaml
@@ -1275,6 +1330,7 @@
   frequency: nightly
   working_dir: jobs_tests
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_gpu_worker.yaml
@@ -2748,6 +2804,7 @@
   frequency: nightly-3x
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: distributed/many_nodes_tests/compute_config.yaml
 
   run:
@@ -2764,6 +2821,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: distributed/many_nodes_tests/compute_config_gce.yaml
 
 #- name: many_nodes_multi_master_test
@@ -2869,6 +2927,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2897,6 +2956,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2920,6 +2980,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2943,6 +3004,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2960,6 +3022,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: distributed_gce.yaml
 
 - name: many_actors_smoke_test
@@ -2970,6 +3033,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -2991,6 +3055,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -3008,6 +3073,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: distributed_gce.yaml
 
 - name: many_pgs
@@ -3019,6 +3085,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -3036,6 +3103,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: distributed_gce.yaml
 
 
@@ -3047,6 +3115,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -3068,6 +3137,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
@@ -3569,6 +3639,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       runtime_env:
@@ -3597,6 +3668,7 @@
   frequency: manual
   team: serve
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl.yaml
 
   run:
