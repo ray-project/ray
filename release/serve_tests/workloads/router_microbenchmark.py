@@ -70,7 +70,7 @@ MAX_USERS_PER_TASK = 48  # max concurrent users per load-gen task
 # ---------------------------------------------------------------------------
 # Scales and router types
 # ---------------------------------------------------------------------------
-NUM_REPLICAS = [8, 32, 128, 512]
+NUM_REPLICAS = [512, 128, 32, 8]
 
 ROUTER_TYPES = ["pow2", "capacity_queue"]
 
@@ -519,7 +519,7 @@ async def run_router_benchmark(
     multiple=True,
     type=int,
     default=NUM_REPLICAS,
-    help="Replica counts to benchmark. Default: 8, 32, 128, 512.",
+    help="Replica counts to benchmark. Default: 512, 128, 32, 8.",
 )
 def main(output_path: Optional[str], num_replicas: List[int]):
     logger.info(f"Running router benchmark for replica counts: {list(num_replicas)}")
