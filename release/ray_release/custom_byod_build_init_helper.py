@@ -232,6 +232,20 @@ def get_prerequisite_step(
     return f"{bare_key}--gpu{sanitized}-python{python_raw}"
 
 
+def collect_rayci_select_keys(tests: List[Test], gpu_map: Dict[str, str]) -> Set[str]:
+    """Return the RAYCI_SELECT key set (base-image + custom-BYOD) for the given tests."""
+    keys: Set[str] = set()
+    for test in tests:
+        image = test.get_anyscale_byod_image()
+        base_image = test.get_anyscale_base_byod_image()
+        prereq = get_prerequisite_step(image, base_image, gpu_map)
+        if prereq:
+            keys.add(prereq)
+        if test.require_custom_byod_image():
+            keys.add(generate_custom_build_step_key(image))
+    return keys
+
+
 def _get_step_name(image: str, step_key: str, test_names: List[str]) -> str:
     ecr, tag = image.split(":")
     ecr_repo = ecr.split("/")[-1]
