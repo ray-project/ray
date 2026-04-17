@@ -276,7 +276,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
                     result = ray.get(ref)
                     self._cached_allocated_resources[requester_id] = result
                     self._consecutive_failures_get_allocated_resources = 0
-                except ray.exceptions.RayError as exc:
+                except Exception as exc:
                     self._record_get_allocated_resources_failure(requester_id, exc)
             elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
                 ray.cancel(ref, force=False)

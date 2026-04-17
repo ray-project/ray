@@ -439,22 +439,6 @@ def test_get_allocated_resources_updates_cache_on_success(
     assert mock_actor.get_allocated_resources.remote.call_count == 1
 
 
-def test_get_allocated_resources_non_ray_errors_propagate(
-    teardown_autoscaling_coordinator,
-):
-    """Non-RayError exceptions are not caught and propagate to the caller."""
-    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
-
-    coordinator._pending_allocated_resources["test"] = (mock_ref, time.time())
-    # mock_ref is ready and the request completes with an exception
-    with patch("ray.wait", return_value=([mock_ref], [])):
-        with patch("ray.get", side_effect=ValueError("unexpected")):
-            with pytest.raises(ValueError, match="unexpected"):
-                coordinator.get_allocated_resources("test")
-    # Failure counter must not be incremented for non-RayError exceptions.
-    assert coordinator._consecutive_failures_get_allocated_resources == 0
-
-
 def _assert_failure_handling(coordinator, trigger_once):
     """Assert the common failure-handling contract for get_allocated_resources.
 
