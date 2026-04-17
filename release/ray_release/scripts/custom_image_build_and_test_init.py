@@ -21,6 +21,7 @@ from ray_release.config import (
 from ray_release.configs.global_config import init_global_config
 from ray_release.custom_byod_build_init_helper import (
     build_short_gpu_map,
+    collect_rayci_select_keys,
     create_custom_build_yaml,
 )
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
@@ -89,6 +90,11 @@ PIPELINE_ARTIFACT_PATH = "/tmp/pipeline_artifacts"
     type=str,
     help="The output file for the test jobs json file",
 )
+@click.option(
+    "--rayci-select-output-file",
+    type=str,
+    help="Output file for RAYCI_SELECT (comma-separated base-image publish step keys).",
+)
 def main(
     test_collection_file: Tuple[str],
     run_jailed_tests: bool = False,
@@ -99,6 +105,7 @@ def main(
     run_per_test: int = 1,
     custom_build_jobs_output_file: str = None,
     test_jobs_output_file: str = None,
+    rayci_select_output_file: str = None,
 ):
     global_config_file = os.path.join(
         os.path.dirname(__file__), "..", "configs", global_config
@@ -149,6 +156,8 @@ def main(
         tests,
         gpu_map,
     )
+
+    rayci_select_keys = collect_rayci_select_keys(tests, gpu_map)
 
     # Generate test job steps
     grouped_tests = group_tests(filtered_tests)
@@ -208,6 +217,15 @@ def main(
             "wt",
         ) as fp:
             json.dump(steps, fp)
+
+        # Only emit RAYCI_SELECT when a filter narrows the test set; an unfiltered
+        # run (e.g. full nightly) wants the complete image pipeline.
+        if rayci_select_output_file and test_filters:
+            with open(
+                os.path.join(_bazel_workspace_dir, rayci_select_output_file),
+                "wt",
+            ) as fp:
+                fp.write(",".join(sorted(rayci_select_keys)))
 
         settings["frequency"] = settings["frequency"].value
         settings["priority"] = settings["priority"].value
