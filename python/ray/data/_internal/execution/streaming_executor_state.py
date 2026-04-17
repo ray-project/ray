@@ -549,7 +549,9 @@ def update_operator_states(topology: Topology) -> None:
         # internal queues are properly cleared via clear_internal_input_queue()
         # and clear_internal_output_queue().
         terminal_completed = len(op.output_dependencies) == 0 and op.has_completed()
-        if dependents_completed or terminal_completed:
+        if (
+            dependents_completed or terminal_completed
+        ) and not op.has_execution_finished():
             op.mark_execution_finished()
 
         # Drain external input queue if current operator is execution finished.
