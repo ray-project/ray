@@ -5,6 +5,7 @@ can use this state to access metadata or the Serve controller.
 
 import asyncio
 import contextvars
+import inspect
 import logging
 from collections import defaultdict
 from dataclasses import dataclass, field
@@ -26,7 +27,6 @@ from ray.serve.gang import GangContext
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.schema import ReplicaRank
 from ray.util.annotations import DeveloperAPI
-import inspect
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
