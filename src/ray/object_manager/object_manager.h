@@ -120,6 +120,7 @@ class ObjectManagerInterface {
   virtual void RecordMetrics() = 0;
   virtual void HandleObjectAdded(const ObjectInfo &object_info) = 0;
   virtual void HandleObjectDeleted(const ObjectID &object_id) = 0;
+  virtual void SetOnPushComplete(std::function<void(const ObjectID &)> fn) = 0;
 
   virtual ~ObjectManagerInterface() = default;
 };
@@ -212,7 +213,7 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Set a callback that is invoked when a push to another node completes.
   /// Used to implement move semantics (free local copy after push).
-  void SetOnPushComplete(std::function<void(const ObjectID &)> fn) {
+  void SetOnPushComplete(std::function<void(const ObjectID &)> fn) override {
     on_push_complete_ = std::move(fn);
   }
 
