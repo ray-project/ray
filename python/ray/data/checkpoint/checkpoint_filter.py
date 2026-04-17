@@ -47,19 +47,26 @@ def _numpy_size(array: np.ndarray) -> int:
     if array.dtype == object:
         sample_count = 10**4
 
-        if len(array) <= sample_count:
-            for item in array.flat:
+        # Flatten to guarantee per-element iteration for multi-dimensional
+        # arrays (len(array) only reports the first dimension).
+        flat = array.ravel()
+        n = flat.size
+        if n <= sample_count:
+            for item in flat:
                 total_size += sys.getsizeof(item)
         else:
-            step = max(1, len(array) // sample_count)
+            # Ceiling division so the stride spans the full array even
+            # when n is not a multiple of sample_count (otherwise the
+            # tail elements are never sampled).
+            step = -(-n // sample_count)
             sample_total_size = 0
             sampled = 0
-            for i in range(0, len(array), step):
-                sample_total_size += sys.getsizeof(array[i])
+            for i in range(0, n, step):
+                sample_total_size += sys.getsizeof(flat[i])
                 sampled += 1
                 if sampled >= sample_count:
                     break
-            total_size += int(sample_total_size / sampled * len(array))
+            total_size += int(sample_total_size / sampled * n)
     return total_size
 
 
