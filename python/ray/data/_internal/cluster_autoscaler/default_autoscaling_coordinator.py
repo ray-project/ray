@@ -162,6 +162,10 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     def __init__(self):
         self._cached_allocated_resources: Dict[str, List[ResourceDict]] = {}
+        # Tracks in-flight async get_allocated_resources requests.
+        # Maps requester_id to (ObjectRef, submit_time).
+        self._pending_allocated_resources: Dict[str, tuple[ray.ObjectRef, float]] = {}
+
         self._consecutive_failures_request_resources: int = 0
         self._consecutive_failures_cancel_request: int = 0
         self._consecutive_failures_get_allocated_resources: int = 0
@@ -216,28 +220,78 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
         )
 
-    @handle_timeout_errors(
-        failure_counter_attr="_consecutive_failures_get_allocated_resources",
-        operation_name="get allocated resources",
-        error_msg_suffix=(
-            "Returning cached value."
+    def _record_get_allocated_resources_failure(
+        self, requester_id: str, exc: Optional[Exception] = None
+    ) -> None:
+        """Increment the failure counter; raise RuntimeError if the maximum is reached.
+
+        The counter is reset to zero before raising so that the coordinator can
+        recover if the caller catches the exception and retries.
+
+        `exc` is the underlying exception when the actor task failed, or None
+        when the request timed out without completing.
+        """
+        self._consecutive_failures_get_allocated_resources += 1
+        failure_counter = self._consecutive_failures_get_allocated_resources
+        consecutive_msg = (
+            f" (consecutive failures: {failure_counter})" if failure_counter > 1 else ""
+        )
+        if failure_counter >= self.MAX_CONSECUTIVE_FAILURES:
+            self._consecutive_failures_get_allocated_resources = 0
+            raise RuntimeError(
+                f"Failed to get allocated resources for {requester_id} "
+                f"after {failure_counter} consecutive failures."
+            ) from exc
+        prefix = "Timed out waiting for" if exc is None else "Failed to"
+        logger.warning(
+            f"{prefix} get allocated resources for "
+            f"{requester_id}{consecutive_msg}. Returning cached value."
             " If this only happens transiently during network partition"
             " or CPU being overloaded, it's safe to ignore this error."
             " If this error persists, file a GitHub issue."
-        ),
-        on_error_return=lambda self, requester_id: self._cached_allocated_resources.get(
-            requester_id, []
-        ),
-    )
-    def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
-        result = ray.get(
-            self._autoscaling_coordinator.get_allocated_resources.remote(
-                requester_id,
-            ),
-            timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
         )
-        self._cached_allocated_resources[requester_id] = result
-        return result
+        if exc is not None and RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK:
+            logger.debug(
+                f"Traceback for get allocated resources failure for {requester_id}:",
+                exc_info=True,
+            )
+
+    def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
+        """Get the allocated resources for the requester without blocking.
+
+        Submits an async request to the autoscaling coordinator actor and
+        immediately returns the last cached value. The cached value is updated
+        whenever a pending request completes.
+
+        On repeated failures (actor errors or timeouts), falls back to the cached
+        value and raises after MAX_CONSECUTIVE_FAILURES.
+        """
+        pending = self._pending_allocated_resources.get(requester_id)
+        if pending is not None:
+            ref, submit_time = pending
+            ready, _ = ray.wait([ref], timeout=0)
+            if ready:
+                del self._pending_allocated_resources[requester_id]
+                try:
+                    result = ray.get(ref)
+                    self._cached_allocated_resources[requester_id] = result
+                    self._consecutive_failures_get_allocated_resources = 0
+                except ray.exceptions.RayError as exc:
+                    self._record_get_allocated_resources_failure(requester_id, exc)
+            elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
+                ray.cancel(ref, force=False)
+                del self._pending_allocated_resources[requester_id]
+                self._record_get_allocated_resources_failure(requester_id)
+
+        # Submit a new request if none is currently in-flight
+        # (first call, or the previous request just completed or timed out).
+        if requester_id not in self._pending_allocated_resources:
+            ref = self._autoscaling_coordinator.get_allocated_resources.remote(
+                requester_id,
+            )
+            self._pending_allocated_resources[requester_id] = (ref, time.time())
+
+        return self._cached_allocated_resources.get(requester_id, [])
 
 
 class _AutoscalingCoordinatorActor:

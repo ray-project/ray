@@ -1,3 +1,4 @@
+import time
 from unittest.mock import Mock, patch
 
 import pytest
@@ -382,42 +383,140 @@ def _test_consecutive_failures(
         assert getattr(coordinator, counter_attr) == 0
 
 
-def test_get_allocated_resources_handles_timeout_error(
-    teardown_autoscaling_coordinator,
-):
-    """Test get_allocated_resources handles timeout error."""
+def _make_coordinator_with_mock_actor():
+    """Return a (coordinator, mock_ref, mock_actor) triple for unit tests.
+
+    The coordinator is pre-seeded with _cached_allocated_resources["test"] = [{"CPU": 1}]
+    so tests can assert on the cached fallback value without a separate setup step.
+    The cached_property is bypassed so no real actor is created. ray.wait,
+    ray.get, and ray.cancel must be patched by the caller as needed.
+    """
     coordinator = DefaultAutoscalingCoordinator()
     coordinator._cached_allocated_resources["test"] = [{"CPU": 1}]
+    mock_ref = object()
+    mock_actor = Mock()
+    mock_actor.get_allocated_resources.remote.return_value = mock_ref
+    coordinator.__dict__["_autoscaling_coordinator"] = mock_actor
+    return coordinator, mock_ref, mock_actor
 
-    def call_method():
-        return coordinator.get_allocated_resources("test")
 
+def test_get_allocated_resources_returns_cached_while_inflight(
+    teardown_autoscaling_coordinator,
+):
+    """Returns the cached value immediately when a request is already in-flight."""
+    coordinator, mock_ref, mock_actor = _make_coordinator_with_mock_actor()
+
+    coordinator._pending_allocated_resources["test"] = (mock_ref, time.time())
+    # mock_ref is not ready
+    with patch("ray.wait", return_value=([], [mock_ref])):
+        result = coordinator.get_allocated_resources("test")
+
+    assert result == [{"CPU": 1}]
+    assert coordinator._consecutive_failures_get_allocated_resources == 0
+    # The pending entry must survive — it is the in-flight request.
+    assert "test" in coordinator._pending_allocated_resources
+    # No new request submitted since one is already in-flight.
+    assert mock_actor.get_allocated_resources.remote.call_count == 0
+
+
+def test_get_allocated_resources_updates_cache_on_success(
+    teardown_autoscaling_coordinator,
+):
+    """Updates the cache and resets the failure counter when the request completes."""
+    coordinator, mock_ref, mock_actor = _make_coordinator_with_mock_actor()
+    coordinator._consecutive_failures_get_allocated_resources = 3
+
+    coordinator._pending_allocated_resources["test"] = (mock_ref, time.time())
+    # mock_ref is ready and the request completes with success
+    with patch("ray.wait", return_value=([mock_ref], [])):
+        with patch("ray.get", return_value=[{"CPU": 2}]):
+            result = coordinator.get_allocated_resources("test")
+
+    assert result == [{"CPU": 2}]
+    assert coordinator._cached_allocated_resources["test"] == [{"CPU": 2}]
+    assert coordinator._consecutive_failures_get_allocated_resources == 0
+    # A new request must be submitted immediately after the completed one is consumed.
+    assert mock_actor.get_allocated_resources.remote.call_count == 1
+
+
+def test_get_allocated_resources_non_ray_errors_propagate(
+    teardown_autoscaling_coordinator,
+):
+    """Non-RayError exceptions are not caught and propagate to the caller."""
+    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
+
+    coordinator._pending_allocated_resources["test"] = (mock_ref, time.time())
+    # mock_ref is ready and the request completes with an exception
+    with patch("ray.wait", return_value=([mock_ref], [])):
+        with patch("ray.get", side_effect=ValueError("unexpected")):
+            with pytest.raises(ValueError, match="unexpected"):
+                coordinator.get_allocated_resources("test")
+    # Failure counter must not be incremented for non-RayError exceptions.
+    assert coordinator._consecutive_failures_get_allocated_resources == 0
+
+
+def _assert_failure_handling(coordinator, trigger_once):
+    """Assert the common failure-handling contract for get_allocated_resources.
+
+    `trigger_once` is a callable that injects one failure into `coordinator`
+    and returns the result of get_allocated_resources. It must also clean up
+    any leftover pending entry before returning.
+    """
     max_failures = coordinator.MAX_CONSECUTIVE_FAILURES
-    timeout_error = ray.exceptions.GetTimeoutError("timeout")
-    cached_value = [{"CPU": 1}]
-    new_value = [{"CPU": 2}]
 
-    # Counter increments on failures and returns cached value
-    with patch("ray.get", side_effect=timeout_error):
-        for attempt in range(1, max_failures):
-            result = call_method()
-            assert result == cached_value
-            assert coordinator._consecutive_failures_get_allocated_resources == attempt
+    # Counter increments on each failure and cached value is returned.
+    for attempt in range(1, max_failures):
+        result = trigger_once()
+        assert result == [{"CPU": 1}]
+        assert coordinator._consecutive_failures_get_allocated_resources == attempt
 
-    # Exception raised after max consecutive failures
+    # Raises after max_failures; counter is reset so recovery is possible.
     expected_error_msg = (
         f"Failed to get allocated resources for test "
         f"after {max_failures} consecutive failures"
     )
-    with patch("ray.get", side_effect=timeout_error):
-        with pytest.raises(RuntimeError, match=expected_error_msg):
-            call_method()
+    with pytest.raises(RuntimeError, match=expected_error_msg):
+        trigger_once()
+    assert coordinator._consecutive_failures_get_allocated_resources == 0
 
-    # Counter resets on success and returns new value
-    with patch("ray.get", return_value=new_value):
-        result = call_method()
-        assert result == new_value
-        assert coordinator._consecutive_failures_get_allocated_resources == 0
+
+def test_get_allocated_resources_actor_exception_failure_handling(
+    teardown_autoscaling_coordinator,
+):
+    """Actor RayErrors increment the failure counter; RuntimeError after MAX_CONSECUTIVE_FAILURES;
+    counter resets to zero so recovery is possible."""
+    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
+
+    def trigger_once():
+        coordinator._pending_allocated_resources["test"] = (mock_ref, time.time())
+        with patch("ray.wait", return_value=([mock_ref], [])):
+            with patch("ray.get", side_effect=ray.exceptions.RayActorError()):
+                result = coordinator.get_allocated_resources("test")
+        coordinator._pending_allocated_resources.pop("test", None)
+        return result
+
+    _assert_failure_handling(coordinator, trigger_once)
+
+
+def test_get_allocated_resources_timeout_failure_handling(
+    teardown_autoscaling_coordinator,
+):
+    """Timeouts increment the failure counter; RuntimeError after MAX_CONSECUTIVE_FAILURES;
+    counter resets to zero so recovery is possible. The stale task is cancelled."""
+    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
+
+    def trigger_once():
+        stale_time = time.time() - coordinator.AUTOSCALING_REQUEST_GET_TIMEOUT_S - 1
+        coordinator._pending_allocated_resources["test"] = (mock_ref, stale_time)
+        with patch("ray.wait", return_value=([], [mock_ref])):
+            with patch("ray.cancel") as mock_cancel:
+                result = coordinator.get_allocated_resources("test")
+        # The stale task must be cancelled to avoid piling up the actor queue.
+        mock_cancel.assert_called_once_with(mock_ref, force=False)
+        coordinator._pending_allocated_resources.pop("test", None)
+        return result
+
+    _assert_failure_handling(coordinator, trigger_once)
 
 
 def test_cancel_request_handles_timeout_error(teardown_autoscaling_coordinator):
@@ -457,7 +556,12 @@ def test_coordinator_accepts_zero_resource_for_missing_resource_type(
         requester_id="spam", resources=[{"CPU": 1, "GPU": 0}], expire_after_s=1
     )
 
-    assert coordinator.get_allocated_resources("spam") == [{"CPU": 1, "GPU": 0}]
+    # get_allocated_resources is now async; poll until the result arrives.
+    def check():
+        result = coordinator.get_allocated_resources("spam")
+        return result == [{"CPU": 1, "GPU": 0}]
+
+    wait_for_condition(check, retry_interval_ms=100, timeout=5)
 
 
 if __name__ == "__main__":
