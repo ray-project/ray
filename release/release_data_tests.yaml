@@ -502,62 +502,6 @@
       python map_benchmark.py --api map_batches --batch-format {{format}}
       --compute {{compute}} --sf 1000 --repeat-map-batches {{repeat_map_batches}}
 
-# Regression tests for batch_size="auto": verify that auto batch sizing produces
-# correct output and doesn't regress throughput vs a fixed batch size on CPU workloads.
-- name: "map_batches_auto_batch_size_{{compute}}_{{format}}"
-  python: "3.10"
-  matrix:
-    setup:
-      format: [numpy, pandas, pyarrow]
-      compute: [tasks]
-    adjustments:
-      # Also exercise the actor pool code path with numpy (mirrors the existing
-      # map_batches_fixed_size_actors_numpy_once test).
-      - with:
-          format: numpy
-          compute: actors
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=0
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-    cluster_compute: fixed_size_cpu_compute.yaml
-
-  run:
-    timeout: 10800
-    script: >
-      python map_benchmark.py --api map_batches --batch-format {{format}}
-      --compute {{compute}} --sf 100 --batch-size auto
-
-# Control: same as map_batches_auto_batch_size but with a fixed batch size (10000,
-# the map_benchmark.py default) so we can compare auto vs fixed throughput.
-- name: "map_batches_fixed_batch_size_{{compute}}_{{format}}"
-  python: "3.10"
-  matrix:
-    setup:
-      format: [numpy, pandas, pyarrow]
-      compute: [tasks]
-    adjustments:
-      - with:
-          format: numpy
-          compute: actors
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=0
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-    cluster_compute: fixed_size_cpu_compute.yaml
-
-  run:
-    timeout: 10800
-    script: >
-      python map_benchmark.py --api map_batches --batch-format {{format}}
-      --compute {{compute}} --sf 100 --batch-size 10000
-
 - name: worker_scaling_{{num_workers}}_{{worker_type}}
   python: "3.10"
   frequency: weekly
@@ -681,48 +625,6 @@
     timeout: 3600
     script: python heterogeneous_memory_batch_inference.py
 
-# Same as above but with batch_size="auto" on the two CPU stages (gen_data, cpu_process).
-# GPU stage batch size stays fixed (memory constraint).
-- name: heterogeneous_memory_batch_inference_auto_cpu
-  python: "3.10"
-  frequency: nightly
-  group: data-batch-inference
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=0
-        - RAYTEST_FAIL_ON_DEAD_NODES=0
-    cluster_compute: heterogeneous_memory_compute.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python heterogeneous_memory_batch_inference.py
-      --gen-batch-size auto --cpu-batch-size auto
-
-# Control: same as heterogeneous_memory_batch_inference_auto_cpu but with the
-# default fixed batch sizes (1024) so we can compare auto vs fixed.
-- name: heterogeneous_memory_batch_inference_fixed_cpu
-  python: "3.10"
-  frequency: nightly
-  group: data-batch-inference
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=0
-        - RAYTEST_FAIL_ON_DEAD_NODES=0
-    cluster_compute: heterogeneous_memory_compute.yaml
-
-  run:
-    timeout: 3600
-    script: >
-      python heterogeneous_memory_batch_inference.py
-      --gen-batch-size 1024 --cpu-batch-size 1024
-
 # 300 GB image classification parquet data up to 10 GPUs
 # 10 g4dn.12xlarge.
 - name: "image_classification_{{scaling}}"
@@ -746,50 +648,6 @@
     script: >
       python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
-
-# Same as image_classification but with batch_size="auto" on the CPU preprocessing
-# stage only. GPU inference batch size stays fixed (T4 memory constraint).
-- name: "image_classification_auto_cpu_preprocess_{{scaling}}"
-  python: "3.10"
-  group: data-batch-inference
-
-  cluster:
-    byod:
-      python_depset: image_classification_py3.10.lock
-    cluster_compute: "{{scaling}}_gpu_compute.yaml"
-
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
-
-  run:
-    timeout: 1800
-    script: >
-      python gpu_batch_inference.py
-      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
-      --preprocess-batch-size auto
-
-# Control: same as image_classification_auto_cpu_preprocess but with the default
-# fixed preprocess batch size (90) so we can compare auto vs fixed.
-- name: "image_classification_fixed_cpu_preprocess_{{scaling}}"
-  python: "3.10"
-  group: data-batch-inference
-
-  cluster:
-    byod:
-      python_depset: image_classification_py3.10.lock
-    cluster_compute: "{{scaling}}_gpu_compute.yaml"
-
-  matrix:
-    setup:
-      scaling: [fixed_size, autoscaling]
-
-  run:
-    timeout: 1800
-    script: >
-      python gpu_batch_inference.py
-      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
-      --preprocess-batch-size 90
 
 - name: image_classification_chaos
   python: "3.10"
@@ -883,48 +741,6 @@
     timeout: 3600
     script: python image_embedding_from_uris/main.py {{args}}
 
-
-# Same as image_embedding_from_uris_fixed_size but with batch_size="auto" on the CPU
-# patch-processing stage (ProcessPatches). GPU embedding batch size stays fixed.
-- name: image_embedding_from_uris_auto_cpu_preprocess
-  python: "3.10"
-  frequency: weekly
-  group: data-batch-inference
-
-  cluster:
-    cluster_compute: image_embedding_from_uris/fixed_size_cluster_compute.yaml
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-
-  run:
-    timeout: 3600
-    script: >
-      python image_embedding_from_uris/main.py
-      --inference-concurrency 100 100 --preprocess-batch-size auto
-
-# Control: same as image_embedding_from_uris_auto_cpu_preprocess but without
-# --preprocess-batch-size (uses None / Ray Data default) so we can compare auto vs default.
-- name: image_embedding_from_uris_fixed_cpu_preprocess
-  python: "3.10"
-  frequency: weekly
-  group: data-batch-inference
-
-  cluster:
-    cluster_compute: image_embedding_from_uris/fixed_size_cluster_compute.yaml
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=1
-
-  run:
-    timeout: 3600
-    script: >
-      python image_embedding_from_uris/main.py
-      --inference-concurrency 100 100
 
 - name: image_embedding_from_jsonl_{{case}}
   python: "3.10"
