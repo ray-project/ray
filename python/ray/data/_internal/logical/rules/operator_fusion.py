@@ -7,6 +7,7 @@ from ray.data._internal.compute import (
     ComputeStrategy,
     TaskPoolStrategy,
 )
+from ray.data._internal.execution.bundle_queue import ExactMultipleSize, RebundleQueue
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
@@ -35,7 +36,6 @@ from ray.data._internal.logical.operators import (
     Repartition,
     StreamingRepartition,
 )
-from ray.data._internal.streaming_repartition import StreamingRepartitionRefBundler
 from ray.util.annotations import DeveloperAPI
 
 __all__ = [
@@ -332,7 +332,7 @@ class FuseOperators(Rule):
                 f"a multiple of target_num_rows_per_block "
                 f"({down_logical_op.target_num_rows_per_block})"
             )
-            ref_bundler = StreamingRepartitionRefBundler(batch_size)
+            ref_bundler = RebundleQueue(ExactMultipleSize(batch_size))
         else:
             # Non-strict mode: use default pass-through bundler.
             # Works with any batch_size without cross-task buffering.
@@ -365,8 +365,8 @@ class FuseOperators(Rule):
             up_op.data_context,
             name=name,
             compute_strategy=compute,
-            min_rows_per_bundle=min_rows,
             ref_bundler=ref_bundler,
+            min_rows_per_bundle=min_rows,
             map_task_kwargs=map_task_kwargs,
             ray_remote_args=ray_remote_args,
             ray_remote_args_fn=ray_remote_args_fn,
@@ -507,9 +507,13 @@ class FuseOperators(Rule):
         # This is critical for strict-mode streaming repartition to maintain
         # exact block size guarantees during further fusion.
         ref_bundler = None
-        if isinstance(up_op._block_ref_bundler, StreamingRepartitionRefBundler):
+        if isinstance(up_op._block_ref_bundler, RebundleQueue) and isinstance(
+            up_op._block_ref_bundler._strategy, ExactMultipleSize
+        ):
             ref_bundler = up_op._block_ref_bundler
-        elif isinstance(down_op._block_ref_bundler, StreamingRepartitionRefBundler):
+        elif isinstance(down_op._block_ref_bundler, RebundleQueue) and isinstance(
+            down_op._block_ref_bundler._strategy, ExactMultipleSize
+        ):
             ref_bundler = down_op._block_ref_bundler
 
         # Fused physical map operator.
