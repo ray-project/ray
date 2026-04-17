@@ -105,8 +105,8 @@ ObjectManager::ObjectManager(
                                    config_.object_chunk_size)),
           /* push_complete_fn= */
           [this](const ObjectID &object_id, const NodeID &dest_node_id) {
-            RAY_LOG(DEBUG) << "Push complete for " << object_id << " to "
-                           << dest_node_id << ", invoking move semantic callback";
+            RAY_LOG(DEBUG) << "Push complete for " << object_id << " to " << dest_node_id
+                           << ", invoking move semantic callback";
             if (on_push_complete_) {
               on_push_complete_(object_id);
             }
