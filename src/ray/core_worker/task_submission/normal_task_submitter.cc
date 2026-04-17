@@ -23,6 +23,7 @@
 
 #include "absl/strings/str_format.h"
 #include "ray/common/asio/asio_util.h"
+#include "ray/common/grpc_util.h"
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"
@@ -348,6 +349,9 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
           sched_entry.pending_lease_requests.erase(lease_id);
 
           if (status.ok()) {
+            if (NodeID::FromBinary(raylet_address.node_id()) == local_node_id_) {
+              sched_entry.local_lease_transient_retries = 0;
+            }
             if (reply.canceled()) {
               RAY_LOG(DEBUG) << "Lease canceled for: " << lease_id << ", canceled type: "
                              << rpc::RequestWorkerLeaseReply::SchedulingFailureType_Name(
@@ -413,6 +417,8 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
             } else if (!reply.worker_address().node_id().empty()) {
               // We got a lease for a worker. Add the lease client state and try to
               // assign work to the worker.
+              sched_entry.local_lease_transient_retries = 0;
+              sched_entry.local_lease_retry_pending = false;
               RAY_LOG(DEBUG) << "Lease granted to task " << lease_id << " from raylet "
                              << NodeID::FromBinary(reply.worker_address().node_id())
                              << " with worker "
@@ -455,6 +461,42 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                 << status.ToString();
 
             RequestNewWorkerIfNeeded(scheduling_key);
+          } else if (IsGrpcRetryableStatus(status) &&
+                     sched_entry.local_lease_transient_retries < max_local_lease_transient_retries_) {
+            if (!sched_entry.local_lease_retry_pending) {
+              // A lease request to the local raylet failed with a transient gRPC
+              // error (e.g., UNAVAILABLE). This may be caused by a temporary
+              // network hiccup rather than actual raylet death. Retry locally
+              // with exponential backoff instead of crashing immediately.
+              
+              // Only the first callback in a batch increments the counter
+              // and schedules the retry. Subsequent concurrent failures
+              // are absorbed by the same retry round.
+              sched_entry.local_lease_transient_retries++;
+              sched_entry.local_lease_retry_pending = true;
+              
+              // Exponential backoff: 50ms, 100ms, ..., capped at 3200ms
+              const int64_t backoff_ms =
+                  local_lease_retry_base_ms_ * (1 << std::min(sched_entry.local_lease_transient_retries - 1, 6u));
+              RAY_LOG_EVERY_MS(WARNING, 5 * 1000)
+                  << "Retrying lease request (id: " << lease_id
+                  << " name: " << function_or_actor_name
+                  << ") to local raylet in " << backoff_ms
+                  << "ms due to transient gRPC error. Attempt "
+                  << sched_entry.local_lease_transient_retries << "/" 
+                  << max_local_lease_transient_retries_ << ". Error: " << status;
+
+              execute_after(
+                  io_service_,
+                  [this, scheduling_key]() {
+                    absl::MutexLock retry_lock(&mu_);
+                    if (scheduling_key_entries_.contains(scheduling_key)) {
+                      scheduling_key_entries_[scheduling_key].local_lease_retry_pending = false;
+                      RequestNewWorkerIfNeeded(scheduling_key);
+                    }
+                  },
+                  std::chrono::milliseconds(backoff_ms));
+            }
           } else {
             RAY_LOG(WARNING) << "The worker failed to receive a response from the local "
                              << "raylet because the raylet is unavailable (crashed). "

@@ -102,7 +102,9 @@ class NormalTaskSubmitter {
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       const TensorTransportGetter &tensor_transport_getter,
       instrumented_io_context &io_service,
-      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram)
+      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram,
+      uint32_t max_local_lease_transient_retries = 10,
+      int64_t local_lease_retry_base_ms = 50)
       : rpc_address_(std::move(rpc_address)),
         local_raylet_client_(std::move(local_raylet_client)),
         raylet_client_pool_(std::move(raylet_client_pool)),
@@ -118,7 +120,9 @@ class NormalTaskSubmitter {
         job_id_(job_id),
         lease_request_rate_limiter_(std::move(lease_request_rate_limiter)),
         io_service_(io_service),
-        scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram) {}
+        scheduler_placement_time_ms_histogram_(scheduler_placement_time_ms_histogram),
+        max_local_lease_transient_retries_(max_local_lease_transient_retries),
+        local_lease_retry_base_ms_(local_lease_retry_base_ms) {}
 
   /// Schedule a task for direct submission to a worker.
   void SubmitTask(TaskSpecification task_spec);
@@ -313,6 +317,10 @@ class NormalTaskSubmitter {
     absl::flat_hash_set<rpc::Address> active_workers;
     // Keep track of how many workers have tasks to do.
     uint32_t num_busy_workers = 0;
+    // Number of consecutive transient failures (UNAVAILABLE) requested to local raylet.
+    uint32_t local_lease_transient_retries = 0;
+    bool local_lease_retry_pending =
+        false;  // true if an execute_after retry is scheduled
 
     // Check whether it's safe to delete this SchedulingKeyEntry from the
     // scheduling_key_entries_ hashmap.
@@ -373,6 +381,11 @@ class NormalTaskSubmitter {
   instrumented_io_context &io_service_;
 
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
+
+  /// Max retries for transient gRPC errors on local raylet lease requests.
+  const uint32_t max_local_lease_transient_retries_;
+  /// Initial backoff (ms) for local raylet lease retries (doubles each attempt).
+  const int64_t local_lease_retry_base_ms_;
 };
 
 }  // namespace core
