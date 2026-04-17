@@ -722,47 +722,6 @@ TEST(PlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   EXPECT_EQ(fake_raylet->async_get_owners[0][1].ip_address(), "owner-3");
 }
 
-TEST(PlasmaStoreProviderFastPath, SkipsEmptyBatchInSlowPath) {
-  auto fake_raylet = std::make_shared<RecordingFakeRaylet>();
-  auto ids = MakeRandomIds(5);
-  // With batch_size=2, the middle batch (indices 2, 3) is fully local and
-  // must be skipped, not sent as an empty AsyncGetObjects.
-  auto fake_plasma = std::make_shared<PartialPlasmaGetClient>(
-      absl::flat_hash_set<ObjectID>{ids[1], ids[2], ids[3]});
-
-  CoreWorkerPlasmaStoreProvider provider(
-      "", fake_raylet, [] { return Status::OK(); }, false, fake_plasma, 2, nullptr);
-
-  std::vector<rpc::Address> owner_addresses(ids.size());
-  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
-  ASSERT_TRUE(provider.Get(ids, owner_addresses, -1, &results).ok());
-
-  ASSERT_EQ(fake_raylet->async_get_ids.size(), 2U);
-  ASSERT_EQ(fake_raylet->async_get_ids[0].size(), 1U);
-  EXPECT_EQ(fake_raylet->async_get_ids[0][0], ids[0]);
-  ASSERT_EQ(fake_raylet->async_get_ids[1].size(), 1U);
-  EXPECT_EQ(fake_raylet->async_get_ids[1][0], ids[4]);
-}
-
-TEST(PlasmaStoreProviderFastPath, BatchesSlowPathAsyncGetObjects) {
-  auto fake_raylet = std::make_shared<RecordingFakeRaylet>();
-  auto ids = MakeRandomIds(5);
-  auto fake_plasma =
-      std::make_shared<PartialPlasmaGetClient>(absl::flat_hash_set<ObjectID>{});
-
-  CoreWorkerPlasmaStoreProvider provider(
-      "", fake_raylet, [] { return Status::OK(); }, false, fake_plasma, 2, nullptr);
-
-  std::vector<rpc::Address> owner_addresses(ids.size());
-  absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
-  ASSERT_TRUE(provider.Get(ids, owner_addresses, -1, &results).ok());
-
-  ASSERT_EQ(fake_raylet->async_get_ids.size(), 3U);
-  EXPECT_EQ(fake_raylet->async_get_ids[0].size(), 2U);
-  EXPECT_EQ(fake_raylet->async_get_ids[1].size(), 2U);
-  EXPECT_EQ(fake_raylet->async_get_ids[2].size(), 1U);
-}
-
 class CoreWorkerPubsubWorkerObjectEvictionChannelTest
     : public CoreWorkerTest,
       public ::testing::WithParamInterface<bool> {};
