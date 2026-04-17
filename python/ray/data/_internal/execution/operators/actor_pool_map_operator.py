@@ -319,17 +319,15 @@ class ActorPoolMapOperator(MapOperator):
             and the actual resource usage for this actor.
         """
         assert self._actor_cls is not None
-        if self._ray_remote_args_fn:
-            actual_remote_args = self._refresh_actor_cls()
-        else:
-            actual_remote_args = self._ray_remote_args
+        actual_remote_args = self._merge_ray_remote_args()
         actor_resource_usage = ExecutionResources(
             cpu=actual_remote_args.get("num_cpus", 0),
             gpu=actual_remote_args.get("num_gpus", 0),
             memory=actual_remote_args.get("memory", 0),
         )
         actor = self._actor_cls.options(
-            _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
+            _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels},
+            **actual_remote_args
         ).remote(
             ctx=self._data_context_ref,
             logical_actor_id=logical_actor_id,
@@ -439,22 +437,19 @@ class ActorPoolMapOperator(MapOperator):
 
         return num_submitted_tasks
 
-    def _refresh_actor_cls(self) -> Dict[str, Any]:
+    def _merge_ray_remote_args(self) -> Dict[str, Any]:
         """When `self._ray_remote_args_fn` is specified, this method should
         be called prior to initializing the new worker in order to get new
-        remote args passed to the worker. It updates `self.cls` with the same
-        `_MapWorker` class, but with the new remote args from
-        `self._ray_remote_args_fn`.
+        remote args passed to the worker.
 
         Returns:
             The merged remote args used to create the actor class.
         """
-        assert self._ray_remote_args_fn, "_ray_remote_args_fn must be provided"
-        remote_args = self._ray_remote_args.copy()
-        new_remote_args = self._ray_remote_args_fn()
+        if not self._ray_remote_args_fn:
+            return self._ray_remote_args
 
-        remote_args.update(new_remote_args)
-        self._actor_cls = ray.remote(**remote_args)(self._map_worker_cls)
+        remote_args = self._ray_remote_args.copy()
+        remote_args.update(self._ray_remote_args_fn())
         return remote_args
 
     def has_next(self) -> bool:
