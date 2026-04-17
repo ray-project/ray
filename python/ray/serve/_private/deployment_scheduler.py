@@ -190,6 +190,8 @@ class ReplicaSchedulingRequest:
         elif self.placement_group_bundles is not None:
             return Resources(self.placement_group_bundles[0])
         else:
+            # Copy so the implicit_resource assignment below doesn't mutate
+            # self.actor_resources.
             required = Resources(self.actor_resources)
 
             # Using implicit resource (resources that every node
@@ -250,6 +252,8 @@ class DeploymentSchedulingInfo:
         elif self.placement_group_bundles is not None:
             return Resources(self.placement_group_bundles[0])
         else:
+            # Copy so the implicit_resource assignment below doesn't mutate
+            # self.actor_resources.
             required = Resources(self.actor_resources)
 
             # Using implicit resource (resources that every node
