@@ -244,6 +244,15 @@ CONTROLLER_MAX_CONCURRENCY = get_env_int_positive(
     "RAY_SERVE_CONTROLLER_MAX_CONCURRENCY", 15_000
 )
 
+#: Default max_concurrency for sync deployment actors. Each unit of
+#: max_concurrency on a sync actor materializes as one OS thread via the
+#: C++ BoundedExecutor (#62661), so this caps the thread count at a safe
+#: ceiling while still allowing enough concurrent calls to avoid the
+#: default-of-1 serialization regression from #62708.
+DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY = get_env_int_positive(
+    "RAY_SERVE_DEFAULT_SYNC_DEPLOYMENT_ACTOR_MAX_CONCURRENCY", 100
+)
+
 DEFAULT_GRACEFUL_SHUTDOWN_TIMEOUT_S = 20
 DEFAULT_GRACEFUL_SHUTDOWN_WAIT_LOOP_S = 2
 DEFAULT_HEALTH_CHECK_PERIOD_S = 10
