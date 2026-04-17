@@ -319,7 +319,8 @@ def _peek_first_nonempty_block(
     blocks: Iterable[Block],
 ) -> Tuple[Optional[BlockAccessor], Iterable[Block]]:
     """Advance the iterator past leading empty blocks to find the first non-empty block,
-    returning the corresponding accessor and a reconstructed iterator of all blocks."""
+    returning the corresponding accessor and a reconstructed iterator of all blocks.
+    We must reconstruct the iterator because we consume blocks as we advance through the iterator."""
     blocks_iter = iter(blocks)
     consumed = []
     for block in blocks_iter:
