@@ -38,6 +38,7 @@ APT_PKGS=(
 )
 
 apt-get update
+apt-get upgrade -y
 apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
 rm -rf /var/lib/apt/lists/*
 
@@ -144,7 +145,10 @@ RUN <<EOF
 #!/bin/bash
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+
 apt-get update -y
+apt-get upgrade -y
 apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
