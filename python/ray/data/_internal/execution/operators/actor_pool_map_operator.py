@@ -328,7 +328,7 @@ class ActorPoolMapOperator(MapOperator):
         )
         actor = self._actor_cls.options(
             _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels, **extra_labels},
-            **actual_remote_args
+            **actual_remote_args,
         ).remote(
             ctx=self._data_context_ref,
             logical_actor_id=logical_actor_id,
