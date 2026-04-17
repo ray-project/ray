@@ -579,8 +579,7 @@ void WorkerPool::AdjustWorkerOomScore(pid_t pid) const {
   original_oom_score_file.close();
 
   int relative_oom_score_adj =
-      std::min(RayConfig::instance().worker_oom_score_adjustment(), 1000);
-  relative_oom_score_adj = std::max(relative_oom_score_adj, 0);
+      std::clamp(RayConfig::instance().worker_oom_score_adjustment(), 0, 1000);
   // Clamp to the kernel-accepted range [-1000, 1000]. The previous code
   // clamped only the upper bound, which silently accepted out-of-range
   // inputs if either term was negative.
