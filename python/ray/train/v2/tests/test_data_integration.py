@@ -26,6 +26,7 @@ from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
     DummyWorkerGroup,
+    MockReplicaGroupBackendConfig,
     create_dummy_run_context,
 )
 
@@ -57,7 +58,7 @@ def test_dataset_sharding_across_workers(ray_start_4_cpus, num_workers):
 
 @pytest.mark.parametrize("datasets_to_split", ["all", ["train"], []])
 def test_multiple_datasets(ray_start_4_cpus, datasets_to_split):
-    """Tests that the dataset is sharded across a variety of num_workers."""
+    """Tests that multiple datasets can be sharded across workers."""
     NUM_ROWS = 1000
     NUM_WORKERS = 2
 
@@ -125,9 +126,11 @@ def test_datasets_callback(ray_start_4_cpus):
         train_run_context=train_run_context,
         datasets={"train": train_ds, "valid": valid_ds},
     )
-    dataset_manager_for_each_worker = callback.before_init_train_context(
-        worker_group.get_workers()
-    )["dataset_shard_provider"]
+    dataset_manager_for_each_worker = (
+        callback.before_init_train_context_on_worker_group(worker_group.get_workers())[
+            "dataset_shard_provider"
+        ]
+    )
     assert len(dataset_manager_for_each_worker) == NUM_WORKERS
 
     dataset_manager = dataset_manager_for_each_worker[0]
@@ -652,9 +655,11 @@ def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypat
         train_run_context=train_run_context,
         datasets={"train": train_ds, "valid": valid_ds},
     )
-    dataset_manager_for_each_worker = callback.before_init_train_context(
-        worker_group.get_workers()
-    )["dataset_shard_provider"]
+    dataset_manager_for_each_worker = (
+        callback.before_init_train_context_on_worker_group(worker_group.get_workers())[
+            "dataset_shard_provider"
+        ]
+    )
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
@@ -714,9 +719,11 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
         train_run_context=train_run_context,
         datasets={"train": train_ds, "valid": valid_ds},
     )
-    dataset_manager_for_each_worker = callback.before_init_train_context(
-        worker_group.get_workers()
-    )["dataset_shard_provider"]
+    dataset_manager_for_each_worker = (
+        callback.before_init_train_context_on_worker_group(worker_group.get_workers())[
+            "dataset_shard_provider"
+        ]
+    )
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
@@ -826,6 +833,59 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
         mock_coordinator.cancel_request.remote.assert_called_once_with(
             requester_id="train-test-run-123",
         )
+
+
+def test_shard_provider_reused_across_replica_group_replacement(ray_start_4_cpus):
+    """When a replica group is replaced (torchft-style), the replacement worker
+    should inherit the same per-rank RayDatasetShardProvider as its predecessor,
+    so that the DataIterator's cursor on the shared coordinator actor is
+    preserved and no rows are dropped or duplicated.
+    """
+    import ray
+
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    @ray.remote(num_cpus=0)
+    class Collector:
+        def __init__(self):
+            self._rows = []
+
+        def add(self, row):
+            self._rows.append(row)
+
+        def get_rows(self):
+            return list(self._rows)
+
+    collector = Collector.remote()
+
+    train_ds = ray.data.range(NUM_ROWS)
+
+    def train_fn():
+        shard = ray.train.get_dataset_shard("train")
+        for batch in shard.iter_batches(batch_size=1):
+            row = int(batch["id"][0])
+            ray.get(collector.add.remote(row))
+            # Only 1 worker should see row 50 and fail once.
+            if row == 50:
+                raise RuntimeError("Injected failure after consuming row 50.")
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": train_ds},
+        backend_config=MockReplicaGroupBackendConfig(),
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+        run_config=ray.train.RunConfig(
+            failure_config=ray.train.FailureConfig(max_failures=1),
+        ),
+    )
+    trainer.fit()
+
+    rows = ray.get(collector.get_rows.remote())
+    assert sorted(rows) == list(range(NUM_ROWS)), (
+        f"Expected all {NUM_ROWS} rows to be collected exactly once after "
+        f"replica replacement, got {len(rows)} rows: {sorted(rows)}"
+    )
 
 
 if __name__ == "__main__":

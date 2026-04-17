@@ -12,12 +12,16 @@ from ray.train.v2._internal.data_integration.interfaces import (
 )
 from ray.train.v2._internal.execution.callback import (
     ControllerCallback,
+    ReplicaGroupCallback,
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2._internal.execution.worker_group.execution_group import (
+    ExecutionGroup,
+    ReplicaGroup,
+)
 from ray.train.v2._internal.execution.worker_group.worker_group import (
     Worker,
-    WorkerGroup,
     WorkerGroupContext,
 )
 from ray.types import ObjectRef
@@ -47,7 +51,7 @@ class RayDatasetShardProvider:
         return self._dataset_iterators[dataset_info.dataset_name]
 
 
-class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
+class DatasetsCallback(WorkerGroupCallback, ReplicaGroupCallback, ControllerCallback):
     """A callback for managing Ray Datasets for the worker group."""
 
     def __init__(
@@ -60,6 +64,16 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
         self._scaling_config = train_run_context.scaling_config
         self._coordinator_actors: List[ActorHandle] = []
         self._shutdown_refs: List[ObjectRef] = []
+        # Populated in before_init_train_context_on_worker_group. Indexed by
+        # world rank. Shard providers are kept alive across replica group
+        # replacement so that a replacement worker picks up the same
+        # DataIterator (and its cursor) its predecessor was using.
+        self._shard_providers: List[RayDatasetShardProvider] = []
+        # Parallel to _shard_providers. Flipped to False when a replica group
+        # is shut down (so we can confirm the shard is free before reassigning
+        # it to a replacement worker), and back to True when the replacement
+        # starts.
+        self._shard_provider_active: List[bool] = []
 
         # Capture the current DataContext to propagate it to
         # the Train workers later.
@@ -118,7 +132,7 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
     # WorkerGroupCallback
     # --------------------------
 
-    def before_init_train_context(
+    def before_init_train_context_on_worker_group(
         self, workers: List[Worker]
     ) -> Dict[str, List[DatasetShardProvider]]:
         world_size = len(workers)
@@ -145,19 +159,9 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
             RayDatasetShardProvider(ds_iterators=ds_iterators_per_rank[rank])
             for rank in range(world_size)
         ]
+        self._shard_providers = shard_providers_per_rank
+        self._shard_provider_active = [True] * world_size
         return {"dataset_shard_provider": shard_providers_per_rank}
-
-    def after_worker_group_start(self, worker_group: WorkerGroup):
-        # Propagate DataContext
-        from ray.data.context import DataContext
-
-        def _propagate_data_context(ctx: "DataContext"):
-            DataContext._set_current(ctx)
-
-        worker_group.execute(
-            _propagate_data_context,
-            self._data_context,
-        )
 
     def after_worker_group_shutdown(
         self, worker_group_context: WorkerGroupContext
@@ -168,6 +172,67 @@ class DatasetsCallback(WorkerGroupCallback, ControllerCallback):
         self, worker_group_context: WorkerGroupContext
     ) -> None:
         self._shutdown_data_executors()
+
+    # --------------------------
+    # ExecutionGroupCallback (fires on both worker group and replica group start)
+    # --------------------------
+
+    def after_execution_group_start(self, execution_group: ExecutionGroup):
+        # Propagate DataContext to all workers in the (possibly partial)
+        # execution group. This runs on full worker group startup and also on
+        # replica group replacement so that replacement workers see the same
+        # DataContext as their predecessors.
+        from ray.data.context import DataContext
+
+        def _propagate_data_context(ctx: "DataContext"):
+            DataContext._set_current(ctx)
+
+        execution_group.execute(
+            _propagate_data_context,
+            self._data_context,
+        )
+
+    # --------------------------
+    # ReplicaGroupCallback
+    # --------------------------
+
+    def before_replica_group_shutdown(self, replica_group: ReplicaGroup):
+        # Mark the shard provider slots for this replica's ranks as inactive
+        # so they can be handed to replacement workers.
+        for w in replica_group.get_workers():
+            assert w.distributed_context is not None, (
+                "Worker in replica group is missing distributed_context in "
+                "before_replica_group_shutdown."
+            )
+            rank = w.distributed_context.world_rank
+            assert 0 <= rank < len(self._shard_provider_active), (
+                f"Outgoing worker has world_rank={rank} outside of the "
+                f"range [0, {len(self._shard_provider_active)})."
+            )
+            self._shard_provider_active[rank] = False
+
+    def before_init_train_context_on_replica_group(
+        self, workers: List[Worker]
+    ) -> Dict[str, List[DatasetShardProvider]]:
+        # Reuse the existing per-rank shard providers for the replacement
+        # workers. The underlying DataIterator (and its coordinator actor) is
+        # preserved across the replacement, so the replacement picks up where
+        # the failed worker left off.
+        providers = []
+        for w in workers:
+            rank = w.distributed_context.world_rank
+            assert 0 <= rank < len(self._shard_providers), (
+                f"Replacement worker has world_rank={rank} outside of the "
+                f"range [0, {len(self._shard_providers)})."
+            )
+            assert not self._shard_provider_active[rank], (
+                f"Shard provider for rank {rank} is still marked active; "
+                "before_replica_group_shutdown was not called for the "
+                "outgoing replica."
+            )
+            self._shard_provider_active[rank] = True
+            providers.append(self._shard_providers[rank])
+        return {"dataset_shard_provider": providers}
 
     # --------------------------
     # ControllerCallback

@@ -505,6 +505,7 @@ class WorkerGroup(ExecutionGroup):
         self,
         workers: List[Worker],
         sync_actor: ActorHandle,
+        is_replica_replacement: bool = False,
     ) -> None:
         """Collect train context args from callbacks and initialize train context.
 
@@ -514,11 +515,21 @@ class WorkerGroup(ExecutionGroup):
         Args:
             workers: The workers to initialize.
             sync_actor: The synchronization actor.
+            is_replica_replacement: Whether this call is for replacing a
+                subset of workers in an already-running worker group (as
+                opposed to starting the whole worker group from scratch).
+                Callbacks that need different behavior for the two paths can
+                implement ``before_init_train_context_on_worker_group`` and
+                ``before_init_train_context_on_replica_group``; otherwise
+                ``before_init_train_context`` is used in both cases.
         """
         before_init_train_context_cb_start = time_monotonic()
         train_context_args: Dict[str, List[Any]] = {}
         for cb in self._execution_group_callbacks:
-            args = cb.before_init_train_context(workers)
+            if is_replica_replacement:
+                args = cb.before_init_train_context_on_replica_group(workers)
+            else:
+                args = cb.before_init_train_context_on_worker_group(workers)
             for arg, arg_values in args.items():
                 assert len(arg_values) == len(workers), (
                     f"Callback {cb} returned {arg} with "
@@ -858,7 +869,9 @@ class WorkerGroup(ExecutionGroup):
         # Initialize train context on new workers.
         sync_actor = self._worker_group_state.sync_actor
         try:
-            self._init_train_context(new_workers, sync_actor)
+            self._init_train_context(
+                new_workers, sync_actor, is_replica_replacement=True
+            )
         except RayActorError as actor_error:
             error_msg = (
                 "At least one replacement worker failed to initialize "

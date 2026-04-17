@@ -40,6 +40,18 @@ class ExecutionGroupCallback(RayTrainCallback):
         """
         return {}
 
+    def before_init_train_context_on_worker_group(
+        self, workers: List["Worker"]
+    ) -> Dict[str, List[Any]]:
+        """Variant of before_init_train_context invoked on full worker group startup."""
+        return self.before_init_train_context(workers)
+
+    def before_init_train_context_on_replica_group(
+        self, workers: List["Worker"]
+    ) -> Dict[str, List[Any]]:
+        """Variant of before_init_train_context invoked on replica group replacement."""
+        return self.before_init_train_context(workers)
+
     def after_execution_group_start(self, execution_group: "ExecutionGroup"):
         """Called after an execution group is started or replaced.
         All workers in the execution group should be ready to execute tasks."""

@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import ray
 from ray.train import Checkpoint
+from ray.train.backend import Backend, BackendConfig
 from ray.train.context import TrainContext
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
@@ -49,6 +50,16 @@ from ray.train.v2._internal.state.schema import (
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.validation_config import ValidationTaskConfig
+
+
+class MockReplicaGroupBackend(Backend):
+    has_replica_groups = True
+
+
+class MockReplicaGroupBackendConfig(BackendConfig):
+    @property
+    def backend_cls(self):
+        return MockReplicaGroupBackend
 
 
 class DummyWorkerGroup(WorkerGroup):
