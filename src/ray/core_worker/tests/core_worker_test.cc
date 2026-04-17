@@ -17,6 +17,7 @@
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 
+#include <algorithm>
 #include <future>
 #include <memory>
 #include <string>
@@ -1271,6 +1272,82 @@ TEST_P(HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
 INSTANTIATE_TEST_SUITE_P(ActorRefDeletedForRegisteringActor,
                          HandleWaitForActorRefDeletedWhileRegisteringRetriesTest,
                          ::testing::Values(true, false));
+
+TEST_F(CoreWorkerTest, WaitAndFetchRejectsMismatchedFetchLocalSize) {
+  std::vector<ObjectID> ids = {ObjectID::FromRandom(), ObjectID::FromRandom()};
+  std::vector<bool> fetch_flags = {true};
+  std::vector<bool> results;
+  auto status = core_worker_->WaitAndFetch(ids, fetch_flags, 1, 1000, &results);
+  ASSERT_FALSE(status.ok());
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchInMemoryReadyCounts) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id1 = ObjectID::FromRandom();
+  const auto id2 = ObjectID::FromRandom();
+  const auto id3 = ObjectID::FromRandom();
+  for (const auto &id : {id1, id2, id3}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+    auto obj = MakeRayObject("x", "m");
+    memory_store_->Put(*obj, id, reference_counter_->HasReference(id));
+  }
+
+  const std::vector<ObjectID> ids = {id1, id2, id3};
+  const std::vector<bool> fetch_all = {true, true, true};
+
+  for (int num = 1; num <= 3; ++num) {
+    std::vector<bool> results;
+    const auto st = core_worker_->WaitAndFetch(ids, fetch_all, num, 1000, &results);
+    ASSERT_TRUE(st.ok()) << st.ToString();
+    ASSERT_EQ(results.size(), ids.size());
+    ASSERT_EQ(std::count(results.begin(), results.end(), true), num);
+    if (num == static_cast<int>(ids.size())) {
+      ASSERT_EQ(results, (std::vector<bool>{true, true, true}));
+    }
+  }
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchInMemoryPerIdFetchLocalWhenAllRequired) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id1 = ObjectID::FromRandom();
+  const auto id2 = ObjectID::FromRandom();
+  const auto id3 = ObjectID::FromRandom();
+  for (const auto &id : {id1, id2, id3}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+    auto obj = MakeRayObject("x", "m");
+    memory_store_->Put(*obj, id, reference_counter_->HasReference(id));
+  }
+
+  const std::vector<ObjectID> ids = {id1, id2, id3};
+  const std::vector<bool> fetch_all = {true, true, true};
+  const std::vector<bool> fetch_mixed = {false, true, false};
+
+  std::vector<bool> all_local;
+  std::vector<bool> mixed_local;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_all, 3, 1000, &all_local).ok());
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_mixed, 3, 1000, &mixed_local).ok());
+
+  // Objects live only in the in-memory store (not plasma); per-id fetch_local should
+  // not change the ready bitmap when every id must be returned.
+  ASSERT_EQ(all_local, mixed_local);
+  ASSERT_EQ(all_local, (std::vector<bool>{true, true, true}));
+}
 
 }  // namespace core
 }  // namespace ray

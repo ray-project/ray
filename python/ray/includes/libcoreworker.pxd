@@ -304,6 +304,11 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         CRayStatus Wait(const c_vector[CObjectID] &object_ids, int num_objects,
                         int64_t timeout_ms, c_vector[c_bool] *results,
                         c_bool fetch_local)
+        CRayStatus WaitAndFetch(const c_vector[CObjectID] &object_ids,
+                                const c_vector[c_bool] &fetch_local_per_id,
+                                int num_objects,
+                                int64_t timeout_ms,
+                                c_vector[c_bool] *results)
         CRayStatus Delete(const c_vector[CObjectID] &object_ids,
                           c_bool local_only)
         CRayStatus GetLocalObjectLocations(

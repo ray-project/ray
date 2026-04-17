@@ -705,6 +705,16 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
               std::vector<bool> *results,
               bool fetch_local);
 
+  /// Like \p Wait, but each object may independently set \p fetch_local.
+  ///
+  /// \param[in] fetch_local_per_id Same length as \p object_ids; entry i applies to
+  /// \p object_ids[i].
+  Status WaitAndFetch(const std::vector<ObjectID> &object_ids,
+                      const std::vector<bool> &fetch_local_per_id,
+                      int num_objects,
+                      int64_t timeout_ms,
+                      std::vector<bool> *results);
+
   /// Delete a list of objects from the plasma object store.
   ///
   /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely

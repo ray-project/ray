@@ -3317,6 +3317,66 @@ cdef class CoreWorker:
 
         return ready, not_ready
 
+    def _wait_and_fetch(self,
+                      object_ref_or_generator_to_fetch_local,
+                      int num_returns,
+                      int64_t timeout_ms):
+        cdef:
+            c_vector[CObjectID] wait_ids
+            c_vector[c_bool] fetch_locals
+            c_vector[c_bool] results
+
+        if not isinstance(object_ref_or_generator_to_fetch_local, list):
+            raise TypeError(
+                "_wait_and_fetch() expected a list of "
+                "(ray.ObjectRef | ray.ObjectRefGenerator, bool) tuples, "
+                f"got {type(object_ref_or_generator_to_fetch_local)}"
+            )
+
+        object_refs = []
+        for i, pair in enumerate(object_ref_or_generator_to_fetch_local):
+            if not isinstance(pair, tuple) or len(pair) != 2:
+                raise TypeError(
+                    "_wait_and_fetch() expected each element to be a "
+                    "(ref, fetch_local) tuple; "
+                    f"got {type(pair)} at index {i}"
+                )
+            ref_or_generator, fetch_local = pair
+            if (not isinstance(ref_or_generator, ObjectRef)
+                    and not isinstance(ref_or_generator, ObjectRefGenerator)):
+                raise TypeError(
+                    "_wait_and_fetch() tuple first element must be ray.ObjectRef or "
+                    "ObjectRefGenerator, "
+                    f"got {type(ref_or_generator)} at index {i}"
+                )
+            if not isinstance(fetch_local, bool):
+                raise TypeError(
+                    "_wait_and_fetch() tuple second element must be bool (fetch_local), "
+                    f"got {type(fetch_local)} at index {i}"
+                )
+            if isinstance(ref_or_generator, ObjectRefGenerator):
+                object_refs.append(ref_or_generator._get_next_ref())
+            else:
+                object_refs.append(ref_or_generator)
+            fetch_locals.push_back(<c_bool>fetch_local)
+
+        wait_ids = ObjectRefsToVector(object_refs)
+        with nogil:
+            op_status = CCoreWorkerProcess.GetCoreWorker().WaitAndFetch(
+                wait_ids, fetch_locals, num_returns, timeout_ms, &results)
+        check_status(op_status)
+
+        assert len(results) == len(object_ref_or_generator_to_fetch_local)
+
+        ready, not_ready = [], []
+        for i, pair in enumerate(object_ref_or_generator_to_fetch_local):
+            if results[i]:
+                ready.append(pair[0])
+            else:
+                not_ready.append(pair)
+
+        return ready, not_ready
+
     def free_objects(self, object_refs, c_bool local_only):
         cdef:
             c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)

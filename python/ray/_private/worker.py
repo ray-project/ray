@@ -3223,6 +3223,102 @@ def wait(
         return ready_ids, remaining_ids
 
 
+@client_mode_hook
+def _wait_and_fetch(
+    ray_waitables: List[Tuple[Union[ObjectRef, ObjectRefGenerator], bool]],
+    *,
+    num_returns: int = 1,
+    timeout: Optional[float] = None,
+) -> Tuple[
+    List[Union[ObjectRef, ObjectRefGenerator]],
+    List[Tuple[Union[ObjectRef, ObjectRefGenerator], bool]],
+]:
+    """Private API: like :func:`~ray.wait` with a separate ``fetch_local`` per ref.
+
+    Not supported on Ray Client. Prefer :func:`~ray.wait` unless you need
+    per-ref ``fetch_local``. Input order is list order; the same order is used
+    for ``ready`` and for ``unready`` pairs among not-yet-ready entries.
+    """
+    worker = global_worker
+    worker.check_connected()
+
+    if (
+        hasattr(worker, "core_worker")
+        and worker.core_worker.current_actor_is_asyncio()
+        and timeout != 0
+    ):
+        global blocking_wait_inside_async_warned
+        if not blocking_wait_inside_async_warned:
+            logger.debug(
+                "Using blocking ray._private.worker._wait_and_fetch inside async method. "
+                "This blocks the event loop. Please use `await` "
+                "on object ref with asyncio.wait. "
+            )
+            blocking_wait_inside_async_warned = True
+
+    if not isinstance(ray_waitables, list):
+        raise TypeError(
+            "_wait_and_fetch() expected a list of "
+            "(ray.ObjectRef | ray.ObjectRefGenerator, bool) tuples, "
+            f"got {type(ray_waitables)}"
+        )
+
+    if timeout is not None and timeout < 0:
+        raise ValueError(
+            "The 'timeout' argument must be nonnegative. " f"Received {timeout}"
+        )
+
+    for i, pair in enumerate(ray_waitables):
+        if not isinstance(pair, tuple) or len(pair) != 2:
+            raise TypeError(
+                "_wait_and_fetch() expected each element to be a (ref, fetch_local) "
+                f"tuple; got {type(pair)} at index {i}"
+            )
+        ray_waitable, fetch_local = pair
+        if not isinstance(ray_waitable, ObjectRef) and not isinstance(
+            ray_waitable, ObjectRefGenerator
+        ):
+            raise TypeError(
+                "_wait_and_fetch() tuple first element must be ray.ObjectRef or "
+                "ObjectRefGenerator, "
+                f"got {type(ray_waitable)} at index {i}"
+            )
+        if not isinstance(fetch_local, bool):
+            raise TypeError(
+                "_wait_and_fetch() tuple second element must be bool (fetch_local), "
+                f"got {type(fetch_local)} at index {i}"
+            )
+
+    worker.check_connected()
+
+    with profiling.profile("ray._wait_and_fetch"):
+        if len(ray_waitables) == 0:
+            return [], []
+
+        if len(ray_waitables) != len({pair[0] for pair in ray_waitables}):
+            raise ValueError(
+                "_wait_and_fetch requires a list of unique ray_waitables "
+                "(by object ref / generator)."
+            )
+
+        if num_returns <= 0:
+            raise ValueError("Invalid number of objects to return %d." % num_returns)
+        if num_returns > len(ray_waitables):
+            raise ValueError(
+                "num_returns cannot be greater than the number "
+                "of ray_waitables provided to _wait_and_fetch."
+            )
+
+        timeout = timeout if timeout is not None else 10**6
+        timeout_milliseconds = int(timeout * 1000)
+        ready_keys, remaining = worker.core_worker._wait_and_fetch(
+            ray_waitables,
+            num_returns,
+            timeout_milliseconds,
+        )
+        return ready_keys, remaining
+
+
 @PublicAPI
 @client_mode_hook
 def get_actor(name: str, namespace: Optional[str] = None) -> "ray.actor.ActorHandle":
