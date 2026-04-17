@@ -167,15 +167,9 @@ def _apply_default_params(
     return final_num_replicas, updated_state
 
 
-def _apply_default_params_and_merge_state(
-    policy_state: Dict[str, Any],
-    user_policy_state: Dict[str, Any],
-    desired_num_replicas: Union[int, float],
-    ctx: AutoscalingContext,
-) -> Tuple[int, Dict[str, Any]]:
-
-    # Extract internal policy state from policy_state
-    internal_policy_state = {
+def _extract_internal_policy_state(policy_state: Dict[str, Any]) -> Dict[str, Any]:
+    """Extract the internal states from a policy state dict."""
+    return {
         SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: policy_state.get(
             SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0
         ),
@@ -183,6 +177,16 @@ def _apply_default_params_and_merge_state(
             SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY, None
         ),
     }
+
+
+def _apply_default_params_and_merge_state(
+    policy_state: Dict[str, Any],
+    user_policy_state: Dict[str, Any],
+    desired_num_replicas: Union[int, float],
+    ctx: AutoscalingContext,
+) -> Tuple[int, Dict[str, Any]]:
+
+    internal_policy_state = _extract_internal_policy_state(policy_state)
     # Only pass the internal state used for delay counters so we don't
     # overwrite any custom user state.
     final_num_replicas, updated_state = _apply_default_params(
@@ -202,15 +206,7 @@ def _merge_user_state_with_internal_state(
 
     This mutates and returns `user_policy_state`.
     """
-    # Extract internal policy state from policy_state
-    internal_policy_state = {
-        SERVE_AUTOSCALING_DECISION_COUNTERS_KEY: policy_state.get(
-            SERVE_AUTOSCALING_DECISION_COUNTERS_KEY, 0
-        ),
-        SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY: policy_state.get(
-            SERVE_AUTOSCALING_DECISION_TIMESTAMP_KEY, None
-        ),
-    }
+    internal_policy_state = _extract_internal_policy_state(policy_state)
     user_policy_state.update(internal_policy_state)
     return user_policy_state
 
