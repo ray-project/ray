@@ -207,6 +207,7 @@ ray_cc_library(
         "//bazel:is_linux": [
             ":worker_killing_policy_by_time",
             ":worker_killing_policy_group_by_owner",
+            "//src/ray/common:memory_monitor_utils",
         ],
         "//conditions:default": [
             ":noop_worker_killing_policy",
