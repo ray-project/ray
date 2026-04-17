@@ -2,7 +2,7 @@ name: "ray-torch-py$PYTHON_VERSION-cu$CUDA_VERSION-base"
 froms: ["cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base"]
 dockerfile: docker/ray-torch/Dockerfile
 srcs:
-  - python/deplocks/ray-torch/ray-torch-cu130_base_py${PYTHON_VERSION}.lock
+  - python/deplocks/ray-torch/ray-torch-cu130_base_py$PYTHON_VERSION.lock
 build_args:
   - FULL_BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cu$CUDA_VERSION-base
   - IMAGE_TYPE

@@ -2,7 +2,7 @@ name: "ray-torch-py$PYTHON_VERSION-cpu-base"
 froms: ["cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base"]
 dockerfile: docker/ray-torch/Dockerfile
 srcs:
-  - python/deplocks/ray-torch/ray-torch-cpu_base_py${PYTHON_VERSION}.lock
+  - python/deplocks/ray-torch/ray-torch-cpu_base_py$PYTHON_VERSION.lock
 build_args:
   - FULL_BASE_IMAGE=cr.ray.io/rayproject/ray-py$PYTHON_VERSION-cpu-base
   - IMAGE_TYPE
