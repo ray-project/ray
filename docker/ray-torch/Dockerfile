@@ -5,7 +5,7 @@ ARG FULL_BASE_IMAGE=rayproject/ray:nightly"$BASE_IMAGE"
 FROM "$FULL_BASE_IMAGE"
 ARG PYTHON_VERSION=3.13
 ARG IMAGE_TYPE=ray-torch-cpu
-ARG PYTHON_DEPSET=${IMAGE_TYPE}_base_py${PYTHON_VERSION}
+ARG PYTHON_DEPSET=python/deplocks/ray-torch/${IMAGE_TYPE}_base_py${PYTHON_VERSION}.lock
 
 COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
