@@ -318,17 +318,12 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
   }
 
   if (resource_isolation_enabled) {
-    StatusOr<std::string> result =
+    StatusOr<std::string> user_memory_max_bytes_or =
         cgroup_manager.GetUserCgroupConstraintValue("memory.max");
-    RAY_CHECK(result.ok()) << absl::StrFormat(
+    RAY_CHECK(user_memory_max_bytes_or.ok()) << absl::StrFormat(
         "Failed to get user cgroup memory limit when setting up memory monitor: %s",
-        result.ToString());
-    std::string user_memory_max_bytes_str =
-        std::string(absl::StripAsciiWhitespace(result.value()));
-    RAY_CHECK(!user_memory_max_bytes_str.empty()) << absl::StrFormat(
-        "Failed to get memory.max constraint value from user cgroup %s. "
-        "Please check that the cgroup path for resource isolation is correct.",
-        cgroup_manager.GetUserCgroupPath());
+        user_memory_max_bytes_or.ToString());
+    std::string user_memory_max_bytes_str = user_memory_max_bytes_or.value();
 
     if (!user_memory_max_bytes_str.empty() &&
         std::all_of(user_memory_max_bytes_str.begin(),
