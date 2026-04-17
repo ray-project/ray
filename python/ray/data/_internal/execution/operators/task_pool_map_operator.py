@@ -110,6 +110,14 @@ class TaskPoolMapOperator(MapOperator):
 
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
+
+        # Inject operator ID as an env var via runtime_env so that downstream
+        # tooling (profilers, loggers) can identify which operator spawned a task.
+        existing_runtime_env = dynamic_ray_remote_args.get("runtime_env") or {}
+        existing_env_vars = existing_runtime_env.get("env_vars") or {}
+        existing_env_vars["__RAY_DATA_OPERATOR_ID"] = self.id
+        existing_runtime_env["env_vars"] = existing_env_vars
+        dynamic_ray_remote_args["runtime_env"] = existing_runtime_env
         logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
 
         if (
