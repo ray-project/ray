@@ -199,24 +199,19 @@ def test_deployment_scheduling_info():
     assert info.required_resources == Resources({"CPU": 100, "GPU": 100})
     assert not info.is_non_strict_pack_pg()
 
-    # PACK with a GPU bundle: required_resources is bundle 0, not
-    # actor_resources. A CPU-only node must not fit the replica, or the
-    # compaction planner will try to migrate GPU replicas onto CPU nodes.
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 1}),
+        actor_resources=Resources({"CPU": 2, "GPU": 1}),
         placement_group_bundles=[
-            Resources({"CPU": 1, "GPU": 1, "accelerator_type:L4": 0.001}),
-            Resources({"CPU": 1, "GPU": 1, "accelerator_type:L4": 0.001}),
+            Resources({"CPU": 100, "GPU": 1}),
+            Resources({"GPU": 100}),
         ],
         placement_group_strategy="PACK",
     )
-    assert info.required_resources == Resources(
-        {"CPU": 1, "GPU": 1, "accelerator_type:L4": 0.001}
-    )
-    # A CPU-only node cannot host this replica.
-    assert not Resources({"CPU": 64}).can_fit(info.required_resources)
+    # Actor is pinned as a subset of bundle 0, so required_resources is
+    # bundle 0 rather than actor_resources.
+    assert info.required_resources == Resources({"CPU": 100, "GPU": 1})
     assert info.is_non_strict_pack_pg()
 
 

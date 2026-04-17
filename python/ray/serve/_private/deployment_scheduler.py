@@ -630,9 +630,9 @@ class DeploymentScheduler(ABC):
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
                 )
                 return False
-            # Pin the actor to bundle 0. ReplicaConfig validates that
-            # actor resources fit in bundle 0, and required_resources
-            # assumes this pin.
+            # Pin the actor as a subset of bundle 0. ReplicaConfig
+            # validates that actor resources fit in bundle 0, and
+            # required_resources assumes this pin.
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=pg,
                 placement_group_bundle_index=0,
