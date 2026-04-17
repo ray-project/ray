@@ -8,6 +8,7 @@ from typing_extensions import Hashable
 
 import ray
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
+from ray.data._internal.execution.interfaces import ExecutionResources
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.interfaces.logical_operator import LogicalOperator
 from ray.data._internal.logical.operators import Read
@@ -26,6 +27,7 @@ from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
     NULL_SENTINEL,
     find_partition_index,
+    get_max_task_capacity,
     iterate_with_retry,
     merge_resources_to_ray_remote_args,
     rows_same,
@@ -364,6 +366,23 @@ def test_find_partition_index_with_nulls():
     assert find_partition_index(table, (None,), sort_key) == 3
 
 
+def test_find_partition_index_with_nan():
+    # NaN sorts after regular values in Arrow (before nulls).
+    table = pa.table({"value": [1.0, 2.0, 3.0, float("nan"), float("nan")]})
+    sort_key = SortKey(key=["value"], descending=[False])
+    assert find_partition_index(table, (2.0,), sort_key) == 1
+    assert find_partition_index(table, (4.0,), sort_key) == 3
+
+
+def test_find_partition_index_with_nan_and_nulls():
+    # NaN sorts after regular values, nulls sort after NaN.
+    table = pa.table({"value": [1.0, 2.0, 3.0, float("nan"), None]})
+    sort_key = SortKey(key=["value"], descending=[False])
+    assert find_partition_index(table, (2.0,), sort_key) == 1
+    assert find_partition_index(table, (4.0,), sort_key) == 3
+    assert find_partition_index(table, (None,), sort_key) == 3
+
+
 def test_find_partition_index_duplicates():
     table = pa.table({"value": [2, 2, 2, 2, 2]})
     sort_key = SortKey(key=["value"], descending=[False])
@@ -421,6 +440,24 @@ def test_rows_same(actual: pd.DataFrame, expected: pd.DataFrame, expected_equal:
     else:
         with pytest.raises(AssertionError):
             assert rows_same(actual, expected)
+
+
+@pytest.mark.parametrize(
+    "allocated,min_scheduling,expected",
+    [
+        (None, ExecutionResources(cpu=1, gpu=1), 0),
+        (ExecutionResources(cpu=1, gpu=1), ExecutionResources(cpu=1, gpu=1), 1),
+        (
+            ExecutionResources(cpu=1, gpu=1),
+            ExecutionResources(cpu=0, gpu=0),
+            float("inf"),
+        ),
+        (ExecutionResources(cpu=1, gpu=1), ExecutionResources(cpu=0, gpu=1), 1),
+        (ExecutionResources(cpu=1, gpu=1), ExecutionResources(cpu=1, gpu=0), 1),
+    ],
+)
+def test_get_max_task_capacity(allocated, min_scheduling, expected):
+    assert get_max_task_capacity(allocated, min_scheduling) == expected
 
 
 if __name__ == "__main__":

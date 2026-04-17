@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution.bundle_queue import EstimateSize
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -46,7 +47,7 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
         lambda x: x,
     )
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -71,7 +72,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     map3 = FlatMap(map2, lambda x: x)
     map4 = Filter(map3, fn=lambda x: x)
     logical_plan = LogicalPlan(map4, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -119,7 +120,7 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
         logical_plan = LogicalPlan(op, ctx)
 
-        physical_plan = planner.plan(logical_plan)
+        physical_plan, _ = planner.plan(logical_plan)
         optimized_physical_plan = PhysicalOptimizer().optimize(physical_plan)
         physical_op = optimized_physical_plan.dag
 
@@ -164,7 +165,7 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
         logical_plan = LogicalPlan(op, ctx)
-        physical_plan = planner.plan(logical_plan)
+        physical_plan, _ = planner.plan(logical_plan)
         physical_plan = PhysicalOptimizer().optimize(physical_plan)
         physical_op = physical_plan.dag
 
@@ -196,7 +197,7 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     op = MapBatches(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -217,7 +218,7 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
     read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -239,7 +240,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     op = MapBatches(op, lambda x: x)
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -266,7 +267,7 @@ def test_read_with_map_batches_fused_successfully(
 
     mapped_ds = ds.map_batches(lambda x: x).map_batches(lambda x: x)
 
-    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_plan, _ = get_execution_plan(mapped_ds._logical_plan)
 
     physical_op = physical_plan.dag
     assert isinstance(physical_op, MapOperator)
@@ -281,7 +282,9 @@ def test_read_with_map_batches_fused_successfully(
     )
 
     # # Target min-rows requirement is not set
-    assert physical_op._block_ref_bundler._min_rows_per_bundle is None
+    strategy = physical_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert strategy._min_rows_per_bundle is None
 
 
 @pytest.mark.parametrize(
@@ -343,7 +346,7 @@ def test_map_batches_batch_size_fusion(
         lambda x: x, batch_size=5
     )
 
-    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_plan, _ = get_execution_plan(mapped_ds._logical_plan)
 
     physical_op = physical_plan.dag
 
@@ -364,7 +367,9 @@ def test_map_batches_batch_size_fusion(
         )
 
     # Target min-rows requirement is set to max of upstream and downstream
-    assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
+    strategy = physical_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert strategy._min_rows_per_bundle == 5
     assert len(physical_op.input_dependencies) == 1
 
 
@@ -389,7 +394,7 @@ def test_map_batches_with_batch_size_specified_fusion(
         batch_size=downstream_batch_size,
     )
 
-    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_plan, _ = get_execution_plan(mapped_ds._logical_plan)
 
     root_op = physical_plan.dag
     assert isinstance(root_op, MapOperator)
@@ -414,9 +419,9 @@ def test_map_batches_with_batch_size_specified_fusion(
     assert expected_plan_str == actual_plan_str
 
     # Target min-rows requirement is set to max of upstream and downstream
-    assert (
-        expected_min_rows_per_bundle == root_op._block_ref_bundler._min_rows_per_bundle
-    )
+    strategy = root_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert expected_min_rows_per_bundle == strategy._min_rows_per_bundle
 
 
 def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
@@ -712,7 +717,7 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
     read_op = get_parquet_read_logical_op()
     op = MapBatches(read_op, lambda x: x)
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
 
     # Before optimization, there should be a map op and and read op.
     # And they should have the following transform_fns.
@@ -771,12 +776,12 @@ def test_streaming_repartition_map_batches_fusion_order_and_params(
 
     if order == "map_then_sr":
         ds = ds.map_batches(lambda x: x, batch_size=batch_size)
-        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
-        expected_fused_name = f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_num_rows}]"
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
+        expected_fused_name = f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_num_rows},strict=True]"
     else:  # sr_then_map
-        ds = ds.repartition(target_num_rows_per_block=target_num_rows)
+        ds = ds.repartition(target_num_rows_per_block=target_num_rows, strict=True)
         ds = ds.map_batches(lambda x: x, batch_size=batch_size)
-        expected_fused_name = f"StreamingRepartition[num_rows_per_block={target_num_rows}]->MapBatches(<lambda>)"
+        expected_fused_name = f"StreamingRepartition[num_rows_per_block={target_num_rows},strict=True]->MapBatches(<lambda>)"
 
     assert len(ds.take_all()) == n
 
@@ -794,21 +799,21 @@ def test_streaming_repartition_map_batches_fusion_order_and_params(
 def test_streaming_repartition_no_further_fuse(
     ray_start_regular_shared_2_cpus,
 ):
-    """Test that fused streaming_repartition operators don't fuse further.
+    """Test that streaming_repartition (strict mode) blocks fusion with downstream operators.
 
-    Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
-            Result: map -> (map -> s_r)-> (map -> map)
-            The fused (map -> s_r) doesn't fuse further with surrounding maps.
+    Case 1: map_batches -> map_batches -> streaming_repartition(strict=True) -> map_batches -> map_batches
+            Result: (map -> map -> s_r) -> (map -> map)
+            SR can fuse with upstream maps but not with downstream maps to preserve parallelism.
     """
     n = 100
     target_rows = 20
 
-    # Case 1: map_batches -> map_batches -> streaming_repartition -> map_batches -> map_batches
-    # Result: map -> (map -> s_r)-> (map -> map)
+    # Case 1: map_batches -> map_batches -> streaming_repartition(strict=True) -> map_batches -> map_batches
+    # Result: (map -> map -> s_r) -> (map -> map)
     ds1 = ray.data.range(n, override_num_blocks=2)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
-    ds1 = ds1.repartition(target_num_rows_per_block=target_rows)
+    ds1 = ds1.repartition(target_num_rows_per_block=target_rows, strict=True)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
     ds1 = ds1.map_batches(lambda x: x, batch_size=target_rows)
 
@@ -816,7 +821,7 @@ def test_streaming_repartition_no_further_fuse(
     stats1 = ds1.stats()
 
     assert (
-        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows}]"
+        f"MapBatches(<lambda>)->MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=True]"
         in stats1
     ), stats1
     assert "MapBatches(<lambda>)->MapBatches(<lambda>)" in stats1
@@ -842,6 +847,51 @@ def test_filter_operator_no_upstream_fusion(ray_start_regular_shared_2_cpus, cap
     captured = capsys.readouterr().out.strip()
     assert "TaskPoolMapOperator[MapBatches(<lambda>)]" in captured
     assert "TaskPoolMapOperator[MapBatches(<lambda>)->Filter(<lambda>)]" in captured
+
+
+def test_streaming_repartition_multiple_fusion_non_strict(
+    ray_start_regular_shared_2_cpus,
+):
+    """Test that non-strict mode allows multiple operators to fuse with StreamingRepartition.
+
+    Case 1: Map > Map > SR (non-strict)
+    Case 2: Map > SR (non-strict) > SR (non-strict)
+    """
+    n = 100
+    target_rows = 20
+
+    # Case 1: Map > Map > SR (non-strict)
+    ds1 = ray.data.range(n, override_num_blocks=2)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=None)
+    ds1 = ds1.map_batches(lambda x: x, batch_size=None)
+    ds1 = ds1.repartition(target_num_rows_per_block=target_rows, strict=False)
+
+    assert len(ds1.take_all()) == n
+    stats1 = ds1.stats()
+
+    # Verify all three operators are fused together
+    assert (
+        f"MapBatches(<lambda>)->MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=False]"
+        in stats1
+    ), f"Expected full fusion in stats: {stats1}"
+
+    # Case 2: Map > SR (non-strict) > SR (non-strict)
+    # Note: Two consecutive StreamingRepartition operators are merged into one by
+    # CombineShuffles._combine() during logical optimization (before physical fusion).
+    # This test verifies that Map > SR fusion still works after the SR merging.
+    ds2 = ray.data.range(n, override_num_blocks=2)
+    ds2 = ds2.map_batches(lambda x: x, batch_size=None)
+    ds2 = ds2.repartition(target_num_rows_per_block=target_rows, strict=False)
+    ds2 = ds2.repartition(target_num_rows_per_block=target_rows, strict=False)
+
+    assert len(ds2.take_all()) == n
+    stats2 = ds2.stats()
+
+    # Verify Map > SR fusion (the two SRs were already merged into one)
+    assert (
+        f"MapBatches(<lambda>)->StreamingRepartition[num_rows_per_block={target_rows},strict=False]"
+        in stats2
+    ), f"Expected Map->SR fusion in stats: {stats2}"
 
 
 def test_combine_repartition_aggregate(

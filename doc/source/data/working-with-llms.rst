@@ -19,6 +19,7 @@ The :ref:`ray.data.llm <llm-ref>` module enables scalable batch inference on Ray
 * :ref:`Multimodality <multimodal>` - Batch inference with VLM / omni models on multimodal data
 * :ref:`OpenAI-compatible endpoints <openai_compatible_api_endpoint>` - Query deployed models
 * :ref:`Serve deployments <serve_deployments>` - Share vLLM engines across processors
+* :ref:`Custom tokenizers <custom_tokenizers>` - Use vLLM tokenizers for models not supported by HuggingFace
 
 **Operations:**
 
@@ -75,9 +76,9 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
     - Preprocess (Custom Function)
     - PrepareMultimodal (Optional, for VLM / Omni models)
     - ChatTemplate (Applies chat template to messages)
-    - Tokenize (Converts text to token IDs)
+    - Tokenize (Optional -- converts text to token IDs)
     - LLM Engine (vLLM/SGLang inference on GPU)
-    - Detokenize (Converts token IDs back to text)
+    - Detokenize (Optional -- converts token IDs back to text)
     - Postprocess (Custom Function)
          |
          v
@@ -93,7 +94,7 @@ Ray Data LLM uses a **multi-stage processor pipeline** to transform your data th
 - **Detokenize**: Converts output token IDs back to readable text.
 - **Postprocess**: Your custom function that extracts and formats the final output.
 
-Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. CPU stages (ChatTemplate, Tokenize, Detokenize, and HttpRequestStage) use autoscaling actor pools (except for ServeDeployment stage), while the GPU stage uses a fixed pool.
+Each stage runs as a separate Ray actor pool, enabling independent scaling and resource allocation. All stages (CPU and GPU) use autoscaling actor pools by default, except for the ServeDeployment stage which uses a fixed pool.
 
 .. _horizontal_scaling:
 
@@ -108,6 +109,13 @@ Horizontally scale the LLM stage to multiple GPU replicas using the ``concurrenc
     :end-before: __concurrent_config_example_end__
 
 Each replica runs an independent inference engine. Set ``concurrency`` to match the number of available GPUs or GPU nodes.
+
+By default, when you set ``concurrency`` to an integer ``n``, GPU stages autoscale from 1 to ``n`` actors. To use a fixed pool of ``n`` actors, set ``concurrency`` to ``(n, n)``.
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __concurrent_config_fixed_pool_example_start__
+    :end-before: __concurrent_config_fixed_pool_example_end__
 
 .. _text_generation:
 
@@ -311,45 +319,76 @@ Query deployed models with an OpenAI-compatible API:
     :start-after: __openai_example_start__
     :end-before: __openai_example_end__
 
-.. _troubleshooting:
+.. _tokenization_disaggregation:
 
-Troubleshooting
----------------
+Tokenization disaggregation
+---------------------------
 
-GPU memory and CUDA OOM
-~~~~~~~~~~~~~~~~~~~~~~~
+By default, tokenization and detokenization run as **separate CPU stages** in the processor pipeline. This offloads tokenizer work from the GPU stage, allowing independent scaling of CPU and GPU stages.
 
-If you encounter CUDA out of memory errors, try these strategies:
+.. note::
+    When the detokenize stage is enabled, set ``detokenize=False`` in ``sampling_params`` so the engine returns raw token IDs for the CPU stage to decode. When disabled, set ``detokenize=True`` so the engine decodes the output itself.
 
-- **Reduce batch size**: Start with 8-16 and increase gradually
-- **Lower ``max_num_batched_tokens``**: Reduce from 4096 to 2048 or 1024
-- **Decrease ``max_model_len``**: Use shorter context lengths
-- **Set ``gpu_memory_utilization``**: Use 0.75-0.85 instead of default 0.90
+**Disaggregated (default)**: tokenize and detokenize as separate CPU stages:
 
-.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+.. literalinclude:: doc_code/working-with-llms/tokenization_disaggregation_example.py
     :language: python
-    :start-after: __gpu_memory_config_example_start__
-    :end-before: __gpu_memory_config_example_end__
+    :start-after: __disaggregated_tokenization_start__
+    :end-before: __disaggregated_tokenization_end__
 
-Model loading at scale
-~~~~~~~~~~~~~~~~~~~~~~
+Alternatively, you can disable these stages so the vLLM engine handles tokenization and detokenization internally.
 
-.. _model_cache:
+**Aggregated**: the vLLM engine handles tokenization internally:
 
-For large clusters, HuggingFace downloads may be rate-limited. Cache models to S3 or GCS:
-
-.. code-block:: bash
-
-    python -m ray.llm.utils.upload_model \
-        --model-source facebook/opt-350m \
-        --bucket-uri gs://my-bucket/path/to/model
-
-Then reference the remote path in your config:
-
-.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+.. literalinclude:: doc_code/working-with-llms/tokenization_aggregation_example.py
     :language: python
-    :start-after: __s3_config_example_start__
-    :end-before: __s3_config_example_end__
+    :start-after: __aggregated_tokenization_start__
+    :end-before: __aggregated_tokenization_end__
+
+.. tip::
+    Disaggregated tokenization is most beneficial when the tokenizer is a bottleneck, for example, with large vocabularies or long sequences.
+    If the GPU engine is already saturated, the overhead of extra stages may not help.
+
+
+.. _custom_tokenizers:
+
+Custom tokenizers
+-----------------
+
+Use this pattern when a model is supported by vLLM but not by HuggingFace ``transformers`` — for example, Mistral Tekken (``mistral``), DeepSeek-V3 (``deepseek_v32``), or Grok-2 (``grok2``).
+The built-in ChatTemplate, Tokenize, and Detokenize stages rely on HuggingFace and will fail for these models. In the following example, we disable the built-in CPU stages and replace them with ``map_batches`` callables.
+
+**Chat template**: Converts OpenAI-format messages into the prompt string the model expects. Required because each model family defines its own chat format:
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_chat_template_start__
+    :end-before: __custom_chat_template_end__
+
+**Tokenize**: Converts the prompt string into token IDs for the model.
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_tokenize_start__
+    :end-before: __custom_tokenize_end__
+
+**Detokenize** (optional): Decodes generated token IDs back to text. The vLLM engine already returns ``generated_text``, so this is only needed for custom decoding (e.g. different ``skip_special_tokens`` settings):
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_detokenize_start__
+    :end-before: __custom_detokenize_end__
+
+Build a processor with built-in stages disabled and compose the full pipeline:
+
+.. literalinclude:: doc_code/working-with-llms/custom_tokenizer_example.py
+    :language: python
+    :start-after: __custom_tokenizer_pipeline_start__
+    :end-before: __custom_tokenizer_pipeline_end__
+    :dedent: 4
+
+.. note::
+    This example uses a standard model because models that truly require vLLM's custom tokenizer are too large for Ray CI environments. The pattern is identical — just replace ``MODEL_ID`` and set ``tokenizer_mode`` explicitly.
 
 .. _resiliency:
 
@@ -422,7 +461,10 @@ Ray Data LLM supports cross-node parallelism, including tensor parallelism and p
     :start-after: __cross_node_parallelism_config_example_start__
     :end-before: __cross_node_parallelism_config_example_end__
 
-You can customize the placement group strategy to control how Ray places vLLM engine workers across nodes. While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine.
+You can customize the placement group configuration to control how Ray places vLLM engine workers across nodes. Use ``bundle_per_worker`` for basic per-worker resource specification (auto-replicated based on TP*PP), or ``bundles`` for full control over individual bundles. While you can specify the degree of tensor and pipeline parallelism, the specific assignment of model ranks to GPUs is managed by the vLLM engine.
+
+.. note::
+   In each bundle dict, omitted ``CPU`` or ``GPU`` keys are treated as **0**. Specify the resources each worker needs explicitly.
 
 .. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
     :language: python
@@ -525,6 +567,63 @@ For multi-turn conversations or complex agentic workflows, share a vLLM engine a
     :end-before: __shared_vllm_engine_config_example_end__
 
 ----
+
+.. _troubleshooting:
+
+Troubleshooting
+---------------
+
+GPU memory and CUDA OOM
+~~~~~~~~~~~~~~~~~~~~~~~
+
+If you encounter CUDA out of memory errors, try these strategies:
+
+- **Reduce batch size**: Start with 8-16 and increase gradually
+- **Lower ``max_num_batched_tokens``**: Reduce from 4096 to 2048 or 1024
+- **Decrease ``max_model_len``**: Use shorter context lengths
+- **Set ``gpu_memory_utilization``**: Use 0.75-0.85 instead of default 0.90
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __gpu_memory_config_example_start__
+    :end-before: __gpu_memory_config_example_end__
+
+Model loading at scale
+~~~~~~~~~~~~~~~~~~~~~~
+
+.. _model_cache:
+
+For large clusters, HuggingFace downloads may be rate-limited. Cache models to S3 or GCS:
+
+.. code-block:: bash
+
+    python -m ray.llm.utils.upload_model \
+        --model-source facebook/opt-350m \
+        --bucket-uri gs://my-bucket/path/to/model
+
+Then reference the remote path in your config:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __s3_config_example_start__
+    :end-before: __s3_config_example_end__
+
+
+C/C++ runtime dependencies incompatibility
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. admonition:: Known issue
+
+   Ray 2.55 installs vLLM 0.18.0. Depending on the conda environment, you may encounter
+   incompatibilities with native runtime libraries (for example, ``libstdc++``, ``CXXABI``, ``ICU``).
+
+   In such cases, override just the ``libstdc++`` library from your conda environment with ``LD_LIBRARY_PATH``:
+
+   .. code-block:: shell
+
+      mkdir -p "${CONDA_PREFIX}/lib-overrides"
+      ln -sf "${CONDA_PREFIX}/lib/libstdc++.so.6" "${CONDA_PREFIX}/lib-overrides/libstdc++.so.6"
+      export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib-overrides${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 **Usage data collection**: Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see :ref:`Ray usage stats <ref-usage-stats>`.
 

@@ -259,12 +259,12 @@ def test_basic(ray_start_regular_shared):
 
 def test_range(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=10)
-    assert ds._plan.initial_num_blocks() == 10
+    assert ds._logical_plan.initial_num_blocks() == 10
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
     ds = ray.data.range(10, override_num_blocks=2)
-    assert ds._plan.initial_num_blocks() == 2
+    assert ds._logical_plan.initial_num_blocks() == 2
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
@@ -272,7 +272,7 @@ def test_range(ray_start_regular_shared):
 def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(0)
     assert ds.count() == 0
-    assert ds.size_bytes() is None
+    assert ds.size_bytes() == 0
     assert ds.schema() is None
 
     ds = ray.data.range(1)
@@ -564,7 +564,7 @@ def test_union(ray_start_regular_shared, restore_data_context):
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
-    assert ds._plan.initial_num_blocks() == 50
+    assert ds._logical_plan.initial_num_blocks() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
 

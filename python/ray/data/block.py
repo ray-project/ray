@@ -1,7 +1,8 @@
 import collections
 import logging
+import sys
 import time
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
 from enum import Enum
 from typing import (
     TYPE_CHECKING,
@@ -23,11 +24,13 @@ import pyarrow as pa
 
 import ray
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import cudf
     import pandas
     import pyarrow
 
@@ -52,10 +55,14 @@ Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
 # Represents the schema of a block, which can be either a Python type or a
 # pyarrow schema. This is used to describe the structure of the data in a block.
-Schema = Union[type, "PandasBlockSchema", "pyarrow.lib.Schema"]
+Schema = Union["PandasBlockSchema", "pyarrow.lib.Schema"]
 
 # Represents a single column of the ``Block``
-BlockColumn = Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series"]
+BlockColumn = Union[
+    "pyarrow.ChunkedArray",
+    "pyarrow.Array",
+    "pandas.Series",
+]
 
 # Represents a single column of the ``Batch``
 BatchColumn = Union[
@@ -78,11 +85,17 @@ class BatchFormat(str, Enum):
     ARROW = "pyarrow"
     PANDAS = "pandas"
     NUMPY = "numpy"
+    CUDF = "cudf"
 
 
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
-DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
+DataBatch = Union[
+    "pyarrow.Table",
+    "pandas.DataFrame",
+    Dict[str, np.ndarray],
+    "cudf.DataFrame",
+]
 
 # User-facing data column type. This is the data type for data that is supplied to and
 # returned from column UDFs.
@@ -113,8 +126,25 @@ BlockPartition = List[Tuple[ObjectRef[Block], "BlockMetadata"]]
 # same type as the metadata that describes each block in the partition.
 BlockPartitionMetadata = List["BlockMetadata"]
 
-VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", None]
+VALID_BATCH_FORMATS = ["pandas", "pyarrow", "numpy", "cudf", None]
 DEFAULT_BATCH_FORMAT = "numpy"
+
+
+def _is_cudf_dataframe(obj: Any) -> bool:
+    """Check if the object is a cudf.DataFrame (lazy import).
+
+    Checks ``sys.modules`` first to avoid importing cudf (which loads CUDA
+    and ~1.5 GiB of RSS) when it hasn't been imported yet.  If cudf is not
+    in ``sys.modules``, no object in the process can be a cudf DataFrame.
+    """
+    if "cudf" not in sys.modules:
+        return False
+    try:
+        import cudf
+
+        return isinstance(obj, cudf.DataFrame)
+    except ImportError:
+        return False
 
 
 def _is_empty_schema(schema: Optional[Schema]) -> bool:
@@ -159,41 +189,48 @@ def to_stats(metas: List["BlockMetadata"]) -> List["BlockStats"]:
 
 
 @DeveloperAPI
+@dataclass(frozen=True)
+class TaskExecWorkerStats:
+    """Task's execution stats reported from the executing worker"""
+
+    # Total task's wall-clock time from start to finish (measured on the worker)
+    task_wall_time_s: float
+
+
+@DeveloperAPI
+@dataclass(frozen=True)
 class BlockExecStats:
-    """Execution stats for this block.
+    """Execution stats for a single output block produced by a task."""
 
-    Attributes:
-        wall_time_s: The wall-clock time it took to compute this block.
-        cpu_time_s: The CPU time it took to compute this block.
-        node_id: A unique id for the node that computed this block.
-        max_uss_bytes: An estimate of the maximum amount of physical memory that the
-            process was using while computing this block.
-    """
+    # Index of the task that produced this block, used to attribute rows
+    # to individual tasks in per-task statistics.
+    task_idx: Optional[int] = None
 
-    def __init__(self):
-        self.start_time_s: Optional[float] = None
-        self.end_time_s: Optional[float] = None
-        self.wall_time_s: Optional[float] = None
-        self.udf_time_s: Optional[float] = 0
-        self.block_ser_time_s: Optional[float] = None
-        self.cpu_time_s: Optional[float] = None
-        self.node_id = ray.runtime_context.get_runtime_context().get_node_id()
-        self.max_uss_bytes: int = 0
-        self.task_idx: Optional[int] = None
+    # Ray node ID of the worker that produced this block.
+    node_id: str = field(
+        default_factory=lambda: ray.runtime_context.get_runtime_context().get_node_id()
+    )
+
+    # Absolute wall-clock timestamp when block generation started.
+    start_time_s: Optional[float] = None
+    # Absolute wall-clock timestamp when block generation finished.
+    end_time_s: Optional[float] = None
+    # Total wall-clock duration of the block generation (computed as end_time_s - start_time_s).
+    wall_time_s: Optional[float] = None
+    # Time spent inside UDF while generating block.
+    udf_time_s: Optional[float] = 0
+    # Time spent serializing this block into a Ray object.
+    block_ser_time_s: Optional[float] = None
+    # Total CPU time consumed by the worker process during the task, across all threads.
+    cpu_time_s: Optional[float] = None
+
+    # Peak USS (Unique Set Size) memory in bytes observed while computing this block,
+    # as estimated by the memory profiler.
+    max_uss_bytes: int = 0
 
     @staticmethod
     def builder() -> "_BlockExecStatsBuilder":
         return _BlockExecStatsBuilder()
-
-    def __repr__(self):
-        return repr(
-            {
-                "wall_time_s": self.wall_time_s,
-                "cpu_time_s": self.cpu_time_s,
-                "udf_time_s": self.udf_time_s,
-                "node_id": self.node_id,
-            }
-        )
 
 
 class _BlockExecStatsBuilder:
@@ -206,34 +243,41 @@ class _BlockExecStatsBuilder:
     def __init__(self):
         self._start_time = time.perf_counter()
         self._start_cpu = time.process_time()
+        self._end_time = None
+        self._end_cpu = None
 
-    def build(self, block_ser_time_s: Optional[int] = None) -> "BlockExecStats":
-        # Record end times.
-        end_time = time.perf_counter()
-        end_cpu = time.process_time()
+    def finish(self):
+        """Capture timing now, to be used by a later build() call."""
+        self._end_time = time.perf_counter()
+        self._end_cpu = time.process_time()
 
-        # Build the stats.
-        stats = BlockExecStats()
-        stats.start_time_s = self._start_time
-        stats.end_time_s = end_time
-        stats.wall_time_s = end_time - self._start_time
-        stats.cpu_time_s = end_cpu - self._start_cpu
-        stats.block_ser_time_s = block_ser_time_s
+    def build(self, **kwargs) -> "BlockExecStats":
+        if self._end_time is None:
+            self.finish()
 
-        return stats
+        return BlockExecStats(
+            start_time_s=self._start_time,
+            end_time_s=self._end_time,
+            wall_time_s=self._end_time - self._start_time,
+            cpu_time_s=self._end_cpu - self._start_cpu,
+            **kwargs,
+        )
 
 
 @DeveloperAPI
-@dataclass
+@dataclass(frozen=True)
 class BlockStats:
     """Statistics about the block produced"""
 
-    #: The number of rows contained in this block, or None.
+    # The number of rows contained in this block, or None.
     num_rows: Optional[int]
-    #: The approximate size in bytes of this block, or None.
+    # The approximate size in bytes of this block, or None.
     size_bytes: Optional[int]
-    #: Execution stats for this block.
+    # Execution stats for this block.
     exec_stats: Optional[BlockExecStats]
+
+    # Overall task execution stats (reported from the worker).
+    task_exec_stats: Optional[TaskExecWorkerStats] = field(default=None)
 
     def __post_init__(self):
         if self.size_bytes is not None:
@@ -246,48 +290,61 @@ _BLOCK_STATS_FIELD_NAMES = {f.name for f in fields(BlockStats)}
 
 
 @DeveloperAPI
-@dataclass
+@dataclass(frozen=True)
 class BlockMetadata(BlockStats):
     """Metadata about the block."""
 
-    #: The pyarrow schema or types of the block elements, or None.
-    #: The list of file paths used to generate this block, or
-    #: the empty list if indeterminate.
-    input_files: Optional[List[str]]
+    # The pyarrow schema or types of the block elements, or None.
+    # The list of file paths used to generate this block, or
+    # the empty list if indeterminate.
+    # Stored as a tuple for hash-ability.
+    input_files: Optional[Tuple[str, ...]] = field(default=None)
+
+    def __post_init__(self):
+        super().__post_init__()
+
+        if self.input_files is not None and not isinstance(self.input_files, tuple):
+            object.__setattr__(self, "input_files", tuple(self.input_files))
 
     def to_stats(self):
         return BlockStats(
             **{key: self.__getattribute__(key) for key in _BLOCK_STATS_FIELD_NAMES}
         )
 
-    def __post_init__(self):
-        super().__post_init__()
-
-        if self.input_files is None:
-            self.input_files = []
-
 
 @DeveloperAPI(stability="alpha")
-@dataclass
+@dataclass(frozen=True)
 class BlockMetadataWithSchema(BlockMetadata):
     schema: Optional[Schema] = None
 
-    def __init__(self, metadata: BlockMetadata, schema: Optional["Schema"] = None):
-        super().__init__(
-            input_files=metadata.input_files,
-            size_bytes=metadata.size_bytes,
+    @staticmethod
+    def from_metadata(
+        metadata: "BlockMetadata", schema: Optional["Schema"] = None
+    ) -> "BlockMetadataWithSchema":
+        return BlockMetadataWithSchema(
             num_rows=metadata.num_rows,
+            size_bytes=metadata.size_bytes,
             exec_stats=metadata.exec_stats,
+            task_exec_stats=metadata.task_exec_stats,
+            input_files=metadata.input_files,
+            schema=schema,
         )
-        self.schema = schema
 
+    @staticmethod
     def from_block(
-        block: Block, stats: Optional["BlockExecStats"] = None
+        block: Block,
+        block_exec_stats: Optional["BlockExecStats"] = None,
+        task_exec_stats: Optional["TaskExecWorkerStats"] = None,
     ) -> "BlockMetadataWithSchema":
         accessor = BlockAccessor.for_block(block)
-        meta = accessor.get_metadata(exec_stats=stats)
-        schema = accessor.schema()
-        return BlockMetadataWithSchema(metadata=meta, schema=schema)
+
+        return BlockMetadataWithSchema.from_metadata(
+            metadata=accessor.get_metadata(
+                block_exec_stats=block_exec_stats,
+                task_exec_stats=task_exec_stats,
+            ),
+            schema=accessor.schema(),
+        )
 
     @property
     def metadata(self) -> BlockMetadata:
@@ -296,6 +353,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             size_bytes=self.size_bytes,
             exec_stats=self.exec_stats,
             input_files=self.input_files,
+            task_exec_stats=self.task_exec_stats,
         )
 
 
@@ -419,6 +477,8 @@ class BlockAccessor:
             return self.to_arrow()
         elif batch_format == "numpy":
             return self.to_numpy()
+        elif batch_format == "cudf":
+            return self.to_cudf()
         else:
             raise ValueError(
                 f"The batch format must be one of {VALID_BATCH_FORMATS}, got: "
@@ -436,14 +496,16 @@ class BlockAccessor:
     def get_metadata(
         self,
         input_files: Optional[List[str]] = None,
-        exec_stats: Optional[BlockExecStats] = None,
+        block_exec_stats: Optional[BlockExecStats] = None,
+        task_exec_stats: Optional[TaskExecWorkerStats] = None,
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
             num_rows=self.num_rows(),
             size_bytes=self.size_bytes(),
-            input_files=input_files,
-            exec_stats=exec_stats,
+            input_files=tuple(input_files) if input_files is not None else None,
+            exec_stats=block_exec_stats,
+            task_exec_stats=task_exec_stats,
         )
 
     def zip(self, other: "Block") -> "Block":
@@ -462,6 +524,7 @@ class BlockAccessor:
         block_type: Optional[BlockType] = None,
     ) -> Block:
         """Create a block from user-facing data formats."""
+        import pandas
 
         if isinstance(batch, np.ndarray):
             raise ValueError(
@@ -470,6 +533,20 @@ class BlockAccessor:
                 "allowed in Ray 2.5. Return a dict of field -> array, "
                 "e.g., `{'data': array}` instead of `array`."
             )
+
+        # Handle cudf.DataFrame before Mapping check, since cudf.DataFrame
+        # implements the Mapping protocol. Use bulk GPU->CPU transfer via
+        # to_arrow() instead of the slow column-by-column Mapping path.
+        elif _is_cudf_dataframe(batch):
+            return batch.to_arrow()
+
+        elif isinstance(batch, pandas.DataFrame):
+            if (block_type == BlockType.ARROW) or (
+                block_type is None
+                and DataContext.get_current().batch_to_block_arrow_format
+            ):
+                return cls.for_block(batch).to_arrow()
+            return batch
 
         elif isinstance(batch, collections.abc.Mapping):
             if block_type is None or block_type == BlockType.ARROW:
@@ -481,7 +558,7 @@ class BlockAccessor:
                     return cls.batch_to_arrow_block(batch)
                 except ArrowConversionError as e:
                     if log_once("_fallback_to_pandas_block_warning"):
-                        logger.warning(
+                        logger.debug(
                             f"Failed to convert batch to Arrow due to: {e}; "
                             f"falling back to Pandas block"
                         )
@@ -493,6 +570,7 @@ class BlockAccessor:
             else:
                 assert block_type == BlockType.PANDAS
                 return cls.batch_to_pandas_block(batch)
+
         return batch
 
     @classmethod
@@ -774,7 +852,7 @@ class BlockColumnAccessor:
         """Converts underlying column to Numpy"""
         raise NotImplementedError()
 
-    def _as_arrow_compatible(self) -> Union[List[Any], "pyarrow.Array"]:
+    def _to_arrow_compatible_container(self) -> Union[List[Any], "pyarrow.Array"]:
         """Converts block column into a representation compatible with Arrow"""
         raise NotImplementedError()
 
@@ -795,8 +873,8 @@ class BlockColumnAccessor:
             return PandasBlockColumnAccessor(col)
         else:
             raise TypeError(
-                f"Expected either a pandas.Series or pyarrow.Array (ChunkedArray) "
-                f"(got {type(col)})"
+                f"Expected either a pandas.Series or pyarrow.Array "
+                f"(ChunkedArray) (got {type(col)})"
             )
 
 

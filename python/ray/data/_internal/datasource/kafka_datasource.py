@@ -7,12 +7,13 @@ Message keys and values are returned as raw bytes to support any serialization f
 (JSON, Avro, Protobuf, etc.). Users can decode them using map operations.
 
 Requires:
-    - kafka-python: https://kafka-python.readthedocs.io/
+    - confluent-kafka: https://docs.confluent.io/platform/current/clients/confluent-kafka-python/html/
 """
 
 import logging
 import time
-from dataclasses import dataclass, fields
+import warnings
+from dataclasses import dataclass
 from datetime import datetime, timezone
 from typing import (
     TYPE_CHECKING,
@@ -22,6 +23,7 @@ from typing import (
     List,
     Literal,
     Optional,
+    Set,
     Tuple,
     Union,
 )
@@ -29,7 +31,7 @@ from typing import (
 import pyarrow as pa
 
 if TYPE_CHECKING:
-    from kafka import KafkaConsumer, TopicPartition
+    from confluent_kafka import Consumer, TopicPartition
 
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data._internal.util import _check_import
@@ -37,7 +39,50 @@ from ray.data.block import Block, BlockMetadata
 from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 
+PartitionOffsets = Dict[int, Union[int, str]]
+PerPartitionOffsets = Dict[str, PartitionOffsets]
+
 logger = logging.getLogger(__name__)
+
+# Mapping from kafka-python style KafkaAuthConfig fields to Confluent/librdkafka config.
+# TODO(youcheng): Remove this mapping and use consumer_config directly.
+_KAFKA_AUTH_TO_CONFLUENT: Dict[str, str] = {
+    "security_protocol": "security.protocol",
+    "sasl_mechanism": "sasl.mechanism",
+    "sasl_plain_username": "sasl.username",
+    "sasl_plain_password": "sasl.password",
+    "sasl_kerberos_service_name": "sasl.kerberos.service.name",
+    "sasl_kerberos_name": "sasl.kerberos.principal",
+    "ssl_cafile": "ssl.ca.location",
+    "ssl_certfile": "ssl.certificate.location",
+    "ssl_keyfile": "ssl.key.location",
+    "ssl_password": "ssl.key.password",
+    "ssl_ciphers": "ssl.cipher.suites",
+    "ssl_crlfile": "ssl.crl.location",
+    # Note: ssl_check_hostname is intentionally NOT mapped due to semantics mismatch.
+}
+
+
+KAFKA_TOPIC_METADATA_TIMEOUT_S = 10
+KAFKA_QUERY_OFFSET_TIMEOUT_S = 10
+# Cap each consume timeout to keep responsiveness of timeout/position checks.
+KAFKA_CONSUME_TIMEOUT_MAX_S = 10  # 10 seconds per consume call
+
+KAFKA_MSG_SCHEMA = pa.schema(
+    [
+        ("offset", pa.int64()),
+        ("key", pa.binary()),
+        ("value", pa.binary()),
+        ("topic", pa.string()),
+        ("partition", pa.int32()),
+        ("timestamp", pa.int64()),  # Kafka timestamp in milliseconds
+        (
+            "timestamp_type",
+            pa.int32(),
+        ),  # 0=TIMESTAMP_NOT_AVAILABLE, 1=TIMESTAMP_CREATE_TIME, 2=TIMESTAMP_LOG_APPEND_TIME
+        ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
+    ]
+)
 
 
 @dataclass
@@ -46,6 +91,11 @@ class KafkaAuthConfig:
 
     Uses standard kafka-python parameter names. See kafka-python documentation
     for full details: https://kafka-python.readthedocs.io/
+
+    Note: Ray Data maps these options to Confluent/librdkafka config under the hood.
+    Some options have different semantics or are unsupported by the Confluent client;
+    see notes below for those fields. Prefer passing Confluent options directly via
+    ``consumer_config`` where possible.
 
     security_protocol: Protocol used to communicate with brokers.
         Valid values are: PLAINTEXT, SSL, SASL_PLAINTEXT, SASL_SSL.
@@ -63,34 +113,37 @@ class KafkaAuthConfig:
     sasl_kerberos_service_name: Service name to include in GSSAPI
         sasl mechanism handshake. Default: 'kafka'
     sasl_kerberos_domain_name: kerberos domain name to use in GSSAPI
-        sasl mechanism handshake. Default: one of bootstrap servers
-    sasl_oauth_token_provider: OAuthBearer
-        token provider instance. Default: None
-    ssl_context: Pre-configured SSLContext for wrapping
-        socket connections. If provided, all other ssl_* configurations
-        will be ignored. Default: None.
-    ssl_check_hostname: Flag to configure whether ssl handshake
-        should verify that the certificate matches the brokers hostname.
-        Default: True.
-    ssl_cafile: Optional filename of ca file to use in certificate
-        verification. Default: None.
-    ssl_certfile: Optional filename of file in pem format containing
-        the client certificate, as well as any ca certificates needed to
-        establish the certificate's authenticity. Default: None.
-    ssl_keyfile: Optional filename containing the client private key.
-        Default: None.
-    ssl_password: Optional password to be used when loading the
-        certificate chain. Default: None.
-    ssl_crlfile: Optional filename containing the CRL to check for
-        certificate expiration. By default, no CRL check is done. When
-        providing a file, only the leaf certificate will be checked against
-        this CRL. The CRL can only be checked with Python 3.4+ or 2.7.9+.
-        Default: None.
-    ssl_ciphers: optionally set the available ciphers for ssl
-        connections. It should be a string in the OpenSSL cipher list
-        format. If no cipher can be selected (because compile-time options
-        or other configuration forbids use of all the specified ciphers),
-        an ssl.SSLError will be raised. See ssl.SSLContext.set_ciphers
+        sasl mechanism handshake. Default: one of bootstrap servers.
+        Note (Confluent): This option is not supported by Confluent/librdkafka
+        and will be ignored when building the client configuration. Prefer specifying
+        an explicit principal via ``sasl_kerberos_name`` or rely on defaults.
+    sasl_oauth_token_provider: OAuthBearer token provider instance. Default: None.
+        Note (Confluent): Not supported directly; use ``consumer_config`` with
+        ``sasl.oauthbearer.*`` options instead.
+    ssl_context: Pre-configured SSLContext for wrapping socket connections. If provided,
+        all other ssl_* configurations will be ignored. Default: None.
+        Note (Confluent): Passing an SSLContext object is not supported and will be
+        ignored. Use ``ssl_cafile``, ``ssl_certfile``, and ``ssl_keyfile`` instead.
+    ssl_check_hostname: Flag to configure whether ssl handshake should verify that the
+        certificate matches the broker's hostname. Default: True.
+        Note (Confluent): There is no 1:1 equivalent; disabling hostname verification
+        via ``enable.ssl.certificate.verification=False`` would also disable the entire
+        certificate chain verification. To avoid weakening security, this flag is not
+        mapped when False. If you need to disable only hostname verification, set
+        ``ssl.endpoint.identification.algorithm=none`` via ``consumer_config`` (if supported
+        by your librdkafka version).
+    ssl_cafile: Optional filename of ca file to use in certificate verification. Default: None.
+    ssl_certfile: Optional filename of file in pem format containing the client certificate,
+        as well as any ca certificates needed to establish the certificate's authenticity. Default: None.
+    ssl_keyfile: Optional filename containing the client private key. Default: None.
+    ssl_password: Optional password to be used when loading the certificate chain. Default: None.
+    ssl_crlfile: Optional filename containing the CRL to check for certificate expiration. By default,
+        no CRL check is done. When providing a file, only the leaf certificate will be checked against
+        this CRL. The CRL can only be checked with Python 3.4+ or 2.7.9+. Default: None.
+    ssl_ciphers: optionally set the available ciphers for ssl connections. It should be a string in the
+        OpenSSL cipher list format. If no cipher can be selected (because compile-time options or other
+        configuration forbids use of all the specified ciphers), an ssl.SSLError will be raised.
+        See ssl.SSLContext.set_ciphers.
     """
 
     # Security protocol
@@ -116,65 +169,116 @@ class KafkaAuthConfig:
     ssl_crlfile: Optional[str] = None
 
 
+def _handle_deprecated_configs(kafka_auth_config: KafkaAuthConfig) -> None:
+    # Handle special fields with warnings
+    if kafka_auth_config.ssl_context is not None:
+        logger.warning(
+            "ssl_context is not supported by Confluent. Skipping. "
+            "Use KafkaAuthConfig fields ssl_cafile, ssl_certfile, ssl_keyfile instead."
+        )
+    if kafka_auth_config.sasl_oauth_token_provider is not None:
+        logger.warning(
+            "sasl_oauth_token_provider is not supported by Confluent. Skipping. "
+            "Use consumer_config with sasl.oauthbearer.* options instead."
+        )
+    if kafka_auth_config.sasl_kerberos_domain_name is not None:
+        logger.warning(
+            "sasl_kerberos_domain_name is not supported by Confluent and will be ignored. "
+            "Set sasl_kerberos_name (principal) or rely on defaults."
+        )
+    if kafka_auth_config.ssl_check_hostname is False:
+        logger.warning(
+            "ssl_check_hostname=False cannot be mapped safely to Confluent; "
+            "setting enable.ssl.certificate.verification=False would disable all certificate verification. "
+            "Ignoring ssl_check_hostname. If you need to disable only hostname verification, "
+            "configure the client directly via consumer_config (e.g., ssl.endpoint.identification.algorithm=none)."
+        )
+
+
 def _add_authentication_to_config(
     config: Dict[str, Any], kafka_auth_config: Optional[KafkaAuthConfig]
 ) -> None:
-    """Add authentication configuration to consumer config in-place.
+    """Map KafkaAuthConfig (kafka-python style) into Confluent/librdkafka config.
 
-    Args:
-        config: Consumer config dict to modify.
-        kafka_auth_config: Authentication configuration.
+    Special cases:
+      - ssl_context: unsupported; warn and ignore
+      - sasl_oauth_token_provider: unsupported; warn and ignore
+      - sasl_kerberos_domain_name: unsupported; warn and ignore
+      - ssl_check_hostname: not mapped due to semantics; if False, warn and ignore
     """
-    if kafka_auth_config:
-        # Extract non-None fields from dataclass without copying objects
-        for field in fields(kafka_auth_config):
-            value = getattr(kafka_auth_config, field.name)
-            if value is not None:
-                config[field.name] = value
+    if not kafka_auth_config:
+        return
+    warnings.warn(
+        "kafka_auth_config (kafka-python style) is deprecated and will be removed in a future release. "
+        "Please provide Confluent/librdkafka options via consumer_config instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    _handle_deprecated_configs(kafka_auth_config)
+
+    # Map directly compatible fields
+    for key, confluent_key in _KAFKA_AUTH_TO_CONFLUENT.items():
+        val = getattr(kafka_auth_config, key, None)
+        if val is not None:
+            config[confluent_key] = val
 
 
-def _build_consumer_config_for_discovery(
-    bootstrap_servers: List[str], kafka_auth_config: Optional[KafkaAuthConfig]
+def _build_confluent_config(
+    bootstrap_servers: List[str],
+    kafka_auth_config: Optional[KafkaAuthConfig] = None,
+    extra: Optional[Dict[str, Any]] = None,
+    user_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Build minimal consumer config for partition discovery.
+    """Build Confluent config with bootstrap servers and auth.
 
     Args:
         bootstrap_servers: List of Kafka broker addresses.
-        kafka_auth_config: Authentication configuration.
+        kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
+        extra: Additional config options.
+        user_config: User-provided config options.
 
     Returns:
-        Consumer configuration dict for discovery.
+        Confluent configuration dict.
     """
-    config = {
-        "bootstrap_servers": bootstrap_servers,
-        "enable_auto_commit": False,  # We are performing a bounded read, so we don't need to commit offsets
-        "consumer_timeout_ms": 1000,  # Short timeout for discovery
+    config: Dict[str, Any] = {
+        "bootstrap.servers": ",".join(bootstrap_servers),
     }
+    # Map kafka-python-style auth if provided
     _add_authentication_to_config(config, kafka_auth_config)
+    if extra:
+        config.update(extra)
+    if user_config:
+        if (
+            "bootstrap.servers" in user_config
+            and user_config["bootstrap.servers"] != config["bootstrap.servers"]
+        ):
+            logger.warning(
+                "Ignoring 'bootstrap.servers' from consumer_config; use bootstrap_servers parameter instead."
+            )
+        for k, v in user_config.items():
+            if k == "bootstrap.servers":
+                continue
+            config[k] = v
     return config
 
 
 def _build_consumer_config_for_read(
     bootstrap_servers: List[str],
-    kafka_auth_config: Optional[KafkaAuthConfig],
+    kafka_auth_config: Optional[KafkaAuthConfig] = None,
+    consumer_config: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
-    """Build full consumer config for reading messages.
-
-    Args:
-        bootstrap_servers: List of Kafka broker addresses.
-        kafka_auth_config: Authentication configuration.
-
-    Returns:
-        Consumer configuration dict for reading.
-    """
-    config = {
-        "bootstrap_servers": bootstrap_servers,
-        "enable_auto_commit": False,
-        "value_deserializer": lambda v: v,
-        "key_deserializer": lambda k: k,
-    }
-    _add_authentication_to_config(config, kafka_auth_config)
-    return config
+    """Build Consumer config for reading messages (Confluent)."""
+    return _build_confluent_config(
+        bootstrap_servers,
+        extra={
+            "enable.auto.commit": False,
+            # Confluent requires a group.id even when using manual assign.
+            "group.id": "ray-data-kafka-reader",
+        },
+        user_config=consumer_config,
+        kafka_auth_config=kafka_auth_config,
+    )
 
 
 def _datetime_to_ms(dt: datetime) -> int:
@@ -195,37 +299,86 @@ def _datetime_to_ms(dt: datetime) -> int:
     return int(dt.timestamp() * 1000)
 
 
-def _resolve_datetime_offset(
-    consumer: "KafkaConsumer",
+def _validate_offsets(
+    start_offset: Union[int, datetime, Literal["earliest"], PerPartitionOffsets],
+    end_offset: Union[int, datetime, Literal["latest"], PerPartitionOffsets],
+) -> None:
+    if isinstance(start_offset, dict):
+        for topic, partition_map in start_offset.items():
+            if not isinstance(partition_map, dict):
+                raise ValueError(
+                    f"start_offset[{topic!r}] must be a dict mapping "
+                    f"partition_id (int) to offset (int or str)."
+                )
+            for partition_id, offset in partition_map.items():
+                if not isinstance(partition_id, int):
+                    raise ValueError(
+                        f"start_offset[{topic!r}] keys must be integers "
+                        f"(partition IDs), got {type(partition_id).__name__!r}."
+                    )
+                if isinstance(offset, str) and offset == "latest":
+                    raise ValueError(
+                        f"start_offset[{topic!r}][{partition_id}] cannot be 'latest'."
+                    )
+    else:
+        if isinstance(start_offset, int) and isinstance(end_offset, int):
+            if start_offset > end_offset:
+                raise ValueError("start_offset must be less than end_offset")
+        if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
+            if _datetime_to_ms(start_offset) > _datetime_to_ms(end_offset):
+                raise ValueError("start_offset must be less than end_offset")
+        if isinstance(start_offset, str) and start_offset == "latest":
+            raise ValueError("start_offset cannot be 'latest'")
+
+    if isinstance(end_offset, dict):
+        for topic, partition_map in end_offset.items():
+            if not isinstance(partition_map, dict):
+                raise ValueError(
+                    f"end_offset[{topic!r}] must be a dict mapping "
+                    f"partition_id (int) to offset (int or str)."
+                )
+            for partition_id, offset in partition_map.items():
+                if not isinstance(partition_id, int):
+                    raise ValueError(
+                        f"end_offset[{topic!r}] keys must be integers "
+                        f"(partition IDs), got {type(partition_id).__name__!r}."
+                    )
+                if isinstance(offset, str) and offset == "earliest":
+                    raise ValueError(
+                        f"end_offset[{topic!r}][{partition_id}] cannot be 'earliest'."
+                    )
+    else:
+        if isinstance(end_offset, str) and end_offset == "earliest":
+            raise ValueError("end_offset cannot be 'earliest'")
+
+
+def _resolve_datetime_to_offset(
+    consumer: "Consumer",
     topic_partition: "TopicPartition",
     dt: datetime,
     fallback_offset: int,
 ) -> int:
-    """Resolve a datetime to a concrete Kafka offset.
+    """Resolve a datetime to an integer offset via offsets_for_times.
 
-    Uses ``consumer.offsets_for_times()`` to find the earliest offset whose
-    timestamp is >= the given datetime. If no such offset exists, returns
-    ``fallback_offset``.
-
-    Args:
-        consumer: Kafka consumer instance.
-        topic_partition: TopicPartition to resolve the offset for.
-        dt: The datetime to resolve.
-        fallback_offset: Offset to return if no messages match the timestamp.
-
-    Returns:
-        The resolved integer offset.
+    Returns fallback_offset when offsets_for_times returns empty or offset < 0
+    (e.g., datetime in future or no messages at that time).
     """
-    timestamp_ms: int = _datetime_to_ms(dt)
-    offsets: Dict = consumer.offsets_for_times({topic_partition: timestamp_ms})
-    offset_and_ts: Optional[Tuple[int, int]] = offsets.get(topic_partition)
-    if offset_and_ts is None:
-        return fallback_offset
-    return offset_and_ts.offset
+    from confluent_kafka import TopicPartition
+
+    timestamp_ms = _datetime_to_ms(dt)
+    tp_with_ts = TopicPartition(
+        topic_partition.topic, topic_partition.partition, timestamp_ms
+    )
+    result = consumer.offsets_for_times(
+        [tp_with_ts], timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
+    )
+    if result and result[0].offset >= 0:
+        return result[0].offset
+    return fallback_offset
 
 
 def _resolve_offsets(
-    consumer: "KafkaConsumer",
+    consumer: "Consumer",
     topic_partition: "TopicPartition",
     start_offset: Union[int, datetime, Literal["earliest"]],
     end_offset: Union[int, datetime, Literal["latest"]],
@@ -237,7 +390,7 @@ def _resolve_offsets(
     earliest offset whose timestamp is >= the given datetime.
 
     Args:
-        consumer: Kafka consumer instance.
+        consumer: Confluent Kafka consumer instance.
         topic_partition: TopicPartition to resolve offsets for.
         start_offset: Start offset (int, datetime, or "earliest").
         end_offset: End offset (int, datetime, or "latest").
@@ -245,8 +398,12 @@ def _resolve_offsets(
     Returns:
         Tuple of (resolved_start_offset, resolved_end_offset).
     """
-    earliest_offset = consumer.beginning_offsets([topic_partition])[topic_partition]
-    latest_offset = consumer.end_offsets([topic_partition])[topic_partition]
+    # TODO(youcheng): add retry logic for this call.
+    low, high = consumer.get_watermark_offsets(
+        topic_partition, timeout=KAFKA_QUERY_OFFSET_TIMEOUT_S
+    )
+    earliest_offset = low
+    latest_offset = high
 
     # Keep original values for error messages
     original_start = start_offset
@@ -255,16 +412,32 @@ def _resolve_offsets(
     if start_offset == "earliest" or start_offset is None:
         start_offset = earliest_offset
     elif isinstance(start_offset, datetime):
-        start_offset = _resolve_datetime_offset(
+        # fallback to latest_offset if the start_offset is in the future, so the read range is empty (start == end).
+        start_offset = _resolve_datetime_to_offset(
             consumer, topic_partition, start_offset, latest_offset
         )
 
     if end_offset == "latest" or end_offset is None:
         end_offset = latest_offset
     elif isinstance(end_offset, datetime):
-        end_offset = _resolve_datetime_offset(
+        end_offset = _resolve_datetime_to_offset(
             consumer, topic_partition, end_offset, latest_offset
         )
+
+    # Clamp end_offset to the high watermark so we never try to read beyond
+    # what is currently available.  This prevents the read loop from polling
+    # indefinitely when a user-supplied integer end_offset exceeds the number
+    # of messages in the partition.
+    end_offset = min(end_offset, latest_offset)
+
+    if isinstance(start_offset, int) and start_offset < earliest_offset:
+        logger.warning(
+            f"start_offset ({start_offset}) is below the earliest available offset "
+            f"({earliest_offset}) for partition {topic_partition.partition} in topic "
+            f"{topic_partition.topic} (data may have been deleted by Kafka retention). "
+            f"Falling back to earliest available offset ({earliest_offset})."
+        )
+        start_offset = earliest_offset
 
     if start_offset > end_offset:
         start_str = (
@@ -281,6 +454,7 @@ def _resolve_offsets(
             f"start_offset ({start_str}) > end_offset ({end_str}) "
             f"for partition {topic_partition.partition} in topic {topic_partition.topic}"
         )
+
     return start_offset, end_offset
 
 
@@ -294,10 +468,11 @@ class KafkaDatasource(Datasource):
         self,
         topics: Union[str, List[str]],
         bootstrap_servers: Union[str, List[str]],
-        start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
-        end_offset: Union[int, datetime, Literal["latest"]] = "latest",
+        start_offset: Union[int, datetime, Literal["earliest"], PerPartitionOffsets],
+        end_offset: Union[int, datetime, Literal["latest"], PerPartitionOffsets],
         kafka_auth_config: Optional[KafkaAuthConfig] = None,
-        timeout_ms: int = 10000,
+        consumer_config: Optional[Dict[str, Any]] = None,
+        timeout_ms: Optional[int] = None,
     ):
         """Initialize Kafka datasource.
 
@@ -314,16 +489,21 @@ class KafkaDatasource(Datasource):
                 - datetime: Read up to (but not including) the first message
                   at or after this time. datetimes with no timezone info are treated as UTC.
                 - str: "latest"
-            kafka_auth_config: Authentication configuration. See KafkaAuthConfig for details.
-            timeout_ms: Timeout in milliseconds for every read task to poll until reaching end_offset (default 10000ms).
-                If the read task does not reach end_offset within the timeout, it will stop polling and return the messages
-                it has read so far.
+            kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
+            consumer_config: Confluent/librdkafka consumer configuration dict.
+                Keys and values are passed through to the underlying client. The
+                `bootstrap.servers` option is derived from `bootstrap_servers` and
+                cannot be overridden here.
+            timeout_ms: Optional timeout in milliseconds for every read task to poll until reaching end_offset.
+                If None (default), no task-level timeout is applied and each read task
+                will poll until it reaches end_offset. If set, the read task will stop
+                polling after the timeout and return the messages it has read so far.
 
         Raises:
             ValueError: If required configuration is missing.
-            ImportError: If kafka-python is not installed.
+            ImportError: If confluent-kafka is not installed.
         """
-        _check_import(self, module="kafka", package="kafka-python")
+        _check_import(self, module="confluent_kafka", package="confluent-kafka")
 
         if not topics:
             raise ValueError("topics cannot be empty")
@@ -331,21 +511,10 @@ class KafkaDatasource(Datasource):
         if not bootstrap_servers:
             raise ValueError("bootstrap_servers cannot be empty")
 
-        if timeout_ms <= 0:
+        if timeout_ms is not None and timeout_ms <= 0:
             raise ValueError("timeout_ms must be positive")
 
-        if isinstance(start_offset, int) and isinstance(end_offset, int):
-            if start_offset > end_offset:
-                raise ValueError("start_offset must be less than end_offset")
-
-        if isinstance(start_offset, datetime) and isinstance(end_offset, datetime):
-            if _datetime_to_ms(start_offset) > _datetime_to_ms(end_offset):
-                raise ValueError("start_offset must be less than end_offset")
-
-        if isinstance(start_offset, str) and start_offset == "latest":
-            raise ValueError("start_offset cannot be 'latest'")
-        if isinstance(end_offset, str) and end_offset == "earliest":
-            raise ValueError("end_offset cannot be 'earliest'")
+        _validate_offsets(start_offset, end_offset)
 
         # Validate bootstrap_servers format
         if isinstance(bootstrap_servers, str):
@@ -364,6 +533,12 @@ class KafkaDatasource(Datasource):
                         "Expected 'host:port' string."
                     )
 
+        # Disallow specifying both config styles at once to avoid ambiguity.
+        if kafka_auth_config is not None and consumer_config is not None:
+            raise ValueError(
+                "Provide only one of kafka_auth_config (deprecated) or consumer_config, not both."
+            )
+
         self._topics = topics if isinstance(topics, list) else [topics]
         self._bootstrap_servers = (
             bootstrap_servers
@@ -373,6 +548,7 @@ class KafkaDatasource(Datasource):
         self._start_offset = start_offset
         self._end_offset = end_offset
         self._kafka_auth_config = kafka_auth_config
+        self._consumer_config = consumer_config
         self._timeout_ms = timeout_ms
         self._target_max_block_size = DataContext.get_current().target_max_block_size
 
@@ -399,54 +575,60 @@ class KafkaDatasource(Datasource):
         Returns:
             List of ReadTask objects, one per partition.
         """
+        from confluent_kafka import Consumer
 
-        # Discover all partitions for all topics
-        # We need to create a consumer on the driver to discover partitions
-        from kafka import KafkaConsumer
-
-        # Build minimal consumer config for partition discovery
-        consumer_config = _build_consumer_config_for_discovery(
-            self._bootstrap_servers, self._kafka_auth_config
+        consumer_config = _build_consumer_config_for_read(
+            self._bootstrap_servers, self._kafka_auth_config, self._consumer_config
         )
-
-        # Discover partitions for all topics
-        topic_partitions = []  # List of (topic, partition) tuples
-        discovery_consumer = None
+        discovery_consumer = Consumer(consumer_config)
         try:
-            discovery_consumer = KafkaConsumer(**consumer_config)
+            metadata = discovery_consumer.list_topics(
+                timeout=KAFKA_TOPIC_METADATA_TIMEOUT_S
+            )
+
+            topic_partitions: List[Tuple[str, int]] = []
             for topic in self._topics:
-                partitions = discovery_consumer.partitions_for_topic(topic)
-                if not partitions:
+                if topic not in metadata.topics:
                     raise ValueError(
                         f"Topic {topic} has no partitions or doesn't exist"
                     )
-                for partition in partitions:
-                    topic_partitions.append((topic, partition))
+                topic_meta = metadata.topics[topic]
+                if not topic_meta.partitions:
+                    raise ValueError(
+                        f"Topic {topic} has no partitions or doesn't exist"
+                    )
+                for partition_id in topic_meta.partitions.keys():
+                    topic_partitions.append((topic, partition_id))
         finally:
-            if discovery_consumer:
-                discovery_consumer.close()
+            discovery_consumer.close()
 
-        # Store config for use in read functions (avoid serialization issues)
         bootstrap_servers = self._bootstrap_servers
         start_offset = self._start_offset
         end_offset = self._end_offset
         timeout_ms = self._timeout_ms
-        kafka_auth_config = self._kafka_auth_config
         target_max_block_size = self._target_max_block_size
 
+        # Validate that any partitions referenced in a per-partition dict
+        # actually exist on the broker. Check once per topic before the loop.
+        actual_partition_ids: Dict[str, Set[int]] = {}
+        for topic_name, partition_id in topic_partitions:
+            actual_partition_ids.setdefault(topic_name, set()).add(partition_id)
+
+        for param_name, offset in (
+            ("start_offset", start_offset),
+            ("end_offset", end_offset),
+        ):
+            if isinstance(offset, dict):
+                for topic, partition_map in offset.items():
+                    existing_partitions = actual_partition_ids.get(topic, set())
+                    for pid in partition_map:
+                        if pid not in existing_partitions:
+                            raise ValueError(
+                                f"{param_name} references partition {pid} in topic "
+                                f"{topic!r}, but that partition does not exist."
+                            )
+
         tasks = []
-        schema = pa.schema(
-            [
-                ("offset", pa.int64()),
-                ("key", pa.binary()),
-                ("value", pa.binary()),
-                ("topic", pa.string()),
-                ("partition", pa.int32()),
-                ("timestamp", pa.int64()),  # Kafka timestamp in milliseconds
-                ("timestamp_type", pa.int32()),  # 0=CreateTime, 1=LogAppendTime
-                ("headers", pa.map_(pa.string(), pa.binary())),  # Message headers
-            ]
-        )
         for topic_name, partition_id in topic_partitions:
 
             def create_kafka_read_fn(
@@ -459,44 +641,32 @@ class KafkaDatasource(Datasource):
                 end_offset: Optional[
                     Union[int, datetime, Literal["latest"]]
                 ] = end_offset,
-                kafka_auth_config: Optional[KafkaAuthConfig] = kafka_auth_config,
-                timeout_ms: int = timeout_ms,
+                kafka_auth_config: Optional[KafkaAuthConfig] = self._kafka_auth_config,
+                user_consumer_config: Optional[Dict[str, Any]] = self._consumer_config,
+                timeout_ms: Optional[int] = timeout_ms,
                 target_max_block_size: int = target_max_block_size,
             ):
-                """Create a Kafka read function with captured variables.
-
-                This factory function captures configuration variables as default arguments
-                to avoid serialization issues when the read function is executed remotely
-                by Ray. Using default arguments ensures all needed config is available
-                in the remote task without requiring 'self' to be serialized.
-                """
+                """Create a Kafka read function with captured variables."""
 
                 def kafka_read_fn() -> Iterable[Block]:
-                    """Read function for a single Kafka partition using kafka-python.
-
-                    This function runs remotely in a Ray task. It creates a KafkaConsumer,
-                    reads messages from a single assigned partition, and yields PyArrow tables
-                    incrementally for efficient streaming processing.
-                    """
-                    from kafka import KafkaConsumer, TopicPartition
-
-                    # Build consumer configuration
-                    consumer_config = _build_consumer_config_for_read(
-                        bootstrap_servers, kafka_auth_config
+                    """Read function for a single Kafka partition using confluent-kafka."""
+                    from confluent_kafka import (
+                        Consumer,
+                        KafkaError,
+                        KafkaException,
+                        TopicPartition,
                     )
 
-                    # Create the Kafka consumer
-                    consumer = KafkaConsumer(**consumer_config)
-                    try:
-                        # Assign only the specific partition for this task
-                        topic_partition = TopicPartition(topic_name, partition_id)
-                        consumer.assign([topic_partition])
+                    built_consumer_config = _build_consumer_config_for_read(
+                        bootstrap_servers, kafka_auth_config, user_consumer_config
+                    )
 
-                        start_off, end_off = _resolve_offsets(
+                    consumer = Consumer(built_consumer_config)
+                    try:
+                        topic_partition = TopicPartition(topic_name, partition_id)
+                        resolved_start, resolved_end = _resolve_offsets(
                             consumer, topic_partition, start_offset, end_offset
                         )
-                        # Seek to the requested starting position
-                        consumer.seek(topic_partition, start_off)
 
                         records = []
 
@@ -506,72 +676,97 @@ class KafkaDatasource(Datasource):
                             )
                         )
 
-                        # Main polling loop - read maximum 500 messages per loop (default max_poll_records for KafkaConsumer poll is 500)
-                        partition_done = False
-                        start_time = time.time()
-                        timeout_seconds = timeout_ms / 1000.0
-
-                        while not partition_done:
-                            # Check if overall timeout has been reached
-                            elapsed_time = time.time() - start_time
-                            if elapsed_time >= timeout_seconds:
-                                logger.warning(
-                                    f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
-                                    f"end_offset {end_off} was not reached. Returning {len(records)} messages collected in this read task so far."
-                                )
-                                break
-
-                            # Check if we've reached the end_offset before polling
-                            # This avoids waiting for timeout when no more messages are available
-                            current_position = consumer.position(topic_partition)
-                            if current_position >= end_off:
-                                break
-
-                            # Calculate remaining timeout for this poll
-                            remaining_timeout_ms = int(
-                                (timeout_seconds - elapsed_time) * 1000
+                        if resolved_start < resolved_end:
+                            start_time = time.perf_counter()
+                            timeout_seconds = (
+                                timeout_ms / 1000.0 if timeout_ms is not None else None
                             )
 
-                            # Poll for a batch of messages from Kafka
-                            msg_batch = consumer.poll(
-                                timeout_ms=min(remaining_timeout_ms, 10000),
+                            tp_with_offset = TopicPartition(
+                                topic_name, partition_id, resolved_start
                             )
+                            consumer.assign([tp_with_offset])
 
-                            if not msg_batch:
-                                continue
+                            next_offset = resolved_start
 
-                            messages = msg_batch.get(topic_partition, [])
-
-                            for msg in messages:
-                                # Check if we've reached the end offset (for bounded reads)
-                                # Use >= for exclusive end_offset (don't include end_offset message)
-                                if end_off is not None and msg.offset >= end_off:
-                                    partition_done = True
+                            partition_done = False
+                            while not partition_done:
+                                if next_offset >= resolved_end:
                                     break
 
-                                # Extract all message metadata into a flat record
-                                headers_dict = dict(msg.headers) if msg.headers else {}
+                                if timeout_seconds is not None:
+                                    elapsed_time_s = time.perf_counter() - start_time
+                                    if elapsed_time_s >= timeout_seconds:
+                                        logger.warning(
+                                            f"Kafka read task timed out after {timeout_ms}ms while reading partition {partition_id} of topic {topic_name}; "
+                                            f"end_offset {resolved_end} was not reached. Returning {len(records)} messages collected in this read task so far."
+                                        )
+                                        break
+                                    remaining_timeout_s = (
+                                        timeout_seconds - elapsed_time_s
+                                    )
+                                    consume_timeout_s = min(
+                                        remaining_timeout_s, KAFKA_CONSUME_TIMEOUT_MAX_S
+                                    )
+                                else:
+                                    consume_timeout_s = KAFKA_CONSUME_TIMEOUT_MAX_S
 
-                                records.append(
-                                    {
-                                        "offset": msg.offset,
-                                        "key": msg.key,
-                                        "value": msg.value,
-                                        "topic": msg.topic,
-                                        "partition": msg.partition,
-                                        "timestamp": msg.timestamp,
-                                        "timestamp_type": msg.timestamp_type,
-                                        "headers": headers_dict,
-                                    }
+                                remaining = resolved_end - next_offset
+                                batch_size = min(
+                                    remaining,
+                                    KafkaDatasource.BATCH_SIZE_FOR_YIELD,
+                                )
+                                msgs = consumer.consume(
+                                    num_messages=batch_size,
+                                    timeout=consume_timeout_s,
                                 )
 
-                                # Yield incrementally when we hit batch size
-                                if len(records) >= KafkaDatasource.BATCH_SIZE_FOR_YIELD:
-                                    table = pa.Table.from_pylist(records)
-                                    output_buffer.add_block(table)
-                                    while output_buffer.has_next():
-                                        yield output_buffer.next()
-                                    records = []  # Clear for next batch
+                                if not msgs:
+                                    continue
+
+                                for msg in msgs:
+                                    if msg.error():
+                                        # In confluent-kafka, errors are delivered
+                                        # as messages. Only skip partition EOF
+                                        # events, raise others.
+                                        err = msg.error()
+                                        if err.code() == KafkaError._PARTITION_EOF:
+                                            continue
+                                        raise KafkaException(err)
+
+                                    # Stop once we reached the end offset
+                                    # (exclusive).
+                                    if msg.offset() >= resolved_end:
+                                        partition_done = True
+                                        break
+
+                                    ts_type, ts_ms = msg.timestamp()
+                                    headers_list = msg.headers() or []
+                                    headers_dict = dict(headers_list)
+                                    records.append(
+                                        {
+                                            "offset": msg.offset(),
+                                            "key": msg.key(),
+                                            "value": msg.value(),
+                                            "topic": msg.topic(),
+                                            "partition": msg.partition(),
+                                            "timestamp": ts_ms,
+                                            "timestamp_type": ts_type,
+                                            "headers": headers_dict,
+                                        }
+                                    )
+
+                                    next_offset = msg.offset() + 1
+
+                                    if (
+                                        len(records)
+                                        >= KafkaDatasource.BATCH_SIZE_FOR_YIELD
+                                    ):
+                                        table = pa.Table.from_pylist(records)
+                                        output_buffer.add_block(table)
+                                        while output_buffer.has_next():
+                                            yield output_buffer.next()
+                                        records = []
 
                         # Yield any remaining records
                         if records:
@@ -583,12 +778,11 @@ class KafkaDatasource(Datasource):
                             yield output_buffer.next()
 
                     finally:
-                        # Always close the consumer to release connections
                         consumer.close()
 
                 return kafka_read_fn
 
-            # Create metadata for this task
+            # TODO: We could output the offset range for every partition after the read is done.
             metadata = BlockMetadata(
                 num_rows=None,
                 size_bytes=None,
@@ -596,12 +790,28 @@ class KafkaDatasource(Datasource):
                 exec_stats=None,
             )
 
-            kafka_read_fn = create_kafka_read_fn(topic_name, partition_id)
+            effective_start = (
+                start_offset.get(topic_name, {}).get(partition_id, "earliest")
+                if isinstance(start_offset, dict)
+                else start_offset
+            )
+            effective_end = (
+                end_offset.get(topic_name, {}).get(partition_id, "latest")
+                if isinstance(end_offset, dict)
+                else end_offset
+            )
+            kafka_read_fn = create_kafka_read_fn(
+                topic_name,
+                partition_id,
+                start_offset=effective_start,
+                end_offset=effective_end,
+            )
+
             # Create read task
             task = ReadTask(
                 read_fn=kafka_read_fn,
                 metadata=metadata,
-                schema=schema,
+                schema=KAFKA_MSG_SCHEMA,
                 per_task_row_limit=per_task_row_limit,
             )
             tasks.append(task)

@@ -85,12 +85,7 @@ std::shared_ptr<grpc::Channel> RayletClient::GetChannel() const {
   return grpc_client_->Channel();
 }
 
-void RayletClient::ReportWorkerBacklog(
-    const WorkerID &worker_id,
-    const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
-  rpc::ReportWorkerBacklogRequest request;
-  request.set_worker_id(worker_id.Binary());
-  request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
+void RayletClient::ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) {
   INVOKE_RPC_CALL(
       NodeManagerService,
       ReportWorkerBacklog,
@@ -381,6 +376,20 @@ void RayletClient::DrainRaylet(
   INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
                             NodeManagerService,
                             DrainRaylet,
+                            request,
+                            callback,
+                            grpc_client_,
+                            /*method_timeout_ms*/ -1);
+}
+
+void RayletClient::ResizeLocalResourceInstances(
+    google::protobuf::Map<std::string, double> resources,
+    const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback) {
+  rpc::ResizeLocalResourceInstancesRequest request;
+  *request.mutable_resources() = std::move(resources);
+  INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
+                            NodeManagerService,
+                            ResizeLocalResourceInstances,
                             request,
                             callback,
                             grpc_client_,
