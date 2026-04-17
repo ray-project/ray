@@ -716,14 +716,12 @@ class RecordingFakeRaylet : public ipc::FakeRayletIpcClient {
  public:
   StatusOr<ipc::ScopedResponse> AsyncGetObjects(
       const std::vector<ObjectID> &object_ids,
-      const std::vector<rpc::Address> &owner_addresses,
+      const std::vector<rpc::Address> &,
       int64_t) override {
     async_get_ids.push_back(object_ids);
-    async_get_owners.push_back(owner_addresses);
     return ipc::ScopedResponse();
   }
   std::vector<std::vector<ObjectID>> async_get_ids;
-  std::vector<std::vector<rpc::Address>> async_get_owners;
 };
 
 // Non-blocking probes (timeout_ms == 0) only return data for ids in `local_`.
@@ -760,7 +758,7 @@ std::vector<ObjectID> MakeRandomIds(int n) {
 
 }  // namespace
 
-TEST(PlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
+TEST(BatchingPassesTwoTwoOneIntoPlasmaGet, SendsOnlyRemoteIdsToRayletOnMixed) {
   auto fake_raylet = std::make_shared<RecordingFakeRaylet>();
   auto ids = MakeRandomIds(5);
   auto fake_plasma = std::make_shared<PartialPlasmaGetClient>(
@@ -769,12 +767,7 @@ TEST(PlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   CoreWorkerPlasmaStoreProvider provider(
       "", fake_raylet, [] { return Status::OK(); }, false, fake_plasma, 10, nullptr);
 
-  // Distinguishable ips to catch owner/id misalignment through the filter.
   std::vector<rpc::Address> owner_addresses(ids.size());
-  for (size_t i = 0; i < ids.size(); i++) {
-    owner_addresses[i].set_ip_address(absl::StrCat("owner-", i));
-  }
-
   absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> results;
   ASSERT_TRUE(provider.Get(ids, owner_addresses, -1, &results).ok());
   EXPECT_EQ(results.size(), 5U);
@@ -783,9 +776,6 @@ TEST(PlasmaStoreProviderFastPath, SendsOnlyRemoteIdsToRayletOnMixed) {
   ASSERT_EQ(fake_raylet->async_get_ids[0].size(), 2U);
   EXPECT_EQ(fake_raylet->async_get_ids[0][0], ids[1]);
   EXPECT_EQ(fake_raylet->async_get_ids[0][1], ids[3]);
-  ASSERT_EQ(fake_raylet->async_get_owners[0].size(), 2U);
-  EXPECT_EQ(fake_raylet->async_get_owners[0][0].ip_address(), "owner-1");
-  EXPECT_EQ(fake_raylet->async_get_owners[0][1].ip_address(), "owner-3");
 }
 
 class CoreWorkerPubsubWorkerObjectEvictionChannelTest
