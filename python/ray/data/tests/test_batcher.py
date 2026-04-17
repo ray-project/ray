@@ -4,7 +4,15 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.data._internal.batcher import Batcher, ShufflingBatcher
+from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
+from ray.data._internal.batcher import (
+    SHUFFLE_BUFFER_COMPACTION_THRESHOLD,
+    Batcher,
+    ShufflingBatcher,
+)
+from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
+from ray.data.block import BlockAccessor
 
 
 def gen_block(num_rows):
@@ -28,144 +36,99 @@ def test_shuffling_batcher():
         shuffle_buffer_min_size=buffer_size,
     )
 
-    def add_and_check(
-        num_rows,
-        materialized_buffer_size,
-        pending_buffer_size,
-        expect_has_batch=False,
-        no_nexting_yet=True,
-    ):
-        block = gen_block(num_rows)
-        batcher.add(block)
-        if expect_has_batch:
-            assert batcher.has_batch()
-        else:
-            assert not batcher.has_batch()
+    total_added = 0
+    total_yielded = 0
 
-        if no_nexting_yet:
-            # Check that no shuffle buffer has been materialized yet.
-            assert batcher._shuffle_buffer is None
-            assert batcher._batch_head == 0
-
-        assert batcher._builder.num_rows() == pending_buffer_size
-        assert batcher._num_compacted_rows() == materialized_buffer_size
+    def add_and_check(num_rows, expect_has_batch):
+        """Add a block and verify has_batch() matches expectation."""
+        nonlocal total_added
+        batcher.add(gen_block(num_rows))
+        total_added += num_rows
+        assert batcher.has_batch() == expect_has_batch, (
+            f"after adding {num_rows}: has_batch()={batcher.has_batch()}, "
+            f"expected {expect_has_batch} "
+            f"(compacted={batcher._num_compacted_rows()}, "
+            f"uncompacted={batcher._num_uncompacted_rows()}, "
+            f"total={batcher._num_rows()})"
+        )
 
     def next_and_check(
-        current_cursor,
-        materialized_buffer_size,
-        pending_buffer_size,
-        should_batch_be_full=True,
-        should_have_batch_after=True,
-        new_data_added=False,
+        expect_full_batch=True,
+        expect_has_batch_after=True,
     ):
-        if should_batch_be_full:
-            assert batcher.has_batch()
-        else:
-            batcher.has_any()
-        if new_data_added:
-            # If new data was added, the builder should be non-empty.
-            assert batcher._builder.num_rows() > 0
+        """Consume one batch and verify size and post-state."""
+        nonlocal total_yielded
         batch = batcher.next_batch()
-
-        if should_batch_be_full:
-            assert len(batch) == batch_size
-
-        assert batcher._builder.num_rows() == pending_buffer_size
-        assert batcher._num_compacted_rows() == materialized_buffer_size
-
-        if should_have_batch_after:
-            assert batcher.has_batch()
+        total_yielded += len(batch)
+        if expect_full_batch:
+            assert (
+                len(batch) == batch_size
+            ), f"expected full batch of {batch_size}, got {len(batch)}"
         else:
-            assert not batcher.has_batch()
+            assert len(batch) <= batch_size
+        assert batcher.has_batch() == expect_has_batch_after, (
+            f"after next_batch: has_batch()={batcher.has_batch()}, "
+            f"expected {expect_has_batch_after} "
+            f"(compacted={batcher._num_compacted_rows()}, "
+            f"uncompacted={batcher._num_uncompacted_rows()}, "
+            f"total={batcher._num_rows()})"
+        )
 
-    # Add less than a batch.
-    # Buffer not full and no batch slack.
-    add_and_check(3, materialized_buffer_size=0, pending_buffer_size=3)
+    # Before any data is added, there should be no batches.
+    assert not batcher.has_batch()
+    assert not batcher.has_any()
 
-    # Add to more than a batch (total=10).
-    # Buffer not full and no batch slack.
-    add_and_check(7, materialized_buffer_size=0, pending_buffer_size=10)
+    # Add blocks incrementally. All rows go into the pending buffer,
+    # and has_batch will return False until enough rows accumulate.
+    add_and_check(3, expect_has_batch=False)  # total=3
+    add_and_check(7, expect_has_batch=False)  # total=10
+    add_and_check(10, expect_has_batch=False)  # total=20
 
-    # Fill up to buffer (total=20).
-    # Buffer is full but no batch slack.
-    add_and_check(10, materialized_buffer_size=0, pending_buffer_size=20)
+    # After adding 15 more (total=35), total - batch_size = 30 >= min_rows_to_trigger.
+    add_and_check(15, expect_has_batch=True)  # total=35
 
-    # Fill past buffer and over 1.5 * min buffer size. A batch is now available, but
-    # compaction still doesn't happen until a next().
-    add_and_check(
-        15, materialized_buffer_size=0, pending_buffer_size=35, expect_has_batch=True
-    )
+    # All 35 rows are still uncompacted since no next_batch() has been called.
+    assert batcher._shuffle_buffer is None
+    assert batcher._builder.num_rows() == 35
 
-    # Consume only available batch.
-    next_and_check(
-        0,
-        materialized_buffer_size=30,
-        pending_buffer_size=0,
-        should_have_batch_after=True,
-        new_data_added=True,
-    )
+    # Consume one batch — this triggers the first compaction.
+    next_and_check(expect_full_batch=True, expect_has_batch_after=True)
+    assert batcher._shuffle_buffer is not None  # compaction happened
+    assert batcher._builder.num_rows() == 0  # all rows moved to compacted buffer
 
-    # Add 4 batches-worth to the already-full buffer.
-    add_and_check(
-        20,
-        materialized_buffer_size=30,
-        pending_buffer_size=20,
-        expect_has_batch=True,
-        no_nexting_yet=False,
-    )
+    # Add more data while consuming.
+    add_and_check(20, expect_has_batch=True)  # total grows
 
-    # Consume 4 batches from the buffer.
-    next_and_check(
-        0, materialized_buffer_size=25, pending_buffer_size=20, new_data_added=True
-    )
-    next_and_check(batch_size, materialized_buffer_size=20, pending_buffer_size=20)
-    # Triggers materialization of pending batches to avoid falling below min buf size.
-    next_and_check(2 * batch_size, materialized_buffer_size=35, pending_buffer_size=0)
-    next_and_check(
-        3 * batch_size,
-        materialized_buffer_size=30,
-        pending_buffer_size=0,
-        should_have_batch_after=True,
-    )
+    # Consume batches. Each must be full since we're still streaming.
+    while batcher.has_batch():
+        batch = batcher.next_batch()
+        assert len(batch) == batch_size
+        total_yielded += batch_size
 
-    # Add a full batch + a partial batch to the buffer.
-    add_and_check(
-        8,
-        materialized_buffer_size=30,
-        pending_buffer_size=8,
-        expect_has_batch=True,
-        no_nexting_yet=False,
-    )
-    next_and_check(
-        0,
-        materialized_buffer_size=25,
-        pending_buffer_size=8,
-        should_have_batch_after=True,
-        new_data_added=True,
-    )
+    # Streaming exhausted: remaining rows <= batch_size (not enough to trigger
+    # has_batch without more data or done_adding).
+    assert batcher._num_rows() <= batch_size
 
-    # Indicate to the batcher that we're done adding blocks.
+    # Add a partial amount and signal done.
+    batcher.add(gen_block(8))
+    total_added += 8
     batcher.done_adding()
 
-    # Consume 6 full batches and one partial batch, fully draining the buffer.
-    next_and_check(batch_size, materialized_buffer_size=28, pending_buffer_size=0)
-    next_and_check(2 * batch_size, materialized_buffer_size=23, pending_buffer_size=0)
-    next_and_check(3 * batch_size, materialized_buffer_size=18, pending_buffer_size=0)
-    next_and_check(4 * batch_size, materialized_buffer_size=13, pending_buffer_size=0)
-    next_and_check(5 * batch_size, materialized_buffer_size=8, pending_buffer_size=0)
-    next_and_check(
-        6 * batch_size,
-        materialized_buffer_size=3,
-        pending_buffer_size=0,
-        should_have_batch_after=False,
-    )
-    next_and_check(
-        7 * batch_size,
-        materialized_buffer_size=0,
-        pending_buffer_size=0,
-        should_batch_be_full=False,
-        should_have_batch_after=False,
-    )
+    # Drain remaining full batches via next_and_check.
+    while batcher.has_batch():
+        remaining_after = batcher._num_rows() - batch_size
+        next_and_check(
+            expect_full_batch=True,
+            expect_has_batch_after=remaining_after >= batch_size,
+        )
+
+    # Final partial batch.
+    if batcher.has_any():
+        next_and_check(expect_full_batch=False, expect_has_batch_after=False)
+
+    # All rows must be accounted for.
+    assert total_yielded == total_added
+    assert not batcher.has_any()
 
 
 def test_batching_pyarrow_table_with_many_chunks():
@@ -204,56 +167,6 @@ def test_batching_pyarrow_table_with_many_chunks():
         shuffling_batcher.next_batch()
     duration = time.perf_counter() - start
     assert duration < 30
-
-
-def test_batcher_combines_chunks_with_few_chunks():
-    """Test that the Batcher combines chunked columns even when the number of chunks
-    is below the default hash_partition threshold (10).
-
-    This is important for map_batches and local shuffle performance when the buffer
-    size is small.
-    """
-    # Create a block with 3 chunks per column (well below the default threshold of 10).
-    arrays = [pa.table({"a": list(range(i * 10, (i + 1) * 10))}) for i in range(3)]
-    block = pa.concat_tables(arrays)
-    assert block.column("a").num_chunks == 3
-
-    batch_size = 15
-    batcher = Batcher(batch_size, ensure_copy=False)
-    batcher.add(block)
-    batcher.done_adding()
-
-    # The first batch takes only part of the block, which triggers
-    # try_combine_chunked_columns in the slicing path.
-    batch = batcher.next_batch()
-    assert len(batch) == batch_size
-    # The returned batch should have combined chunks (1 chunk).
-    assert batch.column("a").num_chunks == 1
-
-
-def test_shuffling_batcher_combines_chunks_with_few_chunks():
-    """Test that the ShufflingBatcher combines chunked columns even when the number
-    of chunks is below the default hash_partition threshold (10).
-    """
-    # Create a block with 3 chunks per column.
-    arrays = [pa.table({"a": list(range(i * 10, (i + 1) * 10))}) for i in range(3)]
-    block = pa.concat_tables(arrays)
-    assert block.column("a").num_chunks == 3
-
-    batch_size = 10
-    batcher = ShufflingBatcher(
-        batch_size=batch_size,
-        shuffle_buffer_min_size=batch_size,
-        shuffle_seed=42,
-    )
-    batcher.add(block)
-    batcher.done_adding()
-
-    # After compaction, the internal shuffle buffer should have combined chunks.
-    batch = batcher.next_batch()
-    assert len(batch) == batch_size
-    # The shuffle buffer should have been defragmented to 1 chunk.
-    assert batcher._shuffle_buffer.column("a").num_chunks == 1
 
 
 @pytest.mark.parametrize(
@@ -311,6 +224,165 @@ def test_local_shuffle_buffer_warns_if_too_large(shutdown_only):
         # 256 MiB of memory usage > 128 MiB total on node.
         batches = ds.iter_batches(batch_size=1, local_shuffle_buffer_size=2)
         next(iter(batches))
+
+
+def _collect_rows_full_method(blocks, batch_size, buffer_size, seed):
+    """Reference implementation using the old full-shuffle method.
+
+    Materializes a fully shuffled copy of the buffer on each compaction,
+    then yields contiguous slices. Used to validate the incremental index method.
+    """
+    shuffle_buffer_min_size = max(buffer_size, batch_size)
+
+    min_rows_to_yield_batch = max(
+        1, int(shuffle_buffer_min_size * SHUFFLE_BUFFER_COMPACTION_THRESHOLD)
+    )
+
+    builder = DelegatingBlockBuilder()
+    shuffle_buffer = None
+    batch_head = 0
+    shuffle_seed = seed
+
+    for block in blocks:
+        if BlockAccessor.for_block(block).num_rows() > 0:
+            builder.add_block(block)
+
+    done_adding = True
+    rows = []
+
+    while True:
+        compacted = 0
+        if shuffle_buffer is not None:
+            compacted = max(
+                0, BlockAccessor.for_block(shuffle_buffer).num_rows() - batch_head
+            )
+        uncompacted = builder.num_rows()
+        num_rows = compacted + uncompacted
+
+        has_batch = num_rows >= batch_size
+        has_any = num_rows > 0
+
+        if not (has_batch or (done_adding and has_any)):
+            break
+
+        # Compaction: merge uncompacted rows into shuffle buffer.
+        if uncompacted > 0 and (done_adding or compacted <= min_rows_to_yield_batch):
+            if shuffle_buffer is not None:
+                if batch_head > 0:
+                    block_acc = BlockAccessor.for_block(shuffle_buffer)
+                    shuffle_buffer = block_acc.slice(batch_head, block_acc.num_rows())
+                builder.add_block(shuffle_buffer)
+            shuffle_buffer = builder.build()
+            shuffle_buffer = BlockAccessor.for_block(shuffle_buffer).random_shuffle(
+                shuffle_seed
+            )
+            if shuffle_seed is not None:
+                shuffle_seed += 1
+            if isinstance(BlockAccessor.for_block(shuffle_buffer), ArrowBlockAccessor):
+                shuffle_buffer = try_combine_chunked_columns(shuffle_buffer)
+            builder = DelegatingBlockBuilder()
+            batch_head = 0
+
+        buf_size = BlockAccessor.for_block(shuffle_buffer).num_rows()
+        bs = min(batch_size, buf_size - batch_head)
+        batch = BlockAccessor.for_block(shuffle_buffer).slice(
+            batch_head, batch_head + bs
+        )
+        batch_head += bs
+        rows.extend(batch.column("val").to_pylist())
+
+    return rows
+
+
+@pytest.mark.parametrize(
+    "batch_size,buffer_size,num_blocks,block_size",
+    [
+        (5, 20, 10, 10),
+        (1, 10, 5, 20),
+        (10, 10, 3, 50),
+        (7, 30, 8, 15),
+        (100, 100, 2, 200),
+    ],
+)
+def test_incremental_index_matches_full_method(
+    batch_size, buffer_size, num_blocks, block_size
+):
+    """Verify that the incremental index method yields the same multiset of
+    rows as the old full-shuffle reference implementation."""
+
+    seed = 42
+    blocks = [
+        pa.table({"val": list(range(i * block_size, (i + 1) * block_size))})
+        for i in range(num_blocks)
+    ]
+
+    # Incremental index method (current implementation).
+    batcher = ShufflingBatcher(
+        batch_size=batch_size,
+        shuffle_buffer_min_size=buffer_size,
+        shuffle_seed=seed,
+    )
+    for block in blocks:
+        batcher.add(block)
+    batcher.done_adding()
+    rows_index = []
+    while batcher.has_batch() or batcher.has_any():
+        batch = batcher.next_batch()
+        rows_index.extend(batch.column("val").to_pylist())
+
+    # Full-shuffle reference.
+    rows_full = _collect_rows_full_method(blocks, batch_size, buffer_size, seed)
+
+    total_rows = num_blocks * block_size
+    assert len(rows_index) == total_rows
+    assert len(rows_full) == total_rows
+    assert sorted(rows_index) == sorted(rows_full) == list(range(total_rows))
+
+
+def test_no_partial_batch_mid_stream():
+    """has_batch() must not return True when total rows < batch_size.
+
+    With SHUFFLE_BUFFER_COMPACTION_THRESHOLD < 1.0, _min_rows_to_yield_batch
+    can be less than batch_size. If we drain the compacted buffer below
+    batch_size while no uncompacted rows are available, has_batch() must
+    return False — otherwise next_batch() would return a partial batch
+    mid-stream.
+    """
+    batch_size = 10
+    buffer_size = 10  # common case: equal to batch_size
+
+    batcher = ShufflingBatcher(
+        batch_size=batch_size,
+        shuffle_buffer_min_size=buffer_size,
+        shuffle_seed=0,
+    )
+
+    # Add enough rows to trigger compaction and yield some batches.
+    batcher.add(gen_block(35))
+
+    # Consume batches until the compacted buffer is partially drained.
+    batches = []
+    while batcher.has_batch():
+        batch = batcher.next_batch()
+        batches.append(batch)
+        # Every batch returned mid-stream must be full.
+        assert (
+            len(batch) == batch_size
+        ), f"got partial batch of {len(batch)} rows mid-stream"
+
+    # At this point has_batch() is False. There may be leftover rows
+    # (< batch_size) but they should not be yielded until done_adding.
+    leftover = batcher._num_rows()
+    assert leftover < batch_size
+
+    # After done_adding, the remaining rows should drain as a partial batch.
+    batcher.done_adding()
+    assert batcher.has_any()
+    final_batch = batcher.next_batch()
+    assert len(final_batch) == leftover
+
+    total = sum(len(b) for b in batches) + len(final_batch)
+    assert total == 35
 
 
 if __name__ == "__main__":
