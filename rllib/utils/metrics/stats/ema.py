@@ -216,7 +216,13 @@ class EmaStats(StatsBase):
         if torch and isinstance(value, torch.Tensor):
             value = single_value_to_cpu(value)
 
-        self._value = np.nan
+        # Do NOT reset self._value to NaN here.  Unlike SumStats (where
+        # clearing prevents double-counting), the exponential moving
+        # average must be continuous across reduce() calls so that the
+        # running average carries over between training iterations.
+        # Resetting to NaN restarts the EMA from scratch every iteration,
+        # producing noisy saw-tooth plots instead of a smooth trend.
+        # See #62384.
 
         if compile:
             return value
