@@ -1025,6 +1025,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
         *,
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
+        multiplex_ids: Union[Dict[str, str], DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
         use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
         _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
@@ -1036,7 +1037,9 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
         Args:
             method_name: The method name to call on the deployment.
-            multiplexed_model_id: The model ID to use for multiplexed model requests.
+            multiplexed_model_id: Deprecated. Use ``multiplex_ids`` instead.
+            multiplex_ids: A dictionary mapping multiplex dimension names to
+                their IDs. e.g. ``{"model": "lora_v2", "session": "user_123"}``.
             stream: Whether to use streaming for the request.
             use_new_handle_api: Whether to use the new handle API.
             _prefer_local_routing: Whether to prefer local routing.
@@ -1054,7 +1057,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
 
             response: DeploymentResponse = handle.options(
                 method_name="other_method",
-                multiplexed_model_id="model:v1",
+                multiplex_ids={"model": "model:v1", "session": "user_1"},
             ).remote()
         """
         if use_new_handle_api is not DEFAULT.VALUE:
@@ -1069,9 +1072,24 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 "deprecated. Please use `init()` instead."
             )
 
+        # Bridge legacy multiplexed_model_id into multiplex_ids.
+        if multiplexed_model_id is not DEFAULT.VALUE:
+            if multiplex_ids is not DEFAULT.VALUE:
+                raise ValueError(
+                    "Cannot specify both `multiplexed_model_id` and "
+                    "`multiplex_ids`. Use `multiplex_ids` only."
+                )
+            warnings.warn(
+                "`multiplexed_model_id` is deprecated and will be removed in "
+                "Ray 2.58. Use `multiplex_ids={'model': ...}` instead."
+            )
+            multiplex_ids = {"model": multiplexed_model_id}
+            multiplexed_model_id = DEFAULT.VALUE
+
         return self._options(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
+            multiplex_ids=multiplex_ids,
             stream=stream,
             _prefer_local_routing=_prefer_local_routing,
             _by_reference=_by_reference,

@@ -352,8 +352,19 @@ RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S = 0.0
 
 SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
-# Serve HTTP request header key for routing requests.
-SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
+# Prefix/suffix for multi-dimensional multiplex HTTP headers.
+# Headers follow the pattern: serve_multiplexed_{dimension}_id
+# e.g. serve_multiplexed_model_id, serve_multiplexed_session_id.
+SERVE_MULTIPLEX_HEADER_PREFIX = "serve_multiplexed_"
+SERVE_MULTIPLEX_HEADER_SUFFIX = "_id"
+
+# Expose multiplexed model ID so telemetry can reference it without re-deriving the string.
+SERVE_MULTIPLEXED_MODEL_ID = (
+    f"{SERVE_MULTIPLEX_HEADER_PREFIX}model{SERVE_MULTIPLEX_HEADER_SUFFIX}"
+)
+
+# Conventional session header name.
+SERVE_SESSION_ID_HEADER = "x_session_id"
 
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"

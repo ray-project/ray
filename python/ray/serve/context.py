@@ -7,8 +7,8 @@ import asyncio
 import contextvars
 import logging
 from collections import defaultdict
-from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional, Set
 
 import ray
 from ray.serve._private.client import ServeControllerClient
@@ -26,6 +26,7 @@ from ray.serve.gang import GangContext
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.serve.schema import ReplicaRank
 from ray.util.annotations import DeveloperAPI
+import inspect
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -57,6 +58,10 @@ class ReplicaContext:
     _handle_registration_callback: Optional[Callable[[DeploymentID], None]] = None
     gang_context: Optional[GangContext] = None
     code_version: Optional[str] = None
+    # Set of multiplex dimensions registered via `@serve.multiplexed(name=...)`
+    # on `servable_object`. Populated once by `_set_internal_replica_context`
+    # at replica startup via `_collect_multiplex_dimensions`.
+    _multiplex_dimensions: Set[str] = field(default_factory=set)
 
     @property
     def app_name(self) -> str:
@@ -156,6 +161,18 @@ def _get_deployment_actor(actor_name: str):
     )
 
 
+def _collect_multiplex_dimensions(servable_object) -> set:
+    """
+    Scan `servable_object` for methods tagged by `@serve.multiplexed`
+    and return the set of registered dimension names.
+    """
+    return {
+        dim
+        for _, attr in inspect.getmembers(servable_object)
+        if isinstance(dim := getattr(attr, "_serve_multiplex_dimension", None), str)
+    }
+
+
 def _set_internal_replica_context(
     *,
     replica_id: ReplicaID,
@@ -177,6 +194,7 @@ def _set_internal_replica_context(
         _handle_registration_callback=handle_registration_callback,
         gang_context=gang_context,
         code_version=code_version,
+        _multiplex_dimensions=_collect_multiplex_dimensions(servable_object),
     )
 
 
@@ -240,7 +258,8 @@ class _RequestContext:
     request_id: str = ""
     _internal_request_id: str = ""
     app_name: str = ""
-    multiplexed_model_id: str = ""
+    # Multi-dimensional multiplex IDs: maps dimension name -> ID.
+    multiplex_ids: Dict[str, str] = field(default_factory=dict)
     grpc_context: Optional[RayServegRPCContext] = None
     is_http_request: bool = False
     cancel_on_parent_request_cancel: bool = False
@@ -250,6 +269,13 @@ class _RequestContext:
     # This is extracted from _ray_trace_ctx kwarg at the replica entry point
     # Advanced users can access this to propagate tracing to external systems
     _ray_trace_ctx: Optional[dict] = None
+
+    @property
+    def multiplexed_model_id(self) -> str:
+        """ID under the "model" multiplex dimension (derived from
+        `multiplex_ids`). Preserved as a property for internal readers; this
+        class is internal so there is no public compatibility guarantee."""
+        return self.multiplex_ids.get("model", "")
 
 
 _serve_request_context = contextvars.ContextVar(
@@ -285,11 +311,10 @@ def _set_request_context(
     request_id: str = "",
     _internal_request_id: str = "",
     app_name: str = "",
-    multiplexed_model_id: str = "",
+    multiplex_ids: Optional[Dict[str, str]] = None,
 ):
     """Set the request context. If the value is not set,
     the current context value will be used."""
-
     current_request_context = _get_serve_request_context()
 
     _serve_request_context.set(
@@ -299,8 +324,9 @@ def _set_request_context(
             _internal_request_id=_internal_request_id
             or current_request_context._internal_request_id,
             app_name=app_name or current_request_context.app_name,
-            multiplexed_model_id=multiplexed_model_id
-            or current_request_context.multiplexed_model_id,
+            multiplex_ids=multiplex_ids
+            if multiplex_ids is not None
+            else current_request_context.multiplex_ids,
         )
     )
 

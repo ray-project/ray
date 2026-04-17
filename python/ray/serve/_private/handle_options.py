@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, fields
+from dataclasses import dataclass, field, fields
+from typing import Dict
 
 import ray
 from ray.serve._private.common import DeploymentHandleSource
@@ -56,6 +57,8 @@ class DynamicHandleOptionsBase(ABC):
 
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
+    # Multi-dimensional multiplex IDs: maps dimension name -> ID.
+    multiplex_ids: Dict[str, str] = field(default_factory=dict)
     stream: bool = False
 
     @abstractmethod

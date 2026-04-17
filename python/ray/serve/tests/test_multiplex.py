@@ -300,7 +300,7 @@ class TestBasicAPI:
         """Test get_multiplexed_model_id() API"""
         assert serve.get_multiplexed_model_id() == ""
         ray.serve.context._serve_request_context.set(
-            ray.serve.context._RequestContext(multiplexed_model_id="1")
+            ray.serve.context._RequestContext(multiplex_ids={"model": "1"})
         )
         assert serve.get_multiplexed_model_id() == "1"
 

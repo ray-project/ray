@@ -1642,7 +1642,8 @@ class DeploymentReplica:
             state=ReplicaState.STARTING,
             start_time_s=0,
         )
-        self._multiplexed_model_ids: List[str] = []
+        # Per-dimension multiplex IDs: dimension name -> list of cached IDs.
+        self._multiplex_dim_to_ids: Dict[str, List[str]] = {}
         self._routing_stats: Dict[str, Any] = {}
 
     def get_running_replica_info(
@@ -1656,14 +1657,14 @@ class DeploymentReplica:
             actor_name=self._actor._actor_name,
             max_ongoing_requests=self._actor.max_ongoing_requests,
             is_cross_language=self._actor.is_cross_language,
-            multiplexed_model_ids=self.multiplexed_model_ids,
+            multiplex_dim_to_ids=dict(self._multiplex_dim_to_ids),
             routing_stats=self.routing_stats,
             port=self._actor._internal_grpc_port,
         )
 
-    def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
-        """Record the multiplexed model ids for this replica."""
-        self._multiplexed_model_ids = multiplexed_model_ids
+    def record_multiplex_dimension_ids(self, dimension_to_ids: Dict[str, List[str]]):
+        """Record per-dimension multiplex IDs for this replica."""
+        self._multiplex_dim_to_ids.update(dimension_to_ids)
 
     def record_routing_stats(self, routing_stats: Optional[Dict[str, Any]]):
         """Record the routing stats for this replica.
@@ -1673,10 +1674,6 @@ class DeploymentReplica:
         """
         if routing_stats is not None:
             self._routing_stats = routing_stats
-
-    @property
-    def multiplexed_model_ids(self) -> List[str]:
-        return self._multiplexed_model_ids
 
     @property
     def routing_stats(self) -> Dict[str, Any]:
@@ -4832,8 +4829,8 @@ class DeploymentState:
         # O(1) lookup via replica_id index.
         replica = self._replicas.get_by_id(info.replica_id)
         if replica is not None:
-            if info.multiplexed_model_ids is not None:
-                replica.record_multiplexed_model_ids(info.multiplexed_model_ids)
+            if info.multiplex_dim_to_ids is not None:
+                replica.record_multiplex_dimension_ids(info.multiplex_dim_to_ids)
             if info.routing_stats is not None:
                 replica.record_routing_stats(info.routing_stats)
             self._request_routing_info_updated = True

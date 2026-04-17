@@ -56,6 +56,7 @@ from ray.serve._private.common import (
     StreamingHTTPRequest,
     gRPCRequest,
     gRPCStreamingRequest,
+    parse_multiplex_ids_from_headers,
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
@@ -2070,7 +2071,7 @@ class Replica:
                     request_id=request_metadata.request_id,
                     _internal_request_id=request_metadata.internal_request_id,
                     app_name=self._deployment_id.app_name,
-                    multiplexed_model_id=request_metadata.multiplexed_model_id,
+                    multiplex_ids=dict(request_metadata.multiplex_ids),
                     grpc_context=request_metadata.grpc_context,
                     _client=request_metadata._client,
                     cancel_on_parent_request_cancel=self._ingress
@@ -2265,8 +2266,9 @@ class Replica:
             _request_protocol=RequestProtocol.GRPC,
             grpc_context=c,
             app_name=self._deployment_id.app_name,
-            # TODO(edoakes): populate this.
-            multiplexed_model_id="",
+            multiplex_ids=parse_multiplex_ids_from_headers(
+                context.invocation_metadata()
+            ),
             route=self._deployment_id.app_name,
             tracing_context=self.get_grpc_tracing_context(context),
             is_streaming=False,
@@ -2504,8 +2506,7 @@ class Replica:
             call_method="__call__",
             route=self._determine_http_route(scope),
             app_name=self._deployment_id.app_name,
-            # TODO(edoakes): populate the multiplexed model ID.
-            multiplexed_model_id="",
+            multiplex_ids=parse_multiplex_ids_from_headers(scope["headers"]),
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
             tracing_context=self.get_asgi_tracing_context(scope["headers"]),
@@ -2844,11 +2845,19 @@ class ReplicaActor:
         )
 
         proto = RequestMetadataProto.FromString(proto_request_metadata)
+        multiplex_ids = dict(proto.multiplex_ids) if proto.multiplex_ids else {}
+        if proto.multiplexed_model_id:
+            if "model" not in multiplex_ids:
+                multiplex_ids["model"] = proto.multiplexed_model_id
+            warnings.warn(
+                "Received a RequestMetadata proto with the deprecated "
+                "`multiplexed_model_id` field set. Use `multiplex_ids={'model': ...}` instead."
+            )
         request_metadata: RequestMetadata = RequestMetadata(
             request_id=proto.request_id,
             internal_request_id=proto.internal_request_id,
             call_method=proto.call_method,
-            multiplexed_model_id=proto.multiplexed_model_id,
+            multiplex_ids=multiplex_ids,
             route=proto.route,
         )
         return await self._replica_impl.handle_request(
@@ -3706,8 +3715,12 @@ class UserCallableWrapper:
                     run_sync_methods_in_threadpool_override=False,
                 )
 
+            # Shut down all multiplex dimension wrappers.
             if hasattr(self._callable, "__serve_multiplex_wrapper"):
-                await getattr(self._callable, "__serve_multiplex_wrapper").shutdown()
+                for wrapper in getattr(
+                    self._callable, "__serve_multiplex_wrapper"
+                ).values():
+                    await wrapper.shutdown()
 
         except Exception as e:
             logger.exception(f"Exception during graceful shutdown of replica: {e}")

@@ -144,7 +144,9 @@ class _ModelMultiplexWrapper:
                 _get_global_client().record_request_routing_info(
                     RequestRoutingInfo(
                         replica_id=self._replica_id,
-                        multiplexed_model_ids=self._get_loading_and_loaded_model_ids(),
+                        multiplex_dim_to_ids={
+                            "model": self._get_loading_and_loaded_model_ids()
+                        },
                     )
                 )
                 self._push_multiplexed_replica_info = False

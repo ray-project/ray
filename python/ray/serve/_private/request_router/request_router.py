@@ -196,15 +196,17 @@ class MultiplexMixin:
 
     This mixin is used to route requests to replicas that are multiplexed.
     It adds necessary attributes and methods to keep track of multiplexed
-    model IDs and offer the helpers to apply multiplex routing and rank
-    replicas based on multiplexed model IDs.
+    model IDs across multiple dimensions (e.g. "model", "session") and
+    offer the helpers to apply multiplex routing and rank replicas based
+    on multiplex IDs.
     """
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._multiplexed_model_id_to_replica_ids: DefaultDict[
-            str, Set[ReplicaID]
-        ] = defaultdict(set)
+        # Per-dimension map: dimension -> id -> replica_ids.
+        self._multiplex_dim_id_to_replica_ids: DefaultDict[
+            str, DefaultDict[str, Set[ReplicaID]]
+        ] = defaultdict(lambda: defaultdict(set))
 
         # When there is no match for a multiplexed model id, we will try to fall back
         # to all replicas immediately. This set is used to make sure we only fall back
@@ -239,31 +241,35 @@ class MultiplexMixin:
     def _update_multiplexed_model_ids_with_replicas(
         self, replicas: List[RunningReplica]
     ):
-        """Update the multiplexed model IDs based on the replicas.
-
-        This should be called when the replicas are updated.
+        """Rebuild the `dimension -> id -> replica_ids` index from the
+        current replica set. Called when the replica list changes.
         """
-        new_multiplexed_model_id_to_replica_ids = defaultdict(set)
+        new_dim_id_to_replica_ids: DefaultDict[
+            str, DefaultDict[str, Set[ReplicaID]]
+        ] = defaultdict(lambda: defaultdict(set))
 
         for r in replicas:
-            for model_id in r.multiplexed_model_ids:
-                new_multiplexed_model_id_to_replica_ids[model_id].add(r.replica_id)
+            for dim, ids in r.multiplex_dim_to_ids.items():
+                for mid in ids:
+                    new_dim_id_to_replica_ids[dim][mid].add(r.replica_id)
 
-        self._multiplexed_model_id_to_replica_ids = (
-            new_multiplexed_model_id_to_replica_ids
-        )
+        self._multiplex_dim_id_to_replica_ids = new_dim_id_to_replica_ids
 
     def _get_replica_ids_with_fewest_multiplexed_models(self) -> Set[str]:
-        """Get the set of replicas that have the fewest multiplexed models loaded."""
+        """Get the set of replicas that have the fewest cached "model"
+        dimension entries."""
+
+        def _num_models(replica: "RunningReplica") -> int:
+            return len(replica.multiplex_dim_to_ids.get("model", ()))
+
         candidates = set()
-        sorted_replicas = sorted(
-            self._replicas.values(), key=lambda x: len(x.multiplexed_model_ids)
-        )
-        least_num_multiplexed_model_ids = math.inf
+        sorted_replicas = sorted(self._replicas.values(), key=_num_models)
+        least_num = math.inf
         for replica in sorted_replicas:
-            if len(replica.multiplexed_model_ids) <= least_num_multiplexed_model_ids:
+            n = _num_models(replica)
+            if n <= least_num:
                 candidates.add(replica.replica_id)
-                least_num_multiplexed_model_ids = len(replica.multiplexed_model_ids)
+                least_num = n
             else:
                 break
 
@@ -312,9 +318,9 @@ class MultiplexMixin:
             time.time() - multiplexed_start_matching_time
             < self._multiplexed_matching_timeout
         ):
-            candidate_replica_ids = self._multiplexed_model_id_to_replica_ids.get(
-                multiplexed_model_id, None
-            )
+            candidate_replica_ids = self._multiplex_dim_id_to_replica_ids.get(
+                "model", {}
+            ).get(multiplexed_model_id, None)
             if (
                 not candidate_replica_ids
                 and multiplexed_model_id
@@ -357,9 +363,9 @@ class MultiplexMixin:
         Rank 1 is the list of replicas that have the fewest multiplexed models.
         Rank 2 is the list of all other replicas.
         """
-        replica_ids_with_multiplexed_model = (
-            self._multiplexed_model_id_to_replica_ids.get(multiplexed_model_id, set())
-        )
+        replica_ids_with_multiplexed_model = self._multiplex_dim_id_to_replica_ids.get(
+            "model", {}
+        ).get(multiplexed_model_id, set())
         replica_ids_with_fewest_multiplexed_models = (
             self._get_replica_ids_with_fewest_multiplexed_models()
         )

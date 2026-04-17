@@ -25,6 +25,7 @@ from ray.serve._private.common import (
     RequestMetadata,
     RequestProtocol,
     gRPCStreamingRequest,
+    parse_multiplex_ids_from_headers,
 )
 from ray.serve._private.constants import (
     HEALTHY_MESSAGE,
@@ -40,7 +41,6 @@ from ray.serve._private.constants import (
     SERVE_LOG_REQUEST_ID,
     SERVE_LOG_ROUTE,
     SERVE_LOGGER_NAME,
-    SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import get_proxy_handle
@@ -823,7 +823,6 @@ class gRPCProxy(GenericProxy):
         Unpack gRPC request metadata and extract info to set up request context and
         handle.
         """
-        multiplexed_model_id = proxy_request.multiplexed_model_id
         request_id = proxy_request.request_id
         if not request_id:
             request_id = generate_request_id()
@@ -831,8 +830,8 @@ class gRPCProxy(GenericProxy):
 
         handle = handle.options(
             stream=proxy_request.stream,
-            multiplexed_model_id=multiplexed_model_id,
             method_name=proxy_request.method_name,
+            multiplex_ids=proxy_request.multiplex_ids,
         )
 
         request_context_info = {
@@ -840,7 +839,7 @@ class gRPCProxy(GenericProxy):
             "request_id": request_id,
             "_internal_request_id": internal_request_id,
             "app_name": app_name,
-            "multiplexed_model_id": multiplexed_model_id,
+            "multiplex_ids": proxy_request.multiplex_ids,
             "grpc_context": proxy_request.ray_serve_grpc_context,
             "_client": proxy_request.client,
         }
@@ -1228,17 +1227,11 @@ class HTTPProxy(GenericProxy):
             "is_http_request": True,
             "_client": format_client_address(proxy_request.client),
         }
+        multiplex_ids = parse_multiplex_ids_from_headers(proxy_request.headers)
+        handle = handle.options(multiplex_ids=multiplex_ids)
+        request_context_info["multiplex_ids"] = multiplex_ids
+
         for key, value in proxy_request.headers:
-            # Normalize the header key: lowercase and replace hyphens with
-            # underscores so that both "serve_multiplexed_model_id" and
-            # "serve-multiplexed-model-id" (the form produced by proxies such
-            # as nginx / AWS API Gateway that convert underscores to hyphens)
-            # are recognised correctly.
-            normalized_key = key.decode().lower().replace("-", "_")
-            if normalized_key == SERVE_MULTIPLEXED_MODEL_ID:
-                multiplexed_model_id = value.decode()
-                handle = handle.options(multiplexed_model_id=multiplexed_model_id)
-                request_context_info["multiplexed_model_id"] = multiplexed_model_id
             if key.decode() == SERVE_HTTP_REQUEST_ID_HEADER:
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(

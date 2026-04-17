@@ -224,7 +224,7 @@ class TestgRPCProxyRequest:
         assert proxy_request.method_name == method_name
         assert proxy_request.app_name == application
         assert proxy_request.request_id == request_id
-        assert proxy_request.multiplexed_model_id == multiplexed_model_id
+        assert proxy_request.multiplex_ids == {"model": multiplexed_model_id}
         assert proxy_request.is_route_request is False
         assert proxy_request.is_health_request is False
 

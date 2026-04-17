@@ -3,12 +3,16 @@ import pickle
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import Enum
-from typing import Any, AsyncIterator, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 import grpc
 from starlette.types import Receive, Scope, Send
 
-from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
+from ray.serve._private.common import (
+    StreamingHTTPRequest,
+    gRPCRequest,
+    parse_multiplex_ids_from_headers,
+)
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import format_grpc_peer_address
 from ray.serve._private.tracing_utils import (
@@ -16,7 +20,6 @@ from ray.serve._private.tracing_utils import (
     is_tracing_enabled,
     set_trace_context,
 )
-from ray.serve._private.utils import DEFAULT
 from ray.serve.grpc_util import RayServegRPCContext
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -192,7 +195,7 @@ class gRPCProxyRequest(ProxyRequest):
         self.app_name = ""
         self.request_id = None
         self.method_name = "__call__"
-        self.multiplexed_model_id = DEFAULT.VALUE
+        self.multiplex_ids: Dict[str, str] = {}
         # ray_serve_grpc_context is a class implemented by us to be able to serialize
         # the object and pass it into the deployment.
         self.ray_serve_grpc_context = RayServegRPCContext(context)
@@ -202,13 +205,25 @@ class gRPCProxyRequest(ProxyRequest):
         if not self.is_route_request and not self.is_health_request:
             service_method_split = self.service_method.split("/")
             self.method_name = service_method_split[-1]
+            legacy_model_id = None
             for key, value in self.context.invocation_metadata():
                 if key == "application":
                     self.app_name = value
                 elif key == "request_id":
                     self.request_id = value
                 elif key == "multiplexed_model_id":
-                    self.multiplexed_model_id = value
+                    # Kept for backward compatibility; newer clients should use `serve_multiplexed_model_id`.
+                    # TODO (jeffreywang): Remove this in Ray 2.58
+                    legacy_model_id = value
+            # Extract multiplex IDs (e.g. model, session) via the generalized
+            # `serve_multiplexed_{dimension}_id` / `x-session-id` headers.
+            self.multiplex_ids = parse_multiplex_ids_from_headers(
+                self.context.invocation_metadata()
+            )
+            # Fold the legacy bare key in as the "model" dimension if the
+            # generalized header wasn't also provided.
+            if legacy_model_id is not None:
+                self.multiplex_ids.setdefault("model", legacy_model_id)
 
     @property
     def request_type(self) -> str:

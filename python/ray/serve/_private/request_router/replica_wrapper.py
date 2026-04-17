@@ -183,7 +183,9 @@ class RunningReplica:
 
     def __init__(self, replica_info: RunningReplicaInfo):
         self._replica_info = replica_info
-        self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
+        self._multiplex_dim_to_ids: Dict[str, Set[str]] = {
+            dim: set(ids) for dim, ids in replica_info.multiplex_dim_to_ids.items()
+        }
 
         # Fetch and cache the actor handle once per RunningReplica instance.
         # This avoids the borrower-of-borrower pattern while minimizing GCS lookups.
@@ -205,10 +207,10 @@ class RunningReplica:
         """Update mutable fields from a new RunningReplicaInfo.
 
         Called when reusing an existing wrapper in _update_running_replicas.
-        Replicas dynamically load/unload models via record_multiplexed_model_ids,
+        Replicas dynamically load/unload entries via record_multiplex_dimension_ids,
         which triggers a broadcast with updated RunningReplicaInfo. Without this
-        update, the router would use stale multiplexed_model_ids and break
-        multiplexed model routing.
+        update, the router would use stale multiplex_dim_to_ids and break
+        multiplex routing.
 
         Because we reassign _replica_info, any property that reads from it
         (including max_ongoing_requests, node_id, availability_zone, etc.)
@@ -217,7 +219,9 @@ class RunningReplica:
         to the replica's identity and should never change for a live replica.
         """
         self._replica_info = replica_info
-        self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
+        self._multiplex_dim_to_ids = {
+            dim: set(ids) for dim, ids in replica_info.multiplex_dim_to_ids.items()
+        }
 
     @property
     def replica_id(self) -> ReplicaID:
@@ -240,9 +244,15 @@ class RunningReplica:
         return self._replica_info.availability_zone
 
     @property
+    def multiplex_dim_to_ids(self) -> Dict[str, Set[str]]:
+        """Per-dimension multiplex IDs on this replica."""
+        return self._multiplex_dim_to_ids
+
+    @property
     def multiplexed_model_ids(self) -> Set[str]:
         """Set of model IDs on this replica."""
-        return self._multiplexed_model_ids
+        # TODO (jeffreywang): Deprecate in Ray 2.58.
+        return self._multiplex_dim_to_ids.get("model", set())
 
     @property
     def routing_stats(self) -> Dict[str, Any]:

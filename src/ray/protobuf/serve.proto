@@ -260,9 +260,12 @@ message RequestMetadata {
 
   map<string, string> context = 4;
 
-  string multiplexed_model_id = 5;
+  // TODO (jeffreywang): Deprecate in Ray 2.58
+  string multiplexed_model_id = 5 [deprecated = true];
 
   string route = 6;
+
+  map<string, string> multiplex_ids = 7;
 }
 
 message RequestWrapper {

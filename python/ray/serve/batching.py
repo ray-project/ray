@@ -2,7 +2,7 @@ import asyncio
 import io
 import logging
 import time
-from collections import deque
+from collections import defaultdict, deque
 from dataclasses import dataclass
 from functools import wraps
 from inspect import isasyncgenfunction, iscoroutinefunction
@@ -440,36 +440,35 @@ class _BatchQueue:
             for future in futures:
                 _set_exception_if_not_done(future, e)
 
-    def _split_batch_by_model_id(
+    def _split_batch_by_multiplex_ids(
         self, batch: List[_SingleRequest]
     ) -> List[List[_SingleRequest]]:
-        """Split a batch into sub-batches based on multiplexed_model_id.
+        """Split a batch into sub-batches based on multiplex IDs.
 
-        When using model multiplexing with batching, requests for different models
-        may end up in the same batch. This method ensures that each sub-batch only
-        contains requests for the same model, preventing issues where a single batch
-        contains requests for different models.
+        When using multiplexing with batching, requests with different multiplex
+        IDs may end up in the same batch. This method ensures that each sub-batch
+        only contains requests with the same multiplex IDs, preventing issues
+        where a single batch contains requests with different multiplex IDs.
 
-        If no requests have a multiplexed_model_id set, returns the original batch
+        If no requests have multiplex IDs set, returns the original batch
         as a single sub-batch.
 
         Args:
             batch: The batch of requests to split.
 
         Returns:
-            A list of sub-batches, where each sub-batch contains requests for the
-            same multiplexed_model_id.
+            A list of sub-batches, where each sub-batch contains requests with
+            the same multiplex IDs.
         """
-        # Group requests by their multiplexed_model_id
-        model_id_to_requests: Dict[str, List[_SingleRequest]] = {}
+        # Group requests by their full multiplex identity
+        multiplex_ids_to_requests: Dict[frozenset, List[_SingleRequest]] = defaultdict(
+            list
+        )
         for request in batch:
-            model_id = request.request_context.multiplexed_model_id
-            if model_id not in model_id_to_requests:
-                model_id_to_requests[model_id] = []
-            model_id_to_requests[model_id].append(request)
+            key = frozenset(request.request_context.multiplex_ids.items())
+            multiplex_ids_to_requests[key].append(request)
 
-        # Return sub-batches for each model_id
-        return list(model_id_to_requests.values())
+        return list(multiplex_ids_to_requests.values())
 
     async def _process_batches(self, func: Callable) -> None:
         """Loops infinitely and processes queued request batches."""
@@ -479,11 +478,11 @@ class _BatchQueue:
         while not self._loop.is_closed():
             batch, _ = await self.wait_for_batch()
 
-            # Split batch by multiplexed_model_id to ensure requests for different
-            # models are processed in separate batches. This is necessary when using
-            # model multiplexing with batching, as a single batch containing requests
-            # for different models would not work correctly.
-            sub_batches = self._split_batch_by_model_id(batch)
+            # Split batch by multiplex IDs to ensure requests with different
+            # multiplex IDs are processed in separate batches. This is necessary
+            # when using multiplexing with batching, as a single batch containing
+            # requests with different multiplex IDs would not work correctly.
+            sub_batches = self._split_batch_by_multiplex_ids(batch)
 
             # Process all sub-batches together under a single semaphore permit.
             # This ensures sub-batches from the same original batch run concurrently
@@ -510,7 +509,7 @@ class _BatchQueue:
             # copies the current context, giving each sub-batch its own isolated
             # contextvars. This prevents concurrent sub-batches from overwriting
             # each other's _serve_batch_request_context, which would cause
-            # get_multiplexed_model_id() to return wrong values.
+            # get_multiplexed_id() to return wrong values.
             tasks = [
                 asyncio.create_task(self._process_batch_inner(func, sub_batch))
                 for sub_batch in sub_batches

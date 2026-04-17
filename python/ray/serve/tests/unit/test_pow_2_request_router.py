@@ -4,7 +4,7 @@ import os
 import random
 import sys
 import time
-from typing import Optional, Set
+from typing import Dict, Optional, Set
 
 import pytest
 
@@ -51,7 +51,7 @@ class FakeRunningReplica(RunningReplica):
         node_id: str = "",
         availability_zone: Optional[str] = None,
         reset_after_response: bool = False,
-        model_ids: Optional[Set[str]] = None,
+        multiplex_dim_to_ids: Optional[Dict[str, Set[str]]] = None,
         sleep_time_s: float = 0.0,
         max_ongoing_requests: int = DEFAULT_MAX_ONGOING_REQUESTS,
     ):
@@ -65,7 +65,7 @@ class FakeRunningReplica(RunningReplica):
         self._max_ongoing_requests = max_ongoing_requests
         self._has_queue_len_response = asyncio.Event()
         self._reset_after_response = reset_after_response
-        self._model_ids = model_ids or set()
+        self._multiplex_dim_to_ids: Dict[str, Set[str]] = multiplex_dim_to_ids or {}
         self._sleep_time_s = sleep_time_s
 
         self.get_queue_len_was_cancelled = False
@@ -85,12 +85,13 @@ class FakeRunningReplica(RunningReplica):
         return self._availability_zone
 
     @property
-    def multiplexed_model_ids(self) -> Set[str]:
-        return self._model_ids
+    def multiplex_dim_to_ids(self):
+        return self._multiplex_dim_to_ids
 
     def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
-        """Override to update _model_ids for FakeRunningReplica."""
-        self._model_ids = set(replica_info.multiplexed_model_ids)
+        self._multiplex_dim_to_ids = {
+            d: set(ids) for d, ids in replica_info.multiplex_dim_to_ids.items()
+        }
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -197,29 +198,20 @@ def pow_2_router(request) -> PowerOfTwoChoicesRequestRouter:
 
 
 def fake_pending_request(
-    *, created_at: Optional[float] = None, model_id: str = ""
+    *,
+    created_at: Optional[float] = None,
+    multiplex_ids: Optional[Dict[str, str]] = None,
 ) -> PendingRequest:
+    metadata = RequestMetadata(
+        request_id=generate_request_id(),
+        internal_request_id=generate_request_id(),
+        multiplex_ids=multiplex_ids or {},
+    )
     if created_at is not None:
         return PendingRequest(
-            args=list(),
-            kwargs=dict(),
-            metadata=RequestMetadata(
-                request_id=generate_request_id(),
-                internal_request_id=generate_request_id(),
-                multiplexed_model_id=model_id,
-            ),
-            created_at=created_at,
+            args=list(), kwargs=dict(), metadata=metadata, created_at=created_at
         )
-    else:
-        return PendingRequest(
-            args=list(),
-            kwargs=dict(),
-            metadata=RequestMetadata(
-                request_id=generate_request_id(),
-                internal_request_id=generate_request_id(),
-                multiplexed_model_id=model_id,
-            ),
-        )
+    return PendingRequest(args=list(), kwargs=dict(), metadata=metadata)
 
 
 @pytest.mark.asyncio
@@ -1146,16 +1138,16 @@ class TestModelMultiplexing:
         s = pow_2_router
         loop = get_or_create_event_loop()
 
-        r1 = FakeRunningReplica("r1", model_ids={"m1", "m2"})
+        r1 = FakeRunningReplica("r1", multiplex_dim_to_ids={"model": {"m1", "m2"}})
         r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
-        r2 = FakeRunningReplica("r2", model_ids={"m2", "m3"})
+        r2 = FakeRunningReplica("r2", multiplex_dim_to_ids={"model": {"m2", "m3"}})
         r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
-        r3 = FakeRunningReplica("r3", model_ids={})
+        r3 = FakeRunningReplica("r3")
         r3.set_queue_len_response(0)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
-            request = fake_pending_request(model_id="m2")
+            request = fake_pending_request(multiplex_ids={"model": "m2"})
             task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) in {r1, r2}
 
@@ -1165,13 +1157,13 @@ class TestModelMultiplexing:
         """
         s = pow_2_router
         loop = get_or_create_event_loop()
-        r1 = FakeRunningReplica("r1", model_ids={"m1", "m2"})
-        r2 = FakeRunningReplica("r2", model_ids={"m2"})
+        r1 = FakeRunningReplica("r1", multiplex_dim_to_ids={"model": {"m1", "m2"}})
+        r2 = FakeRunningReplica("r2", multiplex_dim_to_ids={"model": {"m2"}})
         r1.set_queue_len_response(0)
         r2.set_queue_len_response(0)
         s.update_replicas([r1, r2])
         for _ in range(10):
-            request = fake_pending_request(model_id="m3")
+            request = fake_pending_request(multiplex_ids={"model": "m3"})
             task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == r2
 
@@ -1182,13 +1174,13 @@ class TestModelMultiplexing:
         """
         s = pow_2_router
         loop = get_or_create_event_loop()
-        r1 = FakeRunningReplica("r1", model_ids={"m1", "m2"})
-        r2 = FakeRunningReplica("r2", model_ids={"m2"})
+        r1 = FakeRunningReplica("r1", multiplex_dim_to_ids={"model": {"m1", "m2"}})
+        r2 = FakeRunningReplica("r2", multiplex_dim_to_ids={"model": {"m2"}})
         r1.set_queue_len_response(0)
         r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
         s.update_replicas([r1, r2])
         for _ in range(10):
-            request = fake_pending_request(model_id="m3")
+            request = fake_pending_request(multiplex_ids={"model": "m3"})
             task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == r1
 
@@ -1199,12 +1191,12 @@ class TestModelMultiplexing:
         s = pow_2_router
         loop = get_or_create_event_loop()
 
-        r1 = FakeRunningReplica("r1", model_ids={})
+        r1 = FakeRunningReplica("r1")
         r1.set_queue_len_response(0)
         s.update_replicas([r1])
 
         for _ in range(10):
-            request = fake_pending_request(model_id="m1")
+            request = fake_pending_request(multiplex_ids={"model": "m1"})
             task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == r1
 
@@ -1216,16 +1208,16 @@ class TestModelMultiplexing:
         s = pow_2_router
         loop = get_or_create_event_loop()
 
-        r1 = FakeRunningReplica("r1", model_ids={"m1", "m2"})
+        r1 = FakeRunningReplica("r1", multiplex_dim_to_ids={"model": {"m1", "m2"}})
         r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
-        r2 = FakeRunningReplica("r2", model_ids={"m2", "m3"})
+        r2 = FakeRunningReplica("r2", multiplex_dim_to_ids={"model": {"m2", "m3"}})
         r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
-        r3 = FakeRunningReplica("r3", model_ids={})
+        r3 = FakeRunningReplica("r3")
         r3.set_queue_len_response(0)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
-            request = fake_pending_request(model_id="m2")
+            request = fake_pending_request(multiplex_ids={"model": "m2"})
             task = loop.create_task(s._choose_replica_for_request(request))
             assert (await task) == r3
 
@@ -1237,33 +1229,45 @@ class TestModelMultiplexing:
         s = pow_2_router
         loop = get_or_create_event_loop()
 
-        r1 = FakeRunningReplica("r1", model_ids={"m1"})
+        r1 = FakeRunningReplica("r1", multiplex_dim_to_ids={"model": {"m1"}})
         r1.set_queue_len_response(0)
-        r2 = FakeRunningReplica("r2", model_ids={"m2"})
+        r2 = FakeRunningReplica("r2", multiplex_dim_to_ids={"model": {"m2"}})
         r2.set_queue_len_response(0)
-        r3 = FakeRunningReplica("r3", model_ids={"m3"})
+        r3 = FakeRunningReplica("r3", multiplex_dim_to_ids={"model": {"m3"}})
         r3.set_queue_len_response(0)
         s.update_replicas([r1, r2, r3])
 
         for _ in range(10):
             tasks = [
                 loop.create_task(
-                    s._choose_replica_for_request(fake_pending_request(model_id="m1"))
+                    s._choose_replica_for_request(
+                        fake_pending_request(multiplex_ids={"model": "m1"})
+                    )
                 ),
                 loop.create_task(
-                    s._choose_replica_for_request(fake_pending_request(model_id="m2"))
+                    s._choose_replica_for_request(
+                        fake_pending_request(multiplex_ids={"model": "m2"})
+                    )
                 ),
                 loop.create_task(
-                    s._choose_replica_for_request(fake_pending_request(model_id="m3"))
+                    s._choose_replica_for_request(
+                        fake_pending_request(multiplex_ids={"model": "m3"})
+                    )
                 ),
                 loop.create_task(
-                    s._choose_replica_for_request(fake_pending_request(model_id="m1"))
+                    s._choose_replica_for_request(
+                        fake_pending_request(multiplex_ids={"model": "m1"})
+                    )
                 ),
                 loop.create_task(
-                    s._choose_replica_for_request(fake_pending_request(model_id="m2"))
+                    s._choose_replica_for_request(
+                        fake_pending_request(multiplex_ids={"model": "m2"})
+                    )
                 ),
                 loop.create_task(
-                    s._choose_replica_for_request(fake_pending_request(model_id="m3"))
+                    s._choose_replica_for_request(
+                        fake_pending_request(multiplex_ids={"model": "m3"})
+                    )
                 ),
             ]
 
@@ -1294,7 +1298,9 @@ class TestModelMultiplexing:
 
         tasks = [
             loop.create_task(
-                s._choose_replica_for_request(fake_pending_request(model_id="m1"))
+                s._choose_replica_for_request(
+                    fake_pending_request(multiplex_ids={"model": "m1"})
+                )
             )
             for _ in range(100)
         ]
@@ -1307,7 +1313,7 @@ class TestModelMultiplexing:
         # That one should be chosen for all of the tasks.
         r2 = FakeRunningReplica("r2")
         r2.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS + 1)
-        r3 = FakeRunningReplica("r3", model_ids={"m1"})
+        r3 = FakeRunningReplica("r3", multiplex_dim_to_ids={"model": {"m1"}})
         r3.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS - 1)
 
         s.update_replicas([r1, r2, r3])
@@ -1329,21 +1335,29 @@ class TestModelMultiplexing:
         for _ in range(10):
             m1_tasks.append(
                 loop.create_task(
-                    s._choose_replica_for_request(fake_pending_request(model_id="m1"))
+                    s._choose_replica_for_request(
+                        fake_pending_request(multiplex_ids={"model": "m1"})
+                    )
                 )
             )
             m2_tasks.append(
                 loop.create_task(
-                    s._choose_replica_for_request(fake_pending_request(model_id="m2"))
+                    s._choose_replica_for_request(
+                        fake_pending_request(multiplex_ids={"model": "m2"})
+                    )
                 )
             )
 
         done, _ = await asyncio.wait(m1_tasks + m2_tasks, timeout=0.01)
         assert len(done) == 0
 
-        r1 = FakeRunningReplica("r1", model_ids={"m1"}, reset_after_response=True)
+        r1 = FakeRunningReplica(
+            "r1", multiplex_dim_to_ids={"model": {"m1"}}, reset_after_response=True
+        )
         r1.set_queue_len_response(0)
-        r2 = FakeRunningReplica("r2", model_ids={"m2"}, reset_after_response=True)
+        r2 = FakeRunningReplica(
+            "r2", multiplex_dim_to_ids={"model": {"m2"}}, reset_after_response=True
+        )
         r2.set_queue_len_response(0)
         s.update_replicas([r1, r2])
 
@@ -1383,18 +1397,20 @@ class TestModelMultiplexing:
         s = pow_2_router
         loop = get_or_create_event_loop()
 
-        r1 = FakeRunningReplica("r1", model_ids={"m1"})
+        r1 = FakeRunningReplica("r1", multiplex_dim_to_ids={"model": {"m1"}})
         r1.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
-        r2 = FakeRunningReplica("r2", model_ids={})
+        r2 = FakeRunningReplica("r2")
         r2.set_queue_len_response(0)
-        r3 = FakeRunningReplica("r3", model_ids={})
+        r3 = FakeRunningReplica("r3")
         r3.set_queue_len_response(0)
         s.update_replicas([r1, r2, r3])
 
         # Sending burst of requests with model_id=m1.
         tasks = [
             loop.create_task(
-                s._choose_replica_for_request(fake_pending_request(model_id="m1"))
+                s._choose_replica_for_request(
+                    fake_pending_request(multiplex_ids={"model": "m1"})
+                )
             )
             for _ in range(100)
         ]
@@ -2142,7 +2158,9 @@ async def test_update_running_replicas_refreshes_multiplexed_model_ids(
     def create_fake_replica(replica_info: RunningReplicaInfo) -> FakeRunningReplica:
         return FakeRunningReplica(
             replica_info.replica_id.unique_id,
-            model_ids=set(replica_info.multiplexed_model_ids),
+            multiplex_dim_to_ids={
+                "model": set(replica_info.multiplex_dim_to_ids.get("model", []))
+            },
         )
 
     router = PowerOfTwoChoicesRequestRouter(
@@ -2167,11 +2185,12 @@ async def test_update_running_replicas_refreshes_multiplexed_model_ids(
         availability_zone=None,
         actor_name="actor_r1",
         max_ongoing_requests=10,
-        multiplexed_model_ids=["m1"],
+        multiplex_dim_to_ids={"model": ["m1"]},
     )
     router._update_running_replicas([info_v1])
-    assert router._multiplexed_model_id_to_replica_ids.get("m1") == {replica_id}
-    assert "m2" not in router._multiplexed_model_id_to_replica_ids
+    model_map = router._multiplex_dim_id_to_replica_ids.get("model", {})
+    assert model_map.get("m1") == {replica_id}
+    assert "m2" not in model_map
 
     # Second update: same replica, now has m1 and m2 (e.g. after loading model m2)
     info_v2 = RunningReplicaInfo(
@@ -2181,11 +2200,12 @@ async def test_update_running_replicas_refreshes_multiplexed_model_ids(
         availability_zone=None,
         actor_name="actor_r1",
         max_ongoing_requests=10,
-        multiplexed_model_ids=["m1", "m2"],
+        multiplex_dim_to_ids={"model": ["m1", "m2"]},
     )
     router._update_running_replicas([info_v2])
-    assert router._multiplexed_model_id_to_replica_ids.get("m1") == {replica_id}
-    assert router._multiplexed_model_id_to_replica_ids.get("m2") == {replica_id}
+    model_map = router._multiplex_dim_id_to_replica_ids.get("model", {})
+    assert model_map.get("m1") == {replica_id}
+    assert model_map.get("m2") == {replica_id}
 
 
 @pytest.mark.asyncio
@@ -2195,11 +2215,15 @@ async def test_rank_replicas_via_multiplex(
     """Test rank_replicas_via_multiplex returns the correct ranking."""
     s = pow_2_router
 
-    replica_with_multiplexed_model = FakeRunningReplica("r1", model_ids={"m1", "m2"})
-    replica_with_other_models = FakeRunningReplica("r2", model_ids={"m2", "m3"})
+    replica_with_multiplexed_model = FakeRunningReplica(
+        "r1", multiplex_dim_to_ids={"model": {"m1", "m2"}}
+    )
+    replica_with_other_models = FakeRunningReplica(
+        "r2", multiplex_dim_to_ids={"model": {"m2", "m3"}}
+    )
     replica_with_no_model = FakeRunningReplica(
         "r3",
-        model_ids=set(),
+        multiplex_dim_to_ids={"model": set()},
     )
     all_replicas = [
         replica_with_other_models,
