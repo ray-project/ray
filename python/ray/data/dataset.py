@@ -2005,7 +2005,7 @@ class Dataset:
         import pandas as pd
         import pyarrow as pa
 
-        if self._plan.initial_num_blocks() == 0:
+        if self._logical_plan.initial_num_blocks() == 0:
             raise ValueError("Cannot sample from an empty Dataset.")
 
         if fraction < 0 or fraction > 1:
@@ -3940,7 +3940,7 @@ class Dataset:
             The number of records in the dataset.
         """
         # Handle empty dataset.
-        if self._plan.initial_num_blocks() == 0:
+        if self._logical_plan.initial_num_blocks() == 0:
             return 0
 
         # For parquet, we can return the count directly from metadata.
@@ -7244,7 +7244,7 @@ class Dataset:
         from ipywidgets import HTML, Tab
 
         metadata = {
-            "num_blocks": self._plan.initial_num_blocks(),
+            "num_blocks": self._logical_plan.initial_num_blocks(),
             "num_rows": self._meta_count(),
         }
         # Show metadata if available, but don't trigger execution.
@@ -7432,7 +7432,7 @@ class MaterializedDataset(Dataset, Generic[T]):
         Returns:
             The number of blocks of this :class:`Dataset`.
         """
-        return self._plan.initial_num_blocks()
+        return self._logical_plan.initial_num_blocks()
 
 
 @PublicAPI(stability="beta")
