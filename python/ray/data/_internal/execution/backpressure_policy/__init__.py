@@ -1,7 +1,6 @@
 from typing import TYPE_CHECKING, List
 
 from .backpressure_policy import BackpressurePolicy
-from .concurrency_cap_backpressure_policy import ConcurrencyCapBackpressurePolicy
 from .downstream_capacity_backpressure_policy import (
     DownstreamCapacityBackpressurePolicy,
 )
@@ -15,7 +14,6 @@ if TYPE_CHECKING:
 # Default enabled backpressure policies and its config key.
 # Use `DataContext.set_config` to config it.
 ENABLED_BACKPRESSURE_POLICIES = [
-    ConcurrencyCapBackpressurePolicy,
     ResourceBudgetBackpressurePolicy,
     DownstreamCapacityBackpressurePolicy,
 ]
@@ -36,7 +34,6 @@ def get_backpressure_policies(
 
 __all__ = [
     "BackpressurePolicy",
-    "ConcurrencyCapBackpressurePolicy",
     "DownstreamCapacityBackpressurePolicy",
     "ENABLED_BACKPRESSURE_POLICIES_CONFIG_KEY",
     "get_backpressure_policies",
