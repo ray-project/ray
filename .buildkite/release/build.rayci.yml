@@ -71,6 +71,33 @@ steps:
     depends_on:
       - ray-mlcudabaseextra($)
 
+  - name: ray-torchcpubase
+    label: "wanda: ray-torch.py{{array.python}}.cpu.base"
+    wanda: docker/ray-torch/cpu.wanda.yaml
+    array:
+      python:
+        - "3.13"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      IMAGE_TYPE: "ray-torch-cpu"
+    depends_on:
+      - raycpubase($)
+
+  - name: ray-torchcudabase
+    label: "wanda: ray-torch.py{{array.python}}.cu{{array.cuda}}.base"
+    wanda: docker/ray-torch/cuda.wanda.yaml
+    array:
+      python:
+        - "3.13"
+      cuda:
+        - "13.0.0-cudnn"
+    env:
+      PYTHON_VERSION: "{{array.python}}"
+      CUDA_VERSION: "{{array.cuda}}"
+      IMAGE_TYPE: "ray-torch-cu130"
+    depends_on:
+      - raycudabase($)
+
   - name: ray-anyscale-cpu-build
     label: "wanda: ray-anyscale py{{array.python}} cpu"
     wanda: ci/docker/ray-anyscale-cpu.wanda.yaml
