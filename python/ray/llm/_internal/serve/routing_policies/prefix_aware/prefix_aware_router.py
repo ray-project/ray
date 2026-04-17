@@ -343,7 +343,11 @@ class PrefixCacheAffinityRouter(PowerOfTwoChoicesRequestRouter):
         procedure.
         """
         # Start Sphinx tag: __begin_pow2_router_base__
-        # Get fallback replicas from PowerOfTwoChoicesRequestRouter
+        # Get fallback replicas from PowerOfTwoChoicesRequestRouter.
+        # This call also advances routing context state (locality/multiplex),
+        # so we must NOT call apply_locality_routing / apply_multiplex_routing
+        # again below — doing so would double-advance the state machine and
+        # return stale or wrong candidates for prefix matching.
         fallback_replicas = await super().choose_replicas(
             candidate_replicas=candidate_replicas,
             pending_request=pending_request,
@@ -352,30 +356,12 @@ class PrefixCacheAffinityRouter(PowerOfTwoChoicesRequestRouter):
             return fallback_replicas
         # End Sphinx tag: __end_pow2_router_base__
 
-        if (
-            pending_request is not None
-            and pending_request.metadata.multiplexed_model_id
-        ):
-            # Get candidates for multiplexed model ID.
-            candidate_replica_ids = self.apply_multiplex_routing(
-                pending_request=pending_request,
-            )
-        else:
-            # Get candidates for locality preference.
-            candidate_replica_ids = self.apply_locality_routing(
-                pending_request=pending_request,
-            )
-        if not candidate_replica_ids:
-            return fallback_replicas
-
-        # Convert candidate replica IDs to RunningReplica objects.
-        replica_id_to_replica_map = {
-            replica.replica_id: replica for replica in candidate_replicas
-        }
-        candidate_replicas = [
-            replica_id_to_replica_map[candidate_replica_id]
-            for candidate_replica_id in candidate_replica_ids
-        ]
+        # Run prefix matching across all candidate replicas.
+        # We intentionally do not re-invoke apply_locality_routing /
+        # apply_multiplex_routing here: super().choose_replicas() already
+        # called them once and advanced their routing-context state.
+        # Calling them a second time would skip the "first try" path and
+        # return the wrong (fallback) set of candidates.
         chosen_replicas = await self._prefix_match_best_replicas(
             pending_request, candidate_replicas
         )
