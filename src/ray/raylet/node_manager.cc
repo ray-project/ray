@@ -2138,8 +2138,10 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
 void NodeManager::HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                           rpc::IsLocalWorkerDeadReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  reply->set_is_dead(worker_pool_.GetRegisteredWorker(
-                         WorkerID::FromBinary(request.worker_id())) == nullptr);
+  const auto worker_id = WorkerID::FromBinary(request.worker_id());
+  const bool registered = worker_pool_.GetRegisteredWorker(worker_id) != nullptr ||
+                          worker_pool_.GetRegisteredDriver(worker_id) != nullptr;
+  reply->set_is_dead(!registered);
   send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
 }
 
