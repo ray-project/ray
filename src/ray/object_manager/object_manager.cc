@@ -464,7 +464,7 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
 
   // Register for per-push ack tracking (move semantics).
   auto push_key = std::make_pair(object_id, node_id);
-  push_ack_tracking_[push_key] = {num_chunks, 0, /*failed=*/false};
+  push_ack_tracking_[push_key] = {static_cast<int64_t>(num_chunks), 0, /*failed=*/false};
 
   push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
     rpc_service_.post(
