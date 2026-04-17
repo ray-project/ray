@@ -222,7 +222,7 @@ class SplitCoordinator:
         # Add a new stats field to track coordinator overhead
         self._coordinator_overhead_s = 0.0
 
-        # Per-split row dispatch counters (reset each epoch in _barrier).
+        # Per-split row dispatch counters (reset each epoch in _start_executor).
         self._num_rows_dispatched: Dict[int, int] = dict.fromkeys(range(num_splits), 0)
         self._last_dispatch_log_time: float = 0.0
 
@@ -258,6 +258,7 @@ class SplitCoordinator:
         """
         self._next_bundle.clear()
         self._client_prefetched_bytes.clear()
+        self._num_rows_dispatched = dict.fromkeys(range(self._num_splits), 0)
         self._gen_epoch_error = None
 
         try:
@@ -331,13 +332,6 @@ class SplitCoordinator:
 
         stats.streaming_split_coordinator_s.add(coordinator_overhead_s)
         return stats
-
-    def _reset_state(self):
-        self._unfinished_clients_in_epoch = self._n
-        self._next_bundle.clear()
-        self._gen_epoch_error = None
-        # Reset per-split dispatch counters for the new epoch.
-        self._num_rows_dispatched = dict.fromkeys(range(self._n), 0)
 
     def get(
         self,
