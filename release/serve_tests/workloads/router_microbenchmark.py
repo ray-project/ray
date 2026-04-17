@@ -147,7 +147,7 @@ def _build_capacity_queue_app(num_replicas: int):
         max_backoff_s=1.0,
     )
 
-    def _capacity_queue_actors(deployment_name: str):
+    def _capacity_queue_actors():
         return [
             DeploymentActorConfig(
                 name="capacity_queue",
@@ -155,8 +155,6 @@ def _build_capacity_queue_app(num_replicas: int):
                 init_kwargs={
                     "acquire_timeout_s": 0.5,
                     "token_ttl_s": 5,
-                    "deployment_id_name": deployment_name,
-                    "deployment_id_app": APP_NAME,
                 },
                 actor_options={"num_cpus": 0},
             ),
@@ -165,12 +163,12 @@ def _build_capacity_queue_app(num_replicas: int):
     child = BenchmarkChild.options(
         num_replicas=num_replicas,
         request_router_config=router_config,
-        deployment_actors=_capacity_queue_actors("BenchmarkChild"),
+        deployment_actors=_capacity_queue_actors(),
     ).bind()
     return BenchmarkParent.options(
         num_replicas=num_replicas,
         request_router_config=router_config,
-        deployment_actors=_capacity_queue_actors("BenchmarkParent"),
+        deployment_actors=_capacity_queue_actors(),
     ).bind(child)
 
 
