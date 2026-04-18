@@ -271,8 +271,7 @@ Status CoreWorkerPlasmaStoreProvider::Get(
   // space directly, and collect the ones that aren't.
   for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
     int64_t end = std::min(start + fetch_batch_size_, num_total_objects);
-    std::vector<ObjectID> batch_ids(object_ids.begin() + start,
-                                    object_ids.begin() + end);
+    std::vector<ObjectID> batch_ids(object_ids.begin() + start, object_ids.begin() + end);
     // GetObjectsFromPlasmaStore erases any id it successfully retrieves from
     // remaining_object_id_to_idx, so ids that remain in the map after this
     // call are not in the local object store and need to ask raylet to pull.
