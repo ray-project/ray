@@ -1,8 +1,9 @@
-"""LLMRouter: a dedicated router deployment for ingress bypass.
+"""LLMRouter: the dedicated direct ingress router deployment.
 
 When ingress bypass is enabled, HAProxy calls /internal/route on this
 deployment to get a (host, port) pair, then forwards traffic directly
-to that LLMServer replica's direct ingress port.
+to that LLMServer replica's direct ingress port. This deployment is
+distinct from Serve's per-deployment request router.
 """
 
 import asyncio
@@ -25,7 +26,7 @@ router_app = FastAPI()
 
 @serve_router(router_app)
 class LLMRouter:
-    """Lightweight router deployment for ingress bypass."""
+    """Lightweight direct ingress router deployment for ingress bypass."""
 
     def __init__(self, llm_deployments: List[DeploymentHandle]):
         self._default_serve_handles: Dict[str, DeploymentHandle] = {}
