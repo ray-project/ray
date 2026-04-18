@@ -100,13 +100,14 @@ class FileReader(Reader[FileManifest]):
 
             batch_size = self._resolve_batch_size(dataset)
 
-            scanner = dataset.scanner(
+            scanner_kwargs = dict(
                 columns=self._columns,
                 filter=self._predicate,
                 batch_size=batch_size,
                 batch_readahead=1,
-                **self._scanner_kwargs(),
             )
+            scanner_kwargs.update(self._scanner_kwargs())
+            scanner = dataset.scanner(**scanner_kwargs)
 
             ctx = DataContext.get_current()
             rows_read = 0

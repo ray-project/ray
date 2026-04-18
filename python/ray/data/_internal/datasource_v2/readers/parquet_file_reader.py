@@ -215,15 +215,19 @@ class ParquetFileReader(FileReader):
 
     def _scanner_kwargs(self) -> dict:
         # pre_buffer=True (pyarrow default) holds a whole fragment's worth of
-        # decoded column chunks resident before yielding batches, making peak
-        # memory scale with fragment size instead of batch size. Disable it and
-        # use the buffered/lazy cache path to cap peak memory near one row
-        # group. Trades ~2x S3 read throughput for ~10-40x lower peak memory.
-        # See apache/arrow#39808.
+        # decoded column chunks resident before yielding batches, so
+        # pa.total_allocated_bytes() climbs monotonically across batches and
+        # peaks near full fragment size. Disabling pre_buffer with the
+        # buffered/lazy cache path caps peak memory near one row group; the
+        # small (batch_readahead=2, fragment_readahead=1) pipeline restores
+        # throughput to match or beat the default without reintroducing the
+        # accumulation. See apache/arrow#39808.
         return {
             "fragment_scan_options": pds.ParquetFragmentScanOptions(
                 pre_buffer=False,
                 use_buffered_stream=True,
                 cache_options=pa.CacheOptions(lazy=True, prefetch_limit=0),
             ),
+            "batch_readahead": 2,
+            "fragment_readahead": 1,
         }
