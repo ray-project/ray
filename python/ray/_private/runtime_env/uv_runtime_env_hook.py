@@ -320,6 +320,10 @@ def _extract_uv_prefix_args(
         # Keep unknown options as part of uv prefix as long as they appear
         # before the command boundary.
         if option_name not in known_options:
+            if i + 1 < len(raw_args) and not raw_args[i + 1].startswith("-"):
+                uv_args.append(raw_args[i + 1])
+                i += 2
+                continue
             i += 1
             continue
 
