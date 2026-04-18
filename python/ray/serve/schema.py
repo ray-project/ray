@@ -1534,12 +1534,12 @@ class TargetGroup(BaseModel):
     route_prefix: str = Field(description="Prefix route of the targets.")
     protocol: RequestProtocol = Field(description="Protocol of the targets.")
     app_name: str = Field("", description="Name of the application.")
-    # Direct ingress router targets for ingress bypass Lua routing. When
+    # HTTP router targets for ingress bypass Lua routing. When
     # populated, HAProxy Lua calls these targets to get routing decisions,
     # then forwards data plane traffic to the main targets.
-    router_targets: List[Target] = Field(
+    http_router_targets: List[Target] = Field(
         default_factory=list,
-        description="List of direct ingress router targets for Lua-based routing decisions.",
+        description="List of HTTP router targets for Lua-based routing decisions.",
     )
 
 

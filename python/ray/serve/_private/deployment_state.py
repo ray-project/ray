@@ -769,7 +769,7 @@ class ActorReplicaWrapper:
         self._last_record_routing_stats_time: float = 0.0
         self._has_user_routing_stats_method: bool = False
         self._ingress: bool = False
-        self._router: bool = False
+        self._http_router: bool = False
 
         # Outbound deployments polling state
         self._outbound_deployments: Optional[List[DeploymentID]] = None
@@ -1022,7 +1022,7 @@ class ActorReplicaWrapper:
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
-        self._router = deployment_info.router
+        self._http_router = deployment_info.http_router
         self._gang_placement_group = gang_placement_group
         self._gang_pg_index = gang_pg_index
         self._gang_context = gang_context
@@ -1066,7 +1066,7 @@ class ActorReplicaWrapper:
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
                 deployment_info.ingress,
-                deployment_info.router,
+                deployment_info.http_router,
                 deployment_info.route_prefix,
             )
         # TODO(simon): unify the constructor arguments across language
