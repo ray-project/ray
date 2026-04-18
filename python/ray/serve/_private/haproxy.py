@@ -1370,7 +1370,7 @@ class HAProxyManager(ProxyActorInterface):
         fallback_target: Optional[Target],
     ) -> BackendConfig:
         """Create a backend configuration from a target group and fallback target."""
-        custom_request_routing = bool(target_group.router_targets)
+        custom_request_routing = bool(target_group.http_router_targets)
         servers = [self._target_to_server(target) for target in target_group.targets]
 
         ingress_request_router_servers = [
@@ -1382,7 +1382,7 @@ class HAProxyManager(ProxyActorInterface):
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
 
-        health_path = "/health" if target_group.router_targets else None
+        health_path = "/health" if target_group.http_router_targets else None
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
