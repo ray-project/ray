@@ -383,6 +383,10 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         # -- Output queue -----------------------------------------------------
         self._output_queue: deque = deque()
 
+        # -- Timing -----------------------------------------------------------
+        self._start_time: float = time.perf_counter()
+        self._reduce_start_time: Optional[float] = None
+
         # -- Stats ------------------------------------------------------------
         self._total_input_rows: int = 0
         self._total_input_bytes: int = 0
@@ -635,7 +639,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         )
 
     def _try_reduce(self):
-        """Launch reduce tasks once all map tasks have completed."""
+        """Launch reduce tasks once all map tasks have been submitted."""
         if self._is_all_reduce_submitted():
             return
 
@@ -643,6 +647,16 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             return
 
         self._log_partition_stats()
+
+        self._reduce_start_time = time.perf_counter()
+        map_elapsed = self._reduce_start_time - self._start_time
+        maps_done = self._next_map_task_idx - len(self._map_tasks)
+        maps_total = self._next_map_task_idx
+        logger.info(
+            f"Reduce starting: map_elapsed={map_elapsed:.1f}s, "
+            f"maps_completed={maps_done}/{maps_total}, "
+            f"maps_still_running={len(self._map_tasks)}"
+        )
 
         target_max_block_size = self._data_context.target_max_block_size
 
@@ -751,6 +765,24 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     # -- Shutdown -------------------------------------------------------------
 
     def _do_shutdown(self, force: bool = False) -> None:
+        end_time = time.perf_counter()
+        total_elapsed = end_time - self._start_time
+        reduce_elapsed = (
+            end_time - self._reduce_start_time
+            if self._reduce_start_time is not None
+            else 0
+        )
+        map_elapsed = (
+            self._reduce_start_time - self._start_time
+            if self._reduce_start_time is not None
+            else total_elapsed
+        )
+        logger.info(
+            f"Shuffle timing: total={total_elapsed:.1f}s, "
+            f"map_stage={map_elapsed:.1f}s, "
+            f"reduce_stage={reduce_elapsed:.1f}s "
+            f"(overlap={max(0, map_elapsed + reduce_elapsed - total_elapsed):.1f}s)"
+        )
         super()._do_shutdown(force)
         self._map_tasks.clear()
         self._reduce_tasks.clear()
