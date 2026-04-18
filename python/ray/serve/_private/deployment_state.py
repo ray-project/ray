@@ -2905,11 +2905,6 @@ class DeploymentState:
             self._deployment_scheduler.on_replica_recovering(replica_id)
             logger.debug(f"RECOVERING {replica_id}.")
 
-        # TODO(jiaodong): this currently halts all traffic in the cluster
-        # briefly because we will broadcast a replica update with everything in
-        # RECOVERING. We should have a grace period where we recover the state
-        # of the replicas before doing this update.
-
     def _recover_deployment_actors(self):
         """Recover deployment-scoped actors that survived a controller restart.
 
@@ -3147,6 +3142,11 @@ class DeploymentState:
             not self._broadcasted_replicas_set_changed
             and not self._request_routing_info_updated
         ):
+            return
+
+        # Hold off on broadcasting while replicas are in RECOVERING state to avoid sending
+        # partial or empty routable set.
+        if self._replicas.count(states=[ReplicaState.RECOVERING]) > 0:
             return
 
         running_replica_infos = self.get_running_replica_infos()
