@@ -18,6 +18,7 @@ managing-java-deployments
 deploy-vm
 multi-app-container
 custom-request-router
+deployment-scoped-actors
 multi-node-gpu-troubleshooting
 ```
 
@@ -38,4 +39,5 @@ Use these advanced guides for more options and configurations:
 - [Experimental Java API](serve-java-api)
 - [Run Applications in Different Containers](serve-container-runtime-env-guide)
 - [Use Custom Algorithm for Request Routing](custom-request-router)
+- [Use deployment-scoped actors](serve-deployment-scoped-actors)
 - [Troubleshoot multi-node GPU setups for serving LLMs](multi-node-gpu-troubleshooting)
