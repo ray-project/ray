@@ -2526,6 +2526,28 @@ class Replica:
             )
             return
 
+        custom_app = getattr(
+            self._user_callable_wrapper.user_callable, "_asgi_app", None
+        )
+        if custom_app is not None:
+            req_meta = RequestMetadata(
+                request_id=generate_request_id(),
+                internal_request_id=generate_request_id(),
+                call_method="__call__",
+                route=route,
+                app_name=self._deployment_id.app_name,
+                multiplexed_model_id="",
+                is_streaming=True,
+                _request_protocol=RequestProtocol.HTTP,
+                is_direct_ingress=True,
+            )
+            self._metrics_manager.inc_num_ongoing_requests(req_meta)
+            try:
+                await custom_app(scope, receive, send)
+            finally:
+                self._metrics_manager.dec_num_ongoing_requests(req_meta)
+            return
+
         # If the HTTP path does not match the deployment route prefix,
         # it is invalid and we should not serve it.
         if not route.startswith(self._route_prefix):
