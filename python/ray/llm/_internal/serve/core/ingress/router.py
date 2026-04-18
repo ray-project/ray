@@ -1,13 +1,13 @@
 """LLMRouter: the dedicated HTTP router deployment.
 
 When ingress bypass is enabled, HAProxy calls /internal/route on this
-deployment to get a (host, port) pair, then forwards traffic directly
-to that LLMServer replica's backend HTTP port. This deployment is
+deployment to get a replica ID, then forwards traffic directly to the
+matching LLMServer replica's backend HTTP port. This deployment is
 distinct from Serve's per-deployment request router.
 """
 
 import asyncio
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -89,12 +89,12 @@ class LLMRouter:
             return
 
         try:
-            host, port, _ = await self._pick_replica(model_id)
+            replica_id = await self._pick_replica(model_id)
         except Exception as e:
             await self._send_json(send, {"error": str(e)}, 503)
             return
 
-        await self._send_json(send, {"host": host, "port": port}, 200)
+        await self._send_json(send, {"replica_id": replica_id}, 200)
 
     async def _send_json(self, send, data, status):
         import orjson
@@ -127,7 +127,7 @@ class LLMRouter:
     async def health(self):
         return JSONResponse({"status": "ok"})
 
-    async def _pick_replica(self, model_id: str) -> Tuple[str, int, str]:
+    async def _pick_replica(self, model_id: str) -> str:
         base_model_id = get_base_model_id(model_id)
         handle = self._default_serve_handles.get(base_model_id)
         if handle is None:
@@ -151,11 +151,10 @@ class LLMRouter:
         )
         for tier in replica_tiers:
             for replica in tier:
-                endpoint = replica.backend_http_endpoint
-                if endpoint is not None:
-                    return (*endpoint, replica.replica_id.unique_id)
+                if replica.backend_http_endpoint is not None:
+                    return replica.replica_id.to_full_id_str()
 
         idx = self._rr_counter % len(backend_http_replicas)
         self._rr_counter += 1
         best = backend_http_replicas[idx]
-        return (*best.backend_http_endpoint, best.replica_id.unique_id)
+        return best.replica_id.to_full_id_str()
