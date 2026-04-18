@@ -271,12 +271,15 @@ def _extract_uv_prefix_args(
 
     known_options = set()
     options_requiring_value = set()
+    boolean_options = set()
 
     for option in parser.option_list:
         flags = option._short_opts + option._long_opts
         known_options.update(flags)
         if option.takes_value():
             options_requiring_value.update(flags)
+        else:
+            boolean_options.update(flags)
 
     for group in parser.option_groups:
         for option in group.option_list:
@@ -284,6 +287,8 @@ def _extract_uv_prefix_args(
             known_options.update(flags)
             if option.takes_value():
                 options_requiring_value.update(flags)
+            else:
+                boolean_options.update(flags)
 
     uv_args: List[str] = []
     i = 0
@@ -324,6 +329,10 @@ def _extract_uv_prefix_args(
                 uv_args.append(raw_args[i + 1])
                 i += 2
                 continue
+            i += 1
+            continue
+
+        if option_name in boolean_options:
             i += 1
             continue
 

@@ -619,7 +619,13 @@ def test_uv_run_hook_does_not_absorb_command_flags_after_script():
 
     py_executable = runtime_env["py_executable"]
     # --python after script is command-specific and must not be treated as uv arg.
-    assert "--python 3.10" not in py_executable
+    # Compare token pairs instead of raw substring to avoid matching fallback
+    # values like "3.10.22".
+    tokens = py_executable.split()
+    assert not any(
+        tokens[i] == "--python" and tokens[i + 1] == "3.10"
+        for i in range(len(tokens) - 1)
+    )
     assert "--no-project" in py_executable
 
 
