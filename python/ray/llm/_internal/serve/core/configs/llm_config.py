@@ -236,9 +236,9 @@ class LLMConfig(BaseModelExtended):
         "requests together. This config decides how long to wait for the "
         "batch before processing the requests. Defaults to "
         f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
-        "- `num_ingress_replicas`: The number of replicas for the direct "
-        "ingress router. Ray Serve will take the maximum across all "
-        "replicas. The default is 2 direct ingress router replicas per "
+        "- `num_http_router_replicas`: The number of replicas for the HTTP "
+        "router. Ray Serve will take the maximum across all "
+        "replicas. The default is 2 HTTP router replicas per "
         "model replica.\n",
     )
 
@@ -456,12 +456,13 @@ class LLMConfig(BaseModelExtended):
         """Validates the experimental configs dictionary."""
         # TODO(Kourosh): Remove this deprecation check after users have
         # migrated.
-        if "num_router_replicas" in value:
-            raise ValueError(
-                "The 'num_router_replicas' key in experimental_configs has "
-                "been renamed to 'num_ingress_replicas'. Please update "
-                "your configuration to use 'num_ingress_replicas' instead."
-            )
+        for deprecated_key in ("num_router_replicas", "num_ingress_replicas"):
+            if deprecated_key in value:
+                raise ValueError(
+                    f"The '{deprecated_key}' key in experimental_configs has "
+                    "been renamed to 'num_http_router_replicas'. Please update "
+                    "your configuration to use 'num_http_router_replicas' instead."
+                )
         return value
 
     @model_validator(mode="after")
