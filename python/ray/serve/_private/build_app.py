@@ -107,7 +107,8 @@ def build_app(
         default_runtime_env=default_runtime_env,
         make_deployment_handle=make_deployment_handle,
     )
-    # Determine router deployment name from the router=True decorator.
+    # Determine the direct ingress router deployment name from the
+    # router=True decorator.
     router_deployment_name = None
     for deployment in deployments:
         if deployment._deployment_config.router:

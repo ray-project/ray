@@ -1902,7 +1902,8 @@ def override_deployment_info(
     if len(router_deployments) > 1:
         raise ValueError(
             f"Multiple deployments marked as router: {router_deployments}. "
-            "Only one deployment per application can be the router for ingress bypass mode."
+            "Only one deployment per application can be the direct ingress "
+            "router for ingress bypass mode."
         )
 
     return deployment_infos
