@@ -236,9 +236,10 @@ class LLMConfig(BaseModelExtended):
         "requests together. This config decides how long to wait for the "
         "batch before processing the requests. Defaults to "
         f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
-        "- `num_ingress_replicas`: The number of replicas for the router. Ray "
-        "Serve will take the max amount all the replicas. Default would be 2 "
-        "router replicas per model replica.\n",
+        "- `num_ingress_replicas`: The number of replicas for the direct "
+        "ingress router. Ray Serve will take the maximum across all "
+        "replicas. The default is 2 direct ingress router replicas per "
+        "model replica.\n",
     )
 
     log_engine_metrics: Optional[bool] = Field(
