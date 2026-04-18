@@ -1786,23 +1786,23 @@ class TestOverrideDeploymentInfo:
         assert actors[1]._serialized_actor_class == b""  # Not in map, stays empty
 
     def test_override_router_flag(self, info):
-        """router=True in config should flow through to DeploymentConfig."""
+        """http_router=True in config should flow through to DeploymentConfig."""
         config = ServeApplicationSchema(
             name="default",
             import_path="test.import.path",
             deployments=[
                 DeploymentSchema(
                     name="A",
-                    router=True,
+                    http_router=True,
                 )
             ],
         )
 
         updated_infos = override_deployment_info({"A": info}, config)
-        assert updated_infos["A"].deployment_config.router is True
+        assert updated_infos["A"].deployment_config.http_router is True
 
     def test_override_multiple_routers_raises(self, info):
-        """More than one deployment with router=True should raise ValueError."""
+        """More than one deployment with http_router=True should raise ValueError."""
         info_b = DeploymentInfo(
             route_prefix="/",
             version="123",
@@ -1815,12 +1815,14 @@ class TestOverrideDeploymentInfo:
             name="default",
             import_path="test.import.path",
             deployments=[
-                DeploymentSchema(name="A", router=True),
-                DeploymentSchema(name="B", router=True),
+                DeploymentSchema(name="A", http_router=True),
+                DeploymentSchema(name="B", http_router=True),
             ],
         )
 
-        with pytest.raises(ValueError, match="Multiple deployments marked as router"):
+        with pytest.raises(
+            ValueError, match="Multiple deployments marked as http_router"
+        ):
             override_deployment_info({"A": info, "B": info_b}, config)
 
 

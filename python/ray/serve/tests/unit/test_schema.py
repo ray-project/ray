@@ -1405,28 +1405,28 @@ def test_serve_instance_details_is_json_serializable():
 
 
 def test_router_deployment_schema_roundtrip():
-    """router=True should survive deployment_to_schema -> schema_to_deployment."""
+    """http_router=True should survive deployment_to_schema -> schema_to_deployment."""
 
-    @serve.deployment(router=True)
+    @serve.deployment(http_router=True)
     def my_router():
         pass
 
     schema = deployment_to_schema(my_router)
-    assert schema.router is True
+    assert schema.http_router is True
 
     restored = schema_to_deployment(schema)
-    assert restored._deployment_config.router is True
+    assert restored._deployment_config.http_router is True
 
 
 def test_router_deployment_schema_default():
-    """router should default to False and not appear in schema for normal deployments."""
+    """http_router should default to False and not appear in schema for normal deployments."""
 
     @serve.deployment
     def normal():
         pass
 
     schema = deployment_to_schema(normal)
-    assert schema.router is False
+    assert schema.http_router is False
 
 
 if __name__ == "__main__":

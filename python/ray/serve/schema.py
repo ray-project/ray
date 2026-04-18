@@ -463,14 +463,14 @@ class DeploymentSchema(BaseModel):
             "init_kwargs, and actor_options."
         ),
     )
-    router: bool = Field(
+    http_router: bool = Field(
         default=False,
         description=(
-            "If True, this deployment serves as the direct ingress router for "
-            "ingress bypass mode. The direct ingress router deployment receives "
+            "If True, this deployment serves as the HTTP router for "
+            "ingress bypass mode. The HTTP router deployment receives "
             "/internal/route requests from HAProxy for routing decisions. Only "
-            "one deployment per application can be marked as router. When "
-            "specified with ingress bypass, the direct ingress router receives "
+            "one deployment per application can be marked as the HTTP router. When "
+            "specified with ingress bypass, the HTTP router receives "
             "routing requests while other deployments receive direct data plane "
             "traffic."
         ),

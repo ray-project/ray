@@ -545,5 +545,33 @@ def test_ingress_name_got_modified():
     assert built_app.deployments[-1].name == "D_2"
 
 
+def test_build_app_with_http_router_peer():
+    @serve.deployment
+    class Ingress:
+        pass
+
+    @serve.deployment(http_router=True)
+    class HttpRouter:
+        pass
+
+    ingress_app = Ingress.bind()
+    app = serve.Application(
+        ingress_app._bound_deployment,
+        http_router=HttpRouter.bind(),
+    )
+
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    assert sorted(deployment.name for deployment in built_app.deployments) == [
+        "HttpRouter",
+        "Ingress",
+    ]
+    assert built_app.http_router_deployment_name == "HttpRouter"
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

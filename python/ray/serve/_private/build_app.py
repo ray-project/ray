@@ -58,9 +58,9 @@ class BuiltApplication:
     # them in other deployments' init args/kwargs.
     deployment_handles: Dict[str, DeploymentHandle]
     external_scaler_enabled: bool
-    # Name of the router deployment for ingress bypass (if any).
+    # Name of the HTTP router deployment for ingress bypass (if any).
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
-    router_deployment_name: Optional[str] = None
+    http_router_deployment_name: Optional[str] = None
 
 
 def _make_deployment_handle_default(
@@ -107,13 +107,26 @@ def build_app(
         default_runtime_env=default_runtime_env,
         make_deployment_handle=make_deployment_handle,
     )
-    # Determine the direct ingress router deployment name from the
-    # router=True decorator.
-    router_deployment_name = None
-    for deployment in deployments:
-        if deployment._deployment_config.router:
-            router_deployment_name = deployment.name
-            break
+    http_router_deployment_name = None
+    if app._http_router is not None:
+        http_router_deployments = _build_app_recursive(
+            app._http_router,
+            app_name=name,
+            handles=handles,
+            deployment_names=deployment_names,
+            default_runtime_env=default_runtime_env,
+            make_deployment_handle=make_deployment_handle,
+        )
+        deployments.extend(http_router_deployments)
+        http_router_deployment_name = deployment_names[app._http_router]
+
+    # Determine the HTTP router deployment name from the
+    # deployment-level http_router flag.
+    if http_router_deployment_name is None:
+        for deployment in deployments:
+            if deployment._deployment_config.http_router:
+                http_router_deployment_name = deployment.name
+                break
 
     return BuiltApplication(
         name=name,
@@ -125,7 +138,7 @@ def build_app(
             deployment_names[app]: handle for app, handle in handles.items()
         },
         external_scaler_enabled=external_scaler_enabled,
-        router_deployment_name=router_deployment_name,
+        http_router_deployment_name=http_router_deployment_name,
     )
 
 

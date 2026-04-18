@@ -60,9 +60,16 @@ class Application:
 
     """
 
-    def __init__(self, bound_deployment: "Deployment"):
+    def __init__(
+        self,
+        bound_deployment: "Deployment",
+        *,
+        http_router: Optional["Application"] = None,
+    ):
         # This is used by `build_app`, but made private so users don't use it.
         self._bound_deployment = bound_deployment
+        # Optional peer HTTP router for ingress bypass mode.
+        self._http_router = http_router
 
 
 @PublicAPI(stability="stable")
@@ -247,7 +254,7 @@ class Deployment:
         deployment_actors: Default[
             Optional[List[Union[Dict, DeploymentActorConfig]]]
         ] = DEFAULT.VALUE,
-        router: Default[bool] = DEFAULT.VALUE,
+        http_router: Default[bool] = DEFAULT.VALUE,
     ) -> "Deployment":
         """Return a copy of this deployment with updated options.
 
@@ -402,8 +409,8 @@ class Deployment:
         if deployment_actors is not DEFAULT.VALUE:
             new_deployment_config.deployment_actors = deployment_actors
 
-        if router is not DEFAULT.VALUE:
-            new_deployment_config.router = router
+        if http_router is not DEFAULT.VALUE:
+            new_deployment_config.http_router = http_router
 
         gc = new_deployment_config.gang_scheduling_config
         if (
@@ -506,7 +513,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "request_router_config": d._deployment_config.request_router_config,
         "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
         "deployment_actors": d._deployment_config.deployment_actors,
-        "router": d._deployment_config.router,
+        "http_router": d._deployment_config.http_router,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -570,7 +577,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         request_router_config=s.request_router_config,
         gang_scheduling_config=s.gang_scheduling_config,
         deployment_actors=s.deployment_actors,
-        router=s.router,
+        http_router=s.http_router,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()

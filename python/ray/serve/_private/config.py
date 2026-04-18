@@ -219,10 +219,10 @@ class DeploymentConfig(BaseModel):
         update_type=DeploymentOptionUpdateType.HeavyWeight,
     )
 
-    # If True, this deployment serves as the direct ingress router for
-    # ingress bypass mode. The direct ingress router receives
-    # /internal/route requests from HAProxy for routing decisions.
-    router: bool = Field(
+    # If True, this deployment serves as the HTTP router for ingress
+    # bypass mode. The HTTP router receives /internal/route requests from
+    # HAProxy for routing decisions.
+    http_router: bool = Field(
         default=False,
         update_type=DeploymentOptionUpdateType.HeavyWeight,
     )
