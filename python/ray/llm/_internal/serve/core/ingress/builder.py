@@ -135,31 +135,32 @@ def build_openai_app(builder_config: dict) -> Application:
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
-    # If direct streaming is enabled via env var, create a dedicated LLMRouter
-    # deployment that handles /internal/route for HAProxy Lua routing decisions.
+    # If direct streaming is enabled via env var, create a dedicated HTTP
+    # router deployment backed by LLMRouter. It handles
+    # /internal/route for HAProxy Lua routing decisions.
     if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
         from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
         logger.info(
-            "Direct streaming enabled: LLMServer=ingress, "
-            "LLMRouter=direct_ingress_router"
+            "Direct streaming enabled: LLMServer=ingress, " "LLMRouter=http_router"
         )
 
-        num_router_replicas = 1
+        num_http_router_replicas = 1
         logger.info(
-            f"Creating {num_router_replicas} direct ingress router replicas "
-            "(LLMRouter)"
+            f"Creating {num_http_router_replicas} HTTP router replicas (LLMRouter)"
         )
-        router_app = serve.deployment(
+        http_router_app = serve.deployment(
             LLMRouter,
-            router=True,
-            num_replicas=num_router_replicas,
+            http_router=True,
+            num_replicas=num_http_router_replicas,
             max_ongoing_requests=1000,
         ).bind(llm_deployments=llm_deployments)
 
         ingress_app = llm_deployments[0]
-        ingress_app._router = router_app
-        return ingress_app
+        return serve.Application(
+            ingress_app._bound_deployment,
+            http_router=http_router_app,
+        )
 
     app = serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs

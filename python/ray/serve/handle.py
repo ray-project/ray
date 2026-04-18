@@ -1082,7 +1082,7 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
     def _get_request_router(
         self,
     ) -> Optional["ray.serve._private.request_router.request_router.RequestRouter"]:
-        """Temporary: expose the request router used by the direct ingress router.
+        """Temporary: expose the request router used by the HTTP router.
 
         TODO: Replace with DeploymentHandle.choose_replica() once #60865 lands.
         """

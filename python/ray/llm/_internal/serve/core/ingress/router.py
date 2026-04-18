@@ -1,8 +1,8 @@
-"""LLMRouter: the dedicated direct ingress router deployment.
+"""LLMRouter: the dedicated HTTP router deployment.
 
 When ingress bypass is enabled, HAProxy calls /internal/route on this
 deployment to get a (host, port) pair, then forwards traffic directly
-to that LLMServer replica's direct ingress port. This deployment is
+to that LLMServer replica's backend HTTP port. This deployment is
 distinct from Serve's per-deployment request router.
 """
 
@@ -12,21 +12,21 @@ from typing import Dict, List, Tuple
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 
+from ray import serve
 from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.common.utils.lora_utils import get_base_model_id
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 from ray.llm._internal.serve.observability.logging import get_logger
-from ray.serve.api import router as serve_router
 from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
 
-router_app = FastAPI()
+http_router_app = FastAPI()
 
 
-@serve_router(router_app)
+@serve.ingress(http_router_app)
 class LLMRouter:
-    """Lightweight direct ingress router deployment for ingress bypass."""
+    """Lightweight HTTP router deployment for ingress bypass."""
 
     def __init__(self, llm_deployments: List[DeploymentHandle]):
         self._default_serve_handles: Dict[str, DeploymentHandle] = {}
@@ -89,7 +89,7 @@ class LLMRouter:
             return
 
         try:
-            host, port, replica_id = await self._pick_replica(model_id)
+            host, port, _ = await self._pick_replica(model_id)
         except Exception as e:
             await self._send_json(send, {"error": str(e)}, 503)
             return
@@ -122,8 +122,8 @@ class LLMRouter:
     async def check_health(self):
         await self._init_completed.wait()
 
-    @router_app.get("/")
-    @router_app.get("/health")
+    @http_router_app.get("/")
+    @http_router_app.get("/health")
     async def health(self):
         return JSONResponse({"status": "ok"})
 
@@ -137,25 +137,25 @@ class LLMRouter:
         if request_router is None:
             raise RuntimeError(f"Request router not initialized for {model_id}")
 
-        direct_ingress_replicas = [
+        backend_http_replicas = [
             replica
             for replica in request_router.curr_replicas.values()
-            if replica.direct_ingress_endpoint is not None
+            if replica.backend_http_endpoint is not None
         ]
-        if not direct_ingress_replicas:
-            raise RuntimeError(f"No direct-ingress-enabled replicas for {model_id}")
+        if not backend_http_replicas:
+            raise RuntimeError(f"No backend-http-enabled replicas for {model_id}")
 
         replica_tiers = await request_router.choose_replicas(
-            candidate_replicas=direct_ingress_replicas,
+            candidate_replicas=backend_http_replicas,
             pending_request=None,
         )
         for tier in replica_tiers:
             for replica in tier:
-                endpoint = replica.direct_ingress_endpoint
+                endpoint = replica.backend_http_endpoint
                 if endpoint is not None:
                     return (*endpoint, replica.replica_id.unique_id)
 
-        idx = self._rr_counter % len(direct_ingress_replicas)
+        idx = self._rr_counter % len(backend_http_replicas)
         self._rr_counter += 1
-        best = direct_ingress_replicas[idx]
-        return (*best.direct_ingress_endpoint, best.replica_id.unique_id)
+        best = backend_http_replicas[idx]
+        return (*best.backend_http_endpoint, best.replica_id.unique_id)
