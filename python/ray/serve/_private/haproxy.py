@@ -712,7 +712,7 @@ class HAProxyApi(ProxyApi):
     ) -> str:
         """Write the Lua routing script for direct ingress custom request routing.
 
-        Per-request routing: Lua calls /internal/route on an ingress router
+        Per-request routing: Lua calls /internal/route on an HTTP router
         for every request, which calls choose_replicas() to pick a replica.
         This supports custom routing logic including prefix-cache-aware routing.
 
@@ -1353,11 +1353,12 @@ class HAProxyManager(ProxyActorInterface):
         fallback_target: Optional[Target],
     ) -> BackendConfig:
         """Create a backend configuration from a target group and fallback target."""
-        custom_request_routing = bool(target_group.router_targets)
+        custom_request_routing = bool(target_group.http_router_targets)
         servers = [self._target_to_server(target) for target in target_group.targets]
 
         router_servers = [
-            self._target_to_server(target) for target in target_group.router_targets
+            self._target_to_server(target)
+            for target in target_group.http_router_targets
         ]
         router_servers = sorted(
             router_servers, key=lambda server: (server.port, server.host)
@@ -1367,7 +1368,7 @@ class HAProxyManager(ProxyActorInterface):
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
 
-        health_path = "/health" if target_group.router_targets else None
+        health_path = "/health" if target_group.http_router_targets else None
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
