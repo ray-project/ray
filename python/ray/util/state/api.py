@@ -126,8 +126,6 @@ class StateApiClient(SubmissionClient):
         self,
         address: Optional[str] = None,
         cookies: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, Any]] = None,
-        verify: Optional[Union[str, bool]] = True,
     ):
         """Initialize a StateApiClient and check the connection to the cluster.
 
@@ -138,19 +136,12 @@ class StateApiClient(SubmissionClient):
                 If not provided, it will be detected automatically from any running
                 local Ray cluster.
             cookies: Cookies to use when sending requests to the HTTP job server.
-            headers: Headers to use when sending requests to the HTTP job server, used
-                for cases like authentication to a remote cluster.
-            verify: Boolean indication to verify the server's TLS certificate or a path
-                to a file or directory of trusted certificates.
         """
         if requests is None:
             raise RuntimeError(
                 "The Ray state CLI & SDK require the ray[default] "
                 "installation: `pip install 'ray[default']``"
             )
-        base_headers = {"Content-Type": "application/json"}
-        if headers:
-            base_headers.update(headers)
 
         # Resolve API server URL
         api_server_url = get_address_for_submission_client(address)
@@ -158,9 +149,8 @@ class StateApiClient(SubmissionClient):
         super().__init__(
             address=api_server_url,
             create_cluster_if_needed=False,
-            headers=base_headers,
+            headers={"Content-Type": "application/json"},
             cookies=cookies,
-            verify=verify,
         )
 
     @classmethod
@@ -1407,8 +1397,6 @@ def summarize_tasks(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-    headers: Optional[Dict[str, Any]] = None,
-    verify: Optional[Union[str, bool]] = True,
 ) -> Dict:
     """Summarize the tasks in cluster.
 
@@ -1420,10 +1408,6 @@ def summarize_tasks(
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
             failed query information.
-        headers: Headers to use when sending requests to the HTTP server, used for cases like
-            authentication to a remote cluster.
-        verify: Boolean indication to verify the server's TLS certificate or a path to a file
-            or directory of trusted certificates.
 
     Return:
         Dictionarified
@@ -1432,7 +1416,7 @@ def summarize_tasks(
     Raises:
         RayStateApiException: if the CLI is failed to query the data.
     """  # noqa: E501
-    return StateApiClient(address=address, headers=headers, verify=verify).summary(
+    return StateApiClient(address=address).summary(
         SummaryResource.TASKS,
         options=SummaryApiOptions(timeout=timeout),
         raise_on_missing_output=raise_on_missing_output,
@@ -1446,8 +1430,6 @@ def summarize_actors(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-    headers: Optional[Dict[str, Any]] = None,
-    verify: Optional[Union[str, bool]] = True,
 ) -> Dict:
     """Summarize the actors in cluster.
 
@@ -1459,10 +1441,6 @@ def summarize_actors(
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
             failed query information.
-        headers: Headers to use when sending requests to the HTTP server, used for cases like
-            authentication to a remote cluster.
-        verify: Boolean indication to verify the server's TLS certificate or a path to a file
-            or directory of trusted certificates.
 
     Return:
         Dictionarified
@@ -1471,7 +1449,7 @@ def summarize_actors(
     Raises:
         RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
-    return StateApiClient(address=address, headers=headers, verify=verify).summary(
+    return StateApiClient(address=address).summary(
         SummaryResource.ACTORS,
         options=SummaryApiOptions(timeout=timeout),
         raise_on_missing_output=raise_on_missing_output,
@@ -1485,8 +1463,6 @@ def summarize_objects(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     raise_on_missing_output: bool = True,
     _explain: bool = False,
-    headers: Optional[Dict[str, Any]] = None,
-    verify: Optional[Union[str, bool]] = True,
 ) -> Dict:
     """Summarize the objects in cluster.
 
@@ -1498,10 +1474,6 @@ def summarize_objects(
             there is missing data due to truncation/data source unavailable.
         _explain: Print the API information such as API latency or
             failed query information.
-        headers: Headers to use when sending requests to the HTTP server, used for cases like
-            authentication to a remote cluster.
-        verify: Boolean indication to verify the server's TLS certificate or a path to a file
-            or directory of trusted certificates.
 
     Return:
         Dictionarified :class:`~ray.util.state.common.ObjectSummaries`
@@ -1509,7 +1481,7 @@ def summarize_objects(
     Raises:
         RayStateApiException: if the CLI failed to query the data.
     """  # noqa: E501
-    return StateApiClient(address=address, headers=headers, verify=verify).summary(
+    return StateApiClient(address=address).summary(
         SummaryResource.OBJECTS,
         options=SummaryApiOptions(timeout=timeout),
         raise_on_missing_output=raise_on_missing_output,

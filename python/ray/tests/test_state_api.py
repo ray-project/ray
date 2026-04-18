@@ -2,13 +2,11 @@ import json
 import os
 import signal
 import sys
-import threading
 import time
 import uuid
 import warnings
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import List, Optional
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -133,69 +131,6 @@ from ray.util.state.state_manager import StateDataSourceClient
 """
 Unit tests
 """
-
-
-class FakeStateApiClient:
-    captured = {}
-
-    @classmethod
-    def reset(cls):
-        cls.captured = {}
-
-    def __init__(self, address=None, headers=None, verify=True, **kwargs):
-        type(self).captured = {
-            "address": address,
-            "headers": headers,
-            "verify": verify,
-            "kwargs": kwargs,
-        }
-
-    def list(self, *args, **kwargs):
-        return []
-
-
-class RecordingStateApiHandler(BaseHTTPRequestHandler):
-    response_payload = {
-        "result": True,
-        "msg": "",
-        "data": {
-            "result": {
-                "result": [],
-                "total": 0,
-                "num_after_truncation": 0,
-                "num_filtered": 0,
-                "partial_failure_warning": None,
-                "warnings": [],
-            }
-        },
-    }
-    last_headers = None
-    last_path = None
-
-    @classmethod
-    def reset(cls):
-        cls.last_headers = None
-        cls.last_path = None
-
-    def do_GET(self):
-        type(self).last_headers = dict(self.headers.items())
-        type(self).last_path = self.path
-        body = json.dumps(type(self).response_payload).encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "application/json")
-        self.send_header("Content-Length", str(len(body)))
-        self.end_headers()
-        self.wfile.write(body)
-
-    def log_message(self, format, *args):
-        pass
-
-
-@pytest.fixture
-def fake_state_api_client(monkeypatch):
-    FakeStateApiClient.reset()
-    monkeypatch.setattr(state_cli, "StateApiClient", FakeStateApiClient)
-    return FakeStateApiClient
 
 
 @pytest.fixture
@@ -561,93 +496,22 @@ def test_parse_filter():
         _parse_filter("key>value!=")
 
 
-def test_state_cli_list_supports_headers_and_verify(fake_state_api_client):
+@pytest.mark.parametrize(
+    "command,args",
+    [
+        (ray_get, ["actors", "actor-id", "--headers", '{"Authorization": "Bearer test"}']),
+        (ray_list, ["actors", "--headers", '{"Authorization": "Bearer test"}']),
+        (
+            summary_state_cli_group,
+            ["tasks", "--headers", '{"Authorization": "Bearer test"}'],
+        ),
+    ],
+)
+def test_state_cli_does_not_accept_headers_or_verify(command, args):
     runner = CliRunner()
-    result = runner.invoke(
-        ray_list,
-        [
-            "actors",
-            "--headers",
-            '{"Authorization": "Bearer test"}',
-            "--verify",
-            "false",
-        ],
-    )
-    assert result.exit_code == 0, result.output
-    assert fake_state_api_client.captured["headers"] == {
-        "Authorization": "Bearer test"
-    }
-    assert fake_state_api_client.captured["verify"] is False
-
-
-def test_state_cli_list_supports_headers_env_var(monkeypatch, fake_state_api_client):
-    monkeypatch.setenv("RAY_STATE_HEADERS", '{"X-Test": "1"}')
-
-    runner = CliRunner()
-    result = runner.invoke(ray_list, ["actors"])
-    assert result.exit_code == 0, result.output
-    assert fake_state_api_client.captured["headers"] == {"X-Test": "1"}
-    assert fake_state_api_client.captured["verify"] is True
-
-
-def test_state_cli_list_rejects_invalid_headers(fake_state_api_client):
-    runner = CliRunner()
-    result = runner.invoke(ray_list, ["actors", "--headers", "{bad json"])
+    result = runner.invoke(command, args)
     assert result.exit_code != 0
-    assert "Failed to parse headers into JSON" in result.output
-
-
-def test_state_cli_list_integration_with_http_server():
-    RecordingStateApiHandler.reset()
-    server = ThreadingHTTPServer(("127.0.0.1", 0), RecordingStateApiHandler)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
-    thread.start()
-
-    try:
-        runner = CliRunner()
-        result = runner.invoke(
-            ray_list,
-            [
-                "actors",
-                "--address",
-                f"http://127.0.0.1:{server.server_port}",
-                "--headers",
-                '{"Authorization": "Bearer integration"}',
-                "--verify",
-                "false",
-            ],
-        )
-    finally:
-        server.shutdown()
-        thread.join()
-        server.server_close()
-
-    assert result.exit_code == 0, result.output
-    assert "No resource in the cluster" in result.output
-    assert RecordingStateApiHandler.last_headers["Authorization"] == (
-        "Bearer integration"
-    )
-    assert RecordingStateApiHandler.last_path.startswith("/api/v0/actors?")
-
-
-def test_state_cli_summary_supports_headers_and_verify(monkeypatch):
-    captured = {}
-
-    def dummy_summarize_tasks(*, headers=None, verify=True, **kwargs):
-        captured["headers"] = headers
-        captured["verify"] = verify
-        return {}
-
-    monkeypatch.setattr(state_cli, "summarize_tasks", dummy_summarize_tasks)
-
-    runner = CliRunner()
-    result = runner.invoke(
-        state_cli.summary_state_cli_group,
-        ["tasks", "--headers", '{"X-Test": "1"}', "--verify", "false"],
-    )
-    assert result.exit_code == 0, result.output
-    assert captured["headers"] == {"X-Test": "1"}
-    assert captured["verify"] is False
+    assert "No such option: --headers" in result.output
 
 
 def test_state_cli_logs_supports_headers_and_verify(monkeypatch):
