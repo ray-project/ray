@@ -20,7 +20,7 @@ from ray._private.state_api_test_utils import (
     _is_actor_task_running,
     get_state_api_manager,
     verify_failed_task,
-    verify_tasks_running_or_terminated,
+    verify_task_states,
 )
 from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
@@ -258,8 +258,8 @@ def test_fault_tolerance_detached_actor(shutdown_only):
 
             async def run(self, pid_actor):
                 ray.get(
-                    pid_actor.report_pid.remote(
-                        "detached-actor-run", os.getpid(), "RUNNING"
+                    pid_actor.report_expected_state.remote(
+                        "detached-actor-run", "RUNNING"
                     )
                 )
                 self.running = True
@@ -281,10 +281,10 @@ def test_fault_tolerance_detached_actor(shutdown_only):
         ray.get(parent_starts_detached_actor.remote(pid_actor))
 
     a = ray.get_actor("detached-actor", namespace="test")
-    task_pids = ray.get(pid_actor.get_pids.remote())
+    expected_states = ray.get(pid_actor.get_expected_states.remote())
     wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=task_pids,
+        verify_task_states,
+        expected_states=expected_states,
         expect_num_tasks=1,
     )
 
@@ -292,10 +292,10 @@ def test_fault_tolerance_detached_actor(shutdown_only):
     ray.kill(a)
 
     # Verify the actual process no longer running.
-    task_pids["detached-actor-run"] = (task_pids["detached-actor-run"][0], "FAILED")
+    expected_states["detached-actor-run"] = "FAILED"
     wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=task_pids,
+        verify_task_states,
+        expected_states=expected_states,
         expect_num_tasks=1,
     )
 
@@ -406,20 +406,20 @@ ray.get(parent.remote())
 
 @ray.remote
 def task_finish_child(pid_actor):
-    ray.get(pid_actor.report_pid.remote("task_finish_child", os.getpid(), "FINISHED"))
+    ray.get(pid_actor.report_expected_state.remote("task_finish_child", "FINISHED"))
     pass
 
 
 @ray.remote
 def task_sleep_child(pid_actor):
-    ray.get(pid_actor.report_pid.remote("task_sleep_child", os.getpid()))
+    ray.get(pid_actor.report_expected_state.remote("task_sleep_child", "RUNNING"))
     time.sleep(999)
 
 
 @ray.remote
 class ChildActor:
     def children(self, pid_actor):
-        ray.get(pid_actor.report_pid.remote("children", os.getpid()))
+        ray.get(pid_actor.report_expected_state.remote("children", "RUNNING"))
         ray.get(task_finish_child.options(name="task_finish_child").remote(pid_actor))
         ray.get(task_sleep_child.options(name="task_sleep_child").remote(pid_actor))
 
@@ -427,14 +427,15 @@ class ChildActor:
 @ray.remote
 class Actor:
     def fail_parent(self, pid_actor):
-        ray.get(pid_actor.report_pid.remote("fail_parent", os.getpid(), "FAILED"))
+        ray.get(pid_actor.report_expected_state.remote("fail_parent", "FAILED"))
         ray.get(task_finish_child.options(name="task_finish_child").remote(pid_actor))
         task_sleep_child.options(name="task_sleep_child").remote(pid_actor)
 
         # Wait til child tasks run.
         def wait_fn():
             assert (
-                ray.get(pid_actor.get_pids.remote()).get("task_sleep_child") is not None
+                ray.get(pid_actor.get_expected_states.remote()).get("task_sleep_child")
+                is not None
             )
             assert (
                 list_tasks(filters=[("name", "=", "task_finish_child")])[0]["state"]
@@ -446,12 +447,14 @@ class Actor:
         raise ValueError("expected to fail.")
 
     def child_actor(self, pid_actor):
-        ray.get(pid_actor.report_pid.remote("child_actor", os.getpid(), "FAILED"))
+        ray.get(pid_actor.report_expected_state.remote("child_actor", "FAILED"))
         a = ChildActor.remote()
         a.children.options(name="children").remote(pid_actor)
         # Wait til child tasks run.
         wait_for_condition(
-            lambda: ray.get(pid_actor.get_pids.remote()).get("task_sleep_child")
+            lambda: ray.get(pid_actor.get_expected_states.remote()).get(
+                "task_sleep_child"
+            )
             is not None
         )
         raise ValueError("expected to fail.")
@@ -472,8 +475,8 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
     # Wait for all tasks to finish:
     # 3 = fail_parent + task_finish_child + task_sleep_child
     wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=ray.get(pid_actor.get_pids.remote()),
+        verify_task_states,
+        expected_states=ray.get(pid_actor.get_expected_states.remote()),
         expect_num_tasks=3,
     )
 
@@ -490,8 +493,8 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
     # Wait for all tasks to finish:
     # 4 = child_actor + children + task_finish_child + task_sleep_child
     wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=ray.get(pid_actor.get_pids.remote()),
+        verify_task_states,
+        expected_states=ray.get(pid_actor.get_expected_states.remote()),
         expect_num_tasks=4,
         timeout=30,
     )
@@ -628,7 +631,7 @@ def test_fault_tolerance_chained_task_fail(
         # Wait until the children run
         if pid_actor:
             wait_for_condition(
-                lambda: len(ray.get(pid_actor.get_pids.remote())) == 3,
+                lambda: len(ray.get(pid_actor.get_expected_states.remote())) == 3,
             )
 
         if exit_type == "exit_kill":
@@ -636,24 +639,23 @@ def test_fault_tolerance_chained_task_fail(
         else:
             raise ValueError("Expected to fail")
 
-    # Test a chain of tasks
     @ray.remote(max_retries=0)
     def A(exit_type, pid_actor):
         x = B.remote(pid_actor)
-        ray.get(pid_actor.report_pid.remote("A", os.getpid()))
+        ray.get(pid_actor.report_expected_state.remote("A", "FAILED"))
         sleep_or_fail(pid_actor, exit_type)
         ray.get(x)
 
     @ray.remote(max_retries=0)
     def B(pid_actor):
         x = C.remote(pid_actor)
-        ray.get(pid_actor.report_pid.remote("B", os.getpid()))
+        ray.get(pid_actor.report_expected_state.remote("B", "RUNNING"))
         sleep_or_fail()
         ray.get(x)
 
     @ray.remote(max_retries=0)
     def C(pid_actor):
-        ray.get(pid_actor.report_pid.remote("C", os.getpid()))
+        ray.get(pid_actor.report_expected_state.remote("C", "RUNNING"))
         sleep_or_fail()
 
     @ray.remote(max_restarts=0, max_task_retries=0)
@@ -675,10 +677,15 @@ def test_fault_tolerance_chained_task_fail(
         a = Actor.remote()
         ray.get(a.run.remote(pid_actor=pid_actor))
 
+    expected_states = ray.get(pid_actor.get_expected_states.remote())
+    if exit_type == "exit_kill":
+        expected_states["B"] = "FAILED"
+        expected_states["C"] = "FAILED"
     wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=ray.get(pid_actor.get_pids.remote()),
+        verify_task_states,
+        expected_states=expected_states,
         expect_num_tasks=3,
+        timeout=30,
     )
 
 
@@ -725,13 +732,15 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
 
     ray.init(_system_config=_SYSTEM_CONFIG)
 
+    killed_names = {name for name, _ in death_list}
+
     @ray.remote
     class Killer:
         def __init__(self, death_list):
             self.idx_ = 0
             self.death_list_ = death_list
             self.kill_started = False
-            self.name_to_pids = {}
+            self.name_to_expected_state = {}
 
         async def start_killing(self):
             self.kill_started = True
@@ -747,11 +756,11 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
             to_kill = self.death_list_[self.idx_]
             return to_kill
 
-        async def report_pid(self, name, pid):
-            self.name_to_pids[name] = (pid, None)
+        async def report_expected_state(self, name, expected_state):
+            self.name_to_expected_state[name] = expected_state
 
-        async def get_pids(self):
-            return self.name_to_pids
+        async def get_expected_states(self):
+            return self.name_to_expected_state
 
         async def all_killed(self):
             while self.idx_ < len(self.death_list_):
@@ -759,6 +768,9 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
 
         async def advance_next(self):
             self.idx_ += 1
+
+    def expected_state_for(name):
+        return "FAILED" if name in killed_names else "RUNNING"
 
     def run_children(my_name, killer, execution_graph):
         children = execution_graph.get(my_name, [])
@@ -791,12 +803,18 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     @ray.remote(max_task_retries=0, max_restarts=0)
     class Actor:
         def actor_task(self, my_name, killer, execution_graph):
-            ray.get(killer.report_pid.remote(my_name, os.getpid()))
+            ray.get(
+                killer.report_expected_state.remote(
+                    my_name, expected_state_for(my_name)
+                )
+            )
             run_children(my_name, killer, execution_graph)
 
     @ray.remote(max_retries=0)
     def task(my_name, killer, execution_graph):
-        ray.get(killer.report_pid.remote(my_name, os.getpid()))
+        ray.get(
+            killer.report_expected_state.remote(my_name, expected_state_for(my_name))
+        )
         run_children(my_name, killer, execution_graph)
 
     killer = Killer.remote(death_list)
@@ -837,8 +855,8 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     print("all killed")
 
     wait_for_condition(
-        verify_tasks_running_or_terminated,
-        task_pids=ray.get(killer.get_pids.remote()),
+        verify_task_states,
+        expected_states=ray.get(killer.get_expected_states.remote()),
         expect_num_tasks=len(tasks),
         timeout=30,
         retry_interval_ms=500,
