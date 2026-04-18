@@ -350,7 +350,7 @@ def main(output_path: Optional[str]):
         logger.info(f"Service {service_name} running at {status.query_url}")
 
         num_locust_workers = min(
-            16, max(1, int(ray.available_resources().get("CPU", 0)) - 4)
+            16, max(1, int(ray.available_resources().get("CPU", 0)) - 2)
         )
         logger.info(f"Running with: {num_locust_workers=}")
         stats = run_multi_endpoint_load_test(

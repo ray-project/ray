@@ -338,7 +338,7 @@ def run_multi_endpoint_worker(
     )
     all_classes = warmup_classes + ramp_classes
 
-    env = Environment(user_classes=all_classes, events=locust.events, stop_timeout=60)
+    env = Environment(user_classes=all_classes, events=locust.events)
     runner = env.create_worker_runner(
         master_host=master_address, master_port=MASTER_PORT
     )
@@ -461,7 +461,6 @@ def run_multi_endpoint_master(
         user_classes=all_classes,
         shape_class=MultiEndpointLoadShape(),
         events=locust.events,
-        stop_timeout=60,
     )
     master_runner = master_env.create_master_runner(
         master_bind_host="*", master_bind_port=MASTER_PORT
@@ -480,8 +479,8 @@ def run_multi_endpoint_master(
         )
         time.sleep(1)
 
-    stats_printer_greenlet = gevent.spawn(stats_printer(master_env.stats))
-    stats_history_greenlet = gevent.spawn(stats_history, master_runner)
+    gevent.spawn(stats_printer(master_env.stats))
+    gevent.spawn(stats_history, master_runner)
 
     stage_start_requests = master_runner.stats.num_requests
     stage_start_time = time.time()
@@ -489,12 +488,8 @@ def run_multi_endpoint_master(
     master_runner.start_shape()
     master_runner.shape_greenlet.join()
 
-    # When the shape returns None, Locust already initiates stopping.
-    if master_runner.state not in ("stopping", "stopped", "cleanup"):
-        master_runner.stop()
-
-    # Give worker stats a brief chance to flush after stop completes.
-    gevent.sleep(2)
+    # Send quit signal to all locust workers
+    master_runner.quit()
 
     # Print stats
     for line in get_stats_summary(master_runner.stats, current=False):
@@ -544,17 +539,6 @@ def run_multi_endpoint_master(
         "per_endpoint": per_endpoint,
         "stages": stages_dict,
     }
-
-    # Final cleanup only after stats are collected.
-    for g in (stats_printer_greenlet, stats_history_greenlet):
-        if not g.dead:
-            g.kill(block=False)
-
-    try:
-        if master_runner.state not in ("stopped", "cleanup"):
-            master_runner.quit()
-    except Exception as e:
-        logger.warning(f"Ignoring runner quit exception during teardown: {e}")
 
     return results
 
