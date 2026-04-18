@@ -361,7 +361,7 @@ def build_dataset_summary_repr(dataset: "Dataset") -> str:
     plan_str = ""
     plan_max_depth = 0
 
-    if not dataset._plan.has_computed_output():
+    if not dataset.has_computed_output():
         plan_str, plan_max_depth = _format_operator_dag(
             logical_plan.dag, including_source=False
         )

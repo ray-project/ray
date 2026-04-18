@@ -582,7 +582,7 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
     # Assert empty projection is reading no data
     ds = ray.data.read_parquet(path, override_num_blocks=1).select_columns([])
 
-    summary = ds.materialize()._plan.stats().to_summary()
+    summary = ds.materialize()._raw_stats().to_summary()
 
     assert "ReadParquet" in summary.base_name
     assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
@@ -2675,7 +2675,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert not ds._plan.has_started_execution
+    assert not ds.has_started_execution
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
