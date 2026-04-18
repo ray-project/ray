@@ -89,7 +89,7 @@ frontend http_frontend
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
     {%- if backend.custom_request_routing %}
-    use_backend {{ backend.name or 'unknown' }}-custom-routed if is_{{ backend.name or 'unknown' }} { var(txn.custom_request_routed) -m found }
+    use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }} { var(txn.direct_ingress_target) -m found }
     {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
@@ -133,6 +133,11 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
+    {%- if backend.custom_request_routing %}
+    {%- for server in backend.servers %}
+    use-server {{ server.name }} if { var(txn.direct_ingress_target) -m str "{{ server.name }}" }
+    {%- endfor %}
+    {%- endif %}
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
     {%- endfor %}
@@ -140,34 +145,6 @@ backend {{ backend.name or 'unknown' }}
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
     {%- endif %}
-{%- if backend.custom_request_routing %}
-backend {{ backend.name or 'unknown' }}-custom-routed
-    log global
-    http-reuse always
-    {%- if backend.timeout_connect_s is not none %}
-    timeout connect {{ backend.timeout_connect_s }}s
-    {%- endif %}
-    {%- if backend.timeout_server_s is not none %}
-    timeout server {{ backend.timeout_server_s }}s
-    {%- endif %}
-    {%- if backend.timeout_http_keep_alive_s is not none %}
-    timeout http-keep-alive {{ backend.timeout_http_keep_alive_s }}s
-    {%- endif %}
-    {%- if hc.health_path %}
-    option httpchk GET {{ hc.health_path }}
-    http-check expect status 200
-    {%- endif %}
-    {{ hc.default_server_directive }}
-    {%- for server in backend.servers %}
-    use-server {{ server.routing_key }} if { var(txn.direct_ingress_target) -m str "{{ server.routing_key }}" }
-    {%- endfor %}
-    {%- for server in backend.servers %}
-    server {{ server.routing_key }} {{ server.host }}:{{ server.port }} check{% if backend.max_server_conns %} maxconn {{ backend.max_server_conns }}{% endif %}
-    {%- endfor %}
-    {%- if backend.fallback_server %}
-    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
-    {%- endif %}
-{%- endif %}
 {%- endfor %}
 listen stats
   bind *:{{ config.stats_port }}
