@@ -250,6 +250,41 @@ def ray_tpu_cluster(ray_start_cluster):
     ray.shutdown()
 
 
+@pytest.fixture
+def ray_v6e_tpu_cluster(ray_start_cluster):
+    """
+    Simulates a Ray cluster with two v6e-8 slices (2x4 topology).
+
+    """
+    pod_type = "v6e-8"
+    topology = "2x4"
+    cluster = ray_start_cluster
+
+    for i in range(2):
+        env_common = {
+            "TPU_NAME": f"test-v6e-slice-{i}",
+            "TPU_ACCELERATOR_TYPE": pod_type,
+            "TPU_TOPOLOGY": topology,
+        }
+        head_labels = {
+            "ray.io/tpu-slice-name": f"test-v6e-slice-{i}",
+            "ray.io/tpu-worker-id": "0",
+            "ray.io/tpu-pod-type": pod_type,
+            "ray.io/tpu-topology": topology,
+        }
+        # A single-host v6e-8 has 8 chips on one node
+        cluster.add_node(
+            num_cpus=4,
+            resources={"TPU": 8, f"TPU-{pod_type}-head": 1},
+            env_vars={**env_common, "TPU_WORKER_ID": "0"},
+            labels=head_labels,
+        )
+
+    ray.init(address=cluster.address)
+    yield cluster
+    ray.shutdown()
+
+
 def test_fetch_tpu_slice_name_from_pg(ray_tpu_cluster):
     """Tests that the slice name can be fetched from a PG."""
     tpu_head_pg = ray.util.placement_group(bundles=[{"TPU-v4-16-head": 1}])
@@ -764,6 +799,44 @@ def test_get_tpu_nodes_for_slice(mock_nodes_call, mock_is_initialized):
 def test_get_tpu_nodes_for_slice_uninitialized(mock_is_initialized):
     """Test that the utility gracefully handles an uninitialized Ray context."""
     assert ray.util.tpu.get_tpu_nodes_for_slice("slice-A") == []
+
+
+def test_get_tpu_worker_resources_chips_per_vm_override():
+    """Test that chips_per_vm correctly overrides the default resource calculations."""
+
+    # Default behavior: v6e 2x4 defaults to a single 8-chip host
+    num_workers, resources = ray.util.tpu.get_tpu_worker_resources(
+        topology="2x4", accelerator_type="v6e"
+    )
+    assert num_workers == 1
+    assert resources["TPU"] == 8
+
+    # Override behavior: v6e 2x4 forced to 4 chips per VM (2 hosts)
+    num_workers_override, resources_override = ray.util.tpu.get_tpu_worker_resources(
+        topology="2x4", accelerator_type="v6e", chips_per_vm=4
+    )
+    assert num_workers_override == 2
+    assert resources_override["TPU"] == 4
+
+
+def test_slice_placement_group_chips_per_vm_override(ray_v6e_tpu_cluster):
+    """Test that SlicePlacementGroup respects chips_per_vm for host calculation."""
+
+    # Default behavior (1 VM with 8 chips)
+    default_pg = SlicePlacementGroup(topology="2x4", accelerator_version="v6e")
+    assert default_pg.chips_per_host == 8
+    assert default_pg.num_hosts == 1
+    assert default_pg.num_bundles == 1
+    assert default_pg.bundle_resources["TPU"] == 8
+
+    # User-specified override behavior (2 VMs with 4 chips each)
+    override_pg = SlicePlacementGroup(
+        topology="2x4", accelerator_version="v6e", chips_per_vm=4
+    )
+    assert override_pg.chips_per_host == 4
+    assert override_pg.num_hosts == 2
+    assert override_pg.num_bundles == 2
+    assert override_pg.bundle_resources["TPU"] == 4
 
 
 if __name__ == "__main__":
