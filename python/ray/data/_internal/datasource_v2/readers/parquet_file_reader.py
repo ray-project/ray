@@ -1,12 +1,13 @@
 import logging
 import math
-from typing import List, Optional, override
+from typing import List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 from pyarrow import compute as pc
 from pyarrow.fs import FileSystem
+from typing_extensions import override
 
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
