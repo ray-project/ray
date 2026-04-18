@@ -653,6 +653,27 @@ def test_cancel_request_clears_client_side_state(
     mock_cancel.assert_any_call(mock_ref, force=False)
 
 
+def test_try_cancel_absorbs_exceptions(teardown_autoscaling_coordinator):
+    """_try_cancel swallows exceptions so a failing cancel cannot derail the caller.
+
+    Regression guard: if _try_cancel is simplified to a bare ray.cancel call,
+    this test will fail — the timeout branch in _resolve_pending would raise
+    instead of recording the failure and continuing.
+    """
+    coordinator, mock_ref, mock_actor = _make_coordinator_with_mock_actor()
+    stale_time = time.time() - coordinator.AUTOSCALING_REQUEST_GET_TIMEOUT_S - 1
+    coordinator._pending_allocated_resources["test"] = (mock_ref, stale_time)
+
+    with patch("ray.wait", return_value=([], [mock_ref])):
+        with patch("ray.cancel", side_effect=RuntimeError("cancel failed")):
+            # Must not raise despite ray.cancel failing.
+            coordinator.get_allocated_resources("test")
+
+    # Failure was still recorded; a fresh request was submitted after the timeout.
+    assert coordinator._consecutive_failures_get_allocated_resources == 1
+    assert mock_actor.get_allocated_resources.remote.call_count == 1
+
+
 def test_non_ray_errors_propagate(teardown_autoscaling_coordinator):
     """Non-Ray errors in _resolve_pending bypass the except clause and propagate.
 

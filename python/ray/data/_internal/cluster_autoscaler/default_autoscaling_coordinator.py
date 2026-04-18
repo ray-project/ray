@@ -58,7 +58,8 @@ class OngoingRequest:
 class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     """Client-side proxy for the _AutoscalingCoordinatorActor.
 
-    All three public methods are non-blocking. Not thread-safe; assumed to be
+    All public methods (request_resources, cancel_request,
+    get_allocated_resources) are non-blocking. Not thread-safe; assumed to be
     called from a single scheduling thread per instance.
     """
 
@@ -71,8 +72,9 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     def __init__(self):
         self._cached_allocated_resources: Dict[str, List[ResourceDict]] = {}
-        # Track in-flight async requests for each public method.
-        # All three dicts map requester_id -> (ObjectRef, submit_time).
+        # In-flight async requests per public method, keyed by requester_id.
+        # Value is (ObjectRef, submit_time). cancel_request additionally clears
+        # the other two dicts via _clear_requester_state.
         self._pending_allocated_resources: Dict[str, Tuple[ray.ObjectRef, float]] = {}
         self._pending_request_resources: Dict[str, Tuple[ray.ObjectRef, float]] = {}
         self._pending_cancel_request: Dict[str, Tuple[ray.ObjectRef, float]] = {}
@@ -125,7 +127,11 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             )
 
     def _try_cancel(self, ref, operation_name: str, requester_id: str) -> None:
-        """Best-effort soft cancel of an ObjectRef; logs at DEBUG on failure."""
+        """Best-effort soft cancel of an ObjectRef.
+
+        Swallows all exceptions rather than propagating them, so a failing
+        cancel cannot derail the caller. Logs the suppressed exception at DEBUG.
+        """
         try:
             ray.cancel(ref, force=False)
         except Exception:
@@ -149,10 +155,6 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         request has timed out, issue a soft cancel (force=False) and discard the
         ref, then record a timeout failure. Does nothing if no request is pending
         for requester_id.
-
-        Note: errors from fire-and-forget methods (request_resources,
-        cancel_request) surface on a future call to the same method, once
-        the pending request completes or times out — not at submission time.
         """
         pending = pending_dict.get(requester_id)
         if pending is None:
@@ -169,7 +171,8 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             except ray.exceptions.RayError as exc:
                 self._record_failure(counter_attr, operation_name, requester_id, exc)
         elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
-            # Delete before cancelling so a failing _try_cancel cannot orphan the entry.
+            # Delete before cancelling for defense-in-depth: _try_cancel doesn't raise,
+            # but cleanup should not depend on that guarantee.
             del pending_dict[requester_id]
             self._try_cancel(ref, operation_name, requester_id)
             self._record_failure(counter_attr, operation_name, requester_id)
@@ -213,13 +216,28 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             time.time(),
         )
 
+    def _clear_requester_state(self, requester_id: str) -> None:
+        """Cancel in-flight requests and clear all client-side state for a requester.
+
+        Called by cancel_request to prevent memory accumulation across many
+        executions in a long-running process.
+        """
+        for pending_dict, operation_name in [
+            (self._pending_request_resources, "send resource request"),
+            (self._pending_allocated_resources, "get allocated resources"),
+        ]:
+            if requester_id in pending_dict:
+                old_ref, _ = pending_dict.pop(requester_id)
+                self._try_cancel(old_ref, operation_name, requester_id)
+        self._cached_allocated_resources.pop(requester_id, None)
+
     def cancel_request(self, requester_id: str) -> None:
         """Fire-and-forget: cancel a resource request on the coordinator actor.
 
         Returns immediately. If the previous cancel for requester_id has
         completed, its result is checked first and the failure counter updated.
-        Any still-in-flight cancel is soft-cancelled and replaced. Also clears
-        all client-side state for requester_id so memory does not accumulate
+        Any still-in-flight cancel is soft-cancelled and replaced. Clears all
+        other client-side state for requester_id so memory does not accumulate
         across many executions in a long-running process.
         """
         self._resolve_pending(
@@ -232,12 +250,8 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         if requester_id in self._pending_cancel_request:
             old_ref, _ = self._pending_cancel_request.pop(requester_id)
             self._try_cancel(old_ref, "cancel resource request", requester_id)
-        # Clear client-side state: once cancelled, the requester will not call
-        # get_allocated_resources again, so keeping these entries wastes memory.
-        if requester_id in self._pending_allocated_resources:
-            old_ref, _ = self._pending_allocated_resources.pop(requester_id)
-            self._try_cancel(old_ref, "get allocated resources", requester_id)
-        self._cached_allocated_resources.pop(requester_id, None)
+        # Clear all other client-side state for this requester.
+        self._clear_requester_state(requester_id)
         self._pending_cancel_request[requester_id] = (
             self._autoscaling_coordinator.cancel_request.remote(requester_id),
             time.time(),
