@@ -226,10 +226,9 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         # potential swap above. We must not free blocks that are shared with
         # other operators (e.g., when the input RefBundle has owns_blocks=False
         # because it comes from a materialized dataset).
-        if input_side_inverted:
-            split_side_owned = all(b.owns_blocks for b in left_input)
-        else:
-            split_side_owned = all(b.owns_blocks for b in right_input)
+        split_side_owned = all(
+            b.owns_blocks for b in (left_input if input_side_inverted else right_input)
+        )
         aligned_right_blocks_with_metadata = _split_at_indices(
             right_blocks_with_metadata,
             indices,
