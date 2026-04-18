@@ -177,7 +177,8 @@ RAMP_PROFILE = [
     (810, 0),
 ]
 
-# Per-stage time windows (from test start), derived from RAMP_PROFILE
+# Per-stage time windows (from test start)
+# (stage, stage-start, stage-end)
 LOAD_STAGES = [
     ("warmup", 0, WARMUP_SEC),
     ("ramp_up", WARMUP_SEC, WARMUP_SEC + 310),
@@ -351,6 +352,7 @@ def main(output_path: Optional[str]):
         num_locust_workers = min(
             16, max(1, int(ray.available_resources().get("CPU", 0)) - 4)
         )
+        logger.info(f"Running with: {num_locust_workers=}")
         stats = run_multi_endpoint_load_test(
             num_workers=num_locust_workers,
             host_url=status.query_url,
