@@ -342,7 +342,11 @@ def run_multi_endpoint_worker(
     runner = env.create_worker_runner(
         master_host=master_address, master_port=MASTER_PORT
     )
-    runner.greenlet.join()
+
+    try:
+        runner.greenlet.join()
+    except Exception as e:
+        logger.warning(f"Worker runner exited with exception during teardown: {e}")
 
 
 def run_multi_endpoint_master(
@@ -402,12 +406,18 @@ def run_multi_endpoint_master(
 
     def _capture_stage_stats(stage_name):
         nonlocal stage_start_requests, stage_start_time
+
+        if stage_name is None:
+            return
+
         now = time.time()
         total = master_runner.stats.total
         if total.num_requests == 0:
             return
-        requests_in_stage = total.num_requests - stage_start_requests
-        duration = max(1, now - stage_start_time)
+
+        requests_in_stage = max(0, total.num_requests - stage_start_requests)
+        duration = max(1e-6, now - stage_start_time)
+
         stage_stats.append(
             {
                 "name": stage_name,
@@ -438,12 +448,11 @@ def run_multi_endpoint_master(
             ramp_users = _interpolate(ramp_time, ramp_profile)
             total_users = ramp_base_users + int(round(ramp_users))
 
+            # End of test: let Locust stop the run.
             if ramp_users <= 0 and ramp_time >= ramp_profile[-1][0]:
                 if prev_stage[0] is not None:
                     _capture_stage_stats(prev_stage[0])
-                # Bump stop_timeout for end-of-test drain
-                # During the test, a small stop_timeout keeps stage transitions fast.
-                master_runner.environment.stop_timeout = 60
+                    prev_stage[0] = None
                 return None
 
             return total_users, ramp_spawn_rate, ramp_classes
@@ -452,9 +461,7 @@ def run_multi_endpoint_master(
         user_classes=all_classes,
         shape_class=MultiEndpointLoadShape(),
         events=locust.events,
-        # Small stop_timeout for fast stage transitions;
-        # bumped to 60 at end-of-test.
-        stop_timeout=5,
+        stop_timeout=60,
     )
     master_runner = master_env.create_master_runner(
         master_bind_host="*", master_bind_port=MASTER_PORT
@@ -473,15 +480,21 @@ def run_multi_endpoint_master(
         )
         time.sleep(1)
 
-    gevent.spawn(stats_printer(master_env.stats))
-    gevent.spawn(stats_history, master_runner)
+    stats_printer_greenlet = gevent.spawn(stats_printer(master_env.stats))
+    stats_history_greenlet = gevent.spawn(stats_history, master_runner)
 
     stage_start_requests = master_runner.stats.num_requests
     stage_start_time = time.time()
+
     master_runner.start_shape()
     master_runner.shape_greenlet.join()
+
+    # When the shape returns None, Locust already initiates stopping.
+    if master_runner.state not in ("stopping", "stopped", "cleanup"):
+        master_runner.stop()
+
+    # Give worker stats a brief chance to flush after stop completes.
     gevent.sleep(2)
-    master_runner.quit()
 
     # Print stats
     for line in get_stats_summary(master_runner.stats, current=False):
@@ -509,7 +522,6 @@ def run_multi_endpoint_master(
                 "rps": entry.total_rps,
             }
 
-    # Build per-stage dict
     stages_dict = {}
     for s in stage_stats:
         stages_dict[s["name"]] = {
@@ -519,9 +531,8 @@ def run_multi_endpoint_master(
             "avg_users": s["avg_users"],
         }
 
-    # Build aggregate results
     total = master_runner.stats.total
-    return {
+    results = {
         "total_requests": master_runner.stats.num_requests,
         "num_failures": master_runner.stats.num_failures,
         "p50_latency": total.get_response_time_percentile(0.5),
@@ -533,6 +544,19 @@ def run_multi_endpoint_master(
         "per_endpoint": per_endpoint,
         "stages": stages_dict,
     }
+
+    # Final cleanup only after stats are collected.
+    for g in (stats_printer_greenlet, stats_history_greenlet):
+        if not g.dead:
+            g.kill(block=False)
+
+    try:
+        if master_runner.state not in ("stopped", "cleanup"):
+            master_runner.quit()
+    except Exception as e:
+        logger.warning(f"Ignoring runner quit exception during teardown: {e}")
+
+    return results
 
 
 def main():
