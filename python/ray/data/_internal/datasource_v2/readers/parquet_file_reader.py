@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -17,6 +17,7 @@ from ray.data._internal.datasource_v2.readers.file_reader import (
 from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
+from ray.data.block import Block
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
@@ -139,6 +140,7 @@ class ParquetFileReader(FileReader):
         ignore_prefixes: Optional[List[str]] = None,
         target_block_size: Optional[int] = None,
         include_paths: bool = False,
+        _block_udf: Optional[Callable[[Block], Block]] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -155,6 +157,8 @@ class ParquetFileReader(FileReader):
                 Used for adaptive batch sizing when ``batch_size`` is not set.
             include_paths: If True, include the source file path in a
                 ``'path'`` column for each row.
+            _block_udf: Optional per-batch transform applied to each read
+                block before it is yielded. Internal.
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -169,6 +173,7 @@ class ParquetFileReader(FileReader):
         )
         self._explicit_batch_size = batch_size
         self._target_block_size = target_block_size
+        self._block_udf = _block_udf
         self._sampled_batch_size: int | object = (
             _UNSET  # pyrefly: ignore[bad-assignment]
         )
@@ -215,6 +220,12 @@ class ParquetFileReader(FileReader):
             return
         row_size = table.nbytes / table.num_rows
         self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
+
+    def _transform_batch(self, table: pa.Table) -> pa.Table:
+        """Apply the user-supplied block UDF, if any."""
+        if self._block_udf is not None and table.num_rows > 0:
+            return self._block_udf(table)
+        return table
 
     @override
     def _arrow_scanner_kwargs(self) -> dict:

@@ -6,6 +6,7 @@ import pyarrow.dataset as pds
 from pyarrow import compute as pc
 from pyarrow.fs import FileSystem, LocalFileSystem
 
+from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data._internal.util import iterate_with_retry
@@ -129,6 +130,18 @@ class FileReader(Reader[FileManifest]):
                         pa.array([fragment_path] * table.num_rows, type=pa.string()),
                     )
 
+                if table.num_columns == 0 and table.num_rows > 0:
+                    # Guards against ``pa.concat_tables`` collapsing rows when
+                    # a batch has zero columns (e.g., empty projection for a
+                    # count query). The stub column is dropped by downstream
+                    # projections.
+                    table = table.append_column(
+                        _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+                        pa.nulls(table.num_rows),
+                    )
+
+                table = self._transform_batch(table)
+
                 self._on_batch_read(table)
                 rows_read += len(table)
                 yield table
@@ -155,12 +168,20 @@ class FileReader(Reader[FileManifest]):
         """
         return {}
 
+    def _transform_batch(self, table: pa.Table) -> pa.Table:
+        """Hook for per-batch transformations applied before yielding.
+
+        Subclasses can override this to apply format-specific transforms
+        (e.g., a user-supplied block UDF).
+        """
+        return table
+
     @staticmethod
     def _read_batches(
         scanner: pds.Scanner,
     ) -> Iterator[tuple[pa.Table, str]]:
         """Yield non-empty (table, fragment_path) pairs from scanner batches."""
         for tagged in scanner.scan_batches():
-            table = pa.Table.from_batches([tagged.record_batch])
+            table = pa.Table.from_batches(batches=[tagged.record_batch])
             if table.num_rows > 0:
                 yield table, tagged.fragment.path
