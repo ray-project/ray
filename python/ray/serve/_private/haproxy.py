@@ -243,6 +243,7 @@ class ServerConfig:
     host: str  # IP/hostname to connect to
     port: int  # Port to connect to
     real_ip: Optional[str] = None  # Original IP before localhost conversion
+    replica_id: Optional[str] = None  # Stable replica ID returned by /internal/route
 
     def __str__(self) -> str:
         return f"ServerConfig(name='{self.name}', host='{self.host}', port={self.port})"
@@ -713,8 +714,9 @@ class HAProxyApi(ProxyApi):
         """Write the Lua routing script for direct ingress custom request routing.
 
         Per-request routing: Lua calls /internal/route on an HTTP router
-        for every request, which calls choose_replicas() to pick a replica.
-        This supports custom routing logic including prefix-cache-aware routing.
+        for every request, which calls choose_replicas() to pick a replica
+        and returns its replica ID. HAProxy then resolves that replica ID to
+        a concrete backend server name inside the local config.
 
         Returns the path to the written Lua script.
         """
@@ -728,9 +730,10 @@ class HAProxyApi(ProxyApi):
                 continue
             all_router_servers.extend(backend.router_servers)
             for server in backend.servers:
-                ip = server.real_ip or server.host
+                if server.replica_id is None:
+                    continue
                 server_name_map_entries.append(
-                    f'    [{json.dumps(f"{ip}:{server.port}")}] = '
+                    f"    [{json.dumps(server.replica_id)}] = "
                     f"{json.dumps(server.name)}"
                 )
 
@@ -751,7 +754,7 @@ class HAProxyApi(ProxyApi):
     port = {router.port}
 }}
 
-local direct_server_name_map = {server_name_map_lua}
+local replica_id_to_server_name_map = {server_name_map_lua}
 
 local function do_request(body)
     local sock = core.tcp()
@@ -800,17 +803,13 @@ core.register_action("route_direct_ingress_request", {{"http-req"}}, function(tx
         return
     end
 
-    local host = response:match('"host"%s*:%s*"([^"]+)"')
-    local port = response:match('"port"%s*:%s*(%d+)')
+    local replica_id = response:match('"replica_id"%s*:%s*"([^"]+)"')
 
-    if host and port then
-        local symbolic_server_name = "sc_" .. host:gsub("%.", "_") .. "_" .. port
-        local server_key = host .. ":" .. port
-        local server_name = direct_server_name_map[server_key]
-        if not server_name then
-            server_name = symbolic_server_name
+    if replica_id then
+        local server_name = replica_id_to_server_name_map[replica_id]
+        if server_name then
+            txn:set_var("txn.direct_ingress_target", server_name)
         end
-        txn:set_var("txn.direct_ingress_target", server_name)
     end
 end, 0)
 """
@@ -1345,6 +1344,7 @@ class HAProxyManager(ProxyActorInterface):
             host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
             port=target.port,
             real_ip=target.ip,
+            replica_id=target.name,
         )
 
     def _create_backend_config(
