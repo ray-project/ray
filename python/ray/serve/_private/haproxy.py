@@ -242,7 +242,7 @@ class ServerConfig:
     name: str  # Server identifier for HAProxy config
     host: str  # IP/hostname to connect to
     port: int  # Port to connect to
-    routing_key: Optional[str] = None  # Stable custom-routing selection key
+    real_ip: Optional[str] = None  # Original IP before localhost conversion
 
     def __str__(self) -> str:
         return f"ServerConfig(name='{self.name}', host='{self.host}', port={self.port})"
@@ -721,56 +721,50 @@ class HAProxyApi(ProxyApi):
         config_dir = os.path.dirname(self.config_file_path)
         lua_path = os.path.join(config_dir, "direct_ingress_custom_request_routing.lua")
 
-        router_group_entries = []
+        all_router_servers: List[ServerConfig] = []
+        server_name_map_entries = []
         for backend in backends:
             if not backend.custom_request_routing or not backend.router_servers:
                 continue
-            servers_lua = ", ".join(
-                f"{{ host = {json.dumps(s.host)}, port = {s.port} }}"
-                for s in backend.router_servers
-            )
-            router_group_entries.append(
-                f'    {{ path_prefix = {json.dumps(backend.path_prefix or "/")}, '
-                f"servers = {{ {servers_lua} }} }}"
-            )
+            all_router_servers.extend(backend.router_servers)
+            for server in backend.servers:
+                ip = server.real_ip or server.host
+                server_name_map_entries.append(
+                    f'    [{json.dumps(f"{ip}:{server.port}")}] = '
+                    f"{json.dumps(server.name)}"
+                )
 
-        routers_lua = (
-            "{\n" + ",\n".join(router_group_entries) + "\n}"
-            if router_group_entries
+        if not all_router_servers:
+            return lua_path
+
+        router = sorted(
+            all_router_servers, key=lambda server: (server.port, server.host)
+        )[0]
+        server_name_map_lua = (
+            "{\n" + ",\n".join(sorted(server_name_map_entries)) + "\n}"
+            if server_name_map_entries
             else "{}"
         )
 
-        lua_content = f"""local ROUTERS = {routers_lua}
-local rr_counter = 0
+        lua_content = f"""local router = {{
+    host = "{router.host}",
+    port = {router.port}
+}}
 
-local function path_matches(path, prefix)
-    if prefix == "/" then
-        return true
-    end
-    return path == prefix or string.sub(path, 1, #prefix + 1) == prefix .. "/"
-end
+local direct_server_name_map = {server_name_map_lua}
 
-local function find_router_group(path)
-    for _, group in ipairs(ROUTERS) do
-        if path_matches(path, group.path_prefix) then
-            return group
-        end
-    end
-    return nil
-end
-
-local function do_request(server, body)
+local function do_request(body)
     local sock = core.tcp()
-    sock:settimeout(0.5)
+    sock:settimeout(5)
 
-    local ok, err = sock:connect(server.host, tonumber(server.port))
+    local ok, err = sock:connect(router.host, tonumber(router.port))
     if not ok then
         return nil
     end
 
     local req = "POST /internal/route HTTP/1.0\\r\\n"
         .. "Content-Type: application/json\\r\\n"
-        .. "Content-Length: " .. #body .. "\\r\\n"
+        .. "Content-Length: " .. string.len(body) .. "\\r\\n"
         .. "\\r\\n"
         .. body
 
@@ -791,27 +785,16 @@ local function do_request(server, body)
 end
 
 core.register_action("route_direct_ingress_request", {{"http-req"}}, function(txn)
-    local path = txn.sf:path()
-    local group = find_router_group(path)
-    if not group then
-        return
-    end
-
     local body = txn.sf:req_body()
     if not body or body == "" then
         return
     end
 
-    -- Round-robin across router servers, trying each once on failure.
-    local n = #group.servers
-    local start = rr_counter
-    rr_counter = rr_counter + 1
-    local response = nil
-    for i = 0, n - 1 do
-        local server = group.servers[(start + i) % n + 1]
-        response = do_request(server, body)
-        if response then break end
+    if not string.find(body, '"stream"') or not string.find(body, "true") then
+        return
     end
+
+    local response = do_request(body)
 
     if not response then
         return
@@ -821,9 +804,13 @@ core.register_action("route_direct_ingress_request", {{"http-req"}}, function(tx
     local port = response:match('"port"%s*:%s*(%d+)')
 
     if host and port then
-        local routing_key = "sc_" .. host:gsub("%.", "_") .. "_" .. port
-        txn:set_var("txn.direct_ingress_target", routing_key)
-        txn:set_var("txn.custom_request_routed", true)
+        local symbolic_server_name = "sc_" .. host:gsub("%.", "_") .. "_" .. port
+        local server_key = host .. ":" .. port
+        local server_name = direct_server_name_map[server_key]
+        if not server_name then
+            server_name = symbolic_server_name
+        end
+        txn:set_var("txn.direct_ingress_target", server_name)
     end
 end, 0)
 """
@@ -1357,7 +1344,7 @@ class HAProxyManager(ProxyActorInterface):
             # Use localhost if target is on the same node as HAProxy
             host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
             port=target.port,
-            routing_key=f"sc_{target.ip.replace('.', '_')}_{target.port}",
+            real_ip=target.ip,
         )
 
     def _create_backend_config(
@@ -1380,11 +1367,7 @@ class HAProxyManager(ProxyActorInterface):
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
 
-        # When ingress bypass is active, the main targets are LLMServer replicas
-        # serving vLLM's native app which uses /health not /-/healthz.
-        health_path = None  # use default
-        if target_group.router_targets:
-            health_path = "/health"
+        health_path = "/health" if target_group.router_targets else None
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
