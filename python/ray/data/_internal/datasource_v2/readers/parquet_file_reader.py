@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import List, Optional
+from typing import List, Optional, override
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -172,6 +172,7 @@ class ParquetFileReader(FileReader):
             _UNSET  # pyrefly: ignore[bad-assignment]
         )
 
+    @override
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
         """Determine batch size from explicit setting, metadata, or default.
 
@@ -206,6 +207,7 @@ class ParquetFileReader(FileReader):
         self._sampled_batch_size = batch_size
         return batch_size
 
+    @override
     def _on_batch_read(self, table: pa.Table) -> None:
         """Refine batch size estimate from actual in-memory data."""
         if self._target_block_size is None or table.nbytes == 0 or table.num_rows == 0:
@@ -213,7 +215,8 @@ class ParquetFileReader(FileReader):
         row_size = table.nbytes / table.num_rows
         self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
 
-    def _scanner_kwargs(self) -> dict:
+    @override
+    def _arrow_scanner_kwargs(self) -> dict:
         # pre_buffer=True (pyarrow default) holds a whole fragment's worth of
         # decoded column chunks resident before yielding batches, so
         # pa.total_allocated_bytes() climbs monotonically across batches and

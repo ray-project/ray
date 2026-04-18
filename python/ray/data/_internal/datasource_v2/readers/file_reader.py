@@ -106,7 +106,7 @@ class FileReader(Reader[FileManifest]):
                 batch_size=batch_size,
                 batch_readahead=1,
             )
-            scanner_kwargs.update(self._scanner_kwargs())
+            scanner_kwargs.update(self._arrow_scanner_kwargs())
             scanner = dataset.scanner(**scanner_kwargs)
 
             ctx = DataContext.get_current()
@@ -148,7 +148,7 @@ class FileReader(Reader[FileManifest]):
         """
         pass
 
-    def _scanner_kwargs(self) -> dict:
+    def _arrow_scanner_kwargs(self) -> dict:
         """Additional keyword arguments passed to ``pds.Dataset.scanner()``.
 
         Subclasses override this to inject format-specific options.
