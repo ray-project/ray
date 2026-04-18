@@ -81,7 +81,7 @@ steps:
       PYTHON_VERSION: "{{array.python}}"
       IMAGE_TYPE: "ray-torch-cpu"
     depends_on:
-      - raycpubase($)
+      - raycpubaseextra($)
 
   - name: ray-torchcudabase
     label: "wanda: ray-torch.py{{array.python}}.cu{{array.cuda}}.base"
@@ -96,7 +96,7 @@ steps:
       CUDA_VERSION: "{{array.cuda}}"
       IMAGE_TYPE: "ray-torch-cu130"
     depends_on:
-      - raycudabase($)
+      - raycudabaseextra($)
 
   - name: ray-anyscale-cpu-build
     label: "wanda: ray-anyscale py{{array.python}} cpu"
