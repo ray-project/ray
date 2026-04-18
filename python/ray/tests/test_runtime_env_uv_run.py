@@ -322,6 +322,7 @@ def test_uv_run_runtime_env_hook():
 def test_uv_run_parser():
     from ray._private.runtime_env.uv_runtime_env_hook import (
         _create_uv_run_parser,
+        _extract_uv_prefix_args,
         _parse_args,
     )
 
@@ -367,6 +368,48 @@ def test_uv_run_parser():
     assert options.extras == ["vllm"]
     assert options.module == "my_module.submodule"
     assert command == ["--model", "Qwen/Qwen3-32B"]
+
+    parser = _create_uv_run_parser()
+    raw_args = [
+        "-m",
+        "ray.util.client.server",
+        "--address=172.18.0.2:6379",
+        "--host=127.0.0.1",
+    ]
+    assert _extract_uv_prefix_args(raw_args, parser) == [
+        "-m",
+        "ray.util.client.server",
+    ]
+
+    parser = _create_uv_run_parser()
+    raw_args = [
+        "--new-uv-flag=example",
+        "--project",
+        ".",
+        "-m",
+        "ray._private.runtime_env.uv_runtime_env_hook",
+        "--extra-args",
+    ]
+    assert _extract_uv_prefix_args(raw_args, parser) == [
+        "--new-uv-flag=example",
+        "--project",
+        ".",
+        "-m",
+        "ray._private.runtime_env.uv_runtime_env_hook",
+    ]
+
+    parser = _create_uv_run_parser()
+    raw_args = ["--no-project", "my_script.py", "--python", "3.10"]
+    assert _extract_uv_prefix_args(raw_args, parser) == ["--no-project"]
+
+    parser = _create_uv_run_parser()
+    raw_args = [
+        "--project",
+        "my_script.py",
+        "my_script.py",
+        "--flag",
+    ]
+    assert _extract_uv_prefix_args(raw_args, parser) == ["--project", "my_script.py"]
 
 
 def test_uv_run_hook_keeps_equal_style_option_values():

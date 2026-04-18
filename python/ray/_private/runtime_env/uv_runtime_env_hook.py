@@ -253,92 +253,74 @@ def _parse_args(
     return options, parser.rargs
 
 
-def _extract_uv_prefix_args(raw_args: List[str], command: List[str]) -> List[str]:
-    """Return uv arguments before command starts, preserving unknown uv flags.
+def _extract_uv_prefix_args(
+    raw_args: List[str], parser: optparse.OptionParser
+) -> List[str]:
+    """Return the uv run prefix arguments from raw argv.
 
-    We prefer using parser-provided command boundary when reliable, but fall back to
-    a positional scan for cases where unknown option handling can make `command`
-    effectively equal to the original args.
+    This scanner operates on the original unmodified argv to avoid edge cases where
+    optparse can rewrite unconsumed args (e.g. unknown ``--flag=value`` becoming
+    ``["--flag", "value"]``). We include uv options up to the command boundary:
+
+    - First positional token for script-style runs
+    - End of options marker ``--``
+    - Immediately after ``-m/--module`` value for module-style runs
     """
     if not raw_args:
         return []
 
-    # Usual case: command is a strict suffix of raw args.
-    if command and len(command) < len(raw_args):
-        return raw_args[: len(raw_args) - len(command)]
+    known_options = set()
+    options_requiring_value = set()
 
-    # Fallback: scan left-to-right, treating leading option-like tokens as uv args.
-    # Preserve unknown uv options (`--new-flag`, `--new-flag=value`) and values for
-    # known value-taking options (best-effort) until the command token boundary.
+    for option in parser.option_list:
+        flags = option._short_opts + option._long_opts
+        known_options.update(flags)
+        if option.takes_value():
+            options_requiring_value.update(flags)
+
+    for group in parser.option_groups:
+        for option in group.option_list:
+            flags = option._short_opts + option._long_opts
+            known_options.update(flags)
+            if option.takes_value():
+                options_requiring_value.update(flags)
+
     uv_args: List[str] = []
-    options_requiring_value = {
-        "--extra",
-        "--no-extra",
-        "--group",
-        "--no-group",
-        "--only-group",
-        "--env-file",
-        "--with",
-        "--with-editable",
-        "--with-requirements",
-        "--package",
-        "--index",
-        "--default-index",
-        "-i",
-        "--index-url",
-        "--extra-index-url",
-        "-f",
-        "--find-links",
-        "--keyring-provider",
-        "-P",
-        "--upgrade-package",
-        "--resolution",
-        "--prerelease",
-        "--fork-strategy",
-        "--exclude-newer",
-        "--reinstall-package",
-        "--link-mode",
-        "-C",
-        "--config-setting",
-        "--no-build-isolation-package",
-        "--no-build-package",
-        "--no-binary-package",
-        "--cache-dir",
-        "--refresh-package",
-        "-p",
-        "--python",
-        "--python-preference",
-        "--color",
-        "--allow-insecure-host",
-        "--directory",
-        "--project",
-        "--config-file",
-        "-m",
-        "--module",
-    }
-
     i = 0
+
     while i < len(raw_args):
         token = raw_args[i]
+
         if token == "--":
             break
 
-        if token.startswith("-"):
-            uv_args.append(token)
-            # --flag=value style already carries value in same token.
-            if (
-                "=" not in token
-                and token in options_requiring_value
-                and i + 1 < len(raw_args)
-            ):
-                uv_args.append(raw_args[i + 1])
-                i += 2
-                continue
+        if not token.startswith("-"):
+            # First positional token is command boundary.
+            break
+
+        uv_args.append(token)
+
+        option_name = token.split("=", 1)[0]
+        if "=" in token:
             i += 1
             continue
 
-        # First positional token is command boundary.
-        break
+        if option_name in options_requiring_value and i + 1 < len(raw_args):
+            uv_args.append(raw_args[i + 1])
+            i += 2
+
+            # In module mode, command begins immediately after the module value.
+            if option_name in {"-m", "--module"}:
+                break
+            continue
+
+        # Keep unknown options as part of uv prefix as long as they appear
+        # before the command boundary.
+        if option_name not in known_options:
+            i += 1
+            continue
+
+        i += 1
 
     return uv_args
 
@@ -445,12 +427,12 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     raw_args = cmdline[2:]  # Immutable snapshot for prefix reconstruction.
     args_to_parse = raw_args.copy()  # Mutable copy for parser internals.
     parser = _create_uv_run_parser()
-    (options, command) = _parse_args(parser, args_to_parse)
+    (options, _) = _parse_args(parser, args_to_parse)
 
     # Preserve uv prefix from original argv. Parsing is used only for semantic
     # values (e.g. --python, --directory, --module).
     uv_run_args = [cmdline[0], cmdline[1]]
-    uv_run_args.extend(_extract_uv_prefix_args(raw_args, command))
+    uv_run_args.extend(_extract_uv_prefix_args(raw_args, parser))
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.
