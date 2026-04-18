@@ -48,7 +48,7 @@ _UPSERT_COLS_ID = "join_cols"
 @DeveloperAPI
 class IcebergDatasink(Datasink[IcebergWriteResult]):
     """
-    Iceberg datasink to write a Ray Dataset into an existing Iceberg table.
+    Iceberg datasink to write a Ray Dataset into an Iceberg table.
     This datasink handles concurrent writes by:
     - Each worker writes Parquet files to storage and returns DataFile metadata
     - The driver collects all DataFile objects and performs a single commit
@@ -75,7 +75,8 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             table_identifier: The identifier of the table such as `default.taxi_dataset`
             catalog_kwargs: Optional arguments to use when setting up the Iceberg catalog
             snapshot_properties: Custom properties to write to snapshot summary
-            mode: Write mode - APPEND, UPSERT, or OVERWRITE. Defaults to APPEND.
+            mode: Write mode - CREATE, APPEND, UPSERT, or OVERWRITE. Defaults to APPEND.
+                - CREATE: Create a new table and fail if it already exists
                 - APPEND: Add new data without checking for duplicates
                 - UPSERT: Update existing rows or insert new ones based on a join condition
                 - OVERWRITE: Replace table data (all data or filtered subset)
@@ -190,6 +191,23 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             lambda: cat.load_table(self.table_identifier),
             description=f"load Iceberg table '{self.table_identifier}'",
         )
+        self._io = self._table.io
+        self._table_metadata = self._table.metadata
+
+    def _create_table(self, schema: "pa.Schema") -> None:
+        """Create the Iceberg table for CREATE mode."""
+        if schema is None:
+            raise ValueError(
+                "CREATE mode requires a schema. Unable to create Iceberg table "
+                f"'{self.table_identifier}' from schemaless input."
+            )
+
+        cat = self._get_catalog()
+        self._table = self._with_retry(
+            lambda: cat.create_table(self.table_identifier, schema=schema),
+            description=f"create Iceberg table '{self.table_identifier}'",
+        )
+
         self._io = self._table.io
         self._table_metadata = self._table.metadata
 
@@ -383,6 +401,10 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
                 Write operator. Used to evolve the table schema before writing
                 to avoid PyIceberg name mapping errors.
         """
+        if self._mode == SaveMode.CREATE:
+            self._create_table(schema)
+            return
+
         self._reload_table()
 
         # Evolve schema BEFORE any files are written
@@ -614,7 +636,7 @@ class IcebergDatasink(Datasink[IcebergWriteResult]):
             len(all_data_files),
         )
         t0 = time.perf_counter()
-        if self._mode == SaveMode.APPEND:
+        if self._mode in {SaveMode.CREATE, SaveMode.APPEND}:
             self._append_and_commit(txn, all_data_files)
         elif self._mode == SaveMode.OVERWRITE:
             self._commit_overwrite(txn, all_data_files)

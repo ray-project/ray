@@ -776,6 +776,18 @@ def clean_table() -> Generator[Tuple[Catalog, Table], None, None]:
     yield sql_catalog, table
 
 
+@pytest.fixture
+def missing_table() -> Generator[Catalog, None, None]:
+    """Pytest fixture to ensure the test table does not exist."""
+    sql_catalog = pyi_catalog.load_catalog(**_CATALOG_KWARGS)
+    table_identifier = f"{_DB_NAME}.{_TABLE_NAME}"
+
+    if (_DB_NAME, _TABLE_NAME) in sql_catalog.list_tables(_DB_NAME):
+        sql_catalog.drop_table(table_identifier)
+
+    yield sql_catalog
+
+
 def _create_typed_dataframe(data_dict: Dict[str, List[Any]]) -> pd.DataFrame:
     """Create a pandas DataFrame with proper int32 dtypes for col_a and col_c."""
     df = pd.DataFrame(data_dict)
@@ -1003,6 +1015,47 @@ class TestSchemaEvolution:
         )
         expected["col_new"] = np.array([10, 20, 30, 40], dtype=promoted_dtype)
         assert rows_same(result_df, expected)
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("14.0.0"),
+    reason="PyIceberg 0.7.0 fails on pyarrow <= 14.0.0",
+)
+class TestCreateMode:
+    """Test create mode functionality."""
+
+    def test_write_create_creates_missing_table(self, missing_table):
+        """Test create mode creates a missing table and writes data."""
+        from ray.data import SaveMode
+
+        create_data = _create_typed_dataframe(
+            {"col_a": [1, 2, 3], "col_b": ["a", "b", "c"], "col_c": [10, 20, 30]}
+        )
+
+        _write_to_iceberg(create_data, mode=SaveMode.CREATE)
+
+        _verify_schema(
+            {
+                "col_a": pyi_types.IntegerType,
+                "col_b": pyi_types.StringType,
+                "col_c": pyi_types.IntegerType,
+            }
+        )
+
+        result = _read_from_iceberg(sort_by="col_a")
+        assert rows_same(result, create_data)
+
+    def test_write_create_raises_if_table_exists(self, clean_table):
+        """Test create mode fails when the target table already exists."""
+        from pyiceberg.exceptions import TableAlreadyExistsError
+        from ray.data import SaveMode
+
+        create_data = _create_typed_dataframe(
+            {"col_a": [1], "col_b": ["a"], "col_c": [10]}
+        )
+
+        with pytest.raises(TableAlreadyExistsError):
+            _write_to_iceberg(create_data, mode=SaveMode.CREATE)
 
 
 @pytest.mark.skipif(
