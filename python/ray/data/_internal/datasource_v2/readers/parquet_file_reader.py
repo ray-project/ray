@@ -230,6 +230,7 @@ class ParquetFileReader(FileReader):
             "fragment_scan_options": pds.ParquetFragmentScanOptions(
                 pre_buffer=False,
                 use_buffered_stream=True,
+                # pyrefly: ignore[unexpected-keyword]
                 cache_options=pa.CacheOptions(lazy=True, prefetch_limit=0),
             ),
             "batch_readahead": 2,
