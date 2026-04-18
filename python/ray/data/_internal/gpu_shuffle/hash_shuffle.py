@@ -88,6 +88,7 @@ class GPUShuffleActor:
         self._columns = columns
         self._key_columns = key_columns
         self._should_sort = should_sort
+        self._arrow_schema = None
 
     # ------------------------------------------------------------------
     # UCXX communicator setup
@@ -136,10 +137,12 @@ class GPUShuffleActor:
 
         table = BlockAccessor.for_block(block).to_arrow()
         df = cudf.DataFrame.from_arrow(table)
-        # This is a fallback in case `infer_schema` is None, we need to then
-        # infer from the first batch.
         if self._columns is None:
+            # save columns from first batch, if not already set
             self._columns = list(df.columns)
+        if self._arrow_schema is None:
+            # save arrow schema from first batch
+            self._arrow_schema = table.schema
         self._shuffler.insert_chunk(table=df, column_names=self._columns)
         return len(df)
 
@@ -159,6 +162,7 @@ class GPUShuffleActor:
         """
         self._shuffler.insert_finished()
 
+        import pyarrow as pa
         from rapidsmpf.utils.cudf import pylibcudf_to_cudf_dataframe
 
         from ray.data.block import BlockExecStats, BlockMetadataWithSchema
@@ -166,14 +170,21 @@ class GPUShuffleActor:
         for partition_id, partition in self._shuffler.extract():
             exec_stats_builder = BlockExecStats.builder()
             if partition.num_columns() == 0:
-                continue
-            cdf = pylibcudf_to_cudf_dataframe(
-                partition, column_names=self._columns
-            ).copy(deep=True)
-            # Caveat: The following operation copies the data to CPU memory, unless we use Arrow CUDA.
-            if self._should_sort and len(cdf) > 0:
-                cdf = cdf.sort_values(by=self._key_columns)
-            block = cdf.to_arrow(preserve_index=False)
+                # rapidsmpf returns a zero-column table when no rows were
+                # routed to this partition. Emit an empty arrow table, so every
+                # partition id produces exactly one block, so downstream queues
+                # that require contiguous key ranges (e.g. ReorderingBundleQueue)
+                # don't stall.
+                block = pa.Table.from_pylist([], schema=self._arrow_schema)
+            else:
+                cdf = pylibcudf_to_cudf_dataframe(
+                    partition, column_names=self._columns
+                ).copy(deep=True)
+                # Caveat: The following operation copies the data to CPU memory, unless we use Arrow CUDA.
+                if self._should_sort and len(cdf) > 0:
+                    cdf = cdf.sort_values(by=self._key_columns)
+                block = cdf.to_arrow(preserve_index=False)
+
             existing_metadata = block.schema.metadata or {}
             tagged_schema = block.schema.with_metadata(
                 {**existing_metadata, _GPU_PARTITION_ID_KEY: str(partition_id).encode()}
