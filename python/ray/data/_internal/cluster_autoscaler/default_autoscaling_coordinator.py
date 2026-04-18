@@ -124,6 +124,16 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
                 exc_info=True,
             )
 
+    def _try_cancel(self, ref, operation_name: str, requester_id: str) -> None:
+        """Best-effort soft cancel of an ObjectRef; logs at DEBUG on failure."""
+        try:
+            ray.cancel(ref, force=False)
+        except Exception:
+            logger.debug(
+                f"Best-effort cancel failed for {operation_name} for {requester_id}.",
+                exc_info=True,
+            )
+
     def _resolve_pending(
         self,
         pending_dict: Dict[str, Tuple[ray.ObjectRef, float]],
@@ -159,9 +169,9 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             except ray.exceptions.RayError as exc:
                 self._record_failure(counter_attr, operation_name, requester_id, exc)
         elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
-            # Delete before cancelling so a raising ray.cancel cannot orphan the entry.
+            # Delete before cancelling so a failing _try_cancel cannot orphan the entry.
             del pending_dict[requester_id]
-            ray.cancel(ref, force=False)
+            self._try_cancel(ref, operation_name, requester_id)
             self._record_failure(counter_attr, operation_name, requester_id)
 
     def request_resources(
@@ -191,7 +201,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         # free), command methods always push the latest state immediately.
         if requester_id in self._pending_request_resources:
             old_ref, _ = self._pending_request_resources.pop(requester_id)
-            ray.cancel(old_ref, force=False)
+            self._try_cancel(old_ref, "send resource request", requester_id)
         self._pending_request_resources[requester_id] = (
             self._autoscaling_coordinator.request_resources.remote(
                 requester_id=requester_id,
@@ -221,12 +231,12 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         # Replace any still-in-flight cancel.
         if requester_id in self._pending_cancel_request:
             old_ref, _ = self._pending_cancel_request.pop(requester_id)
-            ray.cancel(old_ref, force=False)
+            self._try_cancel(old_ref, "cancel resource request", requester_id)
         # Clear client-side state: once cancelled, the requester will not call
         # get_allocated_resources again, so keeping these entries wastes memory.
         if requester_id in self._pending_allocated_resources:
             old_ref, _ = self._pending_allocated_resources.pop(requester_id)
-            ray.cancel(old_ref, force=False)
+            self._try_cancel(old_ref, "get allocated resources", requester_id)
         self._cached_allocated_resources.pop(requester_id, None)
         self._pending_cancel_request[requester_id] = (
             self._autoscaling_coordinator.cancel_request.remote(requester_id),

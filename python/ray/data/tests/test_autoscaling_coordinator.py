@@ -612,6 +612,47 @@ def test_cancel_request_timeout_failure_handling(
     )
 
 
+def test_request_resources_cancels_inflight_before_replacing(
+    teardown_autoscaling_coordinator,
+):
+    """A still-in-flight request is soft-cancelled before the new one is submitted.
+
+    Prevents actor queue buildup when the scheduling loop calls request_resources
+    faster than the actor can process them.
+    """
+    coordinator, mock_ref, mock_actor = _make_coordinator_with_mock_actor()
+    coordinator._pending_request_resources["test"] = (mock_ref, time.time())
+
+    # Not ready and not timed out — _resolve_pending leaves the entry intact.
+    with patch("ray.wait", return_value=([], [mock_ref])):
+        with patch("ray.cancel") as mock_cancel:
+            coordinator.request_resources("test", [], expire_after_s=1)
+
+    mock_cancel.assert_called_once_with(mock_ref, force=False)
+    # A new request must be submitted after the old one is cancelled.
+    assert mock_actor.request_resources.remote.call_count == 1
+
+
+def test_cancel_request_clears_client_side_state(
+    teardown_autoscaling_coordinator,
+):
+    """cancel_request clears all client-side state for the requester.
+
+    Prevents memory accumulation across many executions in a long-running process.
+    """
+    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
+    coordinator._pending_allocated_resources["test"] = (mock_ref, time.time())
+    assert "test" in coordinator._cached_allocated_resources
+
+    # No pending cancel entry, so _resolve_pending is a no-op for cancel_request.
+    with patch("ray.cancel") as mock_cancel:
+        coordinator.cancel_request("test")
+
+    assert "test" not in coordinator._pending_allocated_resources
+    assert "test" not in coordinator._cached_allocated_resources
+    mock_cancel.assert_any_call(mock_ref, force=False)
+
+
 def test_non_ray_errors_propagate(teardown_autoscaling_coordinator):
     """Non-Ray errors in _resolve_pending bypass the except clause and propagate.
 
