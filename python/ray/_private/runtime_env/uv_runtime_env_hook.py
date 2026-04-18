@@ -302,6 +302,9 @@ def _extract_uv_prefix_args(
 
         option_name = token.split("=", 1)[0]
         if "=" in token:
+            # In module mode, command begins immediately after the module value.
+            if option_name in {"-m", "--module"}:
+                break
             i += 1
             continue
 
@@ -323,6 +326,16 @@ def _extract_uv_prefix_args(
         i += 1
 
     return uv_args
+
+
+def _has_explicit_python_option(args: List[str]) -> bool:
+    """Return whether uv prefix args already include an explicit Python pin."""
+    for token in args:
+        if token in {"-p", "--python"}:
+            return True
+        if token.startswith("--python="):
+            return True
+    return False
 
 
 def _check_working_dir_files(
@@ -433,6 +446,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # values (e.g. --python, --directory, --module).
     uv_run_args = [cmdline[0], cmdline[1]]
     uv_run_args.extend(_extract_uv_prefix_args(raw_args, parser))
+    has_explicit_python = _has_explicit_python_option(uv_run_args)
 
     # Remove the "--directory" argument since it has already been taken into
     # account when setting the current working directory of the current process.
@@ -452,7 +466,7 @@ def hook(runtime_env: Optional[Dict[str, Any]]) -> Dict[str, Any]:
     # 2. env_vars["UV_PYTHON"]
     # 3. current os.environ["UV_PYTHON"]
     # 4. platform.python_version() (since uv run uses the same Python as the driver)
-    if not options.python:
+    if not options.python and not has_explicit_python:
         env_vars = runtime_env.get("env_vars") or {}
         uv_python = (
             env_vars.get("UV_PYTHON")

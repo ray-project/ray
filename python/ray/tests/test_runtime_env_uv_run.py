@@ -403,6 +403,12 @@ def test_uv_run_parser():
     assert _extract_uv_prefix_args(raw_args, parser) == ["--no-project"]
 
     parser = _create_uv_run_parser()
+    raw_args = ["--module=ray.util.client.server", "--address=127.0.0.1:10001"]
+    assert _extract_uv_prefix_args(raw_args, parser) == [
+        "--module=ray.util.client.server",
+    ]
+
+    parser = _create_uv_run_parser()
     raw_args = [
         "--project",
         "my_script.py",
@@ -517,6 +523,32 @@ def test_uv_run_hook_preserves_unknown_option_before_known_option():
     py_executable = runtime_env["py_executable"]
     assert "--new-uv-flag=example" in py_executable
     assert "--project ." in py_executable
+
+
+def test_uv_run_hook_does_not_add_duplicate_python_after_unknown_option():
+    """Unknown options before --python should not cause duplicate python pinning."""
+    from ray._private.runtime_env.uv_runtime_env_hook import hook
+
+    cmdline = [
+        find_uv_bin(),
+        "run",
+        "--new-uv-flag=example",
+        "--python",
+        "3.10",
+        "-m",
+        "ray._private.runtime_env.uv_runtime_env_hook",
+        "--extra-args",
+    ]
+
+    with unittest.mock.patch(
+        "ray._private.runtime_env.uv_runtime_env_hook._get_uv_run_cmdline",
+        return_value=cmdline,
+    ):
+        runtime_env = hook({})
+
+    py_executable = runtime_env["py_executable"]
+    assert "--python 3.10" in py_executable
+    assert py_executable.count("--python") == 1
 
 
 def test_uv_run_hook_does_not_absorb_command_flags_after_script():
