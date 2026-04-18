@@ -13,6 +13,7 @@ _ReplicaCacheSignature = FrozenSet[ReplicaID]
 
 router_app = FastAPI()
 
+router_app = FastAPI()
 
 @serve.ingress(router_app)
 class LLMRouter:
