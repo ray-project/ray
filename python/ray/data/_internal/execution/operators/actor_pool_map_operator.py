@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import time
 import uuid
@@ -34,6 +36,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 )
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import (
+    RebundleQueue,
     create_bundle_queue,
 )
 from ray.data._internal.execution.interfaces import (
@@ -50,7 +53,6 @@ from ray.data._internal.execution.node_trackers.actor_location import (
     get_or_create_actor_location_tracker,
 )
 from ray.data._internal.execution.operators.map_operator import (
-    BaseRefBundler,
     MapOperator,
     _map_task,
 )
@@ -104,7 +106,7 @@ class ActorPoolMapOperator(MapOperator):
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[BaseRefBundler] = None,
+        ref_bundler: Optional[RebundleQueue] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -256,7 +258,7 @@ class ActorPoolMapOperator(MapOperator):
     def internal_input_queue_num_bytes(self) -> int:
         return (
             self._bundle_queue.estimate_size_bytes()
-            + self._block_ref_bundler.size_bytes()
+            + self._block_ref_bundler.estimate_size_bytes()
         )
 
     def start(self, options: ExecutionOptions):
