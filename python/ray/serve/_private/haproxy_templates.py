@@ -149,7 +149,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     {%- if backend.custom_request_routing %}
     {%- for server in backend.servers %}
-    use-server {{ server.name }} if { var(txn.direct_ingress_target) -m str "{{ server.name }}" }
+    use-server {{ server.name }} if { var(txn.backend_http_target) -m str "{{ server.name }}" }
     {%- endfor %}
     {%- endif %}
     {%- for server in backend.servers %}
