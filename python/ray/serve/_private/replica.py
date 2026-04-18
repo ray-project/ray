@@ -1970,7 +1970,7 @@ class Replica:
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
             return
 
-        if not self._ingress:
+        if not self._ingress and not self._deployment_config.router:
             return
 
         async def allocate_and_start_server(start_server_fn, protocol):
@@ -2708,11 +2708,13 @@ class ReplicaActor:
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
         ingress: bool,
-        route_prefix: str,
+        router: bool = False,
+        route_prefix: str = "",
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
+        deployment_config.router = router
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)
