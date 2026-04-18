@@ -2727,6 +2727,7 @@ class ReplicaActor:
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
+        deployment_config.router = router
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)

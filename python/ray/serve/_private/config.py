@@ -409,6 +409,8 @@ class DeploymentConfig(BaseModel):
             data["deployment_actors"] = deployment_actors_proto
         else:
             data.pop("deployment_actors", None)
+        # router is a Python-only field, not in the protobuf schema.
+        data.pop("router", None)
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
