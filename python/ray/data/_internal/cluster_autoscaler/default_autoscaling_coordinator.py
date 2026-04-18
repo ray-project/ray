@@ -5,7 +5,7 @@ import math
 import threading
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, Dict, List, Optional, Tuple
 
 import ray
 import ray.exceptions
@@ -55,104 +55,13 @@ class OngoingRequest:
         return self.first_request_time < other.first_request_time
 
 
-def handle_timeout_errors(
-    failure_counter_attr: str,
-    operation_name: str,
-    requester_id_param: str = "requester_id",
-    error_msg_suffix: Optional[str] = None,
-    on_error_return: Optional[Callable] = None,
-):
-    """Decorator to handle GetTimeoutError with consecutive failure tracking.
+class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
+    """Client-side proxy for the _AutoscalingCoordinatorActor.
 
-    Args:
-        failure_counter_attr: Name of the instance attribute that tracks
-            consecutive failures.
-        operation_name: Name of the operation for error messages (e.g.,
-            "send resource request", "cancel resource request").
-        requester_id_param: Name of the parameter that contains the
-            requester_id.
-        error_msg_suffix: Optional suffix to append to the error message.
-            If None, uses a default message.
-        on_error_return: Optional callable that takes (self, requester_id)
-            and returns a value to return on error. If None, no value is
-            returned (method should return None).
-
-    Returns:
-        A decorator that wraps methods to handle timeout errors.
+    All three public methods are non-blocking. Not thread-safe; assumed to be
+    called from a single scheduling thread per instance.
     """
 
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwargs):
-            # Extract requester_id from args or kwargs
-            requester_id = kwargs.get(requester_id_param)
-            if requester_id is None:
-                # Try to get from args by checking function signature
-                import inspect
-
-                sig = inspect.signature(func)
-                param_names = list(sig.parameters.keys())
-                if requester_id_param in param_names:
-                    param_index = param_names.index(requester_id_param) - 1
-                    if param_index < len(args):
-                        requester_id = args[param_index]
-
-            failure_counter = getattr(self, failure_counter_attr)
-
-            try:
-                result = func(self, *args, **kwargs)
-                # Reset counter on success
-                setattr(self, failure_counter_attr, 0)
-                return result
-            except ray.exceptions.GetTimeoutError as exc:
-                failure_counter += 1
-                setattr(self, failure_counter_attr, failure_counter)
-
-                consecutive_msg = (
-                    f" (consecutive failures: {failure_counter})"
-                    if failure_counter > 1
-                    else ""
-                )
-
-                # Build error message
-                base_msg = (
-                    f"Failed to {operation_name} for {requester_id}.{consecutive_msg}"
-                )
-                if error_msg_suffix is not None:
-                    msg = f"{base_msg} {error_msg_suffix}"
-                else:
-                    msg = (
-                        f"{base_msg}"
-                        " If this only happens transiently during network"
-                        " partition or CPU being overloaded, it's safe to"
-                        " ignore this error."
-                        " If this error persists, file a GitHub issue."
-                    )
-
-                # Check max failures and raise if exceeded
-                if failure_counter >= self.MAX_CONSECUTIVE_FAILURES:
-                    raise RuntimeError(
-                        f"Failed to {operation_name} for {requester_id} "
-                        f"after {failure_counter} consecutive failures."
-                    ) from exc
-
-                logger.warning(msg)
-                if RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK:
-                    logger.debug(
-                        f"Traceback for {operation_name} failure for {requester_id}:",
-                        exc_info=True,
-                    )
-
-                # Return value on error if callback provided
-                if on_error_return is not None:
-                    return on_error_return(self, requester_id)
-
-        return wrapper
-
-    return decorator
-
-
-class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     AUTOSCALING_REQUEST_GET_TIMEOUT_S = env_integer(
         "RAY_DATA_AUTOSCALING_COORDINATOR_REQUEST_GET_TIMEOUT_S", 5
     )
@@ -162,9 +71,11 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     def __init__(self):
         self._cached_allocated_resources: Dict[str, List[ResourceDict]] = {}
-        # Tracks in-flight async get_allocated_resources requests.
-        # Maps requester_id to (ObjectRef, submit_time).
-        self._pending_allocated_resources: Dict[str, tuple[ray.ObjectRef, float]] = {}
+        # Track in-flight async requests for each public method.
+        # All three dicts map requester_id -> (ObjectRef, submit_time).
+        self._pending_allocated_resources: Dict[str, Tuple[ray.ObjectRef, float]] = {}
+        self._pending_request_resources: Dict[str, Tuple[ray.ObjectRef, float]] = {}
+        self._pending_cancel_request: Dict[str, Tuple[ray.ObjectRef, float]] = {}
 
         self._consecutive_failures_request_resources: int = 0
         self._consecutive_failures_cancel_request: int = 0
@@ -175,15 +86,84 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         # Create the coordinator actor lazily rather than eagerly in the constructor.
         return get_or_create_autoscaling_coordinator()
 
-    @handle_timeout_errors(
-        failure_counter_attr="_consecutive_failures_request_resources",
-        operation_name="send resource request",
-        error_msg_suffix=(
-            "If this only happens transiently during network partition"
+    def _record_failure(
+        self,
+        counter_attr: str,
+        operation_name: str,
+        requester_id: str,
+        exc: Optional[Exception] = None,
+    ) -> None:
+        """Increment the failure counter; raise RuntimeError if the maximum is reached.
+
+        The counter is reset to zero before raising so that the next call starts
+        fresh after the exception has propagated and any higher-level recovery has
+        taken place, rather than immediately re-raising.
+
+        `exc` is the underlying exception when the actor task failed, or None
+        when the request timed out without completing.
+        """
+        counter = getattr(self, counter_attr) + 1
+        setattr(self, counter_attr, counter)
+        consecutive_msg = f" (consecutive failures: {counter})" if counter > 1 else ""
+        if counter >= self.MAX_CONSECUTIVE_FAILURES:
+            setattr(self, counter_attr, 0)
+            raise RuntimeError(
+                f"Failed to {operation_name} for {requester_id} "
+                f"after {counter} consecutive failures."
+            ) from exc
+        prefix = "Timed out on" if exc is None else "Failed to"
+        logger.warning(
+            f"{prefix} {operation_name} for {requester_id}{consecutive_msg}."
+            " If this only happens transiently during network partition"
             " or CPU being overloaded, it's safe to ignore this error."
             " If this error persists, file a GitHub issue."
-        ),
-    )
+        )
+        if exc is not None and RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK:
+            logger.debug(
+                f"Traceback for {operation_name} failure for {requester_id}:",
+                exc_info=True,
+            )
+
+    def _resolve_pending(
+        self,
+        pending_dict: Dict[str, Tuple[ray.ObjectRef, float]],
+        requester_id: str,
+        counter_attr: str,
+        operation_name: str,
+        on_success: Optional[Callable] = None,
+    ) -> None:
+        """Check if a pending async request has completed and handle the result.
+
+        If the request is ready, consume it: reset the failure counter and call
+        on_success on success, or call _record_failure on actor error. If the
+        request has timed out, issue a soft cancel (force=False) and discard the
+        ref, then record a timeout failure. Does nothing if no request is pending
+        for requester_id.
+
+        Note: errors from fire-and-forget methods (request_resources,
+        cancel_request) surface on a future call to the same method, once
+        the pending request completes or times out — not at submission time.
+        """
+        pending = pending_dict.get(requester_id)
+        if pending is None:
+            return
+        ref, submit_time = pending
+        ready, _ = ray.wait([ref], timeout=0)
+        if ready:
+            del pending_dict[requester_id]
+            try:
+                result = ray.get(ref)
+                setattr(self, counter_attr, 0)
+                if on_success is not None:
+                    on_success(result)
+            except ray.exceptions.RayError as exc:
+                self._record_failure(counter_attr, operation_name, requester_id, exc)
+        elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
+            # Delete before cancelling so a raising ray.cancel cannot orphan the entry.
+            del pending_dict[requester_id]
+            ray.cancel(ref, force=False)
+            self._record_failure(counter_attr, operation_name, requester_id)
+
     def request_resources(
         self,
         requester_id: str,
@@ -192,7 +172,27 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
     ) -> None:
-        ray.get(
+        """Fire-and-forget: submit a resource request to the coordinator actor.
+
+        Returns immediately. If the previous request for requester_id has
+        completed, its result (including any actor error) is checked first and
+        the failure counter is updated accordingly. If the previous request is
+        still in-flight, it is soft-cancelled and replaced — latest state wins,
+        and this prevents actor queue buildup under slow-actor conditions.
+        """
+        self._resolve_pending(
+            self._pending_request_resources,
+            requester_id,
+            "_consecutive_failures_request_resources",
+            "send resource request",
+        )
+        # Cancel any still-in-flight request before submitting the new one.
+        # Unlike get_allocated_resources (which polls and waits for the slot to
+        # free), command methods always push the latest state immediately.
+        if requester_id in self._pending_request_resources:
+            old_ref, _ = self._pending_request_resources.pop(requester_id)
+            ray.cancel(old_ref, force=False)
+        self._pending_request_resources[requester_id] = (
             self._autoscaling_coordinator.request_resources.remote(
                 requester_id=requester_id,
                 resources=resources,
@@ -200,91 +200,67 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
                 request_remaining=request_remaining,
                 priority=priority,
             ),
-            timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
+            time.time(),
         )
 
-    @handle_timeout_errors(
-        failure_counter_attr="_consecutive_failures_cancel_request",
-        operation_name="cancel resource request",
-        error_msg_suffix=(
-            "If this only happens transiently during network partition"
-            " or CPU being overloaded, it's safe to ignore this error."
-            " If this error persists, file a GitHub issue."
-        ),
-    )
-    def cancel_request(self, requester_id: str):
-        ray.get(
-            self._autoscaling_coordinator.cancel_request.remote(
-                requester_id,
-            ),
-            timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
-        )
+    def cancel_request(self, requester_id: str) -> None:
+        """Fire-and-forget: cancel a resource request on the coordinator actor.
 
-    def _record_get_allocated_resources_failure(
-        self, requester_id: str, exc: Optional[Exception] = None
-    ) -> None:
-        """Increment the failure counter; raise RuntimeError if the maximum is reached.
-
-        The counter is reset to zero before raising so that the coordinator can
-        recover if the caller catches the exception and retries.
-
-        `exc` is the underlying exception when the actor task failed, or None
-        when the request timed out without completing.
+        Returns immediately. If the previous cancel for requester_id has
+        completed, its result is checked first and the failure counter updated.
+        Any still-in-flight cancel is soft-cancelled and replaced. Also clears
+        all client-side state for requester_id so memory does not accumulate
+        across many executions in a long-running process.
         """
-        self._consecutive_failures_get_allocated_resources += 1
-        failure_counter = self._consecutive_failures_get_allocated_resources
-        consecutive_msg = (
-            f" (consecutive failures: {failure_counter})" if failure_counter > 1 else ""
+        self._resolve_pending(
+            self._pending_cancel_request,
+            requester_id,
+            "_consecutive_failures_cancel_request",
+            "cancel resource request",
         )
-        if failure_counter >= self.MAX_CONSECUTIVE_FAILURES:
-            self._consecutive_failures_get_allocated_resources = 0
-            raise RuntimeError(
-                f"Failed to get allocated resources for {requester_id} "
-                f"after {failure_counter} consecutive failures."
-            ) from exc
-        prefix = "Timed out waiting for" if exc is None else "Failed to"
-        logger.warning(
-            f"{prefix} get allocated resources for "
-            f"{requester_id}{consecutive_msg}. Returning cached value."
-            " If this only happens transiently during network partition"
-            " or CPU being overloaded, it's safe to ignore this error."
-            " If this error persists, file a GitHub issue."
+        # Replace any still-in-flight cancel.
+        if requester_id in self._pending_cancel_request:
+            old_ref, _ = self._pending_cancel_request.pop(requester_id)
+            ray.cancel(old_ref, force=False)
+        # Clear client-side state: once cancelled, the requester will not call
+        # get_allocated_resources again, so keeping these entries wastes memory.
+        if requester_id in self._pending_allocated_resources:
+            old_ref, _ = self._pending_allocated_resources.pop(requester_id)
+            ray.cancel(old_ref, force=False)
+        self._cached_allocated_resources.pop(requester_id, None)
+        self._pending_cancel_request[requester_id] = (
+            self._autoscaling_coordinator.cancel_request.remote(requester_id),
+            time.time(),
         )
-        if exc is not None and RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK:
-            logger.debug(
-                f"Traceback for get allocated resources failure for {requester_id}:",
-                exc_info=True,
-            )
 
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
         """Get the allocated resources for the requester without blocking.
 
         Submits an async request to the autoscaling coordinator actor and
-        immediately returns the last cached value. The cached value is updated
-        whenever a pending request completes.
+        immediately returns the last cached value. The cache is updated whenever
+        a pending request completes.
+
+        Correctness relies on the actor processing requests in FIFO order: the
+        response reflects state after all previously submitted request_resources
+        calls from this driver.
 
         On repeated failures (actor errors or timeouts), falls back to the cached
-        value and raises after MAX_CONSECUTIVE_FAILURES.
+        value and raises RuntimeError after MAX_CONSECUTIVE_FAILURES.
         """
-        pending = self._pending_allocated_resources.get(requester_id)
-        if pending is not None:
-            ref, submit_time = pending
-            ready, _ = ray.wait([ref], timeout=0)
-            if ready:
-                del self._pending_allocated_resources[requester_id]
-                try:
-                    result = ray.get(ref)
-                    self._cached_allocated_resources[requester_id] = result
-                    self._consecutive_failures_get_allocated_resources = 0
-                except Exception as exc:
-                    self._record_get_allocated_resources_failure(requester_id, exc)
-            elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
-                ray.cancel(ref, force=False)
-                del self._pending_allocated_resources[requester_id]
-                self._record_get_allocated_resources_failure(requester_id)
+
+        def _on_success(result):
+            self._cached_allocated_resources[requester_id] = result
+
+        self._resolve_pending(
+            self._pending_allocated_resources,
+            requester_id,
+            "_consecutive_failures_get_allocated_resources",
+            "get allocated resources",
+            on_success=_on_success,
+        )
 
         # Submit a new request if none is currently in-flight
-        # (first call, or the previous request just completed or timed out).
+        # (first call, or the previous request completed, errored, or timed out).
         if requester_id not in self._pending_allocated_resources:
             ref = self._autoscaling_coordinator.get_allocated_resources.remote(
                 requester_id,

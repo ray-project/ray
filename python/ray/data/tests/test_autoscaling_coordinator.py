@@ -355,39 +355,11 @@ def test_autoscaling_coordinator_e2e(cluster, gpu_tasks_include_cpu):
     assert ray.get([res1, res2]) == ["ok"] * 2
 
 
-def _test_consecutive_failures(
-    coordinator,
-    call_method,
-    counter_attr,
-    error_msg_prefix,
-):
-    """Test consecutive failures: increment counter, raise after max, reset on success."""
-    max_failures = coordinator.MAX_CONSECUTIVE_FAILURES
-    timeout_error = ray.exceptions.GetTimeoutError("timeout")
-
-    # Counter increments on each failure
-    with patch("ray.get", side_effect=timeout_error):
-        for attempt in range(1, max_failures):
-            call_method()
-            assert getattr(coordinator, counter_attr) == attempt
-
-    # Exception raised after max consecutive failures
-    expected_error_msg = f"{error_msg_prefix} after {max_failures} consecutive failures"
-    with patch("ray.get", side_effect=timeout_error):
-        with pytest.raises(RuntimeError, match=expected_error_msg):
-            call_method()
-
-    # Counter resets on success
-    with patch("ray.get", return_value=None):
-        call_method()
-        assert getattr(coordinator, counter_attr) == 0
-
-
 def _make_coordinator_with_mock_actor():
     """Return a (coordinator, mock_ref, mock_actor) triple for unit tests.
 
     The coordinator is pre-seeded with _cached_allocated_resources["test"] = [{"CPU": 1}]
-    so tests can assert on the cached fallback value without a separate setup step.
+    so get_allocated_resources tests can assert on the cached fallback value.
     The cached_property is bypassed so no real actor is created. ray.wait,
     ray.get, and ray.cancel must be patched by the caller as needed.
     """
@@ -396,6 +368,8 @@ def _make_coordinator_with_mock_actor():
     mock_ref = object()
     mock_actor = Mock()
     mock_actor.get_allocated_resources.remote.return_value = mock_ref
+    mock_actor.request_resources.remote.return_value = mock_ref
+    mock_actor.cancel_request.remote.return_value = mock_ref
     coordinator.__dict__["_autoscaling_coordinator"] = mock_actor
     return coordinator, mock_ref, mock_actor
 
@@ -439,35 +413,34 @@ def test_get_allocated_resources_updates_cache_on_success(
     assert mock_actor.get_allocated_resources.remote.call_count == 1
 
 
-def _assert_failure_handling(coordinator, trigger_once):
-    """Assert the common failure-handling contract for get_allocated_resources.
+def _assert_failure_handling(
+    coordinator, counter_attr, expected_error_prefix, trigger_once
+):
+    """Assert the common failure-handling contract for all coordinator methods.
 
-    `trigger_once` is a callable that injects one failure into `coordinator`
-    and returns the result of get_allocated_resources. It must also clean up
-    any leftover pending entry before returning.
+    `trigger_once` injects one failure and cleans up any leftover pending entry.
+    Method-specific assertions (e.g. cached return value) belong inside trigger_once.
     """
     max_failures = coordinator.MAX_CONSECUTIVE_FAILURES
 
-    # Counter increments on each failure and cached value is returned.
+    # Counter increments on each failure.
     for attempt in range(1, max_failures):
-        result = trigger_once()
-        assert result == [{"CPU": 1}]
-        assert coordinator._consecutive_failures_get_allocated_resources == attempt
+        trigger_once()
+        assert getattr(coordinator, counter_attr) == attempt
 
     # Raises after max_failures; counter is reset so recovery is possible.
     expected_error_msg = (
-        f"Failed to get allocated resources for test "
-        f"after {max_failures} consecutive failures"
+        f"{expected_error_prefix} after {max_failures} consecutive failures"
     )
     with pytest.raises(RuntimeError, match=expected_error_msg):
         trigger_once()
-    assert coordinator._consecutive_failures_get_allocated_resources == 0
+    assert getattr(coordinator, counter_attr) == 0
 
 
 def test_get_allocated_resources_actor_exception_failure_handling(
     teardown_autoscaling_coordinator,
 ):
-    """Actor RayErrors increment the failure counter; RuntimeError after MAX_CONSECUTIVE_FAILURES;
+    """Actor errors increment the failure counter; RuntimeError after MAX_CONSECUTIVE_FAILURES;
     counter resets to zero so recovery is possible."""
     coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
 
@@ -477,9 +450,14 @@ def test_get_allocated_resources_actor_exception_failure_handling(
             with patch("ray.get", side_effect=ray.exceptions.RayActorError()):
                 result = coordinator.get_allocated_resources("test")
         coordinator._pending_allocated_resources.pop("test", None)
-        return result
+        assert result == [{"CPU": 1}]
 
-    _assert_failure_handling(coordinator, trigger_once)
+    _assert_failure_handling(
+        coordinator,
+        "_consecutive_failures_get_allocated_resources",
+        "Failed to get allocated resources for test",
+        trigger_once,
+    )
 
 
 def test_get_allocated_resources_timeout_failure_handling(
@@ -498,35 +476,155 @@ def test_get_allocated_resources_timeout_failure_handling(
         # The stale task must be cancelled to avoid piling up the actor queue.
         mock_cancel.assert_called_once_with(mock_ref, force=False)
         coordinator._pending_allocated_resources.pop("test", None)
-        return result
+        assert result == [{"CPU": 1}]
 
-    _assert_failure_handling(coordinator, trigger_once)
-
-
-def test_cancel_request_handles_timeout_error(teardown_autoscaling_coordinator):
-    """Test cancel_request handles timeout error."""
-    coordinator = DefaultAutoscalingCoordinator()
-
-    _test_consecutive_failures(
-        coordinator=coordinator,
-        call_method=lambda: coordinator.cancel_request("test"),
-        counter_attr="_consecutive_failures_cancel_request",
-        error_msg_prefix="Failed to cancel resource request for test",
+    _assert_failure_handling(
+        coordinator,
+        "_consecutive_failures_get_allocated_resources",
+        "Failed to get allocated resources for test",
+        trigger_once,
     )
 
 
-def test_request_resources_handles_timeout_error(teardown_autoscaling_coordinator):
-    """Test request_resources handles timeout error."""
-    coordinator = DefaultAutoscalingCoordinator()
+def test_request_resources_resets_counter_on_success(
+    teardown_autoscaling_coordinator,
+):
+    """Resets the failure counter when the previous request completes successfully."""
+    coordinator, mock_ref, mock_actor = _make_coordinator_with_mock_actor()
+    coordinator._consecutive_failures_request_resources = 3
 
-    _test_consecutive_failures(
-        coordinator=coordinator,
-        call_method=lambda: coordinator.request_resources(
-            "test", [{"CPU": 1}], expire_after_s=1
-        ),
-        counter_attr="_consecutive_failures_request_resources",
-        error_msg_prefix="Failed to send resource request for test",
+    coordinator._pending_request_resources["test"] = (mock_ref, time.time())
+    with patch("ray.wait", return_value=([mock_ref], [])):
+        with patch("ray.get", return_value=None):
+            coordinator.request_resources("test", [], expire_after_s=1)
+
+    assert coordinator._consecutive_failures_request_resources == 0
+    # A new request must be submitted after the completed one is consumed.
+    assert mock_actor.request_resources.remote.call_count == 1
+
+
+def test_request_resources_actor_exception_failure_handling(
+    teardown_autoscaling_coordinator,
+):
+    """Actor errors increment the failure counter; RuntimeError after MAX_CONSECUTIVE_FAILURES;
+    counter resets to zero so recovery is possible."""
+    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
+
+    def trigger_once():
+        coordinator._pending_request_resources["test"] = (mock_ref, time.time())
+        with patch("ray.wait", return_value=([mock_ref], [])):
+            with patch("ray.get", side_effect=ray.exceptions.RayActorError()):
+                coordinator.request_resources("test", [], expire_after_s=1)
+        coordinator._pending_request_resources.pop("test", None)
+
+    _assert_failure_handling(
+        coordinator,
+        "_consecutive_failures_request_resources",
+        "Failed to send resource request for test",
+        trigger_once,
     )
+
+
+def test_request_resources_timeout_failure_handling(
+    teardown_autoscaling_coordinator,
+):
+    """Timeouts increment the failure counter; RuntimeError after MAX_CONSECUTIVE_FAILURES;
+    counter resets to zero so recovery is possible. The stale task is cancelled."""
+    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
+
+    def trigger_once():
+        stale_time = time.time() - coordinator.AUTOSCALING_REQUEST_GET_TIMEOUT_S - 1
+        coordinator._pending_request_resources["test"] = (mock_ref, stale_time)
+        with patch("ray.wait", return_value=([], [mock_ref])):
+            with patch("ray.cancel") as mock_cancel:
+                coordinator.request_resources("test", [], expire_after_s=1)
+        mock_cancel.assert_called_once_with(mock_ref, force=False)
+        coordinator._pending_request_resources.pop("test", None)
+
+    _assert_failure_handling(
+        coordinator,
+        "_consecutive_failures_request_resources",
+        "Failed to send resource request for test",
+        trigger_once,
+    )
+
+
+def test_cancel_request_resets_counter_on_success(
+    teardown_autoscaling_coordinator,
+):
+    """Resets the failure counter when the previous request completes successfully."""
+    coordinator, mock_ref, mock_actor = _make_coordinator_with_mock_actor()
+    coordinator._consecutive_failures_cancel_request = 3
+
+    coordinator._pending_cancel_request["test"] = (mock_ref, time.time())
+    with patch("ray.wait", return_value=([mock_ref], [])):
+        with patch("ray.get", return_value=None):
+            coordinator.cancel_request("test")
+
+    assert coordinator._consecutive_failures_cancel_request == 0
+    # A new request must be submitted after the completed one is consumed.
+    assert mock_actor.cancel_request.remote.call_count == 1
+
+
+def test_cancel_request_actor_exception_failure_handling(
+    teardown_autoscaling_coordinator,
+):
+    """Actor errors increment the failure counter; RuntimeError after MAX_CONSECUTIVE_FAILURES;
+    counter resets to zero so recovery is possible."""
+    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
+
+    def trigger_once():
+        coordinator._pending_cancel_request["test"] = (mock_ref, time.time())
+        with patch("ray.wait", return_value=([mock_ref], [])):
+            with patch("ray.get", side_effect=ray.exceptions.RayActorError()):
+                coordinator.cancel_request("test")
+        coordinator._pending_cancel_request.pop("test", None)
+
+    _assert_failure_handling(
+        coordinator,
+        "_consecutive_failures_cancel_request",
+        "Failed to cancel resource request for test",
+        trigger_once,
+    )
+
+
+def test_cancel_request_timeout_failure_handling(
+    teardown_autoscaling_coordinator,
+):
+    """Timeouts increment the failure counter; RuntimeError after MAX_CONSECUTIVE_FAILURES;
+    counter resets to zero so recovery is possible. The stale task is cancelled."""
+    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
+
+    def trigger_once():
+        stale_time = time.time() - coordinator.AUTOSCALING_REQUEST_GET_TIMEOUT_S - 1
+        coordinator._pending_cancel_request["test"] = (mock_ref, stale_time)
+        with patch("ray.wait", return_value=([], [mock_ref])):
+            with patch("ray.cancel") as mock_cancel:
+                coordinator.cancel_request("test")
+        mock_cancel.assert_called_once_with(mock_ref, force=False)
+        coordinator._pending_cancel_request.pop("test", None)
+
+    _assert_failure_handling(
+        coordinator,
+        "_consecutive_failures_cancel_request",
+        "Failed to cancel resource request for test",
+        trigger_once,
+    )
+
+
+def test_non_ray_errors_propagate(teardown_autoscaling_coordinator):
+    """Non-Ray errors in _resolve_pending bypass the except clause and propagate.
+
+    Guards against accidentally broadening the catch from RayError to Exception.
+    Since _resolve_pending is shared by all three methods, one test is sufficient.
+    """
+    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
+    coordinator._pending_allocated_resources["test"] = (mock_ref, time.time())
+
+    with patch("ray.wait", return_value=([mock_ref], [])):
+        with patch("ray.get", side_effect=ValueError("unexpected local error")):
+            with pytest.raises(ValueError, match="unexpected local error"):
+                coordinator.get_allocated_resources("test")
 
 
 def test_coordinator_accepts_zero_resource_for_missing_resource_type(

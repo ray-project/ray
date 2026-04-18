@@ -204,8 +204,10 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._get_time = get_time
         self._autoscaling_enabled = is_autoscaling_enabled()
 
-        # Send an empty request to register ourselves as soon as possible,
-        # so the first `get_total_resources` call can get the allocated resources.
+        # Register with the coordinator immediately so the actor knows about this
+        # requester before the first get_allocated_resources call. The cached value
+        # returned by get_allocated_resources (and thus get_total_resources) will be
+        # empty until the actor responds with the first allocation (cold-start).
         self._send_resource_request([])
 
     def try_trigger_scaling(self):
@@ -336,10 +338,13 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         try:
             self._autoscaling_coordinator.cancel_request(self._requester_id)
         except Exception:
+            # Intentionally broad: also catches RuntimeError raised by
+            # cancel_request after MAX_CONSECUTIVE_FAILURES. At shutdown there
+            # is nothing useful to do except log and let the request expire.
             msg = (
                 f"Failed to cancel resource request for {self._requester_id}."
                 " The request will still expire after the timeout of"
-                f" {self._min_gap_between_autoscaling_requests_s} seconds."
+                f" {self.AUTOSCALING_REQUEST_EXPIRE_TIME_S} seconds."
             )
             logger.warning(msg, exc_info=True)
 
