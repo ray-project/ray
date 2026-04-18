@@ -82,14 +82,14 @@ frontend http_frontend
     {%- endif %}
     {%- if has_custom_request_routing %}
     option http-buffer-request
-    http-request lua.route_direct_ingress_request if METH_POST
+    http-request lua.lookup_backend_http_target if METH_POST
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
     {%- if backend.custom_request_routing %}
-    use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }} { var(txn.direct_ingress_target) -m found }
+    use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }} { var(txn.backend_http_target) -m found }
     {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
@@ -135,7 +135,7 @@ backend {{ backend.name or 'unknown' }}
     {{ hc.default_server_directive }}
     {%- if backend.custom_request_routing %}
     {%- for server in backend.servers %}
-    use-server {{ server.name }} if { var(txn.direct_ingress_target) -m str "{{ server.name }}" }
+    use-server {{ server.name }} if { var(txn.backend_http_target) -m str "{{ server.name }}" }
     {%- endfor %}
     {%- endif %}
     {%- for server in backend.servers %}

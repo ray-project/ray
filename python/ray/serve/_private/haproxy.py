@@ -787,7 +787,7 @@ local function do_request(body)
     return response
 end
 
-core.register_action("route_direct_ingress_request", {{"http-req"}}, function(txn)
+core.register_action("lookup_backend_http_target", {{"http-req"}}, function(txn)
     local body = txn.sf:req_body()
     if not body or body == "" then
         return
@@ -808,7 +808,7 @@ core.register_action("route_direct_ingress_request", {{"http-req"}}, function(tx
     if replica_id then
         local server_name = replica_id_to_server_name_map[replica_id]
         if server_name then
-            txn:set_var("txn.direct_ingress_target", server_name)
+            txn:set_var("txn.backend_http_target", server_name)
         end
     end
 end, 0)
