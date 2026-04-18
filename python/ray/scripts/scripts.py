@@ -142,7 +142,47 @@ def _check_ray_version(gcs_client):
         )
 
 
-@click.group()
+class RayCLI(click.Group):
+    def format_commands(self, ctx, formatter):
+        commands = []
+        for subcommand in self.list_commands(ctx):
+            cmd = self.get_command(ctx, subcommand)
+            if cmd is None:
+                continue
+            if cmd.hidden:
+                continue
+            commands.append((subcommand, cmd))
+
+        if len(commands):
+            limit = formatter.width - 6 - max(len(cmd[0]) for cmd in commands)
+
+            observability_commands = []
+            other_commands = []
+
+            observability_names = {
+                "summary",
+                "list",
+                "get",
+                "logs",
+            }
+
+            for subcommand, cmd in commands:
+                help = cmd.get_short_help_str(limit)
+                if subcommand in observability_names:
+                    observability_commands.append((subcommand, help))
+                else:
+                    other_commands.append((subcommand, help))
+
+            if other_commands:
+                with formatter.section("Commands"):
+                    formatter.write_dl(other_commands)
+
+            if observability_commands:
+                with formatter.section("Observability"):
+                    formatter.write_dl(observability_commands)
+
+
+@click.group(cls=RayCLI)
 @click.option(
     "--logging-level",
     required=False,
