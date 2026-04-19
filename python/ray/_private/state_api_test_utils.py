@@ -408,16 +408,19 @@ def verify_failed_task(
     return True
 
 
-@ray.remote
-class ExpectedStateActor:
-    def __init__(self):
-        self.name_to_expected_state = {}
+def wait_for_task_states(name_to_state: Dict[str, str], timeout: float = 10) -> None:
+    """
+    Block until every task in ``name_to_state`` is observed in its expected
+    state via the State API, or raise if the timeout expires.
+    """
 
-    def get_expected_states(self):
-        return self.name_to_expected_state
+    def _check():
+        for name, state in name_to_state.items():
+            tasks = list_tasks(filters=[("name", "=", name), ("state", "=", state)])
+            assert len(tasks) == 1, f"{name} not in {state}"
+        return True
 
-    def report_expected_state(self, name, expected_state):
-        self.name_to_expected_state[name] = expected_state
+    test_utils.wait_for_condition(_check, timeout=timeout)
 
 
 def _is_actor_task_running(actor_pid: int, task_name: str):
