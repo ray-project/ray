@@ -136,11 +136,11 @@ Unit tests
 
 
 class FakeStateApiClient:
-    captured = {}
+    captured = None
 
     @classmethod
     def reset(cls):
-        cls.captured = {}
+        cls.captured = None
 
     def __init__(self, address=None, headers=None, verify=True, **kwargs):
         type(self).captured = {
