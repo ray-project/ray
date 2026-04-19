@@ -493,31 +493,6 @@ def _is_actor_task_running(actor_pid: int, task_name: str):
     return False
 
 
-def verify_task_states(expected_states: Dict[str, str], expect_num_tasks: int) -> bool:
-    """
-    Verify that each task's state in the State API matches the expected state.
-
-    Args:
-        expected_states: Dict of task name to expected state.
-        expect_num_tasks: Expected number of entries in ``expected_states``.
-
-    Returns:
-        True when every task's state matches. Raises AssertionError otherwise.
-    """
-    assert len(expected_states) == expect_num_tasks, expected_states
-    for task_name, expected_state in expected_states.items():
-        tasks = list_tasks(detail=True, filters=[("name", "=", task_name)])
-        assert len(tasks) == 1, (
-            f"One unique task with {task_name} should be found. "
-            "Use `options(name=<task_name>)` when creating the task."
-        )
-        task = tasks[0]
-        assert (
-            task["state"] == expected_state
-        ), f"{task_name}: expected {expected_state} but got {task['state']}"
-    return True
-
-
 def verify_schema(state, result_dict: dict, detail: bool = False):
     """
     Verify the schema of the result_dict is the same as the state.

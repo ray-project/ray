@@ -19,7 +19,6 @@ from ray._private.state_api_test_utils import (
     _is_actor_task_running,
     get_state_api_manager,
     verify_failed_task,
-    verify_task_states,
     wait_for_task_states,
 )
 from ray._private.test_utils import (
@@ -273,21 +272,12 @@ def test_fault_tolerance_detached_actor(shutdown_only):
     with pytest.raises(ray.exceptions.WorkerCrashedError):
         ray.get(parent_starts_detached_actor.remote())
 
-    a = ray.get_actor("detached-actor", namespace="test")
-    wait_for_condition(
-        verify_task_states,
-        expected_states={"detached-actor-run": "RUNNING"},
-        expect_num_tasks=1,
-    )
+    wait_for_task_states({"detached-actor-run": "RUNNING"})
 
     a = ray.get_actor("detached-actor", namespace="test")
     ray.kill(a)
 
-    wait_for_condition(
-        verify_task_states,
-        expected_states={"detached-actor-run": "FAILED"},
-        expect_num_tasks=1,
-    )
+    wait_for_task_states({"detached-actor-run": "FAILED"})
 
     # Verify failed task marked with expected info.
     wait_for_condition(
@@ -427,27 +417,20 @@ class Actor:
         wait_for_task_states({"task_sleep_child": "RUNNING"})
         raise ValueError("expected to fail.")
 
-    def ready(self):
-        pass
-
 
 def test_fault_tolerance_actor_tasks_failed(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
     # Test actor tasks
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
-        ray.get(a.ready.remote())
         ray.get(a.fail_parent.options(name="fail_parent").remote())
 
-    expected_states = {
-        "fail_parent": "FAILED",
-        "task_finish_child": "FINISHED",
-        "task_sleep_child": "RUNNING",
-    }
-    wait_for_condition(
-        verify_task_states,
-        expected_states=expected_states,
-        expect_num_tasks=3,
+    wait_for_task_states(
+        {
+            "fail_parent": "FAILED",
+            "task_finish_child": "FINISHED",
+            "task_sleep_child": "RUNNING",
+        }
     )
 
 
@@ -456,19 +439,15 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
     # Test nested actor tasks
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
-        ray.get(a.ready.remote())
         ray.get(a.child_actor.options(name="child_actor").remote())
 
-    expected_states = {
-        "child_actor": "FAILED",
-        "children": "RUNNING",
-        "task_finish_child": "FINISHED",
-        "task_sleep_child": "RUNNING",
-    }
-    wait_for_condition(
-        verify_task_states,
-        expected_states=expected_states,
-        expect_num_tasks=4,
+    wait_for_task_states(
+        {
+            "child_actor": "FAILED",
+            "children": "RUNNING",
+            "task_finish_child": "FINISHED",
+            "task_sleep_child": "RUNNING",
+        },
         timeout=30,
     )
 
@@ -646,12 +625,7 @@ def test_fault_tolerance_chained_task_fail(
         expected_states = {"A": "FAILED", "B": "FAILED", "C": "FAILED"}
     else:
         expected_states = {"A": "FAILED", "B": "RUNNING", "C": "RUNNING"}
-    wait_for_condition(
-        verify_task_states,
-        expected_states=expected_states,
-        expect_num_tasks=3,
-        timeout=30,
-    )
+    wait_for_task_states(expected_states, timeout=30)
 
 
 NORMAL_TASK = "normal_task"
@@ -821,13 +795,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     print("all killed")
 
     expected_states = {name: expected_state_for(name) for name in tasks}
-    wait_for_condition(
-        verify_task_states,
-        expected_states=expected_states,
-        expect_num_tasks=len(tasks),
-        timeout=30,
-        retry_interval_ms=500,
-    )
+    wait_for_task_states(expected_states, timeout=30)
 
 
 def check_file(type, task_name, expected_log, expect_no_end=False):
