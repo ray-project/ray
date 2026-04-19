@@ -888,12 +888,15 @@ def test_execution_options_to_dict_defaults_and_custom():
 
 def test_construct_data_config_defaults_and_split_variants():
     """Test construct_data_config with default config and different split options."""
-    # Default
+    # Default: execution_options is serialized as a single flat dict of the
+    # default ingest options shared by all datasets.
     default = construct_data_config(DataConfig())
     assert isinstance(default, DataConfigSchema)
     assert default.datasets_to_split == "all"
     assert default.enable_shard_locality is True
-    assert default.execution_options is None
+    assert default.execution_options == execution_options_to_dict(
+        DataConfig.default_ingest_options()
+    )
 
     # Specific dataset list
     result = construct_data_config(DataConfig(datasets_to_split=["train", "eval"]))
@@ -906,6 +909,25 @@ def test_construct_data_config_defaults_and_split_variants():
     # Shard locality disabled
     result = construct_data_config(DataConfig(enable_shard_locality=False))
     assert result.enable_shard_locality is False
+
+
+def test_construct_data_config_single_execution_options():
+    """A single ExecutionOptions applies to all datasets and is converted one flat dict."""
+    shared = ExecutionOptions(
+        resource_limits=ExecutionResources(cpu=8.0, gpu=2.0),
+        exclude_resources=ExecutionResources(cpu=1.0),
+        preserve_order=True,
+        actor_locality_enabled=False,
+        verbose_progress=False,
+    )
+    result = construct_data_config(
+        DataConfig(
+            datasets_to_split=["train", "eval"],
+            execution_options=shared,
+        )
+    )
+
+    assert result.execution_options == execution_options_to_dict(shared)
 
 
 def test_construct_data_config_per_dataset_execution_options():

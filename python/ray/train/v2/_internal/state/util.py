@@ -57,14 +57,13 @@ def is_actor_alive(actor_id: str, timeout: int) -> bool:
 def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
     exec_options = data_config._execution_options
 
-    execution_options = (
-        None
-        if not exec_options
-        else {
+    if exec_options:
+        execution_options = {
             ds_name: execution_options_to_dict(options)
             for ds_name, options in exec_options.items()
         }
-    )
+    else:
+        execution_options = execution_options_to_dict(exec_options.default_factory())
 
     return DataConfigSchema(
         datasets_to_split=data_config._datasets_to_split,

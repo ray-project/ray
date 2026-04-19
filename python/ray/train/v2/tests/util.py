@@ -7,6 +7,7 @@ from unittest.mock import MagicMock
 
 import ray
 from ray.train import Checkpoint
+from ray.train._internal.data_config import DataConfig
 from ray.train.context import TrainContext
 from ray.train.v2._internal.execution.context import (
     DistributedContext,
@@ -46,6 +47,7 @@ from ray.train.v2._internal.state.schema import (
     TrainRunAttempt,
     TrainWorker,
 )
+from ray.train.v2._internal.state.util import execution_options_to_dict
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.validation_config import ValidationTaskConfig
@@ -223,7 +225,9 @@ def create_mock_train_run(
             datasets=["dataset_1"],
             data_config=DataConfigSchema(
                 datasets_to_split="all",
-                execution_options=None,
+                execution_options=execution_options_to_dict(
+                    DataConfig.default_ingest_options()
+                ),
                 enable_shard_locality=True,
             ),
             run_config=RunConfigSchema(

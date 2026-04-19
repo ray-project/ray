@@ -137,7 +137,27 @@ def test_export_train_run_run_settings_fields(enable_export_api_write):
             "use_tpu": False,
         },
         "datasets": ["dataset_1"],
-        "data_config": {"all": {}, "enable_shard_locality": True},
+        "data_config": {
+            "all": {},
+            "enable_shard_locality": True,
+            "execution_options": {
+                "actor_locality_enabled": True,
+                "exclude_resources": {
+                    "CPU": 0.0,
+                    "GPU": 0.0,
+                    "memory": 0.0,
+                    "object_store_memory": 0.0,
+                },
+                "preserve_order": False,
+                "resource_limits": {
+                    "CPU": "inf",
+                    "GPU": "inf",
+                    "memory": "inf",
+                    "object_store_memory": "inf",
+                },
+                "verbose_progress": True,
+            },
+        },
         "run_config": {
             "name": "test_run",
             "failure_config": {"controller_failure_limit": -1, "max_failures": 0},
@@ -596,7 +616,6 @@ def test_export_optional_fields(enable_export_api_write):
     assert "label_selector_single" not in run_settings["scaling_config"]
     assert "label_selector_list" not in run_settings["scaling_config"]
     assert "data_config" in run_settings
-    assert "execution_options" not in run_settings["data_config"]
     assert "storage_filesystem" not in run_settings["run_config"]
 
     # Verify train run attempt without optional fields

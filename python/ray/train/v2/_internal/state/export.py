@@ -284,17 +284,13 @@ def to_proto_data_config(data_config: DataConfig) -> ProtoTrainRun.DataConfig:
     """Convert DataConfig to protobuf format."""
     proto_data_config = ProtoTrainRun.DataConfig(
         enable_shard_locality=data_config.enable_shard_locality,
+        execution_options=_dict_to_human_readable_struct(data_config.execution_options),
     )
 
     if data_config.datasets_to_split == "all":
         proto_data_config.all.SetInParent()
     else:
         proto_data_config.datasets.values.extend(data_config.datasets_to_split)
-
-    if data_config.execution_options is not None:
-        proto_data_config.execution_options.CopyFrom(
-            _dict_to_human_readable_struct(data_config.execution_options)
-        )
 
     return proto_data_config
 

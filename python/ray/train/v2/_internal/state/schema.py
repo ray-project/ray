@@ -222,7 +222,7 @@ class DataConfig(BaseModel):
     datasets_to_split: Union[Literal["all"], List[str]] = Field(
         description="Which datasets to split; either 'all' or a list of dataset names.",
     )
-    execution_options: Optional[Dict] = Field(description="Data execution options")
+    execution_options: Dict = Field(description="Data execution options")
     enable_shard_locality: bool = Field(
         description="Whether to enable shard locality optimization."
     )
