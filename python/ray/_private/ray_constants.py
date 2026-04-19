@@ -63,7 +63,7 @@ DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_float(
 # The default minimum number of bytes to reserve for ray system processes.
 # This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION < this value.
 DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
-    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES", (500) * (1024**2)
+    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES", (1) * (1024**3)
 )
 # The default maximum number of bytes to reserve for ray system processes.
 # This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION > this value.
@@ -149,6 +149,9 @@ RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 
 # Timeout waiting for the dashboard to come alive during node startup.
 RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S", 60)
+
+# Enable profiling endpoints in the dashboard.
+RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -597,3 +600,6 @@ RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = env_bool(
 NIXL_REMOTE_AGENT_CACHE_MAXSIZE = env_integer(
     "RAY_NIXL_REMOTE_AGENT_CACHE_MAXSIZE", 1000
 )
+
+# Name of the environment variable for the Redis password.
+RAY_REDIS_PASSWORD_ENV = "RAY_REDIS_PASSWORD"
