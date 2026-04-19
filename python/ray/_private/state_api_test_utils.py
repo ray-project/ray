@@ -409,7 +409,7 @@ def verify_failed_task(
 
 
 @ray.remote
-class PidActor:
+class ExpectedStateActor:
     def __init__(self):
         self.name_to_expected_state = {}
 

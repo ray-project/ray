@@ -16,7 +16,7 @@ from ray._common.test_utils import (
 )
 from ray._private import ray_constants
 from ray._private.state_api_test_utils import (
-    PidActor,
+    ExpectedStateActor,
     _is_actor_task_running,
     get_state_api_manager,
     verify_failed_task,
@@ -240,12 +240,12 @@ def test_fault_tolerance_detached_actor(shutdown_only):
     """
     ray.init(_system_config=_SYSTEM_CONFIG)
 
-    pid_actor = PidActor.remote()
+    state_actor = ExpectedStateActor.remote()
 
     # Check a detached actor's parent task's failure do not
     # affect the actor's task subtree.
     @ray.remote(max_retries=0)
-    def parent_starts_detached_actor(pid_actor):
+    def parent_starts_detached_actor(state_actor):
         @ray.remote
         class DetachedActor:
             def __init__(self):
@@ -256,9 +256,9 @@ def test_fault_tolerance_detached_actor(shutdown_only):
                     await asyncio.sleep(0.1)
                 pass
 
-            async def run(self, pid_actor):
+            async def run(self, state_actor):
                 ray.get(
-                    pid_actor.report_expected_state.remote(
+                    state_actor.report_expected_state.remote(
                         "detached-actor-run", "RUNNING"
                     )
                 )
@@ -269,7 +269,7 @@ def test_fault_tolerance_detached_actor(shutdown_only):
         a = DetachedActor.options(
             name="detached-actor", lifetime="detached", namespace="test"
         ).remote()
-        a.run.options(name="detached-actor-run").remote(pid_actor)
+        a.run.options(name="detached-actor-run").remote(state_actor)
         ray.get(a.running.remote())
 
         # Enough time for events to be reported to GCS.
@@ -278,10 +278,10 @@ def test_fault_tolerance_detached_actor(shutdown_only):
         os._exit(1)
 
     with pytest.raises(ray.exceptions.WorkerCrashedError):
-        ray.get(parent_starts_detached_actor.remote(pid_actor))
+        ray.get(parent_starts_detached_actor.remote(state_actor))
 
     a = ray.get_actor("detached-actor", namespace="test")
-    expected_states = ray.get(pid_actor.get_expected_states.remote())
+    expected_states = ray.get(state_actor.get_expected_states.remote())
     wait_for_condition(
         verify_task_states,
         expected_states=expected_states,
@@ -291,7 +291,6 @@ def test_fault_tolerance_detached_actor(shutdown_only):
     a = ray.get_actor("detached-actor", namespace="test")
     ray.kill(a)
 
-    # Verify the actual process no longer running.
     expected_states["detached-actor-run"] = "FAILED"
     wait_for_condition(
         verify_task_states,
@@ -405,36 +404,38 @@ ray.get(parent.remote())
 
 
 @ray.remote
-def task_finish_child(pid_actor):
-    ray.get(pid_actor.report_expected_state.remote("task_finish_child", "FINISHED"))
+def task_finish_child(state_actor):
+    ray.get(state_actor.report_expected_state.remote("task_finish_child", "FINISHED"))
     pass
 
 
 @ray.remote
-def task_sleep_child(pid_actor):
-    ray.get(pid_actor.report_expected_state.remote("task_sleep_child", "RUNNING"))
+def task_sleep_child(state_actor):
+    ray.get(state_actor.report_expected_state.remote("task_sleep_child", "RUNNING"))
     time.sleep(999)
 
 
 @ray.remote
 class ChildActor:
-    def children(self, pid_actor):
-        ray.get(pid_actor.report_expected_state.remote("children", "RUNNING"))
-        ray.get(task_finish_child.options(name="task_finish_child").remote(pid_actor))
-        ray.get(task_sleep_child.options(name="task_sleep_child").remote(pid_actor))
+    def children(self, state_actor):
+        ray.get(state_actor.report_expected_state.remote("children", "RUNNING"))
+        ray.get(task_finish_child.options(name="task_finish_child").remote(state_actor))
+        ray.get(task_sleep_child.options(name="task_sleep_child").remote(state_actor))
 
 
 @ray.remote
 class Actor:
-    def fail_parent(self, pid_actor):
-        ray.get(pid_actor.report_expected_state.remote("fail_parent", "FAILED"))
-        ray.get(task_finish_child.options(name="task_finish_child").remote(pid_actor))
-        task_sleep_child.options(name="task_sleep_child").remote(pid_actor)
+    def fail_parent(self, state_actor):
+        ray.get(state_actor.report_expected_state.remote("fail_parent", "FAILED"))
+        ray.get(task_finish_child.options(name="task_finish_child").remote(state_actor))
+        task_sleep_child.options(name="task_sleep_child").remote(state_actor)
 
         # Wait til child tasks run.
         def wait_fn():
             assert (
-                ray.get(pid_actor.get_expected_states.remote()).get("task_sleep_child")
+                ray.get(state_actor.get_expected_states.remote()).get(
+                    "task_sleep_child"
+                )
                 is not None
             )
             assert (
@@ -446,13 +447,13 @@ class Actor:
         wait_for_condition(wait_fn)
         raise ValueError("expected to fail.")
 
-    def child_actor(self, pid_actor):
-        ray.get(pid_actor.report_expected_state.remote("child_actor", "FAILED"))
+    def child_actor(self, state_actor):
+        ray.get(state_actor.report_expected_state.remote("child_actor", "FAILED"))
         a = ChildActor.remote()
-        a.children.options(name="children").remote(pid_actor)
+        a.children.options(name="children").remote(state_actor)
         # Wait til child tasks run.
         wait_for_condition(
-            lambda: ray.get(pid_actor.get_expected_states.remote()).get(
+            lambda: ray.get(state_actor.get_expected_states.remote()).get(
                 "task_sleep_child"
             )
             is not None
@@ -466,35 +467,35 @@ class Actor:
 def test_fault_tolerance_actor_tasks_failed(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
     # Test actor tasks
-    pid_actor = PidActor.remote()
+    state_actor = ExpectedStateActor.remote()
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
         ray.get(a.ready.remote())
-        ray.get(a.fail_parent.options(name="fail_parent").remote(pid_actor))
+        ray.get(a.fail_parent.options(name="fail_parent").remote(state_actor))
 
     # Wait for all tasks to finish:
     # 3 = fail_parent + task_finish_child + task_sleep_child
     wait_for_condition(
         verify_task_states,
-        expected_states=ray.get(pid_actor.get_expected_states.remote()),
+        expected_states=ray.get(state_actor.get_expected_states.remote()),
         expect_num_tasks=3,
     )
 
 
 def test_fault_tolerance_nested_actors_failed(shutdown_only):
     ray.init(_system_config=_SYSTEM_CONFIG)
-    pid_actor = PidActor.remote()
+    state_actor = ExpectedStateActor.remote()
     # Test nested actor tasks
     with pytest.raises(ray.exceptions.RayTaskError):
         a = Actor.remote()
         ray.get(a.ready.remote())
-        ray.get(a.child_actor.options(name="child_actor").remote(pid_actor))
+        ray.get(a.child_actor.options(name="child_actor").remote(state_actor))
 
     # Wait for all tasks to finish:
     # 4 = child_actor + children + task_finish_child + task_sleep_child
     wait_for_condition(
         verify_task_states,
-        expected_states=ray.get(pid_actor.get_expected_states.remote()),
+        expected_states=ray.get(state_actor.get_expected_states.remote()),
         expect_num_tasks=4,
         timeout=30,
     )
@@ -625,13 +626,13 @@ def test_fault_tolerance_chained_task_fail(
     # TODO(#57203): remove this once task event buffer handles this internally.
     wait_for_aggregator_agent_if_enabled(address, node_id)
 
-    def sleep_or_fail(pid_actor=None, exit_type=None):
+    def sleep_or_fail(state_actor=None, exit_type=None):
         if exit_type is None:
             time.sleep(999)
         # Wait until the children run
-        if pid_actor:
+        if state_actor:
             wait_for_condition(
-                lambda: len(ray.get(pid_actor.get_expected_states.remote())) == 3,
+                lambda: len(ray.get(state_actor.get_expected_states.remote())) == 3,
             )
 
         if exit_type == "exit_kill":
@@ -640,44 +641,44 @@ def test_fault_tolerance_chained_task_fail(
             raise ValueError("Expected to fail")
 
     @ray.remote(max_retries=0)
-    def A(exit_type, pid_actor):
-        x = B.remote(pid_actor)
-        ray.get(pid_actor.report_expected_state.remote("A", "FAILED"))
-        sleep_or_fail(pid_actor, exit_type)
+    def A(exit_type, state_actor):
+        x = B.remote(state_actor)
+        ray.get(state_actor.report_expected_state.remote("A", "FAILED"))
+        sleep_or_fail(state_actor, exit_type)
         ray.get(x)
 
     @ray.remote(max_retries=0)
-    def B(pid_actor):
-        x = C.remote(pid_actor)
-        ray.get(pid_actor.report_expected_state.remote("B", "RUNNING"))
+    def B(state_actor):
+        x = C.remote(state_actor)
+        ray.get(state_actor.report_expected_state.remote("B", "RUNNING"))
         sleep_or_fail()
         ray.get(x)
 
     @ray.remote(max_retries=0)
-    def C(pid_actor):
-        ray.get(pid_actor.report_expected_state.remote("C", "RUNNING"))
+    def C(state_actor):
+        ray.get(state_actor.report_expected_state.remote("C", "RUNNING"))
         sleep_or_fail()
 
     @ray.remote(max_restarts=0, max_task_retries=0)
     class Actor:
-        def run(self, pid_actor):
+        def run(self, state_actor):
             with pytest.raises(
                 (ray.exceptions.RayTaskError, ray.exceptions.WorkerCrashedError)
             ):
-                ray.get(A.remote(exit_type=exit_type, pid_actor=pid_actor))
+                ray.get(A.remote(exit_type=exit_type, state_actor=state_actor))
 
-    pid_actor = PidActor.remote()
+    state_actor = ExpectedStateActor.remote()
 
     if actor_or_normal_tasks == "normal_task":
         with pytest.raises(
             (ray.exceptions.RayTaskError, ray.exceptions.WorkerCrashedError)
         ):
-            ray.get(A.remote(exit_type=exit_type, pid_actor=pid_actor))
+            ray.get(A.remote(exit_type=exit_type, state_actor=state_actor))
     else:
         a = Actor.remote()
-        ray.get(a.run.remote(pid_actor=pid_actor))
+        ray.get(a.run.remote(state_actor=state_actor))
 
-    expected_states = ray.get(pid_actor.get_expected_states.remote())
+    expected_states = ray.get(state_actor.get_expected_states.remote())
     if exit_type == "exit_kill":
         expected_states["B"] = "FAILED"
         expected_states["C"] = "FAILED"
