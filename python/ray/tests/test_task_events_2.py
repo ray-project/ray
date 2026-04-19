@@ -733,6 +733,20 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     ray.init(_system_config=_SYSTEM_CONFIG)
 
     killed_names = {name for name, _ in death_list}
+    exit_killed_names = {name for name, kind in death_list if kind == "exit_kill"}
+
+    parent_of = {"root": None}
+    for p, cs in execution_graph.items():
+        for _, c in cs:
+            parent_of[c] = p
+
+    def has_exit_killed_ancestor(name):
+        cur = parent_of.get(name)
+        while cur is not None:
+            if cur in exit_killed_names:
+                return True
+            cur = parent_of.get(cur)
+        return False
 
     @ray.remote
     class Killer:
@@ -770,7 +784,9 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
             self.idx_ += 1
 
     def expected_state_for(name):
-        return "FAILED" if name in killed_names else "RUNNING"
+        if name in killed_names or has_exit_killed_ancestor(name):
+            return "FAILED"
+        return "RUNNING"
 
     def run_children(my_name, killer, execution_graph):
         children = execution_graph.get(my_name, [])
