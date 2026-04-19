@@ -383,12 +383,16 @@ def _handle_headers(headers: Optional[str]) -> Optional[Dict[str, Any]]:
     type=str,
     required=False,
 )
+@headers_option
+@verify_option
 @address_option
 @timeout_option
 @PublicAPI(stability="stable")
 def ray_get(
     resource: str,
     id: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
     address: Optional[str],
     timeout: float,
 ):
@@ -422,6 +426,8 @@ def ray_get(
     Args:
         resource: The type of the resource to query.
         id: The id of the resource.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
         address: The address of Ray API server.
         timeout: Timeout in seconds for the API requests.
 
@@ -439,7 +445,9 @@ def ray_get(
 
     # Create the State API server and put it into context
     logger.debug(f"Create StateApiClient to ray instance at: {address}...")
-    client = StateApiClient(address=address)
+    client = StateApiClient(
+        address=address, headers=_handle_headers(headers), verify=verify
+    )
     options = GetApiOptions(timeout=timeout)
 
     # If errors occur, exceptions will be thrown.
@@ -503,6 +511,8 @@ def ray_get(
 )
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @PublicAPI(stability="stable")
 def ray_list(
     resource: str,
@@ -512,6 +522,8 @@ def ray_list(
     detail: bool,
     timeout: float,
     address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """List all states of a given resource.
 
@@ -575,6 +587,8 @@ def ray_list(
         detail: Whether to include detailed columns.
         timeout: Timeout in seconds for the API requests.
         address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -589,7 +603,9 @@ def ray_list(
     format = AvailableFormat(format)
 
     # Create the State API server and put it into context
-    client = StateApiClient(address=address)
+    client = StateApiClient(
+        address=address, headers=_handle_headers(headers), verify=verify
+    )
 
     filter = [_parse_filter(f) for f in filter]
 
@@ -637,12 +653,16 @@ def summary_state_cli_group(ctx):
 @summary_state_cli_group.command(name="tasks")
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
 def task_summary(
     ctx,
     timeout: float,
     address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """Summarize the task state of the cluster.
 
@@ -656,6 +676,8 @@ def task_summary(
         ctx: Click context.
         timeout: Timeout in seconds for the API requests.
         address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -668,6 +690,8 @@ def task_summary(
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
+                headers=_handle_headers(headers),
+                verify=verify,
             ),
             resource=StateResource.TASKS,
         )
@@ -677,12 +701,16 @@ def task_summary(
 @summary_state_cli_group.command(name="actors")
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
 def actor_summary(
     ctx,
     timeout: float,
     address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """Summarize the actor state of the cluster.
 
@@ -697,6 +725,8 @@ def actor_summary(
         ctx: Click context.
         timeout: Timeout in seconds for the API requests.
         address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -709,6 +739,8 @@ def actor_summary(
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
+                headers=_handle_headers(headers),
+                verify=verify,
             ),
             resource=StateResource.ACTORS,
         )
@@ -718,12 +750,16 @@ def actor_summary(
 @summary_state_cli_group.command(name="objects")
 @timeout_option
 @address_option
+@headers_option
+@verify_option
 @click.pass_context
 @PublicAPI(stability="stable")
 def object_summary(
     ctx,
     timeout: float,
     address: str,
+    headers: Optional[str],
+    verify: Union[bool, str],
 ):
     """Summarize the object state of the cluster.
 
@@ -757,6 +793,8 @@ def object_summary(
         ctx: Click context.
         timeout: Timeout in seconds for the API requests.
         address: The address of Ray API server.
+        headers: JSON string to pass HTTP headers for authentication.
+        verify: Boolean to verify TLS or a path to trusted certificates.
 
     Raises:
         :class:`RayStateApiException <ray.util.state.exception.RayStateApiException>`
@@ -769,6 +807,8 @@ def object_summary(
                 timeout=timeout,
                 raise_on_missing_output=False,
                 _explain=True,
+                headers=_handle_headers(headers),
+                verify=verify,
             ),
         )
     )

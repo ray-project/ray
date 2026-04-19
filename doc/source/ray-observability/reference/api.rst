@@ -132,13 +132,6 @@ Log query parameters
 - ``timeout``: Timeout in seconds for the request.
 - ``filter_ansi_code``: ``true`` to strip ANSI escape codes from streamed logs.
 
-Authentication
-~~~~~~~~~~~~~~
-
-If your cluster requires authentication, pass HTTP headers such as an
-``Authorization`` token to these endpoints. When using the State CLI, you can
-use ``--headers`` for custom headers and ``--verify`` to control TLS verification.
-
 .. _state-api-schema:
 
 State APIs Schema
