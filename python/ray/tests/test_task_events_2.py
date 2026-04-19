@@ -385,6 +385,11 @@ ray.get(parent.remote())
 
 
 @ray.remote
+def task_finish_child():
+    pass
+
+
+@ray.remote
 def task_sleep_child():
     time.sleep(999)
 
@@ -392,14 +397,18 @@ def task_sleep_child():
 @ray.remote
 class ChildActor:
     def children(self):
+        ray.get(task_finish_child.options(name="task_finish_child").remote())
         ray.get(task_sleep_child.options(name="task_sleep_child").remote())
 
 
 @ray.remote
 class Actor:
     def fail_parent(self):
+        ray.get(task_finish_child.options(name="task_finish_child").remote())
         task_sleep_child.options(name="task_sleep_child").remote()
-        wait_for_task_states({"task_sleep_child": "RUNNING"})
+        wait_for_task_states(
+            {"task_sleep_child": "RUNNING", "task_finish_child": "FINISHED"}
+        )
         raise ValueError("expected to fail.")
 
     def child_actor(self):
@@ -419,6 +428,7 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
     wait_for_task_states(
         {
             "fail_parent": "FAILED",
+            "task_finish_child": "FINISHED",
             "task_sleep_child": "RUNNING",
         }
     )
@@ -435,9 +445,9 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
         {
             "child_actor": "FAILED",
             "children": "RUNNING",
+            "task_finish_child": "FINISHED",
             "task_sleep_child": "RUNNING",
-        },
-        timeout=30,
+        }
     )
 
 
@@ -614,7 +624,7 @@ def test_fault_tolerance_chained_task_fail(
         expected_states = {"A": "FAILED", "B": "FAILED", "C": "FAILED"}
     else:
         expected_states = {"A": "FAILED", "B": "RUNNING", "C": "RUNNING"}
-    wait_for_task_states(expected_states, timeout=30)
+    wait_for_task_states(expected_states)
 
 
 NORMAL_TASK = "normal_task"
@@ -784,7 +794,7 @@ def test_fault_tolerance_advanced_tree(shutdown_only, death_list):
     print("all killed")
 
     expected_states = {name: expected_state_for(name) for name in tasks}
-    wait_for_task_states(expected_states, timeout=30)
+    wait_for_task_states(expected_states)
 
 
 def check_file(type, task_name, expected_log, expect_no_end=False):

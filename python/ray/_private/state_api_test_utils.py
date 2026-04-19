@@ -408,7 +408,7 @@ def verify_failed_task(
     return True
 
 
-def wait_for_task_states(name_to_state: Dict[str, str], timeout: float = 10) -> None:
+def wait_for_task_states(name_to_state: Dict[str, str], timeout: float = 30) -> None:
     """
     Block until every task in ``name_to_state`` is observed in its expected
     state via the State API, or raise if the timeout expires.
