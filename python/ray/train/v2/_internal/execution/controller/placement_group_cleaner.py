@@ -90,6 +90,12 @@ class PlacementGroupCleaner:
 
             # Cleanup if controller is dead
             if not alive:
+                # Drain any queued placement group
+                try:
+                    pg = self._pg_queue.get_nowait()
+                    curr_placement_group = pg
+                except queue.Empty:
+                    pass
                 self._cleanup_placement_group(curr_placement_group)
                 break
 
