@@ -295,11 +295,11 @@ TEST_F(
                             std::move(driver));
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(result.value());
 
-  // When resource isolation is enabled, GetMemoryThreshold uses
-  // memory.max - threshold_monitor_reaction_buffer_bytes regardless of other parameters.
+  // Reaction buffer defaults to 5% of total memory. If
+  // kDefaultThresholdMonitorReactionBufferProportion is changed, this should be changed
+  // accordingly.
   int64_t expected_threshold =
-      user_memory_max_bytes -
-      RayConfig::instance().threshold_monitor_reaction_buffer_bytes();
+      user_memory_max_bytes - static_cast<int64_t>(16LL * 1024 * 1024 * 1024 * 0.05);
   ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
                 /*total_memory_bytes=*/16LL * 1024 * 1024 * 1024,
                 /*usage_threshold=*/0.5,

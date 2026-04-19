@@ -229,6 +229,8 @@ class MemoryMonitorUtils {
   static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
   static constexpr char kProcDirectory[] = "/proc";
   static constexpr char kCommandlinePath[] = "cmdline";
+
+  static constexpr double kDefaultThresholdMonitorReactionBufferProportion = 0.05;
 };
 
 }  // namespace ray

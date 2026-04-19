@@ -14,12 +14,14 @@
 
 #include "ray/raylet/worker_killing_policy_factory.h"
 
+#include <algorithm>
 #include <memory>
 
 #include "ray/common/memory_monitor_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/worker_killing_policy_by_time.h"
 #include "ray/raylet/worker_killing_policy_group_by_owner.h"
+#include "ray/raylet/worker_killing_policy_interface.h"
 
 namespace ray {
 
@@ -41,8 +43,13 @@ std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create
       resource_isolation_enabled,
       cgroup_manager);
 
-  return std::make_unique<TimeBasedWorkerKillingPolicy>(
-      memory_usage_threshold_bytes, RayConfig::instance().kill_memory_buffer_bytes());
+  int64_t kill_memory_buffer_bytes =
+      std::min(static_cast<int64_t>(
+                   total_memory_bytes *
+                   WorkerKillingPolicyInterface::kDefaultKillMemoryBufferProportion),
+               RayConfig::instance().max_kill_memory_buffer_bytes());
+  return std::make_unique<TimeBasedWorkerKillingPolicy>(memory_usage_threshold_bytes,
+                                                        kill_memory_buffer_bytes);
 }
 
 }  // namespace raylet
