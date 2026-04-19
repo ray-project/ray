@@ -169,7 +169,6 @@ steps:
         --only-tags doctest
         --python-version 3.10 --build-name corebuild-py3.10
         --parallelism-per-worker 3
-        || true
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
         --install-mask all-ray-libraries
@@ -177,15 +176,12 @@ steps:
         --parallelism-per-worker 3
         --python-version 3.10 --build-name corebuild-py3.10
         --skip-ray-installation
-        || true
       # doc memory pressure example
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... core
         --only-tags mem_pressure
         --except-tags gpu
         --python-version 3.10 --build-name corebuild-py3.10
         --skip-ray-installation
-        || true
-      - sleep 28800
 
   - label: ":ray: core: dask tests"
     tags:
