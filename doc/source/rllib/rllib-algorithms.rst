@@ -357,6 +357,13 @@ Conservative Q-Learning (CQL)
     Bellman update loss, ensuring that the critic doesn't output overly optimistic Q-values.
     The `SACLearner` adds this conservative correction term to the TD-based Q-learning loss.
 
+**Lagrangian adaptive** ``alpha'`` **(new-stack only):** When ``lagrangian=True``, the
+conservative weight ``min_q_weight`` (``α'``) is no longer a fixed hyperparameter but a
+learnable multiplier that automatically satisfies the Q-gap constraint
+``E_μ[Q] - E_data[Q] ≤ lagrangian_thresh`` (Kumar et al. 2020, §3.2).  This removes the
+need to hand-tune ``min_q_weight`` across environments.  The learning rate for ``α'`` is
+controlled by ``lagrangian_lr`` (default ``1e-4``).
+
 
 **Tuned examples:**
 `Pendulum-v1 <https://github.com/ray-project/ray/blob/master/rllib/examples/algorithms/cql/pendulum_cql.py>`__

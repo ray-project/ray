@@ -81,6 +81,7 @@ class CQLConfig(SACConfig):
         self.num_actions = 10
         self.lagrangian = False
         self.lagrangian_thresh = 5.0
+        self.lagrangian_lr = 1e-4
         self.min_q_weight = 5.0
         self.deterministic_backup = True
         self.lr = 3e-4
@@ -123,6 +124,7 @@ class CQLConfig(SACConfig):
         num_actions: Optional[int] = NotProvided,
         lagrangian: Optional[bool] = NotProvided,
         lagrangian_thresh: Optional[float] = NotProvided,
+        lagrangian_lr: Optional[float] = NotProvided,
         min_q_weight: Optional[float] = NotProvided,
         deterministic_backup: Optional[bool] = NotProvided,
         **kwargs,
@@ -135,6 +137,8 @@ class CQLConfig(SACConfig):
             num_actions: Number of actions to sample for CQL loss
             lagrangian: Whether to use the Lagrangian for Alpha Prime (in CQL loss).
             lagrangian_thresh: Lagrangian threshold.
+            lagrangian_lr: Learning rate for the Lagrangian alpha-prime optimizer.
+                Only used when ``lagrangian=True``. Defaults to 1e-4.
             min_q_weight: in Q weight multiplier.
             deterministic_backup: If the target in the Bellman update should have an
                 entropy backup. Defaults to `True`.
@@ -155,6 +159,8 @@ class CQLConfig(SACConfig):
             self.lagrangian = lagrangian
         if lagrangian_thresh is not NotProvided:
             self.lagrangian_thresh = lagrangian_thresh
+        if lagrangian_lr is not NotProvided:
+            self.lagrangian_lr = lagrangian_lr
         if min_q_weight is not NotProvided:
             self.min_q_weight = min_q_weight
         if deterministic_backup is not NotProvided:
