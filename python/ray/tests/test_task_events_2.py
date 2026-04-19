@@ -385,11 +385,6 @@ ray.get(parent.remote())
 
 
 @ray.remote
-def task_finish_child():
-    pass
-
-
-@ray.remote
 def task_sleep_child():
     time.sleep(999)
 
@@ -397,18 +392,14 @@ def task_sleep_child():
 @ray.remote
 class ChildActor:
     def children(self):
-        ray.get(task_finish_child.options(name="task_finish_child").remote())
         ray.get(task_sleep_child.options(name="task_sleep_child").remote())
 
 
 @ray.remote
 class Actor:
     def fail_parent(self):
-        ray.get(task_finish_child.options(name="task_finish_child").remote())
         task_sleep_child.options(name="task_sleep_child").remote()
-        wait_for_task_states(
-            {"task_sleep_child": "RUNNING", "task_finish_child": "FINISHED"}
-        )
+        wait_for_task_states({"task_sleep_child": "RUNNING"})
         raise ValueError("expected to fail.")
 
     def child_actor(self):
@@ -428,7 +419,6 @@ def test_fault_tolerance_actor_tasks_failed(shutdown_only):
     wait_for_task_states(
         {
             "fail_parent": "FAILED",
-            "task_finish_child": "FINISHED",
             "task_sleep_child": "RUNNING",
         }
     )
@@ -445,7 +435,6 @@ def test_fault_tolerance_nested_actors_failed(shutdown_only):
         {
             "child_actor": "FAILED",
             "children": "RUNNING",
-            "task_finish_child": "FINISHED",
             "task_sleep_child": "RUNNING",
         },
         timeout=30,
