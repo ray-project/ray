@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <memory>
+#include <vector>
 
 #include "ray/common/memory_monitor_factory.h"
 #include "ray/common/memory_monitor_interface.h"
@@ -20,11 +21,14 @@
 
 namespace ray {
 
-std::unique_ptr<MemoryMonitorInterface> MemoryMonitorFactory::Create(
+std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Create(
     KillWorkersCallback kill_workers_callback,
     bool resource_isolation_enabled,
+    bool memory_throttling_mode_enabled,
     const CgroupManagerInterface &cgroup_manager) {
-  return std::make_unique<NoopMemoryMonitor>();
+  std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors;
+  monitors.push_back(std::make_unique<NoopMemoryMonitor>());
+  return monitors;
 }
 
 }  // namespace ray

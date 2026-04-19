@@ -234,36 +234,39 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupNonexistentUsageFileReturnskNull) {
 
 TEST_F(MemoryMonitorUtilsTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) {
   NoopCgroupManager noop_cgroup_manager;
-  ASSERT_EQ(
-      MemoryMonitorUtils::GetMemoryThreshold(100, 0.5, 0, false, noop_cgroup_manager),
-      100);
-  ASSERT_EQ(
-      MemoryMonitorUtils::GetMemoryThreshold(100, 0.5, 60, false, noop_cgroup_manager),
-      50);
-
-  ASSERT_EQ(
-      MemoryMonitorUtils::GetMemoryThreshold(100, 1, 10, false, noop_cgroup_manager),
-      100);
-  ASSERT_EQ(
-      MemoryMonitorUtils::GetMemoryThreshold(100, 1, 100, false, noop_cgroup_manager),
-      100);
-
-  ASSERT_EQ(
-      MemoryMonitorUtils::GetMemoryThreshold(100, 0.1, 100, false, noop_cgroup_manager),
-      10);
-  ASSERT_EQ(
-      MemoryMonitorUtils::GetMemoryThreshold(100, 0, 10, false, noop_cgroup_manager), 90);
-  ASSERT_EQ(
-      MemoryMonitorUtils::GetMemoryThreshold(100, 0, 100, false, noop_cgroup_manager), 0);
-
   ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
-                100, 0, MemoryMonitorInterface::kNull, false, noop_cgroup_manager),
-            0);
+                100, 0.5, 0, false, false, noop_cgroup_manager),
+            100);
   ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
-                100, 0.5, MemoryMonitorInterface::kNull, false, noop_cgroup_manager),
+                100, 0.5, 60, false, false, noop_cgroup_manager),
             50);
+
   ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
-                100, 1, MemoryMonitorInterface::kNull, false, noop_cgroup_manager),
+                100, 1, 10, false, false, noop_cgroup_manager),
+            100);
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                100, 1, 100, false, false, noop_cgroup_manager),
+            100);
+
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                100, 0.1, 100, false, false, noop_cgroup_manager),
+            10);
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                100, 0, 10, false, false, noop_cgroup_manager),
+            90);
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                100, 0, 100, false, false, noop_cgroup_manager),
+            0);
+
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                100, 0, MemoryMonitorInterface::kNull, false, false, noop_cgroup_manager),
+            0);
+  ASSERT_EQ(
+      MemoryMonitorUtils::GetMemoryThreshold(
+          100, 0.5, MemoryMonitorInterface::kNull, false, false, noop_cgroup_manager),
+      50);
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                100, 1, MemoryMonitorInterface::kNull, false, false, noop_cgroup_manager),
             100);
 }
 
@@ -298,15 +301,26 @@ TEST_F(
   // Reaction buffer defaults to 5% of total memory. If
   // kDefaultThresholdMonitorReactionBufferProportion is changed, this should be changed
   // accordingly.
-  int64_t expected_threshold =
+  int64_t expected_default_mode_threshold =
       user_memory_max_bytes - static_cast<int64_t>(16LL * 1024 * 1024 * 1024 * 0.05);
   ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
                 /*total_memory_bytes=*/16LL * 1024 * 1024 * 1024,
                 /*usage_threshold=*/0.5,
                 /*min_memory_free_bytes=*/MemoryMonitorInterface::kNull,
                 /*resource_isolation_enabled=*/true,
+                /*memory_throttling_mode_enabled=*/false,
                 *cgroup_manager),
-            expected_threshold);
+            expected_default_mode_threshold);
+
+  int64_t expected_throttling_mode_threshold = user_memory_max_bytes;
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                /*total_memory_bytes=*/16LL * 1024 * 1024 * 1024,
+                /*usage_threshold=*/0.5,
+                /*min_memory_free_bytes=*/MemoryMonitorInterface::kNull,
+                /*resource_isolation_enabled=*/true,
+                /*memory_throttling_mode_enabled=*/true,
+                *cgroup_manager),
+            expected_throttling_mode_threshold);
 }
 
 TEST_F(MemoryMonitorUtilsTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {

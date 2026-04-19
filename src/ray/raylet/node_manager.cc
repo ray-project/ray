@@ -244,9 +244,11 @@ NodeManager::NodeManager(
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
-      memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
-                                                   config.enable_resource_isolation,
-                                                   *cgroup_manager)),
+      memory_monitors_(MemoryMonitorFactory::Create(
+          CreateKillWorkersCallback(),
+          config.enable_resource_isolation,
+          RayConfig::instance().enable_memory_throttling_mode(),
+          *cgroup_manager)),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
       shutting_down_(shutting_down),
@@ -3050,13 +3052,38 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   return std::make_optional(std::move(msg));
 }
 
+bool NodeManager::MarkKillWorkerInProgress() {
+  {
+    absl::MutexLock lock(&worker_killing_in_progress_mutex_);
+    if (worker_killing_in_progress_) {
+      return false;
+    }
+    worker_killing_in_progress_ = true;
+  }
+  for (auto &monitor : memory_monitors_) {
+    monitor->Disable();
+  }
+  return true;
+}
+
+void NodeManager::ReleaseKillWorkerInProgress() {
+  {
+    absl::MutexLock lock(&worker_killing_in_progress_mutex_);
+    worker_killing_in_progress_ = false;
+  }
+  for (auto &monitor : memory_monitors_) {
+    monitor->Enable();
+  }
+}
+
 // Picks the workers and kills the process if the memory usage is above the threshold.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
-  return [this](SystemMemorySnapshot system_memory_snapshot) {
+  return [this]() {
+    if (!MarkKillWorkerInProgress()) {
+      return;
+    }
     io_service_.post(
-        [this, system_memory = std::move(system_memory_snapshot)]() {
-          ProcessesMemorySnapshot process_memory_snapshot =
-              MemoryMonitorUtils::TakePerProcessMemorySnapshot();
+        [this]() {
           std::vector<std::shared_ptr<WorkerInterface>> workers =
               worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true,
                                                    /* filter_io_workers */ true);
@@ -3066,25 +3093,31 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                    "killing."
                 << "This could be due to worker memory leak and"
                 << "idle worker are occupying most of the memory.";
-            memory_monitor_->Enable();
+            ReleaseKillWorkerInProgress();
             return;
           }
+          ProcessesMemorySnapshot process_memory_snapshot =
+              MemoryMonitorUtils::TakePerProcessMemorySnapshot();
+          SystemMemorySnapshot system_memory_snapshot =
+              MemoryMonitorUtils::TakeSystemMemorySnapshot(
+                  MemoryMonitorInterface::kDefaultCgroupPath);
           std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
               workers_to_kill_and_should_retry =
                   worker_killing_policy_->SelectWorkersToKill(
-                      workers, process_memory_snapshot, system_memory);
+                      workers, process_memory_snapshot, system_memory_snapshot);
           if (workers_to_kill_and_should_retry.empty()) {
-            memory_monitor_->Enable();
+            ReleaseKillWorkerInProgress();
             return;
           }
 
           // Compute the memory usage threshold
-          int64_t total_memory_bytes = system_memory.total_bytes;
+          int64_t total_memory_bytes = system_memory_snapshot.total_bytes;
           int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
               total_memory_bytes,
               RayConfig::instance().memory_usage_threshold(),
               RayConfig::instance().min_memory_free_bytes(),
               initial_config_.enable_resource_isolation,
+              RayConfig::instance().enable_memory_throttling_mode(),
               *cgroup_manager_);
           float computed_threshold_fraction =
               static_cast<float>(computed_threshold_bytes) /
@@ -3093,7 +3126,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           std::string oom_kill_details = CreateOomKillMessageDetails(
               workers_to_kill_and_should_retry,
               self_node_id_,
-              system_memory,
+              system_memory_snapshot,
               store_client_->GetMemoryUsage().value_or("Not available"),
               process_memory_snapshot,
               computed_threshold_fraction);
@@ -3154,7 +3187,7 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
                    {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
             }
           }
-          memory_monitor_->Enable();
+          ReleaseKillWorkerInProgress();
         },
         "NodeManager.KillWorkersCallback");
   };

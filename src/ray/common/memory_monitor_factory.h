@@ -15,40 +15,42 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/memory_monitor_interface.h"
 
 namespace ray {
 
-/// Factory class for creating MemoryMonitor instances.
-///
-/// This feature is only enabled on Linux. On Linux, it creates a ThresholdMemoryMonitor
-/// that monitors memory usage using /proc filesystem and cgroups.
-///
-/// On non-Linux platforms, this will return a no-op implementation.
 class MemoryMonitorFactory {
  public:
   /**
-   * Create a memory monitor instance.
+   * Create memory monitor instances based on configuration.
    *
-   * On Linux, creates a ThresholdMemoryMonitor that monitors memory usage
-   * and triggers the callback when usage is refreshed.
+   * On Linux, creates monitors based on configuration:
+   *   - Resource isolation disabled: ThresholdMemoryMonitor only.
+   *   - Resource isolation enabled, throttling disabled: ThresholdMemoryMonitor +
+   *     PressureMemoryMonitor.
+   *   - Resource isolation enabled, throttling enabled: EventMemoryMonitor only.
    *
-   * On non-Linux platforms, creates a NoopMemoryMonitor that does nothing.
+   * On non-Linux platforms, returns a vector with a single NoopMemoryMonitor.
    *
-   * @param kill_workers_callback function to execute when the memory usage is refreshed.
+   * @param kill_workers_callback function to invoke when memory pressure is detected.
    * @param resource_isolation_enabled When resource isolation is enabled, the
-   * memory monitor will work with the configured cgroup constraints to better
+   * memory monitors will work with the configured cgroup constraints to better
    * enforce the memory usage limit.
-   * @param cgroup_manager When resource isolation is enabled, the monitor will determine
+   * @param memory_throttling_mode_enabled when enabled, the memory monitor will work
+   * with cgroup constraints to balance between memory throttling and worker killing to
+   * enforce stronger resource isolation between user and system slice.
+   * @param cgroup_manager When resource isolation is enabled, the monitors will determine
    * the proper memory monitoring threshold based on the set cgroup constraints provided
    * by the cgroup manager.
-   * @return a unique pointer to the memory monitor instance.
+   * @return a vector of memory monitor instances.
    */
-  static std::unique_ptr<MemoryMonitorInterface> Create(
+  static std::vector<std::unique_ptr<MemoryMonitorInterface>> Create(
       KillWorkersCallback kill_workers_callback,
       bool resource_isolation_enabled,
+      bool memory_throttling_mode_enabled,
       const CgroupManagerInterface &cgroup_manager);
 };
 

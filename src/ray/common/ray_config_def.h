@@ -79,7 +79,7 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 RAY_CONFIG(float, memory_usage_threshold, 0.95)
 
 /// The interval between runs of the memory usage monitor.
-/// Monitor is disabled when this value is 0.
+/// ThresholdMemoryMonitor is disabled when this value is 0.
 RAY_CONFIG(uint64_t, memory_monitor_refresh_ms, 250)
 
 /// The minimum amount of free space. If the memory is above the
@@ -109,6 +109,18 @@ RAY_CONFIG(int64_t,
 /// When true, use the legacy group-by-owner worker killing policy instead of the
 /// default time-based policy.
 RAY_CONFIG(bool, worker_killing_policy_by_group, false)
+
+/// Whether to enable the memory throttling monitoring system.
+/// When true, the memory monitor will work with cgroup constraints to
+/// balance between memory throttling and worker killing to enforce
+/// stronger resource isolation between user and system processes.
+/// This mode restrict the available heap memory for user processes to
+/// total system memory - system reserved memory - object store memory.
+///
+/// This mode is only supported when resource isolation is enabled, and
+/// should only be enabled if the workload is experiencing node deaths
+/// due to memory pressure.
+RAY_CONFIG(bool, enable_memory_throttling_mode, false)
 
 /// The reserved memory bytes for system processes
 /// enforced via cgroup memory.min constraint which guarantees

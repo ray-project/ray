@@ -41,6 +41,7 @@ std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create
       RayConfig::instance().memory_usage_threshold(),
       RayConfig::instance().min_memory_free_bytes(),
       resource_isolation_enabled,
+      RayConfig::instance().enable_memory_throttling_mode(),
       cgroup_manager);
 
   int64_t kill_memory_buffer_bytes =
