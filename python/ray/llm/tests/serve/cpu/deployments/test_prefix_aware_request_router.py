@@ -97,7 +97,6 @@ def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
         metadata=RequestMetadata(
             request_id=generate_request_id(),
             internal_request_id=generate_request_id(),
-            multiplexed_model_id="",
         ),
         created_at=time.time(),
     )
