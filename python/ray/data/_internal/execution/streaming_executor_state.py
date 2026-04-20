@@ -427,11 +427,24 @@ def build_streaming_topology(
     return topology
 
 
+#: Maximum timeout (seconds) for `ray.wait` inside `process_completed_tasks`.
+#: This is the upper bound of the adaptive poll interval; it also matches the
+#: previous fixed timeout, so pipelines that never get a ready-ref below this
+#: bound see identical behavior to before.
+DEFAULT_WAIT_TIMEOUT_S = 0.1
+
+#: Minimum timeout (seconds) for `ray.wait`. Kept at 1ms — Ray's C++ core
+#: truncates timeouts to ms, so going below this rounds to the same value
+#: as 1ms. This is also the floor for how often a hot scheduler loop polls.
+MIN_WAIT_TIMEOUT_S = 0.001
+
+
 def process_completed_tasks(
     topology: Topology,
     backpressure_policies: List[BackpressurePolicy],
     max_errored_blocks: int,
-) -> int:
+    wait_timeout: float = DEFAULT_WAIT_TIMEOUT_S,
+) -> Tuple[int, int]:
     """Process any newly completed tasks. To update operator
     states, call `update_operator_states()` afterwards.
 
@@ -440,8 +453,18 @@ def process_completed_tasks(
         backpressure_policies: The backpressure policies to use.
         max_errored_blocks: Max number of errored blocks to allow,
             unlimited if negative.
+        wait_timeout: Timeout (seconds) passed to the internal `ray.wait`
+            call. Defaults to ``DEFAULT_WAIT_TIMEOUT_S`` to preserve
+            historical behavior. Callers that want to adapt the poll
+            interval based on task completion rate should pass a shorter
+            value when tasks are available and a longer one when the
+            scheduler is idle.
     Returns:
-        The number of errored blocks.
+        A tuple ``(num_errored_blocks, num_ready)`` where ``num_ready`` is
+        the count of futures returned by `ray.wait` (before per-operator
+        backpressure filtering). A nonzero ``num_ready`` signals the
+        caller that tasks completed within the poll window — useful for
+        implementing adaptive-timeout strategies.
     """
 
     # All active tasks, keyed by their waitables.
@@ -479,13 +502,15 @@ def process_completed_tasks(
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
+    num_ready = 0
     if active_tasks:
         ready, _ = ray.wait(
             list(active_tasks.keys()),
             num_returns=len(active_tasks),
             fetch_local=False,
-            timeout=0.1,
+            timeout=wait_timeout,
         )
+        num_ready = len(ready)
 
         # Organize tasks by the operator they belong to, and sort them by task index.
         # So that we'll process them in a deterministic order.
@@ -549,7 +574,7 @@ def process_completed_tasks(
         while op.has_next():
             op_state.add_output(op.get_next())
 
-    return num_errored_blocks
+    return num_errored_blocks, num_ready
 
 
 def update_operator_states(topology: Topology) -> None:

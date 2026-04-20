@@ -29,6 +29,8 @@ from ray.data._internal.execution.resource_manager import (
     ResourceManager,
 )
 from ray.data._internal.execution.streaming_executor_state import (
+    DEFAULT_WAIT_TIMEOUT_S,
+    MIN_WAIT_TIMEOUT_S,
     OpState,
     Topology,
     build_streaming_topology,
@@ -127,9 +129,25 @@ class StreamingExecutor(Executor, threading.Thread):
         # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
+        # Adaptive `ray.wait` timeout for `process_completed_tasks`.
+        # Halves on a poll that returned ready refs (we should poll again
+        # sooner because work is arriving); doubles on a poll that returned
+        # none (we should back off to avoid CPU waste). Bounded below by
+        # `MIN_WAIT_TIMEOUT_S` and above by `DEFAULT_WAIT_TIMEOUT_S`. Starts
+        # at the max so initial idle polls are cheap.
+        self._adaptive_wait_timeout: float = DEFAULT_WAIT_TIMEOUT_S
+
         self._sched_loop_duration_s = Gauge(
             "data_sched_loop_duration_s",
             description="Duration of the scheduling loop in seconds",
+            tag_keys=("dataset",),
+        )
+        self._sched_wait_timeout_s = Gauge(
+            "data_sched_wait_timeout_s",
+            description=(
+                "Current ray.wait timeout used inside "
+                "process_completed_tasks (seconds)."
+            ),
             tag_keys=("dataset",),
         )
 
@@ -382,6 +400,19 @@ class StreamingExecutor(Executor, threading.Thread):
         if self._resource_manager is not None:
             self._resource_manager.set_external_consumer_bytes(num_bytes)
 
+    @staticmethod
+    def _adapt_wait_timeout(current: float, num_ready: int) -> float:
+        """Pure helper: return the next adaptive `ray.wait` timeout.
+
+        Rule: halve on a successful poll (`num_ready > 0` — work is
+        arriving, poll again sooner); double on an empty poll (back off
+        so an idle scheduler doesn't burn CPU). Bounded by
+        ``[MIN_WAIT_TIMEOUT_S, DEFAULT_WAIT_TIMEOUT_S]``.
+        """
+        if num_ready > 0:
+            return max(MIN_WAIT_TIMEOUT_S, current * 0.5)
+        return min(DEFAULT_WAIT_TIMEOUT_S, current * 2.0)
+
     def _generate_stats(self) -> DatasetStats:
         """Create a new stats object reflecting execution status so far."""
         stats = self._initial_stats or DatasetStats(metadata={}, parent=None)
@@ -413,10 +444,26 @@ class StreamingExecutor(Executor, threading.Thread):
         # Note: calling process_completed_tasks() is expensive since it incurs
         # ray.wait() overhead, so make sure to allow multiple dispatch per call for
         # greater parallelism.
-        num_errored_blocks = process_completed_tasks(
+        #
+        # The `wait_timeout` is adapted across iterations based on how recently
+        # `ray.wait` saw ready refs: halve on a successful poll (work is
+        # arriving — poll again sooner so the next batch of completions is
+        # picked up quickly), double on an empty poll (back off so an idle
+        # scheduler doesn't burn CPU). Bounded by [MIN_WAIT_TIMEOUT_S,
+        # DEFAULT_WAIT_TIMEOUT_S]; the upper bound matches the previous
+        # fixed-timeout behavior so idle-only pipelines see no change.
+        num_errored_blocks, num_ready = process_completed_tasks(
             topology,
             self._backpressure_policies,
             self._max_errored_blocks,
+            wait_timeout=self._adaptive_wait_timeout,
+        )
+        self._adaptive_wait_timeout = self._adapt_wait_timeout(
+            self._adaptive_wait_timeout, num_ready
+        )
+        self._sched_wait_timeout_s.set(
+            self._adaptive_wait_timeout,
+            tags={"dataset": self._dataset_id},
         )
         if self._max_errored_blocks > 0:
             self._max_errored_blocks -= num_errored_blocks

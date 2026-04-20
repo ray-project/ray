@@ -630,6 +630,41 @@ def test_select_ops_to_run(ray_start_regular_shared):
         assert selected is o1
 
 
+def test_adapt_wait_timeout_halve_and_double():
+    """StreamingExecutor._adapt_wait_timeout is a pure function: halve on
+    a successful poll, double on an empty poll, bounded by the module
+    constants.
+    """
+    from ray.data._internal.execution.streaming_executor_state import (
+        DEFAULT_WAIT_TIMEOUT_S,
+        MIN_WAIT_TIMEOUT_S,
+    )
+
+    adapt = StreamingExecutor._adapt_wait_timeout
+
+    # Halving from the default ceiling converges quickly to the floor.
+    t = DEFAULT_WAIT_TIMEOUT_S
+    for _ in range(20):
+        t = adapt(t, num_ready=1)
+    assert t == MIN_WAIT_TIMEOUT_S
+
+    # Below the floor the function clamps rather than shrinking further.
+    t = adapt(MIN_WAIT_TIMEOUT_S, num_ready=1)
+    assert t == MIN_WAIT_TIMEOUT_S
+
+    # Doubling from the floor climbs back to the ceiling and saturates.
+    t = MIN_WAIT_TIMEOUT_S
+    for _ in range(20):
+        t = adapt(t, num_ready=0)
+    assert t == DEFAULT_WAIT_TIMEOUT_S
+    t = adapt(DEFAULT_WAIT_TIMEOUT_S, num_ready=0)
+    assert t == DEFAULT_WAIT_TIMEOUT_S
+
+    # Mid-range: 50ms -> 25ms on success, 50ms -> 100ms (clamped) on empty.
+    assert adapt(0.05, num_ready=3) == 0.025
+    assert adapt(0.05, num_ready=0) == DEFAULT_WAIT_TIMEOUT_S
+
+
 def test_get_output_blocking_event_signaling(ray_start_regular_shared):
     """`get_output_blocking` wakes on add_output/mark_finished via a
     threading.Event rather than polling with time.sleep.
