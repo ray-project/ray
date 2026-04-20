@@ -349,7 +349,12 @@ ray.get(parent.remote())
     proc.kill()
 
     def verify():
-        tasks = list_tasks(detail=True)
+        # Filter out retry attempts. After the raylet properly releases the lease
+        # on owner death (see #62093), the owner may schedule a retry attempt
+        # before the job-done signal arrives. Those retries never start (no
+        # node/worker assigned, start_time_ms=None) and are not what this test
+        # is asserting on.
+        tasks = [t for t in list_tasks(detail=True) if t["attempt_number"] == 0]
         assert len(tasks) == 7, (
             "Incorrect number of tasks are reported. "
             "Expected length: 1 parent + 2 finished child +  2 failed child + "
