@@ -404,7 +404,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
 
     # The result of worker_node_ref will be pinned on the worker node.
     worker_node_ref = get_node_id.options(
-        label_selector={"ray.io/node-id": worker_node.node_id},
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: worker_node.node_id},
     ).remote()
 
     # Run a borrower task on the head node. From within the borrower task, we launch
@@ -412,7 +412,7 @@ def test_locality_aware_leasing_borrowed_objects(ray_start_cluster):
     assert (
         ray.get(
             borrower.options(
-                label_selector={"ray.io/node-id": head_node.node_id},
+                label_selector={ray._raylet.RAY_NODE_ID_KEY: head_node.node_id},
             ).remote([worker_node_ref])
         )
         == worker_node.node_id

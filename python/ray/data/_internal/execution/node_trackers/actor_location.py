@@ -26,7 +26,9 @@ def get_or_create_actor_location_tracker():
     # Pin the actor location tracker to the local node so it fate-shares with the driver.
     # NOTE: for Ray Client, the ray.get_runtime_context().get_node_id() should
     # point to the head node.
-    label_selector = {"ray.io/node-id": ray.get_runtime_context().get_node_id()}
+    label_selector = {
+        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+    }
     return ActorLocationTracker.options(
         name="ActorLocationTracker",
         namespace="ActorLocationTracker",

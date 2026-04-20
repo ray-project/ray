@@ -872,7 +872,9 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
 
     # so it fate-shares with the driver.
-    label_selector = {"ray.io/node-id": ray.get_runtime_context().get_node_id()}
+    label_selector = {
+        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+    }
 
     return _StatsActor.options(
         name=STATS_ACTOR_NAME,

@@ -87,7 +87,7 @@ async def test_get_scheduling_strategy(
     )
     options = await _submit_and_get_options()
     assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
-    assert "ray.io/node-id" not in options.get("label_selector", {})
+    assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_client.async_internal_kv_put(
@@ -99,15 +99,18 @@ async def test_get_scheduling_strategy(
     options = await _submit_and_get_options()
     assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
     if resources_specified:
-        assert "ray.io/node-id" not in options.get("label_selector", {})
+        assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
     else:
-        assert options.get("label_selector", {}).get("ray.io/node-id") == node_id
+        assert (
+            options.get("label_selector", {}).get(ray._raylet.RAY_NODE_ID_KEY)
+            == node_id
+        )
 
     # When the env var is set to 1, we should use DEFAULT.
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
     options = await _submit_and_get_options()
     assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
-    assert "ray.io/node-id" not in options.get("label_selector", {})
+    assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
 
 
 @pytest.mark.asyncio

@@ -304,7 +304,7 @@ class WorkerGroup(ExecutionGroup):
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
                 label_selector={
-                    "ray.io/node-id": ray.get_runtime_context().get_node_id()
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
                 }
             ).remote(
                 timeout_s=self._collective_timeout_s,

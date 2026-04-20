@@ -1548,7 +1548,7 @@ class WorkerKillerActor(ResourceKillerActor):
             proc = psutil.Process(pid)
             proc.kill()
 
-        label_selector = {"ray.io/node-id": process_to_kill_node_id}
+        label_selector = {ray._raylet.RAY_NODE_ID_KEY: process_to_kill_node_id}
         await kill_process.options(label_selector=label_selector).remote(
             process_to_kill_pid
         )
@@ -1571,7 +1571,7 @@ def get_and_run_resource_killer(
     head_node_id = ray.get_runtime_context().get_node_id()
     # Schedule the actor on the current node.
     resource_killer = resource_killer_cls.options(
-        label_selector={"ray.io/node-id": head_node_id},
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: head_node_id},
         namespace=namespace,
         name="ResourceKiller",
         lifetime=lifetime,

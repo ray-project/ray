@@ -95,8 +95,8 @@ def test_wait_always_fetch_local(monkeypatch, ray_start_cluster):
     def small_local_task():
         return 1
 
-    put_on_head = {"ray.io/node-id": head_node.node_id}
-    put_on_worker = {"ray.io/node-id": worker_node.node_id}
+    put_on_head = {ray._raylet.RAY_NODE_ID_KEY: head_node.node_id}
+    put_on_worker = {ray._raylet.RAY_NODE_ID_KEY: worker_node.node_id}
     x = small_local_task.options(label_selector=put_on_head).remote()
     y = return_large_object.options(label_selector=put_on_worker).remote()
     z = return_large_object.options(label_selector=put_on_worker).remote()

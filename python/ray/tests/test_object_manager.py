@@ -518,7 +518,7 @@ def test_pull_bundle_deadlock(ray_start_cluster):
     object_b = task_a_to_b.remote(object_a)
     ray.wait([object_b], fetch_local=False)
 
-    @ray.remote(label_selector={"ray.io/node-id": worker_node_2_id})
+    @ray.remote(label_selector={ray._raylet.RAY_NODE_ID_KEY: worker_node_2_id})
     def task_b_to_c(b):
         return "c"
 

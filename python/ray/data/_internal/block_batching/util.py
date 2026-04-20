@@ -363,7 +363,7 @@ class ActorBlockPrefetcher(BlockPrefetcher):
         node_id = ray.get_runtime_context().get_node_id()
         actor_name = f"dataset-block-prefetcher-{node_id}"
         return _BlockPretcher.options(
-            label_selector={"ray.io/node-id": node_id},
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id},
             name=actor_name,
             namespace=PREFETCHER_ACTOR_NAMESPACE,
             get_if_exists=True,

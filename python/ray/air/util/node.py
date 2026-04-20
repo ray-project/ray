@@ -33,7 +33,7 @@ def _force_on_node(
         actor class as remote options kwargs.
     """
 
-    options = {"label_selector": {"ray.io/node-id": node_id}}
+    options = {"label_selector": {ray._raylet.RAY_NODE_ID_KEY: node_id}}
 
     if remote_func_or_actor_class is None:
         return options

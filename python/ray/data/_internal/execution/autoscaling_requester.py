@@ -113,7 +113,9 @@ def get_or_create_autoscaling_requester_actor():
     # Pin the autoscaling requester actor to the local node so it fate-shares with the driver.
     # Note: for Ray Client, the ray.get_runtime_context().get_node_id() should
     # point to the head node.
-    label_selector = {"ray.io/node-id": ray.get_runtime_context().get_node_id()}
+    label_selector = {
+        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+    }
     with _autoscaling_requester_lock:
         return AutoscalingRequester.options(
             name="AutoscalingRequester",

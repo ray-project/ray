@@ -44,7 +44,9 @@ class StreamSplitDataIterator(DataIterator):
         # We add 1 to the concurrency to allow for a shutdown_executor thread to run.
         coord_actor = SplitCoordinator.options(
             max_concurrency=n + 1,
-            label_selector={"ray.io/node-id": ray.get_runtime_context().get_node_id()},
+            label_selector={
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+            },
         ).remote(base_dataset, n, locality_hints)
 
         return [StreamSplitDataIterator(coord_actor, i, n) for i in range(n)]

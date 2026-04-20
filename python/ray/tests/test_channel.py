@@ -23,7 +23,9 @@ logger = logging.getLogger(__name__)
 
 def create_driver_actor():
     return CompiledDAG.DAGDriverProxyActor.options(
-        label_selector={"ray.io/node-id": ray.get_runtime_context().get_node_id()}
+        label_selector={
+            ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+        }
     ).remote()
 
 
@@ -1137,7 +1139,9 @@ def test_payload_large(ray_start_cluster):
             assert channel.read() == val
 
     def create_actor(node):
-        return Actor.options(label_selector={"ray.io/node-id": node}).remote()
+        return Actor.options(
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node}
+        ).remote()
 
     driver_node = ray.get_runtime_context().get_node_id()
     actor_node = nodes[0] if nodes[0] != driver_node else nodes[1]
@@ -1185,7 +1189,9 @@ def test_payload_resize_large(ray_start_cluster):
             assert channel.read() == val
 
     def create_actor(node):
-        return Actor.options(label_selector={"ray.io/node-id": node}).remote()
+        return Actor.options(
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node}
+        ).remote()
 
     driver_node = ray.get_runtime_context().get_node_id()
     actor_node = nodes[0] if nodes[0] != driver_node else nodes[1]
@@ -1234,7 +1240,9 @@ def test_readers_on_different_nodes(ray_start_cluster):
             return val
 
     def create_actor(node):
-        return Actor.options(label_selector={"ray.io/node-id": node}).remote()
+        return Actor.options(
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node}
+        ).remote()
 
     a = create_actor(nodes[0])
     b = create_actor(nodes[1])
@@ -1287,7 +1295,9 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
             return val
 
     def create_actor(node):
-        return Actor.options(label_selector={"ray.io/node-id": node}).remote()
+        return Actor.options(
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node}
+        ).remote()
 
     a = create_actor(nodes[0])
     b = create_actor(nodes[0])

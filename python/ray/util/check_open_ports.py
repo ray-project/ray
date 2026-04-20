@@ -96,7 +96,7 @@ def _check_ray_cluster(
 
     per_node_tasks = {
         node_id: (
-            check.options(label_selector={"ray.io/node-id": node_id}).remote(
+            check.options(label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id}).remote(
                 node_id, service_url
             )
         )

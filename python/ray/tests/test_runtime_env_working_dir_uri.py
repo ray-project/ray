@@ -103,7 +103,7 @@ def test_remote_package_uri_multi_node(
     # 2) The task was placed on the correct node.
     # 3) The Ray runtime_context was populated with the configured runtime_env.
     task_refs = [
-        task.options(label_selector={"ray.io/node-id": node_id}).remote()
+        task.options(label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id}).remote()
         for node_id in node_ids
     ]
     for i, task_ref in enumerate(task_refs):
@@ -112,7 +112,7 @@ def test_remote_package_uri_multi_node(
         assert env_in_task == env
 
     actors = [
-        actor.options(label_selector={"ray.io/node-id": node_id}).remote()
+        actor.options(label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id}).remote()
         for node_id in node_ids
     ]
     actor_task_refs = [a.test_import.remote() for a in actors]

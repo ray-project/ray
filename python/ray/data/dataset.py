@@ -5723,7 +5723,7 @@ class Dataset:
                     "on the driver's node."
                 )
             ray_remote_args["label_selector"] = {
-                "ray.io/node-id": ray.get_runtime_context().get_node_id()
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
             }
 
             _validate_head_node_resources_for_local_scheduling(
