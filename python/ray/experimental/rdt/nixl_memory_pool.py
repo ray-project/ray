@@ -73,20 +73,6 @@ class MemoryPoolManager:
         """
         return storage_ptr in self._allocated_blocks
 
-    def get_block(self, storage_ptr: int) -> Tuple[int, int]:
-        """Get the (offset, size) for an allocated block.
-
-        Args:
-            storage_ptr: The storage data pointer to look up.
-
-        Returns:
-            Tuple of (offset, size) for the allocated block.
-
-        Raises:
-            KeyError: If no block is allocated for this storage pointer.
-        """
-        return self._allocated_blocks[storage_ptr]
-
     def track_allocation(self, storage_ptr: int, offset: int, size: int) -> None:
         """Record a new allocation in the block tracking.
 
@@ -107,21 +93,6 @@ class MemoryPoolManager:
             storage_ptr: The storage data pointer to remove from tracking.
         """
         self._allocated_blocks.pop(storage_ptr, None)
-
-    def return_block(self, storage_ptr: int) -> None:
-        """Return a single allocated block to the pool.
-
-        Looks up the block by storage pointer, frees the underlying memory,
-        and removes the tracking entry.
-
-        Args:
-            storage_ptr: The storage data pointer whose block to return.
-
-        Raises:
-            KeyError: If no block is allocated for this storage pointer.
-        """
-        offset, size = self._allocated_blocks.pop(storage_ptr)
-        self.free_multiple([offset], [size])
 
     def return_blocks(self, storage_ptrs: List[int]) -> None:
         """Return multiple allocated blocks to the pool.
