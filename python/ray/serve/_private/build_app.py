@@ -120,14 +120,6 @@ def build_app(
         deployments.extend(http_router_deployments)
         http_router_deployment_name = deployment_names[app._http_router]
 
-    # Determine the HTTP router deployment name from the
-    # deployment-level http_router flag.
-    if http_router_deployment_name is None:
-        for deployment in deployments:
-            if deployment._deployment_config.http_router:
-                http_router_deployment_name = deployment.name
-                break
-
     return BuiltApplication(
         name=name,
         route_prefix=route_prefix,

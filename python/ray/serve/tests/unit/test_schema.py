@@ -1404,30 +1404,5 @@ def test_serve_instance_details_is_json_serializable():
     assert "_serialized_policy_def" not in autoscaling_config
 
 
-def test_router_deployment_schema_roundtrip():
-    """http_router=True should survive deployment_to_schema -> schema_to_deployment."""
-
-    @serve.deployment(http_router=True)
-    def my_router():
-        pass
-
-    schema = deployment_to_schema(my_router)
-    assert schema.http_router is True
-
-    restored = schema_to_deployment(schema)
-    assert restored._deployment_config.http_router is True
-
-
-def test_router_deployment_schema_default():
-    """http_router should default to False and not appear in schema for normal deployments."""
-
-    @serve.deployment
-    def normal():
-        pass
-
-    schema = deployment_to_schema(normal)
-    assert schema.http_router is False
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

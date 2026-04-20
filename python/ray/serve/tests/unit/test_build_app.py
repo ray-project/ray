@@ -550,7 +550,7 @@ def test_build_app_with_http_router_peer():
     class Ingress:
         pass
 
-    @serve.deployment(http_router=True)
+    @serve.deployment
     class HttpRouter:
         pass
 
