@@ -123,26 +123,28 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
   {
     absl::MutexLock lock(&active_objects_mu_);
 
-    // First calculate the bytes we need.
-    int64_t bytes_to_pull = 0;
+    int64_t network_bytes = 0;
+    int64_t bundle_bytes = 0;
     for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       if (needs_pull) {
         // This is the first bundle request in the queue to require this object.
         // Add the size to the number of bytes being pulled.
-        // TODO(ekl) this overestimates bytes needed if it's already available
-        // locally.
-        bytes_to_pull += map_find_or_die(object_pull_requests_, obj_id).object_size;
+        const int64_t size = map_find_or_die(object_pull_requests_, obj_id).object_size;
+        bundle_bytes += size;
+        if (!object_is_local_(obj_id)) {
+          network_bytes += size;
+        }
       }
     }
 
     // Quota check.
-    if (respect_quota && num_active_bundles_ >= 1 && bytes_to_pull > RemainingQuota()) {
+    if (respect_quota && num_active_bundles_ >= 1 && network_bytes > RemainingQuota()) {
       RAY_LOG(DEBUG) << "Bundle would exceed quota: "
                      << "num_bytes_being_pulled(" << num_bytes_being_pulled_
                      << ") + "
-                        "bytes_to_pull("
-                     << bytes_to_pull
+                        "network_bytes("
+                     << network_bytes
                      << ") - "
                         "pinned_objects_size("
                      << pinned_objects_size_
@@ -155,7 +157,7 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
     RAY_LOG(DEBUG) << "Activating request " << next_request_id
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
-    num_bytes_being_pulled_ += bytes_to_pull;
+    num_bytes_being_pulled_ += bundle_bytes;
     for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       active_object_pull_requests_[obj_id].insert(next_request_id);
@@ -713,7 +715,7 @@ int64_t PullManager::NextRequestBundleSize(const BundlePullRequestQueue &bundles
   int64_t bytes_needed_calculated = 0;
   for (const auto &obj_id : next_request.objects_) {
     bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
-    if (needs_pull) {
+    if (needs_pull && !object_is_local_(obj_id)) {
       // This is the first bundle request in the queue to require this object.
       // Add the size to the number of bytes being pulled.
       bytes_needed_calculated +=

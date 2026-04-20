@@ -1190,6 +1190,75 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
   AssertNoLeaks();
 }
 
+// Local objects don't need to be fetched, so they shouldn't count against
+// the pull quota. With capacity 10, seed a 4 byte remote bundle and then a
+// 7 byte all local bundle. The local bundle should activate even though
+// 4 + 7 > 10.
+TEST_F(PullManagerWithAdmissionControlTest, TestLocalObjectsDoNotConsumeQuota) {
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+  std::vector<rpc::ObjectReference> objects_to_locate;
+
+  auto remote_refs = CreateObjectRefs(1);
+  auto remote_oid = ObjectRefsToIds(remote_refs)[0];
+  auto remote_req = pull_manager_.Pull(
+      remote_refs, BundlePriority::TASK_ARGS, {"", false}, &objects_to_locate);
+  pull_manager_.OnLocationChange(
+      remote_oid, client_ids, "", NodeID::Nil(), false, /*object_size=*/4);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(remote_oid));
+
+  object_is_local_ = true;
+  allow_pin_ = true;
+  auto local_refs = CreateObjectRefs(1);
+  auto local_oid = ObjectRefsToIds(local_refs)[0];
+  auto local_req = pull_manager_.Pull(
+      local_refs, BundlePriority::TASK_ARGS, {"", false}, &objects_to_locate);
+  pull_manager_.OnLocationChange(
+      local_oid, client_ids, "", NodeID::Nil(), false, /*object_size=*/7);
+
+  ASSERT_TRUE(pull_manager_.IsObjectActive(local_oid));
+
+  pull_manager_.CancelPull(remote_req);
+  pull_manager_.CancelPull(local_req);
+  AssertNoLeaks();
+}
+
+// When the object store is tight, a high priority get request made of local
+// objects shouldn't disturb lower priority pulls in flight. With capacity 10
+// and a 3 byte task_args pull already active, submit an 8 byte all local get
+// request. The task_args pull should not be canceled to make room, even
+// though 3 + 8 > 10.
+TEST_F(PullManagerWithAdmissionControlTest, TestLocalGetDoesNotEvictTaskArgs) {
+  std::unordered_set<NodeID> client_ids;
+  client_ids.insert(NodeID::FromRandom());
+  std::vector<rpc::ObjectReference> objects_to_locate;
+
+  auto task_refs = CreateObjectRefs(1);
+  auto task_oid = ObjectRefsToIds(task_refs)[0];
+  auto task_req = pull_manager_.Pull(
+      task_refs, BundlePriority::TASK_ARGS, {"", false}, &objects_to_locate);
+  pull_manager_.OnLocationChange(
+      task_oid, client_ids, "", NodeID::Nil(), false, /*object_size=*/3);
+  ASSERT_TRUE(pull_manager_.IsObjectActive(task_oid));
+
+  object_is_local_ = true;
+  allow_pin_ = true;
+  auto get_refs = CreateObjectRefs(1);
+  auto get_oid = ObjectRefsToIds(get_refs)[0];
+  auto get_req = pull_manager_.Pull(
+      get_refs, BundlePriority::GET_REQUEST, {"", false}, &objects_to_locate);
+  pull_manager_.OnLocationChange(
+      get_oid, client_ids, "", NodeID::Nil(), false, /*object_size=*/8);
+
+  ASSERT_TRUE(pull_manager_.IsObjectActive(task_oid));
+  ASSERT_TRUE(pull_manager_.IsObjectActive(get_oid));
+  ASSERT_EQ(num_abort_calls_[task_oid], 0);
+
+  pull_manager_.CancelPull(task_req);
+  pull_manager_.CancelPull(get_req);
+  AssertNoLeaks();
+}
+
 TEST_P(PullManagerTest, TestTimeOut) {
   BundlePriority prio = GetParam();
   auto refs = CreateObjectRefs(1);

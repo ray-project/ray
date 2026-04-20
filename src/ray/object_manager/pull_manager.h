@@ -458,10 +458,11 @@ class PullManager {
   /// Bundle pull requests of arguments of queued tasks.
   BundlePullRequestQueue task_argument_bundles_;
 
-  /// The total number of bytes that we are currently pulling. This is the
-  /// total size of the objects requested that we are actively pulling. To
-  /// avoid starvation, this is always less than the available capacity in the
-  /// local object store.
+  /// The total number of bytes that we are currently pulling. This includes
+  /// objects that need to be pulled from a remote node, and objects already
+  /// in the local store (which only need to be "pulled" nominally). To
+  /// avoid starvation, this is always less than the available capacity in
+  /// the local object store.
   int64_t num_bytes_being_pulled_ = 0;
 
   /// The total number of bytes that is available to store objects that we are
