@@ -58,9 +58,6 @@ void PythonRayEvent::Merge(RayEventInterface &&other) {
 rpc::events::RayEvent PythonRayEvent::Serialize() && {
   rpc::events::RayEvent event;
 
-  // Set common fields. Default to a random event_id to match the convention used by
-  // the other RayEventInterface subclasses (see ray_event.h); callers can override by
-  // passing an explicit event_id (e.g., to preserve a Kubernetes event uid).
   event.set_event_id(event_id_.empty() ? UniqueID::FromRandom().Binary() : event_id_);
   event.set_source_type(source_type_);
   event.set_event_type(event_type_);
