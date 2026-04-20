@@ -740,7 +740,8 @@ class ReplicaMetricsManager:
         if custom_metrics_enabled:
             self._custom_metrics_enabled = custom_metrics_enabled
             self._record_autoscaling_stats_fn = record_autoscaling_stats_fn
-            self.start_metrics_pusher()
+            if self._autoscaling_config:
+                self.start_metrics_pusher()
 
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         self._num_ongoing_requests += 1
@@ -1581,8 +1582,10 @@ class Replica:
                         request_metadata, request_args, request_kwargs
                     )
                 except Exception as e:
-                    # For gRPC requests, wrap exception with user-set status code
-                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+                    # For gRPC requests, wrap exception with user-set status code.
+                    # Non-gRPC requests should preserve the original exception
+                    # without creating a self-referential __cause__ chain.
+                    self._raise_user_exception(e, request_metadata)
 
     async def handle_request_streaming(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -1613,8 +1616,7 @@ class Replica:
                         ):
                             yield result
                 except Exception as e:
-                    # For gRPC requests, wrap exception with user-set status code
-                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+                    self._raise_user_exception(e, request_metadata)
 
     def _maybe_wrap_grpc_exception(
         self, e: BaseException, request_metadata: RequestMetadata
@@ -1634,6 +1636,14 @@ class Replica:
                     details=grpc_context.details(),
                 )
         return e
+
+    def _raise_user_exception(
+        self, e: BaseException, request_metadata: RequestMetadata
+    ) -> None:
+        wrapped_exception = self._maybe_wrap_grpc_exception(e, request_metadata)
+        if wrapped_exception is e:
+            raise e
+        raise wrapped_exception from e
 
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -1685,8 +1695,7 @@ class Replica:
                             request_metadata, request_args, request_kwargs
                         )
                 except Exception as e:
-                    # For gRPC requests, wrap exception with user-set status code
-                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+                    self._raise_user_exception(e, request_metadata)
 
     async def _on_initialized(self):
         await self._maybe_start_direct_ingress_servers()

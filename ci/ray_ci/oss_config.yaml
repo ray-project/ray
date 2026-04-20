@@ -20,6 +20,7 @@ state_machine:
   branch:
     aws_bucket: ray-ci-results
 release_image_step:
-  ray: anyscalebuild
+  ray_cpu: anyscalecpubuild
+  ray_cuda: anyscalecudabuild
   ray_ml: anyscalemlbuild
   ray_llm: anyscalellmbuild

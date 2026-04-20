@@ -30,6 +30,10 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -511,6 +515,90 @@ class TestDeploymentActorContainer:
 
 
 class TestDeploymentActorWrapper:
+    @pytest.mark.parametrize(
+        "deployment_runtime_env,actor_runtime_env,conflicting_keys",
+        [
+            (
+                {
+                    "env_vars": {
+                        RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR: "user-app",
+                    }
+                },
+                None,
+                [RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR],
+            ),
+            (
+                None,
+                {
+                    "env_vars": {
+                        RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR: "user-deployment",
+                        RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR: "user-actor",
+                    }
+                },
+                [
+                    RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
+                    RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+                ],
+            ),
+            (
+                {
+                    "env_vars": {
+                        RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR: "user-v1",
+                    }
+                },
+                {
+                    "env_vars": {
+                        RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR: "user-deployment",
+                    }
+                },
+                [
+                    RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
+                    RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+                ],
+            ),
+        ],
+    )
+    def test_start_rejects_reserved_internal_context_env_vars(
+        self,
+        deployment_runtime_env,
+        actor_runtime_env,
+        conflicting_keys,
+    ):
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        actor_options = {}
+        if actor_runtime_env is not None:
+            actor_options["runtime_env"] = actor_runtime_env
+
+        config = DeploymentActorConfig(
+            name="counter",
+            actor_class="builtins:object",
+            actor_options=actor_options,
+        )
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            success, err = wrapper.start(deployment_runtime_env=deployment_runtime_env)
+
+        assert success is False
+        assert err is not None
+        for key in conflicting_keys:
+            assert key in err
+        mock_actor_cls.options.assert_not_called()
+
     def test_properties(self):
         """Test actor_logical_name and code_version properties."""
         config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
@@ -548,6 +636,79 @@ class TestDeploymentActorWrapper:
         assert err is None
         assert wrapper._handle is mock_handle
         assert wrapper._ready_ref is mock_ready_ref
+
+    def test_start_injects_internal_deployment_context_env_vars(self):
+        """Test start() injects deployment metadata into actor runtime_env."""
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            success, err = wrapper.start(
+                deployment_runtime_env={"env_vars": {"PARENT_ENV": "parent"}}
+            )
+
+        assert success is True
+        assert err is None
+
+        actor_options = mock_actor_cls.options.call_args.kwargs
+        assert "runtime_env" in actor_options
+        assert actor_options["runtime_env"]["env_vars"] == {
+            "PARENT_ENV": "parent",
+            "RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME": TEST_DEPLOYMENT_ID.app_name,
+            "RAY_SERVE_INTERNAL_DEPLOYMENT_NAME": TEST_DEPLOYMENT_ID.name,
+            "RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME": "counter",
+            "RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION": "v1",
+        }
+
+    def test_start_preserves_user_env_vars_when_injecting_internal_context(self):
+        """Test internal context env injection preserves unrelated user env vars."""
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        config = DeploymentActorConfig(
+            name="counter",
+            actor_class="builtins:object",
+            actor_options={"runtime_env": {"env_vars": {"CHILD_ENV": "child"}}},
+        )
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v2",
+        )
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            wrapper.start(deployment_runtime_env={"env_vars": {"PARENT_ENV": "parent"}})
+
+        actor_options = mock_actor_cls.options.call_args.kwargs
+        assert actor_options["runtime_env"]["env_vars"]["PARENT_ENV"] == "parent"
+        assert actor_options["runtime_env"]["env_vars"]["CHILD_ENV"] == "child"
+        assert (
+            actor_options["runtime_env"]["env_vars"][
+                "RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME"
+            ]
+            == "counter"
+        )
 
     def test_start_failure(self):
         """Test start() returns (False, error_msg) when actor creation fails."""
@@ -3266,6 +3427,209 @@ class TestDeploymentActors:
             dsm.update()
             assert ds._deployment_actor_retry_counter == i + 1
         assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
+
+    def test_deployment_actor_check_health_healthy_stays_running(
+        self, mock_deployment_state_manager
+    ):
+        """``check_and_update_deployment_actors`` re-adds healthy RUNNING actors."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w = _get_deployment_actor_wrapper(ds, "1")
+        w.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert not w.killed
+        dsm.update()
+        assert not w.killed
+        assert ds._deployment_actors.get_wrapper("1", "counter") is w
+
+    def test_deployment_actor_check_health_unhealthy_kills_and_recreates(
+        self, mock_deployment_state_manager
+    ):
+        """Failed ``check_health`` kills the actor without startup retry counter; recovers."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=5,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w = _get_deployment_actor_wrapper(ds, "1")
+        w.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        w.set_health_ok(False)
+        # Isolate health reconciliation; a full ``dsm.update()`` would also scale
+        # and start a replacement actor in the same tick.
+        ds.check_and_update_deployment_actors()
+        assert w.killed
+        assert ds._deployment_actors.get_wrapper("1", "counter") is None
+        assert ds._deployment_actor_retry_counter == 0
+        assert ds._in_transition is True
+        assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+
+        dsm.update()
+        w2 = _get_deployment_actor_wrapper(ds, "1")
+        assert w2 is not w
+        assert not w2.killed
+        w2.set_ready()
+        dsm.update()
+        assert ds._deployment_actor_retry_counter == 0
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    def test_deployment_actor_reset_health_state_after_running_on_ready(
+        self, mock_deployment_state_manager
+    ):
+        """``check_deployment_actors_ready`` resets health bookkeeping when RUNNING."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w = _get_deployment_actor_wrapper(ds, "1")
+        assert w.reset_health_state_after_running_count == 0
+        w.set_ready()
+        dsm.update()
+        assert w.reset_health_state_after_running_count == 1
+
+    def test_deployment_actor_check_health_mixed_two_actors(
+        self, mock_deployment_state_manager
+    ):
+        """Only unhealthy deployment actors are killed; others stay RUNNING."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config_two(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w_counter = _get_deployment_actor_wrapper(ds, "1", "counter")
+        w_cache = _get_deployment_actor_wrapper(ds, "1", "cache")
+        w_counter.set_ready()
+        w_cache.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        w_cache.set_health_ok(False)
+        ds.check_and_update_deployment_actors()
+        assert w_cache.killed
+        assert not w_counter.killed
+        assert ds._deployment_actors.get_wrapper("1", "cache") is None
+        assert ds._deployment_actors.get_wrapper("1", "counter") is w_counter
+
+    def test_deployment_actors_satisfied_for_target_requires_all_slots_filled(
+        self, mock_deployment_state_manager
+    ):
+        """Missing deployment actor slots are unsatisfied until all are tracked again."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config_two(),
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        w_counter = _get_deployment_actor_wrapper(ds, "1", "counter")
+        w_cache = _get_deployment_actor_wrapper(ds, "1", "cache")
+        w_counter.set_ready()
+        w_cache.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._deployment_actors_satisfied_for_target()
+
+        w_cache.set_health_ok(False)
+        ds.check_and_update_deployment_actors()
+        assert not ds._deployment_actors_satisfied_for_target()
+        assert ds._replicas.count(states=[ReplicaState.RUNNING]) == 1
+
+    def test_deployment_actor_health_check_non_target_kills_without_startup_counter(
+        self, mock_deployment_state_manager
+    ):
+        """Like old replicas: non-target unhealthy actors are stopped, no startup counter."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        dsm: DeploymentStateManager = create_dsm()
+        info1, _ = deployment_info(
+            version="1",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        dsm.update()
+        _get_deployment_actor_wrapper(ds, "1").set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+        info2, _ = deployment_info(
+            version="2",
+            num_replicas=1,
+            deployment_actors=_deployment_actors_config(),
+            max_constructor_retry_count=3,
+        )
+        assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
+        dsm.update()
+        w_v2 = _get_deployment_actor_wrapper(ds, "2")
+        w_v2.set_ready()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_done_stopping()
+        dsm.update()
+        ds._replicas.get()[0]._actor.set_ready()
+        dsm.update()
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+        assert ds._deployment_actor_retry_counter == 0
+
+        w_orphan = _mock_deployment_actor_wrapper(
+            TEST_DEPLOYMENT_ID, "1", "orphan_leftover"
+        )
+        w_orphan.set_health_ok(False)
+        ds._deployment_actors.add(DeploymentActorState.RUNNING, w_orphan)
+
+        ds.check_and_update_deployment_actors()
+
+        assert w_orphan.killed
+        assert ds._deployment_actor_retry_counter == 0
+        assert ds._deployment_actors.get_wrapper("1", "orphan_leftover") is None
+        assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
 
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):

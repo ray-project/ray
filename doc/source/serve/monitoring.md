@@ -655,6 +655,7 @@ These metrics track request routing and queueing behavior.
 | `ray_serve_request_router_queue_len` **[H][D]** | Gauge | `deployment`, `replica_id`, `actor_id`, `application`, `handle_source` | Current number of requests running on a replica as tracked by the router's queue length cache. |
 | `ray_serve_num_scheduling_tasks` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of request scheduling tasks in the router. |
 | `ray_serve_num_scheduling_tasks_in_backoff` **[H][†]** | Gauge | `deployment`, `actor_id` | Current number of scheduling tasks in exponential backoff (waiting before retry). |
+| `ray_serve_router_args_resolution_latency_ms` **[H][D]** | Histogram | `deployment`, `application`, `handle`, `actor_id` | Time in milliseconds spent resolving upstream `ObjectRef` or `DeploymentResponse` arguments before a request enters the routing queue.|
 
 ### Request processing metrics
 
@@ -719,6 +720,7 @@ These metrics provide visibility into autoscaling behavior and help debug scalin
 | `ray_serve_autoscaling_target_replicas` | Gauge | `deployment`, `application` | Target number of replicas the autoscaler is trying to reach. Compare with actual replicas to identify scaling lag. |
 | `ray_serve_autoscaling_desired_replicas` | Gauge | `deployment`, `application` | Raw autoscaling decision (number of replicas) from the policy *before* applying `min_replicas`/`max_replicas` bounds. |
 | `ray_serve_autoscaling_total_requests` | Gauge | `deployment`, `application` | Total number of requests (queued + in-flight) as seen by the autoscaler. This is the input to the scaling decision. |
+| `ray_serve_autoscaling_target_ongoing_requests` | Gauge | `deployment`, `application` | Configured `target_ongoing_requests` per replica. Divide `ray_serve_autoscaling_total_requests` by this value to compute the raw desired replica count for the default policy and detect autoscaling regressions. |
 | `ray_serve_autoscaling_policy_execution_time_ms` | Gauge | `deployment`, `application`, `policy_scope` | Time taken to execute the autoscaling policy in milliseconds. `policy_scope` is `deployment` or `application`. |
 | `ray_serve_autoscaling_replica_metrics_delay_ms` | Gauge | `deployment`, `application`, `replica` | Time taken for replica metrics to reach the controller in milliseconds. High values may indicate controller overload. |
 | `ray_serve_autoscaling_handle_metrics_delay_ms` | Gauge | `deployment`, `application`, `handle` | Time taken for handle metrics to reach the controller in milliseconds. High values may indicate controller overload. |

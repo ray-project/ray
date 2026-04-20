@@ -14,7 +14,11 @@ from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
 
 import ray
 from ray._common.utils import get_or_create_event_loop
-from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
+    RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve.generated.serve_pb2 import (
     DeploymentTargetInfo,
     EndpointInfo as EndpointInfoProto,
@@ -70,6 +74,26 @@ UpdateStateCallable = Callable[[Any], None]
 KeyType = Union[str, LongPollNamespace, Tuple[LongPollNamespace, str]]
 
 
+def _get_metric_namespace_tag(key: KeyType) -> str:
+    """Extract the namespace string from a long poll key for metric tags.
+
+    When RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS is enabled, returns only
+    the LongPollNamespace enum name (e.g., "DEPLOYMENT_CONFIG") for tuple keys
+    like (LongPollNamespace.DEPLOYMENT_CONFIG, "deployment_name"), avoiding
+    high-cardinality metric labels that would otherwise include per-deployment
+    identifiers. When disabled (default), returns str(key) preserving
+    deployment-level metric granularity.
+    """
+    if not RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS:
+        return str(key)
+    if isinstance(key, tuple):
+        return key[0].name if isinstance(key[0], LongPollNamespace) else str(key[0])
+    elif isinstance(key, LongPollNamespace):
+        return key.name
+    else:
+        return str(key)
+
+
 class LongPollState(Enum):
     TIME_OUT = auto()
 
@@ -99,13 +123,12 @@ class LongPollClient:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
-        self.snapshot_ids: Dict[KeyType, int] = {
-            # The initial snapshot id for each key is < 0,
-            # but real snapshot keys in the long poll host are always >= 0,
-            # so this will always trigger an initial update.
-            key: -1
-            for key in self.key_listeners.keys()
-        }
+        # The initial snapshot id for each key is < 0,
+        # but real snapshot keys in the long poll host are always >= 0,
+        # so this will always trigger an initial update.
+        self.snapshot_ids: Dict[KeyType, int] = dict.fromkeys(
+            self.key_listeners.keys(), -1
+        )
         self.is_running = True
 
         # Metric to track end-to-end latency from controller to client
@@ -223,8 +246,7 @@ class LongPollClient:
             return
 
         logger.debug(
-            f"LongPollClient {self} received updates for keys: "
-            f"{list(updates.keys())}.",
+            f"LongPollClient {self} received updates for keys: {list(updates.keys())}.",
             extra={"log_to_stderr": False},
         )
         if not updates:  # no updates, no callbacks to run, just poll again
@@ -236,7 +258,8 @@ class LongPollClient:
             # Record end-to-end latency from controller to client
             latency_ms = (receive_time - update.notify_timestamp) * 1000
             self.long_poll_latency_histogram.observe(
-                latency_ms, tags={"namespace": str(key)}
+                latency_ms,
+                tags={"namespace": _get_metric_namespace_tag(key)},
             )
 
             self.snapshot_ids[key] = update.snapshot_id
@@ -282,6 +305,10 @@ class LongPollHost:
         # Map object_key -> timestamp when notify_changed was called
         # Used to track latency for propagating updates to clients
         self._notify_timestamps: Dict[KeyType, float] = {}
+        # Aggregate count of pending clients per namespace tag. Needed because
+        # multiple keys can map to the same low-cardinality namespace tag, so
+        # we must track the total rather than setting per-key counts.
+        self._pending_clients_by_namespace: DefaultDict[str, int] = defaultdict(int)
 
         self._listen_for_change_request_timeout_s = listen_for_change_request_timeout_s
         self.transmission_counter = metrics.Counter(
@@ -302,6 +329,10 @@ class LongPollHost:
         else:
             return sum(len(events) for events in self.notifier_events.values())
 
+    def _get_pending_clients_by_namespace(self, namespace_tag: str) -> int:
+        """Used for testing. Returns the aggregate pending client count."""
+        return self._pending_clients_by_namespace.get(namespace_tag, 0)
+
     def _count_send(
         self, timeout_or_data: Union[LongPollState, Dict[KeyType, UpdatedObject]]
     ):
@@ -321,7 +352,8 @@ class LongPollHost:
             data = timeout_or_data
             for key in data.keys():
                 self.transmission_counter.inc(
-                    value=1, tags={"namespace_or_state": str(key)}
+                    value=1,
+                    tags={"namespace_or_state": _get_metric_namespace_tag(key)},
                 )
 
     async def listen_for_change(
@@ -379,9 +411,12 @@ class LongPollHost:
             # asyncio Event.
             self.notifier_events[key].add(event)
 
-            # Update pending clients gauge for this key
+            # Update aggregate pending clients gauge for this namespace
+            namespace_tag = _get_metric_namespace_tag(key)
+            self._pending_clients_by_namespace[namespace_tag] += 1
             self.pending_clients_gauge.set(
-                len(self.notifier_events[key]), tags={"namespace": str(key)}
+                self._pending_clients_by_namespace[namespace_tag],
+                tags={"namespace": namespace_tag},
             )
 
             task = get_or_create_event_loop().create_task(event.wait())
@@ -400,9 +435,12 @@ class LongPollHost:
                 event = async_task_to_events[task]
                 key = async_task_to_watched_keys[task]
                 self.notifier_events[key].remove(event)
-                # Update pending clients gauge after removing
+                # Update aggregate pending clients gauge after removing
+                namespace_tag = _get_metric_namespace_tag(key)
+                self._pending_clients_by_namespace[namespace_tag] -= 1
                 self.pending_clients_gauge.set(
-                    len(self.notifier_events[key]), tags={"namespace": str(key)}
+                    self._pending_clients_by_namespace[namespace_tag],
+                    tags={"namespace": namespace_tag},
                 )
             except KeyError:
                 # Because we use `FIRST_COMPLETED` above, a task in `not_done` may
@@ -438,8 +476,14 @@ class LongPollHost:
             self._parse_xlang_key(xlang_key): snapshot_id
             for xlang_key, snapshot_id in request_proto.keys_to_snapshot_ids.items()
         }
-        keys_to_updated_objects = await self.listen_for_change(keys_to_snapshot_ids)
-        return self._listen_result_to_proto_bytes(keys_to_updated_objects)
+        result = await self.listen_for_change(keys_to_snapshot_ids)
+
+        # Java long-poll protocol currently doesn't encode LongPollState.
+        # Convert timeout to an empty update payload so the Java client can retry.
+        if result is LongPollState.TIME_OUT:
+            result = {}
+
+        return self._listen_result_to_proto_bytes(result)
 
     def _parse_poll_namespace(self, name: str):
         if name == LongPollNamespace.ROUTE_TABLE.name:
@@ -536,7 +580,14 @@ class LongPollHost:
 
             events_to_notify = self.notifier_events.pop(object_key, set())
             if events_to_notify:
-                # Update pending clients gauge (now 0 for this key since we popped all)
-                self.pending_clients_gauge.set(0, tags={"namespace": str(object_key)})
+                # Decrement aggregate count by the number of events popped
+                namespace_tag = _get_metric_namespace_tag(object_key)
+                self._pending_clients_by_namespace[namespace_tag] -= len(
+                    events_to_notify
+                )
+                self.pending_clients_gauge.set(
+                    self._pending_clients_by_namespace[namespace_tag],
+                    tags={"namespace": namespace_tag},
+                )
             for event in events_to_notify:
                 event.set()
