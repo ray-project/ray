@@ -228,9 +228,10 @@ void GcsPlacementGroupManager::OnPlacementGroupCreationFailed(
       // group by rescheduling the bundles of the dead node. This should have higher
       // priority than trying to place other placement groups.
 
-      // NOTE: If this placement group does not become readily available in time, there is a chance it may starve future
-      // placement groups, as this will be consistently tried and scheduled. However, this
-      // use case seems to be pretty esoteric and for now will just be documented here.
+      // NOTE: If this placement group does not become readily available in time, there is
+      // a chance it may starve future placement groups, as this will be consistently
+      // tried and scheduled. However, this use case seems to be pretty esoteric and for
+      // now will just be documented here.
       stats->set_scheduling_state(rpc::PlacementGroupStats::FAILED_TO_COMMIT_RESOURCES);
       AddToPendingQueue(std::move(placement_group), /*rank=*/0);
     } else if (state == rpc::PlacementGroupTableData::PENDING) {
