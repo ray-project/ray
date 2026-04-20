@@ -1287,13 +1287,11 @@ class AsyncioRouter:
             metadata=request_meta,
         )
 
-        # Resolve request arguments
-        if not pr.resolved:
-            await self._resolve_request_arguments(pr)
-
         # Send the request without rejection since we already reserved a slot
         # The slot reservation guarantees that the replica will accept this request
         try:
+            if not pr.resolved:
+                await self._resolve_request_arguments(pr)
             result = replica.try_send_request(pr, with_rejection=False)
         except Exception:
             # Release the queue-length increment performed during choose_replica when dispatch fails.
