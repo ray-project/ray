@@ -1,3 +1,4 @@
+import enum
 import os
 import warnings
 from typing import List
@@ -401,9 +402,17 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 SERVE_MULTIPLEX_HEADER_PREFIX = "serve_multiplexed_"
 SERVE_MULTIPLEX_HEADER_SUFFIX = "_id"
 
+# Canonical multiplex dimension names
+class SERVE_MULTIPLEX_DIMENSION_NAME(str, enum.Enum):
+    MODEL = "model"
+    SESSION = "session"
+
+
 # Expose multiplexed model ID so telemetry can reference it without re-deriving the string.
 SERVE_MULTIPLEXED_MODEL_ID = (
-    f"{SERVE_MULTIPLEX_HEADER_PREFIX}model{SERVE_MULTIPLEX_HEADER_SUFFIX}"
+    f"{SERVE_MULTIPLEX_HEADER_PREFIX}"
+    f"{SERVE_MULTIPLEX_DIMENSION_NAME.MODEL.value}"
+    f"{SERVE_MULTIPLEX_HEADER_SUFFIX}"
 )
 
 # Conventional session header name.

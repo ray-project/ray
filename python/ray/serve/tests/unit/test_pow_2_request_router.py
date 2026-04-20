@@ -4,7 +4,7 @@ import os
 import random
 import sys
 import time
-from typing import Dict, Optional, Set
+from typing import Dict, List, Optional, Set
 
 import pytest
 
@@ -33,6 +33,10 @@ from ray.serve._private.request_router import (
     RunningReplica,
 )
 from ray.serve._private.request_router.common import ReplicaQueueLengthCache
+from ray.serve._private.request_router.request_router import (
+    LocalityScope,
+    rank_replicas_by_session_and_locality,
+)
 from ray.serve._private.test_utils import MockTimer
 from ray.serve._private.utils import generate_request_id
 
@@ -1428,6 +1432,143 @@ class TestModelMultiplexing:
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "pow_2_router",
+    [{"prefer_local_node": True, "prefer_local_az": True, "az": ROUTER_AZ}],
+    indirect=True,
+)
+class TestSessionLocalityTiebreaker:
+    """Priority: model (hard filter) > session == locality > pow2 queue.
+
+    Each case pins down one arm of the tiebreaker matrix. All replicas have
+    equal queue length so pow2 alone cannot disambiguate — the right answer
+    comes strictly from the session+locality tiering.
+    """
+
+    async def test_model_plus_session_prefers_warm_session(self, pow_2_router):
+        # Two replicas host the model; prefer the one with the warm session.
+        s = pow_2_router
+        r_warm = FakeRunningReplica(
+            "r_warm",
+            multiplex_dim_to_ids={"model": {"m1"}, "session": {"s1"}},
+        )
+        r_cold = FakeRunningReplica(
+            "r_cold",
+            multiplex_dim_to_ids={"model": {"m1"}, "session": set()},
+        )
+        r_warm.set_queue_len_response(0)
+        r_cold.set_queue_len_response(0)
+        s.update_replicas([r_warm, r_cold])
+
+        request = fake_pending_request(multiplex_ids={"model": "m1", "session": "s1"})
+        chosen = await s._choose_replica_for_request(request)
+        assert chosen == r_warm
+
+    async def test_model_plus_locality_prefers_local(self, pow_2_router):
+        # Two replicas host the model; prefer the local (same-node) one.
+        s = pow_2_router
+        r_local = FakeRunningReplica(
+            "r_local",
+            node_id=ROUTER_NODE_ID,
+            availability_zone=ROUTER_AZ,
+            multiplex_dim_to_ids={"model": {"m1"}},
+        )
+        r_remote = FakeRunningReplica(
+            "r_remote",
+            node_id="other-node",
+            availability_zone="other-az",
+            multiplex_dim_to_ids={"model": {"m1"}},
+        )
+        r_local.set_queue_len_response(0)
+        r_remote.set_queue_len_response(0)
+        s.update_replicas([r_local, r_remote])
+
+        request = fake_pending_request(multiplex_ids={"model": "m1"})
+        chosen = await s._choose_replica_for_request(request)
+        assert chosen == r_local
+
+    async def test_session_plus_locality_prefers_local(self, pow_2_router):
+        # Session has spilled to two replicas; prefer the local one (no
+        # model dimension involved, so model filter is a no-op).
+        s = pow_2_router
+        r_local = FakeRunningReplica(
+            "r_local",
+            node_id=ROUTER_NODE_ID,
+            availability_zone=ROUTER_AZ,
+            multiplex_dim_to_ids={"session": {"s1"}},
+        )
+        r_remote = FakeRunningReplica(
+            "r_remote",
+            node_id="other-node",
+            availability_zone="other-az",
+            multiplex_dim_to_ids={"session": {"s1"}},
+        )
+        r_local.set_queue_len_response(0)
+        r_remote.set_queue_len_response(0)
+        s.update_replicas([r_local, r_remote])
+
+        request = fake_pending_request(multiplex_ids={"session": "s1"})
+        chosen = await s._choose_replica_for_request(request)
+        assert chosen == r_local
+
+    async def test_session_plus_model_prefers_model_loaded(self, pow_2_router):
+        # Session maps to two replicas; only one has the model loaded. The
+        # model hard filter narrows to that replica before session/locality
+        # ranking even runs.
+        s = pow_2_router
+        r_with_model = FakeRunningReplica(
+            "r_with_model",
+            multiplex_dim_to_ids={"model": {"m1"}, "session": {"s1"}},
+        )
+        r_without_model = FakeRunningReplica(
+            "r_without_model",
+            multiplex_dim_to_ids={"model": set(), "session": {"s1"}},
+        )
+        r_with_model.set_queue_len_response(0)
+        r_without_model.set_queue_len_response(0)
+        s.update_replicas([r_with_model, r_without_model])
+
+        request = fake_pending_request(multiplex_ids={"model": "m1", "session": "s1"})
+        chosen = await s._choose_replica_for_request(request)
+        assert chosen == r_with_model
+
+    async def test_session_warm_remote_ties_with_session_cold_local(self, pow_2_router):
+        # Equal-weight tiebreaker: a session-warm remote replica and a
+        # session-cold node-local replica share a tier, so pow2 queue
+        # length (here: the replica with the shorter queue) decides.
+        s = pow_2_router
+        loop = get_or_create_event_loop()
+        r_warm_remote = FakeRunningReplica(
+            "r_warm_remote",
+            node_id="other-node",
+            availability_zone="other-az",
+            multiplex_dim_to_ids={"session": {"s1"}},
+        )
+        r_cold_local = FakeRunningReplica(
+            "r_cold_local",
+            node_id=ROUTER_NODE_ID,
+            availability_zone=ROUTER_AZ,
+            multiplex_dim_to_ids={"session": set()},
+        )
+        # Same tier — pow2 queue length breaks the tie; give r_cold_local
+        # the shorter queue so the test is deterministic.
+        r_warm_remote.set_queue_len_response(5)
+        r_cold_local.set_queue_len_response(0)
+        s.update_replicas([r_warm_remote, r_cold_local])
+
+        tasks = [
+            loop.create_task(
+                s._choose_replica_for_request(
+                    fake_pending_request(multiplex_ids={"session": "s1"})
+                )
+            )
+            for _ in range(10)
+        ]
+        chosen = await asyncio.gather(*tasks)
+        assert all(replica == r_cold_local for replica in chosen)
+
+
+@pytest.mark.asyncio
 async def test_get_queue_len_cancelled_on_timeout(pow_2_router):
     """
     Verify that `get_queue_len` is cancelled if the `queue_len_response_deadline_s`
@@ -1994,21 +2135,28 @@ async def test_replicas_actor_unavailable_error(
     indirect=True,
 )
 async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
-    """
-    When the request router fails to route a request to a replica on the same node, and
-    the same zone, it should not sleep before retrying and add additional latency.
+    """When the top locality tier rejects, broadening to same-AZ and then to
+    remote replicas must not insert a backoff sleep.
+
+    A single ``choose_replicas`` call returns all locality tiers (same-node →
+    same-AZ → remote) in priority order, so the outer retry loop walks them
+    without re-entering ``choose_replicas`` and without hitting the backoff
+    sleep (configured to 999s by the fixture). The sleep only fires when
+    every tier is exhausted.
     """
     s = pow_2_router
-    original_apply_locality_routing = s.apply_locality_routing
-    chosen_replicas = []
+    original_choose_replicas = s.choose_replicas
+    tier_history: List[List[List[RunningReplica]]] = []
 
-    def tracking_apply_locality_routing(pending_request=None):
-        result = original_apply_locality_routing(pending_request)
-        # Track the replica IDs that were candidates at this locality scope
-        chosen_replicas.append(list(result))
-        return result
+    async def tracking_choose_replicas(candidate_replicas, pending_request=None):
+        tiers = await original_choose_replicas(
+            candidate_replicas=candidate_replicas,
+            pending_request=pending_request,
+        )
+        tier_history.append([list(tier) for tier in tiers])
+        return tiers
 
-    s.apply_locality_routing = tracking_apply_locality_routing
+    s.choose_replicas = tracking_choose_replicas
 
     loop = get_or_create_event_loop()
     task = loop.create_task(s._choose_replica_for_request(fake_pending_request()))
@@ -2036,27 +2184,20 @@ async def test_locality_aware_backoff_skips_sleeps(pow_2_router):
     s.update_replicas([r1, r2, r3])
 
     done, pending = await asyncio.wait([task], timeout=10)
-    if len(pending) == 1:
-        # r3 was not chosen after trying local node and local AZ. Which is fine.
-        # clear all pending tasks
-        task.cancel()
-        s._routing_tasks.clear()
-        s._pending_requests_to_fulfill.clear()
-        s._pending_requests_to_route.clear()
-    else:
+    # A 999s backoff sleep would overshoot this 10s deadline, so completing
+    # within the window is itself the "no added latency" assertion.
+    assert len(done) == 1
+    assert done.pop().result() == r3
 
-        # The request will be served by r3 without added latency.
-        # Since we set up the `backoff_s` to be 999s on every attempt, this 10s timeout will still
-        # capture the extra delay if it was added between routing loop.
-        assert len(done) == 1
-        assert done.pop().result() == r3
-
-    # assert that we tried local node, followed by local AZ, followed by all replicas
-    assert len(chosen_replicas) in (3, 4)
-    assert set(chosen_replicas[0]) == {r1.replica_id}
-    assert set(chosen_replicas[1]) == {r1.replica_id, r2.replica_id}
-    # assert intersection of chosen_replicas[2] and {r1.replica_id, r2.replica_id, r3.replica_id} is not empty
-    assert set(chosen_replicas[2]) & {r1.replica_id, r2.replica_id, r3.replica_id}
+    # The first choose_replicas call must have surfaced all three locality
+    # tiers in priority order (same-node, same-AZ, remote) — that's how the
+    # outer loop walks to r3 without re-entering choose_replicas.
+    assert len(tier_history) >= 1
+    first_tiers = tier_history[0]
+    assert len(first_tiers) == 3
+    assert {r.replica_id for r in first_tiers[0]} == {r1.replica_id}
+    assert {r.replica_id for r in first_tiers[1]} == {r2.replica_id}
+    assert {r.replica_id for r in first_tiers[2]} == {r3.replica_id}
 
 
 @pytest.mark.parametrize(
@@ -2105,6 +2246,8 @@ async def test_select_available_replicas(pow_2_router: PowerOfTwoChoicesRequestR
     [
         {
             "az": ROUTER_AZ,
+            "prefer_local_node": True,
+            "prefer_local_az": True,
         },
     ],
     indirect=True,
@@ -2239,6 +2382,56 @@ async def test_rank_replicas_via_multiplex(
         [replica_with_no_model],  # replica with fewer cached models ranked 1
         [replica_with_other_models],  # replica with more cached models ranked 2
     ]
+
+
+def test_rank_replicas_by_session_and_locality():
+    """Tiers are bucketed by (session_rank + locality_rank), lower is better.
+
+    Session and locality contribute equal weight, so a session-warm remote
+    replica (1 + 2 = 3) does NOT share a tier with a session-cold same-AZ
+    replica (1 + 1 = 2); however a session-warm same-AZ replica (0 + 1 = 1)
+    does share a tier with a session-cold same-node replica (1 + 0 = 1).
+    """
+    r_warm_node = FakeRunningReplica("r_warm_node")
+    r_warm_az = FakeRunningReplica("r_warm_az")
+    r_cold_node = FakeRunningReplica("r_cold_node")
+    r_cold_az = FakeRunningReplica("r_cold_az")
+    r_cold_remote = FakeRunningReplica("r_cold_remote")
+    all_replicas = [r_warm_node, r_warm_az, r_cold_node, r_cold_az, r_cold_remote]
+
+    session_warm_ids = {r_warm_node.replica_id, r_warm_az.replica_id}
+    colocated = {
+        LocalityScope.NODE: {r_warm_node.replica_id, r_cold_node.replica_id},
+        LocalityScope.AVAILABILITY_ZONE: {
+            r_warm_node.replica_id,
+            r_cold_node.replica_id,
+            r_warm_az.replica_id,
+            r_cold_az.replica_id,
+        },
+    }
+    tiers = rank_replicas_by_session_and_locality(
+        all_replicas, session_warm_ids, colocated
+    )
+    # Convert inner lists to sets so order within a tier is irrelevant.
+    assert [set(tier) for tier in tiers] == [
+        {r_warm_node},  # score 0: session warm + same node
+        {r_warm_az, r_cold_node},  # score 1: warm+AZ or cold+node (equal-weight tie)
+        {r_cold_az},  # score 2: cold + same AZ
+        {r_cold_remote},  # score 3: cold + remote
+    ]
+
+
+def test_rank_replicas_by_session_and_locality_empty_signals():
+    """Without session id or locality preference, all replicas land in a single
+    tier — the caller (pow2) then decides purely by queue length.
+    """
+    r1 = FakeRunningReplica("r1")
+    r2 = FakeRunningReplica("r2")
+    tiers = rank_replicas_by_session_and_locality(
+        [r1, r2], session_warm_replica_ids=set(), colocated_replica_ids={}
+    )
+    assert len(tiers) == 1
+    assert set(tiers[0]) == {r1, r2}
 
 
 def test_request_router_backoff_params_default():

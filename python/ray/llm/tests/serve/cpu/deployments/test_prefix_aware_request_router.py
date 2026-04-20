@@ -49,6 +49,10 @@ def prefix_request_router(tree_actor, request):
             handle_source=DeploymentHandleSource.REPLICA,
             use_replica_queue_len_cache=False,
             get_curr_time_s=TIMER.time,
+            self_node_id=params.get("self_node_id"),
+            self_availability_zone=params.get("self_availability_zone"),
+            prefer_local_node_routing=params.get("prefer_local_node_routing", False),
+            prefer_local_az_routing=params.get("prefer_local_az_routing", False),
         )
         return request_router
 
@@ -83,7 +87,9 @@ class ChatRequest:
         self.messages = messages
 
 
-def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
+def fake_pending_request(
+    prompt=None, messages=None, multiplex_ids=None
+) -> PendingRequest:
     if prompt is not None:
         args = [PromptRequest(prompt)]
     elif messages is not None:
@@ -97,6 +103,7 @@ def fake_pending_request(prompt=None, messages=None) -> PendingRequest:
         metadata=RequestMetadata(
             request_id=generate_request_id(),
             internal_request_id=generate_request_id(),
+            multiplex_ids=multiplex_ids or {},
         ),
         created_at=time.time(),
     )
@@ -251,6 +258,253 @@ class TestPrefixAwareLogic:
             assert (
                 await prefix_request_router._choose_replica_for_request(chat_req) == r1
             )
+
+
+TEST_ROUTER_NODE_ID = "router-node"
+TEST_ROUTER_AZ = "router-az"
+
+
+@pytest.mark.parametrize(
+    "prefix_request_router",
+    [
+        {
+            "self_node_id": TEST_ROUTER_NODE_ID,
+            "self_availability_zone": TEST_ROUTER_AZ,
+            "prefer_local_node_routing": True,
+            "prefer_local_az_routing": True,
+        }
+    ],
+    indirect=True,
+)
+class TestSessionLocalityTiebreaker:
+    """Priority: model (hard filter) > session == locality > prefix > pow2.
+
+    These mirror the pow2 router's equivalent cases. Replicas have equal
+    queue length and no prefix-tree entries so the decision must come
+    strictly from the session+locality tiering.
+    """
+
+    @pytest.mark.asyncio
+    async def test_model_plus_session_prefers_warm_session(self, prefix_request_router):
+        r_warm = FakeRunningReplica(
+            "r_warm",
+            multiplex_dim_to_ids={"model": {"m1"}, "session": {"s1"}},
+        )
+        r_cold = FakeRunningReplica(
+            "r_cold",
+            multiplex_dim_to_ids={"model": {"m1"}, "session": set()},
+        )
+        r_warm.set_queue_len_response(0)
+        r_cold.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r_warm, r_cold])
+
+        req = fake_pending_request(
+            prompt="hi", multiplex_ids={"model": "m1", "session": "s1"}
+        )
+        for _ in range(10):
+            chosen = await prefix_request_router._choose_replica_for_request(req)
+            assert chosen == r_warm
+
+    @pytest.mark.asyncio
+    async def test_model_plus_locality_prefers_local(self, prefix_request_router):
+        r_local = FakeRunningReplica(
+            "r_local",
+            node_id=TEST_ROUTER_NODE_ID,
+            availability_zone=TEST_ROUTER_AZ,
+            multiplex_dim_to_ids={"model": {"m1"}},
+        )
+        r_remote = FakeRunningReplica(
+            "r_remote",
+            node_id="other-node",
+            availability_zone="other-az",
+            multiplex_dim_to_ids={"model": {"m1"}},
+        )
+        r_local.set_queue_len_response(0)
+        r_remote.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r_local, r_remote])
+
+        req = fake_pending_request(prompt="hi", multiplex_ids={"model": "m1"})
+        for _ in range(10):
+            chosen = await prefix_request_router._choose_replica_for_request(req)
+            assert chosen == r_local
+
+    @pytest.mark.asyncio
+    async def test_session_plus_locality_prefers_local(self, prefix_request_router):
+        r_local = FakeRunningReplica(
+            "r_local",
+            node_id=TEST_ROUTER_NODE_ID,
+            availability_zone=TEST_ROUTER_AZ,
+            multiplex_dim_to_ids={"session": {"s1"}},
+        )
+        r_remote = FakeRunningReplica(
+            "r_remote",
+            node_id="other-node",
+            availability_zone="other-az",
+            multiplex_dim_to_ids={"session": {"s1"}},
+        )
+        r_local.set_queue_len_response(0)
+        r_remote.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r_local, r_remote])
+
+        req = fake_pending_request(prompt="hi", multiplex_ids={"session": "s1"})
+        for _ in range(10):
+            chosen = await prefix_request_router._choose_replica_for_request(req)
+            assert chosen == r_local
+
+    @pytest.mark.asyncio
+    async def test_session_plus_model_prefers_model_loaded(self, prefix_request_router):
+        r_with_model = FakeRunningReplica(
+            "r_with_model",
+            multiplex_dim_to_ids={"model": {"m1"}, "session": {"s1"}},
+        )
+        r_without_model = FakeRunningReplica(
+            "r_without_model",
+            multiplex_dim_to_ids={"model": set(), "session": {"s1"}},
+        )
+        r_with_model.set_queue_len_response(0)
+        r_without_model.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r_with_model, r_without_model])
+
+        req = fake_pending_request(
+            prompt="hi", multiplex_ids={"model": "m1", "session": "s1"}
+        )
+        for _ in range(10):
+            chosen = await prefix_request_router._choose_replica_for_request(req)
+            assert chosen == r_with_model
+
+    @pytest.mark.asyncio
+    async def test_prefix_match_only_within_best_tier(self, prefix_request_router):
+        """Locality dominates prefix: a prefix hit on a remote replica does
+        not override a session-cold but node-local replica in the top tier.
+        """
+        r_local = FakeRunningReplica(
+            "r_local",
+            node_id=TEST_ROUTER_NODE_ID,
+            availability_zone=TEST_ROUTER_AZ,
+        )
+        r_remote = FakeRunningReplica(
+            "r_remote",
+            node_id="other-node",
+            availability_zone="other-az",
+        )
+        r_local.set_queue_len_response(0)
+        r_remote.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r_local, r_remote])
+
+        # Seed the remote replica with a hot prefix.
+        ray.get(
+            prefix_request_router._tree_actor.insert.remote(
+                "Hello world",
+                r_remote.replica_id.to_full_id_str(),
+                time.time(),
+            )
+        )
+
+        req = fake_pending_request(prompt="Hello world")
+        for _ in range(10):
+            chosen = await prefix_request_router._choose_replica_for_request(req)
+            # Locality puts r_local in tier 0; prefix match in tier 2 never wins.
+            assert chosen == r_local
+
+    @pytest.mark.asyncio
+    async def test_low_match_rate_smallest_tenant_restricted_to_tier(
+        self, prefix_request_router
+    ):
+        """Low-match-rate fallback to the smallest-tenant is confined to the
+        current tier — a globally-smaller tenant in a lower tier must not be
+        chosen for the top tier's pool.
+        """
+        r_local = FakeRunningReplica(
+            "r_local",
+            node_id=TEST_ROUTER_NODE_ID,
+            availability_zone=TEST_ROUTER_AZ,
+            multiplex_dim_to_ids={"session": {"s1"}},
+        )
+        r_remote = FakeRunningReplica(
+            "r_remote",
+            node_id="other-node",
+            availability_zone="other-az",
+        )
+        r_local.set_queue_len_response(0)
+        r_remote.set_queue_len_response(0)
+        prefix_request_router.update_replicas([r_local, r_remote])
+
+        # Give r_local prior history; r_remote stays at 0 chars so it is the
+        # globally-smallest tenant. Without the tier intersection, the top
+        # tier's low-match-rate fallback would wrongly pick r_remote.
+        ray.get(
+            prefix_request_router._tree_actor.insert.remote(
+                "earlier prompt here",
+                r_local.replica_id.to_full_id_str(),
+                time.time(),
+            )
+        )
+
+        req = fake_pending_request(prompt="xyz", multiplex_ids={"session": "s1"})
+        for _ in range(10):
+            chosen = await prefix_request_router._choose_replica_for_request(req)
+            assert chosen == r_local
+
+
+@pytest.mark.parametrize(
+    "prefix_request_router",
+    [
+        {
+            "self_node_id": TEST_ROUTER_NODE_ID,
+            "self_availability_zone": TEST_ROUTER_AZ,
+            "prefer_local_node_routing": True,
+            "prefer_local_az_routing": True,
+            "imbalanced_threshold": 2,
+        }
+    ],
+    indirect=True,
+)
+@pytest.mark.asyncio
+async def test_imbalance_within_top_tier_stays_in_tier(prefix_request_router):
+    """When the top tier is internally imbalanced, prefix match is skipped
+    for that tier and pow2 queue length picks within it — a prefix hit in a
+    lower tier must not cause a cross-tier hop.
+    """
+    r_warm_low = FakeRunningReplica(
+        "r_warm_low",
+        node_id=TEST_ROUTER_NODE_ID,
+        availability_zone=TEST_ROUTER_AZ,
+        multiplex_dim_to_ids={"session": {"s1"}},
+    )
+    r_warm_high = FakeRunningReplica(
+        "r_warm_high",
+        node_id=TEST_ROUTER_NODE_ID,
+        availability_zone=TEST_ROUTER_AZ,
+        multiplex_dim_to_ids={"session": {"s1"}},
+    )
+    r_cold = FakeRunningReplica(
+        "r_cold",
+        node_id="other-node",
+        availability_zone="other-az",
+    )
+    r_warm_low.set_queue_len_response(0)
+    # Imbalanced against r_warm_low (diff=5 > threshold=2), but both still
+    # under max_ongoing_requests so the probe accepts them.
+    r_warm_high.set_queue_len_response(5)
+    r_cold.set_queue_len_response(0)
+    prefix_request_router.update_replicas([r_warm_low, r_warm_high, r_cold])
+
+    # Seed the lower tier with a perfect prefix match to tempt a cross-tier
+    # hop; the test asserts we resist it.
+    ray.get(
+        prefix_request_router._tree_actor.insert.remote(
+            "Hello world",
+            r_cold.replica_id.to_full_id_str(),
+            time.time(),
+        )
+    )
+
+    req = fake_pending_request(prompt="Hello world", multiplex_ids={"session": "s1"})
+    for _ in range(10):
+        chosen = await prefix_request_router._choose_replica_for_request(req)
+        # Top tier imbalanced → pow2 within tier → r_warm_low wins on shorter
+        # queue. r_cold's prefix hit in the lower tier is ignored.
+        assert chosen == r_warm_low
 
 
 class TestEvictionBehavior:

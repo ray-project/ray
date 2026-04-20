@@ -13,6 +13,7 @@ from typing import (
     Deque,
     Dict,
     List,
+    Mapping,
     Optional,
     Set,
     Tuple,
@@ -54,6 +55,46 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 class LocalityScope(str, enum.Enum):
     NODE = "NODE"
     AVAILABILITY_ZONE = "AVAILABILITY_ZONE"
+
+
+def rank_replicas_by_session_and_locality(
+    replicas: List[RunningReplica],
+    session_warm_replica_ids: Set[ReplicaID],
+    colocated_replica_ids: Mapping[LocalityScope, Set[ReplicaID]],
+) -> List[List[RunningReplica]]:
+    """Group replicas into priority tiers by combined session + locality score.
+
+    Each replica receives:
+      session_rank  = 0 if replica_id is in session_warm_replica_ids else 1
+      locality_rank = 0 (same node) / 1 (same AZ) / 2 (remote)
+
+    Replicas are bucketed by session_rank + locality_rank; lower totals are
+    preferred. Session and locality contribute equal weight, and the caller uses
+    pow2 queue-length picking to break the tie within each tier.
+
+    Args:
+        replicas: The replicas to rank.
+        session_warm_replica_ids: IDs of replicas that already have the
+            request's session cached.
+        colocated_replica_ids: Per-locality-scope (NODE / AZ) sets of replica
+            IDs that count as colocated with the router.
+
+    Returns:
+        A list of non-empty tiers in priority order (best first).
+    """
+    tiers: Dict[int, List[RunningReplica]] = {}
+    same_node = colocated_replica_ids.get(LocalityScope.NODE, set())
+    same_az = colocated_replica_ids.get(LocalityScope.AVAILABILITY_ZONE, set())
+    for replica in replicas:
+        session_rank = 0 if replica.replica_id in session_warm_replica_ids else 1
+        if replica.replica_id in same_node:
+            locality_rank = 0
+        elif replica.replica_id in same_az:
+            locality_rank = 1
+        else:
+            locality_rank = 2
+        tiers.setdefault(session_rank + locality_rank, []).append(replica)
+    return [tiers[score] for score in sorted(tiers)]
 
 
 @PublicAPI(stability="alpha")
@@ -105,10 +146,15 @@ class LocalityMixin:
         new_colocated_replica_ids = defaultdict(set)
 
         for r in replicas:
-            if self._self_node_id is not None and r.node_id == self._self_node_id:
+            if (
+                self._prefer_local_node_routing
+                and self._self_node_id is not None
+                and r.node_id == self._self_node_id
+            ):
                 new_colocated_replica_ids[LocalityScope.NODE].add(r.replica_id)
             if (
-                self._self_availability_zone is not None
+                self._prefer_local_az_routing
+                and self._self_availability_zone is not None
                 and r.availability_zone == self._self_availability_zone
             ):
                 new_colocated_replica_ids[LocalityScope.AVAILABILITY_ZONE].add(

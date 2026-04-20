@@ -7,6 +7,7 @@ from typing import (
 
 from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEX_DIMENSION_NAME,
 )
 from ray.serve._private.request_router.common import (
     PendingRequest,
@@ -19,9 +20,39 @@ from ray.serve._private.request_router.request_router import (
     LocalityMixin,
     MultiplexMixin,
     RequestRouter,
+    rank_replicas_by_session_and_locality,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def select_pow2_pair(candidates: List[RunningReplica]) -> List[RunningReplica]:
+    """
+    Pick at most two distinct replicas uniformly at random from ``candidates``.
+
+    Optimized selection: use direct randrange for k=2 instead of random.sample.
+    This is ~1.9x faster for the common case of selecting 2 replicas.
+
+    Correctness proof: We pick i uniformly from [0, n), then j uniformly from
+    [0, n-1) and shift j up if j >= i. Every ordered pair (i, j) with i != j
+    has probability: Pr(i,j) = 1/n * 1/(n-1) = 1/(n(n-1))
+    This matches random.sample(k=2): uniform among all 2-permutations.
+    """
+    n = len(candidates)
+    if n <= 1:
+        return list(candidates)
+    if n == 2:
+        # Randomize order to ensure fair selection when queue lengths are equal.
+        return (
+            [candidates[0], candidates[1]]
+            if random.getrandbits(1)
+            else [candidates[1], candidates[0]]
+        )
+    i = random.randrange(n)
+    j = random.randrange(n - 1)
+    if j >= i:
+        j += 1
+    return [candidates[i], candidates[j]]
 
 
 class PowerOfTwoChoicesRequestRouter(
@@ -47,6 +78,16 @@ class PowerOfTwoChoicesRequestRouter(
     procedure concurrently. This task will not necessarily satisfy the request that
     started it (in order to maintain the FIFO order). The total number of tasks is
     capped at (2 * num_replicas).
+
+    Priority order:
+      1. Model multiplex ID — hard filter. Requests for a specific model are
+         confined to replicas that have it cached (falling back to replicas
+         with the fewest models loaded if none match within the match timeout).
+      2. Session affinity and locality — equal-weight tiebreakers. A replica
+         with a warm session and a replica on the same node share the top
+         tier; a session-warm remote replica ties with a session-cold
+         node-local one.
+      3. Power-of-two queue length — final tiebreaker within a tier.
     """
 
     async def choose_replicas(
@@ -54,53 +95,41 @@ class PowerOfTwoChoicesRequestRouter(
         candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
     ) -> List[List[RunningReplica]]:
-        """One iteration of the power of two choices procedure that chooses
-         (at most) two random available replicas.
+        """Return candidate replica pools ordered from best tier to worst.
 
-        For multiplexing, this will first attempt to choose replicas that have the
-        requested model ID for a configured timeout. If no replicas with the matching
-        model ID are available after that timeout, it will fall back to the regular
-        procedure.
+        Each pool holds up to two replicas drawn at random for the power-
+        of-two choice. The outer routing loop probes pools top-down and
+        only falls through to the next one when every replica in the
+        current pool rejects the request.
         """
-        if (
-            pending_request is not None
-            and pending_request.metadata.multiplexed_model_id
-        ):
-            # Get candidates for multiplexed model ID.
+        # Step 1: Model hard filter -- `apply_multiplex_routing` handles the
+        # match-timeout / fewest-models fallback internally.
+        multiplex_ids = (
+            pending_request.metadata.multiplex_ids
+            if pending_request is not None
+            else {}
+        )
+        if multiplex_ids.get(SERVE_MULTIPLEX_DIMENSION_NAME.MODEL):
             candidate_replica_ids = self.apply_multiplex_routing(
                 pending_request=pending_request,
             )
         else:
-            # Get candidates for locality preference.
-            candidate_replica_ids = self.apply_locality_routing(
-                pending_request=pending_request,
-            )
+            candidate_replica_ids = self._replica_id_set
 
         if not candidate_replica_ids:
             return []
 
-        # Optimized selection: use direct randrange for k=2 instead of random.sample.
-        # This is ~1.9x faster for the common case of selecting 2 replicas.
-        #
-        # Correctness proof: We pick i uniformly from [0, n), then j uniformly from
-        # [0, n-1) and shift j up if j >= i. Every ordered pair (i, j) with i != j
-        # has probability: Pr(i,j) = 1/n * 1/(n-1) = 1/(n(n-1))
-        # This matches random.sample(k=2): uniform among all 2-permutations.
-        candidates = tuple(candidate_replica_ids)
-        n = len(candidates)
-        if n == 1:
-            chosen_ids = [candidates[0]]
-        elif n == 2:
-            # Randomize order to ensure fair selection when queue lengths are equal
-            if random.getrandbits(1):
-                chosen_ids = [candidates[0], candidates[1]]
-            else:
-                chosen_ids = [candidates[1], candidates[0]]
-        else:
-            i = random.randrange(n)
-            j = random.randrange(n - 1)
-            if j >= i:
-                j += 1
-            chosen_ids = [candidates[i], candidates[j]]
+        # Step 2: Rank survivors by session + locality.
+        session_id = multiplex_ids.get(SERVE_MULTIPLEX_DIMENSION_NAME.SESSION)
+        session_warm_replica_ids = self._multiplex_dim_id_to_replica_ids.get(
+            SERVE_MULTIPLEX_DIMENSION_NAME.SESSION, {}
+        ).get(session_id, set())
+        filtered_replicas = [self._replicas[rid] for rid in candidate_replica_ids]
+        ranked_tiers = rank_replicas_by_session_and_locality(
+            filtered_replicas,
+            session_warm_replica_ids,
+            self._colocated_replica_ids,
+        )
 
-        return [[self._replicas[chosen_id] for chosen_id in chosen_ids]]
+        # Step 3: Power-of-two pairs per tier — caller walks tiers in order.
+        return [select_pow2_pair(tier) for tier in ranked_tiers]

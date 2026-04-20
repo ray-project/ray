@@ -16,15 +16,14 @@ from ray.serve._private.common import ReplicaID
 from ray.serve._private.constants import (
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
+    SERVE_MULTIPLEX_DIMENSION_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.request_router import (
-    PowerOfTwoChoicesRequestRouter,
-)
 from ray.serve._private.request_router.common import (
     PendingRequest,
 )
+from ray.serve._private.request_router.pow_2_router import select_pow2_pair
 from ray.serve._private.request_router.replica_wrapper import (
     RunningReplica,
 )
@@ -32,25 +31,25 @@ from ray.serve._private.request_router.request_router import (
     LocalityMixin,
     MultiplexMixin,
     RequestRouter,
+    rank_replicas_by_session_and_locality,
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
-    """Extends the PowerOfTwoChoicesRequestRouter with prefix-matching capabilities.
+    """Routes LLM requests by layering prefix-cache affinity on top of the
+    standard model / session / locality priority.
 
-    This request router optimizes replica selection by considering input text prefixes:
-
-    1. Mixes between three strategies to balance prefix cache hit rate and load balancing:
-       - When load is balanced (queue length difference < threshold), it selects replicas
-         with the highest prefix match rate for the input text
-       - When load is balanced but match rate is below 10%, it falls back to the smallest tenants
-       - When load is imbalanced, it uses the default Power of Two selection
-
-    2. Maintains a prefix tree to track which replicas have processed similar inputs:
-       - Inserts prompt text into the prefix tree after routing
-       - Uses this history to inform future routing decisions
+    Priority (highest to lowest):
+      1. Model multiplex ID — hard filter to replicas that have the model cached.
+      2. Session affinity and locality — equal-weight tiebreakers; a session-
+         warm remote replica ties with a session-cold node-local one.
+      3. Prefix cache affinity — within a session+locality tier, prefer
+         replicas whose prefix tree already contains the input text. If the
+         match rate is below ``match_rate_threshold`` or the load is
+         imbalanced, fall back to power-of-two queue length within that tier.
+      4. Power-of-two queue length — final tiebreaker inside a tier.
 
     This approach improves performance by routing related requests to the same replicas,
     increasing cache locality and reducing overhead for language model inference.
@@ -212,9 +211,9 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
     ) -> List[RunningReplica]:
         """
         Returns a set of candidate replicas, of which the one with the smallest replica queue will be chosen.
-        0. Default: same as pow 2 request router, return 2 replicas at random.
+        0. Default: return [] so the caller falls back to pow2 selection.
         1. If load is balanced, choose replica(s) with highest prefix match rate. If highest hit rate is below 10% or no match found, use replicas with smallest KV cache usage.
-        2. If load is imbalanced, use default.
+        2. If load is imbalanced, return [].
         """
         chosen_replica_id_strings = []
         if (
@@ -274,7 +273,12 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                             smallest_tenants_id_strings is not None
                             and len(smallest_tenants_id_strings) > 0
                         ):
-                            chosen_replica_id_strings = smallest_tenants_id_strings
+                            candidate_ids = set(candidate_replica_ids_strings)
+                            chosen_replica_id_strings = [
+                                s
+                                for s in smallest_tenants_id_strings
+                                if s in candidate_ids
+                            ]
                     else:
                         if (
                             matched_tenant_id_strings is not None
@@ -283,10 +287,8 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                             chosen_replica_id_strings = matched_tenant_id_strings
                 # End Sphinx tag: __end_prefix_match_component__
         return [
-            [
-                self._replicas[ReplicaID.from_full_id_str(chosen_id_string)]
-                for chosen_id_string in chosen_replica_id_strings
-            ]
+            self._replicas[ReplicaID.from_full_id_str(chosen_id_string)]
+            for chosen_id_string in chosen_replica_id_strings
         ]
 
     # Start Sphinx tag: __begin_on_replica_actor_died__
@@ -338,57 +340,52 @@ class PrefixCacheAffinityRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         self,
         candidate_replicas: List[RunningReplica],
         pending_request: Optional[PendingRequest] = None,
-    ) -> List[RunningReplica]:
-        """One iteration of the power of two choices procedure that chooses
-         (at most) two random available replicas.
+    ) -> List[List[RunningReplica]]:
+        """Return candidate replica pools ordered from best tier to worst.
 
-        For multiplexing, this will first attempt to choose replicas that have the
-        requested model ID for a configured timeout. If no replicas with the matching
-        model ID are available after that timeout, it will fall back to the regular
-        procedure.
+        Each pool contains the prefix-matched replicas of one
+        session+locality tier (over model-filtered survivors), or a
+        power-of-two pair drawn at random when prefix can't decide (no
+        prompt, imbalanced queues, or match rate below threshold). The
+        outer routing loop probes pools top-down and only falls through
+        to the next one when every replica in the current pool rejects
+        the request.
         """
-        # Start Sphinx tag: __begin_pow2_router_base__
-        # Get fallback replicas from PowerOfTwoChoicesRequestRouter
-        fallback_replicas = await PowerOfTwoChoicesRequestRouter.choose_replicas(
-            self,
-            candidate_replicas=candidate_replicas,
-            pending_request=pending_request,
+        # Step 1: model hard filter.
+        multiplex_ids = (
+            pending_request.metadata.multiplex_ids
+            if pending_request is not None
+            else {}
         )
-        if pending_request is None or not fallback_replicas:
-            return fallback_replicas
-        # End Sphinx tag: __end_pow2_router_base__
-
-        if (
-            pending_request is not None
-            and pending_request.metadata.multiplexed_model_id
-        ):
-            # Get candidates for multiplexed model ID.
+        if multiplex_ids.get(SERVE_MULTIPLEX_DIMENSION_NAME.MODEL):
             candidate_replica_ids = self.apply_multiplex_routing(
                 pending_request=pending_request,
             )
         else:
-            # Get candidates for locality preference.
-            candidate_replica_ids = self.apply_locality_routing(
-                pending_request=pending_request,
-            )
+            candidate_replica_ids = self._replica_id_set
+
         if not candidate_replica_ids:
-            return fallback_replicas
+            return []
 
-        # Convert candidate replica IDs to RunningReplica objects.
-        replica_id_to_replica_map = {
-            replica.replica_id: replica for replica in candidate_replicas
-        }
-        candidate_replicas = [
-            replica_id_to_replica_map[candidate_replica_id]
-            for candidate_replica_id in candidate_replica_ids
-        ]
-        chosen_replicas = await self._prefix_match_best_replicas(
-            pending_request, candidate_replicas
+        # Step 2: rank survivors by session + locality (equal-weight).
+        session_id = multiplex_ids.get(SERVE_MULTIPLEX_DIMENSION_NAME.SESSION)
+        session_warm_replica_ids = self._multiplex_dim_id_to_replica_ids.get(
+            SERVE_MULTIPLEX_DIMENSION_NAME.SESSION, {}
+        ).get(session_id, set())
+        filtered_replicas = [self._replicas[rid] for rid in candidate_replica_ids]
+        ranked_tiers = rank_replicas_by_session_and_locality(
+            filtered_replicas,
+            session_warm_replica_ids,
+            self._colocated_replica_ids,
         )
-        if chosen_replicas[0]:
-            return chosen_replicas
 
-        return fallback_replicas
+        # Step 3: within each tier, prefer prefix-matched replicas; fall back
+        # to pow2 queue length when prefix produces nothing for that tier.
+        result: List[List[RunningReplica]] = []
+        for tier in ranked_tiers:
+            matched = await self._prefix_match_best_replicas(pending_request, tier)
+            result.append(matched if matched else select_pow2_pair(tier))
+        return result
 
     # Start Sphinx tag: __begin_on_request_routed__
     def on_request_routed(
