@@ -247,7 +247,6 @@ class CheckpointManager(abc.ABC):
         assert len(ref_bundle.blocks) == 1
         block_ref: ObjectRef[Block] = ref_bundle.blocks[0][0]
         metadata: BlockMetadata = ref_bundle.blocks[0][1]
-
         # Validate the loaded checkpoint
         self._validate_loaded_checkpoint(schema, metadata)
 
@@ -258,6 +257,7 @@ class CheckpointManager(abc.ABC):
         checkpointed_ids_ref, checkpoint_size_ref = convert_checkpointed_ids.remote(
             block_ref, self.id_column
         )
+
         checkpoint_size = ray.get(checkpoint_size_ref)
 
         logger.info(
