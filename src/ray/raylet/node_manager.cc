@@ -300,12 +300,13 @@ NodeManager::NodeManager(
                                         RayConfig::instance().task_failure_entry_ttl_ms(),
                                         "NodeManager.GCTaskFailureReason");
 
-  // Move semantics: free primary copy after it has been pushed to another node.
-  object_manager_.SetOnPushComplete([this](const ObjectID &object_id) {
-    RAY_LOG(DEBUG) << "Move semantic: releasing local copy of " << object_id
-                   << " after push complete";
-    local_object_manager_.ReleaseFreedObject(object_id);
-  });
+  if (RayConfig::instance().enable_plasma_move_semantics()) {
+    object_manager_.SetOnPushComplete([this](const ObjectID &object_id) {
+      RAY_LOG(DEBUG) << "Move semantic: releasing local copy of " << object_id
+                     << " after push complete";
+      local_object_manager_.ReleaseFreedObject(object_id);
+    });
+  }
 }
 
 void NodeManager::Start(rpc::GcsNodeInfo &&self_node_info) {

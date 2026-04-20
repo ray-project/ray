@@ -461,10 +461,13 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
 
   auto push_id = UniqueID::FromRandom();
   auto num_chunks = chunk_reader->GetNumChunks();
+  bool move_semantics_enabled = RayConfig::instance().enable_plasma_move_semantics();
 
-  // Register for per-push ack tracking (move semantics).
-  auto push_key = std::make_pair(object_id, node_id);
-  push_ack_tracking_[push_key] = {static_cast<int64_t>(num_chunks), 0, /*failed=*/false};
+  if (move_semantics_enabled) {
+    auto push_key = std::make_pair(object_id, node_id);
+    push_ack_tracking_[push_key] = {
+        static_cast<int64_t>(num_chunks), 0, /*failed=*/false};
+  }
 
   push_manager_->StartPush(node_id, object_id, num_chunks, [=](int64_t chunk_id) {
     rpc_service_.post(
@@ -481,21 +484,22 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
                 // Post back to the main event loop because the
                 // PushManager is not thread-safe.
                 main_service_->post(
-                    [this, object_id, node_id, status]() {
+                    [this, object_id, node_id, status, move_semantics_enabled]() {
                       push_manager_->OnChunkComplete();
-                      // Track per-push ack for move semantics.
-                      auto key = std::make_pair(object_id, node_id);
-                      auto it = push_ack_tracking_.find(key);
-                      if (it != push_ack_tracking_.end()) {
-                        if (!status.ok()) {
-                          it->second.failed = true;
-                        }
-                        it->second.acked_chunks++;
-                        if (it->second.acked_chunks == it->second.total_chunks) {
-                          bool success = !it->second.failed;
-                          push_ack_tracking_.erase(it);
-                          if (success && on_push_complete_) {
-                            on_push_complete_(object_id);
+                      if (move_semantics_enabled) {
+                        auto key = std::make_pair(object_id, node_id);
+                        auto it = push_ack_tracking_.find(key);
+                        if (it != push_ack_tracking_.end()) {
+                          if (!status.ok()) {
+                            it->second.failed = true;
+                          }
+                          it->second.acked_chunks++;
+                          if (it->second.acked_chunks == it->second.total_chunks) {
+                            bool success = !it->second.failed;
+                            push_ack_tracking_.erase(it);
+                            if (success && on_push_complete_) {
+                              on_push_complete_(object_id);
+                            }
                           }
                         }
                       }
