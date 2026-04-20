@@ -154,6 +154,7 @@ def convert_checkpointed_ids(
             checkpointed_ids_ndarray = transform_pyarrow.to_numpy(
                 checkpointed_ids_arrow[id_column], zero_copy_only=False
             )
+            checkpointed_ids_ndarray.sort()
     except Exception as e:
         raise RuntimeError(f"Failed to get numpy-typed checkpointed IDs: {e}")
 
@@ -246,6 +247,7 @@ class CheckpointManager(abc.ABC):
         assert len(ref_bundle.blocks) == 1
         block_ref: ObjectRef[Block] = ref_bundle.blocks[0][0]
         metadata: BlockMetadata = ref_bundle.blocks[0][1]
+
         # Validate the loaded checkpoint
         self._validate_loaded_checkpoint(schema, metadata)
 
@@ -256,7 +258,6 @@ class CheckpointManager(abc.ABC):
         checkpointed_ids_ref, checkpoint_size_ref = convert_checkpointed_ids.remote(
             block_ref, self.id_column
         )
-
         checkpoint_size = ray.get(checkpoint_size_ref)
 
         logger.info(
@@ -325,9 +326,10 @@ class IdColumnCheckpointManager(CheckpointManager):
     def _preprocess_data_pipeline(
         self, checkpoint_ds: ray.data.Dataset
     ) -> ray.data.Dataset:
-        """In the pre-process data pipeline,
-            - Sort by the IDs, as `filter_rows_for_block` will perform binary search on the
-              checkpointed IDs during restore.
+        """Keep the checkpoint read path unchanged.
+
+        The ID array is sorted locally in `convert_checkpointed_ids()` after
+        the checkpoint dataset has been repartitioned to one block.
 
         Args:
             checkpoint_ds: The checkpoint dataset to pre-process
@@ -335,8 +337,7 @@ class IdColumnCheckpointManager(CheckpointManager):
         Returns:
             The pre-processed checkpoint dataset
         """
-        # Sort by the ID column.
-        return checkpoint_ds.sort(self.id_column)
+        return checkpoint_ds
 
 
 class CheckpointFilter(abc.ABC):
