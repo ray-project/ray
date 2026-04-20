@@ -2,7 +2,7 @@ import functools
 import inspect
 import logging
 from dataclasses import InitVar, dataclass, field, replace
-from typing import Any, Callable, Dict, Iterable, Optional
+from typing import Any, Callable, Dict, Iterable, Literal, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
@@ -190,7 +190,7 @@ class MapBatches(AbstractUDFMap):
     input_op: InitVar[LogicalOperator]
     fn: UserDefinedFunction
     can_modify_num_rows: bool = False
-    batch_size: Optional[int] = None
+    batch_size: Union[Optional[int], Literal["auto"]] = None
     batch_format: Optional[str] = "default"
     zero_copy_batch: bool = True
     fn_args: Optional[Iterable[Any]] = None
