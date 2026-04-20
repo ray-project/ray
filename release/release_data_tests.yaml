@@ -1003,6 +1003,7 @@
 #################################################
 
 - name: "cross_az_map_batches_autoscaling"
+  python: "3.13"
   frequency: manual
   env: gce
   cluster:
@@ -1076,6 +1077,7 @@
 ###################
 
 - name: does_not_over_provision
+  python: "3.13"
   group: data-autoscaling
   frequency: manual
 
