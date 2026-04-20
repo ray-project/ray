@@ -427,10 +427,6 @@ Increasing batch size results in faster execution because inference is a vectori
     # Specify that each input batch should be of size 2.
     ds.map_batches(assert_batch, batch_size=2)
 
-.. caution::
-  The default ``batch_size`` of ``4096`` may be too large for datasets with large rows
-  (for example, tables with many columns or a collection of large images).
-
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
