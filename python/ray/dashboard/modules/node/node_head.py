@@ -13,6 +13,7 @@ import grpc
 import ray._private.utils
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._common.pydantic_compat import PYDANTIC_INSTALLED, ValidationError
 from ray._common.utils import get_or_create_event_loop
 from ray._private import ray_constants
 from ray._private.collections_utils import split
@@ -41,6 +42,7 @@ from ray.dashboard.consts import (
 from ray.dashboard.modules.node import actor_consts, node_consts
 from ray.dashboard.modules.node.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.reporter.reporter_models import StatsPayload
+from ray.dashboard.pydantic_models import ActorSchema
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.dashboard.utils import async_loop_forever
@@ -703,6 +705,19 @@ class NodeHead(SubprocessModule):
         if "ids" in req.query:
             actor_ids = req.query["ids"].split(",")
         actors = await DataOrganizer.get_actor_infos(actor_ids=actor_ids)
+
+        # Validate against schema (logging only)
+        # Keep it as just logging for the time being.
+        if PYDANTIC_INSTALLED and ActorSchema is not None:
+            for actor_id, actor_info in actors.items():
+                if actor_info is not None:
+                    try:
+                        ActorSchema.parse_obj(actor_info)
+                    except ValidationError as e:
+                        logger.warning(
+                            f"Schema validation failed for actor {actor_id}: {e}"
+                        )
+
         return dashboard_optional_utils.rest_response(
             status_code=dashboard_utils.HTTPStatusCode.OK,
             message="All actors fetched.",
