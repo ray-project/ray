@@ -97,6 +97,16 @@
       run:
         script: python audio_transcription/ray_data_main.py
 
+    - __suffix__: ray_auto
+      frequency: nightly
+      run:
+        script: python audio_transcription/ray_data_main.py --preprocess-batch-size auto
+
+    - __suffix__: ray_fixed
+      frequency: nightly
+      run:
+        script: python audio_transcription/ray_data_main.py --preprocess-batch-size 1024
+
     - __suffix__: daft
       run:
         script: python audio_transcription/daft_main.py

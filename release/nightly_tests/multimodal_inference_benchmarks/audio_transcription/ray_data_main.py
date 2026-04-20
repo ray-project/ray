@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import argparse
 import io
 import uuid
 
@@ -17,6 +18,25 @@ SAMPLING_RATE = 16000
 INPUT_PATH = "s3://anonymous@ray-example-data/common_voice_17/parquet/"
 OUTPUT_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 BATCH_SIZE = 64
+
+
+def parse_args():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "--preprocess-batch-size",
+        type=lambda v: "auto" if v == "auto" else int(v),
+        default=None,
+        help=(
+            "Batch size for CPU preprocessing and decoding stages. "
+            "Use 'auto' to let Ray Data pick based on data size. "
+            "Defaults to 1024 (Ray Data default)."
+        ),
+    )
+    return parser.parse_args()
+
+
+args = parse_args()
+PREPROCESS_BATCH_SIZE = args.preprocess_batch_size if args.preprocess_batch_size is not None else 1024
 
 ray.init()
 
@@ -94,13 +114,13 @@ def decoder(batch):
 def run_pipeline():
     ds = ray.data.read_parquet(INPUT_PATH)
     ds = ds.map(resample)
-    ds = ds.map_batches(whisper_preprocess)
+    ds = ds.map_batches(whisper_preprocess, batch_size=PREPROCESS_BATCH_SIZE)
     ds = ds.map_batches(
         Transcriber,
         batch_size=BATCH_SIZE,
         num_gpus=1,
     )
-    ds = ds.map_batches(decoder)
+    ds = ds.map_batches(decoder, batch_size=PREPROCESS_BATCH_SIZE)
     ds.write_parquet(OUTPUT_PATH)
 
 
