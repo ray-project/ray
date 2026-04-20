@@ -481,6 +481,64 @@ def test_ref_bundle_eq_and_hash():
     assert bundle != diff_meta_bundle
 
 
+def test_ref_bundle_size_bytes_num_rows_are_memoized():
+    """size_bytes() and num_rows() are memoized on first call.
+
+    These are called many times per scheduling step (in ranking,
+    backpressure checks, budget accounting, and logging) and their
+    result is stable over the lifetime of a RefBundle — the frozen
+    dataclass's fields (blocks, slices, metadata) are all immutable.
+    Regression guard: monkeypatch a side-effect-tracking method body
+    after first call and assert the second call returns the cached
+    value rather than re-computing.
+    """
+    block_ref = ObjectRef(b"1" * 28)
+    meta = BlockMetadata(
+        num_rows=7, size_bytes=123, exec_stats=None, input_files=None
+    )
+    bundle = RefBundle(
+        blocks=[(block_ref, meta)], owns_blocks=True, schema=None
+    )
+
+    # First call computes and stores.
+    assert bundle.num_rows() == 7
+    assert bundle.size_bytes() == 123
+    # Private fields now hold the computed values.
+    assert bundle._cached_num_rows == 7
+    assert bundle._cached_size_bytes == 123
+
+    # Second call returns the cached value without touching metadata.
+    # Poison `blocks` so any re-derivation would raise; a cached call
+    # must ignore it.
+    sentinel = object()
+    object.__setattr__(bundle, "blocks", sentinel)
+    try:
+        assert bundle.num_rows() == 7
+        assert bundle.size_bytes() == 123
+    finally:
+        object.__setattr__(bundle, "blocks", ((block_ref, meta),))
+
+
+def test_ref_bundle_num_rows_memoizes_none_result():
+    """If one block has an unknown row count, num_rows() correctly
+    returns None and that None is cached — a subsequent call must
+    return None, not re-enter the loop.
+    """
+    block_ref = ObjectRef(b"1" * 28)
+    meta_unknown = BlockMetadata(
+        num_rows=None, size_bytes=100, exec_stats=None, input_files=None
+    )
+    bundle = RefBundle(
+        blocks=[(block_ref, meta_unknown)], owns_blocks=True, schema=None
+    )
+    assert bundle.num_rows() is None
+    # -1 is the "not cached" sentinel; anything else (including None) is
+    # a real cached result.
+    assert bundle._cached_num_rows is None
+    # Second call still None.
+    assert bundle.num_rows() is None
+
+
 if __name__ == "__main__":
     import sys
 
