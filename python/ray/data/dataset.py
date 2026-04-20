@@ -1997,7 +1997,7 @@ class Dataset:
         import pandas as pd
         import pyarrow as pa
 
-        if self._plan.initial_num_blocks() == 0:
+        if self._logical_plan.initial_num_blocks() == 0:
             raise ValueError("Cannot sample from an empty Dataset.")
 
         if fraction < 0 or fraction > 1:
@@ -2222,7 +2222,7 @@ class Dataset:
         bundle: RefBundle = self._plan.execute()
         # We should not free blocks since we will materialize the Datasets.
         owned_by_consumer = False
-        stats = self._plan.stats()
+        stats = self._raw_stats()
         block_refs, metadata = zip(*bundle.blocks)
 
         if locality_hints is None:
@@ -2427,7 +2427,7 @@ class Dataset:
             False,
         )
         split_duration = time.perf_counter() - start_time
-        parent_stats = self._plan.stats()
+        parent_stats = self._raw_stats()
         splits = []
 
         for bs, ms in zip(blocks, metadata):
@@ -2880,7 +2880,7 @@ class Dataset:
 
         stats = DatasetStats(
             metadata={"Union": []},
-            parent=[d._plan.stats() for d in datasets],
+            parent=[d._raw_stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
@@ -3784,7 +3784,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._cache.set_stats(limited_ds._plan.stats())
+        self._plan._cache.set_stats(limited_ds._raw_stats())
         return res
 
     @ConsumptionAPI
@@ -3835,7 +3835,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._cache.set_stats(limited_ds._plan.stats())
+        self._plan._cache.set_stats(limited_ds._raw_stats())
         return output
 
     @ConsumptionAPI
@@ -3932,7 +3932,7 @@ class Dataset:
             The number of records in the dataset.
         """
         # Handle empty dataset.
-        if self._plan.initial_num_blocks() == 0:
+        if self._logical_plan.initial_num_blocks() == 0:
             return 0
 
         # For parquet, we can return the count directly from metadata.
@@ -6832,7 +6832,7 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
-            ExecutionPlan(copy._plan.stats(), data_context=copy.context),
+            ExecutionPlan(copy._raw_stats(), data_context=copy.context),
             logical_plan,
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
@@ -6916,7 +6916,7 @@ class Dataset:
         print(explain_plan(self._logical_plan))
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
-        return self._plan.stats().to_summary()
+        return self._raw_stats().to_summary()
 
     @DeveloperAPI
     def get_stats_summary(self, detail: bool = False) -> DatasetStatsSummary:
@@ -6935,10 +6935,10 @@ class Dataset:
         """
         if self._current_executor:
             summary = self._current_executor.get_stats().to_summary()
-        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
+        elif self._write_ds is not None and self._write_ds.has_computed_output():
             summary = self._write_ds.get_stats_summary(detail=detail)
         else:
-            summary = self._plan.stats().to_summary()
+            summary = self._raw_stats().to_summary()
 
         if detail:
             from ray.data._internal.scheduling_overhead import (
@@ -7082,9 +7082,9 @@ class Dataset:
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
         plan_copy = self._plan.deep_copy()
-        logical_plan_copy = copy.copy(self._plan._logical_plan)
+        logical_plan_copy = copy.copy(self._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
-        ds._plan.clear_cache()
+        ds._plan._cache.clear()
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
@@ -7236,7 +7236,7 @@ class Dataset:
         from ipywidgets import HTML, Tab
 
         metadata = {
-            "num_blocks": self._plan.initial_num_blocks(),
+            "num_blocks": self._logical_plan.initial_num_blocks(),
             "num_rows": self._meta_count(),
         }
         # Show metadata if available, but don't trigger execution.
@@ -7320,6 +7320,25 @@ class Dataset:
             for block_ref in ref_bundle.block_refs:
                 num_rows.append(get_num_rows.remote(block_ref))
         return ray.get(num_rows)
+
+    def _raw_stats(self) -> DatasetStats:
+        """Return the DatasetStats object for this dataset's execution.
+
+        If the dataset hasn't been executed, returns an empty stats object.
+        """
+        stats = self._plan._cache.get_stats()
+        if not stats:
+            return DatasetStats(metadata={}, parent=None)
+        return stats
+
+    def has_computed_output(self) -> bool:
+        """Whether this dataset has cached output from a prior execution."""
+        return self._plan._cache.get_bundle(self._logical_plan.dag) is not None
+
+    @property
+    def has_started_execution(self) -> bool:
+        """Return ``True`` if this dataset has been partially or fully executed."""
+        return self._plan._has_started_execution
 
     def _meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -7424,7 +7443,7 @@ class MaterializedDataset(Dataset, Generic[T]):
         Returns:
             The number of blocks of this :class:`Dataset`.
         """
-        return self._plan.initial_num_blocks()
+        return self._logical_plan.initial_num_blocks()
 
 
 @PublicAPI(stability="beta")

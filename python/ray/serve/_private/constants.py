@@ -21,6 +21,22 @@ SERVE_LOGGER_NAME = "ray.serve"
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 SERVE_DEPLOYMENT_ACTOR_PREFIX = "SERVE_DEPLOYMENT_ACTOR::"
 
+# Reserved runtime_env keys used to hydrate deployment actor context.
+# Unlike replicas which use _set_internal_replica_context() during init,
+# deployment actors are user-defined Ray actors. Serve controller can't
+# inject constructor params. Env vars via runtime_env are the reasonable
+# injection point that doesn't require modifying the user's class.
+RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR = "RAY_SERVE_INTERNAL_DEPLOYMENT_NAME"
+RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION"
+)
+
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 

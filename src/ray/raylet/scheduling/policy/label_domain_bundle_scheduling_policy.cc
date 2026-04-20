@@ -17,18 +17,17 @@
 namespace ray {
 namespace raylet_scheduling_policy {
 
-// TODO(#61778): Move this to the cluster resource manager.
 bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
     const std::vector<const ResourceRequest *> &resource_request_list,
-    const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const {
+    const absl::flat_hash_set<scheduling::NodeID> &candidate_nodes) const {
   // Check that each bundle is individually feasible on at least one node.
   for (const ResourceRequest *const &request : resource_request_list) {
-    bool bundle_feasible =
-        std::any_of(candidate_nodes.begin(),
-                    candidate_nodes.end(),
-                    [&](const std::pair<const scheduling::NodeID, const Node *> &entry) {
-                      return entry.second->GetLocalView().IsFeasible(*request);
-                    });
+    bool bundle_feasible = std::any_of(
+        candidate_nodes.begin(),
+        candidate_nodes.end(),
+        [&](const scheduling::NodeID &node_id) {
+          return cluster_resource_manager_.HasFeasibleResources(node_id, *request);
+        });
     if (!bundle_feasible) {
       return false;
     }
@@ -41,8 +40,9 @@ bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
   }
   for (auto resource_id : aggregate_demand.ResourceIds()) {
     FixedPoint total_capacity;
-    for (const auto &[node_id, node] : candidate_nodes) {
-      total_capacity += node->GetLocalView().total.Get(resource_id);
+    for (const auto &node_id : candidate_nodes) {
+      total_capacity +=
+          cluster_resource_manager_.GetNodeTotalResources(node_id, resource_id);
     }
     if (total_capacity < aggregate_demand.Get(resource_id)) {
       return false;
@@ -55,7 +55,7 @@ bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
 SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
     const std::vector<const ResourceRequest *> &resource_request_list,
     const SchedulingOptions &options,
-    absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes,
+    absl::flat_hash_set<scheduling::NodeID> candidate_nodes,
     NodeScheduleFn node_schedule_fn) {
   RAY_CHECK(!resource_request_list.empty());
 
@@ -68,8 +68,7 @@ SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
   if (options.target_label_domain_.second.has_value()) {
     const std::string &target = *options.target_label_domain_.second;
     for (auto it = candidate_nodes.begin(); it != candidate_nodes.end();) {
-      const absl::flat_hash_map<std::string, std::string> &labels =
-          it->second->GetLocalView().labels;
+      const auto &labels = cluster_resource_manager_.GetNodeLabels(*it);
       auto label_it = labels.find(label_key);
       if (label_it == labels.end() || label_it->second != target) {
         candidate_nodes.erase(it++);
@@ -91,14 +90,12 @@ SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(
   }
 
   // Group candidate nodes by their label domain.
-  absl::flat_hash_map<std::string, absl::flat_hash_map<scheduling::NodeID, const Node *>>
-      domain_groups;
-  for (const auto &[node_id, node] : candidate_nodes) {
-    const absl::flat_hash_map<std::string, std::string> &labels =
-        node->GetLocalView().labels;
+  absl::flat_hash_map<std::string, absl::flat_hash_set<scheduling::NodeID>> domain_groups;
+  for (const auto &node_id : candidate_nodes) {
+    const auto &labels = cluster_resource_manager_.GetNodeLabels(node_id);
     auto it = labels.find(label_key);
     if (it != labels.end() && !it->second.empty()) {
-      domain_groups[it->second].emplace(node_id, node);
+      domain_groups[it->second].insert(node_id);
     }
   }
 

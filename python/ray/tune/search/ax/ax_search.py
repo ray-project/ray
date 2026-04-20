@@ -204,10 +204,15 @@ class AxSearch(Searcher):
             self._ax = AxClient(**self._ax_kwargs)
 
         # Detect whether the AxClient already has an experiment attached.
+        # ax 1.0+ uses AssertionError ("Experiment not set"); older Ax used ValueError.
         try:
             _ = self._ax.experiment
             has_experiment = True
-        except Exception:
+        except AssertionError as e:
+            if "Experiment not set" not in str(e):
+                raise
+            has_experiment = False
+        except ValueError:
             has_experiment = False
 
         if has_experiment:
@@ -265,7 +270,22 @@ class AxSearch(Searcher):
                     minimize=minimize,
                 )
 
-        exp = self._ax.experiment
+        # Access experiment - should exist now (either created above or already existed)
+        try:
+            exp = self._ax.experiment
+        except AssertionError as e:
+            # Re-raise if the message is unexpected to avoid masking real Ax failures.
+            if "Experiment not set" not in str(e):
+                raise
+            raise RuntimeError(
+                "Failed to access Ax experiment after setup. "
+                "This may indicate an issue with the Ax client setup."
+            ) from e
+        except ValueError as e:
+            raise RuntimeError(
+                "Failed to access Ax experiment after setup. "
+                "This may indicate an issue with the Ax client setup."
+            ) from e
 
         # Populate mode/metric from experiment (keep your existing logic here)
         try:

@@ -186,9 +186,11 @@ class _ModelMultiplexWrapper:
         self.get_model_requests_counter.inc()
 
         if model_id in self.models:
-            # Move the model to the end of the OrderedDict to ensure LRU caching.
-            model = self.models.pop(model_id)
-            self.models[model_id] = model
+            # Move the model to the end of the OrderedDict to mark it as
+            # most-recently-used. Using move_to_end() instead of pop()+reinsert
+            # avoids a race condition where concurrent coroutines could see the
+            # key as missing during the brief window between pop and reinsert.
+            self.models.move_to_end(model_id)
             return self.models[model_id]
         else:
             # Set the flag to push the multiplexed replica info to the controller
