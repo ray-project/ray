@@ -203,6 +203,26 @@ class TestModelConfig:
                 experimental_configs={123: "value1"},
             )
 
+    @pytest.mark.parametrize(
+        "key",
+        [
+            "num_router_replicas",
+            "num_ingress_replicas",
+            "num_http_router_replicas",
+        ],
+    )
+    def test_http_router_replica_experimental_configs_are_rejected(self, key):
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="not supported by the current HTTP router builder",
+        ):
+            LLMConfig(
+                model_loading_config=ModelLoadingConfig(
+                    model_id="llm_model_id",
+                ),
+                experimental_configs={key: 2},
+            )
+
     def test_log_engine_metrics_disable_log_stats_validation(self):
         """Test that log_engine_metrics=True prevents disable_log_stats=True."""
         with pytest.raises(
