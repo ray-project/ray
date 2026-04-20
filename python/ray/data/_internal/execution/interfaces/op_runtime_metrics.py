@@ -533,6 +533,26 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
         description="Number of pending actors.",
         metrics_group=MetricsGroup.ACTORS,
     )
+    num_active_actors: int = metric_field(
+        default=0,
+        description="Number of actors with at least one active task.",
+        metrics_group=MetricsGroup.ACTORS,
+    )
+    num_idle_actors: int = metric_field(
+        default=0,
+        description="Number of idle actors (no active tasks).",
+        metrics_group=MetricsGroup.ACTORS,
+    )
+    pool_utilization: float = metric_field(
+        default=0.0,
+        description="Actor pool utilization ratio (tasks_in_flight / max_capacity).",
+        metrics_group=MetricsGroup.ACTORS,
+    )
+    num_tasks_in_flight: int = metric_field(
+        default=0,
+        description="Number of tasks currently being processed by actors.",
+        metrics_group=MetricsGroup.ACTORS,
+    )
 
     # === Object store memory metrics ===
     obj_store_mem_internal_inqueue_blocks: int = metric_field(
