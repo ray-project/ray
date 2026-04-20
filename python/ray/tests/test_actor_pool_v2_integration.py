@@ -640,7 +640,7 @@ def test_backpressure_inflight_and_backlog_accounting(
     pool = ActorPool(
         BackpressureWorker,
         size=pool_size,
-        actor_options={"num_cpus": 1},
+        actor_options={"num_cpus": 1, "max_concurrency": max_tasks_in_flight},
         max_tasks_in_flight_per_actor=max_tasks_in_flight,
     )
     wait_for_condition(lambda: len(pool.actors) == pool_size)
@@ -658,9 +658,20 @@ def test_backpressure_inflight_and_backlog_accounting(
             timeout=20,
         )
 
-        # Release tasks one at a time and verify counts decrease.
+        # Release tasks one at a time.
+        released: set = set()
         for i in range(total_tasks):
-            tid = task_ids[i]
+            # Find the earliest started task that hasn't been released yet.
+            def _next_running_tid(released=released):
+                events = ray.get(bookkeeper.snapshot.remote())["events"]
+                for kind, tid, _ in events:
+                    if kind == "started" and tid not in released:
+                        return tid
+                return None
+
+            wait_for_condition(lambda: _next_running_tid() is not None, timeout=10)
+            tid = _next_running_tid()
+            released.add(tid)
             ray.get(bookkeeper.open_gate.remote(f"release_{tid}"))
 
             completed = i + 1
