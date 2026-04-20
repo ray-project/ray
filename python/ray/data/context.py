@@ -77,6 +77,8 @@ DEFAULT_BATCH_TO_BLOCK_ARROW_FORMAT = env_bool(
 
 DEFAULT_READ_OP_MIN_NUM_BLOCKS = 200
 
+DEFAULT_PLANNING_FILE_LISTING_BUDGET = 1000
+
 DEFAULT_ACTOR_PREFETCHER_ENABLED = False
 
 DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
@@ -504,6 +506,10 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
+        planning_file_listing_budget: Upper bound on how many files the DataSourceV2
+            ``LazyFileIndex`` will list on the driver during planning. Once this
+            count is reached, remaining files are listed on workers at execution
+            time. Defaults to 1000.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.
@@ -726,6 +732,7 @@ class DataContext:
     decoding_size_estimation: bool = DEFAULT_DECODING_SIZE_ESTIMATION_ENABLED
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
+    planning_file_listing_budget: int = DEFAULT_PLANNING_FILE_LISTING_BUDGET
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     arrow_fixed_shape_tensor_format: "FixedShapeTensorFormat" = field(
         default_factory=_default_fixed_shape_tensor_format

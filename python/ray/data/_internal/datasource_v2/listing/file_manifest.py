@@ -58,6 +58,26 @@ class FileManifest:
         """
         return self._block
 
+    @classmethod
+    def concat(cls, manifests: List["FileManifest"]) -> "FileManifest":
+        """Return a new `FileManifest` whose rows are the concatenation of
+        ``manifests`` in order.
+
+        Row alignment of ``paths``/``file_sizes`` is preserved because each
+        input already satisfies it.
+        """
+        assert len(manifests) > 0, "concat requires at least one manifest"
+        if len(manifests) == 1:
+            return manifests[0]
+
+        merged = pa.concat_tables(
+            [
+                BlockAccessor.for_block(manifest._block).to_arrow()
+                for manifest in manifests
+            ]
+        )
+        return cls(merged)
+
     def shuffle(self, seed: Optional[int]) -> "FileManifest":
         """Return a new `FileManifest` with rows permuted.
 
@@ -86,8 +106,8 @@ class FileManifest:
 
         block = pa.table(
             {
-                PATH_COLUMN_NAME: paths,
-                FILE_SIZE_COLUMN_NAME: sizes,
+                PATH_COLUMN_NAME: pa.array(paths, type=pa.string()),
+                FILE_SIZE_COLUMN_NAME: pa.array(sizes, type=pa.int64()),
             }
         )
         return cls(block)
