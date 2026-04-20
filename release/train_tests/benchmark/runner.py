@@ -177,6 +177,12 @@ class TrainLoopRunner:
             if self._should_log_metrics():
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
 
+            if (
+                self.benchmark_config.max_train_batches > 0
+                and self._train_batch_idx >= self.benchmark_config.max_train_batches
+            ):
+                break
+
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
         self._global_rows_processed_this_epoch = 0
