@@ -660,7 +660,7 @@ class RunningReplicaInfo:
     multiplexed_model_ids: List[str] = field(default_factory=list)
     routing_stats: Dict[str, Any] = field(default_factory=dict)
     port: Optional[int] = None
-    direct_ingress_http_port: Optional[int] = None
+    backend_http_port: Optional[int] = None
 
     def __post_init__(self):
         # Set hash value when object is constructed.
@@ -679,7 +679,7 @@ class RunningReplicaInfo:
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                     str(self.routing_stats),
-                    str(self.direct_ingress_http_port),
+                    str(self.backend_http_port),
                 ]
             )
         )

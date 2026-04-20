@@ -112,9 +112,9 @@ def setup_fake_replica(ray_instance) -> RunningReplica:
     )
 
 
-def test_update_replica_info_refreshes_direct_ingress_endpoint(setup_fake_replica):
+def test_update_replica_info_refreshes_backend_http_endpoint(setup_fake_replica):
     replica = RunningReplica(setup_fake_replica)
-    assert replica.direct_ingress_endpoint is None
+    assert replica.backend_http_endpoint is None
 
     updated_info = RunningReplicaInfo(
         replica_id=setup_fake_replica.replica_id,
@@ -124,11 +124,11 @@ def test_update_replica_info_refreshes_direct_ingress_endpoint(setup_fake_replic
         actor_name=setup_fake_replica.actor_name,
         max_ongoing_requests=setup_fake_replica.max_ongoing_requests,
         is_cross_language=setup_fake_replica.is_cross_language,
-        direct_ingress_http_port=8001,
+        backend_http_port=8001,
     )
 
     replica.update_replica_info(updated_info)
-    assert replica.direct_ingress_endpoint == ("127.0.0.1", 8001)
+    assert replica.backend_http_endpoint == ("127.0.0.1", 8001)
 
 
 @pytest.mark.asyncio

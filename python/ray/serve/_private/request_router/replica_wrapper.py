@@ -260,9 +260,9 @@ class RunningReplica:
         return self._replica_info.is_cross_language
 
     @property
-    def direct_ingress_endpoint(self) -> Optional[Tuple[str, int]]:
-        """Return (host, port) of the replica's direct ingress HTTP server."""
-        port = self._replica_info.direct_ingress_http_port
+    def backend_http_endpoint(self) -> Optional[Tuple[str, int]]:
+        """Return (host, port) of the replica's backend HTTP server."""
+        port = self._replica_info.backend_http_port
         if port is not None:
             return (self._replica_info.node_ip, port)
         return None
