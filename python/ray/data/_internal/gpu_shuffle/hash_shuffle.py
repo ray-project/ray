@@ -645,7 +645,15 @@ class GPUShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         )
 
         n = len(self._rank_pool.actors)
-        return ActorPoolInfo(running=n, pending=0, restarting=0)
+        return ActorPoolInfo(
+            running=n,
+            pending=0,
+            restarting=0,
+            active=n,
+            idle=0,
+            pool_utilization=0,
+            tasks_in_flight=0,
+        )
 
     # ------------------------------------------------------------------
     # SubProgressBarMixin

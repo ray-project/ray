@@ -223,7 +223,7 @@ class SplitCoordinator:
         if self._current_executor:
             stats = self._current_executor.get_stats()
         else:
-            stats = self._base_dataset._plan.stats()
+            stats = self._base_dataset._raw_stats()
 
         # Set the tracked overhead time
         stats.streaming_split_coordinator_s.add(self._coordinator_overhead_s)
