@@ -235,11 +235,7 @@ class LLMConfig(BaseModelExtended):
         "- `stream_batching_interval_ms`: Ray Serve LLM batches streaming "
         "requests together. This config decides how long to wait for the "
         "batch before processing the requests. Defaults to "
-        f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
-        "- `num_http_router_replicas`: The number of replicas for the HTTP "
-        "router. Ray Serve will take the maximum across all "
-        "replicas. The default is 2 HTTP router replicas per "
-        "model replica.\n",
+        f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n",
     )
 
     log_engine_metrics: Optional[bool] = Field(
@@ -454,14 +450,19 @@ class LLMConfig(BaseModelExtended):
     @field_validator("experimental_configs")
     def validate_experimental_configs(cls, value: Dict[str, Any]) -> Dict[str, Any]:
         """Validates the experimental configs dictionary."""
-        # TODO(Kourosh): Remove this deprecation check after users have
-        # migrated.
-        for deprecated_key in ("num_router_replicas", "num_ingress_replicas"):
-            if deprecated_key in value:
+        # HTTP router replica count is currently fixed in the ingress-bypass
+        # builder. Reject the old and current key names so users don't think the
+        # setting is wired up when it is not.
+        for unsupported_key in (
+            "num_router_replicas",
+            "num_ingress_replicas",
+            "num_http_router_replicas",
+        ):
+            if unsupported_key in value:
                 raise ValueError(
-                    f"The '{deprecated_key}' key in experimental_configs has "
-                    "been renamed to 'num_http_router_replicas'. Please update "
-                    "your configuration to use 'num_http_router_replicas' instead."
+                    f"The '{unsupported_key}' key in experimental_configs is "
+                    "not supported by the current HTTP router builder. HTTP "
+                    "router replica count is currently fixed in code."
                 )
         return value
 
