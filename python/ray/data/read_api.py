@@ -462,11 +462,14 @@ def read_datasource(
 
     if not datasource.supports_distributed_reads:
         ray_remote_args["label_selector"] = {
-            "ray.io/node-id": ray.get_runtime_context().get_node_id()
+            ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
         }
         ray_remote_args.pop("scheduling_strategy", None)
 
-    elif "label_selector" not in ray_remote_args:
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and "label_selector" not in ray_remote_args
+    ):
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
     ray_remote_args = merge_resources_to_ray_remote_args(
@@ -3876,7 +3879,7 @@ def from_torch(
     if local_read:
         ray_remote_args = {
             "label_selector": {
-                "ray.io/node-id": ray.get_runtime_context().get_node_id()
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
             },
             # The user might have initialized Ray to have num_cpus = 0 for the head
             # node. For a local read we expect the read task to be executed on the

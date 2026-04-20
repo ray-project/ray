@@ -268,7 +268,9 @@ class DataParallelTrainer:
         # Attach the controller to the node running the driver script.
         controller_actor_cls = ray.remote(
             num_cpus=0,
-            label_selector={"ray.io/node-id": ray.get_runtime_context().get_node_id()},
+            label_selector={
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+            },
             # TODO: Extract env variables that affect controller behavior
             # and pass them as explicit args
             runtime_env={"env_vars": env_vars},

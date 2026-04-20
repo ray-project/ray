@@ -371,8 +371,10 @@ def main(distributed):
 
         # Pin sender on local node and receiver on the other node for consistent
         # results.
-        sender_hint = {"label_selector": {"ray.io/node-id": local_node_id}}
-        receiver_hint = {"label_selector": {"ray.io/node-id": remote_node_id}}
+        sender_hint = {"label_selector": {ray._raylet.RAY_NODE_ID_KEY: local_node_id}}
+        receiver_hint = {
+            "label_selector": {ray._raylet.RAY_NODE_ID_KEY: remote_node_id}
+        }
 
     if not distributed:
         results += timeit("exec_torch_cpu_cpu", _exec_torch_cpu_cpu)

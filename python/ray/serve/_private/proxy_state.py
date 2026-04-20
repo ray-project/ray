@@ -175,7 +175,7 @@ class ActorProxyWrapper(ProxyWrapper):
             lifetime="detached",
             max_concurrency=ASYNC_CONCURRENCY,
             max_restarts=0,
-            label_selector={"ray.io/node-id": node_id},
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id},
             enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
         ).remote(
             http_options,

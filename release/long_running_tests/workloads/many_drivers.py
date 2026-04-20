@@ -40,8 +40,8 @@ class Actor(object):
 for _ in range(5):
     for node in nodes:
         assert ray.get(
-            f.options(label_selector={"ray.io/node-id": node}).remote()) == 1
-        actor = Actor.options(label_selector={"ray.io/node-id": node}).remote()
+            f.options(label_selector={{ray._raylet.RAY_NODE_ID_KEY: node}}).remote()) == 1
+        actor = Actor.options(label_selector={{ray._raylet.RAY_NODE_ID_KEY: node}}).remote()
         assert ray.get(actor.method.remote()) == 1
 
 print("success")
@@ -56,7 +56,7 @@ def run_driver():
 
 iteration = 0
 running_ids = [
-    run_driver.options(label_selector={"ray.io/node-id": node}).remote()
+    run_driver.options(label_selector={ray._raylet.RAY_NODE_ID_KEY: node}).remote()
     for node in nodes
 ]
 start_time = time.time()
@@ -86,7 +86,7 @@ while True:
 
     running_ids.append(
         run_driver.options(
-            label_selector={"ray.io/node-id": nodes[iteration % len(nodes)]}
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: nodes[iteration % len(nodes)]}
         ).remote()
     )
 

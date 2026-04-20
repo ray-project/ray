@@ -348,7 +348,7 @@ class ParquetDatasource(Datasource):
         local_scheduling = None
         if not supports_distributed_reads:
             local_scheduling = {
-                "ray.io/node-id": ray.get_runtime_context().get_node_id()
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
             }
 
         # Need this property for lineage tracking. We should not directly assign paths
@@ -613,7 +613,7 @@ class ParquetDatasource(Datasource):
 
             if is_local:
                 local_scheduling = {
-                    "ray.io/node-id": ray.get_runtime_context().get_node_id()
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
                 }
 
             infos = filesystem.get_file_info(pq_paths)

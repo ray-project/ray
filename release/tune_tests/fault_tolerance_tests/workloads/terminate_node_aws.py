@@ -49,7 +49,7 @@ def terminate_current_instance():
 def terminate_node(node_id: str):
     killer_task = ray.remote(terminate_current_instance).options(
         num_cpus=0,
-        label_selector={"ray.io/node-id": node_id},
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: node_id},
     )
     ray.get(killer_task.remote())
 
@@ -136,7 +136,9 @@ def create_instance_killer(
     warmup_time_s: float = 0,
 ):
     killer_actor_cls = InstanceKillerActor.options(
-        label_selector={"ray.io/node-id": ray.get_runtime_context().get_node_id()},
+        label_selector={
+            ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+        },
     )
     actor = killer_actor_cls.remote(
         probability=probability,
