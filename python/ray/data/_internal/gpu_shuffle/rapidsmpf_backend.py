@@ -18,6 +18,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, Literal
 
+from packaging.version import parse as parse_version
+
 if TYPE_CHECKING:
     from collections.abc import Iterator
 
@@ -52,9 +54,8 @@ def lazy_load() -> type[Any]:
     This is necessary because the BulkRapidsMPFShuffler inherits from BaseShufflingActor.
     """
     import cudf
+    import rapidsmpf
     import rmm.mr
-    from rapidsmpf.buffer.buffer import MemoryType
-    from rapidsmpf.buffer.resource import BufferResource, LimitAvailableMemory
     from rapidsmpf.integrations.cudf.partition import (
         partition_and_pack,
         unpack_and_concat,
@@ -64,6 +65,16 @@ def lazy_load() -> type[Any]:
     from rapidsmpf.statistics import Statistics
     from rapidsmpf.utils.cudf import cudf_to_pylibcudf_table
     from rapidsmpf.utils.ray_utils import BaseShufflingActor
+
+    if parse_version(rapidsmpf.__version__) >= parse_version("26.2.0"):
+        from rapidsmpf.memory.buffer import MemoryType
+        from rapidsmpf.memory.buffer_resource import (
+            BufferResource,
+            LimitAvailableMemory,
+        )
+    else:
+        from rapidsmpf.buffer.buffer import MemoryType
+        from rapidsmpf.buffer.resource import BufferResource, LimitAvailableMemory
 
     # Exempt this class from coverage is it's indirectly tested by the ShuffleStage which coverage tools don't pick up.
     class BulkRapidsMPFShuffler(BaseShufflingActor):  # pragma: no cover
@@ -231,9 +242,12 @@ def lazy_load() -> type[Any]:
             """
             Extract shuffled partitions as they become ready.
 
+            Partitions are yielded in completion order (via ``wait_any()``),
+            not partition order. Callers are responsible for reordering.
+
             Returns
             -------
-                An iterator over the shuffled partitions.
+                An iterator over (partition_id, partition) tuples.
             """
             from rmm.pylibrmm.stream import DEFAULT_STREAM
 

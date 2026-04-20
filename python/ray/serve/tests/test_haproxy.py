@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 import subprocess
 import sys
 import threading
@@ -783,16 +784,17 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return f"http-{app}"
 
     def haproxy_show_stat() -> str:
-        result = subprocess.run(
-            f'echo "show stat" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to query HAProxy stats: {result.stderr}")
-        return result.stdout
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(b"show stat\n")
+            chunks = []
+            while True:
+                data = s.recv(4096)
+                if not data:
+                    break
+                chunks.append(data)
+        return b"".join(chunks).decode("utf-8", errors="ignore")
 
     def list_primary_servers(backend_name: str) -> list:
         lines = haproxy_show_stat().strip().split("\n")
@@ -810,12 +812,10 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return servers
 
     def set_server_state(backend: str, server: str, state: str) -> None:
-        subprocess.run(
-            f'echo "set server {backend}/{server} state {state}" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            timeout=5,
-        )
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(f"set server {backend}/{server} state {state}\n".encode())
 
     def wait_health(expected: int, timeout: float = 15.0) -> None:
         wait_for_condition(
@@ -996,6 +996,13 @@ def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
             return "hello from scale-to-zero"
 
     serve.run(ScaleToZeroApp.bind(), name="s2z_app", route_prefix="/s2z")
+
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/routes").status_code == 200,
+    )
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/healthz").status_code == 200,
+    )
 
     # Wait for the app to be running and initially serve a request
     wait_for_condition(

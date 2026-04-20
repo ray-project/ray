@@ -2,7 +2,7 @@ group: data tests
 depends_on:
   - forge
   - oss-ci-base_ml-multipy
-  - ray-core-build
+  - ray-core-build(*)
   - ray-dashboard-build
 steps:
   # builds
@@ -23,14 +23,6 @@ steps:
       PYTHON: "{{matrix}}"
     tags: cibase
 
-  - name: databuild-multipy
-    label: "wanda: databuild-py{{matrix}}"
-    wanda: ci/docker/data.build.wanda.yaml
-    matrix: ["3.10", "3.12"]
-    env:
-      PYTHON: "{{matrix}}"
-    tags: cibase
-
   - name: datanbuild-multipy
     wanda: ci/docker/datan.build.wanda.yaml
     env:
@@ -45,10 +37,10 @@ steps:
     tags: cibase
 
   - name: datatfxbslbuild-multipy
-    label: "wanda: datatfxbslbuild-py3.10"
+    label: "wanda: datatfxbslbuild-py3.11"
     wanda: ci/docker/datatfxbsl.build.wanda.yaml
     env:
-      PYTHON: "3.10"
+      PYTHON: "3.11"
     tags: cibase
 
   - name: datatfdsbuild-multipy
@@ -56,7 +48,6 @@ steps:
     wanda: ci/docker/datatfds.build.wanda.yaml
     env:
       PYTHON: "3.12"
-      REQUIREMENTS_FILE: "datatfds_py3.12.lock"
     tags: cibase
 
   - name: docgpubuild-py312
@@ -242,9 +233,9 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name databuild-py3.12 --python-version 3.12
+        --build-name datalbuild-py3.12 --python-version 3.12
         --only-tags dask
-    depends_on: databuild-multipy
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: TFRecords (tfx-bsl) tests"
     tags:
@@ -252,7 +243,7 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name datatfxbslbuild-py3.10 --python-version 3.10
+        --build-name datatfxbslbuild-py3.11 --python-version 3.11
         --only-tags tfxbsl
     depends_on: datatfxbslbuild-multipy
 
@@ -264,19 +255,19 @@ steps:
     commands:
       # doc tests
       - bazel run //ci/ray_ci:test_in_docker -- python/ray/... //doc/... data
-        --build-name databuild-py3.10
+        --build-name datalbuild-py3.10
         --python-version 3.10
         --except-tags gpu
         --only-tags doctest
         --parallelism-per-worker 2
       # doc examples
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
-        --build-name databuild-py3.10
+        --build-name datalbuild-py3.10
         --python-version 3.10
         --except-tags gpu,post_wheel_build,doctest,dask
         --parallelism-per-worker 2
         --skip-ray-installation
-    depends_on: databuild-multipy
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: dask doc tests"
     tags:
@@ -285,11 +276,11 @@ steps:
     instance_type: medium
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //doc/... data
-        --build-name databuild-py3.12
+        --build-name datalbuild-py3.12
         --python-version 3.12
         --only-tags dask
         --parallelism-per-worker 2
-    depends_on: databuild-multipy
+    depends_on: datalbuild-multipy
 
   - label: ":database: data: doc gpu tests"
     tags:
@@ -397,10 +388,10 @@ steps:
     commands:
       - $(python ci/env/setup_credentials.py)
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... data
-        --build-name databuild-py3.10
+        --build-name datalbuild-py3.10
         --python-version 3.10
         --only-tags needs_credentials
         --test-env=SNOWFLAKE_USER --test-env=SNOWFLAKE_ACCOUNT
         --test-env=SNOWFLAKE_DATABASE --test-env=SNOWFLAKE_SCHEMA
         --test-env=SNOWFLAKE_WAREHOUSE --test-env=SNOWFLAKE_PRIVATE_KEY
-    depends_on: databuild-multipy
+    depends_on: datalbuild-multipy

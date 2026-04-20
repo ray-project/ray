@@ -170,7 +170,7 @@ def callback(monkeypatch):
         lambda: expected_controller_log_path,
     )
 
-    callback = StateManagerCallback()
+    callback = StateManagerCallback(datasets={})
     callback.after_controller_start(train_run_context=create_dummy_run_context())
     return callback
 
@@ -300,7 +300,10 @@ def test_train_state_actor_abort_dead_controller_live_runs(monkeypatch):
 
     # Create TrainStateActor with interesting runs and run attempts.
     # NOTE: TrainStateActor will poll for real but its updates are idempotent.
-    actor = TrainStateActor(enable_state_actor_reconciliation=True)
+    actor = TrainStateActor(
+        enable_state_actor_reconciliation=True,
+        controllers_to_poll_per_iteration=5,
+    )
     finished_controller_run = create_mock_train_run(
         status=RunStatus.FINISHED,
         controller_actor_id="finished_controller_id",
@@ -784,7 +787,7 @@ def test_callback_log_file_paths(
     )
 
     # Create the callback
-    callback = StateManagerCallback()
+    callback = StateManagerCallback(datasets={})
 
     # Initialize the callback
     callback.after_controller_start(train_run_context=create_dummy_run_context())

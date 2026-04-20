@@ -120,6 +120,11 @@ class OpBufferQueue:
             q.clear()
 
     def _get_queue_for(self, output_split_idx: Optional[int]) -> ThreadSafeBundleQueue:
+        assert output_split_idx is not None or len(self._queues) == 1, (
+            "Setting `output_split_idx` to null is only allowed for queues "
+            f"with no output splitting (got {len(self._queues)} total queues)"
+        )
+
         target_output_split_idx = output_split_idx or 0
 
         assert target_output_split_idx < len(self._queues), (
@@ -275,6 +280,11 @@ class OpState:
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
+        # Update actor pool utilization metrics for monitoring scaling behavior
+        self.op.metrics.num_active_actors = actor_info.active
+        self.op.metrics.num_idle_actors = actor_info.idle
+        self.op.metrics.pool_utilization = actor_info.pool_utilization
+        self.op.metrics.num_tasks_in_flight = actor_info.tasks_in_flight
         for next_op in self.op.output_dependencies:
             next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
@@ -532,14 +542,19 @@ def update_operator_states(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.
-    # For each op, if all of its downstream operators have completed.
+    # For each op, if all of its downstream operators have completed,
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
 
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.has_completed() for dep in op.output_dependencies
         )
-        if dependents_completed:
+        # For terminal operators (no output dependencies, e.g. OutputSplitter),
+        # mark execution finished once the operator has fully completed so that
+        # internal queues are properly cleared via clear_internal_input_queue()
+        # and clear_internal_output_queue().
+        terminal_completed = len(op.output_dependencies) == 0 and op.has_completed()
+        if dependents_completed or terminal_completed:
             op.mark_execution_finished()
 
         # Drain external input queue if current operator is execution finished.

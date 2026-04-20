@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from ray import ObjectRef
 from ray.actor import ActorHandle
+from ray.data._internal.execution.interfaces.common import NodeIdStr
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.util.annotations import DeveloperAPI
@@ -73,11 +74,16 @@ class ActorPoolInfo:
     running: int
     pending: int
     restarting: int
+    active: int = 0
+    idle: int = 0
+    pool_utilization: float = 0.0
+    tasks_in_flight: int = 0
 
     def __str__(self):
         return (
             f"running={self.running}, restarting={self.restarting}, "
-            f"pending={self.pending}"
+            f"pending={self.pending}, active={self.active}, idle={self.idle}, "
+            f"util={self.pool_utilization:.3f}, tasks_in_flight={self.tasks_in_flight}"
         )
 
 
@@ -91,6 +97,7 @@ class AutoscalingActorPool(ABC):
     """
 
     _LOGICAL_ACTOR_ID_LABEL_KEY = "__ray_data_logical_actor_id"
+    _DEFAULT_POOL_UTILIZATION = 0
 
     def __init__(self, config: AutoscalingActorConfig):
         self._config = config
@@ -188,7 +195,7 @@ class AutoscalingActorPool(ABC):
         ...
 
     @abstractmethod
-    def get_actor_location(self, actor: ActorHandle) -> str:
+    def get_actor_location(self, actor: ActorHandle) -> NodeIdStr:
         """Get the node_id of the actor"""
         ...
 
@@ -209,10 +216,19 @@ class AutoscalingActorPool(ABC):
 
     def get_actor_info(self) -> ActorPoolInfo:
         """Returns current snapshot of actors' being used in the pool"""
+        pool_util = self.get_pool_util()
+        # Handle infinite utilization case (no actors)
+        if pool_util == float("inf"):
+            pool_util = self._DEFAULT_POOL_UTILIZATION
+
         return ActorPoolInfo(
             running=self.num_alive_actors(),
             pending=self.num_pending_actors(),
             restarting=self.num_restarting_actors(),
+            active=self.num_active_actors(),
+            idle=self.num_idle_actors(),
+            pool_utilization=pool_util,
+            tasks_in_flight=self.num_tasks_in_flight(),
         )
 
     def num_alive_actors(self) -> int:
