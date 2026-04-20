@@ -100,12 +100,14 @@ class FileReader(Reader[FileManifest]):
 
             batch_size = self._resolve_batch_size(dataset)
 
-            scanner = dataset.scanner(
+            scanner_kwargs = dict(
                 columns=self._columns,
                 filter=self._predicate,
                 batch_size=batch_size,
                 batch_readahead=1,
             )
+            scanner_kwargs.update(self._arrow_scanner_kwargs())
+            scanner = dataset.scanner(**scanner_kwargs)
 
             ctx = DataContext.get_current()
             rows_read = 0
@@ -145,6 +147,13 @@ class FileReader(Reader[FileManifest]):
         batch size estimates from actual data).
         """
         pass
+
+    def _arrow_scanner_kwargs(self) -> dict:
+        """Additional keyword arguments passed to ``pds.Dataset.scanner()``.
+
+        Subclasses override this to inject format-specific options.
+        """
+        return {}
 
     @staticmethod
     def _read_batches(
