@@ -33,17 +33,8 @@ SchedulingResult SortSchedulingResult(const SchedulingResult &result,
 bool BundleSchedulingPolicy::IsRequestFeasible(
     const std::vector<const ResourceRequest *> &resource_request_list,
     const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const {
-  for (const auto &request : resource_request_list) {
-    bool bundle_feasible = std::any_of(
-        candidate_nodes.begin(), candidate_nodes.end(), [&](const auto &entry) {
-          // Validates both resource and label constraints are feasible.
-          return entry.second->GetLocalView().IsFeasible(*request);
-        });
-    if (!bundle_feasible) {
-      return false;
-    }
-  }
-  return true;
+  return ClusterResourceManager::IsRequestFeasible(resource_request_list,
+                                                   candidate_nodes);
 }
 
 std::pair<std::vector<int>, std::vector<const ResourceRequest *>>
@@ -157,7 +148,7 @@ SchedulingResult BundlePackSchedulingPolicy::Schedule(
   const auto &sorted_index = sorted_result.first;
   const auto &sorted_resource_request_list = sorted_result.second;
 
-  if (!IsRequestFeasible(sorted_resource_request_list, candidate_nodes)) {
+  if (!IsRequestFeasible(resource_request_list, candidate_nodes)) {
     RAY_LOG(DEBUG) << "Request requires labels or resources not present in the cluster.";
     return SchedulingResult::Infeasible();
   }
@@ -238,7 +229,7 @@ SchedulingResult BundleSpreadSchedulingPolicy::Schedule(
   const auto &sorted_index = sorted_result.first;
   const auto &sorted_resource_request_list = sorted_result.second;
 
-  if (!IsRequestFeasible(sorted_resource_request_list, candidate_nodes)) {
+  if (!IsRequestFeasible(resource_request_list, candidate_nodes)) {
     RAY_LOG(DEBUG) << "Request requires labels or resources not present in the cluster.";
     return SchedulingResult::Infeasible();
   }
@@ -409,7 +400,7 @@ SchedulingResult BundleStrictSpreadSchedulingPolicy::Schedule(
   const auto &sorted_index = sorted_result.first;
   const auto &sorted_resource_request_list = sorted_result.second;
 
-  if (!IsRequestFeasible(sorted_resource_request_list, candidate_nodes)) {
+  if (!IsRequestFeasible(resource_request_list, candidate_nodes)) {
     RAY_LOG(DEBUG) << "Request requires labels or resources not present in the cluster.";
     return SchedulingResult::Infeasible();
   }

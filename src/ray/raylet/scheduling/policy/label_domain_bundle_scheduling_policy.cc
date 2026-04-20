@@ -14,42 +14,16 @@
 
 #include "ray/raylet/scheduling/policy/label_domain_bundle_scheduling_policy.h"
 
+#include "ray/raylet/scheduling/cluster_resource_manager.h"
+
 namespace ray {
 namespace raylet_scheduling_policy {
 
-// TODO(#61778): Move this to the cluster resource manager.
 bool LabelDomainSchedulingPolicyInterface::IsRequestFeasible(
     const std::vector<const ResourceRequest *> &resource_request_list,
     const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const {
-  // Check that each bundle is individually feasible on at least one node.
-  for (const ResourceRequest *const &request : resource_request_list) {
-    bool bundle_feasible =
-        std::any_of(candidate_nodes.begin(),
-                    candidate_nodes.end(),
-                    [&](const std::pair<const scheduling::NodeID, const Node *> &entry) {
-                      return entry.second->GetLocalView().IsFeasible(*request);
-                    });
-    if (!bundle_feasible) {
-      return false;
-    }
-  }
-
-  // Check that aggregate demand does not exceed aggregate capacity.
-  ResourceSet aggregate_demand;
-  for (const ResourceRequest *request : resource_request_list) {
-    aggregate_demand += request->GetResourceSet();
-  }
-  for (auto resource_id : aggregate_demand.ResourceIds()) {
-    FixedPoint total_capacity;
-    for (const auto &[node_id, node] : candidate_nodes) {
-      total_capacity += node->GetLocalView().total.Get(resource_id);
-    }
-    if (total_capacity < aggregate_demand.Get(resource_id)) {
-      return false;
-    }
-  }
-
-  return true;
+  return ClusterResourceManager::IsRequestFeasible(resource_request_list,
+                                                   candidate_nodes);
 }
 
 SchedulingResult LabelDomainStrictPackSchedulingPolicy::Schedule(

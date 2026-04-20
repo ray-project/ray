@@ -692,6 +692,107 @@ TEST_F(SchedulingPolicyTest, StrictSpreadBundleLabelSelectorInfeasibleTest) {
   ASSERT_TRUE(result.status.IsInfeasible());
 }
 
+TEST_F(SchedulingPolicyTest, PackBundleAggregateInsufficientInfeasibleTest) {
+  // 4 bundles of {CPU: 4} on a cluster totaling {CPU: 8}: aggregate demand
+  // exceeds aggregate capacity, so PACK must return Infeasible rather than
+  // Failed (which would spin on the pending queue).
+  nodes.emplace(local_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 4}}, false);
+  std::vector<const ResourceRequest *> req_list = {&req, &req, &req, &req};
+
+  auto pack_op = SchedulingOptions::BundlePack();
+  auto result =
+      raylet_scheduling_policy::BundlePackSchedulingPolicy(*cluster_resource_manager)
+          .Schedule(req_list, pack_op, GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsInfeasible());
+}
+
+TEST_F(SchedulingPolicyTest, SpreadBundleAggregateInsufficientInfeasibleTest) {
+  // Same scenario as PackBundleAggregateInsufficientInfeasibleTest but for SPREAD.
+  nodes.emplace(local_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 4}}, false);
+  std::vector<const ResourceRequest *> req_list = {&req, &req, &req, &req};
+
+  auto spread_op = SchedulingOptions::BundleSpread();
+  auto result =
+      raylet_scheduling_policy::BundleSpreadSchedulingPolicy(*cluster_resource_manager)
+          .Schedule(req_list, spread_op, GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsInfeasible());
+}
+
+TEST_F(SchedulingPolicyTest, StrictSpreadBundleAggregateInsufficientInfeasibleTest) {
+  // Same scenario for STRICT_SPREAD. Four bundles on two nodes also trips the
+  // cardinality check, so use three bundles and three nodes where the
+  // aggregate demand still exceeds the aggregate capacity.
+  nodes.emplace(local_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  nodes.emplace(remote_node_2, CreateNodeResources(5, 5, 0, 0, 0, 0));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 5}}, false);
+  std::vector<const ResourceRequest *> req_list = {&req, &req, &req};
+
+  auto strict_spread_op = SchedulingOptions::BundleStrictSpread();
+  auto result =
+      raylet_scheduling_policy::BundleStrictSpreadSchedulingPolicy(
+          *cluster_resource_manager)
+          .Schedule(
+              req_list, strict_spread_op, GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsInfeasible());
+}
+
+TEST_F(SchedulingPolicyTest, PackBundleAggregateBoundaryFeasibleTest) {
+  // Aggregate demand exactly equals aggregate capacity: still be
+  // treated as feasible. If this test fails, please be wary whether we
+  // want to mark PG as infeasible, where it may be stuck in infeasible
+  // queue.
+  nodes.emplace(local_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 4}}, false);
+  std::vector<const ResourceRequest *> req_list = {&req, &req};
+
+  auto pack_op = SchedulingOptions::BundlePack();
+  auto result =
+      raylet_scheduling_policy::BundlePackSchedulingPolicy(*cluster_resource_manager)
+          .Schedule(req_list, pack_op, GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsSuccess());
+}
+
+TEST_F(SchedulingPolicyTest, StrictPackBundleAggregateUnchangedTest) {
+  // 2 bundles of {CPU: 3} across two {CPU: 4} nodes: aggregate demand (6)
+  // fits in aggregate capacity (8), but STRICT_PACK requires all on one node
+  // (max 4), so it remains Infeasible. Confirms STRICT_PACK still uses its
+  // stricter aggregate-fits-on-one-node check rather than the looser
+  // sum-dominance check now in IsRequestFeasible.
+  nodes.emplace(local_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  nodes.emplace(remote_node, CreateNodeResources(4, 4, 0, 0, 0, 0));
+  auto cluster_resource_manager = MockClusterResourceManager(nodes);
+
+  ResourceRequest req = ResourceMapToResourceRequest({{"CPU", 3}}, false);
+  std::vector<const ResourceRequest *> req_list = {&req, &req};
+
+  auto strict_pack_op = SchedulingOptions::BundleStrictPack(scheduling::NodeID::Nil());
+  auto result =
+      raylet_scheduling_policy::BundleStrictPackSchedulingPolicy(
+          *cluster_resource_manager)
+          .Schedule(
+              req_list, strict_pack_op, GetCandidateNodes(*cluster_resource_manager));
+
+  ASSERT_TRUE(result.status.IsInfeasible());
+}
+
 TEST_F(SchedulingPolicyTest, GpuDomainSchedulingFeasibleTest) {
   // We have two racks, rack-1 has 18 nodes, rack-2 has 2 nodes
   // Each node has 4 GPUs and 2 CPUs.

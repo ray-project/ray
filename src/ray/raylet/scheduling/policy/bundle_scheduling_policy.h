@@ -42,14 +42,22 @@ class BundleSchedulingPolicy : public IBundleSchedulingPolicy {
   std::pair<std::vector<int>, std::vector<const ResourceRequest *>> SortRequiredResources(
       const std::vector<const ResourceRequest *> &resource_request_list);
 
-  /// Checks if every bundle is individually feasible on at least one node in the cluster.
+  /// Checks whether a set of bundles is structurally feasible on the given
+  /// candidate nodes. Two necessary conditions are tested:
+  ///  1. Each bundle is individually feasible on at least one candidate node
+  ///     (resource and label constraints).
+  ///  2. The aggregate resource demand across all bundles does not exceed the
+  ///     aggregate total resources of the candidate nodes, per resource.
+  ///
+  /// Returning true does not guarantee that a placement exists under any
+  /// specific strategy (e.g. bin-packing or distinctness constraints are not
+  /// checked here); returning false proves no placement can exist.
   ///
   /// \param resource_request_list The list of resource and label constraints for each
   /// bundle.
   /// \param candidate_nodes The candidate nodes in the cluster available for
   /// scheduling.
-  /// \return True if all bundles are feasible on at least one node, false
-  /// otherwise.
+  /// \return True if both feasibility conditions are met, false otherwise.
   bool IsRequestFeasible(
       const std::vector<const ResourceRequest *> &resource_request_list,
       const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes) const;

@@ -111,6 +111,25 @@ class ClusterResourceManager {
   bool HasFeasibleResources(scheduling::NodeID node_id,
                             const ResourceRequest &resource_request) const;
 
+  /// Checks whether a set of placement group bundles is structurally feasible
+  /// on the given candidate nodes. Applies two necessary conditions:
+  ///  1. Each bundle is individually feasible on at least one candidate node
+  ///     (resource and label constraints).
+  ///  2. Aggregate bundle demand does not exceed aggregate candidate capacity,
+  ///     per resource.
+  ///
+  /// Returning true does not prove a placement exists under any specific
+  /// strategy (distinctness, bin-packing, etc. are not considered here);
+  /// returning false proves no placement can exist on this candidate set.
+  ///
+  /// Static because it only reads the passed-in candidate map — no instance
+  /// state is needed, which lets callers that don't hold a
+  /// ClusterResourceManager reference (e.g. LabelDomainSchedulingPolicyInterface)
+  /// share the same implementation.
+  static bool IsRequestFeasible(
+      const std::vector<const ResourceRequest *> &resource_request_list,
+      const absl::flat_hash_map<scheduling::NodeID, const Node *> &candidate_nodes);
+
   /// Add available resource to a given node.
   /// Return false if such node doesn't exist.
   bool AddNodeAvailableResources(scheduling::NodeID node_id,
