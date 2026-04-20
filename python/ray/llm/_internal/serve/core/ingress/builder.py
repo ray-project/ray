@@ -151,7 +151,6 @@ def build_openai_app(builder_config: dict) -> Application:
         )
         http_router_app = serve.deployment(
             LLMRouter,
-            http_router=True,
             num_replicas=num_http_router_replicas,
             max_ongoing_requests=1000,
         ).bind(llm_deployments=llm_deployments)
