@@ -140,8 +140,6 @@ class FileReader(Reader[FileManifest]):
                         pa.nulls(table.num_rows),
                     )
 
-                table = self._transform_batch(table)
-
                 self._on_batch_read(table)
                 rows_read += len(table)
                 yield table
@@ -167,14 +165,6 @@ class FileReader(Reader[FileManifest]):
         Subclasses override this to inject format-specific options.
         """
         return {}
-
-    def _transform_batch(self, table: pa.Table) -> pa.Table:
-        """Hook for per-batch transformations applied before yielding.
-
-        Subclasses can override this to apply format-specific transforms
-        (e.g., a user-supplied block UDF).
-        """
-        return table
 
     @staticmethod
     def _read_batches(
