@@ -221,16 +221,15 @@ class ParquetFileReader(FileReader):
         # pre_buffer=True (pyarrow default) holds a whole fragment's worth of
         # decoded column chunks resident before yielding batches, so
         # pa.total_allocated_bytes() climbs monotonically across batches and
-        # peaks near full fragment size. Disabling pre_buffer with the
-        # buffered/lazy cache path caps peak memory near one row group; the
-        # small (batch_readahead=2, fragment_readahead=1) pipeline restores
-        # throughput to match or beat the default without reintroducing the
-        # accumulation. See apache/arrow#39808.
+        # peaks near full fragment size. Disabling pre_buffer with
+        # use_buffered_stream caps peak near a small multiple of one row group
+        # while keeping throughput equal to the default. batch_readahead=1
+        # (inherited from FileReader base kwargs) plus fragment_readahead=1
+        # is enough to keep decode pipelined. See apache/arrow#39808.
         return {
             "fragment_scan_options": pds.ParquetFragmentScanOptions(
                 pre_buffer=False,
                 use_buffered_stream=True,
             ),
-            "batch_readahead": 2,
             "fragment_readahead": 1,
         }
