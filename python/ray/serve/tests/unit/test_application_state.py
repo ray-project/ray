@@ -2975,6 +2975,24 @@ def partial_app_level_policy(contexts):
     return decisions, {}
 
 
+def partial_decisions_app_level_policy(contexts):
+    """
+    The decison for deployment "d1" is skipped but state
+    for each deployment is always provided
+    """
+    decisions = {}
+    new_state = {}
+    for deployment_id, ctx in contexts.items():
+        prev_counter = 0
+        if ctx.policy_state:
+            prev_counter = ctx.policy_state.get("counter", 0)
+        if deployment_id.name != "d1":
+            decisions[deployment_id] = 3
+        # Pass the state regardless
+        new_state[deployment_id] = {"counter": prev_counter + 1}
+    return decisions, new_state
+
+
 class TestApplicationLevelAutoscaling:
     """Test application-level autoscaling policy registration, execution, and lifecycle."""
 
@@ -3736,6 +3754,73 @@ class TestApplicationLevelAutoscaling:
         invalid_value_state = {d1_id: "not a dict"}
         with pytest.raises(AssertionError, match="must be a dictionary"):
             app_autoscaling_state._validate_policy_state(invalid_value_state)
+
+    def test_policy_state_persitence_for_skipped_deployments(
+        self, mocked_application_state_manager
+    ):
+        """
+        Test that when an app-level policy returns decisions for only a subset of deployments, the skipped deployment's user state is
+        still maintained across multiple calls
+        """
+
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Create app config with two deployments and override to use the stateful policy.
+        deployments = [
+            DeploymentSchema(
+                name="d1",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                },
+            ),
+            DeploymentSchema(
+                name="d2",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                },
+            ),
+        ]
+        app_config = self._create_app_config(deployments=deployments)
+        app_config.autoscaling_policy = {
+            "policy_function": "ray.serve.tests.unit.test_application_state:partial_decisions_app_level_policy"
+        }
+
+        # Deploy app and register deployments with autoscaling manager.
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Create replicas so autoscaling runs.
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        d2_replicas = [
+            ReplicaID(unique_id=f"d2_replica_{i}", deployment_id=d2_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+        asm.update_running_replica_ids(d2_id, d2_replicas)
+
+        for i in range(3):
+            deployment_state_manager._scaling_decisions.clear()
+            app_state_manager.update()
+            # The scaling decisions will not contain d1
+            assert d1_id not in deployment_state_manager._scaling_decisions
+            assert deployment_state_manager._scaling_decisions[d2_id] == 3
+            # State still exists and increments correctly according to the policy for each deployment
+            app_autoscaling_state = asm._app_autoscaling_states["test_app"]
+            for _, state in app_autoscaling_state._policy_state.items():
+                assert state.get("counter") == i + 1
 
     def test_app_level_autoscaling_with_decorator_applies_delays(
         self, mocked_application_state_manager

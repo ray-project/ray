@@ -3,7 +3,16 @@ import dataclasses
 import inspect
 import json
 import typing
-from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from pydantic import BaseModel, field_validator
 from starlette.datastructures import State
@@ -211,9 +220,11 @@ class VLLMWakeupConfig(BaseModel):
 class VLLMPauseConfig(BaseModel):
     """vLLM-specific configuration for pause operation."""
 
-    wait_for_inflight_requests: bool = False
-    """When True, waits for in-flight requests to finish before pausing.
-    When False (default), aborts in-flight requests immediately.
+    mode: Literal["abort", "wait", "keep"] = "abort"
+    """Pause mode:
+    - "abort" (default): Abort all in-flight requests immediately.
+    - "wait": Wait for in-flight requests to complete before pausing.
+    - "keep": Freeze requests in queue; they resume on resume_generation().
     """
 
     clear_cache: bool = True
@@ -789,14 +800,13 @@ class VLLMEngine(LLMEngine):
 
         Args:
             **kwargs: Options parsed into VLLMPauseConfig.
-                - wait_for_inflight_requests (bool): Wait for in-flight requests
-                  to finish. Default False.
+                - mode (str): "abort" (default), "wait", or "keep".
                 - clear_cache (bool): Clear KV cache after draining. Default True.
         """
         assert self._engine_client is not None, "engine_client is not initialized"
         config = VLLMPauseConfig(**kwargs)
         await self._engine_client.pause_generation(
-            wait_for_inflight_requests=config.wait_for_inflight_requests,
+            mode=config.mode,
             clear_cache=config.clear_cache,
         )
 

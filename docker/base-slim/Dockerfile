@@ -33,11 +33,11 @@ APT_PKGS=(
     less
 
     # For HAProxy
-    socat
     liblua5.3-0
 )
 
 apt-get update
+apt-get upgrade -y
 apt-get install -y --no-install-recommends "${APT_PKGS[@]}"
 rm -rf /var/lib/apt/lists/*
 
@@ -144,7 +144,10 @@ RUN <<EOF
 #!/bin/bash
 set -euo pipefail
 
+export DEBIAN_FRONTEND=noninteractive
+
 apt-get update -y
+apt-get upgrade -y
 apt-get install -y --no-install-recommends \
     build-essential \
     ca-certificates \
@@ -157,7 +160,7 @@ apt-get install -y --no-install-recommends \
 rm -rf /var/lib/apt/lists/*
 
 # Install HAProxy from source
-HAPROXY_VERSION="2.8.12"
+HAPROXY_VERSION="2.8.20"
 BUILD_DIR=$(mktemp -d)
 curl -sSfL -o "${BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
 tar -xzf "${BUILD_DIR}/haproxy.tar.gz" -C "${BUILD_DIR}" --strip-components=1
@@ -175,6 +178,7 @@ USER root
 
 # Copy HAProxy binary from builder stage
 COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
 
 # Install HAProxy runtime dependency and setup
 RUN <<EOF
