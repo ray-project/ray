@@ -2036,11 +2036,12 @@ class ReplicaStateContainer:
         assert isinstance(state, ReplicaState), f"Type: {type(state)}"
         actor_details = getattr(replica, "actor_details", None)
         old_state = actor_details.state if actor_details is not None else None
+        is_new_replica = replica.replica_id not in self._replica_id_index
         replica.update_state(state)
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
-        if self._on_replica_state_change and state != old_state:
-            self._on_replica_state_change(old_state, state)
+        if self._on_replica_state_change and (state != old_state or is_new_replica):
+            self._on_replica_state_change(replica.replica_id, old_state, state)
 
     def get(
         self, states: Optional[List[ReplicaState]] = None
@@ -2851,6 +2852,19 @@ class DeploymentState:
             {"deployment": self._id.name, "application": self._id.app_name}
         )
 
+        self.replica_state_gauge = metrics.Gauge(
+            "serve_replica_state",
+            description=(
+                "The current state of each deployment replica. "
+                "0=UNKNOWN, 1=STARTING, 2=UPDATING, 3=RECOVERING, "
+                "4=RUNNING, 5=STOPPING, 6=PENDING_MIGRATION."
+            ),
+            tag_keys=("deployment", "application", "replica"),
+        )
+        self.replica_state_gauge.set_default_tags(
+            {"deployment": self._id.name, "application": self._id.app_name}
+        )
+
         # Whether the request routing info have been updated since the last
         # time we checked.
         self._request_routing_info_updated = False
@@ -2882,7 +2896,7 @@ class DeploymentState:
     )
 
     def _on_replica_state_change(
-        self, old_state: ReplicaState, new_state: ReplicaState
+        self, replica_id: ReplicaID, old_state: ReplicaState, new_state: ReplicaState
     ) -> None:
         """Called by ReplicaStateContainer.add() when a replica transitions."""
         broadcast_set_changed = (old_state in self._BROADCAST_STATES) != (
@@ -2891,6 +2905,9 @@ class DeploymentState:
         if broadcast_set_changed:
             self._broadcasted_replicas_set_changed = True
         self._in_transition = True
+        self.replica_state_gauge.set(
+            new_state.to_numeric(), tags={"replica": replica_id.unique_id}
+        )
 
     def should_autoscale(self) -> bool:
         """
