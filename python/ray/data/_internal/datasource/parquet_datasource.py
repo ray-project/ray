@@ -693,13 +693,18 @@ class ParquetDatasource(Datasource):
         scanner_kwargs: Dict[str, Any] = self._scanner_kwargs.copy()
 
         # NOTE: We have to inject ``batch_size`` via kwargs, since Scanner doesn't
-        #       accept nulls
+        #       accept nulls. Use setdefault so a user-provided ``batch_size`` in
+        #       ``to_batch_kwargs`` (already in ``self._scanner_kwargs``) wins.
         if batch_size is not None:
-            scanner_kwargs["batch_size"] = batch_size
+            scanner_kwargs.setdefault("batch_size", batch_size)
 
         # Override default `batch_readahead` value to reduce amount of data prefetched
         # by Pyarrow's Parquet reader
-        if get_pyarrow_version() >= _MIN_PYARROW_VERSION_TO_BATCHES_READAHEAD:
+        pyarrow_version = get_pyarrow_version()
+        if (
+            pyarrow_version is not None
+            and pyarrow_version >= _MIN_PYARROW_VERSION_TO_BATCHES_READAHEAD
+        ):
             scanner_kwargs.setdefault("batch_readahead", self._DEFAULT_BATCH_READAHEAD)
             scanner_kwargs.setdefault(
                 "fragment_readahead", self._DEFAULT_FRAGMENT_READAHEAD
