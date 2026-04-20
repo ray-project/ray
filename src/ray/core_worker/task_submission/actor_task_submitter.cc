@@ -35,12 +35,7 @@ void MaybeNotifyPoolTaskSubmitted(const PoolTaskSubmittedCallback &callback,
   if (!callback || !task_spec.IsPoolTask()) {
     return;
   }
-  const auto &msg = task_spec.GetMessage();
-  TaskID pool_task_id = TaskID::Nil();
-  if (msg.has_actor_pool_task_id() && !msg.actor_pool_task_id().empty()) {
-    pool_task_id = TaskID::FromBinary(msg.actor_pool_task_id());
-  }
-  callback(task_spec.ActorId(), pool_task_id);
+  callback(task_spec.ActorId(), task_spec.TaskId());
 }
 
 // Helper to notify ActorPoolManager when a pool task completes.
@@ -48,24 +43,17 @@ void MaybeNotifyPoolTaskComplete(const PoolTaskCompletionCallback &callback,
                                  const TaskSpecification &task_spec,
                                  const Status &status,
                                  const rpc::RayErrorInfo *error_info) {
-  if (!callback) {
+  if (!callback || !task_spec.IsPoolTask()) {
     return;
   }
-
-  // Check if this task belongs to an actor pool
-  if (!task_spec.IsPoolTask()) {
-    return;
-  }
-
-  const auto &msg = task_spec.GetMessage();
-  auto pool_id = ActorPoolID::FromBinary(msg.actor_pool_id());
-  TaskID pool_task_id = TaskID::Nil();
-  if (msg.has_actor_pool_task_id() && !msg.actor_pool_task_id().empty()) {
-    pool_task_id = TaskID::FromBinary(msg.actor_pool_task_id());
-  }
-
-  callback(
-      pool_id, pool_task_id, task_spec.TaskId(), task_spec.ActorId(), status, error_info);
+  auto pool_id = ActorPoolID::FromBinary(task_spec.GetMessage().actor_pool_id());
+  // pool_task_id == task_spec.TaskId(); see MaybeNotifyPoolTaskSubmitted.
+  callback(pool_id,
+           task_spec.TaskId(),
+           task_spec.TaskId(),
+           task_spec.ActorId(),
+           status,
+           error_info);
 }
 
 }  // namespace

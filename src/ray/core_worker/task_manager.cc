@@ -445,8 +445,6 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
   }
 
   if (should_queue_generator_resubmit) {
-    RAY_LOG(INFO) << "TaskManagerDebug queue-generator-resubmit task_id=" << task_id
-                  << " status=SUBMITTED_TO_WORKER";
     // Needs to be called outside of the lock to avoid deadlock.
     return queue_generator_resubmit_(spec)
                ? std::nullopt
@@ -551,8 +549,6 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
   // Note: Don't need to call UpdateReferencesForResubmit because CompletePendingTask or
   // FailPendingTask are not called when this is. Therefore, RemoveFinishedTaskReferences
   // never happened for this task.
-  RAY_LOG(INFO) << "TaskManagerDebug mark-generator-failed-and-resubmit task_id="
-                << task_id << " next_attempt=" << spec.AttemptNumber() + 1;
   async_retry_task_callback_(spec, /*delay_ms*/ 0);
 }
 
@@ -634,6 +630,11 @@ size_t TaskManager::NumSubmissibleTasks() const {
 size_t TaskManager::NumPendingTasks() const {
   absl::MutexLock lock(&mu_);
   return num_pending_tasks_;
+}
+
+size_t TaskManager::NumObjectRefStreams() const {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  return object_ref_streams_.size();
 }
 
 StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
@@ -741,13 +742,6 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
          "created "
          "and not removed.";
   auto status = stream_it->second.TryReadNextItem(object_id_out);
-  RAY_LOG(INFO) << "TaskManagerDebug try-read-stream generator_id=" << generator_id
-                << " status=" << status.ToString()
-                << " eof_index=" << stream_it->second.EofIndex()
-                << " total_generated=" << stream_it->second.TotalNumObjectWritten()
-                << " total_consumed=" << stream_it->second.TotalNumObjectConsumed()
-                << " object_id="
-                << (status.ok() ? object_id_out->Hex() : std::string("N/A"));
 
   /// If you could read the next item, signal the executor to resume
   /// if necessary.
@@ -831,11 +825,6 @@ std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &gener
       << "PeekObjectRefStream API can be used only when the stream has been "
          "created and not removed.";
   const auto &result = stream_it->second.PeekNextItem();
-  RAY_LOG(INFO) << "TaskManagerDebug peek-stream generator_id=" << generator_id
-                << " object_id=" << result.first << " ready=" << result.second
-                << " eof_index=" << stream_it->second.EofIndex()
-                << " total_generated=" << stream_it->second.TotalNumObjectWritten()
-                << " total_consumed=" << stream_it->second.TotalNumObjectConsumed();
 
   // Temporarily own the ref since the corresponding reference is probably
   // not reported yet.
@@ -847,8 +836,6 @@ std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &gener
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto it = object_ref_streams_.find(generator_id);
-  RAY_LOG(INFO) << "TaskManagerDebug stream-exists generator_id=" << generator_id
-                << " exists=" << (it != object_ref_streams_.end());
   return it != object_ref_streams_.end();
 }
 
@@ -864,11 +851,6 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
   }
 
   stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
-  RAY_LOG(INFO) << "TaskManagerDebug mark-end-of-stream generator_id=" << generator_id
-                << " eof_index=" << end_of_stream_index
-                << " total_generated=" << stream_it->second.TotalNumObjectWritten()
-                << " total_consumed=" << stream_it->second.TotalNumObjectConsumed()
-                << " last_object_id=" << last_object_id;
   if (!last_object_id.IsNil()) {
     RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
                    << stream_it->second.EofIndex()
@@ -892,8 +874,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   int64_t item_index = request.item_index();
   int64_t attempt_number = request.attempt_number();
   // Every generated object has the same task id.
-  RAY_LOG(INFO) << "TaskManagerDebug report-generator-item generator_id=" << generator_id
-                << " item_index=" << item_index << " attempt_number=" << attempt_number;
   auto backpressure_threshold = -1;
 
   {
@@ -957,12 +937,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   // Handle backpressure if needed.
   auto total_generated = stream_it->second.TotalNumObjectWritten();
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-  RAY_LOG(INFO) << "TaskManagerDebug report-generator-item-state generator_id="
-                << generator_id << " item_index=" << item_index
-                << " total_generated=" << total_generated
-                << " total_consumed=" << total_consumed
-                << " backpressure_threshold=" << backpressure_threshold
-                << " num_objects_written=" << num_objects_written;
 
   if (stream_it->second.IsObjectConsumed(item_index)) {
     execution_signal_callback(Status::OK(), total_consumed);
@@ -1123,11 +1097,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             reply.streaming_generator_return_ids_size();
         if (num_streaming_generator_returns > 0) {
           spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
-          RAY_LOG(INFO) << "TaskManagerDebug complete-streaming-generator task_id="
-                        << spec.TaskId() << " generator_id="
-                        << ObjectID::FromBinary(reply.return_objects(0).object_id())
-                        << " num_returns=" << num_streaming_generator_returns
-                        << " first_execution=" << first_execution;
           RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
                          << " has " << spec.NumStreamingGeneratorReturns()
                          << " return objects.";

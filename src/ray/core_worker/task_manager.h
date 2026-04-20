@@ -495,6 +495,9 @@ class TaskManager : public TaskManagerInterface {
   /// Return the number of pending tasks.
   size_t NumPendingTasks() const;
 
+  /// Return the number of live object ref streams. TODO: remove this method.
+  size_t NumObjectRefStreams() const;
+
   int64_t TotalLineageFootprintBytes() const {
     absl::MutexLock lock(&mu_);
     return total_lineage_footprint_bytes_;

@@ -623,9 +623,6 @@ message TaskSpec {
   // The ID of the actor pool this task belongs to, if any.
   // This is used for cross-actor retry within a pool.
   optional bytes actor_pool_id = 46;
-  // The pool-scoped task ID for this pool task.
-  // Used to derive pool-scoped ObjectIDs and track tasks across retries.
-  optional bytes actor_pool_task_id = 47;
 }
 
 message TaskInfoEntry {

@@ -73,7 +73,7 @@ ActorPoolID ActorPoolManager::RegisterPool(const ActorPoolConfig &config,
 
   for (const auto &actor_id : initial_actors) {
     pool_info.actor_ids.push_back(actor_id);
-    pool_info.actor_states[actor_id] = ActorPoolActorState{};
+    pool_info.actor_states[actor_id] = std::make_unique<ActorPoolActorState>();
     actor_to_pool_[actor_id] = pool_id;
   }
 
@@ -120,14 +120,15 @@ void ActorPoolManager::AddActorToPool(const ActorPoolID &pool_id,
   auto state_it = pool_info.actor_states.find(actor_id);
   if (state_it != pool_info.actor_states.end()) {
     if (!location.IsNil()) {
-      state_it->second.location = location;
+      state_it->second->location = location;
     }
     return;
   }
 
   pool_info.actor_ids.push_back(actor_id);
-  pool_info.actor_states[actor_id] = ActorPoolActorState{
-      .num_tasks_in_flight = 0, .location = location, .is_alive = true};
+  auto state = std::make_unique<ActorPoolActorState>();
+  state->location = location;
+  pool_info.actor_states[actor_id] = std::move(state);
   actor_to_pool_[actor_id] = pool_id;
 
   RAY_LOG(DEBUG) << "Added actor " << actor_id << " to pool " << pool_id;
@@ -255,7 +256,7 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
 }
 
 std::vector<ActorID> ActorPoolManager::GetPoolActors(const ActorPoolID &pool_id) const {
-  absl::MutexLock lock(&mu_);
+  absl::ReaderMutexLock lock(&mu_);
 
   auto it = pools_.find(pool_id);
   if (it == pools_.end()) {
@@ -266,7 +267,7 @@ std::vector<ActorID> ActorPoolManager::GetPoolActors(const ActorPoolID &pool_id)
 }
 
 PoolStats ActorPoolManager::GetPoolStats(const ActorPoolID &pool_id) const {
-  absl::MutexLock lock(&mu_);
+  absl::ReaderMutexLock lock(&mu_);
 
   auto pool_it = pools_.find(pool_id);
   if (pool_it == pools_.end()) {
@@ -288,7 +289,7 @@ PoolStats ActorPoolManager::GetPoolStats(const ActorPoolID &pool_id) const {
 
   int32_t total_in_flight = 0;
   for (const auto &[actor_id, state] : pool_info.actor_states) {
-    total_in_flight += state.num_tasks_in_flight;
+    total_in_flight += state->num_tasks_in_flight.load(std::memory_order_relaxed);
   }
   stats.total_in_flight = total_in_flight;
 
@@ -296,12 +297,12 @@ PoolStats ActorPoolManager::GetPoolStats(const ActorPoolID &pool_id) const {
 }
 
 bool ActorPoolManager::HasPool(const ActorPoolID &pool_id) const {
-  absl::MutexLock lock(&mu_);
+  absl::ReaderMutexLock lock(&mu_);
   return pools_.find(pool_id) != pools_.end();
 }
 
 int64_t ActorPoolManager::GetOccupiedTaskSlots(const ActorPoolID &pool_id) const {
-  absl::MutexLock lock(&mu_);
+  absl::ReaderMutexLock lock(&mu_);
 
   auto pool_it = pools_.find(pool_id);
   if (pool_it == pools_.end()) {
@@ -311,7 +312,7 @@ int64_t ActorPoolManager::GetOccupiedTaskSlots(const ActorPoolID &pool_id) const
   const auto &pool_info = pool_it->second;
   int64_t total_in_flight = 0;
   for (const auto &[actor_id, state] : pool_info.actor_states) {
-    total_in_flight += state.num_tasks_in_flight;
+    total_in_flight += state->num_tasks_in_flight.load(std::memory_order_relaxed);
   }
 
   auto tq_it = task_queues_.find(pool_id);
@@ -336,7 +337,7 @@ int64_t ActorPoolManager::GetOccupiedTaskSlots(const ActorPoolID &pool_id) const
 }
 
 int32_t ActorPoolManager::GetNumActiveActors(const ActorPoolID &pool_id) const {
-  absl::MutexLock lock(&mu_);
+  absl::ReaderMutexLock lock(&mu_);
 
   auto pool_it = pools_.find(pool_id);
   if (pool_it == pools_.end()) {
@@ -345,7 +346,7 @@ int32_t ActorPoolManager::GetNumActiveActors(const ActorPoolID &pool_id) const {
 
   int32_t active = 0;
   for (const auto &[actor_id, state] : pool_it->second.actor_states) {
-    if (state.num_tasks_in_flight > 0) {
+    if (state->num_tasks_in_flight.load(std::memory_order_relaxed) > 0) {
       active++;
     }
   }
@@ -354,7 +355,7 @@ int32_t ActorPoolManager::GetNumActiveActors(const ActorPoolID &pool_id) const {
 
 int32_t ActorPoolManager::GetActorTasksInFlight(const ActorPoolID &pool_id,
                                                 const ActorID &actor_id) const {
-  absl::MutexLock lock(&mu_);
+  absl::ReaderMutexLock lock(&mu_);
 
   auto pool_it = pools_.find(pool_id);
   if (pool_it == pools_.end()) {
@@ -366,7 +367,7 @@ int32_t ActorPoolManager::GetActorTasksInFlight(const ActorPoolID &pool_id,
     return 0;
   }
 
-  return state_it->second.num_tasks_in_flight;
+  return state_it->second->num_tasks_in_flight.load(std::memory_order_relaxed);
 }
 
 ActorID ActorPoolManager::SelectActorForTask(const ActorPoolID &pool_id,
@@ -428,7 +429,7 @@ void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id,
     return;
   }
 
-  state_it->second.num_tasks_in_flight++;
+  state_it->second->num_tasks_in_flight.fetch_add(1, std::memory_order_relaxed);
 
   // Mark the pool task as pushed so it is no longer counted as a pending
   // submission in GetOccupiedTaskSlots.
@@ -460,13 +461,13 @@ void ActorPoolManager::OnActorAlive(const ActorID &actor_id, const NodeID &node_
     return;
   }
 
-  auto &actor_state = state_it->second;
-  actor_state.is_alive = true;
-  actor_state.consecutive_failures = 0;
+  auto &actor_state = *state_it->second;
+  actor_state.is_alive.store(true, std::memory_order_relaxed);
+  actor_state.consecutive_failures.store(0, std::memory_order_relaxed);
   // Tasks previously assigned to an older incarnation of this actor will
   // either fail and retry elsewhere or have already completed, so any stale
   // in-flight count for the previous incarnation is cleared here.
-  actor_state.num_tasks_in_flight = 0;
+  actor_state.num_tasks_in_flight.store(0, std::memory_order_relaxed);
   if (!node_id.IsNil()) {
     actor_state.location = node_id;
   }
@@ -493,8 +494,8 @@ void ActorPoolManager::OnActorDead(const ActorID &actor_id) {
     return;
   }
 
-  state_it->second.is_alive = false;
-  state_it->second.num_tasks_in_flight = 0;
+  state_it->second->is_alive.store(false, std::memory_order_relaxed);
+  state_it->second->num_tasks_in_flight.store(0, std::memory_order_relaxed);
 }
 
 ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
@@ -518,8 +519,8 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
       continue;
     }
 
-    const auto &state = state_it->second;
-    if (!state.is_alive) {
+    const auto &state = *state_it->second;
+    if (!state.is_alive.load(std::memory_order_relaxed)) {
       continue;
     }
     alive_actors.push_back(actor_id);
@@ -528,7 +529,7 @@ ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
     }
 
     const int32_t max_concurrency = pool_info.config.max_tasks_in_flight_per_actor;
-    if (state.num_tasks_in_flight < max_concurrency) {
+    if (state.num_tasks_in_flight.load(std::memory_order_relaxed) < max_concurrency) {
       candidates.push_back(actor_id);
     }
   }
@@ -578,8 +579,8 @@ std::pair<int64_t, int32_t> ActorPoolManager::RankActor(
     return {INT64_MAX, INT32_MAX};
   }
 
-  const auto &state = state_it->second;
-  int32_t load = state.num_tasks_in_flight;
+  const auto &state = *state_it->second;
+  int32_t load = state.num_tasks_in_flight.load(std::memory_order_relaxed);
 
   if (node_bytes.empty()) {
     return {0, load};
@@ -630,7 +631,11 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
 
   if (!submit_actor_task_fn_) {
     RAY_LOG(WARNING) << "SubmitToActor called without submit callback (minimal mode)";
-    pool_info.actor_states[actor_id].num_tasks_in_flight++;
+    auto &state_slot = pool_info.actor_states[actor_id];
+    if (!state_slot) {
+      state_slot = std::make_unique<ActorPoolActorState>();
+    }
+    state_slot->num_tasks_in_flight.fetch_add(1, std::memory_order_relaxed);
     TrackPoolTask(std::move(pool_task));
     return {};
   }
@@ -668,11 +673,14 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
 
   auto actor_state_it = pool_info.actor_states.find(failed_actor_id);
   if (actor_state_it != pool_info.actor_states.end()) {
-    auto &actor_state = actor_state_it->second;
-    if (actor_state.num_tasks_in_flight > 0) {
-      actor_state.num_tasks_in_flight--;
+    auto &actor_state = *actor_state_it->second;
+    // fetch_sub with clamp-at-zero: avoids underflow if two completion paths
+    // race on the same attempt (e.g. late death-info arrival).
+    auto prev = actor_state.num_tasks_in_flight.load(std::memory_order_relaxed);
+    while (prev > 0 && !actor_state.num_tasks_in_flight.compare_exchange_weak(
+                           prev, prev - 1, std::memory_order_relaxed)) {
     }
-    actor_state.consecutive_failures++;
+    actor_state.consecutive_failures.fetch_add(1, std::memory_order_relaxed);
 
     // Mark actor as not alive on system errors (actor death, node death).
     // The actor may come back via OnActorAlive when GCS notifies of a restart.
@@ -684,7 +692,7 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
         error_info.error_type() == rpc::ErrorType::ACTOR_UNAVAILABLE ||
         error_info.error_type() == rpc::ErrorType::WORKER_DIED ||
         error_info.error_type() == rpc::ErrorType::NODE_DIED) {
-      actor_state.is_alive = false;
+      actor_state.is_alive.store(false, std::memory_order_relaxed);
     }
   }
 
@@ -710,10 +718,14 @@ void ActorPoolManager::OnTaskSucceeded(const ActorPoolID &pool_id,
     // Actor was removed from pool; ignore late-arriving success callback.
     return;
   }
-  auto &actor_state = state_it->second;
-  if (actor_state.num_tasks_in_flight > 0) {
-    actor_state.num_tasks_in_flight--;
-    actor_state.consecutive_failures = 0;
+  auto &actor_state = *state_it->second;
+  // Clamp-at-zero decrement to guard against any bookkeeping races.
+  auto prev = actor_state.num_tasks_in_flight.load(std::memory_order_relaxed);
+  while (prev > 0 && !actor_state.num_tasks_in_flight.compare_exchange_weak(
+                         prev, prev - 1, std::memory_order_relaxed)) {
+  }
+  if (prev > 0) {
+    actor_state.consecutive_failures.store(0, std::memory_order_relaxed);
   }
 
   DrainTaskQueue(pool_id);
@@ -723,8 +735,8 @@ void ActorPoolManager::FailPoolTask(const TaskID &pool_task_id,
                                     const rpc::RayErrorInfo &error_info) {
   EraseTrackedPoolTask(pool_task_id);
 
-  RAY_LOG(INFO) << "Pool task " << pool_task_id
-                << " failed permanently. Error: " << error_info.error_message();
+  RAY_LOG(DEBUG) << "Pool task " << pool_task_id
+                 << " failed permanently. Error: " << error_info.error_message();
 
   // The actual task failure is surfaced by TaskManager via the reply callback.
   // We only clean up pool-level tracking state here.

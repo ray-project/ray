@@ -894,10 +894,6 @@ void CoreWorker::InternalHeartbeat() {
               arg_ids,
               /*exclude_actor_id=*/failed_actor_id);
           if (new_actor_id.IsNil()) {
-            RAY_LOG(INFO) << "Pool task retry waiting for actor: task_id="
-                          << spec.TaskId() << " pool_id=" << pool_id
-                          << " failed_actor_id=" << failed_actor_id
-                          << " arg_ids=" << arg_ids.size();
             // No healthy actors — re-enqueue with a short delay.
             absl::MutexLock lock(&mutex_);
             task_to_retry.execution_time_ms =
@@ -905,11 +901,6 @@ void CoreWorker::InternalHeartbeat() {
             to_resubmit_.push(task_to_retry);
             continue;
           }
-          RAY_LOG(INFO) << "Pool task retry selected actor: task_id=" << spec.TaskId()
-                        << " pool_id=" << pool_id
-                        << " failed_actor_id=" << failed_actor_id
-                        << " new_actor_id=" << new_actor_id
-                        << " arg_ids=" << arg_ids.size();
           // Ensure the target actor is subscribed for state updates
           // (actors to which tasks have not yet been submitted will not be subscribed)
           // so ConnectActor fires and the submitter learns its address.
@@ -2790,6 +2781,12 @@ ActorPoolID CoreWorker::RegisterActorPool(const ActorPoolConfig &config,
 void CoreWorker::UnregisterActorPool(const ActorPoolID &pool_id) {
   RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
   actor_pool_manager_->UnregisterPool(pool_id);
+  // log driver-side state sizes after each pool teardown so we can
+  // detect per-run accumulation (e.g. pool streaming-gen entries not released).
+  RAY_LOG(INFO) << "ActorPoolDriverState pool_id=" << pool_id
+                << " submissible_tasks=" << task_manager_->NumSubmissibleTasks()
+                << " object_ref_streams=" << task_manager_->NumObjectRefStreams()
+                << " owned_objects=" << reference_counter_->NumObjectsOwnedByUs();
 }
 
 void CoreWorker::AddActorToPool(const ActorPoolID &pool_id, const ActorID &actor_id) {
@@ -2915,7 +2912,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
   // and cross-actor retry routing.
   if (!pool_id.IsNil()) {
     task_spec.GetMutableMessage().set_actor_pool_id(pool_id.Binary());
-    task_spec.GetMutableMessage().set_actor_pool_task_id(pool_task_id.Binary());
   }
 
   RAY_LOG(DEBUG) << "Submitting pool actor task " << task_spec.DebugString();

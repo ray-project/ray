@@ -24,7 +24,6 @@ namespace core {
 
 std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
     const ObjectID &object_id) {
-  RAY_LOG(INFO) << "ObjectRecoveryDebug recover-object object_id=" << object_id;
   if (object_id.TaskId().IsForActorCreationTask()) {
     // The GCS manages all actor restarts, so we should never try to
     // reconstruct an actor here.
@@ -50,9 +49,6 @@ std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
 
   bool already_pending_recovery = true;
   bool requires_recovery = pinned_at.IsNil() && !spilled;
-  RAY_LOG(INFO) << "ObjectRecoveryDebug recover-object-state object_id=" << object_id
-                << " owned_by_us=" << owned_by_us << " pinned_at=" << pinned_at
-                << " spilled=" << spilled << " requires_recovery=" << requires_recovery;
   if (requires_recovery) {
     {
       absl::MutexLock lock(&objects_pending_recovery_mu_);
@@ -63,14 +59,10 @@ std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
   }
 
   if (!already_pending_recovery) {
-    RAY_LOG(INFO).WithField(object_id) << "ObjectRecoveryDebug start-recovery";
     in_memory_store_.GetAsync(
         object_id, [this, object_id](const std::shared_ptr<RayObject> &obj) {
-          {
-            absl::MutexLock lock(&objects_pending_recovery_mu_);
-            RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
-          }
-          RAY_LOG(INFO).WithField(object_id) << "ObjectRecoveryDebug recovery-complete";
+          absl::MutexLock lock(&objects_pending_recovery_mu_);
+          RAY_CHECK(objects_pending_recovery_.erase(object_id)) << object_id;
         });
     // Gets the node ids from reference_counter and then gets addresses from the local
     // gcs_client.
@@ -79,11 +71,7 @@ std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
         [this](const ObjectID &object_id_to_lookup, std::vector<rpc::Address> locations) {
           PinOrReconstructObject(object_id_to_lookup, std::move(locations));
         });
-  } else if (requires_recovery) {
-    RAY_LOG(INFO).WithField(object_id) << "ObjectRecoveryDebug recovery-already-pending";
-  } else {
-    RAY_LOG(INFO).WithField(object_id).WithField(pinned_at)
-        << "ObjectRecoveryDebug skip-recovery-existing-location";
+  } else if (!requires_recovery) {
     // If the object doesn't exist in the memory store
     // (core_worker.cc removes the object from memory store before calling this method),
     // we need to add it back to indicate that it's available.
@@ -97,8 +85,6 @@ std::optional<rpc::ErrorType> ObjectRecoveryManager::RecoverObject(
 
 void ObjectRecoveryManager::PinOrReconstructObject(const ObjectID &object_id,
                                                    std::vector<rpc::Address> locations) {
-  RAY_LOG(INFO).WithField(object_id)
-      << "ObjectRecoveryDebug pin-or-reconstruct num_locations=" << locations.size();
   // The object to recovery has secondary copies, pin one copy to promote it to primary
   // one.
   if (!locations.empty()) {
@@ -118,8 +104,6 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
   // If a copy still exists, pin the object by sending a
   // PinObjectIDs RPC.
   const auto node_id = NodeID::FromBinary(raylet_address.node_id());
-  RAY_LOG(INFO).WithField(object_id).WithField(node_id)
-      << "ObjectRecoveryDebug try-pin-existing-copy";
 
   raylet_client_pool_->GetOrConnectByAddress(raylet_address)
       ->PinObjectIDs(
@@ -129,15 +113,11 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
           [this, object_id, other_locations = std::move(other_locations), node_id](
               const Status &status, const rpc::PinObjectIDsReply &reply) mutable {
             if (status.ok() && reply.successes(0)) {
-              RAY_LOG(INFO).WithField(object_id).WithField(node_id)
-                  << "ObjectRecoveryDebug pin-existing-copy-success";
               in_memory_store_.Put(RayObject(rpc::ErrorType::OBJECT_IN_PLASMA),
                                    object_id,
                                    reference_counter_.HasReference(object_id));
               reference_counter_.UpdateObjectPinnedAtRaylet(object_id, node_id);
             } else {
-              RAY_LOG(INFO).WithField(object_id)
-                  << "ObjectRecoveryDebug pin-existing-copy-failed status=" << status;
               PinOrReconstructObject(object_id, std::move(other_locations));
             }
           });
@@ -156,7 +136,6 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
     return;
   }
 
-  RAY_LOG(INFO).WithField(object_id) << "ObjectRecoveryDebug reconstruct-object";
   // Notify the task manager that we are retrying the task that created this
   // object.
   const auto task_id = object_id.TaskId();
@@ -169,13 +148,6 @@ void ObjectRecoveryManager::ReconstructObject(const ObjectID &object_id) {
   // see https://github.com/ray-project/ray/issues/47606 for more details.
   reference_counter_.UpdateObjectPendingCreation(object_id, true);
   auto error_type_optional = task_manager_.ResubmitTask(task_id, &task_deps);
-  RAY_LOG(INFO).WithField(object_id)
-      << "ObjectRecoveryDebug reconstruct-resubmit-result task_id=" << task_id
-      << " success=" << !error_type_optional.has_value()
-      << " num_task_deps=" << task_deps.size()
-      << (error_type_optional.has_value()
-              ? std::string(" error_type=") + rpc::ErrorType_Name(*error_type_optional)
-              : std::string());
 
   if (!error_type_optional.has_value()) {
     // Try to recover the task's dependencies.

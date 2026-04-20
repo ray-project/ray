@@ -16,6 +16,7 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <atomic>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -84,16 +85,17 @@ struct ActorPoolConfig {
 /// State of an actor within a pool.
 struct ActorPoolActorState {
   /// Number of tasks currently in flight for this actor.
-  int32_t num_tasks_in_flight = 0;
+  std::atomic<int32_t> num_tasks_in_flight{0};
 
-  /// Location of the actor (for locality-aware scheduling).
+  /// Location of the actor (for locality-aware scheduling). Written only
+
   NodeID location;
 
   /// Whether this actor is alive and can accept work.
-  bool is_alive = true;
+  std::atomic<bool> is_alive{true};
 
   /// Number of consecutive failures for circuit breaking.
-  int32_t consecutive_failures = 0;
+  std::atomic<int32_t> consecutive_failures{0};
 };
 
 /// Information about an actor pool.
@@ -105,7 +107,7 @@ struct ActorPoolInfo {
   std::vector<ActorID> actor_ids;
 
   /// State for each actor in the pool.
-  absl::flat_hash_map<ActorID, ActorPoolActorState> actor_states;
+  absl::flat_hash_map<ActorID, std::unique_ptr<ActorPoolActorState>> actor_states;
 
   /// Total number of tasks submitted to this pool.
   int64_t total_tasks_submitted = 0;
