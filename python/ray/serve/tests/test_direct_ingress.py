@@ -428,79 +428,90 @@ def test_health_check(_skip_if_ff_not_enabled, serve_instance):
     http_port = RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
     grpc_port = RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
 
+    # Reuse persistent HTTP client and gRPC channel across retries to avoid
+    # ephemeral port exhaustion from rapid socket churn in wait_for_condition
+    # loops (each short-lived connection enters TIME_WAIT for 60s).
+    http_client = httpx.Client()
+    grpc_channel = grpc.insecure_channel(f"localhost:{grpc_port}")
+    grpc_stub = serve_pb2_grpc.RayServeAPIServiceStub(grpc_channel)
+
     def _do_grpc_hc() -> Tuple[grpc.StatusCode, str]:
-        channel = grpc.insecure_channel(f"localhost:{grpc_port}")
-        stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
         try:
-            response, call = stub.Healthz.with_call(serve_pb2.HealthzRequest())
+            response, call = grpc_stub.Healthz.with_call(serve_pb2.HealthzRequest())
             return call.code(), response.message
         except grpc.RpcError as e:
             return e.code(), ""
-        finally:
-            channel.close()
 
-    # Wait for replica constructor to start. The direct ingress server should not be
-    # listening on the port at all yet.
-    wait_for_condition(lambda: ray.get(initialize_signal.cur_num_waiters.remote()) == 1)
-    for _ in range(10):
-        with pytest.raises(httpx.ConnectError):
-            httpx.get(f"http://localhost:{http_port}/-/healthz")
+    try:
+        # Wait for replica constructor to start. The direct ingress server should not
+        # be listening on the port at all yet.
+        wait_for_condition(
+            lambda: ray.get(initialize_signal.cur_num_waiters.remote()) == 1
+        )
+        for _ in range(10):
+            with pytest.raises(httpx.ConnectError):
+                http_client.get(f"http://localhost:{http_port}/-/healthz")
 
-        code, _ = _do_grpc_hc()
-        assert code == grpc.StatusCode.UNAVAILABLE
+            code, _ = _do_grpc_hc()
+            assert code == grpc.StatusCode.UNAVAILABLE
 
-    def _verify_health_check(
-        *,
-        passing: bool,
-        message: str,
-    ) -> bool:
-        # Check HTTP health check.
-        expected_status = 200 if passing else 503
-        r = httpx.get(f"http://localhost:{http_port}/-/healthz")
-        assert r.status_code == expected_status
-        assert r.text == message
+        def _verify_health_check(
+            *,
+            passing: bool,
+            message: str,
+        ) -> bool:
+            # Check HTTP health check.
+            expected_status = 200 if passing else 503
+            r = http_client.get(f"http://localhost:{http_port}/-/healthz")
+            assert r.status_code == expected_status
+            assert r.text == message
 
-        # Check gRPC health check.
-        expected_code = grpc.StatusCode.OK if passing else grpc.StatusCode.UNAVAILABLE
-        code, response_message = _do_grpc_hc()
-        assert code == expected_code
-        # NOTE(edoakes): we can't access the response message if the gRPC call fails
-        # due to StatusCode.UNAVAILABLE.
-        if passing:
-            assert response_message == message
+            # Check gRPC health check.
+            expected_code = (
+                grpc.StatusCode.OK if passing else grpc.StatusCode.UNAVAILABLE
+            )
+            code, response_message = _do_grpc_hc()
+            assert code == expected_code
+            # NOTE(edoakes): we can't access the response message if the gRPC call
+            # fails due to StatusCode.UNAVAILABLE.
+            if passing:
+                assert response_message == message
 
-        return True
+            return True
 
-    # Signal the constructor to finish and verify that health checks start to pass.
-    ray.get(initialize_signal.send.remote())
-    wait_for_condition(
-        lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
-    )
+        # Signal the constructor to finish and verify that health checks start to pass.
+        ray.get(initialize_signal.send.remote())
+        wait_for_condition(
+            lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
+        )
 
-    # Signal the health check method to fail and verify that health checks fail.
-    ray.get(fail_hc_signal.send.remote())
-    wait_for_condition(
-        lambda: _verify_health_check(passing=False, message="UNHEALTHY"),
-    )
+        # Signal the health check method to fail and verify that health checks fail.
+        ray.get(fail_hc_signal.send.remote())
+        wait_for_condition(
+            lambda: _verify_health_check(passing=False, message="UNHEALTHY"),
+        )
 
-    # Signal the health check method to pass and verify that health checks pass.
-    ray.get(fail_hc_signal.send.remote(clear=True))
-    wait_for_condition(
-        lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
-    )
+        # Signal the health check method to pass and verify that health checks pass.
+        ray.get(fail_hc_signal.send.remote(clear=True))
+        wait_for_condition(
+            lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
+        )
 
-    # Initiate graceful shutdown and verify that health checks fail.
-    serve.delete("default", _blocking=False)
-    wait_for_condition(
-        lambda: ray.get(shutdown_signal.cur_num_waiters.remote()) == 1,
-    )
-    for _ in range(10):
-        assert _verify_health_check(passing=False, message="DRAINING")
+        # Initiate graceful shutdown and verify that health checks fail.
+        serve.delete("default", _blocking=False)
+        wait_for_condition(
+            lambda: ray.get(shutdown_signal.cur_num_waiters.remote()) == 1,
+        )
+        for _ in range(10):
+            assert _verify_health_check(passing=False, message="DRAINING")
 
-    ray.get(shutdown_signal.send.remote())
-    wait_for_condition(
-        lambda: len(serve.status().applications) == 0,
-    )
+        ray.get(shutdown_signal.send.remote())
+        wait_for_condition(
+            lambda: len(serve.status().applications) == 0,
+        )
+    finally:
+        http_client.close()
+        grpc_channel.close()
 
 
 def test_port_retry_logic(_skip_if_ff_not_enabled, serve_instance):
