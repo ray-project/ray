@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <cstdint>
 #include <memory>
 #include <string>
 #include <thread>
@@ -50,6 +51,12 @@ class PythonRayEvent : public RayEventInterface {
   /// \param nested_event_field_number The field number in RayEvent proto for the nested
   ///        event message (e.g., 19 for submission_job_definition_event). This is used
   ///        with protobuf reflection to set the correct field without type-specific code.
+  /// \param event_id Optional explicit event id. When empty, a random id is generated
+  ///        in Serialize() — matching the convention used by the other RayEventInterface
+  ///        subclasses. Callers provide a non-empty value to preserve an upstream id
+  ///        (e.g., the uid of a Kubernetes event).
+  /// \param timestamp_ns Optional explicit event timestamp in nanoseconds since the unix
+  ///        epoch. When 0, the timestamp is captured from absl::Now() at construction.
   PythonRayEvent(rpc::events::RayEvent::SourceType source_type,
                  rpc::events::RayEvent::EventType event_type,
                  rpc::events::RayEvent::Severity severity,
@@ -57,7 +64,9 @@ class PythonRayEvent : public RayEventInterface {
                  std::string message,
                  std::string session_name,
                  std::string serialized_event_data,
-                 int nested_event_field_number);
+                 int nested_event_field_number,
+                 std::string event_id = "",
+                 int64_t timestamp_ns = 0);
 
   std::string GetEntityId() const override;
   void Merge(RayEventInterface &&other) override;
@@ -74,6 +83,7 @@ class PythonRayEvent : public RayEventInterface {
   std::string session_name_;
   std::string serialized_event_data_;
   int nested_event_field_number_;
+  std::string event_id_;
   absl::Time event_timestamp_;
 };
 
@@ -89,6 +99,9 @@ class PythonRayEvent : public RayEventInterface {
 /// \param serialized_event_data The serialized protobuf event data.
 /// \param nested_event_field_number The field number in RayEvent proto for the nested
 ///        event message. Python callers use RayEventProto.<FIELD>_FIELD_NUMBER constants.
+/// \param event_id Optional explicit event id bytes. Empty means "generate a random id".
+/// \param timestamp_ns Optional explicit timestamp in nanoseconds since the unix epoch.
+///        Zero means "use construction-time absl::Now()".
 /// \return A unique_ptr to the created event.
 std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
     int source_type,
@@ -98,7 +111,9 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
     const std::string &message,
     const std::string &session_name,
     const std::string &serialized_event_data,
-    int nested_event_field_number);
+    int nested_event_field_number,
+    const std::string &event_id = "",
+    int64_t timestamp_ns = 0);
 
 /// Owns all infrastructure for the Python-side event recorder: io_context,
 /// background thread, gRPC client, metrics counter, and the recorder itself.
@@ -107,15 +122,13 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
 /// handle it. Both are safe to call multiple times.
 class PythonEventRecorder {
  public:
-  /// \param aggregator_address Address of the event aggregator server.
-  /// \param aggregator_port Port of the event aggregator server.
+  /// \param aggregator_port Port of the event aggregator server (bound on 127.0.0.1).
   /// \param node_ip The IP address of the current node.
   /// \param node_id_hex Hex-encoded node ID.
   /// \param max_buffer_size Maximum number of events to buffer before dropping.
   /// \param metric_source Label for the "Source" tag on dropped-events metrics
   ///        (e.g., "python", "gcs").
-  PythonEventRecorder(const std::string &aggregator_address,
-                      int aggregator_port,
+  PythonEventRecorder(int aggregator_port,
                       const std::string &node_ip,
                       const std::string &node_id_hex,
                       size_t max_buffer_size,

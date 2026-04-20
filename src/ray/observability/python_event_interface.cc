@@ -31,7 +31,9 @@ PythonRayEvent::PythonRayEvent(rpc::events::RayEvent::SourceType source_type,
                                std::string message,
                                std::string session_name,
                                std::string serialized_event_data,
-                               int nested_event_field_number)
+                               int nested_event_field_number,
+                               std::string event_id,
+                               int64_t timestamp_ns)
     : source_type_(source_type),
       event_type_(event_type),
       severity_(severity),
@@ -40,7 +42,9 @@ PythonRayEvent::PythonRayEvent(rpc::events::RayEvent::SourceType source_type,
       session_name_(std::move(session_name)),
       serialized_event_data_(std::move(serialized_event_data)),
       nested_event_field_number_(nested_event_field_number),
-      event_timestamp_(absl::Now()) {}
+      event_id_(std::move(event_id)),
+      event_timestamp_(timestamp_ns == 0 ? absl::Now()
+                                         : absl::FromUnixNanos(timestamp_ns)) {}
 
 std::string PythonRayEvent::GetEntityId() const { return entity_id_; }
 
@@ -54,8 +58,10 @@ void PythonRayEvent::Merge(RayEventInterface &&other) {
 rpc::events::RayEvent PythonRayEvent::Serialize() && {
   rpc::events::RayEvent event;
 
-  // Set common fields
-  event.set_event_id(UniqueID::FromRandom().Binary());
+  // Set common fields. Default to a random event_id to match the convention used by
+  // the other RayEventInterface subclasses (see ray_event.h); callers can override by
+  // passing an explicit event_id (e.g., to preserve a Kubernetes event uid).
+  event.set_event_id(event_id_.empty() ? UniqueID::FromRandom().Binary() : event_id_);
   event.set_source_type(source_type_);
   event.set_event_type(event_type_);
   event.set_severity(severity_);
@@ -96,7 +102,9 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
     const std::string &message,
     const std::string &session_name,
     const std::string &serialized_event_data,
-    int nested_event_field_number) {
+    int nested_event_field_number,
+    const std::string &event_id,
+    int64_t timestamp_ns) {
   return std::make_unique<PythonRayEvent>(
       static_cast<rpc::events::RayEvent::SourceType>(source_type),
       static_cast<rpc::events::RayEvent::EventType>(event_type),
@@ -105,11 +113,12 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
       message,
       session_name,
       serialized_event_data,
-      nested_event_field_number);
+      nested_event_field_number,
+      event_id,
+      timestamp_ns);
 }
 
-PythonEventRecorder::PythonEventRecorder(const std::string &aggregator_address,
-                                         int aggregator_port,
+PythonEventRecorder::PythonEventRecorder(int aggregator_port,
                                          const std::string &node_ip,
                                          const std::string &node_id_hex,
                                          size_t max_buffer_size,

@@ -128,6 +128,73 @@ TEST(PythonRayEventTest, TestSerializeInvalidFieldNumber) {
   EXPECT_FALSE(ray_event.has_submission_job_lifecycle_event());
 }
 
+TEST(PythonRayEventTest, TestExplicitEventIdIsPreserved) {
+  // When an explicit event_id is provided, Serialize() uses it verbatim. This is
+  // how upstream ids (e.g., a Kubernetes event uid) flow through unchanged.
+  rpc::events::SubmissionJobDefinitionEvent def_event;
+  std::string serialized = def_event.SerializeAsString();
+  const std::string explicit_event_id = "upstream-k8s-uid-bytes";
+
+  auto event = CreatePythonRayEvent(
+      static_cast<int>(rpc::events::RayEvent::GCS),
+      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+      static_cast<int>(rpc::events::RayEvent::INFO),
+      /*entity_id=*/"test-submission",
+      /*message=*/"",
+      /*session_name=*/"test-session",
+      serialized,
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber,
+      /*event_id=*/explicit_event_id,
+      /*timestamp_ns=*/0);
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  EXPECT_EQ(ray_event.event_id(), explicit_event_id);
+}
+
+TEST(PythonRayEventTest, TestDefaultEventIdIsRandomAndNotEntityId) {
+  // Default event_id must not collide with entity_id — that was the anomaly vs. the
+  // other RayEventInterface subclasses, which use UniqueID::FromRandom().Binary().
+  rpc::events::SubmissionJobDefinitionEvent def_event;
+  std::string serialized = def_event.SerializeAsString();
+  const std::string entity_id = "test-submission";
+
+  auto event = CreatePythonRayEvent(
+      static_cast<int>(rpc::events::RayEvent::GCS),
+      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+      static_cast<int>(rpc::events::RayEvent::INFO),
+      entity_id,
+      /*message=*/"",
+      /*session_name=*/"test-session",
+      serialized,
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber);
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  EXPECT_FALSE(ray_event.event_id().empty());
+  EXPECT_NE(ray_event.event_id(), entity_id);
+}
+
+TEST(PythonRayEventTest, TestExplicitTimestampIsPreserved) {
+  rpc::events::SubmissionJobDefinitionEvent def_event;
+  std::string serialized = def_event.SerializeAsString();
+  // Pick a fixed non-zero nanosecond value well away from absl::Now().
+  const int64_t explicit_ts_ns = 1'700'000'000'000'000'000LL;
+
+  auto event = CreatePythonRayEvent(
+      static_cast<int>(rpc::events::RayEvent::GCS),
+      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+      static_cast<int>(rpc::events::RayEvent::INFO),
+      /*entity_id=*/"test-submission",
+      /*message=*/"",
+      /*session_name=*/"test-session",
+      serialized,
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber,
+      /*event_id=*/"",
+      explicit_ts_ns);
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  ASSERT_TRUE(ray_event.has_timestamp());
+  const int64_t got_ns =
+      ray_event.timestamp().seconds() * 1'000'000'000LL + ray_event.timestamp().nanos();
+  EXPECT_EQ(got_ns, explicit_ts_ns);
+}
+
 TEST(PythonRayEventTest, TestSupportsMerge) {
   rpc::events::SubmissionJobDefinitionEvent def_event;
   std::string serialized = def_event.SerializeAsString();

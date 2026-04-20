@@ -10,6 +10,7 @@ from ray.includes.event_recorder cimport (
     CreatePythonRayEvent,
 )
 from ray.includes.common cimport move
+from libc.stdint cimport int64_t
 from libcpp.memory cimport unique_ptr
 from libcpp.vector cimport vector as c_vector
 from libcpp.string cimport string as c_string
@@ -35,6 +36,14 @@ cdef class RayEvent:
         serialized_data: Serialized protobuf bytes of the nested event message.
         nested_event_field_number: The field number in RayEvent proto for the
             nested event message. Use RayEventProto.<FIELD>_FIELD_NUMBER constants.
+        event_id: Optional explicit event id bytes. Pass empty bytes to let the
+            C++ layer generate a random id (matching the convention used by the
+            other RayEventInterface subclasses). A non-empty value is preserved
+            as-is — use this to reuse an id from an upstream source
+            (e.g., a Kubernetes event uid).
+        timestamp_ns: Optional explicit event timestamp in nanoseconds since the
+            unix epoch. Pass 0 to let the C++ layer capture the time at
+            construction via absl::Now().
     """
     cdef:
         int _source_type
@@ -45,6 +54,8 @@ cdef class RayEvent:
         str _session_name
         bytes _serialized_data
         int _nested_event_field_number
+        bytes _event_id
+        int64_t _timestamp_ns
 
     def __init__(
         self,
@@ -56,6 +67,8 @@ cdef class RayEvent:
         str session_name,
         bytes serialized_data,
         int nested_event_field_number,
+        bytes event_id = b"",
+        int64_t timestamp_ns = 0,
     ):
         self._source_type = source_type
         self._event_type = event_type
@@ -65,6 +78,8 @@ cdef class RayEvent:
         self._session_name = session_name
         self._serialized_data = serialized_data
         self._nested_event_field_number = nested_event_field_number
+        self._event_id = event_id
+        self._timestamp_ns = timestamp_ns
 
     cdef unique_ptr[CRayEventInterface] to_cpp_event(self):
         """Create the underlying C++ event. Ownership is transferred to caller."""
@@ -77,6 +92,8 @@ cdef class RayEvent:
             self._session_name.encode("utf-8"),
             self._serialized_data,
             self._nested_event_field_number,
+            self._event_id,
+            self._timestamp_ns,
         )
 
     @property
@@ -106,7 +123,6 @@ cdef class EventRecorder:
 
     @staticmethod
     def initialize(
-        str aggregator_address,
         int aggregator_port,
         str node_ip,
         str node_id_hex,
@@ -119,8 +135,7 @@ cdef class EventRecorder:
         thread and gRPC client. No-op if already initialized.
 
         Args:
-            aggregator_address: Address of the event aggregator server.
-            aggregator_port: Port of the event aggregator server.
+            aggregator_port: Port of the event aggregator server (bound on 127.0.0.1).
             node_ip: IP address of the current node.
             node_id_hex: Hex-encoded node ID.
             max_buffer_size: Maximum number of events to buffer.
@@ -136,7 +151,6 @@ cdef class EventRecorder:
             rec = EventRecorder()
             rec._recorder.reset(
                 new CPythonEventRecorder(
-                    aggregator_address.encode("utf-8"),
                     aggregator_port,
                     node_ip.encode("utf-8"),
                     node_id_hex.encode("utf-8"),
