@@ -129,7 +129,7 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
-from ray.serve._private.rolling_window_accumulator import (
+from ray.serve._private.rolling_window import (
     RollingWindowAccumulator,
     RollingWindowMax,
 )

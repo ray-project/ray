@@ -4,7 +4,7 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.serve._private.rolling_window_accumulator import (
+from ray.serve._private.rolling_window import (
     RollingWindowAccumulator,
     RollingWindowMax,
     _RollingWindowBase,
