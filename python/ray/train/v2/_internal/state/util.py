@@ -57,6 +57,11 @@ def is_actor_alive(actor_id: str, timeout: int) -> bool:
 def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
     exec_options = data_config._execution_options
 
+    # Assumption: capture execution_options in the form the user provided,
+    # before any runtime mutation. This relies on the defaultdict in data_config._execution_options
+    # not having been accessed since DataConfig.__init__ normalized it; any
+    # read flips the exported shape from a single flat dict to a per-dataset
+    # mapping.
     if exec_options:
         execution_options = {
             ds_name: execution_options_to_dict(options)
