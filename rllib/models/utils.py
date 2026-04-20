@@ -37,6 +37,7 @@ def get_activation_fn(
         _, nn = try_import_torch()
         # First try getting the correct activation function from nn directly.
         # Note that torch activation functions are not all lower case.
+        assert nn is not None, "`torch` not installed. Try `pip install torch`."
         fn = getattr(nn, name, None)
         if fn is not None:
             return fn
@@ -44,26 +45,31 @@ def get_activation_fn(
         # Case-insensitive lookup for common activation functions.
         # This allows users to specify e.g. "leakyrelu" or "gelu" without
         # worrying about PyTorch's PascalCase naming convention.  #61076.
-        _TORCH_ACTIVATIONS = {
-            "relu": nn.ReLU,
-            "leakyrelu": nn.LeakyReLU,
-            "leaky_relu": nn.LeakyReLU,
-            "prelu": nn.PReLU,
-            "elu": nn.ELU,
-            "selu": nn.SELU,
-            "gelu": nn.GELU,
-            "tanh": nn.Tanh,
-            "sigmoid": nn.Sigmoid,
-            "softmax": nn.Softmax,
-            "softplus": nn.Softplus,
-            "mish": nn.Mish,
-            "swish": nn.SiLU,
-            "silu": nn.SiLU,
-            "hardswish": nn.Hardswish,
-            "hardsigmoid": nn.Hardsigmoid,
-        }
-        if name_lower in _TORCH_ACTIVATIONS:
-            return _TORCH_ACTIVATIONS[name_lower]
+        # Cache the mapping on the function object so we don't rebuild it on
+        # every call while still avoiding module-level import side effects.
+        if not hasattr(get_activation_fn, "_TORCH_ACTIVATIONS"):
+            get_activation_fn._TORCH_ACTIVATIONS = {
+                "relu": nn.ReLU,
+                "leakyrelu": nn.LeakyReLU,
+                "leaky_relu": nn.LeakyReLU,
+                "prelu": nn.PReLU,
+                "elu": nn.ELU,
+                "selu": nn.SELU,
+                "gelu": nn.GELU,
+                "tanh": nn.Tanh,
+                "sigmoid": nn.Sigmoid,
+                "softmax": nn.Softmax,
+                "softplus": nn.Softplus,
+                "mish": nn.Mish,
+                "swish": nn.SiLU,
+                "silu": nn.SiLU,
+                "hardswish": nn.Hardswish,
+                "hard_swish": nn.Hardswish,
+                "hardsigmoid": nn.Hardsigmoid,
+                "hard_sigmoid": nn.Hardsigmoid,
+            }
+        if name_lower in get_activation_fn._TORCH_ACTIVATIONS:
+            return get_activation_fn._TORCH_ACTIVATIONS[name_lower]
     elif framework == "jax":
         if name_lower in ["linear", None]:
             return None
