@@ -1048,6 +1048,7 @@ class TestCreateMode:
     def test_write_create_raises_if_table_exists(self, clean_table):
         """Test create mode fails when the target table already exists."""
         from pyiceberg.exceptions import TableAlreadyExistsError
+
         from ray.data import SaveMode
 
         create_data = _create_typed_dataframe(
