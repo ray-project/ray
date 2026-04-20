@@ -447,25 +447,6 @@ class LLMConfig(BaseModelExtended):
 
         return lora_config
 
-    @field_validator("experimental_configs")
-    def validate_experimental_configs(cls, value: Dict[str, Any]) -> Dict[str, Any]:
-        """Validates the experimental configs dictionary."""
-        # HTTP router replica count is currently fixed in the ingress-bypass
-        # builder. Reject the old and current key names so users don't think the
-        # setting is wired up when it is not.
-        for unsupported_key in (
-            "num_router_replicas",
-            "num_ingress_replicas",
-            "num_http_router_replicas",
-        ):
-            if unsupported_key in value:
-                raise ValueError(
-                    f"The '{unsupported_key}' key in experimental_configs is "
-                    "not supported by the current HTTP router builder. HTTP "
-                    "router replica count is currently fixed in code."
-                )
-        return value
-
     @model_validator(mode="after")
     def _check_log_stats_with_metrics(self):
         """Validate that disable_log_stats isn't enabled when log_engine_metrics is enabled."""
