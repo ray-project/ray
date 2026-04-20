@@ -157,12 +157,9 @@ def test_node_failure_ignore(cluster):
     algo.stop()
 
 
-def test_node_failure_recreate_env_runners(cluster):
-    """restart=True: workers die, get auto-restarted by Ray (max_restarts>0),
-    and restore_env_runners() at start of train() syncs their state.
-    Test both APPO (async) and PPO (sync)."""
-
-    # --- APPO phase ---
+def test_node_failure_recreate_appo(cluster):
+    """restart=True with APPO (async): workers die, get auto-restarted by Ray,
+    and restore_env_runners() syncs their state."""
     config = (
         APPOConfig()
         .environment("CartPole-v1")
@@ -189,11 +186,10 @@ def test_node_failure_recreate_env_runners(cluster):
     _train(cluster, algo, config, iters=10, preempt_freq=3)
     algo.stop()
 
-    # Ensure the worker node is back before building the next algo.
-    if not get_other_nodes(cluster, exclude_head=True):
-        _add_worker_node(cluster)
 
-    # --- PPO phase ---
+def test_node_failure_recreate_ppo(cluster):
+    """restart=True with PPO (sync): workers die, get auto-restarted by Ray,
+    and restore_env_runners() syncs their state."""
     config = (
         PPOConfig()
         .environment("CartPole-v1")
