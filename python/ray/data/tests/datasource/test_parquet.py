@@ -2715,22 +2715,21 @@ class TestParquetFragmentBatchSizeCoercion:
             assert _coerce_pyarrow_fragment_batch_size(raw) == expected
 
     @pytest.mark.parametrize(
-        "batch_size,to_batches_kwargs,expected_batch_size_passed_to_to_batches",
+        "to_batches_kwargs,expected_batch_size_passed_to_to_batches",
         [
-            (10**12, None, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
-            (None, {"batch_size": 2**31}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
-            (10_000, None, 10_000),
-            (None, {"batch_size": np.int64(10_000)}, 10_000),
-            (0, None, ValueError),
-            (-3, None, ValueError),
-            (None, {"batch_size": 0}, ValueError),
-            (None, {"batch_size": -1}, ValueError),
+            ({"batch_size": 10**12}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            ({"batch_size": 2**31}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            ({"batch_size": 10_000}, 10_000),
+            ({"batch_size": np.int64(10_000)}, 10_000),
+            ({"batch_size": 0}, ValueError),
+            ({"batch_size": -3}, ValueError),
+            ({"batch_size": -1}, ValueError),
         ],
     )
     def test_read_batches_from_coerces_fragment_batch_size_to_c_int_range(
-        self, batch_size, to_batches_kwargs, expected_batch_size_passed_to_to_batches
+        self, to_batches_kwargs, expected_batch_size_passed_to_to_batches
     ):
-        """``batch_size`` passed to ``fragment.to_batches`` is coerced for PyArrow's C int."""
+        """``batch_size`` in ``to_batches_kwargs`` is coerced for PyArrow's C int."""
 
         captured: dict = {}
 
@@ -2756,7 +2755,6 @@ class TestParquetFragmentBatchSizeCoercion:
                     data_columns_rename_map=None,
                     partition_columns=None,
                     partitioning=Partitioning("hive"),
-                    batch_size=batch_size,
                     to_batches_kwargs=to_batches_kwargs,
                 )
             )
@@ -2907,6 +2905,85 @@ def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
         assert total_rows == num_rows
         # The fallback batch-size helper should never have been called.
         mock_safe.assert_not_called()
+
+
+@pytest.mark.skipif(
+    get_pyarrow_version() < parse_version("12.0.1"),
+    reason="scanner defaults gated on pyarrow >= 12.0.1",
+)
+def test_read_parquet_peak_memory_tracks_per_fragment_size(
+    ray_start_regular_shared, tmp_path
+):
+    """Regression guard: peak ``pa.total_allocated_bytes()`` during a parquet
+    read tracks per-fragment size, not aggregate dataset size.
+
+    ``ParquetDatasource`` iterates fragments sequentially and calls
+    ``fragment.to_batches(**scanner_kwargs)`` on each (see
+    ``read_fragments`` / ``_read_batches_from``). Peak memory across the
+    scan should therefore stay near one fragment's worth of decoded state
+    regardless of dataset size. A regression — for example switching to a
+    scanner that coalesces multiple fragments concurrently, or pyarrow
+    changing its default materialization strategy to span fragments —
+    would push peak up by a factor of fragment count or
+    ``fragment_readahead``.
+
+    Mirrors the production path exactly: ``ParquetDatasource`` construction,
+    ``_scanner_kwargs`` assembly, ``fragment.to_batches(**kwargs)`` per
+    fragment. In-process; ``pa.total_allocated_bytes()`` is per-process and
+    ``read_parquet``'s Ray task workers wouldn't be observable from the
+    driver.
+    """
+    import gc
+    import secrets
+
+    # 5 × ~2 MiB files, incompressible payload so on-disk ≈ uncompressed.
+    # Peak should stay near per-fragment size (~2 MiB); a multi-fragment
+    # regression (>= 2 fragments in flight) would exceed 3× per-fragment.
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    n_files = 5
+    n_per_file = 5_000
+    per_file_sizes = []
+    for i in range(n_files):
+        blobs = [secrets.token_bytes(400) for _ in range(n_per_file)]
+        table = pa.table(
+            {
+                "idx": pa.array(range(n_per_file), type=pa.int64()),
+                "blob": pa.array(blobs, type=pa.binary()),
+            }
+        )
+        path = data_dir / f"f{i:02d}.parquet"
+        pq.write_table(table, str(path), row_group_size=1000, compression="none")
+        per_file_sizes.append(os.path.getsize(str(path)))
+    per_fragment_size = max(per_file_sizes)
+
+    ds = ParquetDatasource(str(data_dir))
+    dataset = pds.dataset(str(data_dir), format="parquet")
+
+    gc.collect()
+    baseline = pa.total_allocated_bytes()
+    peak = baseline
+    n_batches = 0
+    for fragment in dataset.get_fragments():
+        for _batch in fragment.to_batches(**ds._scanner_kwargs):
+            alloc = pa.total_allocated_bytes()
+            if alloc > peak:
+                peak = alloc
+            n_batches += 1
+    peak_delta = peak - baseline
+
+    assert n_batches > 0
+    # Current ParquetDatasource path peaks at ~2.2× per-fragment size on
+    # this shape (decoded columns + record batch wrappers + allocator slack).
+    # Allow 3×; a regression holding multiple fragments concurrently would
+    # easily exceed this.
+    MiB = 1024 * 1024
+    max_allowed = 3 * per_fragment_size
+    assert peak_delta < max_allowed, (
+        f"peak alloc {peak_delta / MiB:.1f} MiB exceeded 3× per-fragment "
+        f"size ({max_allowed / MiB:.1f} MiB); parquet read may be holding "
+        f"multiple fragments concurrently (memory regression)"
+    )
 
 
 if __name__ == "__main__":
