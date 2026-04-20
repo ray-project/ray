@@ -5725,6 +5725,7 @@ class Dataset:
             ray_remote_args["label_selector"] = {
                 ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
             }
+            ray_remote_args.pop("scheduling_strategy", None)
 
             _validate_head_node_resources_for_local_scheduling(
                 ray_remote_args,
