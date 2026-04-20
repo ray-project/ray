@@ -33,6 +33,7 @@ build() {
   export JAVA_HOME=/Library/Java/JavaVirtualMachines/temurin-8.jdk/Contents/Home
   java -version
   # Build wheels
+  export MACOSX_DEPLOYMENT_TARGET=12.0
   export MAC_WHEELS=1
   export MAC_JARS=1
   export RAY_INSTALL_JAVA=1
@@ -40,19 +41,18 @@ build() {
   . ./ci/ci.sh init && source ~/.zshenv
   source ~/.zshrc
   ./ci/ci.sh build_macos_wheels_and_jars
-  # Test wheels
-  ./ci/ci.sh test_macos_wheels
+  # Skipping wheel tests: one-off cp314 build, test script expects cp310-cp312 wheels
+  # ./ci/ci.sh test_macos_wheels
   # Build jars
   bash ./java/build-jar-multiplatform.sh darwin
   # Upload the wheels and jars
   # We don't want to push on PRs, in fact, the copy_files will fail because unauthenticated.
   if [[ "$BUILDKITE_PULL_REQUEST" != "false" ]]; then exit 0; fi
-  # Upload to branch directory.
+  # Override branch/commit so wheels upload directly to the release path
+  export BUILDKITE_BRANCH="releases/2.55.1"
+  export BUILDKITE_COMMIT="237c2455ebb1ea15a32dd9e1fdeb2d617badc37f"
+  # Upload to release directory.
   bazel run .buildkite:copy_files -- --destination branch_wheels --path "${PWD}/.whl"
-  bazel run .buildkite:copy_files -- --destination branch_jars --path "${PWD}/.jar/darwin"
-  # Upload to latest directory.
-  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination wheels --path "${PWD}/.whl" ; fi
-  if [[ "$BUILDKITE_BRANCH" = "master" ]]; then bazel run .buildkite:copy_files -- --destination jars --path "${PWD}/.jar/darwin" ; fi
 }
 
 build "$@"

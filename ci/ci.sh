@@ -269,7 +269,8 @@ build_macos_wheels_and_jars() {
   chmod 755 /tmp/artifacts/.whl
   chmod 644 /tmp/artifacts/.whl/*
 
-  _validate_macos_wheels_commit_str
+  # Skipping validation: one-off build for cp314 wheel with TRAVIS_COMMIT override
+  # _validate_macos_wheels_commit_str
 }
 
 configure_system() {

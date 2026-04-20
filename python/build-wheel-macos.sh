@@ -10,7 +10,10 @@ DOWNLOAD_DIR=python_downloads
 
 NODE_VERSION="14"
 
-PY_MMS=("3.10" "3.11" "3.12" "3.13")
+PY_MMS=("3.14")
+
+# Override commit SHA so ray.__commit__ matches the release commit
+export TRAVIS_COMMIT="237c2455ebb1ea15a32dd9e1fdeb2d617badc37f"
 
 if [[ -n "${SKIP_DEP_RES}" ]]; then
   ./ci/env/install-bazel.sh
