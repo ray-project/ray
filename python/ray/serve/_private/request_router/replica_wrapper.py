@@ -263,8 +263,9 @@ class RunningReplica:
     def backend_http_endpoint(self) -> Optional[Tuple[str, int]]:
         """Return (host, port) of the replica's backend HTTP server."""
         port = self._replica_info.backend_http_port
-        if port is not None:
-            return (self._replica_info.node_ip, port)
+        host = self._replica_info.node_ip
+        if host is not None and port is not None:
+            return (host, port)
         return None
 
     @property

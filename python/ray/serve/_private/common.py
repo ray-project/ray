@@ -674,11 +674,13 @@ class RunningReplicaInfo:
                 [
                     self.replica_id.to_full_id_str(),
                     self.node_id if self.node_id else "",
+                    self.node_ip if self.node_ip else "",
                     self.actor_name,
                     str(self.max_ongoing_requests),
                     str(self.is_cross_language),
                     str(self.multiplexed_model_ids),
                     str(self.routing_stats),
+                    str(self.port),
                     str(self.backend_http_port),
                 ]
             )
