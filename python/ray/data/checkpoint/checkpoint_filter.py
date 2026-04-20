@@ -151,10 +151,11 @@ def convert_checkpointed_ids(
 
     try:
         if checkpointed_ids_arrow.num_rows != 0:
-            checkpointed_ids_ndarray = transform_pyarrow.to_numpy(
-                checkpointed_ids_arrow[id_column], zero_copy_only=False
+            checkpointed_ids_ndarray = np.sort(
+                transform_pyarrow.to_numpy(
+                    checkpointed_ids_arrow[id_column], zero_copy_only=False
+                )
             )
-            checkpointed_ids_ndarray.sort()
     except Exception as e:
         raise RuntimeError(f"Failed to get numpy-typed checkpointed IDs: {e}")
 
