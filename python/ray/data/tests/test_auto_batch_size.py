@@ -4,7 +4,6 @@ import pyarrow as pa
 import pytest
 
 import ray
-import ray.data._internal.execution.operators.map_transformer as _map_transformer
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
@@ -19,21 +18,19 @@ from ray.data.block import BatchFormat
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 
-def test_compute_auto_batch_size_basic(monkeypatch):
+def test_compute_auto_batch_size_basic():
     """Batch size is target_bytes / bytes_per_row from the first block."""
     # 10 int64 rows = 80 bytes (8 bytes/row). Target of 800 -> batch_size = 100.
     block = pa.table({"x": pa.array(np.arange(10, dtype=np.int64))})
-    monkeypatch.setattr(_map_transformer, "_DEFAULT_BATCH_SIZE_BYTES", 800)
-    batch_size, _ = _compute_auto_batch_size(iter([block]))
+    batch_size, _ = _compute_auto_batch_size(iter([block]), target_batch_size_bytes=800)
     assert batch_size == 100
 
 
-def test_compute_auto_batch_size_clamped_to_one(monkeypatch):
+def test_compute_auto_batch_size_clamped_to_one():
     """When the target is smaller than one row, batch size clamps to 1."""
     # 10 int64 rows = 80 bytes (8 bytes/row). Target of 1 byte < 1 row -> clamp to 1.
     block = pa.table({"x": pa.array(np.arange(10, dtype=np.int64))})
-    monkeypatch.setattr(_map_transformer, "_DEFAULT_BATCH_SIZE_BYTES", 1)
-    batch_size, _ = _compute_auto_batch_size(iter([block]))
+    batch_size, _ = _compute_auto_batch_size(iter([block]), target_batch_size_bytes=1)
     assert batch_size == 1
 
 
@@ -63,11 +60,10 @@ def test_compute_auto_batch_size_iterator_includes_peeked_block():
     assert returned[1].equals(blocks[1])
 
 
-def test_auto_batches_respect_target_size(monkeypatch):
+def test_auto_batches_respect_target_size():
     """With 'auto', rows are grouped to approximate the target byte size."""
     # 1000 int64 rows = 8000 bytes (8 bytes/row). Target of 80 -> batch_size = 10.
     block = pa.table({"x": pa.array(range(1000), type=pa.int64())})
-    monkeypatch.setattr(_map_transformer, "_DEFAULT_BATCH_SIZE_BYTES", 80)
 
     received_sizes = []
 
@@ -84,6 +80,7 @@ def test_auto_batches_respect_target_size(monkeypatch):
                 output_block_size_option=OutputBlockSizeOption.of(
                     target_max_block_size=DEFAULT_TARGET_MAX_BLOCK_SIZE
                 ),
+                target_batch_size_bytes=80,
             )
         ]
     )
