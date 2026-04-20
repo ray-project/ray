@@ -41,16 +41,29 @@ def get_activation_fn(
         if fn is not None:
             return fn
 
-        if name_lower in ["swish", "silu"]:
-            return nn.SiLU
-        elif name_lower == "relu":
-            return nn.ReLU
-        elif name_lower == "tanh":
-            return nn.Tanh
-        elif name_lower == "elu":
-            return nn.ELU
-        elif name_lower == "softmax":
-            return nn.Softmax
+        # Case-insensitive lookup for common activation functions.
+        # This allows users to specify e.g. "leakyrelu" or "gelu" without
+        # worrying about PyTorch's PascalCase naming convention.  #61076.
+        _TORCH_ACTIVATIONS = {
+            "relu": nn.ReLU,
+            "leakyrelu": nn.LeakyReLU,
+            "leaky_relu": nn.LeakyReLU,
+            "prelu": nn.PReLU,
+            "elu": nn.ELU,
+            "selu": nn.SELU,
+            "gelu": nn.GELU,
+            "tanh": nn.Tanh,
+            "sigmoid": nn.Sigmoid,
+            "softmax": nn.Softmax,
+            "softplus": nn.Softplus,
+            "mish": nn.Mish,
+            "swish": nn.SiLU,
+            "silu": nn.SiLU,
+            "hardswish": nn.Hardswish,
+            "hardsigmoid": nn.Hardsigmoid,
+        }
+        if name_lower in _TORCH_ACTIVATIONS:
+            return _TORCH_ACTIVATIONS[name_lower]
     elif framework == "jax":
         if name_lower in ["linear", None]:
             return None
