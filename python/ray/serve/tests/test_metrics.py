@@ -1503,5 +1503,90 @@ def test_replica_utilization_metric(metrics_start_shutdown):
         sender.join(timeout=10)
 
 
+def test_objref_resolution_latency_metric(metrics_start_shutdown):
+    """Test that objref resolution latency metric is emitted when a
+    DeploymentResponse is passed as an argument to another handle call.
+    """
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class Upstream:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "upstream_result"
+
+    @serve.deployment
+    class Downstream:
+        def __call__(self, val: str):
+            return f"got_{val}"
+
+    @serve.deployment
+    class Router:
+        def __init__(self, upstream, downstream):
+            self._upstream = upstream
+            self._downstream = downstream
+
+        async def __call__(self):
+            upstream_resp = self._upstream.remote()
+            downstream_resp = self._downstream.remote(upstream_resp)
+            return await downstream_resp
+
+    serve.run(
+        Router.bind(Upstream.bind(), Downstream.bind()),
+        name="app1",
+        route_prefix="/chain",
+    )
+
+    url = get_application_url("HTTP", "app1") + "/chain"
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(httpx.get, url, timeout=30)
+
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+        )
+        time.sleep(0.5)
+        ray.get(signal.send.remote())
+
+        resp = future.result()
+        assert resp.status_code == 200
+        assert resp.text == "got_upstream_result"
+
+    timeseries = PrometheusTimeseries()
+
+    def check_objref_resolution_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_router_args_resolution_latency_ms_count",
+            timeseries=timeseries,
+            wait=False,
+        )
+        if not metrics:
+            return False
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "Downstream"
+                and metric.get("application") == "app1"
+            ):
+                handle = metric.get("handle", "")
+                actor_id = metric.get("actor_id", "")
+                if handle and actor_id:
+                    return True
+        return False
+
+    wait_for_condition(check_objref_resolution_metric, timeout=30)
+
+    def check_objref_resolution_metric_value():
+        value = get_metric_float(
+            "ray_serve_router_args_resolution_latency_ms_sum",
+            timeseries=timeseries,
+            expected_tags={"deployment": "Downstream", "application": "app1"},
+        )
+        if value < 0:
+            return False
+        assert value >= 400, f"Resolution latency should be >= 400ms got {value}"
+        return True
+
+    wait_for_condition(check_objref_resolution_metric_value, timeout=30)
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
