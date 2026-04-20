@@ -126,24 +126,77 @@ class MemoryPoolManager:
     def return_blocks(self, storage_ptrs: List[int]) -> None:
         """Return multiple allocated blocks to the pool.
 
-        Deduplicates the storage pointers and frees all blocks atomically.
-
         Args:
             storage_ptrs: List of storage data pointers whose blocks to return.
         """
         offsets = []
         sizes = []
-        seen = set()
         for ptr in storage_ptrs:
-            if ptr in seen:
-                continue
-            seen.add(ptr)
             if ptr in self._allocated_blocks:
                 offset, size = self._allocated_blocks.pop(ptr)
                 offsets.append(offset)
                 sizes.append(size)
         if offsets:
             self.free_multiple(offsets, sizes)
+
+    def copy_storage_to_pool_block(
+        self, storage_ptr: int, src_tensor: "torch.Tensor"
+    ) -> None:
+        """Copy ``src_tensor``'s full underlying storage into the pool block.
+
+        The block must have been previously allocated and tracked for
+        ``storage_ptr`` (via ``allocate_multiple`` + ``track_allocation``).
+
+        Args:
+            storage_ptr: The storage data pointer identifying the pool block.
+            src_tensor: Tensor whose underlying storage will be copied in.
+
+        Raises:
+            KeyError: If no block is allocated for this storage pointer.
+        """
+        import torch
+
+        offset, _ = self._allocated_blocks[storage_ptr]
+        storage_size = src_tensor.untyped_storage().nbytes()
+        storage_bytes = torch.tensor(
+            [], dtype=torch.uint8, device=src_tensor.device
+        ).set_(src_tensor.untyped_storage())
+        self._pool_tensor[offset : offset + storage_size].copy_(storage_bytes)
+
+    def get_tensor_view_in_block(
+        self,
+        storage_ptr: int,
+        storage_offset_bytes: int,
+        byte_size: int,
+        dtype: "torch.dtype",
+        shape: "torch.Size",
+    ) -> "torch.Tensor":
+        """Return a tensor view into a tensor's region of its pool block.
+
+        Args:
+            storage_ptr: The storage data pointer identifying the pool block.
+            storage_offset_bytes: Byte offset of the tensor within its storage.
+            byte_size: Byte length of the tensor view.
+            dtype: Torch dtype of the resulting view.
+            shape: Shape of the resulting view.
+
+        Returns:
+            A tensor view of ``shape`` and ``dtype`` backed by the pool block.
+
+        Raises:
+            KeyError: If no block is allocated for this storage pointer.
+        """
+        block_offset, _ = self._allocated_blocks[storage_ptr]
+        pool_offset = block_offset + storage_offset_bytes
+        pool_bytes = self._pool_tensor[pool_offset : pool_offset + byte_size]
+        return pool_bytes.view(dtype).reshape(shape)
+
+    def sync_device(self) -> None:
+        """Synchronize the pool's CUDA stream if the pool is on CUDA."""
+        import torch
+
+        if self.device.type == "cuda":
+            torch.cuda.synchronize(self.device)
 
     def allocate_multiple(self, sizes: List[int]) -> Optional[List[Tuple[int, int]]]:
         """Allocate multiple memory blocks from the pool atomically.

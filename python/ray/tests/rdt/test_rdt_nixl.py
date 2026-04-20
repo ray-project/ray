@@ -116,9 +116,6 @@ class GPUTestActor:
     def block_main_thread(self, signal_actor):
         ray.get(signal_actor.wait.remote())
 
-    def get_nixl_transport_metadata(self, obj_id: str):
-        return get_tensor_transport_manager("NIXL")._get_meta(obj_id)
-
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
 def test_ray_get_rdt_ref_created_by_actor_task(ray_start_regular):
@@ -610,6 +607,7 @@ def test_register_nixl_memory(ray_start_regular):
 def test_nixl_memory_pool(ray_start_regular, device):
     """
     Test NIXL memory pool: use the pre-allocated memory pool for NIXL transfers when available.
+    When the pool cannot accommodate an allocation, an error is raised.
     """
 
     @ray.remote(num_gpus=1, num_cpus=0, enable_tensor_transport=True)
@@ -637,16 +635,20 @@ def test_nixl_memory_pool(ray_start_regular, device):
     ref2 = src_actor.echo.remote(torch.tensor([4, 5, 6]).to(device), device)
     assert ray.get(dst_actor.sum.remote(ref2, device)) == 15
 
-    # Transfer the third small tensor (falling back to traditional mode
-    # because pool is full, but data should still transfer correctly).
+    # Third transfer: pool is full. The allocation raises
+    # MemoryPoolAllocationError, which surfaces as a RayTaskError.
     ref3 = src_actor.echo.remote(torch.tensor([7, 8, 9]).to(device), device)
-    assert ray.get(dst_actor.sum.remote(ref3, device)) == 24
+    with pytest.raises(ray.exceptions.RayTaskError) as excinfo:
+        ray.get(dst_actor.sum.remote(ref3, device))
+    assert "MemoryPoolAllocationError" in str(
+        excinfo.value
+    ) and "insufficient space" in str(excinfo.value)
 
-    del ref1, ref2
+    del ref1, ref2, ref3
 
     # Wait for GC to free the tensors on the sender.
     wait_for_condition(
-        lambda: ray.get(src_actor.get_num_managed_meta_nixl.remote()) == 1,
+        lambda: ray.get(src_actor.get_num_managed_meta_nixl.remote()) == 0,
         timeout=10,
         retry_interval_ms=100,
     )
@@ -660,8 +662,8 @@ def test_nixl_memory_pool(ray_start_regular, device):
 def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     """
     Test that views of the same tensor within a single ray.put share a single
-    pool allocation (the full storage is copied once), and that across ray.put
-    calls the same storage reuses its pool slot with fresh data re-copied.
+    pool allocation, and that across ray.put calls the same storage reuses its
+    pool slot.
     """
     from ray.experimental.rdt.nixl_tensor_transport import (
         NixlTensorTransport,
@@ -671,8 +673,9 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     base = torch.tensor([[1, 2], [3, 4], [5, 6]], dtype=torch.float32).to("cuda")
     storage_size = base.untyped_storage().nbytes()
 
-    # Pool large enough for two full storage copies
-    transport.register_nixl_memory_pool(storage_size * 2, torch.device("cuda"))
+    # Pool sized to exactly one full storage copy — enough for the shared
+    # storage, and small enough that a duplicate allocation would fail.
+    transport.register_nixl_memory_pool(storage_size, torch.device("cuda"))
 
     view_a = base[0:2]
     view_b = base[1:3]
@@ -681,127 +684,33 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     assert view_a.untyped_storage().data_ptr() == base.untyped_storage().data_ptr()
     assert view_b.untyped_storage().data_ptr() == base.untyped_storage().data_ptr()
 
-    # Put both views in one object — storage should be allocated only once
+    # Put both views in one object — shared storage should be allocated only once,
+    # but metadata_count increments once per tensor.
     obj_id1 = "view_obj_1"
     meta1 = transport.extract_tensor_transport_metadata(obj_id1, [view_a, view_b])
     ptr = base.untyped_storage().data_ptr()
-    # Storage should be tracked in the pool (deduplication: one block for shared storage)
-    pool = transport._get_memory_pool("cuda")
+    pool = transport._memory_pool
     assert pool.has_block(ptr)
-    # And in _tensor_desc_cache with reg_desc=None (pool-managed).
-    # metadata_count == 2 because both views share the same storage ptr
-    # and _add_pool_tensor_descs increments once per tensor (not per unique ptr).
     assert ptr in transport._tensor_desc_cache
     assert transport._tensor_desc_cache[ptr].reg_desc is None
     assert transport._tensor_desc_cache[ptr].metadata_count == 2
 
-    # Second put of the same views — should reuse the same pool slot (cross-call cache)
+    # Second put of the same view — should reuse the same pool slot (cross-call cache)
     obj_id2 = "view_obj_2"
     meta2 = transport.extract_tensor_transport_metadata(obj_id2, [view_a])
-    # Pool block should still exist (same slot reused)
     assert pool.has_block(ptr)
     assert transport._tensor_desc_cache[ptr].metadata_count == 3
 
-    # Verify data freshness: modify tensor, put again, pool data should be updated
-    base[0, 0] = 99
-    obj_id3 = "view_obj_3"
-    meta3 = transport.extract_tensor_transport_metadata(obj_id3, [view_a])
-    assert transport._tensor_desc_cache[ptr].metadata_count == 4
-    # Read back the pool data to verify freshness
-    pool_tensor = pool.get_pool_tensor()
-    offset, size = pool.get_block(ptr)
-    pool_data = (
-        pool_tensor[offset : offset + size].view(torch.float32).reshape(base.shape)
-    )
-    assert pool_data[0, 0].item() == 99.0
-
-    # GC: metadata_count should track correctly (symmetric with _add_pool_tensor_descs).
-    # GC decrements once per tensor passed in, matching how _add_pool_tensor_descs
-    # increments once per tensor — no deduplication on either side.
+    # GC: metadata_count decrements once per tensor passed in, symmetric with
+    # _add_pool_tensor_descs.
     transport.garbage_collect(obj_id1, meta1, [view_a, view_b])
     assert ptr in transport._tensor_desc_cache
-    assert transport._tensor_desc_cache[ptr].metadata_count == 2  # obj_id2 + obj_id3
+    assert transport._tensor_desc_cache[ptr].metadata_count == 1
 
     transport.garbage_collect(obj_id2, meta2, [view_a])
-    assert ptr in transport._tensor_desc_cache
-    assert transport._tensor_desc_cache[ptr].metadata_count == 1  # obj_id3
-
-    transport.garbage_collect(obj_id3, meta3, [view_a])
     # All refs gone, pool block freed
     assert ptr not in transport._tensor_desc_cache
     assert not pool.has_block(ptr)
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
-def test_nixl_memory_pool_fallback(ray_start_regular):
-    """Test fallback from pool to traditional registration.
-
-    When a tensor was previously put via the pool path and a later ray.put
-    batch fails pool allocation (pool full for new tensors), the fallback
-    calls _add_tensor_descs which must:
-    - Register the original tensor memory with NIXL (reg_desc != None)
-    - Preserve pool_managed=True so GC returns the pool block
-    - On GC, both deregister the NIXL memory AND return the pool block
-    """
-    from ray.experimental.rdt.nixl_tensor_transport import (
-        NixlTensorTransport,
-    )
-
-    transport = NixlTensorTransport()
-
-    tensor_a = torch.tensor([1, 2, 3], dtype=torch.float32).to("cuda")
-    tensor_b = torch.tensor([4, 5, 6, 7], dtype=torch.float32).to("cuda")
-    storage_size_a = tensor_a.untyped_storage().nbytes()
-
-    # Pool only large enough for tensor_a, not both.
-    transport.register_nixl_memory_pool(storage_size_a, torch.device("cuda"))
-    pool = transport._get_memory_pool("cuda")
-
-    # First put: tensor_a goes through pool path.
-    obj_id1 = "pool_obj"
-    meta1 = transport.extract_tensor_transport_metadata(obj_id1, [tensor_a])
-    ptr_a = tensor_a.untyped_storage().data_ptr()
-    assert pool.has_block(ptr_a)
-    assert transport._tensor_desc_cache[ptr_a].reg_desc is None
-    assert transport._tensor_desc_cache[ptr_a].pool_managed is True
-    assert transport._tensor_desc_cache[ptr_a].metadata_count == 1
-
-    # Second put: [tensor_a, tensor_b] — pool can't fit tensor_b,
-    # so _allocate_from_memory_pool returns None and we fall back to
-    # _add_tensor_descs for the whole batch.
-    obj_id2 = "fallback_obj"
-    meta2 = transport.extract_tensor_transport_metadata(obj_id2, [tensor_a, tensor_b])
-
-    # tensor_a: _add_tensor_descs found reg_desc=None, replaced with real
-    # registration, kept pool_managed=True, preserved prev metadata_count.
-    assert transport._tensor_desc_cache[ptr_a].reg_desc is not None
-    assert transport._tensor_desc_cache[ptr_a].pool_managed is True
-    # metadata_count: 1 (from pool put) + 1 (from fallback put) = 2
-    assert transport._tensor_desc_cache[ptr_a].metadata_count == 2
-
-    # tensor_b: new traditional registration, pool_managed=False.
-    ptr_b = tensor_b.untyped_storage().data_ptr()
-    assert transport._tensor_desc_cache[ptr_b].reg_desc is not None
-    assert transport._tensor_desc_cache[ptr_b].pool_managed is False
-    assert transport._tensor_desc_cache[ptr_b].metadata_count == 1
-
-    # Pool block for tensor_a is still alive (not freed yet).
-    assert pool.has_block(ptr_a)
-
-    # GC obj_id1: decrement tensor_a metadata_count (1 tensor -> 1 decrement).
-    transport.garbage_collect(obj_id1, meta1, [tensor_a])
-    assert ptr_a in transport._tensor_desc_cache
-    assert transport._tensor_desc_cache[ptr_a].metadata_count == 1
-
-    # GC obj_id2: decrement both tensor_a and tensor_b.
-    transport.garbage_collect(obj_id2, meta2, [tensor_a, tensor_b])
-
-    # tensor_a: metadata_count reaches 0 -> deregister + return pool block.
-    assert ptr_a not in transport._tensor_desc_cache
-    assert not pool.has_block(ptr_a)
-
-    # tensor_b: metadata_count reaches 0 -> deregister only (no pool block).
-    assert ptr_b not in transport._tensor_desc_cache
 
 
 if __name__ == "__main__":

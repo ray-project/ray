@@ -276,8 +276,13 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
     Within a single ``ray.put`` call, tensors sharing the same underlying storage
     (including views) are automatically deduplicated — only one copy of each unique
     storage is allocated. Across multiple ``ray.put`` calls, if the same storage
-    appears again, the existing pool slot is reused (saving allocation overhead)
-    and the data is always re-copied to ensure freshness.
+    appears again, the existing pool slot is reused without re-copying the data.
+    As a result, data can be potentially stale once you ``ray.put`` the storage
+    tensor — subsequent mutations to that storage may not be reflected in outstanding refs.
+    Clone the tensor before ``ray.put`` if snapshot semantics are required.
+
+    If the pool has insufficient space for an allocation,
+    :class:`MemoryPoolAllocationError` is raised.
 
     Args:
         size: Size of the memory pool in bytes.
