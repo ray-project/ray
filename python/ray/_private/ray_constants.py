@@ -355,6 +355,11 @@ OBJECT_METADATA_TYPE_RAW = b"RAW"
 # of XLANG.
 OBJECT_METADATA_TYPE_ACTOR_HANDLE = b"ACTOR_HANDLE"
 
+# A constant used as object metadata to indicate the object is an Arrow table
+# stored in the worker's Flight store (fetched via Arrow Flight RPC or
+# process_vm_readv instead of plasma).
+OBJECT_METADATA_TYPE_FLIGHT_TABLE = b"FLIGHT_TABLE"
+
 # A constant indicating the debugging part of the metadata (see above).
 OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 

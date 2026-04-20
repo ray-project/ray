@@ -1,0 +1,11 @@
+load("@rules_cc//cc:defs.bzl", "cc_library")
+
+cc_library(
+    name = "arrow_flight_store",
+    srcs = ["arrow_flight_store.cc"],
+    hdrs = ["arrow_flight_store.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@pyarrow//:arrow",
+    ],
+)

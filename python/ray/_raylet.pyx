@@ -258,6 +258,26 @@ GRPC_STATUS_CODE_UNIMPLEMENTED = CGrpcStatusCode.UNIMPLEMENTED
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Flight store integration (RAY_USE_FLIGHT_STORE=1)
+# ---------------------------------------------------------------------------
+import os as _os
+
+_flight_store_enabled = False
+_flight_store_instance = None
+_pyarrow_Table = None
+
+if _os.environ.get("RAY_USE_FLIGHT_STORE", "0") == "1":
+    try:
+        import pyarrow as _pa
+        _pyarrow_Table = _pa.Table
+        from ray._flight_store import get_flight_store
+        _flight_store_instance = get_flight_store()
+        _flight_store_enabled = True
+        logger.info("Flight store enabled: %s", _flight_store_instance.get_uri())
+    except Exception as _e:
+        logger.warning("Failed to initialize Flight store: %s", _e)
+
 import warnings
 class NumReturnsWarning(UserWarning):
     """Warning when num_returns=0 but the task returns a non-None value."""
@@ -4292,6 +4312,39 @@ cdef class CoreWorker:
                 continue
 
             context = worker.get_serialization_context()
+
+            # Flight store path: store Arrow tables out-of-band via Flight RPC.
+            if (_flight_store_enabled
+                    and _pyarrow_Table is not None
+                    and isinstance(output, _pyarrow_Table)):
+                import msgpack as _msgpack
+                _key = return_id.Hex().decode("ascii")
+                _info = _flight_store_instance.put_and_get_transfer_info(
+                    _key, output)
+                _info["node_id"] = (
+                    ray.get_runtime_context().get_node_id().encode()
+                    if isinstance(ray.get_runtime_context().get_node_id(), str)
+                    else ray.get_runtime_context().get_node_id())
+                _ref_bytes = _msgpack.packb(_info, use_bin_type=True)
+                serialized_object = RawSerializedObject(_ref_bytes)
+                data_size = serialized_object.total_bytes
+                metadata_str = ray_constants.OBJECT_METADATA_TYPE_FLIGHT_TABLE
+                metadata = string_to_buffer(metadata_str)
+                contained_id.clear()
+
+                while not self.store_task_output(
+                        serialized_object,
+                        return_id,
+                        c_ref_generator_id,
+                        data_size,
+                        metadata,
+                        contained_id,
+                        caller_address,
+                        &task_output_inlined_bytes,
+                        return_ptr):
+                    pass
+                num_outputs_stored += 1
+                continue
 
             # TODO(kevin85421): We should consider unifying both serialization logic in the future
             # when GPU objects are more stable. We currently separate the logic to ensure

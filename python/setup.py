@@ -145,6 +145,7 @@ else:
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/_raylet" + pyd_suffix,
+    "ray/_flight_store" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
 ]

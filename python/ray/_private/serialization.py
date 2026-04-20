@@ -1,4 +1,5 @@
 import logging
+import sys
 import threading
 import traceback
 import warnings
@@ -6,6 +7,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 
 import google.protobuf.message
 
+import ray
 import ray._private.utils
 import ray.cloudpickle as pickle
 import ray.exceptions
@@ -415,6 +417,30 @@ class SerializationContext:
                 cause=ray_error_info.actor_died_error.actor_died_error_context
             )
 
+    def _fetch_flight_table(self, data):
+        """Fetch an Arrow table from the producer's Flight store."""
+        import msgpack
+
+        info = msgpack.unpackb(data.to_pybytes(), raw=False)
+        from ray._flight_store import get_flight_store
+
+        store = get_flight_store()
+        # Same-node: use process_vm_readv (no gRPC overhead).
+        my_node_id = ray.get_runtime_context().get_node_id()
+        producer_node_id = info.get("node_id", b"")
+        if isinstance(producer_node_id, bytes):
+            producer_node_id = producer_node_id.decode("utf-8", errors="replace")
+        if (
+            producer_node_id == my_node_id
+            and info.get("ipc_address", 0) != 0
+            and sys.platform == "linux"
+        ):
+            return store.fetch_via_vm(
+                info["pid"], info["ipc_address"], info["ipc_size"]
+            )
+        else:
+            return store.fetch(info["flight_uri"], info["key"])
+
     def _deserialize_object(
         self,
         data,
@@ -431,6 +457,9 @@ class SerializationContext:
                 return self._deserialize_msgpack_data(
                     data, metadata_fields, out_of_band_tensors
                 )
+            # Check if the object is an Arrow table in the Flight store.
+            if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_FLIGHT_TABLE:
+                return self._fetch_flight_table(data)
             # Check if the object should be returned as raw bytes.
             if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:
