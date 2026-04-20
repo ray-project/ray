@@ -589,7 +589,7 @@ def test_replica_gives_up_after_max_port_retries_for_http(
             + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
         )
     )
-    occupied_ports = _occupy_ports(ports)
+    _ = _occupy_ports(ports)
 
     serve._run(Hybrid.bind(message="Hello world!"), _blocking=False)
 
@@ -623,7 +623,7 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
             + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
         )
     )
-    occupied_ports = _occupy_ports(ports)
+    _ = _occupy_ports(ports)
 
     serve._run(Hybrid.bind(message="Hello world!"), _blocking=False)
 
@@ -654,7 +654,7 @@ def test_no_port_available(_skip_if_ff_not_enabled, serve_instance):
             RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
         )
     )
-    occupied_ports = _occupy_ports(ports)
+    _ = _occupy_ports(ports)
 
     """Test that multiple replicas on the same node occupy unique ports."""
     serve._run(
