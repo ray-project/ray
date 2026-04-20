@@ -396,6 +396,32 @@ class Count(AggregateFnV2[int, int]):
     def combine(self, current_accumulator: int, new: int) -> int:
         return current_accumulator + new
 
+@PublicAPI
+class First(AggregateFnV2[Any, Any]):
+    def __init__(
+        self,
+        on: str,
+        ignore_nulls: bool = True,
+        alias_name: Optional[str] = None,
+    ):
+        super().__init__(
+            alias_name if alias_name else f"first({str(on)})",
+            on=on,
+            ignore_nulls=ignore_nulls,
+            zero_factory=lambda: None,
+        )
+
+    def aggregate_block(self, block: Block) -> Any:
+        return BlockAccessor.for_block(block).first(
+            self._target_col_name, self._ignore_nulls
+        )
+
+    def combine(self, current_accumulator: Any, new: Any) -> Any:
+        if self._ignore_nulls:
+            return current_accumulator if current_accumulator is not None else new
+        else:
+            return current_accumulator
+
 
 @PublicAPI
 class AsList(AggregateFnV2[List, List]):

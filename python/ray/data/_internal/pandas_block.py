@@ -181,6 +181,12 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
     def __init__(self, col: "pandas.Series"):
         super().__init__(col)
 
+    def first(self, *, ignore_nulls: bool, as_py: bool = True) -> Any:
+        if ignore_nulls:
+            return self._column.iloc[self._column.first_valid_index()]
+        else:
+            return self._column.iloc[0]
+
     def count(self, *, ignore_nulls: bool, as_py: bool = True) -> Optional[U]:
         return self._column.count() if ignore_nulls else len(self._column)
 
