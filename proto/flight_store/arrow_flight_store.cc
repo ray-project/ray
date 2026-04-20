@@ -57,6 +57,39 @@ class ArrowFlightStore::FlightServerImpl : public arrow::flight::FlightServerBas
     return arrow::Status::OK();
   }
 
+  arrow::Status DoAction(
+      const arrow::flight::ServerCallContext & /*context*/,
+      const arrow::flight::Action &action,
+      std::unique_ptr<arrow::flight::ResultStream> *result_stream) override {
+    if (action.type == "write_vm") {
+      // Body format: key_len(4 bytes) + key + pid(4) + address(8) + size(8)
+      const uint8_t *p = action.body->data();
+      uint32_t key_len;
+      memcpy(&key_len, p, 4);
+      p += 4;
+      std::string key(reinterpret_cast<const char *>(p), key_len);
+      p += key_len;
+      int32_t pid;
+      memcpy(&pid, p, 4);
+      p += 4;
+      uint64_t addr;
+      memcpy(&addr, p, 8);
+      p += 8;
+      int64_t size;
+      memcpy(&size, p, 8);
+
+      ARROW_RETURN_NOT_OK(store_->WriteToRemoteVM(
+          key, static_cast<pid_t>(pid), static_cast<uintptr_t>(addr), size));
+
+      // Return empty result to signal success.
+      std::vector<arrow::flight::Result> results;
+      *result_stream = std::make_unique<arrow::flight::SimpleResultStream>(
+          std::move(results));
+      return arrow::Status::OK();
+    }
+    return arrow::Status::NotImplemented("Unknown action: ", action.type);
+  }
+
  private:
   ArrowFlightStore *store_;
 };
@@ -103,10 +136,38 @@ std::string ArrowFlightStore::GetUri() const {
   return oss.str();
 }
 
-// Serialize a table to Arrow IPC stream format (contiguous bytes).
-static arrow::Result<std::shared_ptr<arrow::Buffer>> SerializeTableToIPC(
-    const std::shared_ptr<arrow::Table> &table) {
-  ARROW_ASSIGN_OR_RAISE(auto sink, arrow::io::BufferOutputStream::Create());
+// Estimate the IPC stream size for a table without actually serializing.
+// Walks the schema + buffer sizes. Cheap — no data copies.
+static int64_t EstimateIPCStreamSize(const std::shared_ptr<arrow::Table> &table) {
+  int64_t size = 0;
+  // Schema message overhead (approximate).
+  size += 1024;
+  // For each column, sum the buffer sizes.
+  for (int i = 0; i < table->num_columns(); ++i) {
+    auto chunked = table->column(i);
+    for (int j = 0; j < chunked->num_chunks(); ++j) {
+      auto array_data = chunked->chunk(j)->data();
+      for (const auto &buf : array_data->buffers) {
+        if (buf) {
+          // IPC aligns buffers to 8 bytes.
+          size += (buf->size() + 7) & ~7;
+        }
+      }
+    }
+  }
+  // IPC record batch metadata + EOS marker overhead.
+  size += 256 * table->num_columns() + 64;
+  // Add 20% headroom for IPC framing, flatbuffer metadata, padding.
+  size = static_cast<int64_t>(size * 1.2);
+  return size;
+}
+
+// Serialize a table to IPC stream format into a pre-allocated buffer.
+// Returns the actual number of bytes written.
+static arrow::Result<int64_t> SerializeTableToIPCBuffer(
+    const std::shared_ptr<arrow::Table> &table, uint8_t *dest, int64_t capacity) {
+  auto sink = std::make_shared<arrow::io::FixedSizeBufferWriter>(
+      std::make_shared<arrow::MutableBuffer>(dest, capacity));
   ARROW_ASSIGN_OR_RAISE(auto writer, arrow::ipc::MakeStreamWriter(sink, table->schema()));
   arrow::TableBatchReader reader(*table);
   std::shared_ptr<arrow::RecordBatch> batch;
@@ -116,17 +177,15 @@ static arrow::Result<std::shared_ptr<arrow::Buffer>> SerializeTableToIPC(
     ARROW_RETURN_NOT_OK(writer->WriteRecordBatch(*batch));
   }
   ARROW_RETURN_NOT_OK(writer->Close());
-  return sink->Finish();
+  ARROW_ASSIGN_OR_RAISE(auto pos, sink->Tell());
+  return pos;
 }
 
 void ArrowFlightStore::Put(const std::string &key, std::shared_ptr<arrow::Table> table) {
-  // Pre-serialize to IPC for the process_vm_readv path.
-  auto ipc_result = SerializeTableToIPC(table);
+  int64_t estimated_size = EstimateIPCStreamSize(table);
   std::lock_guard<std::mutex> lock(mu_);
   tables_[key] = std::move(table);
-  if (ipc_result.ok()) {
-    ipc_buffers_[key] = ipc_result.MoveValueUnsafe();
-  }
+  ipc_sizes_[key] = estimated_size;
 }
 
 ObjectTransferInfo ArrowFlightStore::PutAndGetTransferInfo(
@@ -137,47 +196,101 @@ ObjectTransferInfo ArrowFlightStore::PutAndGetTransferInfo(
   info.key = key;
   info.pid = getpid();
   std::lock_guard<std::mutex> lock(mu_);
-  auto it = ipc_buffers_.find(key);
-  if (it != ipc_buffers_.end()) {
-    info.ipc_address = reinterpret_cast<uintptr_t>(it->second->data());
-    info.ipc_size = it->second->size();
-  } else {
-    info.ipc_address = 0;
-    info.ipc_size = 0;
-  }
+  info.ipc_size = ipc_sizes_[key];
   return info;
 }
 
-arrow::Result<std::shared_ptr<arrow::Table>> ArrowFlightStore::FetchViaVM(
-    pid_t remote_pid, uintptr_t remote_address, int64_t size) {
-  // Allocate local buffer.
-  ARROW_ASSIGN_OR_RAISE(auto local_buf, arrow::AllocateResizableBuffer(size));
+arrow::Status ArrowFlightStore::WriteToRemoteVM(const std::string &key,
+                                                 pid_t remote_pid,
+                                                 uintptr_t remote_address,
+                                                 int64_t remote_size) {
+  // Get the table.
+  std::shared_ptr<arrow::Table> table;
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    auto it = tables_.find(key);
+    if (it == tables_.end()) {
+      return arrow::Status::KeyError("Object not found: ", key);
+    }
+    table = it->second;
+  }
 
-  // Single process_vm_readv syscall — no gRPC, no GIL, no kernel buffering.
+  // Serialize IPC into a local buffer first.
+  ARROW_ASSIGN_OR_RAISE(auto local_buf, arrow::AllocateResizableBuffer(remote_size));
+  ARROW_ASSIGN_OR_RAISE(
+      auto actual_size,
+      SerializeTableToIPCBuffer(table, local_buf->mutable_data(), remote_size));
+
+  // Write directly into the consumer's buffer via process_vm_writev.
   struct iovec local_iov;
   local_iov.iov_base = local_buf->mutable_data();
-  local_iov.iov_len = static_cast<size_t>(size);
+  local_iov.iov_len = static_cast<size_t>(actual_size);
 
   struct iovec remote_iov;
   remote_iov.iov_base = reinterpret_cast<void *>(remote_address);
-  remote_iov.iov_len = static_cast<size_t>(size);
+  remote_iov.iov_len = static_cast<size_t>(actual_size);
 
-  ssize_t nread = process_vm_readv(remote_pid, &local_iov, 1, &remote_iov, 1, 0);
-  if (nread < 0) {
-    return arrow::Status::IOError("process_vm_readv failed: errno=",
-                                  errno,
-                                  " (hint: check /proc/sys/kernel/yama/ptrace_scope)");
+  ssize_t nwritten =
+      process_vm_writev(remote_pid, &local_iov, 1, &remote_iov, 1, 0);
+  if (nwritten < 0) {
+    return arrow::Status::IOError("process_vm_writev failed: errno=", errno);
   }
-  if (nread != size) {
+  if (nwritten != actual_size) {
     return arrow::Status::IOError(
-        "process_vm_readv partial read: ", nread, " of ", size, " bytes");
+        "process_vm_writev partial write: ", nwritten, " of ", actual_size);
   }
+  return arrow::Status::OK();
+}
 
-  // Deserialize IPC stream → Arrow table.
-  arrow::io::BufferReader reader(local_buf);
+arrow::Result<std::shared_ptr<arrow::Table>> ArrowFlightStore::DeserializeIPCBuffer(
+    const std::shared_ptr<arrow::Buffer> &buffer) {
+  arrow::io::BufferReader reader(buffer);
   ARROW_ASSIGN_OR_RAISE(auto stream_reader,
                         arrow::ipc::RecordBatchStreamReader::Open(&reader));
   return stream_reader->ToTable();
+}
+
+arrow::Result<std::shared_ptr<arrow::Table>> ArrowFlightStore::FetchViaVM(
+    const std::string &flight_uri, const std::string &key, int64_t ipc_size) {
+  // 1. Allocate a local buffer for the producer to write into.
+  ARROW_ASSIGN_OR_RAISE(auto local_buf, arrow::AllocateResizableBuffer(ipc_size));
+
+  // 2. Build the DoAction body: key_len(4) + key + pid(4) + address(8) + size(8)
+  pid_t my_pid = getpid();
+  uintptr_t buf_addr = reinterpret_cast<uintptr_t>(local_buf->mutable_data());
+  uint32_t key_len = static_cast<uint32_t>(key.size());
+  int64_t body_size = 4 + key.size() + 4 + 8 + 8;
+  ARROW_ASSIGN_OR_RAISE(auto body_buf, arrow::AllocateBuffer(body_size));
+  uint8_t *p = body_buf->mutable_data();
+  memcpy(p, &key_len, 4);
+  p += 4;
+  memcpy(p, key.data(), key.size());
+  p += key.size();
+  int32_t pid32 = static_cast<int32_t>(my_pid);
+  memcpy(p, &pid32, 4);
+  p += 4;
+  uint64_t addr64 = static_cast<uint64_t>(buf_addr);
+  memcpy(p, &addr64, 8);
+  p += 8;
+  memcpy(p, &ipc_size, 8);
+
+  // 3. Send DoAction to the producer's Flight server.
+  auto *client = GetOrCreateClient(flight_uri);
+  if (!client) {
+    return arrow::Status::IOError("Failed to connect to ", flight_uri);
+  }
+  arrow::flight::Action action;
+  action.type = "write_vm";
+  action.body = std::move(body_buf);
+  ARROW_ASSIGN_OR_RAISE(auto results, client->DoAction(action));
+  // Drain the result stream.
+  while (true) {
+    ARROW_ASSIGN_OR_RAISE(auto result, results->Next());
+    if (!result) break;
+  }
+
+  // 4. Producer has written IPC data into our buffer. Deserialize.
+  return DeserializeIPCBuffer(local_buf);
 }
 
 std::shared_ptr<arrow::Table> ArrowFlightStore::GetLocal(const std::string &key) {
@@ -193,7 +306,7 @@ std::shared_ptr<arrow::Table> ArrowFlightStore::PopTable(const std::string &key)
   if (it == tables_.end()) return nullptr;
   auto table = std::move(it->second);
   tables_.erase(it);
-  ipc_buffers_.erase(key);
+  ipc_sizes_.erase(key);
   return table;
 }
 
@@ -215,7 +328,7 @@ arrow::Result<std::shared_ptr<arrow::Table>> ArrowFlightStore::Fetch(
 void ArrowFlightStore::Delete(const std::string &key) {
   std::lock_guard<std::mutex> lock(mu_);
   tables_.erase(key);
-  ipc_buffers_.erase(key);
+  ipc_sizes_.erase(key);
 }
 
 size_t ArrowFlightStore::Size() const {

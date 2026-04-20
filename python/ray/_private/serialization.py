@@ -425,21 +425,22 @@ class SerializationContext:
         from ray._flight_store import get_flight_store
 
         store = get_flight_store()
-        # Same-node: use process_vm_readv (no gRPC overhead).
+        flight_uri = info["flight_uri"]
+        key = info["key"]
+        # Same-node: use process_vm_writev (producer writes into our buffer).
+        # One small DoAction RPC to trigger the write, bulk data via VM.
         my_node_id = ray.get_runtime_context().get_node_id()
         producer_node_id = info.get("node_id", b"")
         if isinstance(producer_node_id, bytes):
             producer_node_id = producer_node_id.decode("utf-8", errors="replace")
         if (
             producer_node_id == my_node_id
-            and info.get("ipc_address", 0) != 0
+            and info.get("ipc_size", 0) > 0
             and sys.platform == "linux"
         ):
-            return store.fetch_via_vm(
-                info["pid"], info["ipc_address"], info["ipc_size"]
-            )
+            return store.fetch_via_vm(flight_uri, key, info["ipc_size"])
         else:
-            return store.fetch(info["flight_uri"], info["key"])
+            return store.fetch(flight_uri, key)
 
     def _deserialize_object(
         self,

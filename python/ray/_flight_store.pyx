@@ -2,7 +2,7 @@
 # distutils: language = c++
 
 from ray.includes.flight_store cimport (
-    CArrowFlightStore, CTable, CObjectTransferInfo, pid_t,
+    CArrowFlightStore, CTable, CObjectTransferInfo,
 )
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
@@ -71,7 +71,6 @@ cdef class PyArrowFlightStore:
             "flight_uri": info.flight_uri.decode("utf-8"),
             "key": info.key.decode("utf-8"),
             "pid": info.pid,
-            "ipc_address": info.ipc_address,
             "ipc_size": info.ipc_size,
         }
 
@@ -98,20 +97,22 @@ cdef class PyArrowFlightStore:
         c_table = result.ValueUnsafe()
         return pyarrow_wrap_table(c_table)
 
-    def fetch_via_vm(self, int pid, unsigned long ipc_address, long long ipc_size):
-        """Fetch a table from a same-node producer using process_vm_readv.
+    def fetch_via_vm(self, str flight_uri, str key, long long ipc_size):
+        """Fetch a table from a same-node producer using process_vm_writev.
 
-        Single syscall, no gRPC, no GIL during the transfer.
-        Requires same-user permissions (or CAP_SYS_PTRACE).
+        The producer serializes IPC and writes directly into our buffer.
+        One small Flight RPC (DoAction) to trigger the write, bulk data
+        transferred via process_vm_writev — no gRPC data transfer.
         """
+        cdef c_string c_uri = flight_uri.encode("utf-8")
+        cdef c_string c_key = key.encode("utf-8")
         cdef shared_ptr[CTable] c_table
         with nogil:
-            result = CArrowFlightStore.FetchViaVM(
-                <pid_t>pid, ipc_address, ipc_size)
+            result = self.store.FetchViaVM(c_uri, c_key, ipc_size)
         if not result.ok():
             raise RuntimeError(
-                f"process_vm_readv fetch failed (pid={pid}, "
-                f"addr=0x{ipc_address:x}, size={ipc_size})")
+                f"process_vm_writev fetch failed (uri={flight_uri}, "
+                f"key={key}, size={ipc_size})")
         c_table = result.ValueUnsafe()
         return pyarrow_wrap_table(c_table)
 

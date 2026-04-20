@@ -13,13 +13,12 @@
 namespace ray {
 namespace flight_store {
 
-/// Info returned by Put for cross-process VM transfer on same node.
+/// Info returned by Put for cross-process transfer.
 struct ObjectTransferInfo {
   std::string flight_uri;
   std::string key;
   pid_t pid;
-  uintptr_t ipc_address;
-  int64_t ipc_size;
+  int64_t ipc_size;  // Estimated IPC stream size for VM transfers.
 };
 
 /// A Flight-based object store that keeps Arrow tables in the application heap
@@ -62,14 +61,28 @@ class ArrowFlightStore {
   arrow::Result<std::shared_ptr<arrow::Table>> Fetch(const std::string &uri,
                                                      const std::string &key);
 
-  /// Fetch a table from a same-node producer using process_vm_readv.
-  /// Reads the pre-serialized IPC bytes directly from the producer's heap.
-  /// Pure C++, no GIL, no gRPC — single syscall.
-  /// After fetching, the consumer should notify the producer to delete
-  /// (via Flight or out-of-band).
-  static arrow::Result<std::shared_ptr<arrow::Table>> FetchViaVM(pid_t remote_pid,
-                                                                 uintptr_t remote_address,
-                                                                 int64_t size);
+  /// Serialize a stored table to IPC and write it directly into a remote
+  /// process's buffer via process_vm_writev. Called on the PRODUCER side
+  /// (e.g., from a Flight DoAction handler). The consumer allocates the
+  /// buffer and passes its address + PID.
+  arrow::Status WriteToRemoteVM(const std::string &key,
+                                pid_t remote_pid,
+                                uintptr_t remote_address,
+                                int64_t remote_size);
+
+  /// Deserialize an IPC buffer that was written into our address space
+  /// by a remote producer via process_vm_writev. Called on the CONSUMER side
+  /// after the producer has completed the write.
+  static arrow::Result<std::shared_ptr<arrow::Table>> DeserializeIPCBuffer(
+      const std::shared_ptr<arrow::Buffer> &buffer);
+
+  /// Consumer-side: fetch a table from a same-node producer via process_vm_writev.
+  /// Allocates a local buffer, sends a DoAction("write_vm") to the producer's
+  /// Flight server, producer serializes IPC and writes directly into our buffer,
+  /// then we deserialize locally.
+  /// One small Flight RPC (to trigger the write), bulk data via process_vm_writev.
+  arrow::Result<std::shared_ptr<arrow::Table>> FetchViaVM(
+      const std::string &flight_uri, const std::string &key, int64_t ipc_size);
 
   /// Delete a stored table (and its IPC buffer).
   void Delete(const std::string &key);
@@ -85,8 +98,8 @@ class ArrowFlightStore {
 
   mutable std::mutex mu_;
   std::unordered_map<std::string, std::shared_ptr<arrow::Table>> tables_;
-  /// Pre-serialized IPC buffers for same-node process_vm_readv transfers.
-  std::unordered_map<std::string, std::shared_ptr<arrow::Buffer>> ipc_buffers_;
+  /// Estimated IPC stream sizes (computed cheaply on Put, no serialization).
+  std::unordered_map<std::string, int64_t> ipc_sizes_;
 
   std::unique_ptr<FlightServerImpl> server_;
   std::unique_ptr<std::thread> server_thread_;
