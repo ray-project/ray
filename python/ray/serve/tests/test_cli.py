@@ -845,41 +845,50 @@ def test_deploy_gang_scaling(serve_instance, initial_replicas, final_replicas):
         for replicas in (initial_replicas, final_replicas)
     }
 
-    # First deploy.
-    subprocess.check_output(["serve", "deploy", config_files[initial_replicas]])
-    app_url = get_application_url(app_name="gang_app")
-    wait_for_condition(lambda: httpx.post(f"{app_url}/").status_code == 200, timeout=30)
+    def wait_for_all_replicas_running(num_replicas):
+        # Wait for every replica to be RUNNING (not just the app status);
+        # otherwise requests can route to a subset of ready replicas and miss
+        # other gangs entirely, which causes flakiness.
+        def verify_running():
+            status = serve.status()
+            app_status = status.applications.get("gang_app")
+            if app_status is None or app_status.status != "RUNNING":
+                return False
+            dep = list(app_status.deployments.values())[0]
+            return dep.replica_states.get("RUNNING", 0) == num_replicas
 
-    # Collect initial gang IDs.
+        wait_for_condition(verify_running, timeout=30)
+
+    def collect_gang_ids(num_replicas):
+        # Poll until every replica has served at least one request, so we are
+        # guaranteed to observe every gang regardless of routing skew.
+        app_url = get_application_url(app_name="gang_app")
+        gang_ids = set()
+        seen_pids = set()
+        for _ in range(num_replicas * 50):
+            data = json.loads(httpx.post(f"{app_url}/").text)
+            if data["gang_id"] is not None:
+                gang_ids.add(data["gang_id"])
+            seen_pids.add(data["pid"])
+            if len(seen_pids) >= num_replicas:
+                break
+        assert (
+            len(seen_pids) == num_replicas
+        ), f"Only reached {len(seen_pids)}/{num_replicas} replicas"
+        return gang_ids
+
+    subprocess.check_output(["serve", "deploy", config_files[initial_replicas]])
+    wait_for_all_replicas_running(initial_replicas)
+
     initial_num_gangs = initial_replicas // gang_size
-    initial_gang_ids = set()
-    for _ in range(initial_replicas * 10):
-        data = json.loads(httpx.post(f"{app_url}/").text)
-        if data["gang_id"] is not None:
-            initial_gang_ids.add(data["gang_id"])
+    initial_gang_ids = collect_gang_ids(initial_replicas)
     assert len(initial_gang_ids) == initial_num_gangs
 
-    # Redeploy with new replica count.
     subprocess.check_output(["serve", "deploy", config_files[final_replicas]])
+    wait_for_all_replicas_running(final_replicas)
 
-    # Wait for rescale to complete.
-    def rescale_complete():
-        status = serve.status()
-        app_status = status.applications.get("gang_app")
-        if app_status is None or app_status.status != "RUNNING":
-            return False
-        dep = list(app_status.deployments.values())[0]
-        return dep.replica_states.get("RUNNING", 0) == final_replicas
-
-    wait_for_condition(rescale_complete, timeout=30)
-
-    # Collect final gang IDs.
     final_num_gangs = final_replicas // gang_size
-    final_gang_ids = set()
-    for _ in range(final_replicas * 10):
-        data = json.loads(httpx.post(f"{app_url}/").text)
-        if data["gang_id"] is not None:
-            final_gang_ids.add(data["gang_id"])
+    final_gang_ids = collect_gang_ids(final_replicas)
     assert len(final_gang_ids) == final_num_gangs
 
     # The smaller set of gangs must be a subset of the larger set,
