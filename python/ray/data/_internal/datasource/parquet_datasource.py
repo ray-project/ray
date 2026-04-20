@@ -20,6 +20,7 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 import ray
+from ray._common.utils import env_bool, env_integer
 from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
@@ -30,6 +31,7 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
+    MiB,
     RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
@@ -127,6 +129,8 @@ PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 # Arrow's nested type chunking limit
 # See: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
 _ARROW_CHUNK_LIMIT = 2 * 1024**3  # 2GB
+
+_MIN_PYARROW_VERSION_TO_BATCHES_READAHEAD = parse_version("12.0.1")
 
 
 class _ParquetFragment:
@@ -317,6 +321,20 @@ class ParquetDatasource(Datasource):
     _DEFAULT_NUM_FRAGMENTS_TO_INSPECT_FOR_SCHEMA: Optional[int] = 1
 
     _FILE_EXTENSIONS = ["parquet"]
+
+    _DEFAULT_BATCH_READAHEAD = env_integer("RAY_DATA_PARQUET_READER_BATCH_READAHEAD", 8)
+    # NOTE: We're essentially stubbing out this value as currently
+    #       ParquetDatasource reads individual fragments independently
+    _DEFAULT_FRAGMENT_READAHEAD = env_integer(
+        "RAY_DATA_PARQUET_READER_FRAGMENT_READAHEAD", 1
+    )
+
+    _DEFAULT_FRAGMENT_USE_BUFFERED_STREAM = env_bool(
+        "RAY_DATA_PARQUET_READER_FRAGMENT_USE_BUFFERED_STREAM", True
+    )
+    _DEFAULT_FRAGMENT_SCAN_BUFFER_SIZE = env_integer(
+        "RAY_DATA_PARQUET_READER_FRAGMENT_SCAN_BUFFER_SIZE", 8 * MiB
+    )
 
     def __init__(
         self,
@@ -558,6 +576,8 @@ class ParquetDatasource(Datasource):
             sampled_file_infos, DataContext.get_current().target_max_block_size
         )
 
+        self._scanner_kwargs = self._get_scanner_kwargs(self._default_batch_size)
+
     @classmethod
     def from_state(cls, **kwargs) -> "ParquetDatasource":
         """Create a fully-initialized instance from pre-computed state.
@@ -666,6 +686,38 @@ class ParquetDatasource(Datasource):
             return 0
 
         return self._estimate_in_mem_size(self._pq_fragments)
+
+    def _get_scanner_kwargs(self, batch_size: Optional[int]) -> dict[str, Any]:
+        import pyarrow.dataset as pds
+
+        scanner_kwargs: Dict[str, Any] = self._scanner_kwargs.copy()
+
+        # NOTE: We have to inject ``batch_size`` via kwargs, since Scanner doesn't
+        #       accept nulls
+        if batch_size is not None:
+            scanner_kwargs["batch_size"] = batch_size
+
+        # Override default `batch_readahead` value to reduce amount of data prefetched
+        # by Pyarrow's Parquet reader
+        if get_pyarrow_version() >= _MIN_PYARROW_VERSION_TO_BATCHES_READAHEAD:
+            scanner_kwargs.setdefault("batch_readahead", self._DEFAULT_BATCH_READAHEAD)
+            scanner_kwargs.setdefault(
+                "fragment_readahead", self._DEFAULT_FRAGMENT_READAHEAD
+            )
+
+            # Refer https://arrow.apache.org/docs/python/generated/pyarrow.dataset.ParquetFragmentScanOptions.html
+            # Read files through buffered input streams rather than loading
+            # entire row groups at once.
+            if self._DEFAULT_FRAGMENT_USE_BUFFERED_STREAM:
+                scanner_kwargs.setdefault(
+                    "fragment_scan_options",
+                    pds.ParquetFragmentScanOptions(
+                        use_buffered_stream=True,
+                        buffer_size=self._DEFAULT_FRAGMENT_SCAN_BUFFER_SIZE,
+                    ),
+                )
+
+        return scanner_kwargs
 
     def get_read_tasks(
         self,
