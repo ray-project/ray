@@ -28,7 +28,6 @@ from ray.serve._private.common import DeploymentID, ReplicaID, TimeSeries
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
-    DEFAULT_HTTP_HOST,
     DEFAULT_HTTP_PORT,
     DEFAULT_REQUEST_ROUTER_PATH,
     DEFAULT_REQUEST_ROUTING_STATS_PERIOD_S,
@@ -809,7 +808,7 @@ class HTTPOptions(BaseModel):
       internal Serve HTTP proxy actor.
     """
 
-    host: Optional[str] = DEFAULT_HTTP_HOST
+    host: Optional[str] = "0.0.0.0"
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly
