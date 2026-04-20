@@ -1314,7 +1314,9 @@ class AsyncioRouter:
             pr.metadata.internal_request_id,
             replica.actor_id,
         )
-        result.add_done_callback(callback)
+        result.add_done_callback(
+            lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
+        )
         result.add_done_callback(
             lambda _: self._event_loop.call_soon_threadsafe(
                 self.request_router.decrement_queue_len_cache,
