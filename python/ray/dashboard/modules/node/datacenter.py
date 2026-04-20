@@ -2,12 +2,14 @@ import logging
 from typing import List, Optional
 
 import ray.dashboard.consts as dashboard_consts
+from ray._common.pydantic_compat import PYDANTIC_INSTALLED, ValidationError
 from ray._common.utils import (
     get_or_create_event_loop,
 )
 from ray._private.utils import (
     parse_pg_formatted_resources_to_original,
 )
+from ray.dashboard.pydantic_models import NodeDetailSchema
 from ray.dashboard.utils import (
     async_loop_forever,
     compose_state_message,
@@ -170,6 +172,15 @@ class DataOrganizer:
 
             # Update workers to node physical stats
             node_info["workers"] = DataSource.node_workers.get(node_id, [])
+
+        # Validate against schema (logging only)
+        # The node data seems pretty complex, so it might be better for now to just log
+        # when it fails validation.
+        if PYDANTIC_INSTALLED and NodeDetailSchema is not None:
+            try:
+                NodeDetailSchema.parse_obj(node_info)
+            except ValidationError as e:
+                logger.warning(f"Schema validation failed for node {node_id}: {e}")
 
         return node_info
 

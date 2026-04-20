@@ -134,6 +134,28 @@ py_test(
 )
 
 py_test(
+    name = "test_node_schemas",
+    size = "small",
+    srcs = ["modules/node/tests/test_schemas.py"],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_state_schemas",
+    size = "small",
+    srcs = ["modules/state/tests/test_schemas.py"],
+    tags = [
+        "exclusive",
+        "team:core",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "test_dashboard",
     size = "large",
     srcs = ["tests/test_dashboard.py"],
