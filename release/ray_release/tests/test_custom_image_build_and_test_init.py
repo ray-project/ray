@@ -141,6 +141,8 @@ def test_custom_image_build_and_test_init_with_block_step(
             test_jobs_output_file,
             "--rayci-select-output-file",
             rayci_select_output_file,
+            "--selection-block-threshold",
+            "5",
         ],
         catch_exceptions=False,
     )
