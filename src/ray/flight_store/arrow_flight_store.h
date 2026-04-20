@@ -81,8 +81,9 @@ class ArrowFlightStore {
   /// Flight server, producer serializes IPC and writes directly into our buffer,
   /// then we deserialize locally.
   /// One small Flight RPC (to trigger the write), bulk data via process_vm_writev.
-  arrow::Result<std::shared_ptr<arrow::Table>> FetchViaVM(
-      const std::string &flight_uri, const std::string &key, int64_t ipc_size);
+  arrow::Result<std::shared_ptr<arrow::Table>> FetchViaVM(const std::string &flight_uri,
+                                                          const std::string &key,
+                                                          int64_t ipc_size);
 
   /// Delete a stored table (and its IPC buffer).
   void Delete(const std::string &key);

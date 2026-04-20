@@ -83,8 +83,8 @@ class ArrowFlightStore::FlightServerImpl : public arrow::flight::FlightServerBas
 
       // Return empty result to signal success.
       std::vector<arrow::flight::Result> results;
-      *result_stream = std::make_unique<arrow::flight::SimpleResultStream>(
-          std::move(results));
+      *result_stream =
+          std::make_unique<arrow::flight::SimpleResultStream>(std::move(results));
       return arrow::Status::OK();
     }
     return arrow::Status::NotImplemented("Unknown action: ", action.type);
@@ -201,9 +201,9 @@ ObjectTransferInfo ArrowFlightStore::PutAndGetTransferInfo(
 }
 
 arrow::Status ArrowFlightStore::WriteToRemoteVM(const std::string &key,
-                                                 pid_t remote_pid,
-                                                 uintptr_t remote_address,
-                                                 int64_t remote_size) {
+                                                pid_t remote_pid,
+                                                uintptr_t remote_address,
+                                                int64_t remote_size) {
   // Get the table.
   std::shared_ptr<arrow::Table> table;
   {
@@ -230,8 +230,7 @@ arrow::Status ArrowFlightStore::WriteToRemoteVM(const std::string &key,
   remote_iov.iov_base = reinterpret_cast<void *>(remote_address);
   remote_iov.iov_len = static_cast<size_t>(actual_size);
 
-  ssize_t nwritten =
-      process_vm_writev(remote_pid, &local_iov, 1, &remote_iov, 1, 0);
+  ssize_t nwritten = process_vm_writev(remote_pid, &local_iov, 1, &remote_iov, 1, 0);
   if (nwritten < 0) {
     return arrow::Status::IOError("process_vm_writev failed: errno=", errno);
   }
