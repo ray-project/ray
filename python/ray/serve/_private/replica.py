@@ -3724,7 +3724,9 @@ class UserCallableWrapper:
                 )
 
             if hasattr(self._callable, "__serve_multiplex_wrapper"):
-                await getattr(self._callable, "__serve_multiplex_wrapper").shutdown()
+                wrappers = getattr(self._callable, "__serve_multiplex_wrapper")
+                for wrapper in wrappers.values():
+                    await wrapper.shutdown()
 
         except Exception as e:
             logger.exception(f"Exception during graceful shutdown of replica: {e}")
