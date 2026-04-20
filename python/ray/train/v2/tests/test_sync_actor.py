@@ -69,7 +69,7 @@ def test_hang_with_timeout():
 
 def test_hang_without_timeout():
     """Test the default behavior of running with no collective timeout."""
-    assert DEFAULT_COLLECTIVE_TIMEOUT_S == -1
+    assert DEFAULT_COLLECTIVE_TIMEOUT_S is None
 
     sync_actor = SynchronizationActor.remote()
     remote_tasks = []

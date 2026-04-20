@@ -161,6 +161,9 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
+      JDK_SUFFIX: "-jdk"
+      RAY_JAVA_IMAGE: "cr.ray.io/rayproject/ray-java-build-aarch64"
+      RAY_DASHBOARD_IMAGE: "cr.ray.io/rayproject/ray-dashboard-aarch64"
     tags:
       - release_wheels
       - linux_wheels
