@@ -299,7 +299,7 @@ If your machine runs out of memory during the build, add the following to ``~/.b
 
   .. code-block:: shell
 
-    build --local_ram_resources=HOST_RAM*.5 --local_cpu_resources=4
+    build --local_resources=memory=HOST_RAM*.5 --local_resources=cpu=4
 
   The ``build --disk_cache=~/bazel-cache`` option can also speed up repeated builds.
 
