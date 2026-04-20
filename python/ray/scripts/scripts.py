@@ -143,6 +143,12 @@ def _check_ray_version(gcs_client):
 
 
 class RayCLI(click.Group):
+    """Custom click.Group that groups observability commands (State CLI commands) in help output.
+
+    This overrides format_commands to split subcommands into "Observability"
+    and "Commands" sections for better readability of ray --help output.
+    """
+
     def format_commands(self, ctx, formatter):
         commands = []
         for subcommand in self.list_commands(ctx):
