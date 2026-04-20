@@ -4,13 +4,12 @@
 from arrow_flight_store cimport (
     CArrowFlightStore, CTable, CObjectTransferInfo, pid_t,
 )
-from libcpp.memory cimport shared_ptr, make_shared, unique_ptr
+from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
 
 # Use PyArrow's C++ interop for zero-copy table exchange.
 # pyarrow.lib exposes unwrap_table / wrap_table via Cython.
 from pyarrow.lib cimport (
-    CTable as CPyArrowTable,
     pyarrow_unwrap_table,
     pyarrow_wrap_table,
 )
