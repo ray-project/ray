@@ -95,13 +95,13 @@ def test_async_checkpointing_and_validation(ray_start_4_cpus, tmp_path):
     @ray.remote
     class TmpdirPrefixActor:
         def __init__(self):
-            self.tmpdir_prefix = None
+            self.tmpdir_prefixes = []
 
         def set_tmpdir_prefix(self, tmpdir_prefix):
-            self.tmpdir_prefix = tmpdir_prefix
+            self.tmpdir_prefixes.append(tmpdir_prefix)
 
-        def get_tmpdir_prefix(self):
-            return self.tmpdir_prefix
+        def get_tmpdir_prefixes(self):
+            return self.tmpdir_prefixes
 
     tmpdir_prefix_actor = TmpdirPrefixActor.remote()
 
@@ -151,8 +151,8 @@ def test_async_checkpointing_and_validation(ray_start_4_cpus, tmp_path):
     assert len(results.best_checkpoints) == 1
     assert results.best_checkpoints[0][1]["val_score"] == 1
     # Seems pyarrow.fs.FileSystem's delete_dir can leave an empty dir behind.
-    path = ray.get(tmpdir_prefix_actor.get_tmpdir_prefix.remote())
-    assert not os.path.exists(path) or not any(os.scandir(path))
+    for path in ray.get(tmpdir_prefix_actor.get_tmpdir_prefixes.remote()):
+        assert not os.path.exists(path) or not any(os.scandir(path))
 
 
 if __name__ == "__main__":
