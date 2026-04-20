@@ -204,6 +204,26 @@ class ExecutionResources:
             memory=self.memory - other.memory,
         )
 
+    def subtract_clamp_zero(
+        self, other: "ExecutionResources"
+    ) -> "ExecutionResources":
+        """Subtract ``other`` from ``self`` per-field, clamping each result
+        at zero (equivalent to ``self.subtract(other).max(zero)``).
+
+        Used on the scheduling hot path for incremental budget decrement,
+        where a non-negative per-field result is required and constructing
+        two intermediate ExecutionResources objects (one for subtract,
+        one for max) is measurable overhead.
+        """
+        return ExecutionResources(
+            cpu=max(self.cpu - other.cpu, 0.0),
+            gpu=max(self.gpu - other.gpu, 0.0),
+            object_store_memory=max(
+                self.object_store_memory - other.object_store_memory, 0.0
+            ),
+            memory=max(self.memory - other.memory, 0.0),
+        )
+
     def max(self, other: "ExecutionResources") -> "ExecutionResources":
         """Returns the maximum for each resource type."""
         return ExecutionResources(
