@@ -622,10 +622,10 @@ TEST(MutableObjectTest, TestReadMultipleAcquireDuringFailure) {
 }
 
 // Tests that semaphore names are POSIX-compliant (start with '/').
-// POSIX requires sem_open() names to start with '/'. Linux enforces this strictly
-// (sem_open returns EINVAL without it); macOS is lenient. Without the '/' prefix in
-// GetSemaphoreObjectName/GetSemaphoreHeaderName, this crashes on Linux with strict
-// glibc (e.g., DGX Spark) via RAY_CHECK_NE(semaphores.object_sem, SEM_FAILED).
+// POSIX requires sem_open() names to start with '/'. glibc is lenient and strips
+// a missing leading slash, but stricter libcs (musl, some older libcs) reject the
+// name with EINVAL; without the '/' prefix those platforms crash at
+// RAY_CHECK_NE(semaphores.object_sem, SEM_FAILED).
 TEST(MutableObjectTest, TestSemaphoreNameHasLeadingSlash) {
   MutableObjectManager manager;
   ObjectID object_id = ObjectID::FromRandom();
@@ -647,12 +647,10 @@ TEST(MutableObjectTest, TestSemaphoreNameHasLeadingSlash) {
   std::string hdr_sem_name = "/hdr" + unique_name;
   sem_t *obj_sem = sem_open(obj_sem_name.c_str(), /*oflag=*/0);
   sem_t *hdr_sem = sem_open(hdr_sem_name.c_str(), /*oflag=*/0);
-  ASSERT_NE(SEM_FAILED, obj_sem)
-      << "Semaphore '" << obj_sem_name
-      << "' not found. Missing '/' prefix in semaphore name?";
-  ASSERT_NE(SEM_FAILED, hdr_sem)
-      << "Semaphore '" << hdr_sem_name
-      << "' not found. Missing '/' prefix in semaphore name?";
+  ASSERT_NE(SEM_FAILED, obj_sem) << "Semaphore '" << obj_sem_name
+                                 << "' not found. Missing '/' prefix in semaphore name?";
+  ASSERT_NE(SEM_FAILED, hdr_sem) << "Semaphore '" << hdr_sem_name
+                                 << "' not found. Missing '/' prefix in semaphore name?";
   ASSERT_EQ(0, sem_close(obj_sem));
   ASSERT_EQ(0, sem_close(hdr_sem));
 
@@ -688,15 +686,18 @@ TEST(MutableObjectTest, TestCrossNodeSemaphoreCreation) {
         manager.RegisterChannel(object_id, std::move(object), /*reader=*/true).ok());
   }
 
-  // Verify the semaphores are usable and were initialized to value=1 (the correct
-  // initial state for a freshly created mutable object channel).
+  // Verify the semaphores are usable. On Linux we can additionally check they were
+  // initialized to value=1 (the correct initial state for a freshly created mutable
+  // object channel); macOS does not implement sem_getvalue() so we skip that probe.
   PlasmaObjectHeader::Semaphores sem{};
   ASSERT_TRUE(manager.GetSemaphores(object_id, sem));
+#ifdef __linux__
   int obj_val = -1, hdr_val = -1;
   ASSERT_EQ(0, sem_getvalue(sem.object_sem, &obj_val));
   ASSERT_EQ(0, sem_getvalue(sem.header_sem, &hdr_val));
   ASSERT_EQ(1, obj_val) << "object_sem should be initialized to 1";
   ASSERT_EQ(1, hdr_val) << "header_sem should be initialized to 1";
+#endif
 
   manager.DestroySemaphores(object_id);
   free(header);
