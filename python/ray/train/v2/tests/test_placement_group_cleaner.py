@@ -291,6 +291,8 @@ def test_pg_cleaner_race_condition_new_pg_not_orphaned():
         ".placement_group_cleaner.is_actor_alive"
     )
     with patch(target, side_effect=controlled_is_actor_alive):
+        # PlacementGroupCleaner is instantiated directly here (not as a Ray actor),
+        # so ray.actor.exit_actor() is not tested here
         cleaner = PlacementGroupCleaner(
             controller_actor_id="test_pg_cleaner",
             check_interval_s=0.05,
@@ -305,9 +307,13 @@ def test_pg_cleaner_race_condition_new_pg_not_orphaned():
 
         # new_pg is now in the queue, but cleaner has already passed queue.get()
         cleaner.register_placement_group(new_pg)
+
+        monitor_thread = cleaner._monitor_thread
+        assert monitor_thread is not None
         release.set()
 
-        cleaner._monitor_thread.join(timeout=5)
+        monitor_thread.join(timeout=5)
+        assert not monitor_thread.is_alive()
 
     new_pg_state = ray.util.placement_group_table(new_pg).get("state")
     assert (
