@@ -366,7 +366,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.18.0",
+                "vllm[audio]>=0.19.0",
                 "nixl>=1.0.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
@@ -619,7 +619,7 @@ def build(build_python, build_java, build_cpp, build_redis):
 
     if BAZEL_LIMIT_CPUS:
         n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
-        bazel_flags.append(f"--local_cpu_resources={n}")
+        bazel_flags.append(f"--local_resources=cpu={n}")
         warnings.warn(
             "Setting BAZEL_LIMIT_CPUS is deprecated and will be removed in a future"
             " version. Please use BAZEL_ARGS instead.",

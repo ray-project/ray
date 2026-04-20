@@ -229,6 +229,26 @@ py_test_module_list(
     ],
 )
 
+# Logging tests with client IP logging enabled.
+py_test_module_list(
+    size = "enormous",
+    env = {"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"},
+    files = [
+        "test_logging.py",
+        "test_logging_2.py",
+    ],
+    name_suffix = "_with_client_address_logging",
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
 # Don't run gang scheduling tests on Windows
 py_test_module_list(
     size = "enormous",
@@ -299,6 +319,9 @@ py_test_module_list(
         "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "5",
         "RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S": "1",
         "RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS": "10",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S": "5",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S": "1",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS": "5",
         "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
     },
     files = [

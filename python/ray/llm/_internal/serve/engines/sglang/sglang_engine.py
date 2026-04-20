@@ -1,9 +1,11 @@
 """SGLang engine integration for Ray Serve LLM.
 
-This module is a demonstration and reference implementation only.
-It is not actively maintained and is not part of Ray's officially supported
-feature set. For community SGLang support status, see:
-https://github.com/ray-project/ray/issues/61114
+Provides ``SGLangServer``, a custom server class that wraps SGLang's
+in-process engine and exposes chat, completions, embeddings, tokenize,
+and detokenize endpoints through the standard Ray Serve LLM protocol.
+
+Community SGLang support is in early development. Track progress and
+provide feedback at https://github.com/ray-project/ray/issues/61114.
 """
 
 import copy
@@ -222,7 +224,7 @@ class SGLangServer:
 
         return {
             "text": text.strip(),
-            "id": meta.get("id", f"sglang-gen-{int(time.time())}"),
+            "id": meta.get("id", f"sglang-gen-{uuid.uuid4().hex}"),
             "created": int(time.time()),
             "finish_reason": finish_reason,
             "prompt_tokens": prompt_tokens,
@@ -429,7 +431,7 @@ class SGLangServer:
         last_metadata = results[-1]
 
         resp = CompletionResponse(
-            id=last_metadata.get("id", f"sglang-batch-gen-{int(time.time())}"),
+            id=last_metadata["id"],
             object="text_completion",
             created=last_metadata.get("created", int(time.time())),
             model=getattr(request, "model", "default_model"),

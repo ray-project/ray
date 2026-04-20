@@ -155,6 +155,8 @@ class TrainLoopRunner:
             with self._metrics["train/step"].timer():
                 if not self.benchmark_config.skip_train_step:
                     self._train_step(batch)
+                if self.benchmark_config.train_step_sleep_s > 0:
+                    time.sleep(self.benchmark_config.train_step_sleep_s)
 
             # TODO: This is slightly off if the last batch is a partial batch (if drop_last=False)
             global_batch_size = (
