@@ -140,6 +140,23 @@ class InternalPubSubGcsServiceHandler {
                                 GcsPublishReply *reply,
                                 SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleGcsSubscriberPoll(GcsSubscriberPollRequest request,
+                                       GcsSubscriberPollReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGcsSubscriberCommandBatch(GcsSubscriberCommandBatchRequest request,
+                                               GcsSubscriberCommandBatchReply *reply,
+                                               SendReplyCallback send_reply_callback) = 0;
+};
+
+class ObservabilityPubSubGcsServiceHandler {
+ public:
+  virtual ~ObservabilityPubSubGcsServiceHandler() = default;
+
+  virtual void HandleGcsPublish(GcsPublishRequest request,
+                                GcsPublishReply *reply,
+                                SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleReportJobError(ReportJobErrorRequest request,
                                     ReportJobErrorReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;

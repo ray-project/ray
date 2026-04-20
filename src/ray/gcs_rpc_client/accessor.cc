@@ -601,7 +601,7 @@ void ErrorInfoAccessor::AsyncReportJobError(rpc::ErrorTableData data) {
   RAY_LOG(DEBUG) << "Publishing job error, job id = " << job_id;
   rpc::ReportJobErrorRequest request;
   *request.mutable_job_error() = std::move(data);
-  client_impl_->GetGcsRpcClient().ReportJobError(
+  client_impl_->GetObservabilityPubSubGcsRpcClient().ReportJobError(
       std::move(request),
       [job_id](const Status &status, rpc::ReportJobErrorReply &&reply) {
         RAY_LOG(DEBUG) << "Finished publishing job error, job id = " << job_id;
@@ -1261,7 +1261,7 @@ Status PublisherAccessor::PublishError(std::string key_id,
   pub_message->set_key_id(std::move(key_id));
   *(pub_message->mutable_error_info_message()) = std::move(data);
   rpc::GcsPublishReply reply;
-  return client_impl_->GetGcsRpcClient().SyncGcsPublish(
+  return client_impl_->GetObservabilityPubSubGcsRpcClient().SyncGcsPublish(
       std::move(request), &reply, timeout_ms);
 }
 
@@ -1274,7 +1274,7 @@ Status PublisherAccessor::PublishLogs(std::string key_id,
   pub_message->set_key_id(std::move(key_id));
   *(pub_message->mutable_log_batch_message()) = std::move(data);
   rpc::GcsPublishReply reply;
-  return client_impl_->GetGcsRpcClient().SyncGcsPublish(
+  return client_impl_->GetObservabilityPubSubGcsRpcClient().SyncGcsPublish(
       std::move(request), &reply, timeout_ms);
 }
 
@@ -1288,7 +1288,7 @@ void PublisherAccessor::AsyncPublishNodeResourceUsage(
   pub_message->set_key_id(std::move(key_id));
   pub_message->mutable_node_resource_usage_message()->set_json(
       std::move(node_resource_usage_json));
-  client_impl_->GetGcsRpcClient().GcsPublish(
+  client_impl_->GetObservabilityPubSubGcsRpcClient().GcsPublish(
       std::move(request),
       [done](const Status &status, rpc::GcsPublishReply &&reply) { done(status); });
 }

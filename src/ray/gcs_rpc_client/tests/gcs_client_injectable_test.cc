@@ -19,6 +19,7 @@
 #include "ray/gcs_rpc_client/accessors/actor_info_accessor_interface.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
 #include "ray/gcs_rpc_client/gcs_client_context.h"
+#include "ray/gcs_rpc_client/rpc_client.h"
 
 namespace ray {
 
@@ -38,6 +39,12 @@ class TestGcsRpcClient {
   TestGcsRpcClient() = default;
 };
 
+// Mock observability pubsub client for tests that never call it.
+class TestObservabilityPubSubGcsRpcClient {
+ public:
+  TestObservabilityPubSubGcsRpcClient() = default;
+};
+
 // Mock GcsSubscriber - empty class for testing
 class TestGcsSubscriber {
  public:
@@ -49,7 +56,9 @@ class FakeGcsClientContext : public GcsClientContext {
  public:
   FakeGcsClientContext(std::shared_ptr<TestGcsRpcClient> rpc_client,
                        std::unique_ptr<TestGcsSubscriber> subscriber)
-      : rpc_client_(rpc_client), subscriber_(std::move(subscriber)) {}
+      : rpc_client_(std::move(rpc_client)),
+        subscriber_(std::move(subscriber)),
+        observability_client_(std::make_shared<TestObservabilityPubSubGcsRpcClient>()) {}
 
   pubsub::GcsSubscriber &GetGcsSubscriber() override {
     // Cast our mock to the expected type
@@ -61,17 +70,26 @@ class FakeGcsClientContext : public GcsClientContext {
     return *reinterpret_cast<rpc::GcsRpcClient *>(rpc_client_.get());
   }
 
+  rpc::ObservabilityPubSubGcsRpcClient &GetObservabilityPubSubGcsRpcClient() override {
+    return *reinterpret_cast<rpc::ObservabilityPubSubGcsRpcClient *>(
+        observability_client_.get());
+  }
+
   bool IsInitialized() const override { return true; }
 
   void Disconnect() override {}
 
   void SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) override {}
 
+  void SetObservabilityPubSubGcsRpcClient(
+      std::shared_ptr<rpc::ObservabilityPubSubGcsRpcClient> client) override {}
+
   void SetGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) override {}
 
  private:
   std::shared_ptr<TestGcsRpcClient> rpc_client_;
   std::unique_ptr<TestGcsSubscriber> subscriber_;
+  std::shared_ptr<TestObservabilityPubSubGcsRpcClient> observability_client_;
 };
 
 // Test NodeInfoAccessor implementation

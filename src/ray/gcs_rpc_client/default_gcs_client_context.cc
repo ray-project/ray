@@ -25,10 +25,20 @@ pubsub::GcsSubscriber &DefaultGcsClientContext::GetGcsSubscriber() {
 
 rpc::GcsRpcClient &DefaultGcsClientContext::GetGcsRpcClient() { return *client_; }
 
+rpc::ObservabilityPubSubGcsRpcClient &
+DefaultGcsClientContext::GetObservabilityPubSubGcsRpcClient() {
+  return *observability_pubsub_client_;
+}
+
 bool DefaultGcsClientContext::IsInitialized() const { return client_ != nullptr; }
 
 void DefaultGcsClientContext::SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) {
   client_ = client;
+}
+
+void DefaultGcsClientContext::SetObservabilityPubSubGcsRpcClient(
+    std::shared_ptr<rpc::ObservabilityPubSubGcsRpcClient> client) {
+  observability_pubsub_client_ = std::move(client);
 }
 void DefaultGcsClientContext::SetGcsSubscriber(
     std::unique_ptr<pubsub::GcsSubscriber> subscriber) {
@@ -36,6 +46,9 @@ void DefaultGcsClientContext::SetGcsSubscriber(
 }
 
 void DefaultGcsClientContext::Disconnect() {
+  if (observability_pubsub_client_) {
+    observability_pubsub_client_.reset();
+  }
   if (client_) {
     client_.reset();
   }

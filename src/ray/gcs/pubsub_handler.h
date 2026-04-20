@@ -37,10 +37,6 @@ class InternalPubSubHandler : public rpc::InternalPubSubGcsServiceHandler {
                         rpc::GcsPublishReply *reply,
                         rpc::SendReplyCallback send_reply_callback) final;
 
-  void HandleReportJobError(rpc::ReportJobErrorRequest request,
-                            rpc::ReportJobErrorReply *reply,
-                            rpc::SendReplyCallback send_reply_callback) final;
-
   void HandleGcsSubscriberPoll(rpc::GcsSubscriberPollRequest request,
                                rpc::GcsSubscriberPollReply *reply,
                                rpc::SendReplyCallback send_reply_callback) final;
@@ -58,6 +54,36 @@ class InternalPubSubHandler : public rpc::InternalPubSubGcsServiceHandler {
   instrumented_io_context &io_service_;
   pubsub::GcsPublisher &gcs_publisher_;
   absl::flat_hash_map<std::string, absl::flat_hash_set<UniqueID>> sender_to_subscribers_;
+};
+
+/// Observability pubsub (`ObservabilityPubSubGcsService`). Delegates publish/poll/command
+/// to an embedded `InternalPubSubHandler` bound to the observability `GcsPublisher`.
+class ObservabilityPubSubHandler : public rpc::ObservabilityPubSubGcsServiceHandler {
+ public:
+  ObservabilityPubSubHandler(instrumented_io_context &io_service,
+                             pubsub::GcsPublisher &gcs_publisher);
+
+  void HandleGcsPublish(rpc::GcsPublishRequest request,
+                        rpc::GcsPublishReply *reply,
+                        rpc::SendReplyCallback send_reply_callback) final;
+
+  void HandleReportJobError(rpc::ReportJobErrorRequest request,
+                            rpc::ReportJobErrorReply *reply,
+                            rpc::SendReplyCallback send_reply_callback) final;
+
+  void HandleGcsSubscriberPoll(rpc::GcsSubscriberPollRequest request,
+                               rpc::GcsSubscriberPollReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) final;
+
+  void HandleGcsSubscriberCommandBatch(rpc::GcsSubscriberCommandBatchRequest request,
+                                       rpc::GcsSubscriberCommandBatchReply *reply,
+                                       rpc::SendReplyCallback send_reply_callback) final;
+
+  void AsyncRemoveSubscriberFrom(const std::string &sender_id);
+
+ private:
+  pubsub::GcsPublisher &gcs_publisher_;
+  InternalPubSubHandler internal_;
 };
 
 }  // namespace gcs

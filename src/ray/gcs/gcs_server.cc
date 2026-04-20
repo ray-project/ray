@@ -149,6 +149,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                                           : NodeID::FromHex(config.node_id)),
       pubsub_periodical_runner_(PeriodicalRunner::Create(
           io_context_provider_.GetIOContext<pubsub::GcsPublisher>())),
+      observability_pubsub_periodical_runner_(PeriodicalRunner::Create(
+          io_context_provider_.GetIOContext<ObservabilityPubsub>())),
       periodical_runner_(
           PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
       is_started_(false),
@@ -199,9 +201,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::GCS_JOB_CHANNEL,
           rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
           rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-          rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-          rpc::ChannelType::RAY_LOG_CHANNEL,
-          rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
           rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
       /*periodical_runner=*/*pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
@@ -210,6 +209,20 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*publisher_id=*/NodeID::FromRandom());
 
   gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
+
+  auto observability_inner_publisher = std::make_unique<pubsub::Publisher>(
+      /*channels=*/
+      std::vector<rpc::ChannelType>{rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                    rpc::ChannelType::RAY_LOG_CHANNEL,
+                                    rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
+      /*periodical_runner=*/*observability_pubsub_periodical_runner_,
+      /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
+      /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+      /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+      /*publisher_id=*/NodeID::FromRandom());
+
+  gcs_observability_publisher_ =
+      std::make_unique<pubsub::GcsPublisher>(std::move(observability_inner_publisher));
 }
 
 GcsServer::~GcsServer() { Stop(); }
@@ -343,6 +356,7 @@ void GcsServer::Stop() {
     io_context_provider_.StopAllDedicatedIOContexts();
 
     ray_syncer_.reset();
+    observability_pubsub_handler_.reset();
     pubsub_handler_.reset();
 
     // Shutdown the rpc server
@@ -357,7 +371,7 @@ void GcsServer::Stop() {
 }
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_observability_publisher_);
   gcs_node_manager_ = std::make_unique<GcsNodeManager>(
       gcs_publisher_.get(),
       gcs_table_storage_.get(),
@@ -365,7 +379,8 @@ void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
       &raylet_client_pool_,
       rpc_server_.GetClusterId(),
       *ray_event_recorder_,
-      config_.session_name);
+      config_.session_name,
+      gcs_observability_publisher_.get());
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::NodeInfoGrpcService>(
@@ -489,7 +504,8 @@ void GcsServer::InitGcsActorManager(
     const GcsInitData &gcs_init_data,
     ray::observability::MetricInterface &actor_by_state_gauge,
     ray::observability::MetricInterface &gcs_actor_by_state_gauge) {
-  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_node_manager_);
+  RAY_CHECK(gcs_table_storage_ && gcs_publisher_ && gcs_observability_publisher_ &&
+            gcs_node_manager_);
   std::unique_ptr<GcsActorSchedulerInterface> scheduler;
   auto schedule_failure_handler =
       [this](std::shared_ptr<GcsActor> actor,
@@ -531,7 +547,8 @@ void GcsServer::InitGcsActorManager(
       *ray_event_recorder_,
       config_.session_name,
       actor_by_state_gauge,
-      gcs_actor_by_state_gauge);
+      gcs_actor_by_state_gauge,
+      gcs_observability_publisher_.get());
 
   gcs_actor_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(std::make_unique<rpc::ActorInfoGrpcService>(
@@ -692,6 +709,12 @@ void GcsServer::InitPubSubHandler() {
   // This service is used to handle long poll requests, so we don't limit active RPCs.
   rpc_server_.RegisterService(std::make_unique<rpc::InternalPubSubGrpcService>(
       io_context, *pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
+
+  auto &obs_io = io_context_provider_.GetIOContext<ObservabilityPubsub>();
+  observability_pubsub_handler_ =
+      std::make_unique<ObservabilityPubSubHandler>(obs_io, *gcs_observability_publisher_);
+  rpc_server_.RegisterService(std::make_unique<rpc::ObservabilityPubSubGrpcService>(
+      obs_io, *observability_pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
 }
 
 void GcsServer::InitRuntimeEnvManager() {
@@ -788,7 +811,8 @@ void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) 
       raylet_client_pool_,
       kv_manager_->GetInstance(),
       io_context_provider_.GetDefaultIOContext(),
-      gcs_publisher_.get());
+      gcs_publisher_.get(),
+      gcs_observability_publisher_.get());
   gcs_autoscaler_state_manager_->Initialize(gcs_init_data);
   rpc_server_.RegisterService(
       std::make_unique<rpc::autoscaler::AutoscalerStateGrpcService>(
@@ -868,6 +892,7 @@ void GcsServer::InstallEventListeners() {
         worker_client_pool_.Disconnect(node_id);
         gcs_healthcheck_manager_->RemoveNode(node_id);
         pubsub_handler_->AsyncRemoveSubscriberFrom(node_id.Binary());
+        observability_pubsub_handler_->AsyncRemoveSubscriberFrom(node_id.Binary());
         gcs_autoscaler_state_manager_->OnNodeDead(node_id);
       },
       io_context_provider_.GetDefaultIOContext());
@@ -897,6 +922,7 @@ void GcsServer::InstallEventListeners() {
                                          creation_task_exception);
         gcs_placement_group_scheduler_->HandleWaitingRemovedBundles();
         pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
+        observability_pubsub_handler_->AsyncRemoveSubscriberFrom(worker_id.Binary());
         gcs_task_manager_->OnWorkerDead(worker_id, worker_failure_data);
       });
 
@@ -922,6 +948,7 @@ void GcsServer::PrintDebugState() const {
                 << gcs_resource_manager_->DebugString() << "\n\n"
                 << gcs_placement_group_manager_->DebugString() << "\n\n"
                 << gcs_publisher_->DebugString() << "\n\n"
+                << gcs_observability_publisher_->DebugString() << "\n\n"
                 << runtime_env_manager_->DebugString() << "\n\n"
                 << gcs_task_manager_->DebugString() << "\n\n"
                 << gcs_autoscaler_state_manager_->DebugString() << "\n\n";

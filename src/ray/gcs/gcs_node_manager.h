@@ -49,13 +49,15 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
+  /// \param gcs_observability_publisher Publisher for RAY_ERROR_INFO_CHANNEL, etc.
   GcsNodeManager(pubsub::GcsPublisher *gcs_publisher,
                  GcsTableStorage *gcs_table_storage,
                  instrumented_io_context &io_context,
                  rpc::RayletClientPool *raylet_client_pool,
                  const ClusterID &cluster_id,
                  observability::RayEventRecorderInterface &ray_event_recorder,
-                 const std::string &session_name);
+                 const std::string &session_name,
+                 pubsub::GcsPublisher *gcs_observability_publisher);
 
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
@@ -386,6 +388,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  pubsub::GcsPublisher *gcs_observability_publisher_;
   /// Storage for GCS tables.
   GcsTableStorage *gcs_table_storage_;
   instrumented_io_context &io_context_;

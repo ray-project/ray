@@ -235,6 +235,10 @@ class RAY_EXPORT GcsClient : public std::enable_shared_from_this<GcsClient> {
     return client_context_->GetGcsRpcClient();
   }
 
+  virtual rpc::ObservabilityPubSubGcsRpcClient &GetObservabilityPubSubGcsRpcClient() {
+    return client_context_->GetObservabilityPubSubGcsRpcClient();
+  }
+
   virtual pubsub::GcsSubscriber &GetGcsSubscriber() {
     return client_context_->GetGcsSubscriber();
   }

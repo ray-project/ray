@@ -37,25 +37,6 @@ void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
-void InternalPubSubHandler::HandleReportJobError(
-    rpc::ReportJobErrorRequest request,
-    rpc::ReportJobErrorReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
-  const auto &job_id_binary = request.job_error().job_id();
-  if (job_id_binary.size() != JobID::Size()) {
-    send_reply_callback(Status::InvalidArgument(absl::StrFormat(
-                            "Invalid job_id: expected length %zu bytes, got %zu",
-                            JobID::Size(),
-                            job_id_binary.size())),
-                        nullptr,
-                        nullptr);
-    return;
-  }
-  const auto job_id = JobID::FromBinary(job_id_binary);
-  gcs_publisher_.PublishError(job_id.Hex(), std::move(*request.mutable_job_error()));
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
-}
-
 // Needs to use rpc::GcsSubscriberPollRequest and rpc::GcsSubscriberPollReply here,
 // and convert the reply to rpc::PubsubLongPollingReply because GCS RPC services are
 // required to have the `status` field in replies.
@@ -145,6 +126,56 @@ void InternalPubSubHandler::AsyncRemoveSubscriberFrom(const std::string &sender_
         sender_to_subscribers_.erase(iter);
       },
       "RemoveSubscriberFrom");
+}
+
+ObservabilityPubSubHandler::ObservabilityPubSubHandler(
+    instrumented_io_context &io_service, pubsub::GcsPublisher &gcs_publisher)
+    : gcs_publisher_(gcs_publisher), internal_(io_service, gcs_publisher) {}
+
+void ObservabilityPubSubHandler::HandleGcsPublish(
+    rpc::GcsPublishRequest request,
+    rpc::GcsPublishReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  internal_.HandleGcsPublish(std::move(request), reply, std::move(send_reply_callback));
+}
+
+void ObservabilityPubSubHandler::HandleReportJobError(
+    rpc::ReportJobErrorRequest request,
+    rpc::ReportJobErrorReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &job_id_binary = request.job_error().job_id();
+  if (job_id_binary.size() != JobID::Size()) {
+    send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                            "Invalid job_id: expected length %zu bytes, got %zu",
+                            JobID::Size(),
+                            job_id_binary.size())),
+                        nullptr,
+                        nullptr);
+    return;
+  }
+  const auto job_id = JobID::FromBinary(job_id_binary);
+  gcs_publisher_.PublishError(job_id.Hex(), std::move(*request.mutable_job_error()));
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+}
+
+void ObservabilityPubSubHandler::HandleGcsSubscriberPoll(
+    rpc::GcsSubscriberPollRequest request,
+    rpc::GcsSubscriberPollReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  internal_.HandleGcsSubscriberPoll(
+      std::move(request), reply, std::move(send_reply_callback));
+}
+
+void ObservabilityPubSubHandler::HandleGcsSubscriberCommandBatch(
+    rpc::GcsSubscriberCommandBatchRequest request,
+    rpc::GcsSubscriberCommandBatchReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  internal_.HandleGcsSubscriberCommandBatch(
+      std::move(request), reply, std::move(send_reply_callback));
+}
+
+void ObservabilityPubSubHandler::AsyncRemoveSubscriberFrom(const std::string &sender_id) {
+  internal_.AsyncRemoveSubscriberFrom(sender_id);
 }
 
 }  // namespace gcs

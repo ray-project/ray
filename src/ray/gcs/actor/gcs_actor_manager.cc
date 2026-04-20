@@ -233,11 +233,13 @@ GcsActorManager::GcsActorManager(
     observability::RayEventRecorderInterface &ray_event_recorder,
     const std::string &session_name,
     ray::observability::MetricInterface &actor_by_state_gauge,
-    ray::observability::MetricInterface &gcs_actor_by_state_gauge)
+    ray::observability::MetricInterface &gcs_actor_by_state_gauge,
+    pubsub::GcsPublisher *gcs_observability_publisher)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       gcs_publisher_(gcs_publisher),
+      gcs_observability_publisher_(gcs_observability_publisher),
       raylet_client_pool_(raylet_client_pool),
       worker_client_pool_(worker_client_pool),
       ray_event_recorder_(ray_event_recorder),
@@ -715,7 +717,7 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
             "detached_actor_anonymous_namespace", stream.str(), absl::Now(), job_id);
 
         RAY_LOG(WARNING) << error_data.SerializeAsString();
-        gcs_publisher_->PublishError(job_id.Hex(), std::move(error_data));
+        gcs_observability_publisher_->PublishError(job_id.Hex(), std::move(error_data));
       }
       actors_in_namespace.emplace(actor->GetName(), actor->GetActorID());
     } else {

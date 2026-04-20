@@ -18,6 +18,8 @@
 
 #include "ray/gcs/gcs_node_manager.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 
 namespace ray {
 namespace gcs {
@@ -31,7 +33,14 @@ class MockGcsNodeManager : public GcsNodeManager {
                        /*raylet_client_pool=*/nullptr,
                        /*cluster_id=*/ClusterID::Nil(),
                        /*ray_event_recorder=*/fake_ray_event_recorder_,
-                       /*session_name=*/"") {}
+                       /*session_name=*/"",
+                       /*gcs_observability_publisher=*/FakeObsPublisher()) {}
+
+  static pubsub::GcsPublisher *FakeObsPublisher() {
+    static auto holder =
+        std::make_unique<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
+    return holder.get();
+  }
   MOCK_METHOD(void,
               HandleRegisterNode,
               (rpc::RegisterNodeRequest request,

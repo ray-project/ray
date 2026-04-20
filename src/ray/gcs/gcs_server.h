@@ -262,8 +262,10 @@ class GcsServer {
   std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
-  /// A publisher for publishing gcs messages.
+  /// A publisher for publishing gcs messages (control-plane pubsub channels).
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  /// Publisher for observability pubsub (logs, errors, dashboard resource JSON).
+  std::unique_ptr<pubsub::GcsPublisher> gcs_observability_publisher_;
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
@@ -302,12 +304,15 @@ class GcsServer {
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
   /// Runtime env handler.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
-  /// GCS PubSub handler.
+  /// GCS PubSub handler (control-plane).
   std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  /// Observability pubsub handler.
+  std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
   /// GCS Task info manager for managing task states change events.
   std::unique_ptr<GcsTaskManager> gcs_task_manager_;
   /// Grpc based pubsub's periodical runner.
   std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> observability_pubsub_periodical_runner_;
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// Gcs service state flag, which is used for ut.
