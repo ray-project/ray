@@ -5003,9 +5003,11 @@ py_test(
         "--min-league-size=4",
     ],
     main = "examples/multi_agent/self_play_with_open_spiel.py",
+    # TODO(elliot-barn): Re-enable once timeout is fixed.
     tags = [
         "examples",
         "exclusive",
+        "manual",
         "team:rllib",
     ],
 )
@@ -5118,9 +5120,11 @@ py_test(
     ],
     data = glob(["examples/ray_serve/classes/**"]),
     main = "examples/ray_serve/ray_serve_with_rllib.py",
+    # TODO(elliot-barn): Re-enable once timeout issue is fixed.
     tags = [
         "examples",
         "exclusive",
+        "manual",
         "team:rllib",
     ],
 )
@@ -5256,8 +5260,10 @@ py_test(
     size = "large",
     srcs = ["examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py"],
     main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py",
+    # TODO(elliot-barn): Re-enable once SIGSEGV in CartPole render is fixed.
     tags = [
         "examples",
+        "manual",
         "team:rllib",
     ],
 )

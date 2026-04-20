@@ -129,6 +129,8 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+  // Whether resource isolation via cgroupv2 is enabled.
+  bool enable_resource_isolation;
 };
 
 enum RayletShutdownState : std::uint8_t {
@@ -343,6 +345,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
                              rpc::CancelLocalTaskReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                               rpc::IsLocalWorkerDeadReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
@@ -650,10 +656,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
-                               rpc::IsLocalWorkerDeadReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(rpc::GetNodeStatsRequest request,
