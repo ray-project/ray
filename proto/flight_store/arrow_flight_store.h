@@ -1,14 +1,14 @@
 #pragma once
 
+#include <arrow/api.h>
+#include <arrow/flight/api.h>
+#include <arrow/ipc/api.h>
+
 #include <memory>
 #include <mutex>
 #include <string>
 #include <thread>
 #include <unordered_map>
-
-#include <arrow/api.h>
-#include <arrow/flight/api.h>
-#include <arrow/ipc/api.h>
 
 namespace ray {
 namespace flight_store {
@@ -60,15 +60,16 @@ class ArrowFlightStore {
   /// Fetch a table from a remote Flight server. Pure C++, no GIL needed.
   /// The remote store auto-deletes the table after serving.
   arrow::Result<std::shared_ptr<arrow::Table>> Fetch(const std::string &uri,
-                                                      const std::string &key);
+                                                     const std::string &key);
 
   /// Fetch a table from a same-node producer using process_vm_readv.
   /// Reads the pre-serialized IPC bytes directly from the producer's heap.
   /// Pure C++, no GIL, no gRPC — single syscall.
   /// After fetching, the consumer should notify the producer to delete
   /// (via Flight or out-of-band).
-  static arrow::Result<std::shared_ptr<arrow::Table>> FetchViaVM(
-      pid_t remote_pid, uintptr_t remote_address, int64_t size);
+  static arrow::Result<std::shared_ptr<arrow::Table>> FetchViaVM(pid_t remote_pid,
+                                                                 uintptr_t remote_address,
+                                                                 int64_t size);
 
   /// Delete a stored table (and its IPC buffer).
   void Delete(const std::string &key);

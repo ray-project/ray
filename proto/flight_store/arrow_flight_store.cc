@@ -1,13 +1,12 @@
 #include "arrow_flight_store.h"
 
 #include <arpa/inet.h>
+#include <arrow/io/api.h>
+#include <arrow/ipc/api.h>
 #include <ifaddrs.h>
 #include <netinet/in.h>
 #include <sys/uio.h>
 #include <unistd.h>
-
-#include <arrow/io/api.h>
-#include <arrow/ipc/api.h>
 
 #include <sstream>
 
@@ -26,8 +25,8 @@ static std::string GetLocalIP() {
   for (auto *ifa = ifaddr; ifa != nullptr; ifa = ifa->ifa_next) {
     if (ifa->ifa_addr == nullptr || ifa->ifa_addr->sa_family != AF_INET) continue;
     char buf[INET_ADDRSTRLEN];
-    inet_ntop(AF_INET, &((struct sockaddr_in *)ifa->ifa_addr)->sin_addr, buf,
-              sizeof(buf));
+    inet_ntop(
+        AF_INET, &((struct sockaddr_in *)ifa->ifa_addr)->sin_addr, buf, sizeof(buf));
     std::string ip(buf);
     if (ip != "127.0.0.1") {
       result = ip;
@@ -41,15 +40,13 @@ static std::string GetLocalIP() {
 // ---------------------------------------------------------------------------
 // Inner Flight server implementation.
 // ---------------------------------------------------------------------------
-class ArrowFlightStore::FlightServerImpl
-    : public arrow::flight::FlightServerBase {
+class ArrowFlightStore::FlightServerImpl : public arrow::flight::FlightServerBase {
  public:
   explicit FlightServerImpl(ArrowFlightStore *store) : store_(store) {}
 
-  arrow::Status DoGet(
-      const arrow::flight::ServerCallContext & /*context*/,
-      const arrow::flight::Ticket &ticket,
-      std::unique_ptr<arrow::flight::FlightDataStream> *stream) override {
+  arrow::Status DoGet(const arrow::flight::ServerCallContext & /*context*/,
+                      const arrow::flight::Ticket &ticket,
+                      std::unique_ptr<arrow::flight::FlightDataStream> *stream) override {
     // Pop the table (move semantics — auto-delete after serving).
     auto table = store_->PopTable(ticket.ticket);
     if (!table) {
@@ -76,17 +73,15 @@ int ArrowFlightStore::StartServer() {
   server_ = std::make_unique<FlightServerImpl>(this);
 
   arrow::flight::Location location;
-  ARROW_CHECK_OK(
-      arrow::flight::Location::ForGrpcTcp("0.0.0.0", 0, &location));
+  ARROW_CHECK_OK(arrow::flight::Location::ForGrpcTcp("0.0.0.0", 0, &location));
 
   arrow::flight::FlightServerOptions options(location);
   ARROW_CHECK_OK(server_->Init(options));
   port_ = server_->port();
 
   // Run Serve() in a background thread.
-  server_thread_ = std::make_unique<std::thread>([this]() {
-    ARROW_CHECK_OK(server_->Serve());
-  });
+  server_thread_ =
+      std::make_unique<std::thread>([this]() { ARROW_CHECK_OK(server_->Serve()); });
 
   return port_;
 }
@@ -112,9 +107,7 @@ std::string ArrowFlightStore::GetUri() const {
 static arrow::Result<std::shared_ptr<arrow::Buffer>> SerializeTableToIPC(
     const std::shared_ptr<arrow::Table> &table) {
   ARROW_ASSIGN_OR_RAISE(auto sink, arrow::io::BufferOutputStream::Create());
-  ARROW_ASSIGN_OR_RAISE(
-      auto writer,
-      arrow::ipc::MakeStreamWriter(sink, table->schema()));
+  ARROW_ASSIGN_OR_RAISE(auto writer, arrow::ipc::MakeStreamWriter(sink, table->schema()));
   arrow::TableBatchReader reader(*table);
   std::shared_ptr<arrow::RecordBatch> batch;
   while (true) {
@@ -126,8 +119,7 @@ static arrow::Result<std::shared_ptr<arrow::Buffer>> SerializeTableToIPC(
   return sink->Finish();
 }
 
-void ArrowFlightStore::Put(const std::string &key,
-                           std::shared_ptr<arrow::Table> table) {
+void ArrowFlightStore::Put(const std::string &key, std::shared_ptr<arrow::Table> table) {
   // Pre-serialize to IPC for the process_vm_readv path.
   auto ipc_result = SerializeTableToIPC(table);
   std::lock_guard<std::mutex> lock(mu_);
@@ -172,9 +164,9 @@ arrow::Result<std::shared_ptr<arrow::Table>> ArrowFlightStore::FetchViaVM(
 
   ssize_t nread = process_vm_readv(remote_pid, &local_iov, 1, &remote_iov, 1, 0);
   if (nread < 0) {
-    return arrow::Status::IOError(
-        "process_vm_readv failed: errno=", errno,
-        " (hint: check /proc/sys/kernel/yama/ptrace_scope)");
+    return arrow::Status::IOError("process_vm_readv failed: errno=",
+                                  errno,
+                                  " (hint: check /proc/sys/kernel/yama/ptrace_scope)");
   }
   if (nread != size) {
     return arrow::Status::IOError(
@@ -188,16 +180,14 @@ arrow::Result<std::shared_ptr<arrow::Table>> ArrowFlightStore::FetchViaVM(
   return stream_reader->ToTable();
 }
 
-std::shared_ptr<arrow::Table> ArrowFlightStore::GetLocal(
-    const std::string &key) {
+std::shared_ptr<arrow::Table> ArrowFlightStore::GetLocal(const std::string &key) {
   std::lock_guard<std::mutex> lock(mu_);
   auto it = tables_.find(key);
   if (it == tables_.end()) return nullptr;
   return it->second;
 }
 
-std::shared_ptr<arrow::Table> ArrowFlightStore::PopTable(
-    const std::string &key) {
+std::shared_ptr<arrow::Table> ArrowFlightStore::PopTable(const std::string &key) {
   std::lock_guard<std::mutex> lock(mu_);
   auto it = tables_.find(key);
   if (it == tables_.end()) return nullptr;
@@ -233,8 +223,7 @@ size_t ArrowFlightStore::Size() const {
   return tables_.size();
 }
 
-arrow::flight::FlightClient *ArrowFlightStore::GetOrCreateClient(
-    const std::string &uri) {
+arrow::flight::FlightClient *ArrowFlightStore::GetOrCreateClient(const std::string &uri) {
   std::lock_guard<std::mutex> lock(client_mu_);
   auto it = clients_.find(uri);
   if (it != clients_.end()) {

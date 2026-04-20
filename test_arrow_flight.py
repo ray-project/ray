@@ -13,6 +13,7 @@ import time
 import numpy as np
 import pyarrow as pa
 import pyarrow.flight as flight
+
 import ray
 
 
@@ -22,9 +23,7 @@ def make_table(num_rows: int) -> pa.Table:
         {
             "id": pa.array(np.arange(num_rows, dtype=np.int64)),
             "value": pa.array(np.random.randn(num_rows)),
-            "label": pa.array(
-                np.random.choice(["cat", "dog", "fish"], size=num_rows)
-            ),
+            "label": pa.array(np.random.choice(["cat", "dog", "fish"], size=num_rows)),
         }
     )
 

@@ -1,7 +1,3 @@
-import os
-import subprocess
-import sys
-
 import numpy as np
 import pyarrow as pa
 from Cython.Build import cythonize

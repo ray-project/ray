@@ -10,7 +10,6 @@ import multiprocessing
 import time
 
 import pyarrow as pa
-
 from arrow_flight_store import PyArrowFlightStore
 
 
@@ -57,6 +56,7 @@ def _remote_producer(uri_queue, done_event):
 
     # Create a large-ish table.
     import numpy as np
+
     data = np.zeros(1_000_000, dtype=np.float64)
     table = pa.table({"data": data})
 
@@ -129,6 +129,7 @@ def _remote_producer_vm(info_queue, done_event):
     store.start_server()
 
     import numpy as np
+
     data = np.zeros(1_000_000, dtype=np.float64)
     table = pa.table({"data": data})
 
@@ -144,6 +145,7 @@ def _remote_producer_vm(info_queue, done_event):
 def test_vm_fetch():
     """Test same-node fetch via process_vm_readv."""
     import sys
+
     if sys.platform != "linux":
         print("  process_vm_readv: SKIPPED (Linux only)")
         return
@@ -179,6 +181,7 @@ def test_vm_fetch():
 def test_flight_vs_vm_benchmark():
     """Compare Flight RPC vs process_vm_readv for same-node transfer."""
     import sys
+
     if sys.platform != "linux":
         print("  benchmark: SKIPPED (Linux only)")
         return
@@ -214,8 +217,10 @@ def test_flight_vs_vm_benchmark():
         vm_ms = (time.perf_counter() - t0) * 1000
         store.delete("bench_vm")
 
-        print(f"  {size_mb}MB: Flight={flight_ms:.1f}ms  VM={vm_ms:.1f}ms"
-              f"  speedup={flight_ms/vm_ms:.1f}x")
+        print(
+            f"  {size_mb}MB: Flight={flight_ms:.1f}ms  VM={vm_ms:.1f}ms"
+            f"  speedup={flight_ms/vm_ms:.1f}x"
+        )
 
     store.stop_server()
     print("  benchmark: OK")

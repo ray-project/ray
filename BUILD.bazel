@@ -215,8 +215,8 @@ pyx_library(
 pyx_library(
     name = "_flight_store",
     srcs = [
-        "python/ray/includes/flight_store.pxd",
         "python/ray/_flight_store.pyx",
+        "python/ray/includes/flight_store.pxd",
     ],
     cc_kwargs = dict(
         srcs = PYX_SRCS,
