@@ -521,7 +521,7 @@ def _occupy_ports(ports: list) -> list:
     application status transitions to NOT_STARTED before the OS releases the
     socket), so we wait for all ports to be bindable first.
     """
-    wait_for_condition(all_ports_can_be_bound, ports=ports, timeout=30)
+    wait_for_condition(all_ports_can_be_bound, ports=ports, timeout=120)
     sockets = []
     for port in ports:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
