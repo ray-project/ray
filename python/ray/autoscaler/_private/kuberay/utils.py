@@ -103,7 +103,9 @@ def tpu_node_selectors_to_type(topology: str, accelerator: str) -> Optional[str]
         A string, accelerator_type, e.g. "v4-8".
     """
     if topology and accelerator:
-        generation = gke_tpu_accelerator_to_generation[accelerator]
+        generation = gke_tpu_accelerator_to_generation.get(accelerator)
+        if not generation:
+            return None
         num_chips = get_num_chips_from_topology(topology)
         num_cores = num_chips * get_tpu_cores_per_chip(generation)
         return f"{generation}-{num_cores}"
