@@ -288,6 +288,82 @@ class ResourceManager:
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
 
+    def on_task_dispatched(self, op: "PhysicalOperator") -> None:
+        """Called by the scheduler immediately after ``op`` dispatches a task.
+
+        Incrementally updates the subset of ResourceManager state that gating
+        consumers read inside the inner dispatch loop, so that decisions made
+        mid-step reflect the tasks already dispatched this step rather than
+        the last `update_usages()` snapshot. This replaces the per-dispatch
+        full `update_usages()` walk (O(topology) per dispatch) with
+        O(1) incremental updates on the dispatching op only. The next
+        `update_usages()` at the top of the next scheduling step rebuilds
+        every field from the operators themselves, so drift is bounded to
+        a single step.
+
+        Fields updated here — all read by gating consumers inside the inner
+        dispatch loop:
+          - ``_op_usages[op]`` and ``_op_running_usages[op]`` — read by
+            `DefaultRanker.rank_operator()` and
+            `DownstreamCapacityBackpressurePolicy._get_queue_size_bytes()`.
+          - ``_mem_op_internal[op]`` — read by
+            `ConcurrencyCapBackpressurePolicy.can_add_input()`.
+          - ``_op_budgets[op]`` (via the allocator) — read by
+            `can_submit_new_task()`.
+          - ``op._metrics.obj_store_mem_used`` — dashboard / DatasetStats
+            metric; kept consistent with ``_op_usages`` so observability
+            mirrors reality within a step.
+
+        Fields intentionally NOT updated here:
+          - ``_mem_op_outputs[op]`` — its terms depend on task completion
+            and downstream pulls, not dispatch.
+          - ``_op_pending_usages[op]`` — not read by any gating consumer.
+
+        Global aggregates (``_global_usage``, ``_global_running_usage``)
+        are updated so progress-log lines stay consistent with the per-op
+        fields within a step; they are not themselves gating inputs.
+        """
+        delta = self._dispatch_delta(op)
+
+        if op in self._op_usages:
+            self._op_usages[op] = self._op_usages[op].add(delta)
+            self._op_running_usages[op] = self._op_running_usages[op].add(delta)
+            self._mem_op_internal[op] += delta.object_store_memory
+            op._metrics.obj_store_mem_used = self._op_usages[op].object_store_memory
+
+        self._global_usage = self._global_usage.add(delta)
+        self._global_running_usage = self._global_running_usage.add(delta)
+
+        if self._op_resource_allocator is not None:
+            self._op_resource_allocator.on_task_dispatched(op, delta)
+
+    def _dispatch_delta(self, op: "PhysicalOperator") -> ExecutionResources:
+        """Return the per-task resource commitment for one dispatch of ``op``.
+
+        Combines two semantically distinct categories into one value:
+
+        1. **Ray-core reservation** (CPU / GPU / memory) —
+           ``op.incremental_resource_usage()``, what the raylet reserves
+           upfront at task submission. For task ops this is
+           ``(num_cpus, num_gpus, memory)``; for actor ops it's
+           ``(0, 0, 0)`` because submitting to an existing actor reserves
+           nothing new.
+
+        2. **Predicted plasma commitment** —
+           ``op.metrics.obj_store_mem_max_pending_output_per_task``, the
+           same per-task estimate that ``can_submit_new_task()`` gates
+           dispatch on. Plasma is consumed reactively as the task writes
+           output, not reserved at dispatch, so it's kept separate in
+           ``incremental_resource_usage()`` and attached here. Using the
+           same metric the gate consumes keeps the "decrement here" /
+           "check there" consistent.
+        """
+        return op.incremental_resource_usage().copy(
+            object_store_memory=(
+                op.metrics.obj_store_mem_max_pending_output_per_task or 0
+            )
+        )
+
     def _update_allocated_budgets(self):
         completed_ops_usage = self._get_completed_ops_usage()
 
@@ -650,6 +726,18 @@ class OpResourceAllocator(ABC):
         """Callback to update resource usages."""
         ...
 
+    def on_task_dispatched(
+        self, op: PhysicalOperator, delta: ExecutionResources
+    ) -> None:
+        """Called by the ResourceManager after ``op`` dispatches a task.
+
+        ``delta`` is the per-task resource commitment computed by
+        `ResourceManager._dispatch_delta`. Default: no-op. Allocators
+        that track per-op budgets should override to incrementally
+        decrement them by ``delta``.
+        """
+        pass
+
     @abstractmethod
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
         """Return whether the given operator can submit a new task."""
@@ -913,6 +1001,30 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             budget.object_store_memory
             >= (op.metrics.obj_store_mem_max_pending_output_per_task or 0)
         )
+
+    def on_task_dispatched(
+        self, op: PhysicalOperator, delta: ExecutionResources
+    ) -> None:
+        """Decrement ``op``'s budget by ``delta``, clamped at zero per field.
+
+        ``delta`` is the per-task resource commitment built by
+        `ResourceManager._dispatch_delta` — see that method for the
+        semantics of the CPU/GPU/memory vs object-store fields.
+
+        Constructs a new ``ExecutionResources`` rather than mutating
+        ``self._op_budgets[op]`` in place. ``ExecutionResources`` is
+        treated as a value type elsewhere in the codebase, and an
+        in-place mutation here would leak to any caller that happens to
+        be holding a reference to the budget instance. Clamping at zero
+        guards against a stale budget + oversized delta producing a
+        negative budget that would confuse downstream schedulability
+        checks; the next `update_usages()` at the top of the next
+        scheduling step restores exact state.
+        """
+        budget = self._op_budgets.get(op)
+        if budget is None:
+            return
+        self._op_budgets[op] = budget.subtract_clamp_zero(delta)
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
         return self._op_budgets.get(op)

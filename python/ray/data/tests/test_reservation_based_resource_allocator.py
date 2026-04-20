@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, patch, PropertyMock
 
 import pytest
 
@@ -1201,7 +1201,511 @@ class TestReservationOpResourceAllocator:
         )
 
 
+def test_on_task_dispatched_decrements_budget_without_mutation(restore_data_context):
+    """`ReservationOpResourceAllocator.on_task_dispatched(op)` decrements
+    that op's budget by one task's ``incremental_resource_usage()`` and
+    clamps at zero, producing a *new* ExecutionResources — never mutating
+    the previous instance in place. The "no in-place mutation" guarantee
+    matters because ExecutionResources is treated as a value type
+    elsewhere; mutating the cached budget would leak to any caller
+    holding a prior reference.
+    """
+    # Minimal 2-op pipeline: InputDataBuffer -> Map.
+    input_op = InputDataBuffer(DataContext.get_current(), MagicMock())
+    op2 = mock_map_op(input_op=input_op, ray_remote_args={"num_cpus": 2})
+    # Override op2's incremental_resource_usage to exercise a multi-cpu path.
+    op2.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=2, gpu=0)
+    )
+
+    topo = build_streaming_topology(op2, ExecutionOptions())
+    rm = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(return_value=ExecutionResources(cpu=8, gpu=0)),
+        DataContext.get_current(),
+    )
+    rm.update_usages()
+    alloc = rm._op_resource_allocator
+    assert isinstance(alloc, ReservationOpResourceAllocator)
+
+    before_budget = alloc.get_budget(op2)
+    assert before_budget is not None
+    before_snapshot = (
+        before_budget.cpu,
+        before_budget.gpu,
+        before_budget.object_store_memory,
+        before_budget.memory,
+    )
+
+    rm.on_task_dispatched(op2)
+
+    after_budget = alloc.get_budget(op2)
+    assert after_budget is not before_budget  # new object, not in-place
+    assert after_budget.cpu == max(before_snapshot[0] - 2.0, 0.0)
+    # Prior budget object unchanged.
+    assert (
+        before_budget.cpu,
+        before_budget.gpu,
+        before_budget.object_store_memory,
+        before_budget.memory,
+    ) == before_snapshot
+
+
+def test_on_task_dispatched_clamps_at_zero_never_negative(restore_data_context):
+    """`on_task_dispatched` clamps each resource field at zero — a stale
+    budget + an oversized ``incremental_resource_usage()`` never produces
+    a negative budget that would confuse downstream schedulability
+    checks.
+    """
+    input_op = InputDataBuffer(DataContext.get_current(), MagicMock())
+    op2 = mock_map_op(input_op=input_op, ray_remote_args={"num_cpus": 1})
+    op2.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=1000, gpu=0)
+    )
+
+    topo = build_streaming_topology(op2, ExecutionOptions())
+    rm = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(return_value=ExecutionResources(cpu=8, gpu=0)),
+        DataContext.get_current(),
+    )
+    rm.update_usages()
+    rm.on_task_dispatched(op2)
+    alloc = rm._op_resource_allocator
+    budget = alloc.get_budget(op2)
+    assert budget is not None
+    assert budget.cpu == 0.0
+    assert budget.gpu == 0.0
+    assert budget.object_store_memory == 0.0
+    assert budget.memory == 0.0
+
+
+def test_on_task_dispatched_decrements_object_store_memory_by_predicted_output(
+    restore_data_context,
+):
+    """``on_task_dispatched`` decrements the op's budget's ``object_store_memory``
+    by ``op.metrics.obj_store_mem_max_pending_output_per_task``, independently of
+    what ``incremental_resource_usage()`` reports for that dimension.
+
+    Why this is the right shape:
+    - ``incremental_resource_usage()`` reports what Ray core reserves at
+      dispatch (CPU/GPU/memory). Plasma is *not* a Ray-core reservation —
+      it is committed reactively as the task writes its output, not reserved
+      at dispatch. So operators correctly return ``object_store_memory=0``
+      from ``incremental_resource_usage()``.
+    - But ``can_submit_new_task()`` gates on
+      ``budget.object_store_memory >= op.metrics.obj_store_mem_max_pending_output_per_task``,
+      so the budget's object-store dimension *must* decrement per dispatch
+      or the op silently over-commits plasma within a scheduling step.
+    - The fix uses the same per-task-max metric the gate already reads, so
+      the "decrement here" and "check there" are consistent.
+
+    The extreme case this matters: actor-pool ops. Their
+    ``incremental_resource_usage()`` is ``(0, 0, 0)`` entirely (submitting
+    to an existing actor reserves nothing new), so without this fix nothing
+    at all decrements their budget within a scheduling step.
+    """
+    input_op = InputDataBuffer(DataContext.get_current(), MagicMock())
+    op2 = mock_map_op(input_op=input_op, ray_remote_args={"num_cpus": 1})
+    # Simulate an actor-style op: incremental_resource_usage reports
+    # nothing (actor dispatch to an existing actor reserves no additional
+    # Ray-core resources).
+    op2.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=0, gpu=0)
+    )
+    # Simulate a predicted per-task output of 100 MiB. This is the
+    # estimate `can_submit_new_task` gates on. The property is computed,
+    # so patch it at class level for the duration of the test.
+    per_task_output_bytes = 100 * 1024 * 1024
+
+    topo = build_streaming_topology(op2, ExecutionOptions())
+    rm = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(
+            return_value=ExecutionResources(
+                cpu=8, gpu=0, object_store_memory=10 * per_task_output_bytes
+            )
+        ),
+        DataContext.get_current(),
+    )
+    rm.update_usages()
+    alloc = rm._op_resource_allocator
+    assert isinstance(alloc, ReservationOpResourceAllocator)
+
+    before_budget = alloc.get_budget(op2)
+    assert before_budget is not None
+    assert before_budget.object_store_memory > 0, (
+        "Test precondition: op should have nonzero object-store budget "
+        "so the decrement is observable."
+    )
+    before_obj_store = before_budget.object_store_memory
+
+    with patch.object(
+        type(op2.metrics),
+        "obj_store_mem_max_pending_output_per_task",
+        new_callable=PropertyMock,
+        return_value=per_task_output_bytes,
+    ):
+        rm.on_task_dispatched(op2)
+
+    after_budget = alloc.get_budget(op2)
+    # object-store dimension must decrement by the predicted per-task
+    # output, clamped at zero. This is the fix — previously the whole
+    # decrement was a no-op for actor ops since incremental_resource_usage
+    # was (0, 0, 0) and object_store_memory is not part of it.
+    expected_after_obj_store = max(
+        before_obj_store - per_task_output_bytes, 0.0
+    )
+    assert after_budget.object_store_memory == expected_after_obj_store, (
+        f"Expected object_store_memory to decrement by {per_task_output_bytes}; "
+        f"before={before_obj_store}, after={after_budget.object_store_memory}"
+    )
+    # CPU dimension should stay the same since
+    # incremental_resource_usage() returns cpu=0 (actor-pool semantics).
+    assert after_budget.cpu == before_budget.cpu
+
+
+def test_on_task_dispatched_no_decrement_when_per_task_output_metric_missing(
+    restore_data_context,
+):
+    """If ``obj_store_mem_max_pending_output_per_task`` is not yet known
+    (before the first task completes, the running-max metric is 0/None),
+    ``on_task_dispatched`` should not decrement the budget's object-store
+    dimension. This matches reality: we can't predict the output size
+    until at least one task has produced output.
+    """
+    input_op = InputDataBuffer(DataContext.get_current(), MagicMock())
+    op2 = mock_map_op(input_op=input_op, ray_remote_args={"num_cpus": 1})
+    op2.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=0, gpu=0)
+    )
+
+    topo = build_streaming_topology(op2, ExecutionOptions())
+    rm = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(
+            return_value=ExecutionResources(
+                cpu=8, gpu=0, object_store_memory=1 * 1024 * 1024 * 1024
+            )
+        ),
+        DataContext.get_current(),
+    )
+    rm.update_usages()
+    alloc = rm._op_resource_allocator
+    before_obj_store = alloc.get_budget(op2).object_store_memory
+    # Metric not populated yet (freshly-started op, no tasks finished) —
+    # property returns None.
+    with patch.object(
+        type(op2.metrics),
+        "obj_store_mem_max_pending_output_per_task",
+        new_callable=PropertyMock,
+        return_value=None,
+    ):
+        rm.on_task_dispatched(op2)
+    after_obj_store = alloc.get_budget(op2).object_store_memory
+    assert after_obj_store == before_obj_store, (
+        "When per-task-output metric is unknown (0/None), budget's "
+        "object_store_memory should not decrement."
+    )
+
+
+def test_on_task_dispatched_updates_op_usages_read_by_gating_consumers(
+    restore_data_context,
+):
+    """``on_task_dispatched`` must keep ``_op_usages[op]`` and
+    ``_op_running_usages[op]`` fresh within a scheduling step, not just
+    the allocator's ``_op_budgets[op]``. These dicts are read by gating
+    consumers inside the inner dispatch loop — ``DefaultRanker`` reads
+    them through ``get_op_usage()``, and
+    ``DownstreamCapacityBackpressurePolicy`` reads them through
+    ``get_op_usage()`` in its ``_get_queue_size_bytes()`` path. If they
+    stay at the last ``update_usages()`` snapshot, those consumers make
+    decisions as if the task just dispatched hadn't committed any
+    resources, which lets the scheduler over-dispatch before
+    ``update_usages()`` runs again.
+
+    Invariant under test: after a dispatch, ``_op_usages[op]`` and
+    ``_op_running_usages[op]`` each advance by the same delta the
+    allocator used to decrement the budget (the sum of
+    ``incremental_resource_usage()`` and
+    ``obj_store_mem_max_pending_output_per_task``).
+    """
+    input_op = InputDataBuffer(DataContext.get_current(), MagicMock())
+    op2 = mock_map_op(input_op=input_op, ray_remote_args={"num_cpus": 2})
+    op2.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=2, gpu=0)
+    )
+    per_task_output_bytes = 50 * 1024 * 1024  # 50 MiB
+
+    topo = build_streaming_topology(op2, ExecutionOptions())
+    rm = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(
+            return_value=ExecutionResources(
+                cpu=8, gpu=0, object_store_memory=1024 * 1024 * 1024
+            )
+        ),
+        DataContext.get_current(),
+    )
+    rm.update_usages()
+
+    before_usage = rm._op_usages[op2]
+    before_running = rm._op_running_usages[op2]
+
+    with patch.object(
+        type(op2.metrics),
+        "obj_store_mem_max_pending_output_per_task",
+        new_callable=PropertyMock,
+        return_value=per_task_output_bytes,
+    ):
+        rm.on_task_dispatched(op2)
+
+    after_usage = rm._op_usages[op2]
+    after_running = rm._op_running_usages[op2]
+
+    # Core-resource dimension advances by incremental_resource_usage().
+    assert after_usage.cpu == before_usage.cpu + 2.0
+    assert after_running.cpu == before_running.cpu + 2.0
+    # Object-store dimension advances by the predicted per-task output
+    # (same value the gate consumes in can_submit_new_task).
+    assert (
+        after_usage.object_store_memory
+        == before_usage.object_store_memory + per_task_output_bytes
+    )
+    assert (
+        after_running.object_store_memory
+        == before_running.object_store_memory + per_task_output_bytes
+    )
+    # Value-type discipline: each update replaces the old instance
+    # rather than mutating it. Prior references remain pinned to their
+    # snapshot values.
+    assert after_usage is not before_usage
+    assert after_running is not before_running
+
+
+def test_on_task_dispatched_updates_mem_op_internal_and_dashboard_metric(
+    restore_data_context,
+):
+    """``on_task_dispatched`` must also keep ``_mem_op_internal[op]``
+    fresh — ``ConcurrencyCapBackpressurePolicy.can_add_input()`` reads
+    it through ``get_mem_op_internal()`` inside the inner dispatch loop,
+    and a stale value would under-report pending-output plasma pressure
+    and let the scheduler dispatch past the concurrency cap.
+
+    The dashboard-facing ``op._metrics.obj_store_mem_used`` field must
+    also mirror the new ``_op_usages[op].object_store_memory`` so
+    DatasetStats and the Ray Data dashboard observe the same value as
+    the gating consumers within the step (rather than the last
+    ``update_usages()`` snapshot).
+    """
+    input_op = InputDataBuffer(DataContext.get_current(), MagicMock())
+    op2 = mock_map_op(input_op=input_op, ray_remote_args={"num_cpus": 1})
+    op2.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=0, gpu=0)
+    )
+    per_task_output_bytes = 25 * 1024 * 1024  # 25 MiB
+
+    topo = build_streaming_topology(op2, ExecutionOptions())
+    rm = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(
+            return_value=ExecutionResources(
+                cpu=8, gpu=0, object_store_memory=1024 * 1024 * 1024
+            )
+        ),
+        DataContext.get_current(),
+    )
+    rm.update_usages()
+
+    before_mem_internal = rm._mem_op_internal[op2]
+
+    with patch.object(
+        type(op2.metrics),
+        "obj_store_mem_max_pending_output_per_task",
+        new_callable=PropertyMock,
+        return_value=per_task_output_bytes,
+    ):
+        rm.on_task_dispatched(op2)
+
+    # _mem_op_internal advances by the per-task plasma commitment.
+    assert (
+        rm._mem_op_internal[op2]
+        == before_mem_internal + per_task_output_bytes
+    )
+    # Dashboard metric mirrors the updated _op_usages[op].object_store_memory.
+    assert (
+        op2._metrics.obj_store_mem_used
+        == rm._op_usages[op2].object_store_memory
+    )
+
+
+def test_execution_resources_subtract_clamp_zero():
+    """ExecutionResources.subtract_clamp_zero equals
+    subtract(...).max(zero()) but produces one intermediate object
+    instead of two — hot-path shorthand for incremental-budget decrement.
+    """
+    a = ExecutionResources(cpu=4.0, gpu=1.0, object_store_memory=100, memory=200)
+    b = ExecutionResources(cpu=10.0, gpu=0.5, object_store_memory=30, memory=400)
+
+    fused = a.subtract_clamp_zero(b)
+    naive = a.subtract(b).max(ExecutionResources.zero())
+    assert fused.cpu == naive.cpu == 0.0  # 4 - 10 clamped
+    assert fused.gpu == naive.gpu == 0.5
+    assert fused.object_store_memory == naive.object_store_memory == 70
+    assert fused.memory == naive.memory == 0.0  # 200 - 400 clamped
+
+
 if __name__ == "__main__":
     import sys
 
     sys.exit(pytest.main(["-v", __file__]))
+
+# --- M5 design-tradeoff pin ---------------------------------------
+#
+# M5 trades exact per-dispatch budget freshness for amortized work:
+# the inner loop only updates the dispatched op's state, while pristine
+# walked the full topology after every dispatch. Within a single
+# scheduling step this means peer-budget redistribution (pristine moves
+# slack from idle ops to busy ones via update_budgets) is deferred to
+# the step boundary. The drift IS bounded — the next update_usages()
+# at step top resyncs — but within a step a borrow-needy op dispatches
+# fewer tasks than pristine would.
+#
+# This pin documents the drift shape with a 2-op topology where op A
+# overruns its reservation while op B is idle. If a future change
+# closes the drift (e.g., partial peer-budget refresh per dispatch)
+# this test fails and forces a conscious update.
+
+def test_m5_borrow_drift_in_multi_op_topology_is_real_and_quantified(
+    restore_data_context,
+):
+    """**Adversarial-pass finding (M5)**: v3's incremental budget
+    decrement does NOT redistribute slack from idle ops. In a 2-op
+    topology where op A wants more dispatch headroom than its
+    initial allocation while op B is idle, pristine's per-dispatch
+    `update_budgets` redistributes B's slack to A; v3 doesn't. So
+    v3's A.budget drains faster than pristine's.
+
+    This is the "bounded design-intended drift" the audit
+    documented in §4.5 but I had failed to quantify or test until
+    an adversarial probe forced it. The drift IS bounded by one
+    scheduling step (next update_usages corrects it) but within a
+    step, v3 dispatches FEWER tasks than pristine on a
+    borrow-needy op.
+
+    Setup:
+    - 16 CPU global, 2 eligible ops (A and B), 50% reservation
+      ratio. Each op reserves 4 CPU; shared pool = 8.
+    - Initial budget per op = 4 reserved + 8/2 share = 8.
+    - Op A dispatches 8 tasks (each 1 CPU).
+    - Op B is idle (zero usage).
+
+    Expected:
+    - v3: A.budget shrinks linearly: 8 -> 7 -> ... -> 0.
+    - Pristine: A.budget shrinks slower because it redistributes
+      B's idle share to A.
+    - Drift at end of sequence: pristine > v3 (drift is positive).
+    """
+    from unittest.mock import MagicMock, PropertyMock, patch
+
+    from ray.data._internal.execution.interfaces.execution_options import (
+        ExecutionOptions,
+    )
+    from ray.data._internal.execution.streaming_executor_state import (
+        build_streaming_topology,
+    )
+
+    # Build 2-op topology.
+    ctx_input = DataContext.get_current()
+    input_op = InputDataBuffer(ctx_input, MagicMock())
+    op_a = mock_map_op(input_op=input_op, ray_remote_args={"num_cpus": 1})
+    op_b = mock_map_op(input_op=op_a, ray_remote_args={"num_cpus": 1})
+
+    # Track A's dispatched count; have A's logical-usage methods
+    # reflect it so pristine's update_usages picks up the dispatches.
+    state = {"a": 0}
+    op_a.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=1, gpu=0)
+    )
+    op_a.current_logical_usage = MagicMock(
+        side_effect=lambda: ExecutionResources(cpu=state["a"], gpu=0)
+    )
+    op_a.running_logical_usage = MagicMock(
+        side_effect=lambda: ExecutionResources(cpu=state["a"], gpu=0)
+    )
+    op_a.pending_logical_usage = MagicMock(
+        return_value=ExecutionResources.zero()
+    )
+    op_b.incremental_resource_usage = MagicMock(
+        return_value=ExecutionResources(cpu=1, gpu=0)
+    )
+    op_b.current_logical_usage = MagicMock(
+        return_value=ExecutionResources.zero()
+    )
+    op_b.running_logical_usage = MagicMock(
+        return_value=ExecutionResources.zero()
+    )
+    op_b.pending_logical_usage = MagicMock(
+        return_value=ExecutionResources.zero()
+    )
+
+    def build_rm():
+        topo = build_streaming_topology(op_b, ExecutionOptions())
+        return ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(
+                return_value=ExecutionResources(
+                    cpu=16, gpu=0, object_store_memory=10 ** 11
+                )
+            ),
+            DataContext.get_current(),
+        )
+
+    rm_v3 = build_rm()
+    rm_pristine = build_rm()
+    rm_v3.update_usages()
+    rm_pristine.update_usages()
+
+    # Initial budgets must match.
+    assert (
+        rm_v3._op_resource_allocator.get_budget(op_a).cpu
+        == rm_pristine._op_resource_allocator.get_budget(op_a).cpu
+    )
+
+    # Drive 8 dispatches on A.
+    with patch.object(
+        type(op_a.metrics),
+        "obj_store_mem_max_pending_output_per_task",
+        new_callable=PropertyMock,
+        return_value=1024,
+    ):
+        for _ in range(8):
+            state["a"] += 1
+            rm_v3.on_task_dispatched(op_a)
+            rm_pristine.update_usages()
+
+    v3_final = rm_v3._op_resource_allocator.get_budget(op_a).cpu
+    pristine_final = rm_pristine._op_resource_allocator.get_budget(op_a).cpu
+    drift = pristine_final - v3_final
+
+    # v3 hits zero. Pristine still has budget thanks to redistribution.
+    assert v3_final == 0.0, (
+        f"v3 A.budget should hit zero after 8 dispatches; got {v3_final}"
+    )
+    assert pristine_final > 0.0, (
+        f"Pristine A.budget should be positive (B's slack redistributed); "
+        f"got {pristine_final}"
+    )
+    assert drift > 0.0, (
+        f"Expected positive drift (pristine > v3); got {drift}. The drift "
+        f"is bounded "
+        f"design-intended behavior — pristine recomputes redistribution "
+        f"per dispatch, v3 only at step boundaries."
+    )
