@@ -1,7 +1,7 @@
 import itertools
 import math
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
 
 import ray
@@ -77,6 +77,19 @@ class RefBundle:
     # largest total number of bytes present there has the highest preference.
     _cached_preferred_locations: Optional[Dict[NodeIdStr, int]] = None
 
+    # Cached result of `size_bytes()`. Computed on first call. RefBundle is
+    # a frozen dataclass so writes go through `object.__setattr__`. Marked
+    # `init=False` so that `dataclasses.replace(bundle, slices=...)`
+    # produces a fresh (uncached) new bundle rather than copying a cache
+    # entry that may no longer match the replacement's blocks/slices.
+    _cached_size_bytes: Optional[int] = field(default=None, init=False, repr=False, compare=False)
+
+    # Cached result of `num_rows()`. Three-valued: -1 = not yet cached,
+    # `None` = computed and the row count is unknown (an upstream block
+    # had `num_rows=None`), an `int` = known row count. Marked
+    # `init=False` for the same reason as `_cached_size_bytes`.
+    _cached_num_rows: Optional[int] = field(default=-1, init=False, repr=False, compare=False)
+
     def __post_init__(self):
         if self.schema is not None:
             import pyarrow as pa
@@ -136,35 +149,56 @@ class RefBundle:
     def num_rows(self) -> Optional[int]:
         """Number of rows present in this bundle, if known.
 
-        Iterates through blocks and their corresponding slices to calculate the total.
-        Note: Block metadata always refers to the full block, not the slice.
+        Iterates through blocks and their corresponding slices to calculate
+        the total. Block metadata always refers to the full block, not the
+        slice:
 
-        - If block_slice is None, uses the full block's metadata.num_rows
-        - If block_slice is present, uses the slice's num_rows (partial block portion)
-        - Returns None if any full block has unknown row count (metadata.num_rows is None)
+        - If ``block_slice`` is None, uses ``metadata.num_rows``.
+        - If ``block_slice`` is present, uses the slice's ``num_rows``
+          (partial block portion).
+        - Returns ``None`` if any full block has unknown row count.
+
+        Memoized on first call. Safe because ``RefBundle`` is frozen: the
+        block tuple, slices, and per-block metadata are all immutable, so
+        the answer is stable over the lifetime of the instance.
         """
+        if self._cached_num_rows != -1:
+            return self._cached_num_rows
         total = 0
+        result: Optional[int] = 0
         for metadata, block_slice in zip(self.metadata, self.slices):
             if block_slice is None:
                 if metadata.num_rows is None:
-                    return None
+                    result = None
+                    break
                 total += metadata.num_rows
             else:
                 total += block_slice.num_rows
-        return total
+        else:
+            result = total
+        object.__setattr__(self, "_cached_num_rows", result)
+        return result
 
     def size_bytes(self) -> int:
         """Size of the blocks of this bundle in bytes.
 
-        Iterates through blocks and their corresponding slices to calculate the total size.
-        Note: Block metadata always refers to the full block, not the slice.
+        Iterates through blocks and their corresponding slices to calculate
+        the total size. Block metadata always refers to the full block, not
+        the slice:
 
-        - If block_slice is None, uses the full block's metadata.size_bytes
-        - If block_slice is present but num_rows is unknown or zero, uses full metadata.size_bytes
-        - If block_slice represents a partial block, estimates size proportionally based on
-          (metadata.size_bytes / metadata.num_rows) * block_slice.num_rows
-        - Otherwise, uses the full metadata.size_bytes
+        - If ``block_slice`` is None, uses the full block's ``metadata.size_bytes``.
+        - If ``block_slice`` is present but ``num_rows`` is unknown or zero,
+          uses full ``metadata.size_bytes``.
+        - If ``block_slice`` represents a partial block, estimates size
+          proportionally as
+          ``(metadata.size_bytes / metadata.num_rows) * block_slice.num_rows``.
+        - Otherwise, uses the full ``metadata.size_bytes``.
+
+        Memoized on first call; see the note on ``num_rows`` for why this
+        is safe against the frozen dataclass.
         """
+        if self._cached_size_bytes is not None:
+            return self._cached_size_bytes
         total = 0
         for (_, metadata), block_slice in zip(self.blocks, self.slices):
             if block_slice is None:
@@ -179,6 +213,7 @@ class RefBundle:
                 total += max(1, int(math.ceil(per_row * block_slice.num_rows)))
             else:
                 total += metadata.size_bytes
+        object.__setattr__(self, "_cached_size_bytes", total)
         return total
 
     def destroy_if_owned(self) -> int:
