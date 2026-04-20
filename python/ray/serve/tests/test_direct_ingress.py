@@ -514,41 +514,31 @@ def test_health_check(_skip_if_ff_not_enabled, serve_instance):
         grpc_channel.close()
 
 
+def _occupy_ports(ports: list) -> list:
+    """Wait for ports to be free, then bind and return the sockets.
+
+    Previous tests' replica actors may still be shutting down (the Serve
+    application status transitions to NOT_STARTED before the OS releases the
+    socket), so we wait for all ports to be bindable first.
+    """
+    wait_for_condition(all_ports_can_be_bound, ports=ports, timeout=30)
+    sockets = []
+    for port in ports:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        sock.bind(("127.0.0.1", port))
+        sock.listen(1)
+        sockets.append(sock)
+    return sockets
+
+
 def test_port_retry_logic(_skip_if_ff_not_enabled, serve_instance):
     """Test that replicas retry port allocation when ports are in use."""
-    import socket
-
-    # Create a function to occupy a port
-    def occupy_port(port: int, max_attempts: int = 10):
-        import errno
-
-        attempts = 0
-        while attempts < max_attempts:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-            try:
-                sock.bind(("localhost", port))
-                sock.listen(1)
-                return sock
-            except OSError as exc:
-                sock.close()
-                # If the port is already in use, try the next one; otherwise
-                # re-raise unexpected errors.
-                if exc.errno != errno.EADDRINUSE:
-                    raise
-
-                attempts += 1
-                # backoff to wait for the port to be released
-                time.sleep(0.5)
-
-        raise RuntimeError(
-            f"Unable to bind a socket after {max_attempts} attempts at port {port}."
-        )
 
     # Start occupying the min HTTP and gRPC ports
-    http_sock = occupy_port(RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT)
-    grpc_sock = occupy_port(RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT)
+    http_sock, grpc_sock = _occupy_ports(
+        [RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT, RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT]
+    )
 
     try:
         # Deploy an app - it should retry port allocation and eventually fall back
@@ -590,20 +580,16 @@ def test_replica_gives_up_after_max_port_retries_for_http(
     _skip_if_ff_not_enabled, serve_instance
 ):
     """Test that replicas give up after max port retries."""
-    import socket
 
-    occupied_ports = []
     # TODO(sheikh): Control env variables
-    for port in range(
-        RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
-        RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
-        + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
-    ):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("localhost", port))
-        sock.listen(1)
-        occupied_ports.append(sock)
+    ports = list(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
+            + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
+        )
+    )
+    occupied_ports = _occupy_ports(ports)
 
     serve._run(Hybrid.bind(message="Hello world!"), _blocking=False)
 
@@ -629,23 +615,15 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
     _skip_if_ff_not_enabled, serve_instance
 ):
     """Test that replicas give up after max port retries."""
-    import socket
 
-    occupied_ports = []
-    for port in range(
-        RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
-        RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
-        + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
-    ):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind(("localhost", port))
-            sock.listen(1)
-        except socket.error:
-            # Port may already be in use, continue to next port
-            pass
-        occupied_ports.append(sock)
+    ports = list(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
+            + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
+        )
+    )
+    occupied_ports = _occupy_ports(ports)
 
     serve._run(Hybrid.bind(message="Hello world!"), _blocking=False)
 
@@ -669,16 +647,14 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
 
 def test_no_port_available(_skip_if_ff_not_enabled, serve_instance):
     """Test that replicas give up after max port retries."""
-    import socket
 
-    occupied_ports = []
-    for port in range(
-        RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT, RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT
-    ):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("localhost", port))
-        sock.listen(1)
-        occupied_ports.append(sock)
+    ports = list(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
+        )
+    )
+    occupied_ports = _occupy_ports(ports)
 
     """Test that multiple replicas on the same node occupy unique ports."""
     serve._run(
