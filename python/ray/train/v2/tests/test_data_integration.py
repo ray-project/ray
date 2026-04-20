@@ -841,6 +841,8 @@ def test_shard_provider_reused_across_replica_group_replacement(ray_start_4_cpus
     so that the DataIterator's cursor on the shared coordinator actor is
     preserved and no rows are dropped or duplicated.
     """
+    import os
+
     import ray
 
     NUM_ROWS = 100
@@ -851,24 +853,46 @@ def test_shard_provider_reused_across_replica_group_replacement(ray_start_4_cpus
         def __init__(self):
             self._rows = []
 
-        def add(self, row):
-            self._rows.append(row)
+        def add(self, worker_tag, row):
+            self._rows.append((worker_tag, row))
 
         def get_rows(self):
             return list(self._rows)
 
     collector = Collector.remote()
 
-    train_ds = ray.data.range(NUM_ROWS)
+    # One-row blocks so the atomic unit the SplitCoordinator hands out matches
+    # what the consumer processes synchronously. Combined with no-lookahead
+    # below, this guarantees a dying worker has at most the row it's currently
+    # processing in memory (and that row is already in the collector by the
+    # time the raise fires).
+    train_ds = ray.data.range(NUM_ROWS, override_num_blocks=NUM_ROWS)
 
     def train_fn():
+        # Disable all lookahead between the SplitCoordinator and the consumer
+        # so rows stay in the coord's queue until the consumer explicitly
+        # asks for them; anything the worker has pulled into RAM would
+        # otherwise be lost if the worker dies (the coord has already popped
+        # it off the split's queue).
+        # - RAY_STREAM_SPLIT_NO_LOOKAHEAD=1: skip gen_blocks' 1-block
+        #   prefetch of the NEXT block (SplitCoordinator layer).
+        # - We bypass iter_batches entirely and iterate the raw ref-bundle
+        #   stream by hand, because iter_batches wraps the pipeline in
+        #   make_async_gen which eagerly pulls batches in a background
+        #   thread even with prefetch_batches=0.
+        os.environ["RAY_STREAM_SPLIT_NO_LOOKAHEAD"] = "1"
+        worker_tag = os.getpid()
         shard = ray.train.get_dataset_shard("train")
-        for batch in shard.iter_batches(batch_size=1):
-            row = int(batch["id"][0])
-            ray.get(collector.add.remote(row))
-            # Only 1 worker should see row 50 and fail once.
-            if row == 50:
-                raise RuntimeError("Injected failure after consuming row 50.")
+        ref_bundles, _, _, _ = shard._to_ref_bundle_iterator()
+        for bundle in ref_bundles:
+            for block_ref in bundle.block_refs:
+                block = ray.get(block_ref)
+                for row_idx in range(block.num_rows):
+                    row = int(block.column("id")[row_idx].as_py())
+                    ray.get(collector.add.remote(worker_tag, row))
+                    # Only 1 worker should see row 50 and fail once.
+                    if row == 50:
+                        raise RuntimeError("Injected failure after consuming row 50.")
 
     trainer = DataParallelTrainer(
         train_fn,
@@ -881,10 +905,21 @@ def test_shard_provider_reused_across_replica_group_replacement(ray_start_4_cpus
     )
     trainer.fit()
 
-    rows = ray.get(collector.get_rows.remote())
+    entries = ray.get(collector.get_rows.remote())
+    by_worker = {}
+    for worker_tag, row in entries:
+        by_worker.setdefault(worker_tag, []).append(row)
+    for tag in by_worker:
+        by_worker[tag].sort()
+    rows = sorted(r for _, r in entries)
+    attribution = "\n".join(
+        f"  worker pid={tag}: {len(rs)} rows {rs}"
+        for tag, rs in sorted(by_worker.items())
+    )
     assert sorted(rows) == list(range(NUM_ROWS)), (
         f"Expected all {NUM_ROWS} rows to be collected exactly once after "
-        f"replica replacement, got {len(rows)} rows: {sorted(rows)}"
+        f"replica replacement, got {len(rows)} rows: {sorted(rows)}\n"
+        f"Per-worker attribution:\n{attribution}"
     )
 
 

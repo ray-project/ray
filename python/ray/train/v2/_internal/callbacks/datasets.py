@@ -218,6 +218,10 @@ class DatasetsCallback(WorkerGroupCallback, ReplicaGroupCallback, ControllerCall
         # workers. The underlying DataIterator (and its coordinator actor) is
         # preserved across the replacement, so the replacement picks up where
         # the failed worker left off.
+        from ray.data._internal.iterator.stream_split_iterator import (
+            StreamSplitDataIterator,
+        )
+
         providers = []
         for w in workers:
             rank = w.distributed_context.world_rank
@@ -231,7 +235,16 @@ class DatasetsCallback(WorkerGroupCallback, ReplicaGroupCallback, ControllerCall
                 "outgoing replica."
             )
             self._shard_provider_active[rank] = True
-            providers.append(self._shard_providers[rank])
+            provider = self._shard_providers[rank]
+            # Mark each StreamSplitDataIterator so the replacement worker
+            # rejoins the in-progress epoch instead of arriving at the
+            # start_epoch barrier the predecessor already passed (which would
+            # deadlock the SplitCoordinator). Flag is one-shot: the iterator
+            # auto-clears it after the first iter_batches() call.
+            for ds_iter in provider._dataset_iterators.values():
+                if isinstance(ds_iter, StreamSplitDataIterator):
+                    ds_iter._is_replacement = True
+            providers.append(provider)
         return {"dataset_shard_provider": providers}
 
     # --------------------------

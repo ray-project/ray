@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 import time
 from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
@@ -61,6 +62,14 @@ class StreamSplitDataIterator(DataIterator):
         self._output_split_idx = output_split_idx
         self._world_size = world_size
         self._iter_stats = DatasetStats(metadata={}, parent=None)
+        # One-shot flag: when True, the next iter_batches() call rejoins the
+        # in-progress epoch via rejoin_current_epoch() instead of arriving at
+        # the start-of-epoch barrier. Used when this iterator is handed to a
+        # Ray Train replacement worker whose predecessor died mid-epoch (so
+        # the predecessor already counted toward the current epoch's barrier).
+        # Cleared after the first iter_batches() call so subsequent epochs
+        # follow the normal barrier path.
+        self._is_replacement = False
         logger.debug(
             f"StreamSplitDataIterator created: split={output_split_idx}, {world_size=}"
         )
@@ -68,18 +77,69 @@ class StreamSplitDataIterator(DataIterator):
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool, None]:
+        is_replacement = self._is_replacement
+        self._is_replacement = False
+        # Opt-out of the 1-block lookahead in gen_blocks. Useful for
+        # failure-tolerant consumers (e.g., Ray Train torchft-style
+        # replacement) where an in-flight prefetched block would be lost if
+        # the consumer dies: the coordinator has already popped the block
+        # from this split's queue, but the dead consumer never received it.
+        # With lookahead disabled, the coordinator only pops a block when
+        # the consumer is actively asking for it. Default (lookahead
+        # enabled) preserves throughput for the common no-failure path.
+        no_prefetch = os.environ.get("RAY_STREAM_SPLIT_NO_LOOKAHEAD") == "1"
+
         def gen_blocks() -> Iterator[RefBundle]:
-            logger.debug(f"Split {self._output_split_idx}: requesting new epoch.")
-            cur_epoch = ray.get(
-                self._coord_actor.start_epoch.remote(self._output_split_idx)
-            )
+            if is_replacement:
+                logger.debug(
+                    f"Split {self._output_split_idx}: rejoining in-progress epoch."
+                )
+                cur_epoch = ray.get(
+                    self._coord_actor.rejoin_current_epoch.remote(
+                        self._output_split_idx
+                    )
+                )
+            else:
+                logger.debug(f"Split {self._output_split_idx}: requesting new epoch.")
+                cur_epoch = ray.get(
+                    self._coord_actor.start_epoch.remote(self._output_split_idx)
+                )
             logger.debug(f"Split {self._output_split_idx}: epoch {cur_epoch} started")
+
+            last_log_time = 0.0
+            if no_prefetch:
+                # Dispatch each coord.get only when the consumer comes back
+                # for another block. One outstanding future at a time, no
+                # in-RAM block the consumer hasn't asked for yet.
+                while True:
+                    block_ref_and_md: Optional[RefBundle] = ray.get(
+                        self._coord_actor.get.remote(
+                            cur_epoch, self._output_split_idx, 0
+                        )
+                    )
+                    if not block_ref_and_md:
+                        break
+                    yield RefBundle(
+                        blocks=block_ref_and_md.blocks,
+                        owns_blocks=False,
+                        schema=block_ref_and_md.schema,
+                    )
+                    now = time.time()
+                    if now - last_log_time >= self.YIELD_LOG_INTERVAL_S:
+                        last_log_time = now
+                        logger.debug(
+                            f"Split {self._output_split_idx} epoch {cur_epoch}: "
+                            f"consumer resumed after yield"
+                        )
+                logger.debug(
+                    f"Split {self._output_split_idx}: epoch {cur_epoch} exhausted"
+                )
+                return
 
             # Initial get with 0 prefetched bytes.
             future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
                 cur_epoch, self._output_split_idx, 0
             )
-            last_log_time = 0.0
             while True:
                 block_ref_and_md: Optional[RefBundle] = ray.get(future)
                 if not block_ref_and_md:
@@ -240,6 +300,26 @@ class SplitCoordinator:
         # Wait for all clients to arrive at the barrier before starting a new epoch.
         epoch_id = self._barrier(split_idx)
         return epoch_id
+
+    def rejoin_current_epoch(self, split_idx: int) -> int:
+        """Returns the in-progress epoch id without arriving at the start barrier.
+
+        Used by a Ray Train replacement worker (e.g., torchft replica
+        replacement) to rejoin the epoch its dead predecessor was in the
+        middle of. The predecessor already counted toward this epoch's
+        barrier, so the replacement must not decrement
+        ``_unfinished_clients_in_epoch`` again. The replacement then drains
+        whatever blocks remain in this split's per-split buffer for the
+        current epoch via ``get(...)``, and proceeds to subsequent epochs
+        via the normal ``start_epoch`` path.
+        """
+        with self._lock:
+            if self._cur_epoch < 0:
+                raise ValueError(
+                    "rejoin_current_epoch called before any epoch has started; "
+                    "no in-progress epoch to rejoin."
+                )
+            return self._cur_epoch
 
     def _try_start_new_epoch(self, starting_epoch: int):
         with self._lock:
