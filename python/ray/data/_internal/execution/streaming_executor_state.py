@@ -265,7 +265,9 @@ class OpState:
                 and not self._warned_on_schema_divergence
                 and self.op.data_context.enforce_schemas
             ):
-                warning_message = _build_schemas_mismatch_warning(self._schema, ref.schema)
+                warning_message = _build_schemas_mismatch_warning(
+                    self._schema, ref.schema
+                )
                 logger.warning(warning_message)
 
             ref = out_ref
