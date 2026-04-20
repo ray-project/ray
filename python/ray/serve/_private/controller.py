@@ -1033,6 +1033,9 @@ class ServeController:
                 protobuf `ApplicationArgs` object. `ApplicationArgs` contains the information
                 for the application.
         """
+        if self._shutting_down:
+            return
+
         name_to_deployment_args = {}
         for name, deployment_args_list in name_to_deployment_args_list.items():
             deployment_args_deserialized = []
@@ -1095,6 +1098,9 @@ class ServeController:
 
         If `deployment_time` is not provided, `time.time()` is used.
         """
+        if self._shutting_down:
+            return
+
         ServeUsageTag.API_VERSION.record("v2")
         if not deployment_time:
             deployment_time = time.time()
