@@ -32,8 +32,6 @@ def _deploy_capacity_queue_app(
                 init_kwargs={
                     "acquire_timeout_s": acquire_timeout_s,
                     "token_ttl_s": token_ttl_s,
-                    "deployment_id_name": "App",
-                    "deployment_id_app": "default",
                 },
                 actor_options={"num_cpus": 0},
             ),
@@ -81,8 +79,6 @@ def _deploy_blocking_capacity_queue_app(
                 init_kwargs={
                     "acquire_timeout_s": 0.5,
                     "token_ttl_s": 5,
-                    "deployment_id_name": "BlockingApp",
-                    "deployment_id_app": "default",
                 },
                 actor_options={"num_cpus": 0},
             ),
@@ -325,8 +321,6 @@ class TestCapacityQueueRouterFailures:
                     init_kwargs={
                         "acquire_timeout_s": 0.5,
                         "token_ttl_s": token_ttl_s,
-                        "deployment_id_name": "TtlApp",
-                        "deployment_id_app": "default",
                     },
                     actor_options={"num_cpus": 0},
                 ),
@@ -392,8 +386,6 @@ class TestCapacityQueueRouterFailures:
                     init_kwargs={
                         "acquire_timeout_s": 0.5,
                         "token_ttl_s": 5,
-                        "deployment_id_name": "CrashApp",
-                        "deployment_id_app": "default",
                     },
                     actor_options={"num_cpus": 0},
                 ),
@@ -594,8 +586,6 @@ class TestCapacityQueueRouterFailures:
                     init_kwargs={
                         "acquire_timeout_s": 0.5,
                         "token_ttl_s": token_ttl_s,
-                        "deployment_id_name": "ConvergeApp",
-                        "deployment_id_app": "default",
                     },
                     actor_options={"num_cpus": 0},
                 ),
@@ -720,8 +710,6 @@ class TestCapacityQueueRouterFailures:
                     init_kwargs={
                         "acquire_timeout_s": 0.5,
                         "token_ttl_s": 5,
-                        "deployment_id_name": "DepletedApp",
-                        "deployment_id_app": "default",
                     },
                     actor_options={"num_cpus": 0},
                 ),
@@ -803,8 +791,6 @@ class TestCapacityQueueRouterFailures:
                     init_kwargs={
                         "acquire_timeout_s": 0.5,
                         "token_ttl_s": 5,
-                        "deployment_id_name": "RejectApp",
-                        "deployment_id_app": "default",
                     },
                     actor_options={"num_cpus": 0},
                 ),
