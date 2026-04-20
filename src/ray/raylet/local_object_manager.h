@@ -210,6 +210,9 @@ class LocalObjectManager : public LocalObjectManagerInterface {
 
   std::string DebugString() const override;
 
+  /// Release an object that has been freed by its owner (or by move semantics).
+  void ReleaseFreedObject(const ObjectID &object_id) override;
+
  private:
   struct LocalObjectInfo {
     LocalObjectInfo(const rpc::Address &owner_address,
@@ -245,9 +248,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
-
-  /// Release an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id);
 
   /// Do operations that are needed after spilling objects such as
   /// 1. Unpin the pending spilling object.

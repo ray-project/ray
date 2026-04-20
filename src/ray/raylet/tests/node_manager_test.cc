@@ -105,6 +105,8 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
   std::string DebugString() const override { return ""; }
 
+  void ReleaseFreedObject(const ObjectID &object_id) override {}
+
  private:
   std::shared_ptr<absl::flat_hash_set<ObjectID>> objects_pending_deletion_;
 };

@@ -120,6 +120,7 @@ class ObjectManagerInterface {
   virtual void RecordMetrics() = 0;
   virtual void HandleObjectAdded(const ObjectInfo &object_info) = 0;
   virtual void HandleObjectDeleted(const ObjectID &object_id) = 0;
+  virtual void SetOnPushComplete(std::function<void(const ObjectID &)> fn) = 0;
 
   virtual ~ObjectManagerInterface() = default;
 };
@@ -209,6 +210,12 @@ class ObjectManager : public ObjectManagerInterface,
   /// pinned by the raylet, so we can comfotable evict after spilling the object from
   /// local object manager. False otherwise.
   bool IsPlasmaObjectSpillable(const ObjectID &object_id) override;
+
+  /// Set a callback that is invoked when a push to another node completes.
+  /// Used to implement move semantics (free local copy after push).
+  void SetOnPushComplete(std::function<void(const ObjectID &)> fn) override {
+    on_push_complete_ = std::move(fn);
+  }
 
   /// Consider pushing an object to a remote object manager. This object manager
   /// may choose to ignore the Push call (e.g., if Push is called twice in a row
@@ -486,6 +493,18 @@ class ObjectManager : public ObjectManagerInterface,
 
   /// Object push manager.
   std::unique_ptr<PushManager> push_manager_;
+
+  /// Callback invoked when a push completes (for move semantics).
+  std::function<void(const ObjectID &)> on_push_complete_;
+
+  /// Per-push ack tracking for move semantics. Tracks how many chunks
+  /// have been acknowledged by the remote node.
+  struct PushAckState {
+    int64_t total_chunks;
+    int64_t acked_chunks = 0;
+    bool failed = false;
+  };
+  absl::flat_hash_map<std::pair<ObjectID, NodeID>, PushAckState> push_ack_tracking_;
 
   /// Object pull manager.
   std::unique_ptr<PullManager> pull_manager_;
