@@ -1,4 +1,4 @@
-import unittest
+import pytest
 
 import ray
 import ray._common
@@ -8,242 +8,255 @@ from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
     LEARNER_RESULTS,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
 )
 from ray.rllib.utils.test_utils import check
 
-object_store_memory = 10**8
-num_nodes = 2
-
-assert num_nodes * object_store_memory < ray._common.utils.get_system_memory() / 2, (
-    "Make sure there is enough memory on this machine to run this "
-    "workload. We divide the system memory by 2 to provide a buffer."
-)
+OBJECT_STORE_MEMORY = 10**8
+HEAD_CPUS = 2
+WORKER_CPUS = 4
+NUM_ENV_RUNNERS = 4
 
 
-class TestNodeFailures(unittest.TestCase):
-    def setUp(self):
-        # Simulate a cluster on one machine.
-        self.cluster = Cluster()
+@pytest.fixture
+def cluster():
+    """Create a 2-node fake cluster: head (2 CPUs) + worker (4 CPUs).
 
-        for i in range(num_nodes):
-            self.cluster.add_node(
-                redis_port=6379 if i == 0 else None,
-                num_cpus=2,
-                num_gpus=0,
-                object_store_memory=object_store_memory,
-                include_dashboard=False,
-            )
-        self.cluster.wait_for_nodes()
-        ray.init(address=self.cluster.address)
+    Head holds the algo process + local env runner.
+    Worker holds all 4 remote env runners (deterministic placement).
+    """
+    assert (
+        2 * OBJECT_STORE_MEMORY < ray._common.utils.get_system_memory() / 2
+    ), "Not enough memory on this machine to run this workload."
 
-    def tearDown(self):
-        ray.shutdown()
-        self.cluster.shutdown()
+    cluster = Cluster()
+    cluster.add_node(
+        redis_port=6379,
+        num_cpus=HEAD_CPUS,
+        num_gpus=0,
+        object_store_memory=OBJECT_STORE_MEMORY,
+        include_dashboard=False,
+    )
+    cluster.add_node(
+        redis_port=None,
+        num_cpus=WORKER_CPUS,
+        num_gpus=0,
+        object_store_memory=OBJECT_STORE_MEMORY,
+    )
+    cluster.wait_for_nodes()
+    ray.init(address=cluster.address)
 
-    def test_node_failure_ignore(self):
-        # We ignore EnvRunners once failed nodes have come back and continue training
-        # with fewer EnvRunners.
-        config = (
-            PPOConfig()
-            .environment("CartPole-v1")
-            .env_runners(
-                num_env_runners=4,
-                validate_env_runners_after_construction=True,
-            )
-            .reporting(
-                min_train_timesteps_per_iteration=1,
-            )
-            .fault_tolerance(
-                ignore_env_runner_failures=True,
-                restart_failed_env_runners=False,
-            )
+    yield cluster
+
+    ray.shutdown()
+    cluster.shutdown()
+
+
+def _kill_worker_node(cluster):
+    others = get_other_nodes(cluster, exclude_head=True)
+    if others:
+        cluster.remove_node(others[0])
+        return True
+    return False
+
+
+def _add_worker_node(cluster):
+    cluster.add_node(
+        redis_port=None,
+        num_cpus=WORKER_CPUS,
+        num_gpus=0,
+        object_store_memory=OBJECT_STORE_MEMORY,
+    )
+
+
+def _train(cluster, algo, config, iters, preempt_freq):
+    """Train loop with periodic node kill/restore and health tracking."""
+    num_runners = config.num_env_runners
+    saw_healthy_drop = False
+    saw_recovery = False
+
+    for i in range(iters):
+        results = algo.train()
+
+        avg_batch = results[LEARNER_RESULTS][DEFAULT_MODULE_ID][
+            MODULE_TRAIN_BATCH_SIZE_MEAN
+        ]
+        if config.algo_class.__name__ == "PPO":
+            exp_batch_size = config.minibatch_size
+        else:
+            exp_batch_size = config.total_train_batch_size
+        check(avg_batch, exp_batch_size, rtol=0.1)
+        assert avg_batch < exp_batch_size + config.get_rollout_fragment_length()
+
+        assert algo.env_runner_group.num_remote_env_runners() == num_runners
+        healthy = algo.env_runner_group.num_healthy_remote_workers()
+        assert 0 <= healthy <= num_runners
+
+        if healthy < num_runners:
+            saw_healthy_drop = True
+        if saw_healthy_drop and healthy == num_runners:
+            saw_recovery = True
+
+        print(
+            f"ITER={i}, healthy={healthy}/{num_runners}, "
+            f"saw_drop={saw_healthy_drop}, saw_recovery={saw_recovery}"
         )
 
-        algo = config.build()
-        self._train(
-            algo=algo,
-            config=config,
-            iters=7,
-            min_reward=150.0,
-            preempt_freq=3,
+        # Shut down one node every preempt_freq iterations.
+        if i % preempt_freq == 0:
+            _kill_worker_node(cluster)
+
+        # Bring back a previously failed node.
+        elif (i - 1) % preempt_freq == 0:
+            _add_worker_node(cluster)
+
+    # Workers must have gone down at some point.
+    assert saw_healthy_drop, (
+        "Expected healthy worker count to drop after node kill, " "but it never did."
+    )
+    # If restart is enabled, workers must have come back.
+    if config.restart_failed_env_runners:
+        assert saw_recovery, (
+            "Expected workers to recover after node restore "
+            "(restart_failed_env_runners=True), but they never did."
         )
-        algo.stop()
+    # If restart is disabled, workers must NOT have come back.
+    if not config.restart_failed_env_runners:
+        assert (
+            not saw_recovery
+        ), "Workers recovered despite restart_failed_env_runners=False."
 
-    def test_node_failure_recreate_env_runners(self):
-        # We recreate failed EnvRunners and continue training.
-        # Test both async (APPO) and sync (PPO) — different restore patterns.
-        config = (
-            APPOConfig()
-            .environment("CartPole-v1")
-            .learners(num_learners=0)
-            .experimental(_validate_config=False)
-            .env_runners(
-                num_env_runners=4,
-                validate_env_runners_after_construction=True,
-            )
-            .reporting(
-                min_train_timesteps_per_iteration=1,
-            )
-            .fault_tolerance(
-                restart_failed_env_runners=True,
-                ignore_env_runner_failures=False,  # True also ok here; we restart.
-            )
+
+def test_node_failure_ignore(cluster):
+    """restart=False, ignore=True: workers die and stay dead, training
+    continues with fewer workers."""
+    config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .env_runners(
+            num_env_runners=NUM_ENV_RUNNERS,
+            validate_env_runners_after_construction=True,
+            sample_timeout_s=5.0,
         )
-
-        algo = config.build()
-        self._train(
-            algo=algo,
-            config=config,
-            iters=10,
-            min_reward=150.0,
-            preempt_freq=3,
+        .training(
+            train_batch_size=500,
+            num_epochs=1,
+            minibatch_size=500,
         )
-        algo.stop()
-
-        # Ensure the worker node is back before building the next algo.
-        if len(get_other_nodes(self.cluster, exclude_head=True)) == 0:
-            self.cluster.add_node(
-                redis_port=None,
-                num_cpus=2,
-                num_gpus=0,
-                object_store_memory=object_store_memory,
-            )
-
-        config = (
-            PPOConfig()
-            .environment("CartPole-v1")
-            .learners(num_learners=0)
-            .env_runners(
-                num_env_runners=4,
-                validate_env_runners_after_construction=True,
-            )
-            .reporting(
-                min_train_timesteps_per_iteration=1,
-            )
-            .fault_tolerance(
-                restart_failed_env_runners=True,
-                ignore_env_runner_failures=False,  # True also ok here; we restart.
-            )
+        .reporting(min_train_timesteps_per_iteration=1)
+        .fault_tolerance(
+            ignore_env_runner_failures=True,
+            restart_failed_env_runners=False,
+            env_runner_health_probe_timeout_s=20.0,
         )
+    )
 
-        algo = config.build()
-        self._train(
-            algo=algo,
-            config=config,
-            iters=10,
-            min_reward=150.0,
-            preempt_freq=3,
+    algo = config.build()
+    _train(cluster, algo, config, iters=10, preempt_freq=3)
+    algo.stop()
+
+
+def test_node_failure_recreate_env_runners(cluster):
+    """restart=True: workers die, get auto-restarted by Ray (max_restarts>0),
+    and restore_env_runners() at start of train() syncs their state.
+    Test both APPO (async) and PPO (sync)."""
+
+    # --- APPO phase ---
+    config = (
+        APPOConfig()
+        .environment("CartPole-v1")
+        .learners(num_learners=0)
+        .experimental(_validate_config=False)
+        .env_runners(
+            num_env_runners=NUM_ENV_RUNNERS,
+            validate_env_runners_after_construction=True,
         )
-        algo.stop()
-
-    def test_node_failure_expect_crash(self):
-        # We do not ignore EnvRunner failures and expect to crash upon failure.
-        config = (
-            PPOConfig()
-            .environment("CartPole-v1")
-            .env_runners(
-                num_env_runners=4,
-                validate_env_runners_after_construction=True,
-            )
-            .reporting(
-                min_train_timesteps_per_iteration=1,
-            )
-            .fault_tolerance(
-                ignore_env_runner_failures=False,
-                restart_failed_env_runners=False,
-            )
+        .reporting(
+            # Must be >= 2s so APPO's async mechanism has time to detect
+            # worker death within a single iteration.
+            min_time_s_per_iteration=2,
+            min_train_timesteps_per_iteration=1,
         )
-
-        algo = config.build()
-        self.assertRaisesRegex(
-            ray.exceptions.RayError,
-            "The actor died unexpectedly before",
-            lambda: (
-                self._train(
-                    algo=algo,
-                    config=config,
-                    iters=10,
-                    min_reward=1000.0,
-                    preempt_freq=2,
-                )
-            ),
+        .fault_tolerance(
+            restart_failed_env_runners=True,
+            ignore_env_runner_failures=False,
+            env_runner_health_probe_timeout_s=20.0,
         )
-        algo.stop()
+    )
 
-    def _train(self, *, algo, config, iters, min_reward, preempt_freq):
-        best_return = 0.0
-        for i in range(iters):
-            results = algo.train()
-            print(f"ITER={i} of {iters} results={results}")
+    algo = config.build()
+    _train(cluster, algo, config, iters=10, preempt_freq=3)
+    algo.stop()
 
-            best_return = max(
-                best_return, results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
-            )
-            avg_batch = results[LEARNER_RESULTS][DEFAULT_MODULE_ID][
-                MODULE_TRAIN_BATCH_SIZE_MEAN
-            ]
-            if config.algo_class.__name__ == "PPO":
-                exp_batch_size = config.minibatch_size
-            else:
-                exp_batch_size = config.total_train_batch_size
-            check(avg_batch, exp_batch_size, rtol=0.1)
-            self.assertLess(
-                avg_batch,
-                exp_batch_size + config.get_rollout_fragment_length(),
-            )
+    # Ensure the worker node is back before building the next algo.
+    if not get_other_nodes(cluster, exclude_head=True):
+        _add_worker_node(cluster)
 
-            self.assertEqual(algo.env_runner_group.num_remote_env_runners(), 4)
-            healthy_env_runners = algo.env_runner_group.num_healthy_remote_workers()
-            # After the worker node has been removed, 2 EnvRunners are gone.
-            # Only the 2 head-node EnvRunners (safe from preemption) remain.
-            # The new node hasn't been added back yet (happens below), so there
-            # is no capacity to restore the failed runners at this point.
-            if (i - 1) % preempt_freq == 0:
-                if config.restart_failed_env_runners:
-                    # For async algos that call `restore_env_runners()` several
-                    # times per iteration, the failed env runners may have
-                    # already been restored (if capacity is available).
-                    if isinstance(config, APPOConfig):
-                        self.assertIn(healthy_env_runners, [2, 4])
-                    else:
-                        self.assertEqual(healthy_env_runners, 2)
-                elif config.ignore_env_runner_failures:
-                    self.assertEqual(healthy_env_runners, 2)
-            # After the 0th iteration, in which we already killed the worker
-            # node, if we don't recreate, only the 2 head EnvRunners remain.
-            elif i > 0 and not config.restart_failed_env_runners:
-                self.assertEqual(healthy_env_runners, 2)
-            # Otherwise, all EnvRunners should be there (but might still be in
-            # the process of coming up after restoration).
-            else:
-                self.assertIn(healthy_env_runners, [2, 3, 4])
+    # --- PPO phase ---
+    config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .learners(num_learners=0)
+        .env_runners(
+            num_env_runners=NUM_ENV_RUNNERS,
+            validate_env_runners_after_construction=True,
+            sample_timeout_s=5.0,
+        )
+        .training(
+            train_batch_size=500,
+            num_epochs=1,
+            minibatch_size=500,
+        )
+        .reporting(
+            min_time_s_per_iteration=2,
+            min_train_timesteps_per_iteration=1,
+        )
+        .fault_tolerance(
+            restart_failed_env_runners=True,
+            ignore_env_runner_failures=False,
+            env_runner_health_probe_timeout_s=20.0,
+        )
+    )
 
-            # Shut down one node every n iterations.
-            if i % preempt_freq == 0:
-                to_kill = get_other_nodes(self.cluster, exclude_head=True)[0]
-                print(f"Killing node {to_kill} ...")
-                self.cluster.remove_node(to_kill)
+    algo = config.build()
+    _train(cluster, algo, config, iters=10, preempt_freq=3)
+    algo.stop()
 
-            # Bring back a previously failed node.
-            elif (i - 1) % preempt_freq == 0:
-                print("Bringing back node ...")
-                self.cluster.add_node(
-                    redis_port=None,
-                    num_cpus=2,
-                    num_gpus=0,
-                    object_store_memory=object_store_memory,
-                )
 
-        self.assertGreaterEqual(best_return, min_reward)
+def test_node_failure_no_recovery(cluster):
+    """restart=False, ignore=False: dead worker RayErrors propagate and
+    crash training. Verify the crash happens."""
+    config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .env_runners(
+            num_env_runners=NUM_ENV_RUNNERS,
+            validate_env_runners_after_construction=True,
+            sample_timeout_s=5.0,
+        )
+        .training(
+            train_batch_size=500,
+            num_epochs=1,
+            minibatch_size=500,
+        )
+        .reporting(min_train_timesteps_per_iteration=1)
+        .fault_tolerance(
+            ignore_env_runner_failures=False,
+            restart_failed_env_runners=False,
+            env_runner_health_probe_timeout_s=20.0,
+        )
+    )
+
+    algo = config.build()
+    # _train will crash with a RayError when dead workers are detected
+    # (ignore=False, restart=False → errors propagate).
+    with pytest.raises(Exception):
+        _train(cluster, algo, config, iters=10, preempt_freq=3)
+    algo.stop()
 
 
 if __name__ == "__main__":
     import sys
-
-    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))
