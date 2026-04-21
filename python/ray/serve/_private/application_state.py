@@ -266,7 +266,7 @@ class ApplicationState:
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
-        self._http_router_deployment_name: Optional[str] = None
+        self._ingress_request_router_deployment_name: Optional[str] = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -336,8 +336,8 @@ class ApplicationState:
         return self._ingress_deployment_name
 
     @property
-    def http_router_deployment(self) -> Optional[str]:
-        return self._http_router_deployment_name
+    def ingress_request_router_deployment(self) -> Optional[str]:
+        return self._ingress_request_router_deployment_name
 
     @property
     def api_type(self) -> APIType:
@@ -407,13 +407,13 @@ class ApplicationState:
 
         if deployment_infos is None:
             self._ingress_deployment_name = None
-            self._http_router_deployment_name = None
+            self._ingress_request_router_deployment_name = None
         else:
             for name, info in deployment_infos.items():
                 if info.ingress:
                     self._ingress_deployment_name = name
-                if info.http_router:
-                    self._http_router_deployment_name = name
+                if info.ingress_request_router:
+                    self._ingress_request_router_deployment_name = name
 
         target_state = ApplicationTargetState(
             deployment_infos,
@@ -1399,11 +1399,11 @@ class ApplicationStateManager:
 
         return self._application_states[name].ingress_deployment
 
-    def get_http_router_deployment_name(self, name: str) -> Optional[str]:
+    def get_ingress_request_router_deployment_name(self, name: str) -> Optional[str]:
         if name not in self._application_states:
             return None
 
-        return self._application_states[name].http_router_deployment
+        return self._application_states[name].ingress_request_router_deployment
 
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type
@@ -1928,17 +1928,17 @@ def override_deployment_info(
         ):
             deployment.route_prefix = app_route_prefix
 
-    # Validate that at most one deployment is marked as the HTTP router.
-    http_router_deployments = [
+    # Validate that at most one deployment is marked as the ingress request router.
+    ingress_request_router_deployments = [
         name
         for name, info in deployment_infos.items()
-        if info.deployment_config.http_router
+        if info.deployment_config.ingress_request_router
     ]
-    if len(http_router_deployments) > 1:
+    if len(ingress_request_router_deployments) > 1:
         raise ValueError(
-            f"Multiple deployments marked as http_router: {http_router_deployments}. "
-            "Only one deployment per application can be the HTTP router for "
-            "ingress bypass mode."
+            "Multiple deployments marked as ingress_request_router: "
+            f"{ingress_request_router_deployments}. Only one deployment per "
+            "application can be the ingress request router for ingress bypass mode."
         )
 
     return deployment_infos

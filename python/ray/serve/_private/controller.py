@@ -1483,19 +1483,21 @@ class ServeController:
         Or replicas have not fully initialized yet, where their ports are not
         allocated yet.
 
-        When an HTTP router deployment is configured (ingress
-        bypass), its replicas go into ``http_router_targets`` for Lua routing
-        decisions and the LLMServer replicas (non-ingress,
+        When an ingress request router deployment is configured (ingress
+        bypass), its replicas go into ``ingress_request_router_targets`` for Lua
+        routing decisions and the LLMServer replicas (non-ingress,
         direct-ingress-enabled) go into the main targets for data plane
         traffic.
         """
-        http_router_deployment_name = (
-            self.application_state_manager.get_http_router_deployment_name(app_name)
+        ingress_request_router_deployment_name = (
+            self.application_state_manager.get_ingress_request_router_deployment_name(
+                app_name
+            )
         )
 
-        if http_router_deployment_name:
-            return self._get_target_groups_for_app_with_http_router(
-                app_name, route_prefix, http_router_deployment_name
+        if ingress_request_router_deployment_name:
+            return self._get_target_groups_for_app_with_ingress_request_router(
+                app_name, route_prefix, ingress_request_router_deployment_name
             )
 
         # Standard mode: ingress deployment replicas are the targets
@@ -1538,28 +1540,30 @@ class ServeController:
 
         return target_groups
 
-    def _get_target_groups_for_app_with_http_router(
+    def _get_target_groups_for_app_with_ingress_request_router(
         self,
         app_name: str,
         route_prefix: str,
-        http_router_deployment_name: str,
+        ingress_request_router_deployment_name: str,
     ) -> List[TargetGroup]:
         """Create target groups for ingress bypass mode.
 
-        HTTP router targets serve /internal/route for Lua
+        Ingress request router targets serve /internal/route for Lua
         routing decisions. Main targets serve data plane traffic via
         direct ingress.
         """
-        # HTTP router targets: the router deployment replicas
+        # Ingress request router targets: the router deployment replicas
         # that serve /internal/route.
-        http_router_replica_details = self._get_running_replica_details_for_deployment(
-            app_name, http_router_deployment_name
-        )
-        http_router_targets = (
-            self._get_targets_for_protocol(
-                http_router_replica_details, RequestProtocol.HTTP
+        ingress_request_router_replica_details = (
+            self._get_running_replica_details_for_deployment(
+                app_name, ingress_request_router_deployment_name
             )
-            if http_router_replica_details
+        )
+        ingress_request_router_targets = (
+            self._get_targets_for_protocol(
+                ingress_request_router_replica_details, RequestProtocol.HTTP
+            )
+            if ingress_request_router_replica_details
             else []
         )
 
@@ -1570,7 +1574,7 @@ class ServeController:
 
         http_targets = []
         for dep_name in all_deployment_names:
-            if dep_name == http_router_deployment_name:
+            if dep_name == ingress_request_router_deployment_name:
                 continue
             deployment_id = DeploymentID(app_name=app_name, name=dep_name)
             all_replica_infos = (
@@ -1589,18 +1593,18 @@ class ServeController:
                         )
                     )
 
-        if not http_targets and not http_router_targets:
+        if not http_targets and not ingress_request_router_targets:
             return []
 
         target_groups = []
-        if http_targets or http_router_targets:
+        if http_targets or ingress_request_router_targets:
             target_groups.append(
                 TargetGroup(
                     protocol=RequestProtocol.HTTP,
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
-                    http_router_targets=http_router_targets,
+                    ingress_request_router_targets=ingress_request_router_targets,
                 )
             )
 
