@@ -26,6 +26,7 @@
 - name: "read_parquet_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -42,6 +43,7 @@
 - name: "read_large_parquet_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -63,6 +65,7 @@
 - name: "read_images_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -77,6 +80,8 @@
 
 - name: read_tfrecords
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 3600
     script: >
@@ -87,6 +92,7 @@
 - name: "read_from_uris_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -103,6 +109,8 @@
 
 - name: write_parquet
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 3600
     script: >
@@ -135,6 +143,7 @@
 - name: "count_parquet_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -261,6 +270,7 @@
 - name: wide_schema_pipeline_{{data_type}}
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         # Preserve the default verbose stats for resource manager.
@@ -287,6 +297,8 @@
 
 - name: streaming_split
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 300
     wait_for_nodes:
@@ -411,6 +423,8 @@
 
 - name: "iter_batches_{{format}}"
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   matrix:
     setup:
       format: [numpy, pandas, pyarrow]
@@ -424,6 +438,8 @@
 
 - name: to_tf
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 2400
     script: >
@@ -449,12 +465,16 @@
 
 - name: map
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 1800
     script: python map_benchmark.py --api map --sf 100
 
 - name: flat_map
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 100
@@ -489,6 +509,7 @@
           repeat_map_batches: once
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
