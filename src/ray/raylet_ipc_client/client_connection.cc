@@ -405,16 +405,16 @@ void ClientConnection::ProcessMessages() {
 }
 
 void ClientConnection::ProcessMessageHeader(const boost::system::error_code &error) {
+  if (error) {
+    read_length_ = 0;
+    ProcessMessage(error);
+    return;
+  }
+
   if (closed_) {
     // In most cases all outstanding reads will have been canceled when the socket was.
     // closed. However, if the boost async_read call has already received data into its
     // buffer from the poll syscall, it may succeed. If this happens, drop the message.
-    return;
-  }
-
-  if (error) {
-    read_length_ = 0;
-    ProcessMessage(error);
     return;
   }
 
@@ -486,16 +486,15 @@ std::string ClientConnection::RemoteEndpointInfo() {
 
 void ClientConnection::ProcessMessage(const boost::system::error_code &error) {
   auto this_ptr = shared_ClientConnection_from_this();
+  if (error) {
+    return connection_error_handler_(std::move(this_ptr), error);
+  }
 
   if (closed_) {
     // In most cases all outstanding reads will have been canceled when the socket was.
     // closed. However, if the boost async_read call has already received data into its
     // buffer from the poll syscall, it may succeed. If this happens, drop the message.
     return;
-  }
-
-  if (error) {
-    return connection_error_handler_(std::move(this_ptr), error);
   }
 
   int64_t start_ms = current_time_ms();
