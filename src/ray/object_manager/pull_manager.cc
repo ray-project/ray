@@ -106,9 +106,10 @@ uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_b
   return req_id;
 }
 
-bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
-                                                bool respect_quota,
-                                                std::vector<ObjectID> *objects_to_pull) {
+bool PullManager::ActivateNextBundlePullRequest(
+    BundlePullRequestQueue &bundles,
+    bool respect_quota,
+    std::vector<ObjectID> *objects_to_activate) {
   if (bundles.inactive_requests.empty()) {
     // No inactive requests in the queue.
     return false;
@@ -170,7 +171,7 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
         request.activate_time_ms = absl::GetCurrentTimeNanos() / 1e3;
 
         TryPinObject(obj_id);
-        objects_to_pull->push_back(obj_id);
+        objects_to_activate->push_back(obj_id);
         ResetRetryTimer(obj_id);
       }
     }
@@ -239,7 +240,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   }
   num_bytes_available_ = num_bytes_available;
 
-  std::vector<ObjectID> objects_to_pull;
+  std::vector<ObjectID> objects_to_activate;
   std::unordered_set<ObjectID> object_ids_to_cancel;
   // If there are any get requests (highest priority), try to activate them. Since we
   // prioritize get requests over task and wait requests, these requests will be
@@ -263,7 +264,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
     // Activate the next get request unconditionally.
     get_requests_remaining = ActivateNextBundlePullRequest(get_request_bundles_,
                                                            /*respect_quota=*/false,
-                                                           &objects_to_pull);
+                                                           &objects_to_activate);
   }
 
   // Do the same but for wait requests (medium priority).
@@ -279,14 +280,14 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
     // Activate the next wait request if we have space.
     wait_requests_remaining = ActivateNextBundlePullRequest(wait_request_bundles_,
                                                             /*respect_quota=*/true,
-                                                            &objects_to_pull);
+                                                            &objects_to_activate);
   }
 
   // Do the same but for task arg requests (lowest priority).
   // allowed for task arg requests.
   while (ActivateNextBundlePullRequest(task_argument_bundles_,
                                        /*respect_quota=*/true,
-                                       &objects_to_pull)) {
+                                       &objects_to_activate)) {
   }
 
   // While we are over capacity, deactivate requests starting from the back of the queues.
@@ -310,7 +311,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
 
   {
     absl::MutexLock lock(&active_objects_mu_);
-    for (const auto &obj_id : objects_to_pull) {
+    for (const auto &obj_id : objects_to_activate) {
       if (object_ids_to_cancel.count(obj_id) == 0) {
         TryToMakeObjectLocal(obj_id);
       }

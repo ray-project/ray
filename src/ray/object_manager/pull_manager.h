@@ -395,7 +395,7 @@ class PullManager {
   /// Note that we allow exceeding the quota to maintain at least 1 active bundle.
   bool ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
                                      bool respect_quota,
-                                     std::vector<ObjectID> *objects_to_pull);
+                                     std::vector<ObjectID> *objects_to_activate);
 
   /// Deactivate a pull request in the queue. This cancels any pull or restore
   /// operations for the object.
