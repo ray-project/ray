@@ -17,6 +17,7 @@ absl-py==1.4.0 \
     #   dm-control
     #   dm-env
     #   dm-tree
+    #   etils
     #   keras
     #   labmaze
     #   ml-collections
@@ -24,6 +25,8 @@ absl-py==1.4.0 \
     #   open-spiel
     #   tensorboard
     #   tensorflow
+    #   tensorflow-datasets
+    #   tensorflow-metadata
     #   tensorflow-probability
 accelerate==0.28.0 \
     --hash=sha256:32019a49f4b3a85cc179ac4e38e9e2971f1a997dee026be0512816499464c4d5 \
@@ -431,6 +434,7 @@ array-record==0.5.1 ; python_full_version < '3.12' and sys_platform != 'darwin' 
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
+    #   tensorflow-datasets
 arrow==1.3.0 \
     --hash=sha256:c728b120ebc00eb84e01882a6f5e7927a53960aa990ce7dd2b10f39005a67f80 \
     --hash=sha256:d4540617648cb5f895730f1ad8c82a65f2dad0166f57b75f3ca54759c4d67a85
@@ -745,6 +749,7 @@ click==8.1.7 \
     #   click-plugins
     #   click-repl
     #   ray
+    #   tensorflow-datasets
     #   uvicorn
 click-didyoumean==0.3.1 \
     --hash=sha256:4f82fdff0dbe64ef8ab2279bd6aa3f6a99c3b28c05aa09cbfc07c9d7fbb5a463 \
@@ -1063,6 +1068,7 @@ dm-tree==0.1.9 \
     #   dm-control
     #   dm-env
     #   ray
+    #   tensorflow-datasets
     #   tensorflow-probability
 docstring-parser==0.15 ; python_full_version < '3.12' \
     --hash=sha256:48ddc093e8b1865899956fcc03b03e66bb7240c310fac5af81814580c55bf682 \
@@ -1090,6 +1096,7 @@ etils==1.5.2 \
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   array-record
     #   mujoco
+    #   tensorflow-datasets
 evaluate==0.4.3 \
     --hash=sha256:3a5700cf83aabee9549264e1e5666f116367c61dbd4d38352015e859a5e2098d \
     --hash=sha256:47d8770bdea76e2c2ed0d40189273027d1a41ccea861bcc7ba12d30ec5d1e517
@@ -3183,6 +3190,7 @@ numexpr==2.14.1 \
     --hash=sha256:fdd886f4b7dbaf167633ee396478f0d0aa58ea2f9e7ccc3c6431019623e8d68f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/ml/py313/train-requirements.txt
 numpy==2.2.6 \
     --hash=sha256:038613e9fb8c72b0a41f025a7e4c3f0b7a1b5d768ece4796b674c8f3fe13efff \
@@ -3258,6 +3266,7 @@ numpy==2.2.6 \
     #   dm-control
     #   dm-env
     #   dm-tree
+    #   etils
     #   evaluate
     #   gymnasium
     #   h5py
@@ -3301,6 +3310,7 @@ numpy==2.2.6 \
     #   tensorboard
     #   tensorboardx
     #   tensorflow
+    #   tensorflow-datasets
     #   tensorflow-probability
     #   tinyscaler
     #   torch-geometric
@@ -3865,6 +3875,9 @@ prometheus-client==0.19.0 \
     #   jupyter-server
     #   opentelemetry-exporter-prometheus
     #   ray
+promise==2.3 ; python_full_version < '3.12' \
+    --hash=sha256:dfd18337c523ba4b6a58801c164c1904a9d4d1b1747c7d5dbf45b693a49d93d0
+    # via tensorflow-datasets
 prompt-toolkit==3.0.41 \
     --hash=sha256:941367d97fc815548822aa26c2a269fdc4eb21e9ec05fc5d447cf09bad5d75f0 \
     --hash=sha256:f36fe301fafb7470e86aaf90f036eef600a3210be4decf461a5b1ca8403d3cb2
@@ -4016,6 +4029,8 @@ protobuf==5.29.6 \
     #   tensorboard
     #   tensorboardx
     #   tensorflow
+    #   tensorflow-datasets
+    #   tensorflow-metadata
 psutil==5.9.6 \
     --hash=sha256:10e8c17b4f898d64b121149afb136c53ea8b68c7531155147867b7b1ac9e7e28 \
     --hash=sha256:18cd22c5db486f33998f37e2bb054cc62fd06646995285e02a51b1e08da97017 \
@@ -4039,6 +4054,7 @@ psutil==5.9.6 \
     #   aim
     #   deepspeed
     #   ipykernel
+    #   tensorflow-datasets
     #   torch-geometric
 ptyprocess==0.7.0 ; os_name != 'nt' or sys_platform != 'win32' \
     --hash=sha256:4b41f3967fce3af57cc7e94b888626c18bf37a083e3651ca8feeb66d492fef35 \
@@ -4486,7 +4502,15 @@ pytest==7.4.4 \
     --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
+    #   pytest-asyncio
     #   pytest-remotedata
+pytest-asyncio==0.17.2 \
+    --hash=sha256:6d895b02432c028e6957d25fc936494e78c6305736e785d9fee408b1efbc7ff4 \
+    --hash=sha256:e0fe5dbea40516b661ef1bcfe0bd9461c2847c4ef4bb40012324f2454fb7d56d
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 pytest-remotedata==0.3.2 \
     --hash=sha256:3be58f09116f3ce80cff9e5076cda528a84ae36d21ca9645abf782e112c281bc \
     --hash=sha256:e20c58d4b7c359c4975dc3c3d3d67be0905180d2368be0be3ae09b15a136cfc0
@@ -4838,6 +4862,7 @@ requests==2.32.5 \
     #   jupyterlab-server
     #   ray
     #   tensorflow
+    #   tensorflow-datasets
     #   torch-geometric
     #   torchtext
     #   transformers
@@ -5364,6 +5389,7 @@ six==1.16.0 \
     #   google-pasta
     #   ml-collections
     #   opencensus
+    #   promise
     #   pytest-remotedata
     #   python-dateutil
     #   rfc3339-validator
@@ -5586,6 +5612,10 @@ tensorflow==2.20.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   tf-keras
+tensorflow-datasets==4.9.4 ; python_full_version < '3.12' \
+    --hash=sha256:cbf93bf87531605ea654d702763b9162546775c7aa3247975d502fd921c39e4d \
+    --hash=sha256:cd7bf9c340d28be47558d5d3a4eb7278b9f7bac027abdb9d850375a9fecac7f2
+    # via -r python/requirements/ml/py313/dl-cpu-requirements.txt
 tensorflow-estimator==2.15.0 \
     --hash=sha256:aedf21eec7fb2dc91150fc91a1ce12bc44dbb72278a08b58e79ff87c9e28f153
     # via
@@ -5614,6 +5644,9 @@ tensorflow-io-gcs-filesystem==0.31.0 ; python_full_version < '3.12' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
+tensorflow-metadata==1.17.3 ; python_full_version < '3.12' \
+    --hash=sha256:452912e6398b3cb7302f0de6139dea794b3be1bd0eb40e6765eb3a04e51ea991
+    # via tensorflow-datasets
 tensorflow-probability==0.24.0 \
     --hash=sha256:8c1774683e38359dbcaf3697e79b7e6a4e69b9c7b3679e78ee18f43e59e5759b
     # via
@@ -5625,6 +5658,7 @@ termcolor==2.4.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorflow
+    #   tensorflow-datasets
 terminado==0.18.1 \
     --hash=sha256:a4468e1b37bb318f8a86514f65814e1afc977cf29b3992a4500d9dd305dcceb0 \
     --hash=sha256:de09f2c4b85de4765f7714688fff57d3e75bad1f909b589fde880460c753fd2e
@@ -5645,6 +5679,7 @@ tf-keras==2.20.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/ml-requirements.txt
+    #   -r python/requirements/ml/py313/rllib-requirements.txt
 threadpoolctl==3.1.0 \
     --hash=sha256:8b99adda265feb6773280df41eece7b2e6561b772d21ffd52e372f999024907b \
     --hash=sha256:a335baacfaa4400ae1f0d8e3a58d6674d2f8828e3716bb2802c44955ad391380
@@ -5799,6 +5834,10 @@ tokenizers==0.15.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   transformers
+toml==0.10.2 ; python_full_version < '3.12' \
+    --hash=sha256:806143ae5bfb6a3c6e736a764057db0e6a0e05e338b5630894a5f779cabb4f9b \
+    --hash=sha256:b3bda1d108d5dd99f4a20d24d9c348e91c4db7ab1b749200bded2f839ccbe68f
+    # via tensorflow-datasets
 tomli==2.0.1 ; python_full_version < '3.11' \
     --hash=sha256:939de3e7a6161af0c887ef91b7d41a53e7c5a1ca976325f429cb46ea9bc30ecc \
     --hash=sha256:de526c12914f0c550d15924c62d72abc48d6fe7364aa87328337a31007fe8a4f
@@ -5949,6 +5988,7 @@ tqdm==4.67.1 \
     #   datasets
     #   deepspeed
     #   dm-control
+    #   etils
     #   evaluate
     #   huggingface-hub
     #   hyperopt
@@ -5960,6 +6000,7 @@ tqdm==4.67.1 \
     #   pyro-ppl
     #   pytorch-lightning
     #   statsforecast
+    #   tensorflow-datasets
     #   torch-geometric
     #   torchtext
     #   transformers
@@ -6375,6 +6416,7 @@ wrapt==1.14.1 \
     #   deprecated
     #   dm-tree
     #   tensorflow
+    #   tensorflow-datasets
 xmltodict==0.13.0 \
     --hash=sha256:341595a488e3e01a85a9d8911d8912fd922ede5fecc4dce437eb4b6c8d037e56 \
     --hash=sha256:aa89e8fd76320154a40d19a0df04a4695fb9dc5ba977cbb68ab3e4eb225e7852

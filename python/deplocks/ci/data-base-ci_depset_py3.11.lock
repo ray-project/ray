@@ -4841,7 +4841,9 @@ tensorflow==2.20.0 \
 tensorflow-datasets==4.9.3 \
     --hash=sha256:09cd60eccab0d5a9d15f53e76ee0f1b530ee5aa3665e42be621a4810d9fa5db6 \
     --hash=sha256:90390077dde2c9e4e240754ddfc5bb50b482946d421c8a34677c3afdb0463427
-    # via -r python/requirements/ml/py313/data-test-requirements.txt
+    # via
+    #   -r python/requirements/ml/py313/data-test-requirements.txt
+    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
 tensorflow-io-gcs-filesystem==0.31.0 ; python_full_version < '3.12' \
     --hash=sha256:20e3ee5df01f2bd81d37fc715816c329b7533ccca967c47946eb458a5b7a7280 \
     --hash=sha256:359134ecbd3bf938bb0cf65be4526106c30da461b2e2ce05446a229ed35f6832 \
