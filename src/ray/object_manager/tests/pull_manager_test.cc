@@ -111,8 +111,6 @@ class PullManagerTest : public PullManagerTestWithCapacity,
     ASSERT_EQ(pull_manager_.object_pull_requests_.size(), num_requests);
     ASSERT_EQ(pull_manager_.active_object_pull_requests_.size(), num_requests);
   }
-
-  int64_t NumBytesTracked() { return pull_manager_.num_bytes_tracked_; }
 };
 
 class PullManagerWithAdmissionControlTest
