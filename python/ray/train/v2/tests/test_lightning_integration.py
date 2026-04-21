@@ -3,7 +3,7 @@ import os
 import pytest
 
 import ray
-from ray.train import CheckpointConfig, RunConfig, ScalingConfig
+from ray.train import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
 from ray.train.lightning import (
     RayDDPStrategy,
     RayFSDPStrategy,
@@ -114,12 +114,18 @@ def test_async_checkpointing_and_validation(ray_start_4_cpus, tmp_path):
         return {"val_score": 1}
 
     def train_loop():
-        model = LinearModule(input_dim=32, output_dim=4, strategy="ddp")
+        checkpoint = ray.train.get_checkpoint()
+        model = LinearModule(input_dim=32, output_dim=4, strategy="ddp", fail_epoch=1)
         callback = RayTrainReportCallback(
             checkpoint_upload_mode=CheckpointUploadMode.ASYNC,
             validation=ValidationTaskConfig(fn_kwargs={}),
         )
-        ray.get(tmpdir_prefix_actor.set_tmpdir_prefix.remote(callback.tmpdir_prefix))
+        # Only track tmpdirs from the post-resume attempt.
+        # TODO: fix bug where async checkpoint upload does not clean up tmpdir if worker fails.
+        if checkpoint is not None:
+            ray.get(
+                tmpdir_prefix_actor.set_tmpdir_prefix.remote(callback.tmpdir_prefix)
+            )
         trainer = pl.Trainer(
             max_epochs=num_epochs,
             devices="auto",
@@ -130,7 +136,14 @@ def test_async_checkpointing_and_validation(ray_start_4_cpus, tmp_path):
         )
 
         datamodule = DummyDataModule(batch_size, dataset_size)
-        trainer.fit(model, datamodule=datamodule)
+        if checkpoint is not None:
+            with checkpoint.as_directory() as ckpt_dir:
+                ckpt_path = os.path.join(
+                    ckpt_dir, RayTrainReportCallback.CHECKPOINT_NAME
+                )
+                trainer.fit(model, datamodule=datamodule, ckpt_path=ckpt_path)
+        else:
+            trainer.fit(model, datamodule=datamodule)
 
     trainer = TorchTrainer(
         train_loop_per_worker=train_loop,
@@ -141,6 +154,7 @@ def test_async_checkpointing_and_validation(ray_start_4_cpus, tmp_path):
             checkpoint_config=CheckpointConfig(
                 num_to_keep=1, checkpoint_score_attribute="val_score"
             ),
+            failure_config=FailureConfig(max_failures=1),
         ),
     )
 
@@ -150,8 +164,10 @@ def test_async_checkpointing_and_validation(ray_start_4_cpus, tmp_path):
     assert results.best_checkpoints is not None
     assert len(results.best_checkpoints) == 1
     assert results.best_checkpoints[0][1]["val_score"] == 1
+    recorded_prefixes = ray.get(tmpdir_prefix_actor.get_tmpdir_prefixes.remote())
+    assert len(recorded_prefixes) == num_workers
     # Seems pyarrow.fs.FileSystem's delete_dir can leave an empty dir behind.
-    for path in ray.get(tmpdir_prefix_actor.get_tmpdir_prefixes.remote()):
+    for path in recorded_prefixes:
         assert not os.path.exists(path) or not any(os.scandir(path))
 
 
