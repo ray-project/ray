@@ -123,15 +123,18 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
   {
     absl::MutexLock lock(&active_objects_mu_);
 
+    // Bytes of objects in this bundle that no other active bundle is already
+    // pulling (pulling here can be a remote pull or a "pull" of a local object).
+    int64_t newly_tracked_bytes = 0;
+    // Subset of newly_tracked_bytes that isn't already local. Used for the quota check.
     int64_t remote_bytes = 0;
-    int64_t bundle_bytes = 0;
     for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       if (needs_pull) {
         // This is the first bundle request in the queue to require this object.
         // Add the size to the number of bytes being pulled.
         const int64_t size = map_find_or_die(object_pull_requests_, obj_id).object_size;
-        bundle_bytes += size;
+        newly_tracked_bytes += size;
         if (!object_is_local_(obj_id)) {
           remote_bytes += size;
         }
@@ -157,7 +160,7 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
     RAY_LOG(DEBUG) << "Activating request " << next_request_id
                    << " num bytes being pulled: " << num_bytes_being_pulled_
                    << " num bytes available: " << num_bytes_available_;
-    num_bytes_being_pulled_ += bundle_bytes;
+    num_bytes_being_pulled_ += newly_tracked_bytes;
     for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       active_object_pull_requests_[obj_id].insert(next_request_id);
