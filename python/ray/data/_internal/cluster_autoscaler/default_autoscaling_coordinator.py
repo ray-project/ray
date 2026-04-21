@@ -63,74 +63,27 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     called from a single scheduling thread per instance.
 
     Single-tenant: every instance is owned by exactly one
-    DefaultClusterAutoscalerV2 and must be called with a single, fixed
-    requester_id for its entire lifetime. Passing different requester_ids to
-    the same instance would corrupt in-flight state because the pending slots
-    and failure counters are scalars, not keyed dicts. Violating this is
-    undefined behavior.
+    DefaultClusterAutoscalerV2 and is called with a single, fixed requester_id
+    for its entire lifetime. Violating this is undefined behavior.
+    get_allocated_resources tracks an in-flight slot and falls back to the
+    cached value on actor errors or timeouts;
+    request_resources and cancel_request are truly fire-and-forget with no
+    result observation.
     """
 
     AUTOSCALING_REQUEST_GET_TIMEOUT_S = env_integer(
         "RAY_DATA_AUTOSCALING_COORDINATOR_REQUEST_GET_TIMEOUT_S", 5
     )
-    MAX_CONSECUTIVE_FAILURES = env_integer(
-        "RAY_DATA_AUTOSCALING_COORDINATOR_MAX_CONSECUTIVE_FAILURES", 10
-    )
 
     def __init__(self):
         self._cached_allocated_resources: List[ResourceDict] = []
-
-        # In-flight async request per public method: (ObjectRef, submit_time) or None.
+        # In-flight get_allocated_resources request: (ObjectRef, submit_time) or None.
         self._pending_allocated_resources: Optional[Tuple[ray.ObjectRef, float]] = None
-        self._pending_request_resources: Optional[Tuple[ray.ObjectRef, float]] = None
-        self._pending_cancel_request: Optional[Tuple[ray.ObjectRef, float]] = None
-
-        self._consecutive_failures_request_resources: int = 0
-        self._consecutive_failures_cancel_request: int = 0
-        self._consecutive_failures_get_allocated_resources: int = 0
 
     @functools.cached_property
     def _autoscaling_coordinator(self):
         # Create the coordinator actor lazily rather than eagerly in the constructor.
         return get_or_create_autoscaling_coordinator()
-
-    def _record_failure(
-        self,
-        counter_attr: str,
-        operation_name: str,
-        requester_id: str,
-        exc: Optional[Exception] = None,
-    ) -> None:
-        """Increment the failure counter; raise RuntimeError if the maximum is reached.
-
-        The counter is reset to zero before raising so that the next call starts
-        fresh after the exception has propagated and any higher-level recovery has
-        taken place, rather than immediately re-raising.
-
-        `exc` is the underlying exception when the actor task failed, or None
-        when the request timed out without completing.
-        """
-        counter = getattr(self, counter_attr) + 1
-        setattr(self, counter_attr, counter)
-        consecutive_msg = f" (consecutive failures: {counter})" if counter > 1 else ""
-        if counter >= self.MAX_CONSECUTIVE_FAILURES:
-            setattr(self, counter_attr, 0)
-            raise RuntimeError(
-                f"Failed to {operation_name} for {requester_id} "
-                f"after {counter} consecutive failures."
-            ) from exc
-        prefix = "Timed out on" if exc is None else "Failed to"
-        logger.warning(
-            f"{prefix} {operation_name} for {requester_id}{consecutive_msg}."
-            " If this only happens transiently during network partition"
-            " or CPU being overloaded, it's safe to ignore this error."
-            " If this error persists, file a GitHub issue."
-        )
-        if exc is not None and RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK:
-            logger.debug(
-                f"Traceback for {operation_name} failure for {requester_id}:",
-                exc_info=True,
-            )
 
     def _try_cancel(self, ref, operation_name: str, requester_id: str) -> None:
         """Best-effort soft cancel of an ObjectRef.
@@ -150,16 +103,16 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         self,
         pending_attr: str,
         requester_id: str,
-        counter_attr: str,
         operation_name: str,
         on_success: Optional[Callable] = None,
     ) -> None:
         """Check if a pending async request has completed and handle the result.
 
-        If the request is ready, consume it: reset the failure counter and call
-        on_success on success, or call _record_failure on actor error. If the
-        request has timed out, issue a soft cancel (force=False) and discard the
-        ref, then record a timeout failure. Does nothing if no request is pending.
+        If the request is ready, consume it and call on_success on success, or
+        log a warning on actor error. If the request has timed out, issue a soft
+        cancel (force=False), discard the ref, and log a warning. Does nothing
+        if no request is pending. Never raises: callers fall back to the cached
+        value on any failure.
         """
         pending = getattr(self, pending_attr)
         if pending is None:
@@ -170,17 +123,23 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             setattr(self, pending_attr, None)
             try:
                 result = ray.get(ref)
-                setattr(self, counter_attr, 0)
                 if on_success is not None:
                     on_success(result)
-            except ray.exceptions.RayError as exc:
-                self._record_failure(counter_attr, operation_name, requester_id, exc)
+            except ray.exceptions.RayError:
+                logger.warning(
+                    f"Failed to {operation_name} for {requester_id}; falling back"
+                    " to the cached value. If this persists, file a GitHub issue.",
+                    exc_info=RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK,
+                )
         elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
             # Clear before cancelling for defense-in-depth: _try_cancel doesn't raise,
             # but cleanup should not depend on that guarantee.
             setattr(self, pending_attr, None)
             self._try_cancel(ref, operation_name, requester_id)
-            self._record_failure(counter_attr, operation_name, requester_id)
+            logger.warning(
+                f"Timed out on {operation_name} for {requester_id}; falling back"
+                " to the cached value. If this persists, file a GitHub issue."
+            )
 
     def request_resources(
         self,
@@ -192,81 +151,39 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     ) -> None:
         """Fire-and-forget: submit a resource request to the coordinator actor.
 
-        Returns immediately. If the previous request has completed, its result
-        (including any actor error) is checked first and the failure counter is
-        updated accordingly. If the previous request is still in-flight, this
-        call is skipped — the next call after the slot frees will carry the
-        latest state.
+        Returns immediately without observing the result or errors. Actor-side
+        errors (e.g. type mismatches) are not surfaced to the caller.
         """
-        self._resolve_pending(
-            "_pending_request_resources",
-            requester_id,
-            "_consecutive_failures_request_resources",
-            "send resource request",
+        self._autoscaling_coordinator.request_resources.remote(
+            requester_id=requester_id,
+            resources=resources,
+            expire_after_s=expire_after_s,
+            request_remaining=request_remaining,
+            priority=priority,
         )
-        if self._pending_request_resources is None:
-            self._pending_request_resources = (
-                self._autoscaling_coordinator.request_resources.remote(
-                    requester_id=requester_id,
-                    resources=resources,
-                    expire_after_s=expire_after_s,
-                    request_remaining=request_remaining,
-                    priority=priority,
-                ),
-                time.time(),
-            )
-        else:
-            logger.debug(
-                "Skipping request_resources for %s; previous request still in-flight.",
-                requester_id,
-            )
 
     def _clear_requester_state(self, requester_id: str) -> None:
-        """Cancel in-flight requests and clear all client-side state for a requester.
+        """Cancel the in-flight get_allocated_resources ref and clear cached state.
 
         Called by cancel_request to prevent memory accumulation across many
         executions in a long-running process.
         """
-        for pending_attr, operation_name in [
-            ("_pending_request_resources", "send resource request"),
-            ("_pending_allocated_resources", "get allocated resources"),
-        ]:
-            pending = getattr(self, pending_attr)
-            if pending is not None:
-                old_ref, _ = pending
-                setattr(self, pending_attr, None)
-                self._try_cancel(old_ref, operation_name, requester_id)
+        pending = self._pending_allocated_resources
+        if pending is not None:
+            old_ref, _ = pending
+            self._pending_allocated_resources = None
+            self._try_cancel(old_ref, "get allocated resources", requester_id)
         self._cached_allocated_resources = []
 
     def cancel_request(self, requester_id: str) -> None:
         """Fire-and-forget: cancel a resource request on the coordinator actor.
 
-        Returns immediately. If the previous cancel has completed, its result is
-        checked first and the failure counter updated. If a cancel is already
-        in-flight, the actor RPC is skipped — the in-flight cancel is idempotent
-        provided no request_resources call arrives after this cancel_request.
+        Returns immediately without observing the result. Clears client-side
+        state unconditionally (cancels any in-flight get_allocated_resources ref
+        and zeroes the cached allocation) to prevent memory accumulation.
         """
-        self._resolve_pending(
-            "_pending_cancel_request",
-            requester_id,
-            "_consecutive_failures_cancel_request",
-            "cancel resource request",
-        )
-        # Always clear client-side state, regardless of whether an actor RPC
-        # is in-flight. This ensures in-flight request_resources and
-        # get_allocated_resources refs are cancelled and the cache is zeroed
-        # even if the actor cancel RPC is skipped.
         self._clear_requester_state(requester_id)
-        if self._pending_cancel_request is None:
-            self._pending_cancel_request = (
-                self._autoscaling_coordinator.cancel_request.remote(requester_id),
-                time.time(),
-            )
-        else:
-            logger.debug(
-                "Skipping cancel_request for %s; previous cancel still in-flight.",
-                requester_id,
-            )
+        self._autoscaling_coordinator.cancel_request.remote(requester_id)
 
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
         """Get the allocated resources for the requester without blocking.
@@ -279,8 +196,8 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         response reflects state after all previously submitted request_resources
         calls from this driver.
 
-        On repeated failures (actor errors or timeouts), falls back to the cached
-        value and raises RuntimeError after MAX_CONSECUTIVE_FAILURES.
+        On actor errors or timeouts, falls back to the last cached value and
+        logs a warning; never raises.
         """
 
         def _on_success(result):
@@ -289,7 +206,6 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         self._resolve_pending(
             "_pending_allocated_resources",
             requester_id,
-            "_consecutive_failures_get_allocated_resources",
             "get allocated resources",
             on_success=_on_success,
         )

@@ -338,9 +338,9 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         try:
             self._autoscaling_coordinator.cancel_request(self._requester_id)
         except Exception:
-            # Intentionally broad: also catches RuntimeError raised by
-            # cancel_request after MAX_CONSECUTIVE_FAILURES. At shutdown there
-            # is nothing useful to do except log and let the request expire.
+            # cancel_request is fire-and-forget and shouldn't raise, but guard
+            # against unexpected Ray Core errors at submit time. At shutdown
+            # there's nothing useful to do except log and let the request expire.
             msg = (
                 f"Failed to cancel resource request for {self._requester_id}."
                 " The request will still expire after the timeout of"
