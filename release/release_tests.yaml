@@ -1639,14 +1639,13 @@
   run:
     timeout: 7200
     long_running: false
-    script: python workloads/router_microbenchmark.py
+    # Every variation fully overrides this
+    script: "false"
 
   alert: default
 
   variations:
-    # Low-latency / high-throughput workload. Router overhead dominates here,
-    # so we only exercise pow2 (capacity_queue's coordination cost is not
-    # meaningful at sub-slot-time latencies).
+    # Low-latency / high-throughput workload
     - __suffix__: aws.standard
       run:
         timeout: 7200
@@ -1658,8 +1657,7 @@
           --max-ongoing-requests-child 5
           --max-ongoing-requests-parent 5
           --router-type pow2
-    # Supply-constrained workload: slow child + small slot budget makes
-    # queueing dynamics visible. Compare pow2 vs capacity_queue.
+    # Supply-constrained workload
     - __suffix__: aws.supply_constraint
       run:
         timeout: 7200

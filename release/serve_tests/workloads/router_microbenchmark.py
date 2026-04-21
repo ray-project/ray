@@ -51,14 +51,6 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Workload configuration (defaults; overridable via CLI)
-# ---------------------------------------------------------------------------
-DEFAULT_SIMULATED_LATENCY_MEAN_S = 1.0
-DEFAULT_SIMULATED_LATENCY_CAP_S = 10.0
-DEFAULT_MAX_ONGOING_REQUESTS_CHILD = 2
-DEFAULT_MAX_ONGOING_REQUESTS_PARENT = 5
-
-# ---------------------------------------------------------------------------
 # Load-test configuration
 # ---------------------------------------------------------------------------
 LOAD_LEVEL = 1.0  # fraction of theoretical max
@@ -555,31 +547,31 @@ async def run_router_benchmark(
     "-r",
     multiple=True,
     type=click.Choice(["pow2", "capacity_queue"]),
-    default=ROUTER_TYPES,
+    required=True,
     help="Routers to benchmark. Repeat flag for multiple.",
 )
 @click.option(
     "--simulated-latency-mean-s",
     type=float,
-    default=DEFAULT_SIMULATED_LATENCY_MEAN_S,
+    required=True,
     help="Mean of the exponential distribution for simulated child work.",
 )
 @click.option(
     "--simulated-latency-cap-s",
     type=float,
-    default=DEFAULT_SIMULATED_LATENCY_CAP_S,
+    required=True,
     help="Cap on simulated child work latency.",
 )
 @click.option(
     "--max-ongoing-requests-child",
     type=int,
-    default=DEFAULT_MAX_ONGOING_REQUESTS_CHILD,
+    required=True,
     help="max_ongoing_requests for the child deployment.",
 )
 @click.option(
     "--max-ongoing-requests-parent",
     type=int,
-    default=DEFAULT_MAX_ONGOING_REQUESTS_PARENT,
+    required=True,
     help="max_ongoing_requests for the parent deployment.",
 )
 def main(
