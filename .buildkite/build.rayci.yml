@@ -4,8 +4,10 @@ steps:
     key: linux_wheels_upload
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
         --wanda-image-name=ray-wheel-py{{array.python}}
+        --file-glob='*.whl'
+        --output-dir=.whl
       - ./ci/build/copy_build_artifacts.sh wheel
     array:
       python:
@@ -56,8 +58,10 @@ steps:
     key: linux_cpp_wheels_upload
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
         --wanda-image-name=ray-cpp-wheel
+        --file-glob='*.whl'
+        --output-dir=.whl
       - ./ci/build/copy_build_artifacts.sh wheel
     depends_on:
       - ray-cpp-wheel-build
