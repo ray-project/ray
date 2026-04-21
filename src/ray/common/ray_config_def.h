@@ -75,7 +75,7 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// kill_memory_buffer_bytes. Notice that the formula does not account for object store
 /// memory in system reserved memory. To configure the usage threshold, please adjust the
 /// system reserved memory in ray start command instead. Ranging from [0, 1]
-RAY_CONFIG(float, memory_usage_threshold, 0.95)
+RAY_CONFIG(float, memory_usage_threshold, 0.85)
 
 /// The interval between runs of the memory usage monitor.
 /// Monitor is disabled when this value is 0.
@@ -1113,4 +1113,4 @@ RAY_CONFIG(bool, experimental_object_manager_enable_multiple_connections, true)
 // TODO: We should clean it up after the memory monitor is revamped.
 RAY_CONFIG(int64_t,
            idle_worker_killing_memory_threshold_bytes,
-           1024 * 1024 * 1024)  // 1GB
+           200 * 1024 * 1024)  // 200MiB

@@ -373,13 +373,19 @@ class ResourceAndLabelSpec:
 
     def _resolve_memory_resources(self):
         # Choose a default object store size.
-        system_memory = ray._common.utils.get_system_memory()
-        if self.available_memory_bytes is None:
-            self.available_memory_bytes = ray._private.utils.estimate_available_memory()
+        system_memory = (
+            ray._common.utils.get_system_memory() * 0.85
+        )  # making total available system low so that threshold monitor triggers
+        logger.info(f"Resolved system memory: {system_memory}")
+        self.available_memory_bytes = (
+            ray._private.utils.estimate_available_memory() * 0.85
+        )  # making total available system low so that threshold monitor
+        logger.info(f"Resolved available memory: {self.available_memory_bytes}")
         if self.object_store_memory is None:
             self.object_store_memory = ray._private.utils.resolve_object_store_memory(
                 self.available_memory_bytes
             )
+        logger.info(f"Resolved object store memory: {self.object_store_memory}")
 
         memory = self.memory
         if memory is None:
@@ -396,7 +402,7 @@ class ResourceAndLabelSpec:
                     )
                 )
 
-        self.memory = memory
+        self.memory = memory - 3758096384  # 3.5GiB overhead
 
     @staticmethod
     def _get_current_node_accelerator(
