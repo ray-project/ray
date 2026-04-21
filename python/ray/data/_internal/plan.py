@@ -44,7 +44,13 @@ class ExecutionPlan:
         self._logical_plan = logical_plan
 
     def create_executor(self, dataset_id: str) -> "StreamingExecutor":
-        """Create an executor for this plan."""
+        """Create an executor for this plan.
+
+        NOTE: Executor will be shutdown upon either of the 2 following conditions:
+
+            - Iterator is fully exhausted (ie until StopIteration is raised)
+            - Executor instances is garbage-collected
+        """
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
         return StreamingExecutor(self._context, dataset_id)
