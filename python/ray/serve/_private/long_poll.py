@@ -439,6 +439,11 @@ class LongPollHost:
             timeout=random.uniform(*self._listen_for_change_request_timeout_s),
         )
 
+        # Collect per-namespace decrements, flush the gauge once per
+        # unique tag after the loop — a single timed-out poll over many
+        # keys can otherwise do N redundant metric writes for the same
+        # namespace.
+        affected_namespaces = set()
         for task in not_done:
             task.cancel()
             event = async_task_to_events[task]
@@ -458,6 +463,8 @@ class LongPollHost:
                 self.notifier_events.pop(key, None)
             namespace_tag = _get_metric_namespace_tag(key)
             self._pending_clients_by_namespace[namespace_tag] -= 1
+            affected_namespaces.add(namespace_tag)
+        for namespace_tag in affected_namespaces:
             self.pending_clients_gauge.set(
                 self._pending_clients_by_namespace[namespace_tag],
                 tags={"namespace": namespace_tag},
@@ -624,6 +631,7 @@ class LongPollHost:
         snapshot maps would be popped and the payload dropped by the
         done-branch guard in ``listen_for_change``.
         """
+        affected_namespaces = set()
         for key in keys:
             self.snapshot_ids.pop(key, None)
             self.object_snapshots.pop(key, None)
@@ -637,9 +645,11 @@ class LongPollHost:
                 self._pending_clients_by_namespace[namespace_tag] -= len(
                     events_to_notify
                 )
-                self.pending_clients_gauge.set(
-                    self._pending_clients_by_namespace[namespace_tag],
-                    tags={"namespace": namespace_tag},
-                )
+                affected_namespaces.add(namespace_tag)
             for event in events_to_notify:
                 event.set()
+        for namespace_tag in affected_namespaces:
+            self.pending_clients_gauge.set(
+                self._pending_clients_by_namespace[namespace_tag],
+                tags={"namespace": namespace_tag},
+            )
