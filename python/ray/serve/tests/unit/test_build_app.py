@@ -2,11 +2,14 @@ import sys
 from typing import Any, Dict, List, Optional
 
 import pytest
+from fastapi import FastAPI
 
 from ray import serve
 from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
 from ray.serve.deployment import Application, Deployment
+from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
 
@@ -571,6 +574,62 @@ def test_build_app_with_http_router_peer():
         "Ingress",
     ]
     assert built_app.http_router_deployment_name == "HttpRouter"
+
+
+def test_imperative_ingress_check_ignores_http_router_peer():
+    ingress_api = FastAPI()
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(ingress_api)
+    class Ingress:
+        pass
+
+    @serve.deployment
+    @serve.ingress(router_api)
+    class HttpRouter:
+        pass
+
+    ingress_app = Ingress.bind()
+    app = serve.Application(
+        ingress_app._bound_deployment,
+        http_router=HttpRouter.bind(),
+    )
+
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    client = object.__new__(ServeControllerClient)
+    client._check_ingress_deployments([built_app])
+
+
+def test_imperative_ingress_check_rejects_two_non_router_fastapi_deployments():
+    ingress_api = FastAPI()
+    other_api = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(ingress_api)
+    class Ingress:
+        pass
+
+    @serve.deployment
+    @serve.ingress(other_api)
+    class OtherFastAPI:
+        pass
+
+    app = Ingress.bind(OtherFastAPI.bind())
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    client = object.__new__(ServeControllerClient)
+    with pytest.raises(RayServeException, match="multiple FastAPI deployments"):
+        client._check_ingress_deployments([built_app])
 
 
 if __name__ == "__main__":

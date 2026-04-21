@@ -479,8 +479,14 @@ class ServeControllerClient:
         for app in built_apps:
             num_ingress_deployments = 0
             for deployment in app.deployments:
-                if inspect.isclass(deployment.func_or_class) and issubclass(
-                    deployment.func_or_class, ASGIAppReplicaWrapper
+                is_http_router = (
+                    app.http_router_deployment_name is not None
+                    and deployment.name == app.http_router_deployment_name
+                )
+                if (
+                    not is_http_router
+                    and inspect.isclass(deployment.func_or_class)
+                    and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
                 ):
                     num_ingress_deployments += 1
 
