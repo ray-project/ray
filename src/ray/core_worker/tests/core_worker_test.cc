@@ -32,6 +32,7 @@
 #include "ray/common/asio/fake_periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/ray_object.h"
 #include "ray/core_worker/actor_management/actor_creator.h"
 #include "ray/core_worker/actor_management/actor_manager.h"
 #include "ray/core_worker/context.h"
@@ -1347,6 +1348,157 @@ TEST_F(CoreWorkerTest, WaitAndFetchInMemoryPerIdFetchLocalWhenAllRequired) {
   // not change the ready bitmap when every id must be returned.
   ASSERT_EQ(all_local, mixed_local);
   ASSERT_EQ(all_local, (std::vector<bool>{true, true, true}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchSucceedsWhenUnknownOwnerAfterEnoughOwnedIds) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id_unknown = ObjectID::FromRandom();
+  const auto id_known = ObjectID::FromRandom();
+  reference_counter_->AddOwnedObject(id_known,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+  memory_store_->Put(
+      *MakeRayObject("v", "m"), id_known, reference_counter_->HasReference(id_known));
+
+  const std::vector<ObjectID> ids = {id_unknown, id_known};
+  const std::vector<bool> fetch = {true, true};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch, 1, 1000, &results).ok());
+  ASSERT_EQ(results, (std::vector<bool>{false, true}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchOwnedButMissingObjectReturnsNoneReadyWithTimeout) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id = ObjectID::FromRandom();
+  reference_counter_->AddOwnedObject(id,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+
+  std::vector<bool> results;
+  ASSERT_TRUE(
+      core_worker_->WaitAndFetch({id}, {true}, 1, /*timeout_ms=*/0, &results).ok());
+  ASSERT_EQ(results, (std::vector<bool>{false}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchPartialMemoryReadyWhenCoOwnedObjectStillMissing) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id_ready = ObjectID::FromRandom();
+  const auto id_missing = ObjectID::FromRandom();
+  for (const auto &id : {id_ready, id_missing}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+  }
+  memory_store_->Put(
+      *MakeRayObject("a", "m"), id_ready, reference_counter_->HasReference(id_ready));
+
+  const std::vector<ObjectID> ids = {id_ready, id_missing};
+  const std::vector<bool> fetch = {true, true};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch, 2, /*timeout_ms=*/0, &results).ok());
+  ASSERT_EQ(std::count(results.begin(), results.end(), true), 1);
+  ASSERT_TRUE(results[0]);
+  ASSERT_FALSE(results[1]);
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchInPlasmaPlaceholderReadyWithoutLocalFetch) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id1 = ObjectID::FromRandom();
+  const auto id2 = ObjectID::FromRandom();
+  RayObject in_plasma(rpc::ErrorType::OBJECT_IN_PLASMA, /*ray_error_info=*/nullptr);
+  for (const auto &id : {id1, id2}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+    memory_store_->Put(in_plasma, id, reference_counter_->HasReference(id));
+  }
+
+  const std::vector<ObjectID> ids = {id1, id2};
+  const std::vector<bool> fetch_local = {false, false};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_local, 2, 1000, &results).ok());
+  ASSERT_EQ(results, (std::vector<bool>{true, true}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchInPlasmaPlaceholderRespectsInputOrderForNoFetch) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  RayObject in_plasma(rpc::ErrorType::OBJECT_IN_PLASMA, /*ray_error_info=*/nullptr);
+  const auto id_first = ObjectID::FromRandom();
+  const auto id_second = ObjectID::FromRandom();
+  for (const auto &id : {id_first, id_second}) {
+    reference_counter_->AddOwnedObject(id,
+                                       {},
+                                       owner_address,
+                                       "",
+                                       0,
+                                       LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                       true);
+    memory_store_->Put(in_plasma, id, reference_counter_->HasReference(id));
+  }
+
+  const std::vector<ObjectID> ids = {id_first, id_second};
+  const std::vector<bool> fetch_local = {false, false};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_local, 1, 1000, &results).ok());
+  ASSERT_EQ(results, (std::vector<bool>{true, false}));
+}
+
+TEST_F(CoreWorkerTest, WaitAndFetchMixedMemoryAndInPlasmaPlaceholderNoFetch) {
+  rpc::Address owner_address;
+  owner_address.set_worker_id(core_worker_->GetWorkerID().Binary());
+
+  const auto id_mem = ObjectID::FromRandom();
+  const auto id_plasma = ObjectID::FromRandom();
+  reference_counter_->AddOwnedObject(id_mem,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+  reference_counter_->AddOwnedObject(id_plasma,
+                                     {},
+                                     owner_address,
+                                     "",
+                                     0,
+                                     LineageReconstructionEligibility::INELIGIBLE_PUT,
+                                     true);
+  memory_store_->Put(
+      *MakeRayObject("d", "m"), id_mem, reference_counter_->HasReference(id_mem));
+  RayObject in_plasma(rpc::ErrorType::OBJECT_IN_PLASMA, /*ray_error_info=*/nullptr);
+  memory_store_->Put(in_plasma, id_plasma, reference_counter_->HasReference(id_plasma));
+
+  const std::vector<ObjectID> ids = {id_mem, id_plasma};
+  const std::vector<bool> fetch_local = {false, false};
+  std::vector<bool> results;
+  ASSERT_TRUE(core_worker_->WaitAndFetch(ids, fetch_local, 2, 1000, &results).ok());
+  ASSERT_EQ(results, (std::vector<bool>{true, true}));
 }
 
 }  // namespace core
