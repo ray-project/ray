@@ -730,7 +730,8 @@ int64_t PullManager::NextRequestRemoteBytes(const BundlePullRequestQueue &bundle
 void PullManager::RecordMetrics() const {
   absl::MutexLock lock(&active_objects_mu_);
   pull_manager_usage_bytes_gauge_.Record(num_bytes_available_, {{"Type", "Available"}});
-  pull_manager_usage_bytes_gauge_.Record(num_bytes_tracked_, {{"Type", "BeingPulled"}});
+  pull_manager_usage_bytes_gauge_.Record(num_bytes_tracked_ - pinned_objects_size_,
+                                         {{"Type", "BeingPulled"}});
   pull_manager_usage_bytes_gauge_.Record(pinned_objects_size_, {{"Type", "Pinned"}});
   pull_manager_requested_bundles_gauge_.Record(get_request_bundles_.requests.size(),
                                                {{"Type", "Get"}});
