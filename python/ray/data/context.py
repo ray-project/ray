@@ -506,10 +506,14 @@ class DataContext:
         min_parallelism: This setting is deprecated. Use ``read_op_min_num_blocks``
             instead.
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
-        planning_file_listing_budget: Upper bound on how many files the DataSourceV2
-            ``LazyFileIndex`` will list on the driver during planning. Once this
-            count is reached, remaining files are listed on workers at execution
-            time. Defaults to 1000.
+        planning_file_listing_budget: Threshold above which DataSourceV2 switches
+            from driver-side full listing to runtime listing on workers. During
+            planning, a small sample is always listed on the driver for schema
+            inference and size estimation; if the extrapolated total file count
+            stays within this budget, the driver lists the rest and hands
+            workers balanced ``FileManifest`` buckets. Above the budget, the
+            driver hands workers unlisted path shards and listing happens at
+            execution time. Defaults to 1000.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
         arrow_fixed_shape_tensor_format: The tensor format to use for fixed-shape tensors.

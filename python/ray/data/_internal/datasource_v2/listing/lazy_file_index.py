@@ -7,32 +7,52 @@ from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
 
+DEFAULT_PLANNING_SAMPLE_SIZE = 10
+
 
 class LazyFileIndex:
-    """Lazy file index with caching and early-exit sampling.
+    """Lazy, caching view over a ``FileIndexer``.
 
-    Provides a caching wrapper around FileIndexer:
-    - list_files(): Streams all manifests, caching for subsequent calls
-    - list_files(sample=N): Returns merged manifest of up to N files (early exit)
+    ``list_files()`` streams every manifest; ``list_files(sample=N)`` returns
+    a merged manifest of up to ``N`` files and stops early. Both modes share
+    one cache: manifests yielded by either call are replayed on subsequent
+    calls without re-invoking the indexer, so a planning-time sample is
+    reused when execution later streams the full listing.
 
-    Both modes share the same cache - sampling caches manifests as it iterates,
-    and subsequent list_files() calls continue from where sampling stopped.
+    Driver-side listing yields balanced buckets but blocks planning;
+    worker-side listing hides cost behind read I/O but loses balance.
+    ``DataContext.planning_file_listing_budget`` caps driver-side work and
+    flips to worker-side for very large listings (e.g. millions of files).
 
-    Usage:
-        index = LazyFileIndex(indexer, paths, filesystem, pruners)
+    The planner samples on the driver for schema and size estimation, then
+    continues listing on the driver up to the budget. If ``fully_listed``,
+    the scanner produces balanced buckets; otherwise the planner splits
+    remaining paths into shards that workers list and read in a pipeline::
 
-        # Planning: sample for schema inference (early exit, caches as it goes)
-        sample = index.list_files(sample=10)
-        schema = infer_schema(sample)
+        Driver                                               Workers
+        ──────                                               ───────
+        sample = lfi.list_files(sample=N)   ──▶ schema + size estimate
+              │
+              ▼
+        for chunk in lfi.list_files():      # warm cache on driver
+            if total >= ctx.planning_file_listing_budget:
+                break
+              │
+              ▼
+        if lfi.fully_listed:                # single-stage
+            buckets = scanner.plan(         ─────────────▶  reader.read(bucket)
+                lfi.cached_manifest)
+        else:                               # two-stage
+            shards = split_paths(           ─────────────▶  shard.list_files()
+                lfi.remaining_paths)                        + reader.read(manifest)
 
-        # Execution: continues from cache, then lists remaining files
-        for manifest in index.list_files():
-            process(manifest)
+    Concurrency: only one active iteration per instance; a second
+    ``list_files`` call while an iterator is live raises.
 
-    Workers receive a pickled index; the in-flight iterator is not preserved
-    across pickle boundaries. Two-stage reads are expected to hand each worker
-    a fresh `LazyFileIndex` over its own disjoint path shard, so workers never
-    resume a partially-consumed iterator.
+    Pickle: the in-flight iterator is dropped; only the cache survives.
+    After unpickling, cached manifests replay first and the indexer is
+    re-invoked for the remainder, filtering paths already cached. Assumes
+    the filesystem listing is stable across pickle boundaries.
     """
 
     def __init__(
@@ -52,6 +72,8 @@ class LazyFileIndex:
             pruners: Optional file pruners applied during listing.
             preserve_order: If True, preserve deterministic listing order.
         """
+
+        # If some of these properties are not pickleable, we need to remove them from the __dict__ before pickling.
         self._indexer = indexer
         self._paths = paths
         self._filesystem = filesystem
@@ -59,12 +81,13 @@ class LazyFileIndex:
         self._cached_manifests: List[FileManifest] = []
         self._cached_paths: Set[str] = set()
         self._listing_iterator: Optional[Iterator[FileManifest]] = None
-        self._is_fully_cached: bool = False
+        self._fully_listed: bool = False
         self._preserve_order = preserve_order
+        self._iterating: bool = False
 
     @property
-    def is_fully_cached(self) -> bool:
-        return self._is_fully_cached
+    def fully_listed(self) -> bool:
+        return self._fully_listed
 
     @overload
     def list_files(self, *, sample: None = None) -> Iterable[FileManifest]:
@@ -82,7 +105,8 @@ class LazyFileIndex:
         Args:
             sample: If provided, return a merged FileManifest with up to this
                 many files (early exit). If None, return an iterable of all
-                manifests.
+                manifests. Must be positive if provided. Planning-time callers
+                should pass ``DEFAULT_PLANNING_SAMPLE_SIZE``.
 
         Returns:
             If sample is None: Iterable[FileManifest] streaming all files.
@@ -103,26 +127,36 @@ class LazyFileIndex:
         unpickling), paths already present in the cache are filtered out so
         they are never re-listed.
         """
-        yield from self._cached_manifests
+        assert (
+            not self._iterating
+        ), "LazyFileIndex does not support concurrent iteration"
+        self._iterating = True
+        try:
+            yield from self._cached_manifests
 
-        if self._is_fully_cached:
-            return
+            if self._fully_listed:
+                return
 
-        if self._listing_iterator is None:
-            self._listing_iterator = self._indexer.list_files(
-                pa.array(self._paths),
-                filesystem=self._filesystem,
-                pruners=self._pruners,
-                preserve_order=self._preserve_order,
-            )
+            if self._listing_iterator is None:
+                self._listing_iterator = self._indexer.list_files(
+                    pa.array(self._paths),
+                    filesystem=self._filesystem,
+                    pruners=self._pruners,
+                    preserve_order=self._preserve_order,
+                )
 
-        for manifest in self._listing_iterator:
-            filtered = self._dedup_and_cache(manifest)
-            if filtered is not None:
-                yield filtered
+            for manifest in self._listing_iterator:
+                filtered = self._dedup_and_cache(manifest)
+                if filtered is not None:
+                    yield filtered
 
-        self._is_fully_cached = True
-        self._listing_iterator = None
+            self._fully_listed = True
+            self._listing_iterator = None
+            # Dedup set is only consulted when re-listing; once fully cached
+            # it is no longer needed and can be large for big listings.
+            self._cached_paths = set()
+        finally:
+            self._iterating = False
 
     def _dedup_and_cache(self, manifest: FileManifest) -> Optional[FileManifest]:
         paths = manifest.paths.tolist()
@@ -149,20 +183,28 @@ class LazyFileIndex:
         return to_cache
 
     def _sample(self, n: int) -> FileManifest:
+        assert n > 0, f"sample must be positive, got {n}"
+
         collected: List[FileManifest] = []
         total = 0
 
-        for manifest in self._iter_manifests():
-            remaining = n - total
-            if remaining <= 0:
-                break
+        gen = self._iter_manifests()
+        try:
+            for manifest in gen:
+                remaining = n - total
+                if remaining <= 0:
+                    break
 
-            if len(manifest) > remaining:
-                collected.append(FileManifest(manifest.as_block().slice(0, remaining)))
-                break
+                if len(manifest) > remaining:
+                    collected.append(
+                        FileManifest(manifest.as_block().slice(0, remaining))
+                    )
+                    break
 
-            collected.append(manifest)
-            total += len(manifest)
+                collected.append(manifest)
+                total += len(manifest)
+        finally:
+            gen.close()
 
         if not collected:
             raise ValueError(f"No files found in {self._paths}")
@@ -170,22 +212,9 @@ class LazyFileIndex:
         return FileManifest.concat(collected)
 
     def __getstate__(self) -> dict:
-        return {
-            "_indexer": self._indexer,
-            "_paths": self._paths,
-            "_filesystem": self._filesystem,
-            "_pruners": self._pruners,
-            "_cached_manifests": self._cached_manifests,
-            "_cached_paths": self._cached_paths,
-            "_is_fully_cached": self._is_fully_cached,
-        }
-
-    def __setstate__(self, state: dict) -> None:
-        self._indexer = state["_indexer"]
-        self._paths = state["_paths"]
-        self._filesystem = state["_filesystem"]
-        self._pruners = state["_pruners"]
-        self._cached_manifests = state["_cached_manifests"]
-        self._cached_paths = state["_cached_paths"]
-        self._is_fully_cached = state["_is_fully_cached"]
-        self._listing_iterator = None
+        state = self.__dict__.copy()
+        # The in-flight iterator can't be pickled; ``_iterating`` is a
+        # runtime guard that doesn't carry meaning across processes.
+        state["_listing_iterator"] = None
+        state["_iterating"] = False
+        return state

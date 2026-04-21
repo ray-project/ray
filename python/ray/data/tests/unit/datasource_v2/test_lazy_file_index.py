@@ -82,12 +82,19 @@ class TestLazyFileIndexSampling:
         idx = _make_index([_manifest(["a", "b"]), _manifest(["c"])])
         sampled = idx.list_files(sample=100)
         assert sampled.paths.tolist() == ["a", "b", "c"]
-        assert idx.is_fully_cached is True
+        assert idx.fully_listed is True
 
     def test_sample_empty_paths_raises(self):
         idx = _make_index([])
         with pytest.raises(ValueError):
             idx.list_files(sample=5)
+
+    def test_sample_non_positive_raises(self):
+        idx = _make_index([_manifest(["a"])])
+        with pytest.raises(AssertionError):
+            idx.list_files(sample=0)
+        with pytest.raises(AssertionError):
+            idx.list_files(sample=-1)
 
     def test_repeat_sample_reuses_cache(self):
         indexer = _FakeIndexer([_manifest(["a", "b"]), _manifest(["c", "d"])])
@@ -112,7 +119,7 @@ class TestLazyFileIndexStreaming:
 
         full = _collect_paths(idx.list_files())
         assert full == ["a", "b", "c", "d", "e"]
-        assert idx.is_fully_cached is True
+        assert idx.fully_listed is True
 
     def test_full_stream_twice_uses_cache(self):
         idx = _make_index([_manifest(["a", "b"]), _manifest(["c"])])
@@ -120,6 +127,37 @@ class TestLazyFileIndexStreaming:
         assert first == ["a", "b", "c"]
         second = _collect_paths(idx.list_files())
         assert second == ["a", "b", "c"]
+
+    def test_dedup_set_freed_when_fully_listed(self):
+        idx = _make_index([_manifest(["a", "b"]), _manifest(["c"])])
+        _collect_paths(idx.list_files())
+        assert idx.fully_listed is True
+        assert idx._cached_paths == set()
+
+    def test_partial_iteration_then_restart(self):
+        # Breaking out of an iteration must release the internal ``_iterating``
+        # guard so a subsequent call to ``list_files`` is allowed.
+        idx = _make_index([_manifest(["a", "b"]), _manifest(["c", "d"])])
+        for _ in idx.list_files():
+            break
+        # Second call must not raise and must still produce all files.
+        assert _collect_paths(idx.list_files()) == ["a", "b", "c", "d"]
+
+
+class TestLazyFileIndexConcurrency:
+    def test_overlapping_iteration_raises(self):
+        idx = _make_index([_manifest(["a", "b"]), _manifest(["c"])])
+        first = iter(idx.list_files())
+        next(first)  # start iteration, do not finish
+        with pytest.raises(AssertionError):
+            list(idx.list_files())
+
+    def test_sample_during_iteration_raises(self):
+        idx = _make_index([_manifest(["a", "b"]), _manifest(["c"])])
+        first = iter(idx.list_files())
+        next(first)
+        with pytest.raises(AssertionError):
+            idx.list_files(sample=1)
 
 
 class TestLazyFileIndexPruners:
@@ -146,16 +184,16 @@ class TestLazyFileIndexPickle:
 
         assert restored._listing_iterator is None
         assert [m.paths.tolist() for m in restored._cached_manifests] == cached_before
-        assert restored.is_fully_cached is False
+        assert restored.fully_listed is False
 
-    def test_pickle_when_fully_cached(self):
+    def test_pickle_when_fully_listed(self):
         indexer = _FakeIndexer([_manifest(["a", "b", "c"])])
         idx = LazyFileIndex(indexer, paths=[], filesystem=None)
         _collect_paths(idx.list_files())
-        assert idx.is_fully_cached is True
+        assert idx.fully_listed is True
 
         restored = pickle.loads(pickle.dumps(idx))
-        assert restored.is_fully_cached is True
+        assert restored.fully_listed is True
         assert _collect_paths(restored.list_files()) == ["a", "b", "c"]
 
     def test_worker_resume_does_not_relist_cached_paths(self):
