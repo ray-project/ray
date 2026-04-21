@@ -1,4 +1,5 @@
 """This test suite does not need sglang to be installed."""
+
 import sys
 from unittest.mock import MagicMock, patch
 
@@ -8,6 +9,10 @@ import ray
 from ray.data.llm import SGLangEngineProcessorConfig
 from ray.llm._internal.batch.constants import SGLangTaskType
 from ray.llm._internal.batch.processor import ProcessorBuilder
+from ray.llm._internal.batch.processor.base import DEFAULT_MAX_TASKS_IN_FLIGHT
+from ray.llm._internal.batch.processor.sglang_engine_proc import (
+    build_sglang_engine_processor,
+)
 
 
 def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
@@ -83,12 +88,6 @@ class TestSGLangEngineProcessorConfig:
     ):
         """Tests that max_tasks_in_flight_per_actor is set properly in the ActorPoolStrategy."""
 
-        from ray.llm._internal.batch.processor.base import DEFAULT_MAX_TASKS_IN_FLIGHT
-        from ray.llm._internal.batch.processor.sglang_engine_proc import (
-            SGLangEngineProcessorConfig,
-            build_sglang_engine_processor,
-        )
-
         with patch("ray.data.ActorPoolStrategy") as mock_actor_pool:
             mock_actor_pool.return_value = MagicMock()
 
@@ -110,6 +109,52 @@ class TestSGLangEngineProcessorConfig:
                     call_kwargs["max_tasks_in_flight_per_actor"]
                     == DEFAULT_MAX_TASKS_IN_FLIGHT
                 )
+
+    def test_build_processor_autoconfig_failure_with_trust_remote_code(self):
+        config = SGLangEngineProcessorConfig(
+            model_source="nonexistent-org/nonexistent-model",
+            engine_kwargs={"trust_remote_code": True},
+        )
+
+        processor = build_sglang_engine_processor(config)
+        assert processor is not None
+
+    def test_build_processor_import_error_with_trust_remote_code(self):
+        config = SGLangEngineProcessorConfig(
+            model_source="org/model-with-custom-code",
+            engine_kwargs={"trust_remote_code": True},
+        )
+
+        with (
+            patch(
+                "ray.llm._internal.batch.processor.sglang_engine_proc."
+                "download_model_files",
+                return_value="/tmp/fake_model_dir",
+            ),
+            patch(
+                "ray.llm._internal.batch.processor.sglang_engine_proc."
+                "transformers.AutoConfig.from_pretrained",
+                side_effect=ModuleNotFoundError("custom modeling module missing"),
+            ),
+        ):
+            processor = build_sglang_engine_processor(config)
+
+        assert processor is not None
+
+    def test_build_processor_download_error_with_trust_remote_code(self):
+        config = SGLangEngineProcessorConfig(
+            model_source="org/model-with-custom-code",
+            engine_kwargs={"trust_remote_code": True},
+        )
+
+        with patch(
+            "ray.llm._internal.batch.processor.sglang_engine_proc."
+            "download_model_files",
+            side_effect=RuntimeError("download failed"),
+        ):
+            processor = build_sglang_engine_processor(config)
+
+        assert processor is not None
 
 
 if __name__ == "__main__":
