@@ -460,9 +460,9 @@ class PullManager {
 
   /// The total number of bytes that we are currently pulling. This includes
   /// objects that need to be pulled from a remote node, and objects already
-  /// in the local store (which only need to be "pulled" nominally). To
-  /// avoid starvation, this is always less than the available capacity in
-  /// the local object store.
+  /// in the local store (which only need to be "pulled" nominally). To avoid
+  /// starvation, the remote bytes still in transit (not yet pinned in plasma)
+  /// stay below the available capacity in the local object store.
   int64_t num_bytes_being_pulled_ = 0;
 
   /// The total number of bytes that is available to store objects that we are
