@@ -74,7 +74,7 @@ ray_cc_library(
     hdrs = [
         "noop_cgroup_manager.h",
     ],
-    visibility = [":__subpackages__"],
+    visibility = ["//visibility:public"],
     deps = [
         ":cgroup_driver_interface",
         ":cgroup_manager_interface",

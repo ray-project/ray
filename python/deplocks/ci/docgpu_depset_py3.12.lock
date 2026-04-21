@@ -1,7 +1,5 @@
 --index-url https://pypi.org/simple
---extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://download.pytorch.org/whl/cu128
---find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html
 --find-links https://data.pyg.org/whl/torch-2.7.0+cu128.html
 
 about-time==4.2.1 \
@@ -1282,7 +1280,6 @@ cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     --hash=sha256:f33c9c975782ef7a42c79b6b4fb3d5b043498f9b947126d792592372b432d393
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   cudf-cu12
     #   ray
@@ -2572,9 +2569,7 @@ izulu==0.50.0 \
 jax==0.4.33 ; sys_platform != 'darwin' \
     --hash=sha256:5f33e30b49060ebc990b1f8d75f89d15b9fec263f6fff34ef1af1d01996d314f \
     --hash=sha256:f0d788692fc0179653066c9e1c64e57311b8c15a389837fd7baf328abefcbb92
-    # via
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
-    #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
+    # via -r python/requirements/ml/py313/dl-gpu-requirements.txt
 jax-cuda12-pjrt==0.4.33 ; sys_platform != 'darwin' \
     --hash=sha256:6a9945a8b58fabd040a06850f5ca6bcf94b9ec45b8248afb20c7f2eb809e2cea \
     --hash=sha256:b43f199ec27fd9b3bb79b34ed297894ad50bb7a6eab62012baaa9ea6607b22de
@@ -2604,7 +2599,6 @@ jaxlib==0.4.33 ; sys_platform != 'darwin' \
     --hash=sha256:c12294ff10e5dcea9a4601833399a8b04aa7d0c8ab6e2c1afde930d36d5d0b20 \
     --hash=sha256:eaf21b55fd8f046fcd82c8ea956b636b4b11f892341f3fcd3dc29c4ce5ac4857
     # via
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   jax
 jaxtyping==0.3.4 \
@@ -2637,7 +2631,6 @@ jinja2==3.1.6 \
     #   jupyterlab
     #   jupyterlab-server
     #   memray
-    #   mlflow
     #   moto
     #   myst-parser
     #   nbconvert
@@ -3315,7 +3308,6 @@ markdown==3.5.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ax-platform
-    #   mlflow
     #   tensorboard
 markdown-it-py==2.2.0 \
     --hash=sha256:5a35f8d1870171d9acc47b99612dc146129b631baf04970128b568f190d0cc30 \
@@ -3598,16 +3590,16 @@ ml-dtypes==0.5.4 \
     #   jaxlib
     #   keras
     #   tensorflow
-mlflow==2.22.0 \
-    --hash=sha256:3ada72e39bd7b381c360aa9baddeb701d41f0b83b5889ddab7fdc6d7a5bc9b52 \
-    --hash=sha256:5b8780a8407c1b2ad441a13054f33ed0a0a58df4a69ddada2e30321d287e4f87
+mlflow==3.1.4 \
+    --hash=sha256:6f56c52905a9b71eca2083fcde7eed935614705d33a34b95e139b0b84a8d7842 \
+    --hash=sha256:77edeac35d470aacd12745362f14e7ceefb2cde686667c7956d648fa72996bde
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/core-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
-mlflow-skinny==2.22.0 \
-    --hash=sha256:774b58970038990650486cd934d46b7038fc390682c3bde70b4e5106f6857cce \
-    --hash=sha256:9efc39454f6cc3433e7d804c3df8dab4fbba1abe504c52c05f00ef1d0696fef5
+mlflow-skinny==3.1.4 \
+    --hash=sha256:7d53259365d09404fc2b2e99a2701cbb1f3bfe44f127ff8c7a7b27e3720aba23 \
+    --hash=sha256:7e05139512c3baf06fb9fcd339e028d9f725d424ce7014d9b0957f8d532ba240
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   mlflow
@@ -4151,6 +4143,7 @@ numexpr==2.14.1 \
     --hash=sha256:fdd886f4b7dbaf167633ee396478f0d0aa58ea2f9e7ccc3c6431019623e8d68f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/ml/py313/train-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
 numpy==2.2.6 \
@@ -4280,7 +4273,6 @@ numpy==2.2.6 \
     #   tinyscaler
     #   torch-geometric
     #   torchmetrics
-    #   torchtext
     #   torchvision
     #   transformers
     #   triad
@@ -5960,6 +5952,7 @@ pytest==7.4.4 \
     --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
     #   pytest-aiohttp
     #   pytest-asyncio
@@ -5983,6 +5976,7 @@ pytest-asyncio==0.17.2 \
     --hash=sha256:e0fe5dbea40516b661ef1bcfe0bd9461c2847c4ef4bb40012324f2454fb7d56d
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
     #   pytest-aiohttp
 pytest-docker-tools==3.1.3 \
@@ -6460,7 +6454,6 @@ requests==2.32.5 \
     #   sphinx
     #   tensorflow
     #   torch-geometric
-    #   torchtext
     #   transformers
     #   wandb
 requests-oauthlib==2.0.0 \
@@ -7452,7 +7445,6 @@ tensorflow==2.20.0 \
     --hash=sha256:dd71a7e7c3270239f4185915e8f2c5d39608c5e18973d6e1d101b153993841eb \
     --hash=sha256:e5f169f8f5130ab255bbe854c5f0ae152e93d3d1ac44f42cb1866003b81a5357
     # via
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   tf-keras
 tensorflow-estimator==2.15.0 \
@@ -7462,9 +7454,7 @@ tensorflow-estimator==2.15.0 \
     #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 tensorflow-probability==0.24.0 \
     --hash=sha256:8c1774683e38359dbcaf3697e79b7e6a4e69b9c7b3679e78ee18f43e59e5759b
-    # via
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
-    #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
+    # via -r python/requirements/ml/py313/dl-gpu-requirements.txt
 termcolor==2.4.0 \
     --hash=sha256:9297c0df9c99445c2412e832e882a7884038a25617c60cea2ad69488d4040d63 \
     --hash=sha256:aab9e56047c8ac41ed798fa36d892a37aca6b3e9159f3e0c24bc64a9b3ac7b7a
@@ -7496,8 +7486,8 @@ tf-keras==2.20.0 \
     --hash=sha256:73c547664679ed82da5b89466b9ea70da84dfe5a3a623ab59cd93ee5647165ee
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
+    #   -r python/requirements/ml/py313/rllib-requirements.txt
 threadpoolctl==3.1.0 \
     --hash=sha256:8b99adda265feb6773280df41eece7b2e6561b772d21ffd52e372f999024907b \
     --hash=sha256:a335baacfaa4400ae1f0d8e3a58d6674d2f8828e3716bb2802c44955ad391380
@@ -7689,7 +7679,6 @@ torch==2.7.0+cu128 \
     --hash=sha256:fa05ac6ebed4777de7a5eff398c1f17b697c02422516748ce66a8151873e5a0e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   accelerate
     #   botorch
@@ -7704,61 +7693,40 @@ torch==2.7.0+cu128 \
     #   tensordict
     #   timm
     #   torchmetrics
-    #   torchtext
     #   torchvision
 torch-cluster==1.6.3+pt27cu128 \
     --hash=sha256:eb42ac6afff68cf4e1b32e6d1e6d1915149ec9fffbcdc3a652475261a676446e
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torch-geometric==2.5.3 \
     --hash=sha256:8277abfc12600b0e8047e0c3ea2d55cc43f08c1448e73e924de827c15d0b5f85 \
     --hash=sha256:ad0761650c8fa56cdc46ee61c564fd4995f07f079965fe732b3a76d109fd3edc
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torch-scatter==2.1.2+pt27cu128 \
     --hash=sha256:dfcc9b3d2d6e255944def5f4f0ed91c41e5267de7c56fd31c54547d475c5392c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torch-sparse==0.6.18+pt27cu128 \
     --hash=sha256:0ed476785cab6be08ee1d7f58c80f6cd82870ee381c5909993154319ff802637
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torch-spline-conv==1.2.2+pt27cu128 \
     --hash=sha256:29a1f48688fa7825368480ebea98057f7a6386d7a12cb8cd84dac441544a568c
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
 torchmetrics==0.10.3 \
     --hash=sha256:9e6ab66175f2dc13e246c37485b2c27c77931dfe47fc2b81c76217b8efdc1e57 \
     --hash=sha256:b12cf92897545e24a825b0d168888c0f3052700c2901e2d4f7d90b252bc4a343
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   lightning
     #   pytorch-lightning
-torchtext==0.18.0+cpu \
-    --hash=sha256:128b4356d96059e6550b58d18e6a1147c85e3e0a91780cd87bfec45a36a73863 \
-    --hash=sha256:1b6a6c2cfcae95ef8cd41e28e7081749cde738c56bbbedf773e6d74ed3728538 \
-    --hash=sha256:36cceed5c2aedb3d765341ed747fbf3e5693e4bc3ab82f43d40768b1770fdbe9 \
-    --hash=sha256:489a817093990d208fca447509f125292cd484eff5e058289c614271c98c4f4b \
-    --hash=sha256:8e8c5ef34df27749f293c03d4b8a63f7ac9e587ae31aef4cb27537026a564f4f \
-    --hash=sha256:a388b78c6361fdf8da3336802d7801df4dcfc1a09475fae379da77cd7877f8c2 \
-    --hash=sha256:bf24e274d8aefba3b02ffe42b32df48ca0a77b20c78d4326d620d8c3e0b947a3 \
-    --hash=sha256:c28bede9fad3c89898901a815aa0f2e78e1d342c28b38664e1d7ea5e616f9b12 \
-    --hash=sha256:c760e672265cd6f3e4a7c8d4a78afe9e9617deacda926a743479ee0418d4207d \
-    --hash=sha256:f4dc0083c5b1b73109dd7f4fbade067f6ba1cd76a349dec35b4ba7e0599d3f66
-    # via
-    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
 torchvision==0.22.0+cu128 \
     --hash=sha256:03b454b867f7a0aa9861a463042141448c4f15bec784def19eed39a57fac217b \
     --hash=sha256:06c101f40e1ff94869be14487c91fd5352e376f202fdeafb8f53c58cee2fbeb5 \
@@ -7774,7 +7742,6 @@ torchvision==0.22.0+cu128 \
     --hash=sha256:f5dae1307c34813425c0b753530c035e1cc72af0bded395d1ba64dcb2872889f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   timm
 tornado==6.5.2 \
@@ -7821,7 +7788,6 @@ tqdm==4.67.1 \
     #   pytorch-lightning
     #   statsforecast
     #   torch-geometric
-    #   torchtext
     #   transformers
 traitlets==5.14.3 \
     --hash=sha256:9ed0579d3502c94b4b3732ac120375cda96f923114522847de4b3bb98b96b6b7 \
