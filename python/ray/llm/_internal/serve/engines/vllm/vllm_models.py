@@ -144,7 +144,8 @@ class VLLMEngineConfig(BaseModelExtended):
         elif self.use_gpu:
             self._accelerator_backend = GPUAccelerator(self)
         else:
-            # Unrecognized accelerators fall back to CPU backend.
+            # Implicit CPU configurations (via placement_group_config) and custom
+            # non-GPU/TPU accelerators rely on the CPU backend to pass bundles natively.
             self._accelerator_backend = CPUAccelerator(self)
 
         return self
