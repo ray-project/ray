@@ -388,6 +388,17 @@ SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
 
+# How often (seconds) the controller fetches Prometheus metrics in the background.
+RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S = get_env_float_positive(
+    "RAY_SERVE_PROMETHEUS_FETCH_INTERVAL_S", 5.0
+)
+
+# How long (seconds) before cached Prometheus metrics are considered stale.
+# Defaults to 3x the fetch interval.
+RAY_SERVE_PROMETHEUS_CACHE_TTL_S = get_env_float_positive(
+    "RAY_SERVE_PROMETHEUS_CACHE_TTL_S", 15.0
+)
+
 # Feature flag to turn on node locality routing for proxies. On by default.
 RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING = get_env_bool(
     "RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING", "1"

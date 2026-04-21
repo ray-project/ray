@@ -76,6 +76,7 @@ from ray.serve._private.logging_utils import (
 )
 from ray.serve._private.long_poll import LongPollHost, LongPollNamespace
 from ray.serve._private.node_port_manager import NodePortManager
+from ray.serve._private.prometheus_fetcher import create_prometheus_fetcher_actor
 from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
@@ -405,6 +406,52 @@ class ServeController:
         )
         self.autoscaling_state_manager.record_async_inference_task_queue_metrics(report)
 
+    def record_prometheus_metrics(
+        self,
+        metrics_by_deployment: Dict[DeploymentID, Dict[str, float]],
+        timestamp: float,
+    ) -> None:
+        """Record Prometheus metrics pushed from PrometheusMetricsFetcherActor."""
+        self.autoscaling_state_manager.record_prometheus_metrics(
+            metrics_by_deployment, timestamp
+        )
+
+    def _maybe_update_prometheus_fetcher(self) -> None:
+        """Create or update the Prometheus fetcher actor if needed.
+
+        Only sends queries to the actor when they change.
+        """
+        prom_config = (
+            self.autoscaling_state_manager.get_prometheus_config_by_deployment()
+        )
+        if not prom_config:
+            return
+
+        queries = {dep_id: cfg[0] for dep_id, cfg in prom_config.items()}
+        # Use the address from the first deployment that has one configured.
+        address = next(cfg[1] for cfg in prom_config.values())
+
+        if getattr(self, "_prometheus_fetcher", None) is None:
+            self._prometheus_fetcher = create_prometheus_fetcher_actor(
+                controller_handle=ray.get_runtime_context().current_actor,
+                namespace=SERVE_NAMESPACE,
+                prometheus_address=address,
+            )
+            if self._prometheus_fetcher is None:
+                return
+            self._last_prometheus_queries = None
+
+        if queries != getattr(self, "_last_prometheus_queries", None):
+            self._prometheus_fetcher.update_queries.remote(queries)
+            self._last_prometheus_queries = queries
+
+    def _shutdown_prometheus_fetcher(self) -> None:
+        """Kill the Prometheus fetcher actor on shutdown."""
+        fetcher = getattr(self, "_prometheus_fetcher", None)
+        if fetcher is not None:
+            ray.kill(fetcher, no_restart=True)
+            self._prometheus_fetcher = None
+
     def _get_total_num_requests_for_deployment_for_testing(
         self, deployment_id: DeploymentID
     ):
@@ -580,6 +627,8 @@ class ServeController:
                     )
         except Exception:
             logger.exception("Exception updating deployment state.")
+
+        self._maybe_update_prometheus_fetcher()
 
         try:
             asm_update_start_time = time.time()
@@ -956,6 +1005,7 @@ class ServeController:
             self._shutdown_start_time = time.time()
             logger.info("Controller shutdown started.", extra={"log_to_stderr": False})
 
+        self._shutdown_prometheus_fetcher()
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()

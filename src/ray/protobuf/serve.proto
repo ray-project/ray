@@ -89,6 +89,12 @@ message AutoscalingConfig {
 
   // How metrics are aggregated for autoscaling. One of "mean", "max", "min".
   string aggregation_function = 16;
+
+  // PromQL expressions to evaluate for autoscaling decisions.
+  repeated string prometheus_queries = 17;
+
+  // Address of the Prometheus server for autoscaling queries.
+  optional string prometheus_address = 18;
 }
 
 //[Begin] LOGGING CONFIG

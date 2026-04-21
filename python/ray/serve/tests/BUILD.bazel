@@ -81,6 +81,7 @@ py_test_module_list(
         "test_kv_store.py",
         "test_long_poll.py",
         "test_persistence.py",
+        "test_prometheus_autoscaling_metrics.py",
         "test_proxy_actor_wrapper.py",
         "test_replica_request_context.py",
         "test_serve_with_tracing.py",

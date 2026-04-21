@@ -92,6 +92,9 @@ class AutoscalingContext:
         current_time: Optional[float],
         config: Optional[Any],
         total_pending_async_requests: int,
+        prometheus_metrics: Optional[
+            Union[Dict[str, float], Callable[[], Dict[str, float]]]
+        ] = None,
     ):
         # Deployment information
         self.deployment_id = deployment_id  #: Unique identifier for the deployment.
@@ -145,6 +148,9 @@ class AutoscalingContext:
         # Async inference task queue length (from QueueMonitor)
         self._total_pending_async_requests = total_pending_async_requests
 
+        # Prometheus metrics fetched by the controller
+        self._prometheus_metrics_value = prometheus_metrics
+
     @cached_property
     def aggregated_metrics(self) -> Optional[Dict[str, Dict[ReplicaID, float]]]:
         if callable(self._aggregated_metrics_value):
@@ -174,6 +180,24 @@ class AutoscalingContext:
         # NOTE: for non-additive aggregation functions, total_running_requests is not
         # accurate, consider this is an approximation.
         return self.total_num_requests - self.total_queued_requests
+
+    @cached_property
+    def prometheus_metrics(self) -> Optional[Dict[str, float]]:
+        """Metrics fetched from a Prometheus server by the controller.
+
+        Returns a dict mapping each PromQL expression (as configured in
+        ``AutoscalingConfig.prometheus_queries``) to its latest scalar value.
+
+        Returns ``None`` when no Prometheus queries are configured **or**
+        when the cached results have expired (e.g. Prometheus is
+        unreachable). Policies that use this field should always handle
+        the ``None`` case::
+
+            rps = (ctx.prometheus_metrics or {}).get("rate(rps[5m])", 0)
+        """
+        if callable(self._prometheus_metrics_value):
+            return self._prometheus_metrics_value()
+        return self._prometheus_metrics_value
 
     @property
     def total_pending_async_requests(self) -> int:
@@ -613,6 +637,25 @@ class AutoscalingConfig(BaseModel):
     aggregation_function: Union[str, AggregationFunction] = Field(
         default=AggregationFunction.MEAN,
         description="Function used to aggregate metrics across a time window.",
+    )
+
+    prometheus_address: Optional[str] = Field(
+        default=None,
+        description=(
+            "Address of the Prometheus server "
+            "(e.g. 'localhost:9090' or 'http://localhost:9090'). "
+            "Required when prometheus_queries is set."
+        ),
+    )
+
+    prometheus_queries: Optional[List[str]] = Field(
+        default=None,
+        description=(
+            "List of PromQL expressions to evaluate against the Prometheus "
+            "server specified by prometheus_address. Each expression should "
+            "return a single scalar value. Results are available in the "
+            "AutoscalingContext passed to custom autoscaling policies."
+        ),
     )
 
     # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
