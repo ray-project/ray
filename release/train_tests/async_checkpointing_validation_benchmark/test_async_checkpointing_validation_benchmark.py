@@ -680,7 +680,7 @@ def main():
                         k,
                         round(
                             (
-                                sync_report_blocked_time
+                                v["total_validation_time"]
                                 if k == "sync_cp_inline_val_metrics"
                                 else 0
                             )
