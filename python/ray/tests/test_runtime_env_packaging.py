@@ -5,6 +5,7 @@ import shutil
 import socket
 import string
 import sys
+import tarfile
 import tempfile
 import types
 import uuid
@@ -31,13 +32,16 @@ from ray._private.runtime_env.packaging import (
     get_excludes_from_ignore_files,
     get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
+    get_top_level_dir_from_tar_package,
     get_uri_for_directory,
     get_uri_for_file,
     get_uri_for_package,
+    is_tar_gz_uri,
     is_whl_uri,
     is_zip_uri,
     parse_uri,
     remove_dir_from_filepaths,
+    untar_package,
     unzip_package,
     upload_package_if_needed,
     upload_package_to_gcs,
@@ -926,6 +930,33 @@ class TestDownloadAndUnpackPackage:
             # Check that the file was extracted to the destination directory
             assert (Path(local_dir) / "file.txt").exists()
 
+    async def test_download_and_unpack_package_with_file_uri_tar_gz(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            tar_path = Path(temp_dir) / "test-tar-file.tar.gz"
+            with tarfile.open(tar_path, "w:gz") as tar:
+                file_content = b"Hello from tar!"
+                info = tarfile.TarInfo(name="top_level/file.txt")
+                info.size = len(file_content)
+                tar.addfile(info, io.BytesIO(file_content))
+
+                dir_info = tarfile.TarInfo(name="top_level/")
+                dir_info.type = tarfile.DIRTYPE
+                tar.addfile(dir_info)
+
+            from urllib.parse import urljoin
+            from urllib.request import pathname2url
+
+            file_path = pathname2url(str(tar_path))
+            pkg_uri = urljoin("file:", file_path[1:])
+
+            dest_dir = tempfile.mkdtemp()
+            local_dir = await download_and_unpack_package(
+                pkg_uri=pkg_uri, base_directory=dest_dir
+            )
+
+            assert (Path(local_dir) / "file.txt").exists()
+            assert (Path(local_dir) / "file.txt").read_text() == "Hello from tar!"
+
     @pytest.mark.parametrize(
         "protocol",
         [
@@ -1104,6 +1135,121 @@ def test_get_local_dir_from_uri():
     assert get_local_dir_from_uri(uri, "base_dir") == Path(
         "base_dir/<working_dir_content_hash>"
     )
+
+
+def test_get_local_dir_from_uri_tar_gz():
+    uri = "s3://bucket/archive.tar.gz"
+    local_dir = get_local_dir_from_uri(uri, "base_dir")
+    assert "tar" not in str(local_dir.name)
+    assert not str(local_dir).endswith(".gz")
+
+
+def test_is_tar_gz_uri():
+    assert is_tar_gz_uri("s3://bucket/archive.tar.gz")
+    assert is_tar_gz_uri("https://example.com/pkg.tar.gz")
+    assert is_tar_gz_uri("s3://bucket/archive.tgz")
+    assert not is_tar_gz_uri("s3://bucket/archive.zip")
+    assert not is_tar_gz_uri("gcs://archive.whl")
+    assert not is_tar_gz_uri("invalid_format")
+
+
+def test_parse_uri_tar_gz():
+    protocol, package_name = parse_uri("s3://bucket/archive.tar.gz")
+    assert package_name.endswith(".tar.gz")
+    assert protocol == Protocol.S3
+
+    protocol, package_name = parse_uri("https://example.com/path/my.pkg.tar.gz")
+    assert package_name.endswith(".tar.gz")
+    assert "_" in package_name
+
+
+def test_untar_package_without_top_level_dir(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"Hello, world!"
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    target_dir = str(tmp_path / "extracted")
+    untar_package(
+        package_path=str(tar_path),
+        target_dir=target_dir,
+        remove_top_level_directory=False,
+        unlink_tar=False,
+    )
+    assert (Path(target_dir) / "file.txt").exists()
+    assert (Path(target_dir) / "file.txt").read_text() == "Hello, world!"
+
+
+def test_untar_package_with_top_level_dir(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dir_info = tarfile.TarInfo(name="top_level/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"Hello from tar!"
+        info = tarfile.TarInfo(name="top_level/file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    target_dir = str(tmp_path / "extracted")
+    untar_package(
+        package_path=str(tar_path),
+        target_dir=target_dir,
+        remove_top_level_directory=True,
+        unlink_tar=True,
+    )
+    assert (Path(target_dir) / "file.txt").exists()
+    assert (Path(target_dir) / "file.txt").read_text() == "Hello from tar!"
+    assert not tar_path.exists()
+
+
+def test_untar_package_path_traversal(tmp_path):
+    """Verify that path traversal attacks are blocked."""
+    tar_path = tmp_path / "malicious.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"malicious"
+        info = tarfile.TarInfo(name="../../../etc/passwd")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    target_dir = str(tmp_path / "extracted")
+    untar_package(
+        package_path=str(tar_path),
+        target_dir=target_dir,
+        remove_top_level_directory=False,
+        unlink_tar=False,
+    )
+    assert not (Path(target_dir) / "../../../etc/passwd").exists()
+    assert len(os.listdir(target_dir)) == 0
+
+
+def test_get_top_level_dir_from_tar_package(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dir_info = tarfile.TarInfo(name="myproject/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"content"
+        info = tarfile.TarInfo(name="myproject/main.py")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) == "myproject"
+
+
+def test_get_top_level_dir_from_tar_package_no_top_level(tmp_path):
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"content"
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) is None
 
 
 if __name__ == "__main__":
