@@ -155,6 +155,11 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         ({"resources": {"custom1": 1}}, {"resources": {"custom2": 1}}),
         # Different scheduling strategies.
         ({"scheduling_strategy": "SPREAD"}, {"scheduling_strategy": "PACK"}),
+        # Label selectors targeting different ray.io/node-id.
+        (
+            {"label_selector": {ray._raylet.RAY_NODE_ID_KEY: "node_A"}},
+            {"label_selector": {ray._raylet.RAY_NODE_ID_KEY: "node_B"}},
+        ),
     ]
     for up_remote_args, down_remote_args in incompatible_remote_args_pairs:
         planner = create_planner()
