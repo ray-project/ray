@@ -37,7 +37,6 @@ def get_activation_fn(
         _, nn = try_import_torch()
         # First try getting the correct activation function from nn directly.
         # Note that torch activation functions are not all lower case.
-        assert nn is not None, "`torch` not installed. Try `pip install torch`."
         fn = getattr(nn, name, None)
         if fn is not None:
             return fn
