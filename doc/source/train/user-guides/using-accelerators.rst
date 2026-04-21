@@ -1,6 +1,6 @@
 .. _train_scaling_config:
 
-Configuring scale and accelerators
+Configuring Scale and accelerators
 ==================================
 Increasing the scale of a Ray Train training run is simple and can be done in a few lines of code.
 The main interface for this is the :class:`~ray.train.ScalingConfig`,
@@ -29,6 +29,7 @@ Using accelerators
 .. tab-set::
 
     .. tab-item:: GPU
+        :sync: GPU
 
         To use GPUs, pass ``use_gpu=True`` to the :class:`~ray.train.ScalingConfig`.
         This requests one GPU per training worker. In the following example, training
@@ -44,16 +45,18 @@ Using accelerators
             )
 
     .. tab-item:: TPU
+        :sync: TPU
 
         To use TPUs, pass ``use_tpu=True`` to the :class:`~ray.train.ScalingConfig`.
         You also need to specify ``topology`` and ``accelerator_type``.
 
-        Set ``num_workers`` to the number of TPU VM hosts in the slice, or a
-        multiple of it for multi-slice training. For example, a ``v6e`` TPU
-        slice with a ``4x4`` topology has 4 VMs, so you'd set ``num_workers=4``
-        for a single slice, or ``num_workers=8`` for two slices.
+        Each ``num_workers`` maps to one TPU VM host. The total number of
+        workers must be a multiple of the number of hosts in a single slice.
+        For example, a ``v6e`` TPU slice with a ``4x4`` topology has 4 hosts,
+        so valid values include ``num_workers=4`` (one slice) or
+        ``num_workers=8`` (two slices).
 
-        For details on how TPU topologies map to the number of VMs, see
+        For details on how TPU topologies map to the number of hosts, see
         `Plan TPUs in GKE <https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus>`_.
 
         .. testcode::
@@ -84,6 +87,7 @@ Using accelerators in the training function
 .. tab-set::
 
     .. tab-item:: GPU
+        :sync: GPU
 
         When ``use_gpu=True`` is set, Ray Train automatically sets up environment variables
         in your training function so that the GPUs can be detected and used
@@ -114,6 +118,7 @@ Using accelerators in the training function
             trainer.fit()
 
     .. tab-item:: TPU
+        :sync: TPU
 
         When ``use_tpu=True`` is set, Ray Train configures the distributed
         environment for TPU execution on each worker. The specific initialization
@@ -159,6 +164,7 @@ Assigning multiple accelerators to a worker
 .. tab-set::
 
     .. tab-item:: GPU
+        :sync: GPU
 
         Sometimes you might want to allocate multiple GPUs for a worker. For example,
         you can specify ``resources_per_worker={"GPU": 2}`` in the ``ScalingConfig`` if you want to
@@ -192,11 +198,16 @@ Assigning multiple accelerators to a worker
             trainer.fit()
 
     .. tab-item:: TPU
+        :sync: TPU
 
-        Each TPU VM host has multiple TPU chips. You can allocate all chips on a
-        host to a single worker by specifying the number of chips in
-        ``resources_per_worker``. For example, a ``ct6e-standard-4t`` machine has
-        4 chips per VM.
+        Each TPU VM host has multiple TPU chips. By default, when ``topology``
+        and ``accelerator_type`` are specified, Ray Train auto-detects the
+        correct ``resources_per_worker`` for the given TPU slice configuration.
+
+        To override the default, specify the number of chips explicitly in
+        ``resources_per_worker``. Supported chip counts are 1, 2, 4, and 8.
+        For example, to use only 2 of the 4 chips on a ``ct6e-standard-4t``
+        host:
 
         .. testcode::
             :skipif: True
@@ -208,12 +219,8 @@ Assigning multiple accelerators to a worker
                 use_tpu=True,
                 topology="4x4",
                 accelerator_type="TPU-V6E",
-                resources_per_worker={"TPU": 4},
+                resources_per_worker={"TPU": 2},
             )
-
-        When ``topology`` and ``accelerator_type`` are specified, Ray Train
-        can auto-detect the correct ``resources_per_worker`` for the given
-        TPU slice configuration.
 
 
 Setting the accelerator type
@@ -227,6 +234,7 @@ rather than on any arbitrary accelerator node. You can get a list of supported `
 .. tab-set::
 
     .. tab-item:: GPU
+        :sync: GPU
 
         The following example specifies ``accelerator_type="A100"`` to assign each worker
         a NVIDIA A100 GPU.
@@ -244,10 +252,11 @@ rather than on any arbitrary accelerator node. You can get a list of supported `
             )
 
     .. tab-item:: TPU
+        :sync: TPU
 
-        For TPUs, ``accelerator_type`` specifies the TPU generation. The
-        supported values are: ``"TPU-V2"``, ``"TPU-V3"``, ``"TPU-V4"``,
-        ``"TPU-V5P"``, ``"TPU-V5LITEPOD"``, ``"TPU-V6E"``, and ``"TPU-V7X"``.
+        For TPUs, ``accelerator_type`` specifies the TPU generation.
+        See :ref:`the available accelerator types <accelerator_types>` for
+        the full list of supported values.
 
         .. testcode::
             :skipif: True
@@ -314,100 +323,39 @@ If you want to allocate more than one CPU or accelerator per training worker, or
 defined :ref:`custom cluster resources <cluster-resources>`, set
 the ``resources_per_worker`` attribute:
 
-.. tab-set::
+.. testcode::
 
-    .. tab-item:: GPU
+    from ray.train import ScalingConfig
 
-        .. testcode::
-
-            from ray.train import ScalingConfig
-
-            scaling_config = ScalingConfig(
-                num_workers=8,
-                resources_per_worker={
-                    "CPU": 4,
-                    "GPU": 2,
-                },
-                use_gpu=True,
-            )
+    scaling_config = ScalingConfig(
+        num_workers=8,
+        resources_per_worker={
+            "CPU": 4,
+            "GPU": 2,
+        },
+        use_gpu=True,
+    )
 
 
-        .. note::
-            If you specify GPUs in ``resources_per_worker``, you also need to set
-            ``use_gpu=True``.
+.. note::
+    If you specify GPUs in ``resources_per_worker``, you also need to set
+    ``use_gpu=True``.
 
-        You can also instruct Ray Train to use fractional GPUs. In that case, multiple workers
-        are assigned the same CUDA device.
+You can also instruct Ray Train to use fractional GPUs. In that case, multiple workers
+are assigned the same CUDA device.
 
-        .. testcode::
+.. testcode::
 
-            from ray.train import ScalingConfig
+    from ray.train import ScalingConfig
 
-            scaling_config = ScalingConfig(
-                num_workers=8,
-                resources_per_worker={
-                    "CPU": 4,
-                    "GPU": 0.5,
-                },
-                use_gpu=True,
-            )
-
-    .. tab-item:: TPU
-
-        For TPU workers, specify the number of TPU chips per worker in
-        ``resources_per_worker``. Each TPU VM host has a fixed number of chips
-        depending on the machine type (such as 4 chips for ``ct6e-standard-4t``).
-        Supported chip counts are 1, 2, 4, and 8.
-
-        .. testcode::
-            :skipif: True
-
-            from ray.train import ScalingConfig
-
-            # Allocate all 4 chips per host to each worker
-            scaling_config = ScalingConfig(
-                num_workers=4,
-                resources_per_worker={
-                    "CPU": 4,
-                    "TPU": 4,
-                },
-                use_tpu=True,
-                topology="4x4",
-                accelerator_type="TPU-V6E",
-            )
-
-            # Allocate 2 of 4 chips per host to each worker
-            scaling_config = ScalingConfig(
-                num_workers=4,
-                resources_per_worker={
-                    "CPU": 4,
-                    "TPU": 2,
-                },
-                use_tpu=True,
-                topology="4x4",
-                accelerator_type="TPU-V6E",
-            )
-
-        .. note::
-            If you specify TPUs in ``resources_per_worker``, you also need to set
-            ``use_tpu=True``.
-
-        When ``topology`` and ``accelerator_type`` are provided, Ray Train
-        can auto-detect the correct ``resources_per_worker`` for the TPU slice,
-        so you can omit it:
-
-        .. testcode::
-            :skipif: True
-
-            from ray.train import ScalingConfig
-
-            scaling_config = ScalingConfig(
-                num_workers=4,
-                use_tpu=True,
-                topology="4x4",
-                accelerator_type="TPU-V6E",
-            )
-
+    scaling_config = ScalingConfig(
+        num_workers=8,
+        resources_per_worker={
+            "CPU": 4,
+            "GPU": 0.5,
+        },
+        use_gpu=True,
+    )
 
 
 (Deprecated) Trainer resources
@@ -422,8 +370,8 @@ training worker is a :ref:`Ray Actor <actor-guide>`. Ray Train also schedules
 an actor for the trainer object when you call ``trainer.fit()``.
 
 This object often only manages lightweight communication between the training workers.
-Per default, a trainer uses 1 CPU. If you have a cluster with 8 CPUs and want
-to start 4 training workers a 2 CPUs, this won't work, as the total number
+By default, a trainer uses 1 CPU. If you have a cluster with 8 CPUs and want
+to start 4 training workers at 2 CPUs each, this won't work, as the total number
 of required CPUs is 9 (4 * 2 + 1). In that case, you can specify the trainer
 resources to use 0 CPUs:
 
