@@ -124,12 +124,6 @@ Using accelerators in the training function
         environment for TPU execution on each worker. The specific initialization
         depends on the trainer you use (such as :class:`~ray.train.v2.jax.JaxTrainer`).
 
-        .. note::
-
-            If you're using JAX, import ``jax`` inside your ``train_loop_per_worker``
-            function rather than at the module level. This avoids driver-side TPU
-            lock issues.
-
         The following example shows a basic TPU training setup with
         :class:`~ray.train.v2.jax.JaxTrainer`:
 
