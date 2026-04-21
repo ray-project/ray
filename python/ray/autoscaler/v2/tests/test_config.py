@@ -235,6 +235,12 @@ def test_readonly_node_type_name_and_fallback(monkeypatch):
     assert fallback_name in node_types
     assert node_types[fallback_name]["max_workers"] == 1
 
+    # Global max_workers should be the sum of all worker-type max_workers,
+    # NOT the count of node type names.
+    # Previously this was `len(available_node_types)` which returned 3
+    # (number of distinct type names) instead of the actual worker count.
+    assert cfg.get_config("max_workers") == 3
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
