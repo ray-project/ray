@@ -1402,7 +1402,9 @@ def stop(force: bool, grace_period: int):
         total_found = len(procs_to_kill) + len(pre_stopped)
 
         # Wait for grace period to terminate processes.
-        gone_procs = set()
+        # Seed with zombies so the progress counter can reach total_found
+        # (wait_procs only fires the callback for live->dead transitions).
+        gone_procs = set(pre_stopped)
 
         def on_terminate(proc):
             gone_procs.add(proc)
