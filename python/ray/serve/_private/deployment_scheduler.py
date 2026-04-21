@@ -174,9 +174,9 @@ class ReplicaSchedulingRequest:
     def required_resources(self) -> Resources:
         """The resources required to schedule this replica on a node.
 
-        If this replica uses a strict pack placement group, the
-        required resources is the sum of the placement group bundles.
-        Otherwise, required resources is simply the actor resources.
+        STRICT_PACK placement group: sum of all bundles.
+        Other placement groups: bundle 0 (the actor is pinned there).
+        Otherwise: actor resources.
         """
 
         if (
@@ -187,7 +187,11 @@ class ReplicaSchedulingRequest:
                 [Resources(bundle) for bundle in self.placement_group_bundles],
                 Resources(),
             )
+        elif self.placement_group_bundles is not None:
+            return Resources(self.placement_group_bundles[0])
         else:
+            # Copy so the implicit_resource assignment below doesn't mutate
+            # self.actor_resources.
             required = Resources(self.actor_resources)
 
             # Using implicit resource (resources that every node
@@ -235,9 +239,9 @@ class DeploymentSchedulingInfo:
     def required_resources(self) -> Resources:
         """The resources required to schedule a replica of this deployment on a node.
 
-        If this replicas uses a strict pack placement group, the
-        required resources is the sum of the placement group bundles.
-        Otherwise, required resources is simply the actor resources.
+        STRICT_PACK placement group: sum of all bundles.
+        Other placement groups: bundle 0 (the actor is pinned there).
+        Otherwise: actor resources.
         """
 
         if (
@@ -245,8 +249,12 @@ class DeploymentSchedulingInfo:
             and self.placement_group_strategy == "STRICT_PACK"
         ):
             return sum(self.placement_group_bundles, Resources())
+        elif self.placement_group_bundles is not None:
+            return Resources(self.placement_group_bundles[0])
         else:
-            required = self.actor_resources
+            # Copy so the implicit_resource assignment below doesn't mutate
+            # self.actor_resources. `or {}` handles the Optional typing.
+            required = Resources(self.actor_resources or {})
 
             # Using implicit resource (resources that every node
             # implicitly has and total is 1)
@@ -626,8 +634,12 @@ class DeploymentScheduler(ABC):
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
                 )
                 return False
+            # Pin the actor as a subset of bundle 0. ReplicaConfig
+            # validates that actor resources fit in bundle 0, and
+            # required_resources assumes this pin.
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=pg,
+                placement_group_bundle_index=0,
                 placement_group_capture_child_tasks=True,
             )
             target_labels = None
