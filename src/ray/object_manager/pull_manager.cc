@@ -688,7 +688,9 @@ std::string PullManager::BundleInfo(const BundlePullRequestQueue &bundles) const
   } else {
     size_t num_bytes_needed = 0;
     for (const auto &obj_id : bundle.objects_) {
-      num_bytes_needed += map_find_or_die(object_pull_requests_, obj_id).object_size;
+      if (!object_is_local_(obj_id)) {
+        num_bytes_needed += map_find_or_die(object_pull_requests_, obj_id).object_size;
+      }
     }
     result << ", " << num_bytes_needed << " bytes";
     if (bundles.active_requests.count(it->first) > 0) {
