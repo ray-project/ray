@@ -1,18 +1,20 @@
 (overview-overview)=
 # Overview
 
-Ray is an open-source unified framework for scaling AI and Python applications like machine learning. It provides the compute layer for parallel processing so that you don’t need to be a distributed systems expert. Ray minimizes the complexity of running your distributed individual workflows and end-to-end machine learning workflows with these components:
-* Scalable libraries for common machine learning tasks such as data preprocessing, distributed training, hyperparameter tuning, reinforcement learning, and model serving.
-* Pythonic distributed computing primitives for parallelizing and scaling Python applications.
+Ray is an open-source unified framework for scaling AI and Python applications. It provides Pythonic abstractions that minimizes the complexity of distributed computing, allowing users to focus on their application rather than infrastructure. It provides the following:
+* A simple Python decorator for parallelizing and scaling functions and classes
+* Scalable libraries for AI workloads such as data preprocessing, distributed training, hyperparameter tuning, reinforcement learning, and model serving.
 * Integrations and utilities for integrating and deploying a Ray cluster with existing tools and infrastructure such as Kubernetes, AWS, GCP, and Azure.
 
+There is also a thriving third-party [ecosystem of libraries](ray-oss-list) for data processing, post-training / RL, and other distributed AI workloads.
+
 For data scientists and machine learning practitioners, Ray lets you scale jobs without needing infrastructure expertise:
-* Easily parallelize and distribute ML workloads across multiple nodes and GPUs.
-* Leverage the ML ecosystem with native and extensible integrations.
+* Easily parallelize and distribute AI workloads across multiple nodes and GPUs.
+* Leverage the AI ecosystem with native and extensible integrations.
 
 For ML platform builders and ML engineers, Ray:
 * Provides compute abstractions for creating a scalable and robust ML platform.
-* Provides a unified ML API that simplifies onboarding and integration with the broader ML ecosystem.
+* Provides a unified API that simplifies onboarding and integration with the broader ML ecosystem.
 * Reduces friction between development and production by enabling the same Python code to scale seamlessly from a laptop to a large cluster.
 
 For distributed systems engineers, Ray automatically handles key processes:
