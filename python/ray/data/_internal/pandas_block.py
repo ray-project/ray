@@ -183,7 +183,8 @@ class PandasBlockColumnAccessor(BlockColumnAccessor):
 
     def first(self, *, ignore_nulls: bool, as_py: bool = True) -> Any:
         if ignore_nulls:
-            return self._column.iloc[self._column.first_valid_index()]
+            first_index = self._column.first_valid_index()
+            return None if first_index is None else self._column[first_index]
         else:
             return self._column.iloc[0]
 

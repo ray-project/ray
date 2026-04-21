@@ -397,7 +397,34 @@ class Count(AggregateFnV2[int, int]):
         return current_accumulator + new
 
 @PublicAPI
-class First(AggregateFnV2[Any, Any]):
+class First(AggregateFnV2[List[Any], Any]):
+    """Defines first aggregation.
+
+    Example:
+
+        .. testcode::
+
+            import ray
+            import pandas as pd
+            from ray.data.aggregate import First
+
+            df = pd.DataFrame({"A": [1, 1, 1, 1, 1, 2, 2, 2, 3, 3],
+                               "B": [None, 12, 13, 14, 15, None, 22, 23, 31, 32]})
+            ds = ray.data.from_pandas(df)
+
+            # Get first value per group:
+            result = ds.groupby("A").aggregate(First(on="B")).take_all()
+            # result: [{'A': 1, 'first(B)': 12},
+            #          {'A': 2, 'first(B)': 22},
+            #          {'A': 3, 'first(B)': 33}]
+
+    Args:
+        on: The name of the column from which to collect unique values.
+        ignore_nulls: Whether to ignore null values when collecting. If `True`,
+            nulls are skipped. If `False` (default), nulls are included in the list.
+        alias_name: Optional name for the resulting column.
+    """
+
     def __init__(
         self,
         on: str,
@@ -408,19 +435,26 @@ class First(AggregateFnV2[Any, Any]):
             alias_name if alias_name else f"first({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: None,
+            zero_factory=lambda: list([None, False]),
         )
 
-    def aggregate_block(self, block: Block) -> Any:
-        return BlockAccessor.for_block(block).first(
+    def aggregate_block(self, block: Block) -> List[Any]:
+        result = BlockAccessor.for_block(block).first(
             self._target_col_name, self._ignore_nulls
         )
-
-    def combine(self, current_accumulator: Any, new: Any) -> Any:
         if self._ignore_nulls:
-            return current_accumulator if current_accumulator is not None else new
+            return [result, result is not None]
         else:
-            return current_accumulator
+            return [result, True]
+
+
+    def combine(self, current_accumulator: List[Any],
+                new: List[Any]) -> List[Any]:
+        return [current_accumulator[0] if current_accumulator[1] else new[0],
+                current_accumulator[1] or new[1]]
+
+    def finalize(self, accumulator: List[Any]) -> Optional[Any]:
+        return accumulator[0]
 
 
 @PublicAPI
