@@ -404,6 +404,18 @@ def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
 
 def test_health_check(_skip_if_ff_not_enabled, serve_instance):
 
+    http_port = RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
+    grpc_port = RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
+
+    # Previous test's replica may still be releasing its port (app status
+    # transitions to NOT_STARTED before the OS fully releases the socket).
+    # Wait for the ports to be free so the new replica actually binds to them.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=[http_port, grpc_port],
+        timeout=120,
+    )
+
     wait_signal = SignalActor.remote()
     fail_hc_signal = SignalActor.remote()
     shutdown_signal = SignalActor.remote()
@@ -421,12 +433,6 @@ def test_health_check(_skip_if_ff_not_enabled, serve_instance):
         ),
         _blocking=False,
     )
-    # Here I am assuming that min port will always be available. But that may be true
-    # since that port maybe occupied by some other parallel test. But we have no way of
-    # knowing which port will be used ahead of replica initialization. May need to revisit
-    # this in the future.
-    http_port = RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
-    grpc_port = RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
 
     # Reuse persistent HTTP client and gRPC channel across retries to avoid
     # ephemeral port exhaustion from rapid socket churn in wait_for_condition
@@ -526,7 +532,7 @@ def _occupy_ports(ports: list) -> list:
     for port in ports:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("127.0.0.1", port))
+        sock.bind(("localhost", port))
         sock.listen(1)
         sockets.append(sock)
     return sockets
