@@ -10,7 +10,17 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators import AbstractMap, Filter, Limit, Project
+from ray.data._internal.logical.operators import (
+    AbstractAllToAll,
+    AbstractMap,
+    Filter,
+    Join,
+    Limit,
+    Project,
+    RandomShuffle,
+    Repartition,
+    Union,
+)
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
@@ -324,6 +334,30 @@ class PredicatePushdown(Rule):
         if isinstance(op, AbstractMap) and is_dataclass(op):
             assert len(new_inputs) == 1, len(new_inputs)
             return replace(op, input_op=new_inputs[0])
+        if isinstance(op, AbstractAllToAll) and is_dataclass(op):
+            assert len(new_inputs) == 1, len(new_inputs)
+            kwargs = {"input_op": new_inputs[0]}
+            if isinstance(op, Repartition):
+                kwargs["num_outputs"] = op.num_outputs
+            if isinstance(op, RandomShuffle):
+                kwargs["name"] = op.name
+            return replace(op, **kwargs)
+        if isinstance(op, Join) and is_dataclass(op):
+            assert len(new_inputs) == 2, len(new_inputs)
+            return Join(
+                new_inputs[0],
+                new_inputs[1],
+                op.join_type,
+                op.left_key_columns,
+                op.right_key_columns,
+                num_partitions=op.num_outputs,
+                left_columns_suffix=op.left_columns_suffix,
+                right_columns_suffix=op.right_columns_suffix,
+                partition_size_hint=op.partition_size_hint,
+                aggregator_ray_remote_args=op.aggregator_ray_remote_args,
+            )
+        if isinstance(op, Union) and is_dataclass(op):
+            return Union(*new_inputs)
         new_op = copy.copy(op)
         new_op.input_dependencies = new_inputs
         return new_op

@@ -3,11 +3,13 @@ from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 import numpy as np
 
 import ray
+from ray.data._internal.logical.interfaces import SourceOperator
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.exceptions import RayError
 from ray.types import ObjectRef
 
 if TYPE_CHECKING:
+    from ray.data._internal.logical.interfaces.operator import Operator
     from ray.data.dataset import Dataset, Schema
 
 _DATASET_REPR_ELLIPSIS = "…"  # Ellipsis marker for truncated cells/rows.
@@ -17,11 +19,12 @@ _DATASET_REPR_MAX_COLUMN_WIDTH = 40  # Max width per column cell in the table.
 _DATASET_REPR_GET_TIMEOUT_S = 30.0  # Timeout for fetching preview blocks.
 
 __all__ = [
-    "_build_dataset_ascii_repr",
+    "build_dataset_ascii_repr",
+    "build_dataset_summary_repr",
 ]
 
 
-def _build_dataset_ascii_repr(
+def build_dataset_ascii_repr(
     dataset: "Dataset",
     schema: "Schema",
     is_materialized: bool,
@@ -29,7 +32,7 @@ def _build_dataset_ascii_repr(
     """Render the dataset as a multi-line tabular string."""
     columns = list(schema.names)
     if not columns:
-        return dataset._plan.get_plan_as_string(dataset)
+        return build_dataset_summary_repr(dataset)
 
     num_rows = dataset._meta_count()
     head_rows: List[List[str]] = []
@@ -308,3 +311,173 @@ def _render_row(values: List[str], column_widths: List[int]) -> str:
         padded = value.ljust(column_widths[idx])
         cells.append(f" {padded} ")
     return f"│{'┆'.join(cells)}│"
+
+
+def _format_operator_dag(
+    op: "Operator",
+    curr_str: str = "",
+    depth: int = 0,
+    including_source: bool = True,
+    show_op_repr: bool = False,
+) -> Tuple[str, int]:
+    """Traverse (DFS) the Plan DAG and
+    return a string representation of the operators."""
+    if not including_source and isinstance(op, SourceOperator):
+        return curr_str, depth
+
+    curr_max_depth = depth
+
+    # For logical plan, only show the operator name like "Aggregate".
+    # But for physical plan, show the operator class name as well like
+    # "AllToAllOperator[Aggregate]".
+    op_str = repr(op) if show_op_repr else op.name
+
+    if depth == 0:
+        curr_str += f"{op_str}\n"
+    else:
+        trailing_space = " " * ((depth - 1) * 3)
+        curr_str += f"{trailing_space}+- {op_str}\n"
+
+    for input in op.input_dependencies:
+        curr_str, input_max_depth = _format_operator_dag(
+            input, curr_str, depth + 1, including_source, show_op_repr
+        )
+        curr_max_depth = max(curr_max_depth, input_max_depth)
+    return curr_str, curr_max_depth
+
+
+def build_dataset_summary_repr(dataset: "Dataset") -> str:
+    """Create a cosmetic string representation of a dataset.
+
+    This is used for Dataset.__repr__ when no tabular preview is available.
+    Must be very cheap — never forces execution.
+    """
+    from ray.data.dataset import MaterializedDataset
+
+    dataset_cls = type(dataset)
+    logical_plan = dataset._logical_plan
+    dataset_name = dataset._plan._dataset_name
+
+    plan_str = ""
+    plan_max_depth = 0
+
+    if not dataset.has_computed_output():
+        plan_str, plan_max_depth = _format_operator_dag(
+            logical_plan.dag, including_source=False
+        )
+
+    schema = dataset._base_schema(fetch_if_missing=False)
+    count = dataset._plan._cache.get_num_rows(logical_plan.dag)
+
+    if schema is None or count is None:
+        has_n_ary_operator = False
+        dag = logical_plan.dag
+
+        while not isinstance(dag, SourceOperator):
+            if len(dag.input_dependencies) > 1:
+                has_n_ary_operator = True
+                break
+
+            dag = dag.input_dependencies[0]
+
+        # TODO(@bveeramani): Handle schemas for n-ary operators like `Union`.
+        if not has_n_ary_operator:
+            assert isinstance(dag, SourceOperator), dag
+            # We infer from logical plan's dag directly as we know that
+            # we don't have any cached values, so inferring is the only
+            # option left.
+            if schema is None:
+                schema = dag.infer_schema()
+            if count is None:
+                count = dag.infer_metadata().num_rows
+
+    if schema is None:
+        schema_str = "Unknown schema"
+    elif isinstance(schema, type):
+        schema_str = str(schema)
+    else:
+        schema_str = []
+        for n, t in zip(schema.names, schema.types):
+            if hasattr(t, "__name__"):
+                t = t.__name__
+            schema_str.append(f"{n}: {t}")
+        schema_str = ", ".join(schema_str)
+        schema_str = "{" + schema_str + "}"
+
+    if count is None:
+        count = "?"
+
+    num_blocks = None
+    if dataset_cls == MaterializedDataset:
+        num_blocks = logical_plan.initial_num_blocks()
+        assert num_blocks is not None
+
+    name_str = "name={}, ".format(dataset_name) if dataset_name is not None else ""
+    num_blocks_str = f"num_blocks={num_blocks}, " if num_blocks else ""
+
+    dataset_str = "{}({}{}num_rows={}, schema={})".format(
+        dataset_cls.__name__,
+        name_str,
+        num_blocks_str,
+        count,
+        schema_str,
+    )
+
+    # If the resulting string representation fits in one line, use it directly.
+    SCHEMA_LINE_CHAR_LIMIT = 80
+    MIN_FIELD_LENGTH = 10
+    INDENT_STR = " " * 3
+    trailing_space = INDENT_STR * plan_max_depth
+
+    if len(dataset_str) > SCHEMA_LINE_CHAR_LIMIT:
+        # If the resulting string representation exceeds the line char limit,
+        # first try breaking up each `Dataset` parameter into its own line
+        # and check if each line fits within the line limit. We check the
+        # `schema` param's length, since this is likely the longest string.
+        schema_str_on_new_line = f"{trailing_space}{INDENT_STR}schema={schema_str}"
+        if len(schema_str_on_new_line) > SCHEMA_LINE_CHAR_LIMIT:
+            # If the schema cannot fit on a single line, break up each field
+            # into its own line.
+            schema_str = []
+            for n, t in zip(schema.names, schema.types):
+                if hasattr(t, "__name__"):
+                    t = t.__name__
+                col_str = f"{trailing_space}{INDENT_STR * 2}{n}: {t}"
+                # If the field line exceeds the char limit, abbreviate
+                # the field name to fit while maintaining the full type
+                if len(col_str) > SCHEMA_LINE_CHAR_LIMIT:
+                    shortened_suffix = f"...: {str(t)}"
+                    # Show at least 10 characters of the field name, even if
+                    # we have already hit the line limit with the type.
+                    chars_left_for_col_name = max(
+                        SCHEMA_LINE_CHAR_LIMIT - len(shortened_suffix),
+                        MIN_FIELD_LENGTH,
+                    )
+                    col_str = f"{col_str[:chars_left_for_col_name]}{shortened_suffix}"
+                schema_str.append(col_str)
+            schema_str = ",\n".join(schema_str)
+            schema_str = "{\n" + schema_str + f"\n{trailing_space}{INDENT_STR}" + "}"
+        name_str = (
+            f"\n{trailing_space}{INDENT_STR}name={dataset_name},"
+            if dataset_name is not None
+            else ""
+        )
+        num_blocks_str = (
+            f"\n{trailing_space}{INDENT_STR}num_blocks={num_blocks},"
+            if num_blocks
+            else ""
+        )
+        dataset_str = (
+            f"{dataset_cls.__name__}("
+            f"{name_str}"
+            f"{num_blocks_str}"
+            f"\n{trailing_space}{INDENT_STR}num_rows={count},"
+            f"\n{trailing_space}{INDENT_STR}schema={schema_str}"
+            f"\n{trailing_space})"
+        )
+
+    if plan_max_depth == 0:
+        plan_str += dataset_str
+    else:
+        plan_str += f"{INDENT_STR * (plan_max_depth - 1)}+- {dataset_str}"
+    return plan_str

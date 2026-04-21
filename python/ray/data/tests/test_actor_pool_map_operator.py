@@ -144,11 +144,11 @@ class TestActorPool(unittest.TestCase):
         self,
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
-    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
         actor = PoolWorker.options(_labels=labels).remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
         self._last_created_actor_and_ready_ref = actor, ready_ref
-        return actor, ready_ref
+        return actor, ready_ref, ExecutionResources(cpu=1)
 
     def _create_actor_pool(
         self,
@@ -300,7 +300,13 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 1
         assert _estimate_total_available_task_slots(pool) == 1
         assert pool.get_actor_info() == ActorPoolInfo(
-            running=0, pending=0, restarting=1
+            running=0,
+            pending=0,
+            restarting=1,
+            active=0,
+            idle=1,
+            pool_utilization=0.0,
+            tasks_in_flight=0,
         )
 
         # Mark the actor as alive (mock _get_local_state) and test pick_actor succeeds
@@ -321,7 +327,13 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 0
         assert _estimate_total_available_task_slots(pool) == 0
         assert pool.get_actor_info() == ActorPoolInfo(
-            running=1, pending=0, restarting=0
+            running=1,
+            pending=0,
+            restarting=0,
+            active=1,
+            idle=0,
+            pool_utilization=1.0,
+            tasks_in_flight=1,
         )
 
         # Return the actor
@@ -335,7 +347,13 @@ class TestActorPool(unittest.TestCase):
         assert pool.num_idle_actors() == 1
         assert _estimate_total_available_task_slots(pool) == 1
         assert pool.get_actor_info() == ActorPoolInfo(
-            running=1, pending=0, restarting=0
+            running=1,
+            pending=0,
+            restarting=0,
+            active=0,
+            idle=1,
+            pool_utilization=0.0,
+            tasks_in_flight=0,
         )
 
     def test_repeated_picking(self):
@@ -777,6 +795,115 @@ class TestActorPool(unittest.TestCase):
         pool.on_task_completed(assigned2)
         assert pool.can_schedule_task()
 
+    def test_actor_pool_info_metrics(self):
+        """Test that ActorPoolInfo includes utilization metrics."""
+        # Test default values for backward compatibility
+        info = ActorPoolInfo(running=5, pending=2, restarting=1)
+        assert info.running == 5
+        assert info.pending == 2
+        assert info.restarting == 1
+        assert info.active == 0
+        assert info.idle == 0
+        assert info.pool_utilization == 0.0
+        assert info.tasks_in_flight == 0
+
+        # Test full field specification
+        info_full = ActorPoolInfo(
+            running=10,
+            pending=3,
+            restarting=1,
+            active=7,
+            idle=3,
+            pool_utilization=0.75,
+            tasks_in_flight=30,
+        )
+        assert info_full.running == 10
+        assert info_full.pending == 3
+        assert info_full.restarting == 1
+        assert info_full.active == 7
+        assert info_full.idle == 3
+        assert info_full.pool_utilization == 0.75
+        assert info_full.tasks_in_flight == 30
+
+    def test_actor_pool_info_str_representation_includes_all_fields(self):
+        """Test ActorPoolInfo string representation includes all fields."""
+        # Normal utilization
+        info = ActorPoolInfo(
+            running=5,
+            pending=2,
+            restarting=1,
+            active=3,
+            idle=2,
+            pool_utilization=0.625,
+            tasks_in_flight=10,
+        )
+        s = str(info)
+        assert "running=5" in s
+        assert "pending=2" in s
+        assert "restarting=1" in s
+        assert "active=3" in s
+        assert "idle=2" in s
+        assert "util=0.625" in s
+        assert "tasks_in_flight=10" in s
+
+    def test_get_actor_info_returns_utilization_metrics(self):
+        """Test that get_actor_info() returns correct utilization metrics."""
+        pool = self._create_actor_pool(max_tasks_in_flight=4)
+
+        # Empty pool
+        info = pool.get_actor_info()
+        assert info.running == 0
+        assert info.pending == 0
+        assert info.restarting == 0
+        assert info.active == 0
+        assert info.idle == 0
+        assert info.pool_utilization == 0
+        assert info.tasks_in_flight == 0
+
+        # Add one ready actor
+        actor = self._add_ready_actor(pool)
+        info = pool.get_actor_info()
+        assert info.running == 1
+        assert info.active == 0
+        assert info.idle == 1
+        assert info.pool_utilization == 0.0
+        assert info.tasks_in_flight == 0
+
+        # Submit a task
+        self._assign_actor(pool)
+        info = pool.get_actor_info()
+        assert info.running == 1
+        assert info.active == 1
+        assert info.idle == 0
+        assert info.pool_utilization == 1.0
+        assert info.tasks_in_flight == 1
+
+        # Complete the task
+        pool.on_task_completed(actor)
+        info = pool.get_actor_info()
+        assert info.running == 1
+        assert info.active == 0
+        assert info.idle == 1
+        assert info.pool_utilization == 0.0
+        assert info.tasks_in_flight == 0
+
+    def test_pool_utilization_calculation(self):
+        """Test pool utilization calculation with various scenarios."""
+        pool = self._create_actor_pool(max_tasks_in_flight=4, min_size=1, max_size=4)
+
+        # Add one actor
+        actor = self._add_ready_actor(pool)
+
+        assert pool.get_pool_util() == 0.0
+
+        # Submit one task
+        self._assign_actor(pool)
+        assert pool.get_pool_util() == 1.0
+
+        # Complete the task
+        pool.on_task_completed(actor)
+        assert pool.get_pool_util() == 0.0
+
 
 def test_actor_pool_scale_logs_include_map_worker_cls_name(
     caplog, propagate_logs, ray_start_regular_shared
@@ -787,9 +914,9 @@ def test_actor_pool_scale_logs_include_map_worker_cls_name(
     def create_actor_fn(
         labels: Dict[str, Any],
         logical_actor_id: str = "Actor1",
-    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+    ) -> Tuple[ActorHandle, ObjectRef[Any], ExecutionResources]:
         actor = PoolWorker.options(_labels=labels).remote("node1")
-        return actor, actor.get_location.remote()
+        return actor, actor.get_location.remote(), ExecutionResources(cpu=1)
 
     config = AutoscalingActorConfig(
         min_size=1,
@@ -840,7 +967,13 @@ def test_setting_initial_size_for_actor_pool():
     op.start(ExecutionOptions())
 
     assert op._actor_pool.get_actor_info() == ActorPoolInfo(
-        running=0, pending=2, restarting=0
+        running=0,
+        pending=2,
+        restarting=0,
+        active=0,
+        idle=0,
+        pool_utilization=0.0,
+        tasks_in_flight=0,
     )
     ray.shutdown()
 

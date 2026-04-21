@@ -25,7 +25,6 @@ from ray._private.ray_constants import (
     KV_NAMESPACE_JOB,
     RAY_ADDRESS_ENVIRONMENT_VARIABLE,
 )
-from ray._raylet import NodeID
 from ray.dashboard.consts import (
     DEFAULT_JOB_START_TIMEOUT_SECONDS,
     RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR,
@@ -45,7 +44,6 @@ from ray.dashboard.modules.job.tests.conftest import (
 )
 from ray.job_submission import JobErrorType, JobStatus
 from ray.tests.conftest import call_ray_start  # noqa: F401
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy  # noqa: F401
 from ray.util.state import list_tasks
 
 import psutil
@@ -66,7 +64,20 @@ async def test_get_scheduling_strategy(
     gcs_client = ray._private.worker.global_worker.gcs_client
 
     job_manager = JobManager(gcs_client, tmp_path)
-    node_id = NodeID.from_random().hex()
+    node_id = ray.get_runtime_context().get_node_id()
+
+    async def _submit_and_get_options():
+        with patch.object(
+            job_manager._supervisor_actor_cls,
+            "options",
+            wraps=job_manager._supervisor_actor_cls.options,
+        ) as mocked_options:
+            kwargs = {"entrypoint_num_cpus": 1} if resources_specified else {}
+            job_id = await job_manager.submit_job(entrypoint="echo hi", **kwargs)
+            await async_wait_for_condition(
+                check_job_succeeded, job_manager=job_manager, job_id=job_id
+            )
+            return mocked_options.call_args.kwargs
 
     # If no head node id is found, we should use "DEFAULT".
     await gcs_client.async_internal_kv_del(
@@ -74,8 +85,9 @@ async def test_get_scheduling_strategy(
         del_by_prefix=False,
         namespace=KV_NAMESPACE_JOB,
     )
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
-    assert strategy == "DEFAULT"
+    options = await _submit_and_get_options()
+    assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
+    assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
 
     # Add a head node id to the internal KV to simulate what is done in node_head.py.
     await gcs_client.async_internal_kv_put(
@@ -84,18 +96,21 @@ async def test_get_scheduling_strategy(
         True,
         namespace=KV_NAMESPACE_JOB,
     )
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
+    options = await _submit_and_get_options()
+    assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
     if resources_specified:
-        assert strategy == "DEFAULT"
+        assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
     else:
-        expected_strategy = NodeAffinitySchedulingStrategy(node_id, soft=False)
-        assert expected_strategy.node_id == strategy.node_id
-        assert expected_strategy.soft == strategy.soft
+        assert (
+            options.get("label_selector", {}).get(ray._raylet.RAY_NODE_ID_KEY)
+            == node_id
+        )
 
     # When the env var is set to 1, we should use DEFAULT.
     monkeypatch.setenv(RAY_JOB_ALLOW_DRIVER_ON_WORKER_NODES_ENV_VAR, "1")
-    strategy = await job_manager._get_scheduling_strategy(resources_specified)
-    assert strategy == "DEFAULT"
+    options = await _submit_and_get_options()
+    assert options.get("scheduling_strategy", "DEFAULT") == "DEFAULT"
+    assert ray._raylet.RAY_NODE_ID_KEY not in options.get("label_selector", {})
 
 
 @pytest.mark.asyncio
@@ -954,6 +969,8 @@ class TestRuntimeEnv:
         runtime_env = {"env_vars": env_vars}
         if resource_kwarg:
             run_cmd = "RAY_TEST_RESOURCES_SPECIFIED=1 " + run_cmd
+            if "entrypoint_num_gpus" in resource_kwarg:
+                run_cmd = "RAY_TEST_GPUS_SPECIFIED=1 " + run_cmd
         job_id = await job_manager.submit_job(
             entrypoint=run_cmd,
             runtime_env=runtime_env,
@@ -1328,7 +1345,7 @@ while True:
             check_job_stopped,
             job_manager=job_manager,
             job_id=job_id,
-            timeout=stop_timeout - 1,
+            timeout=stop_timeout / 2,
         )
 
     await async_wait_for_condition(

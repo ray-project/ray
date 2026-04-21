@@ -70,6 +70,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+    RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS,
+    RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S,
+    RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S,
     RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
     RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
     RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
@@ -126,7 +129,10 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
-from ray.serve._private.rolling_window_accumulator import RollingWindowAccumulator
+from ray.serve._private.rolling_window import (
+    RollingWindowAccumulator,
+    RollingWindowMax,
+)
 from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
@@ -392,6 +398,23 @@ class ReplicaMetricsManager:
         if self._cached_metrics_enabled:
             self._cached_latencies = defaultdict(deque)
             self._event_loop.create_task(self._report_cached_metrics_forever())
+
+        # Track maximum processing latency over a rolling window.
+        self._max_processing_latency_trackers = defaultdict(
+            lambda: RollingWindowMax(
+                window_duration_s=RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S,
+                num_buckets=RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS,
+            )
+        )
+        self._max_processing_latency_gauge = metrics.Gauge(
+            "serve_deployment_max_processing_latency_ms",
+            description="The maximum observed time spent processing a query.",
+            tag_keys=("route",),
+        )
+        self._max_processing_latency_report_interval_s = (
+            RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S
+        )
+        self._event_loop.create_task(self._report_max_processing_latency_forever())
 
         self._num_ongoing_requests_gauge = metrics.Gauge(
             "serve_replica_processing_queries",
@@ -758,6 +781,31 @@ class ReplicaMetricsManager:
         """Update max_ongoing_requests when deployment config changes."""
         self._max_ongoing_requests = max_ongoing_requests
 
+    async def _report_max_processing_latency_forever(self) -> None:
+        """Background task to emit max processing latency gauge continuously."""
+        consecutive_errors = 0
+        while True:
+            try:
+                await asyncio.sleep(self._max_processing_latency_report_interval_s)
+                for route, tracker in list(
+                    self._max_processing_latency_trackers.items()
+                ):
+                    max_latency = tracker.get_max()
+                    self._max_processing_latency_gauge.set(
+                        max_latency, tags={"route": route}
+                    )
+
+                consecutive_errors = 0
+            except Exception:
+                logger.exception(
+                    "Unexpected error reporting max processing latency metrics."
+                )
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2**consecutive_errors)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
+
     async def _report_utilization_forever(self) -> None:
         """Background task to emit utilization gauge continuously."""
         consecutive_errors = 0
@@ -810,6 +858,7 @@ class ReplicaMetricsManager:
         """Records per-request metrics."""
         # Track latency for utilization calculation (rolling window).
         self._user_code_time_accumulator.add(latency_ms)
+        self._max_processing_latency_trackers[route].add(latency_ms)
 
         if self._cached_metrics_enabled:
             self._cached_latencies[route].append(latency_ms)
@@ -1533,8 +1582,10 @@ class Replica:
                         request_metadata, request_args, request_kwargs
                     )
                 except Exception as e:
-                    # For gRPC requests, wrap exception with user-set status code
-                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+                    # For gRPC requests, wrap exception with user-set status code.
+                    # Non-gRPC requests should preserve the original exception
+                    # without creating a self-referential __cause__ chain.
+                    self._raise_user_exception(e, request_metadata)
 
     async def handle_request_streaming(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -1565,8 +1616,7 @@ class Replica:
                         ):
                             yield result
                 except Exception as e:
-                    # For gRPC requests, wrap exception with user-set status code
-                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+                    self._raise_user_exception(e, request_metadata)
 
     def _maybe_wrap_grpc_exception(
         self, e: BaseException, request_metadata: RequestMetadata
@@ -1586,6 +1636,14 @@ class Replica:
                     details=grpc_context.details(),
                 )
         return e
+
+    def _raise_user_exception(
+        self, e: BaseException, request_metadata: RequestMetadata
+    ) -> None:
+        wrapped_exception = self._maybe_wrap_grpc_exception(e, request_metadata)
+        if wrapped_exception is e:
+            raise e
+        raise wrapped_exception from e
 
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -1637,8 +1695,7 @@ class Replica:
                             request_metadata, request_args, request_kwargs
                         )
                 except Exception as e:
-                    # For gRPC requests, wrap exception with user-set status code
-                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+                    self._raise_user_exception(e, request_metadata)
 
     async def _on_initialized(self):
         await self._maybe_start_direct_ingress_servers()
