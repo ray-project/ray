@@ -479,14 +479,6 @@ class TaskManager : public TaskManagerInterface {
   /// \return Whether the task is waiting for execution.
   bool IsTaskWaitingForExecution(const TaskID &task_id) const;
 
-  /// Move the submitted-task dependency for a pending pool task from the old
-  /// actor creation dummy object to the new one.
-  ///
-  /// Returns false if the task is no longer pending.
-  bool MovePoolTaskActorDependency(const TaskID &task_id,
-                                   const ObjectID &old_actor_creation_dummy_id,
-                                   const ObjectID &new_actor_creation_dummy_id);
-
   /// Return the number of submissible tasks. This includes both tasks that are
   /// pending execution and tasks that have finished but that may be
   /// re-executed to recover from a failure.
@@ -495,8 +487,14 @@ class TaskManager : public TaskManagerInterface {
   /// Return the number of pending tasks.
   size_t NumPendingTasks() const;
 
-  /// Return the number of live object ref streams. TODO: remove this method.
-  size_t NumObjectRefStreams() const;
+  /// Move the submitted-task dependency for a pending pool task from the old
+  /// actor creation dummy object to the new one. Called when cross-actor
+  /// retry redirects a pool task to a different actor in the pool.
+  ///
+  /// Returns false if the task is no longer pending.
+  bool MovePoolTaskActorDependency(const TaskID &task_id,
+                                   const ObjectID &old_actor_creation_dummy_id,
+                                   const ObjectID &new_actor_creation_dummy_id);
 
   int64_t TotalLineageFootprintBytes() const {
     absl::MutexLock lock(&mu_);

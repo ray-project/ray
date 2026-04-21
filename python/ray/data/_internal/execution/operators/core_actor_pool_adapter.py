@@ -587,9 +587,13 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
         # Kill actors after on_exit hooks have completed/timed out.
         # _release_running_actor calls remove_actor(kill=False), so
         # _pool.shutdown() won't find them — we must kill them here.
+        # no_restart=False: pool actors are created with max_restarts=-1
+        # so pending retries sitting in the core worker's to_resubmit_
+        # queue can still be served via native reconstruction after the
+        # pool detaches.
         for actor in running:
             try:
-                ray.kill(actor)
+                ray.kill(actor, no_restart=False)
             except Exception:
                 pass
 

@@ -4861,7 +4861,8 @@ cdef class CoreWorker:
         cdef CActorPoolID c_pool_id = pool_id.native()
 
         with nogil:
-            CCoreWorkerProcess.GetCoreWorker().UnregisterActorPool(c_pool_id)
+            CCoreWorkerProcess.GetCoreWorker().GetActorPoolManager(
+                ).UnregisterPool(c_pool_id)
 
     def add_actor_to_pool(self, ActorPoolID pool_id, ActorID actor_id,
                           NodeID location=None):

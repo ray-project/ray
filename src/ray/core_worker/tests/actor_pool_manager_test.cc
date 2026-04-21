@@ -684,7 +684,7 @@ TEST_F(ActorPoolManagerLocalityTest, LocalityTiebreakerIsLoad) {
   // Simulate actor1 having 1 task in flight
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    pool_manager_->pools_[pool_id].actor_states[actor1]->num_tasks_in_flight.store(1);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 1;
   }
 
   auto selected = pool_manager_->SelectActorForTask(pool_id, {obj1});
@@ -713,8 +713,8 @@ TEST_F(ActorPoolManagerLocalityTest, NoLocalityDataFallsBackToLoad) {
   // Actor1 has more load
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    pool_manager_->pools_[pool_id].actor_states[actor1]->num_tasks_in_flight.store(2);
-    pool_manager_->pools_[pool_id].actor_states[actor2]->num_tasks_in_flight.store(0);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 2;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 0;
   }
 
   ObjectID unknown_obj = ObjectID::FromRandom();
@@ -743,8 +743,8 @@ TEST_F(ActorPoolManagerLocalityTest, EmptyArgIdsFallsBackToLoad) {
   // Actor1 has more load
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    pool_manager_->pools_[pool_id].actor_states[actor1]->num_tasks_in_flight.store(3);
-    pool_manager_->pools_[pool_id].actor_states[actor2]->num_tasks_in_flight.store(1);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 3;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 1;
   }
 
   // No arg_ids
@@ -772,8 +772,8 @@ TEST_F(ActorPoolManagerLocalityTest, RequireAvailableCapacityReturnsNilWhenFull)
 
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    pool_manager_->pools_[pool_id].actor_states[actor1]->num_tasks_in_flight.store(1);
-    pool_manager_->pools_[pool_id].actor_states[actor2]->num_tasks_in_flight.store(1);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 1;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 1;
   }
 
   EXPECT_TRUE(
@@ -858,8 +858,8 @@ TEST_F(ActorPoolManagerLocalityTest, NullProviderFallsBackToLoad) {
   // Actor1 has more load
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    pool_manager_->pools_[pool_id].actor_states[actor1]->num_tasks_in_flight.store(5);
-    pool_manager_->pools_[pool_id].actor_states[actor2]->num_tasks_in_flight.store(1);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 5;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 1;
   }
 
   ObjectID obj = ObjectID::FromRandom();
@@ -907,8 +907,8 @@ TEST_F(ActorPoolManagerLocalityTest,
 
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    pool_manager_->pools_[pool_id].actor_states[actor1]->is_alive.store(true);
-    pool_manager_->pools_[pool_id].actor_states[actor2]->is_alive.store(true);
+    pool_manager_->pools_[pool_id].actor_states[actor1].is_alive = true;
+    pool_manager_->pools_[pool_id].actor_states[actor2].is_alive = true;
   }
 
   pool_manager_->DrainTaskQueue(pool_id);
@@ -939,8 +939,8 @@ TEST_F(ActorPoolManagerTest, GetOccupiedTaskSlots) {
   // Simulate some in-flight tasks
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    pool_manager_->pools_[pool_id].actor_states[actor1]->num_tasks_in_flight.store(3);
-    pool_manager_->pools_[pool_id].actor_states[actor2]->num_tasks_in_flight.store(2);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 3;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 2;
   }
   EXPECT_EQ(pool_manager_->GetOccupiedTaskSlots(pool_id), 5);
 
@@ -978,9 +978,9 @@ TEST_F(ActorPoolManagerTest, GetNumActiveActors) {
   // Simulate some in-flight tasks
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    pool_manager_->pools_[pool_id].actor_states[actor1]->num_tasks_in_flight.store(2);
-    pool_manager_->pools_[pool_id].actor_states[actor2]->num_tasks_in_flight.store(0);
-    pool_manager_->pools_[pool_id].actor_states[actor3]->num_tasks_in_flight.store(1);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 2;
+    pool_manager_->pools_[pool_id].actor_states[actor2].num_tasks_in_flight = 0;
+    pool_manager_->pools_[pool_id].actor_states[actor3].num_tasks_in_flight = 1;
   }
   EXPECT_EQ(pool_manager_->GetNumActiveActors(pool_id), 2);
 
@@ -1025,7 +1025,7 @@ TEST_F(ActorPoolManagerTest, OnTaskFailedMarksActorDead) {
   // Simulate actor1 having a task in flight
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    pool_manager_->pools_[pool_id].actor_states[actor1]->num_tasks_in_flight.store(1);
+    pool_manager_->pools_[pool_id].actor_states[actor1].num_tasks_in_flight = 1;
   }
 
   // Create a pool task in pool_tasks_ so OnTaskFailed can find it
@@ -1054,9 +1054,9 @@ TEST_F(ActorPoolManagerTest, OnTaskFailedMarksActorDead) {
   // Actor1 should be marked as not alive
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    EXPECT_FALSE(pool_manager_->pools_[pool_id].actor_states[actor1]->is_alive.load());
+    EXPECT_FALSE(pool_manager_->pools_[pool_id].actor_states[actor1].is_alive);
     // Actor2 should still be alive
-    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor2]->is_alive.load());
+    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor2].is_alive);
   }
 
   // SelectActorForTask should only return actor2
@@ -1105,7 +1105,7 @@ TEST_F(ActorPoolManagerTest, OnActorAliveDrainsQueue) {
   // Mark actor as dead
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    pool_manager_->pools_[pool_id].actor_states[actor1]->is_alive.store(false);
+    pool_manager_->pools_[pool_id].actor_states[actor1].is_alive = false;
   }
 
   // Submit a task — should be queued since no alive actors
@@ -1124,10 +1124,9 @@ TEST_F(ActorPoolManagerTest, OnActorAliveDrainsQueue) {
   // Actor should be alive again
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor1]->is_alive.load());
-    EXPECT_EQ(
-        pool_manager_->pools_[pool_id].actor_states[actor1]->consecutive_failures.load(),
-        0);
+    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor1].is_alive);
+    EXPECT_EQ(pool_manager_->pools_[pool_id].actor_states[actor1].consecutive_failures,
+              0);
   }
 
   // Work queue should have been drained. Check that the drain
@@ -1149,8 +1148,8 @@ TEST_F(ActorPoolManagerTest, OnActorDeadMarksActorNotAlive) {
   // Both should be alive initially
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor1]->is_alive.load());
-    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor2]->is_alive.load());
+    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor1].is_alive);
+    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor2].is_alive);
   }
 
   // Mark actor1 as dead via OnActorDead
@@ -1159,8 +1158,8 @@ TEST_F(ActorPoolManagerTest, OnActorDeadMarksActorNotAlive) {
   // Actor1 should be not alive, actor2 still alive
   {
     absl::MutexLock lock(&pool_manager_->mu_);
-    EXPECT_FALSE(pool_manager_->pools_[pool_id].actor_states[actor1]->is_alive.load());
-    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor2]->is_alive.load());
+    EXPECT_FALSE(pool_manager_->pools_[pool_id].actor_states[actor1].is_alive);
+    EXPECT_TRUE(pool_manager_->pools_[pool_id].actor_states[actor2].is_alive);
   }
 
   // SelectActorForTask should skip actor1

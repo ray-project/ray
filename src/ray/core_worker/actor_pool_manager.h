@@ -16,7 +16,6 @@
 
 #include <gtest/gtest_prod.h>
 
-#include <atomic>
 #include <functional>
 #include <memory>
 #include <optional>
@@ -85,17 +84,16 @@ struct ActorPoolConfig {
 /// State of an actor within a pool.
 struct ActorPoolActorState {
   /// Number of tasks currently in flight for this actor.
-  std::atomic<int32_t> num_tasks_in_flight{0};
+  int32_t num_tasks_in_flight = 0;
 
-  /// Location of the actor (for locality-aware scheduling). Written only
-
+  /// Location of the actor (for locality-aware scheduling).
   NodeID location;
 
   /// Whether this actor is alive and can accept work.
-  std::atomic<bool> is_alive{true};
+  bool is_alive = true;
 
   /// Number of consecutive failures for circuit breaking.
-  std::atomic<int32_t> consecutive_failures{0};
+  int32_t consecutive_failures = 0;
 };
 
 /// Information about an actor pool.
@@ -107,7 +105,7 @@ struct ActorPoolInfo {
   std::vector<ActorID> actor_ids;
 
   /// State for each actor in the pool.
-  absl::flat_hash_map<ActorID, std::unique_ptr<ActorPoolActorState>> actor_states;
+  absl::flat_hash_map<ActorID, ActorPoolActorState> actor_states;
 
   /// Total number of tasks submitted to this pool.
   int64_t total_tasks_submitted = 0;
@@ -268,8 +266,8 @@ class ActorPoolManager {
   /// \param arg_ids Object IDs of task arguments (for locality).
   /// \param exclude_actor_id Actor to exclude from selection (e.g. the actor
   ///   that just failed). Pass Nil to exclude nothing.
-  /// \param require_available_capacity If true, only actors below the configured
-  ///   max_tasks_in_flight_per_actor are eligible.
+  /// \param require_available_capacity If true, only actors below the
+  ///   configured max_tasks_in_flight_per_actor are eligible.
   /// \return The selected actor ID, or Nil if no actors are available.
   ActorID SelectActorForTask(const ActorPoolID &pool_id,
                              const std::vector<ObjectID> &arg_ids = {},

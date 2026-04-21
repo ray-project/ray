@@ -879,44 +879,42 @@ void CoreWorker::InternalHeartbeat() {
   for (auto &task_to_retry : tasks_to_resubmit) {
     auto &spec = task_to_retry.task_spec;
     if (spec.IsActorTask()) {
-      // Pool tasks: redirect to a healthy actor chosen by the pool.
+      // Pool tasks: redirect to a healthy actor chosen by the pool so task
+      // retries survive individual actor failure without paying the cost of
+      // restarting the dead actor. When the pool has been scaled down to 0
+      // (no actors available to select), fall through to Ray's native
+      // reconstruction path instead of spinning on re-enqueue forever:
+      // SubmitTask to the original actor_id causes GCS to restart that
+      // actor (max_restarts=-1) and the task runs on the restarted
+      // incarnation.
       if (spec.IsPoolTask()) {
         const auto &pool_id_bin = spec.GetMessage().actor_pool_id();
         ActorPoolID pool_id = ActorPoolID::FromBinary(pool_id_bin);
-        if (actor_pool_manager_->HasPool(pool_id)) {
+        if (actor_pool_manager_->HasPool(pool_id) &&
+            !actor_pool_manager_->GetPoolActors(pool_id).empty()) {
           auto arg_ids = GetTaskArgIdsForPoolRetry(spec);
-          // Exclude the actor the task just failed on so we don't
-          // route right back to it (the GCS RESTARTING notification
-          // may not have arrived yet).
+          // Exclude the actor the task just failed on so we don't route
+          // right back to it (the GCS RESTARTING notification may not have
+          // arrived yet).
           ActorID failed_actor_id = spec.ActorId();
           ActorID new_actor_id = actor_pool_manager_->SelectActorForTask(
-              pool_id,
-              arg_ids,
-              /*exclude_actor_id=*/failed_actor_id);
-          if (new_actor_id.IsNil()) {
-            // No healthy actors — re-enqueue with a short delay.
-            absl::MutexLock lock(&mutex_);
-            task_to_retry.execution_time_ms =
-                current_time_ms() + RayConfig::instance().actor_pool_retry_delay_ms();
-            to_resubmit_.push(task_to_retry);
-            continue;
-          }
-          // Ensure the target actor is subscribed for state updates
-          // (actors to which tasks have not yet been submitted will not be subscribed)
-          // so ConnectActor fires and the submitter learns its address.
-          // This api is idempotent so multiple calls are safe.
-          actor_manager_->SubscribeActorState(new_actor_id);
-          // Redirect the task to the selected actor.
-          const ObjectID old_dummy_obj_id = spec.ActorCreationDummyObjectId();
-          auto *mutable_actor_spec = spec.GetMutableMessage().mutable_actor_task_spec();
-          mutable_actor_spec->set_actor_id(new_actor_id.Binary());
-          const TaskID creation_task_id = TaskID::ForActorCreationTask(new_actor_id);
-          const ObjectID dummy_obj_id =
-              ObjectID::FromIndex(creation_task_id, /*index=*/1);
-          mutable_actor_spec->set_actor_creation_dummy_object_id(dummy_obj_id.Binary());
-          if (!task_manager_->MovePoolTaskActorDependency(
-                  spec.TaskId(), old_dummy_obj_id, dummy_obj_id)) {
-            continue;
+              pool_id, arg_ids, /*exclude_actor_id=*/failed_actor_id);
+          if (!new_actor_id.IsNil()) {
+            // Ensure the target actor is subscribed for state updates so
+            // ConnectActor fires and the submitter learns its address.
+            // Idempotent — safe to call multiple times.
+            actor_manager_->SubscribeActorState(new_actor_id);
+            const ObjectID old_dummy_obj_id = spec.ActorCreationDummyObjectId();
+            auto *mutable_actor_spec = spec.GetMutableMessage().mutable_actor_task_spec();
+            mutable_actor_spec->set_actor_id(new_actor_id.Binary());
+            const TaskID creation_task_id = TaskID::ForActorCreationTask(new_actor_id);
+            const ObjectID dummy_obj_id =
+                ObjectID::FromIndex(creation_task_id, /*index=*/1);
+            mutable_actor_spec->set_actor_creation_dummy_object_id(dummy_obj_id.Binary());
+            if (!task_manager_->MovePoolTaskActorDependency(
+                    spec.TaskId(), old_dummy_obj_id, dummy_obj_id)) {
+              continue;
+            }
           }
         }
       }
@@ -2781,12 +2779,6 @@ ActorPoolID CoreWorker::RegisterActorPool(const ActorPoolConfig &config,
 void CoreWorker::UnregisterActorPool(const ActorPoolID &pool_id) {
   RAY_CHECK(actor_pool_manager_) << "ActorPoolManager not initialized";
   actor_pool_manager_->UnregisterPool(pool_id);
-  // log driver-side state sizes after each pool teardown so we can
-  // detect per-run accumulation (e.g. pool streaming-gen entries not released).
-  RAY_LOG(INFO) << "ActorPoolDriverState pool_id=" << pool_id
-                << " submissible_tasks=" << task_manager_->NumSubmissibleTasks()
-                << " object_ref_streams=" << task_manager_->NumObjectRefStreams()
-                << " owned_objects=" << reference_counter_->NumObjectsOwnedByUs();
 }
 
 void CoreWorker::AddActorToPool(const ActorPoolID &pool_id, const ActorID &actor_id) {

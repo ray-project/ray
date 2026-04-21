@@ -632,11 +632,6 @@ size_t TaskManager::NumPendingTasks() const {
   return num_pending_tasks_;
 }
 
-size_t TaskManager::NumObjectRefStreams() const {
-  absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  return object_ref_streams_.size();
-}
-
 StatusOr<bool> TaskManager::HandleTaskReturn(const ObjectID &object_id,
                                              const rpc::ReturnObject &return_object,
                                              const NodeID &worker_node_id,
