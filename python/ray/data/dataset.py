@@ -6957,7 +6957,7 @@ class Dataset:
         """
         if self._current_executor:
             summary = self._current_executor.get_stats().to_summary()
-        elif self._write_ds is not None and self._write_ds.has_computed_output():
+        elif self._write_ds is not None and self._write_ds._has_computed_output():
             summary = self._write_ds.get_stats_summary(detail=detail)
         else:
             summary = self._raw_stats().to_summary()
@@ -7351,7 +7351,7 @@ class Dataset:
             return DatasetStats(metadata={}, parent=None)
         return stats
 
-    def has_computed_output(self) -> bool:
+    def _has_computed_output(self) -> bool:
         """Whether this dataset has cached output from a prior execution."""
         return self._cache.get_bundle(self._logical_plan.dag) is not None
 

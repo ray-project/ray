@@ -367,7 +367,7 @@ def test_schema_repr(ray_start_regular_shared):
 def _check_none_computed(ds):
     # In streaming executor, ds.take() will not invoke partial execution
     # in LazyBlocklist.
-    pass
+    assert not ds._has_computed_output()
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
