@@ -37,6 +37,10 @@ from ray.llm._internal.batch.stages.configs import (
     resolve_stage_config,
 )
 from ray.llm._internal.common.observability.telemetry_utils import DEFAULT_GPU_TYPE
+from ray.llm._internal.common.utils.download_utils import (
+    NodeModelDownloadable,
+    download_model_files,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -211,8 +215,40 @@ def build_sglang_engine_processor(
             )
         )
 
-    hf_config = transformers.AutoConfig.from_pretrained(config.model_source)
-    architecture = getattr(hf_config, "architectures", [DEFAULT_MODEL_ARCHITECTURE])[0]
+    # Download model files for telemetry before engine init.
+    # Use EXCLUDE_SAFETENSORS for trust_remote_code models so custom .py config
+    # files are available locally.
+    try:
+        download_mode = (
+            NodeModelDownloadable.EXCLUDE_SAFETENSORS
+            if trust_remote_code
+            else NodeModelDownloadable.TOKENIZER_ONLY
+        )
+        model_path_or_id = download_model_files(
+            model_id=config.model_source,
+            mirror_config=None,
+            download_model=download_mode,
+            download_extra_files=False,
+        )
+
+        hf_config = transformers.AutoConfig.from_pretrained(
+            model_path_or_id,
+            trust_remote_code=trust_remote_code,
+        )
+    except Exception as e:
+        # Failed to retrieve HuggingFace config for telemetry purposes.
+        # This is non-fatal: we fall back to DEFAULT_MODEL_ARCHITECTURE for telemetry.
+        # The actual model loading happens later in SGLang, which may support models
+        # that aren't available via HuggingFace's AutoConfig.
+        logger.warning(
+            "Failed to retrieve HuggingFace config for %s: %s",
+            config.model_source,
+            e,
+        )
+        hf_config = None
+
+    architectures = getattr(hf_config, "architectures", [])
+    architecture = architectures[0] if architectures else DEFAULT_MODEL_ARCHITECTURE
 
     telemetry_agent = get_or_create_telemetry_agent()
     telemetry_agent.push_telemetry_report(
