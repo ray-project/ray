@@ -62,6 +62,7 @@ class HybridSchedulingPolicyTest : public ::testing::Test {
                              avoid_local_node,
                              require_node_available,
                              avoid_gpu_nodes,
+                             /*target_label_domain*/ std::nullopt,
                              /*scheduling_context*/ nullptr,
                              /*preferred_node*/ "",
                              schedule_top_k_absolute,
@@ -144,11 +145,6 @@ TEST_F(HybridSchedulingPolicyTest, GetBestNodePrioritizePreferredNode) {
                                  /*preferred_node_id*/ {n2},
                                  /*preferred_node_score*/ 0));
   }
-}
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 
 }  // namespace raylet_scheduling_policy
