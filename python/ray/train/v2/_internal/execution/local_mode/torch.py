@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Callable, Any
+from typing import Any, Callable
 
 import torch
 import torch.distributed as dist

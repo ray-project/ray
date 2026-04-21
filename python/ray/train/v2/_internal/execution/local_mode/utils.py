@@ -1,5 +1,5 @@
 import logging
-from typing import Callable, Dict, Optional
+from typing import Any, Callable, Dict, Optional
 
 from ray.train import Result
 from ray.train.trainer import GenDataset
@@ -22,7 +22,7 @@ class LocalController:
         self.datasets = datasets
         self.experiment_name = experiment_name
 
-    def run(self, train_func: Callable[[], None]) -> Result:
+    def run(self, train_func: Callable[[], Any]) -> Result:
         set_train_fn_utils(
             LocalTrainFnUtils(
                 experiment_name=self.experiment_name,
