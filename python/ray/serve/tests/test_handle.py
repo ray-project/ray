@@ -14,7 +14,7 @@ from ray.serve._private.replica_result import (
     ReplicaResult,
     gRPCReplicaResult,
 )
-from ray.serve._private.request_router.common import ReplicaSelection
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve.handle import DeploymentHandle
 from ray.serve.tests.conftest import *  # noqa
 from ray.serve.tests.conftest import _shared_serve_instance  # noqa

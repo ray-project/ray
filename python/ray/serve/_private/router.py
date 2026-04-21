@@ -55,11 +55,13 @@ from ray.serve._private.metrics_utils import (
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router import PendingRequest, RequestRouter
-from ray.serve._private.request_router.common import ReplicaSelection
 from ray.serve._private.request_router.pow_2_router import (
     PowerOfTwoChoicesRequestRouter,
 )
-from ray.serve._private.request_router.replica_wrapper import RunningReplica
+from ray.serve._private.request_router.replica_wrapper import (
+    ReplicaSelection,
+    RunningReplica,
+)
 from ray.serve._private.tracing_utils import (
     create_propagated_context,
     is_span_recording,

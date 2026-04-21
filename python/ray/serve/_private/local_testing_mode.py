@@ -17,7 +17,7 @@ from ray.serve._private.constants import (
 )
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve._private.replica_result import ReplicaResult
-from ray.serve._private.request_router.common import ReplicaSelection
+from ray.serve._private.request_router.replica_wrapper import ReplicaSelection
 from ray.serve._private.router import Router
 from ray.serve._private.utils import GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
 from ray.serve.deployment import Deployment
