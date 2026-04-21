@@ -2715,22 +2715,21 @@ class TestParquetFragmentBatchSizeCoercion:
             assert _coerce_pyarrow_fragment_batch_size(raw) == expected
 
     @pytest.mark.parametrize(
-        "batch_size,to_batches_kwargs,expected_batch_size_passed_to_to_batches",
+        "to_batches_kwargs,expected_batch_size_passed_to_to_batches",
         [
-            (10**12, None, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
-            (None, {"batch_size": 2**31}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
-            (10_000, None, 10_000),
-            (None, {"batch_size": np.int64(10_000)}, 10_000),
-            (0, None, ValueError),
-            (-3, None, ValueError),
-            (None, {"batch_size": 0}, ValueError),
-            (None, {"batch_size": -1}, ValueError),
+            ({"batch_size": 10**12}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            ({"batch_size": 2**31}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            ({"batch_size": 10_000}, 10_000),
+            ({"batch_size": np.int64(10_000)}, 10_000),
+            ({"batch_size": 0}, ValueError),
+            ({"batch_size": -3}, ValueError),
+            ({"batch_size": -1}, ValueError),
         ],
     )
     def test_read_batches_from_coerces_fragment_batch_size_to_c_int_range(
-        self, batch_size, to_batches_kwargs, expected_batch_size_passed_to_to_batches
+        self, to_batches_kwargs, expected_batch_size_passed_to_to_batches
     ):
-        """``batch_size`` passed to ``fragment.to_batches`` is coerced for PyArrow's C int."""
+        """``batch_size`` in ``to_batches_kwargs`` is coerced for PyArrow's C int."""
 
         captured: dict = {}
 
@@ -2756,7 +2755,6 @@ class TestParquetFragmentBatchSizeCoercion:
                     data_columns_rename_map=None,
                     partition_columns=None,
                     partitioning=Partitioning("hive"),
-                    batch_size=batch_size,
                     to_batches_kwargs=to_batches_kwargs,
                 )
             )
