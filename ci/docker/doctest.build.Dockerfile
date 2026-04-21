@@ -15,7 +15,7 @@ RUN  <<EOF
 set -euo pipefail
 
 sudo apt-get update
-sudo apt-get install -y graphviz tesseract-ocr
+sudo apt-get install -y tesseract-ocr libosmesa6-dev libglfw3 patchelf
 
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
