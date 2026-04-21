@@ -131,10 +131,11 @@ class VLLMEngineConfig(BaseModelExtended):
             if isinstance(self.use_cpu, bool) and self.use_cpu:
                 raise ValueError("Cannot specify a `topology` when `use_cpu=True`.")
 
-            if self.accelerator_type.value not in TPU_ACCELERATOR_VALUES:
+            accel_str = getattr(self.accelerator_type, "value", self.accelerator_type)
+            if accel_str not in TPU_ACCELERATOR_VALUES:
                 raise ValueError(
                     f"Multi-host `topology` is currently only supported for TPU deployments. "
-                    f"Received accelerator_type: '{self.accelerator_type.value}'"
+                    f"Received accelerator_type: '{accel_str}'"
                 )
 
         if isinstance(self.use_cpu, bool) and self.use_cpu:
