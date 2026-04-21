@@ -632,6 +632,7 @@
   group: data-batch-inference
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
@@ -657,6 +658,7 @@
   group: data-batch-inference
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -685,6 +687,7 @@
   group: data-batch-inference
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
