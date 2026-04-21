@@ -1039,7 +1039,7 @@ def test_parquet_roundtrip(
 
     # Test metadata ops.
     for block, meta in ds2._execute().blocks:
-        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
+        BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes  # type: ignore[call-overload]
 
     if fs is None:
         shutil.rmtree(path)
