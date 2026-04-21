@@ -1130,6 +1130,32 @@ def test_get_uri_for_package():
     assert get_uri_for_package(Path("/tmp/my-pkg.whl")) == "gcs://my-pkg.whl"
 
 
+def test_get_uri_for_package_tar_gz(tmp_path):
+    tar_path = tmp_path / "my-pkg.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+
+    uri = get_uri_for_package(tar_path)
+    assert uri.startswith("gcs://")
+    assert uri.endswith(".tar.gz")
+    assert not uri.endswith(".zip")
+
+
+def test_get_uri_for_package_tgz(tmp_path):
+    tgz_path = tmp_path / "my-pkg.tgz"
+    with tarfile.open(tgz_path, "w:gz") as tar:
+        info = tarfile.TarInfo(name="file.txt")
+        info.size = 5
+        tar.addfile(info, io.BytesIO(b"hello"))
+
+    uri = get_uri_for_package(tgz_path)
+    assert uri.startswith("gcs://")
+    assert uri.endswith(".tar.gz")
+    assert not uri.endswith(".zip")
+
+
 def test_get_local_dir_from_uri():
     uri = "gcs://<working_dir_content_hash>.zip"
     assert get_local_dir_from_uri(uri, "base_dir") == Path(

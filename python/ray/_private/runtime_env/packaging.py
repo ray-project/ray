@@ -587,8 +587,14 @@ def get_uri_for_package(package: Path) -> str:
         )
     else:
         hash_val = hashlib.sha1(package.read_bytes()).hexdigest()
-        return "{protocol}://{pkg_name}.zip".format(
-            protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val
+        if package.name.endswith(".tar.gz"):
+            ext = ".tar.gz"
+        elif package.suffix == ".tgz":
+            ext = ".tar.gz"
+        else:
+            ext = ".zip"
+        return "{protocol}://{pkg_name}{ext}".format(
+            protocol=Protocol.GCS.value, pkg_name=RAY_PKG_PREFIX + hash_val, ext=ext
         )
 
 
@@ -901,6 +907,14 @@ async def download_and_unpack_package(
                         target_dir=local_dir,
                         remove_top_level_directory=False,
                         unlink_zip=True,
+                        logger=logger,
+                    )
+                elif is_tar_gz_uri(pkg_uri):
+                    untar_package(
+                        package_path=pkg_file,
+                        target_dir=local_dir,
+                        remove_top_level_directory=False,
+                        unlink_tar=True,
                         logger=logger,
                     )
                 else:
