@@ -339,7 +339,7 @@ def test_predicate_pushdown():
 
     # Verify the filter is pushed down to the read operation
     # by checking the optimized logical plan
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # The plan should only contain the Read operator, with no Filter operator
@@ -385,7 +385,7 @@ def test_predicate_pushdown_with_initial_filter():
     filtered_ds = ds.filter(expr=col("col_c") >= 5)
 
     # Verify both filters are pushed down
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # No Filter operator should remain in the plan
@@ -429,7 +429,7 @@ def test_projection_pushdown():
     projected_ds = ds.select_columns(["col_a", "col_c"])
 
     # Verify the projection is pushed down to the read operation
-    logical_plan = projected_ds._plan._logical_plan
+    logical_plan = projected_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # The plan should only contain the Read operator, with no Project operator
@@ -512,7 +512,7 @@ def test_projection_and_predicate_pushdown(
         filtered_ds = projected_ds
 
     # Verify both optimizations are applied
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # Both Filter and Project should be pushed down
@@ -650,7 +650,7 @@ def test_rename_select_filter_combinations(
         ds = ds.filter(expr=filter_expr)
 
     # Verify optimizations are applied
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # Both Filter and Project should be pushed down (when applicable)
@@ -731,7 +731,7 @@ def test_predicate_pushdown_complex_expression():
     result = filtered_ds.to_pandas()
 
     # Verify optimizations are applied
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     assert not _has_operator_type(

@@ -48,7 +48,7 @@ def test_union_with_filter(ray_start_10_cpus_shared):
     ds = ds1.union(ds2).filter(expr=col("id") > 2)
 
     # Verify the filter was pushed through the union
-    optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+    optimized_plan = LogicalOptimizer().optimize(ds._logical_plan)
     actual_plan_str = optimized_plan.dag.dag_str
 
     # After optimization, filter should be pushed to both union branches

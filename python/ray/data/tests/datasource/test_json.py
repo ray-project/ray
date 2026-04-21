@@ -213,7 +213,7 @@ def test_json_roundtrip(
     ds2 = ray.data.read_json(tmp_path)
     ds2df = ds2.to_pandas()
     assert rows_same(ds2df, df)
-    for block, meta in ds2._plan.execute().blocks:
+    for block, meta in ds2._execute().blocks:
         assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 

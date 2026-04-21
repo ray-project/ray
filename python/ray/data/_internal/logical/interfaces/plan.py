@@ -20,6 +20,9 @@ class Plan:
     def dag(self) -> Operator:
         raise NotImplementedError
 
+    def set_context(self, context: "DataContext") -> None:
+        self._context = context
+
     @property
     def context(self) -> "DataContext":
         return self._context

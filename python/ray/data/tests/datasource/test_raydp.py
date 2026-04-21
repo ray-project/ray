@@ -53,7 +53,7 @@ def test_from_spark_e2e(spark):
     # Check that metadata fetch is included in stats.
     assert "FromArrow" in ds.stats()
     # Underlying implementation uses `FromArrow` operator
-    assert ds._plan._logical_plan.dag.name == "FromArrow"
+    assert ds._logical_plan.dag.name == "FromArrow"
     _check_usage_record(["FromArrow"])
 
 

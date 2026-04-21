@@ -758,7 +758,7 @@ def test_join_with_predicate_pushdown(
     )
 
     # Check plan to verify pushdown behavior
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
     plan_str = optimized_plan.dag.dag_str
 
@@ -838,7 +838,7 @@ def test_join_cross_side_column_comparison_no_pushdown(ray_start_regular_shared_
     assert all(row["left_val"] > row["right_val"] for row in result)
 
     # Check plan: filter should NOT be pushed down (should stay after join)
-    logical_plan = filtered_ds._plan._logical_plan
+    logical_plan = filtered_ds._logical_plan
     optimized_plan = LogicalOptimizer().optimize(logical_plan)
 
     # Filter should come AFTER Join (not pushed down)

@@ -1343,7 +1343,7 @@ def test_projection_pushdown_merge_rename_x(ray_start_regular_shared, flavor):
     if flavor == "project_after":
         ds = ds.select_columns(["length", "width"])
 
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
 

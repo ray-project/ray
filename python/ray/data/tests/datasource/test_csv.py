@@ -44,7 +44,7 @@ def test_csv_read(
     df = pd.concat([df1, df2], ignore_index=True)
     assert df.equals(dsdf)
     # Test metadata ops.
-    for block, meta in ds._plan.execute().blocks:
+    for block, meta in ds._execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     # Three files, override_num_blocks=2.
@@ -93,7 +93,7 @@ def test_csv_roundtrip(
     ds2 = ray.data.read_csv(tmp_path)
     ds2df = ds2.to_pandas()
     assert rows_same(ds2df, df)
-    for block, meta in ds2._plan.execute().blocks:
+    for block, meta in ds2._execute().blocks:
         assert BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
 

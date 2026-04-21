@@ -149,7 +149,7 @@ def test_read_datasource_compute_strategy(
     )
 
     # Get the logical plan to inspect the compute strategy on the logical operator
-    logical_plan = ds._plan._logical_plan
+    logical_plan = ds._logical_plan
     read_op = find_read_op(logical_plan.dag)
 
     # Verify the compute strategy type on the logical operator

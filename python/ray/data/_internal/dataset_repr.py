@@ -356,7 +356,7 @@ def build_dataset_summary_repr(dataset: "Dataset") -> str:
 
     dataset_cls = type(dataset)
     logical_plan = dataset._logical_plan
-    dataset_name = dataset._plan._dataset_name
+    dataset_name = dataset._dataset_name
 
     plan_str = ""
     plan_max_depth = 0
@@ -367,7 +367,7 @@ def build_dataset_summary_repr(dataset: "Dataset") -> str:
         )
 
     schema = dataset._base_schema(fetch_if_missing=False)
-    count = dataset._plan._cache.get_num_rows(logical_plan.dag)
+    count = dataset._cache.get_num_rows(logical_plan.dag)
 
     if schema is None or count is None:
         has_n_ary_operator = False

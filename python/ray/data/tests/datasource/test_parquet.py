@@ -1038,7 +1038,7 @@ def test_parquet_roundtrip(
     assert read_data == written_data
 
     # Test metadata ops.
-    for block, meta in ds2._plan.execute().blocks:
+    for block, meta in ds2._execute().blocks:
         BlockAccessor.for_block(ray.get(block)).size_bytes() == meta.size_bytes
 
     if fs is None:
@@ -2675,7 +2675,6 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert not ds.has_started_execution
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")

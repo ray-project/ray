@@ -22,7 +22,6 @@ from ray.data._internal.block_batching.iter_batches import BatchIterator
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import InputData
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import BlockAccessor, DataBatch, _apply_batch_format
 from ray.data.collate_fn import (
@@ -1183,15 +1182,12 @@ class DataIterator(abc.ABC):
 
         ref_bundles_iter, stats, _, _ = self._to_ref_bundle_iterator()
         ref_bundles = list(ref_bundles_iter)
-        execution_plan = ExecutionPlan(stats, self.get_context())
+        context = self.get_context()
         logical_plan = LogicalPlan(
             InputData(input_data=ref_bundles),
-            execution_plan._context,
+            context,
         )
-        return MaterializedDataset(
-            execution_plan,
-            logical_plan,
-        )
+        return MaterializedDataset(logical_plan, context, stats)
 
 
 # Backwards compatibility alias.

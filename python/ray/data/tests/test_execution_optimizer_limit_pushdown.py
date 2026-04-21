@@ -29,7 +29,7 @@ def _check_valid_plan_and_result(
         assert actual_result == expected_result
     else:
         assert rows_same(pd.DataFrame(actual_result), pd.DataFrame(expected_result))
-    assert ds._plan._logical_plan.dag.dag_str == expected_plan
+    assert ds._logical_plan.dag.dag_str == expected_plan
 
     expected_physical_plan_ops = expected_physical_plan_ops or []
     for op in expected_physical_plan_ops:
@@ -257,7 +257,7 @@ def test_limit_pushdown_correctness(ray_start_regular_shared_2_cpus):
     assert result == expected
 
     # The plan should show all operations after the limit
-    plan_str = ds._plan._logical_plan.dag.dag_str
+    plan_str = ds._logical_plan.dag.dag_str
     assert (
         "Read[ReadRange] -> Limit[limit=3] -> Project[Project] -> MapRows[Map(<lambda>)]"
         == plan_str
@@ -440,7 +440,7 @@ def test_limit_pushdown_union_with_groupby(ray_start_regular_shared_2_cpus):
     # Result should contain 5 distinct ids with count == 1.
     res = ds.take_all()
     # Plan suffix check (no branch limits past Aggregate).
-    assert ds._plan._logical_plan.dag.dag_str.endswith(
+    assert ds._logical_plan.dag.dag_str.endswith(
         "Union[Union] -> Aggregate[Aggregate] -> Limit[limit=5]"
     )
     assert len(res) == 5 and all(r["count()"] == 1 for r in res)

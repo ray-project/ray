@@ -23,7 +23,6 @@ from ray.data._internal.logical.operators import (
     Read,
 )
 from ray.data._internal.logical.optimizers import PhysicalOptimizer, get_execution_plan
-from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner import create_planner
 from ray.data._internal.stats import DatasetStats
 from ray.data._internal.util import rows_same
@@ -338,8 +337,9 @@ def test_map_batches_batch_size_fusion(
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     ds = Dataset(
-        ExecutionPlan(DatasetStats(metadata={}, parent=None), context),
         LogicalPlan(input_op, context),
+        context,
+        DatasetStats(metadata={}, parent=None),
     )
 
     mapped_ds = ds.map_batches(lambda x: x, batch_size=2).map_batches(
