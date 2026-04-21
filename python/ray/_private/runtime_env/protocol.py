@@ -25,6 +25,8 @@ class ProtocolsProvider:
             "pip",
             # For uv environments install locally on each node.
             "uv",
+            # Remote http path, assumes everything packed in one zip file.
+            "http",
             # Remote https path, assumes everything packed in one zip file.
             "https",
             # Remote s3 path, assumes everything packed in one zip file.
@@ -41,7 +43,7 @@ class ProtocolsProvider:
 
     @classmethod
     def get_remote_protocols(cls):
-        return {"https", "s3", "gs", "azure", "abfss", "file"}
+        return {"http", "https", "s3", "gs", "azure", "abfss", "file"}
 
     @classmethod
     def _handle_s3_protocol(cls):
@@ -217,14 +219,14 @@ class ProtocolsProvider:
         return headers
 
     @classmethod
-    def _handle_https_protocol(cls):
-        """Set up HTTPS protocol handling with curl-like headers."""
+    def _handle_http_protocol(cls):
+        """Set up HTTP/HTTPS protocol handling with curl-like headers."""
 
         try:
             from smart_open import open as smart_open_open
         except ImportError:
             raise ImportError(
-                "You must `pip install smart_open` to fetch HTTPS URIs. "
+                "You must `pip install smart_open` to fetch HTTP/HTTPS URIs. "
                 + cls._MISSING_DEPENDENCIES_WARNING
             )
 
@@ -262,8 +264,8 @@ class ProtocolsProvider:
             def open_file(uri, mode, *, transport_params=None):
                 return open(uri, mode)
 
-        elif protocol == "https":
-            open_file, tp = cls._handle_https_protocol()
+        elif protocol in ("http", "https"):
+            open_file, tp = cls._handle_http_protocol()
         elif protocol == "s3":
             open_file, tp = cls._handle_s3_protocol()
         elif protocol == "gs":
