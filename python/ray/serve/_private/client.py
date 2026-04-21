@@ -344,9 +344,14 @@ class ServeControllerClient:
                     deployment = deployment.options(logging_config=app.logging_config)
 
                 is_ingress = deployment.name == app.ingress_deployment_name
+                is_http_router = (
+                    app.http_router_deployment_name is not None
+                    and deployment.name == app.http_router_deployment_name
+                )
                 deployment_args = get_deploy_args(
                     deployment.name,
                     ingress=is_ingress,
+                    http_router=is_http_router,
                     replica_config=deployment._replica_config,
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
@@ -369,6 +374,7 @@ class ServeControllerClient:
                 if deployment_args["route_prefix"]:
                     deployment_args_proto.route_prefix = deployment_args["route_prefix"]
                 deployment_args_proto.ingress = deployment_args["ingress"]
+                deployment_args_proto.http_router = deployment_args["http_router"]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 

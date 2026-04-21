@@ -1549,7 +1549,9 @@ def build_serve_application(
     """Import and build a Serve application.
 
     Args:
-        import_path: import path to top-level bound deployment.
+        import_path: import path to a top-level Serve application object or
+            application builder return value. Any HTTP router peer should
+            already be attached to the imported application.
         code_version: code version inferred from app config. All
             deployment versions are set to this code version.
         name: application name. If specified, application will be deployed
@@ -1608,8 +1610,14 @@ def build_serve_application(
                 application_autoscaling_policy_function
             )
         for deployment in built_app.deployments:
-            if inspect.isclass(deployment.func_or_class) and issubclass(
-                deployment.func_or_class, ASGIAppReplicaWrapper
+            is_http_router = (
+                built_app.http_router_deployment_name is not None
+                and deployment.name == built_app.http_router_deployment_name
+            )
+            if (
+                not is_http_router
+                and inspect.isclass(deployment.func_or_class)
+                and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
             ):
                 num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
@@ -1646,6 +1654,7 @@ def build_serve_application(
                     name=deployment._name,
                     replica_config=deployment._replica_config,
                     ingress=is_ingress,
+                    http_router=is_http_router,
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,
@@ -1894,18 +1903,5 @@ def override_deployment_info(
             and deployment.route_prefix is not None
         ):
             deployment.route_prefix = app_route_prefix
-
-    # Validate that at most one deployment is marked as the HTTP router.
-    http_router_deployments = [
-        name
-        for name, info in deployment_infos.items()
-        if info.deployment_config.http_router
-    ]
-    if len(http_router_deployments) > 1:
-        raise ValueError(
-            f"Multiple deployments marked as http_router: {http_router_deployments}. "
-            "Only one deployment per application can be the HTTP router for "
-            "ingress bypass mode."
-        )
 
     return deployment_infos

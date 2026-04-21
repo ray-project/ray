@@ -1045,6 +1045,7 @@ class ServeController:
                         "replica_config_proto_bytes": args.replica_config,
                         "deployer_job_id": args.deployer_job_id,
                         "ingress": args.ingress,
+                        "http_router": args.http_router,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),

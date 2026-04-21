@@ -224,6 +224,7 @@ def deployment_params(
     route_prefix: str = None,
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
+    http_router: bool = False,
 ):
     return {
         "deployment_name": name,
@@ -239,6 +240,7 @@ def deployment_params(
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
         "ingress": route_prefix is not None,
+        "http_router": http_router,
         "serialized_autoscaling_policy_def": None,
         "serialized_request_router_cls": None,
     }
@@ -249,9 +251,18 @@ def deployment_info(
     route_prefix: str = None,
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
+    http_router: bool = False,
 ):
-    params = deployment_params(name, route_prefix, autoscaling_config, num_replicas)
+    params = deployment_params(
+        name, route_prefix, autoscaling_config, num_replicas, http_router
+    )
     return deploy_args_to_deployment_info(**params, app_name="test_app")
+
+
+def test_deploy_args_to_deployment_info_preserves_http_router():
+    info = deployment_info("router", http_router=True)
+
+    assert info.http_router is True
 
 
 @pytest.fixture
