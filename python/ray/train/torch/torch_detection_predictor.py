@@ -29,6 +29,10 @@ class TorchDetectionPredictor(TorchPredictor):
 
             from ray.train.torch import TorchDetectionPredictor
 
+            # In real use, load pretrained COCO weights for meaningful predictions:
+            #   from torchvision.models.detection import FasterRCNN_ResNet50_FPN_V2_Weights
+            #   weights = FasterRCNN_ResNet50_FPN_V2_Weights.DEFAULT
+            #   model = models.detection.fasterrcnn_resnet50_fpn_v2(weights=weights)
             model = models.detection.fasterrcnn_resnet50_fpn_v2(weights=None)
 
             predictor = TorchDetectionPredictor(model=model)
