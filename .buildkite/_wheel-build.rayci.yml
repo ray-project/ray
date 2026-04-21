@@ -55,6 +55,9 @@ steps:
       PYTHON_VERSION: "{{array.python}}"
       ARCH_SUFFIX: ""
       HOSTTYPE: "x86_64"
+      JDK_SUFFIX: "-jdk"
+      RAY_JAVA_IMAGE: "cr.ray.io/rayproject/ray-java-build"
+      RAY_DASHBOARD_IMAGE: "cr.ray.io/rayproject/ray-dashboard"
     tags:
       - release_wheels
       - linux_wheels
@@ -62,3 +65,20 @@ steps:
       - ray-core-build($)
       - ray-java-build
       - ray-dashboard-build
+
+  - name: ray-wheel-minimal-build
+    label: "wanda: wheel-minimal py3.13 (x86_64)"
+    wanda: ci/docker/ray-wheel.wanda.yaml
+    env_file: rayci.env
+    env:
+      PYTHON_VERSION: "3.13"
+      ARCH_SUFFIX: ""
+      HOSTTYPE: "x86_64"
+      JDK_SUFFIX: ""
+      RAY_JAVA_IMAGE: "scratch"
+      RAY_DASHBOARD_IMAGE: "scratch"
+    tags:
+      - release_wheels
+      - linux_wheels
+    depends_on:
+      - ray-core-build(python=3.13)

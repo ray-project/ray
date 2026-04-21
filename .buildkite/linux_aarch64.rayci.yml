@@ -161,6 +161,9 @@ steps:
       PYTHON_VERSION: "{{matrix}}"
       ARCH_SUFFIX: "-aarch64"
       HOSTTYPE: "aarch64"
+      JDK_SUFFIX: "-jdk"
+      RAY_JAVA_IMAGE: "cr.ray.io/rayproject/ray-java-build-aarch64"
+      RAY_DASHBOARD_IMAGE: "cr.ray.io/rayproject/ray-dashboard-aarch64"
     tags:
       - release_wheels
       - linux_wheels
@@ -174,8 +177,10 @@ steps:
     key: linux_wheels_upload_aarch64
     instance_type: small  # x86_64 instance since crane is currently only x86_64
     commands:
-      - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
         --wanda-image-name=ray-wheel-py{{matrix}}-aarch64
+        --file-glob='*.whl'
+        --output-dir=.whl
       - ./ci/build/copy_build_artifacts.sh wheel
     matrix:
       - "3.10"
@@ -227,8 +232,10 @@ steps:
     key: linux_cpp_wheels_upload_aarch64
     instance_type: small  # x86_64 instance since crane is currently only x86_64
     commands:
-      - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
         --wanda-image-name=ray-cpp-wheel-aarch64
+        --file-glob='*.whl'
+        --output-dir=.whl
       - ./ci/build/copy_build_artifacts.sh wheel
     depends_on:
       - ray-cpp-wheel-build-aarch64
