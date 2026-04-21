@@ -386,11 +386,11 @@ def test_get_allocated_resources_handles_timeout_error(
     teardown_autoscaling_coordinator,
 ):
     """Test get_allocated_resources handles timeout error."""
-    coordinator = DefaultAutoscalingCoordinator()
+    coordinator = DefaultAutoscalingCoordinator("test")
     coordinator._cached_allocated_resources["test"] = [{"CPU": 1}]
 
     def call_method():
-        return coordinator.get_allocated_resources("test")
+        return coordinator.get_allocated_resources()
 
     max_failures = coordinator.MAX_CONSECUTIVE_FAILURES
     timeout_error = ray.exceptions.GetTimeoutError("timeout")
@@ -422,11 +422,11 @@ def test_get_allocated_resources_handles_timeout_error(
 
 def test_cancel_request_handles_timeout_error(teardown_autoscaling_coordinator):
     """Test cancel_request handles timeout error."""
-    coordinator = DefaultAutoscalingCoordinator()
+    coordinator = DefaultAutoscalingCoordinator("test")
 
     _test_consecutive_failures(
         coordinator=coordinator,
-        call_method=lambda: coordinator.cancel_request("test"),
+        call_method=lambda: coordinator.cancel_request(),
         counter_attr="_consecutive_failures_cancel_request",
         error_msg_prefix="Failed to cancel resource request for test",
     )
@@ -434,12 +434,12 @@ def test_cancel_request_handles_timeout_error(teardown_autoscaling_coordinator):
 
 def test_request_resources_handles_timeout_error(teardown_autoscaling_coordinator):
     """Test request_resources handles timeout error."""
-    coordinator = DefaultAutoscalingCoordinator()
+    coordinator = DefaultAutoscalingCoordinator("test")
 
     _test_consecutive_failures(
         coordinator=coordinator,
         call_method=lambda: coordinator.request_resources(
-            "test", [{"CPU": 1}], expire_after_s=1
+            [{"CPU": 1}], expire_after_s=1
         ),
         counter_attr="_consecutive_failures_request_resources",
         error_msg_prefix="Failed to send resource request for test",
@@ -451,13 +451,11 @@ def test_coordinator_accepts_zero_resource_for_missing_resource_type(
 ):
     # This is a regression test for a bug where the coordinator crashes when you request
     # a resource type (e.g., GPU: 0) that doesn't exist on the cluster.
-    coordinator = DefaultAutoscalingCoordinator()
+    coordinator = DefaultAutoscalingCoordinator("spam")
 
-    coordinator.request_resources(
-        requester_id="spam", resources=[{"CPU": 1, "GPU": 0}], expire_after_s=1
-    )
+    coordinator.request_resources(resources=[{"CPU": 1, "GPU": 0}], expire_after_s=1)
 
-    assert coordinator.get_allocated_resources("spam") == [{"CPU": 1, "GPU": 0}]
+    assert coordinator.get_allocated_resources() == [{"CPU": 1, "GPU": 0}]
 
 
 if __name__ == "__main__":

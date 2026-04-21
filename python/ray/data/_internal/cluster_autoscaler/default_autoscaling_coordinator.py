@@ -58,7 +58,6 @@ class OngoingRequest:
 def handle_timeout_errors(
     failure_counter_attr: str,
     operation_name: str,
-    requester_id_param: str = "requester_id",
     error_msg_suffix: Optional[str] = None,
     on_error_return: Optional[Callable] = None,
 ):
@@ -69,13 +68,10 @@ def handle_timeout_errors(
             consecutive failures.
         operation_name: Name of the operation for error messages (e.g.,
             "send resource request", "cancel resource request").
-        requester_id_param: Name of the parameter that contains the
-            requester_id.
         error_msg_suffix: Optional suffix to append to the error message.
             If None, uses a default message.
-        on_error_return: Optional callable that takes (self, requester_id)
-            and returns a value to return on error. If None, no value is
-            returned (method should return None).
+        on_error_return: Optional callable that takes ``self`` and returns a
+            value to return on error. If None, no value is returned.
 
     Returns:
         A decorator that wraps methods to handle timeout errors.
@@ -84,19 +80,7 @@ def handle_timeout_errors(
     def decorator(func):
         @functools.wraps(func)
         def wrapper(self, *args, **kwargs):
-            # Extract requester_id from args or kwargs
-            requester_id = kwargs.get(requester_id_param)
-            if requester_id is None:
-                # Try to get from args by checking function signature
-                import inspect
-
-                sig = inspect.signature(func)
-                param_names = list(sig.parameters.keys())
-                if requester_id_param in param_names:
-                    param_index = param_names.index(requester_id_param) - 1
-                    if param_index < len(args):
-                        requester_id = args[param_index]
-
+            requester_id = self._requester_id
             failure_counter = getattr(self, failure_counter_attr)
 
             try:
@@ -145,7 +129,7 @@ def handle_timeout_errors(
 
                 # Return value on error if callback provided
                 if on_error_return is not None:
-                    return on_error_return(self, requester_id)
+                    return on_error_return(self)
 
         return wrapper
 
@@ -160,7 +144,8 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         "RAY_DATA_AUTOSCALING_COORDINATOR_MAX_CONSECUTIVE_FAILURES", 10
     )
 
-    def __init__(self):
+    def __init__(self, requester_id: str):
+        self._requester_id = requester_id
         self._cached_allocated_resources: Dict[str, List[ResourceDict]] = {}
         self._consecutive_failures_request_resources: int = 0
         self._consecutive_failures_cancel_request: int = 0
@@ -182,7 +167,6 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     )
     def request_resources(
         self,
-        requester_id: str,
         resources: List[ResourceDict],
         expire_after_s: float,
         request_remaining: bool = False,
@@ -190,7 +174,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     ) -> None:
         ray.get(
             self._autoscaling_coordinator.request_resources.remote(
-                requester_id=requester_id,
+                requester_id=self._requester_id,
                 resources=resources,
                 expire_after_s=expire_after_s,
                 request_remaining=request_remaining,
@@ -208,10 +192,10 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             " If this error persists, file a GitHub issue."
         ),
     )
-    def cancel_request(self, requester_id: str):
+    def cancel_request(self) -> None:
         ray.get(
             self._autoscaling_coordinator.cancel_request.remote(
-                requester_id,
+                self._requester_id,
             ),
             timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
         )
@@ -225,18 +209,18 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             " or CPU being overloaded, it's safe to ignore this error."
             " If this error persists, file a GitHub issue."
         ),
-        on_error_return=lambda self, requester_id: self._cached_allocated_resources.get(
-            requester_id, []
+        on_error_return=lambda self: self._cached_allocated_resources.get(
+            self._requester_id, []
         ),
     )
-    def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
+    def get_allocated_resources(self) -> List[ResourceDict]:
         result = ray.get(
             self._autoscaling_coordinator.get_allocated_resources.remote(
-                requester_id,
+                self._requester_id,
             ),
             timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
         )
-        self._cached_allocated_resources[requester_id] = result
+        self._cached_allocated_resources[self._requester_id] = result
         return result
 
 

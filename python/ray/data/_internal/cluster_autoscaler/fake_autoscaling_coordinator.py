@@ -1,6 +1,6 @@
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from typing import Callable, List, Optional
 
 from .base_autoscaling_coordinator import (
     AutoscalingCoordinator,
@@ -26,6 +26,7 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         self,
         get_time: Callable[[], float] = time.time,
         initial_cluster_resources: Optional[List[ResourceDict]] = None,
+        requester_id: str = "default",
     ):
         """Initialize the coordinator.
 
@@ -36,18 +37,19 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
                 ``request_remaining`` is True, the coordinator allocates these resources
                 to the requester. Otherwise, the coordinator allocates the requested
                 resources.
+            requester_id: Identifier for this single requester. Defaults to
+                "default" for convenience in tests.
         """
         if initial_cluster_resources is None:
             initial_cluster_resources = []
 
+        self._requester_id = requester_id
         self._get_time = get_time
         self._initial_cluster_resources = initial_cluster_resources
-
-        self._allocations: Dict[str, FakeAutoscalingCoordinator.Allocation] = {}
+        self._allocation: Optional[FakeAutoscalingCoordinator.Allocation] = None
 
     def request_resources(
         self,
-        requester_id: str,
         resources: List[ResourceDict],
         expire_after_s: float,
         request_remaining: bool = False,
@@ -62,27 +64,22 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
             resources = [r.copy() for r in self._initial_cluster_resources]
 
         # Always accept the request and record it.
-        self._allocations[requester_id] = self.Allocation(
+        self._allocation = self.Allocation(
             resources=resources,
             expiration_time_s=self._get_time() + expire_after_s,
             request_remaining=request_remaining,
         )
 
-    def cancel_request(self, requester_id: str):
-        if requester_id in self._allocations:
-            del self._allocations[requester_id]
+    def cancel_request(self) -> None:
+        self._allocation = None
 
-    def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
+    def get_allocated_resources(self) -> List[ResourceDict]:
         """Return the allocated resources if they haven't expired."""
-        allocation = self._allocations.get(requester_id)
-
-        # Case 1: no allocation.
-        if allocation is None:
+        if self._allocation is None:
             return []
 
-        # Case 2: request expired.
-        if allocation.expiration_time_s < self._get_time():
-            del self._allocations[requester_id]
+        if self._allocation.expiration_time_s < self._get_time():
+            self._allocation = None
             return []
 
-        return [r.copy() for r in allocation.resources]
+        return [r.copy() for r in self._allocation.resources]
