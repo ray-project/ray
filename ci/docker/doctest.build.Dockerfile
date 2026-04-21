@@ -14,6 +14,7 @@ RUN  <<EOF
 
 set -euo pipefail
 
+sudo apt-get update
 sudo apt-get install -y graphviz tesseract-ocr
 
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
