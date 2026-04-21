@@ -176,24 +176,33 @@ def collect_scheduling_overhead(
     """Collect per-operator scheduling overhead from the Ray State API,
     bucketed into ``num_buckets`` equal time intervals.
 
-    Queries tasks by operator name (both ``TaskPoolMapOperator`` and
-    ``ActorPoolMapOperator`` set ``name`` to the operator name), determines
-    the global time range from ``creation_time_ms``, splits into equal
-    intervals, and returns a dict mapping operator name to its list of
-    time-bucketed scheduling overhead summaries.
+    Queries tasks once (up to ``limit``), keeps tasks whose ``name`` starts with
+    any entry in ``operator_names`` (longest prefix wins), then buckets by the
+    matched logical operator name.
+
+    Global time range comes from ``creation_time_ms`` of the kept tasks.
     """
     from ray.util.state.api import list_tasks
 
-    all_tasks: List[TaskState] = []
-    for op_name in operator_names:
-        all_tasks.extend(
-            list_tasks(
-                filters=[("name", "=", op_name)],
-                detail=True,
-                limit=10_000,
-                raise_on_missing_output=False,
-            )
-        )
+    unfiltered: List[TaskState] = list_tasks(
+        detail=True,
+        limit=10_000,
+        raise_on_missing_output=False,
+    )
+
+    # task.name (Ray task display name) -> logical operator_name from operator_names
+    task_name_to_operator: Dict[TaskName, str] = {}
+    matched_tasks: List[TaskState] = []
+    for t in unfiltered:
+        if not t.name:
+            continue
+        for op_name in operator_names:
+            if op_name in t.name:
+                task_name_to_operator[t.name] = op_name
+                matched_tasks.append(t)
+                break
+
+    all_tasks = matched_tasks
 
     # 1. Sort all tasks by creation_time_ms.
     all_tasks = [t for t in all_tasks if t.creation_time_ms is not None]
@@ -234,7 +243,8 @@ def collect_scheduling_overhead(
             t=t, bucket=boundaries[bucket_idx]
         ):
             bucket_idx += 1
-        bucket_tasks[bucket_idx][t.name].append(t)
+        logical_op = task_name_to_operator[t.name]
+        bucket_tasks[bucket_idx][logical_op].append(t)
 
     # Build the result dict: operator_name -> list of bucketed summaries.
     result: Dict[TaskName, List[BucketedSchedulingOverhead]] = defaultdict(list)
