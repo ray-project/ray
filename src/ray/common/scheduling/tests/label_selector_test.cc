@@ -208,4 +208,30 @@ TEST(LabelSelectorTest, Deduplication) {
   ASSERT_EQ(selector.GetConstraints().size(), 4);
 }
 
+TEST(LabelSelectorTest, TestIsGpuAcceleratorConstraint) {
+  // GB300
+  LabelConstraint c1(
+      kLabelKeyNodeAcceleratorType, LabelSelectorOperator::LABEL_IN, {kGB300});
+  ASSERT_TRUE(IsGpuAcceleratorConstraint(c1));
+
+  // GB200
+  LabelConstraint c2(
+      kLabelKeyNodeAcceleratorType, LabelSelectorOperator::LABEL_IN, {kGB200});
+  ASSERT_TRUE(IsGpuAcceleratorConstraint(c2));
+
+  // Wrong Key
+  LabelConstraint c3("wrong-key", LabelSelectorOperator::LABEL_IN, {kGB300});
+  ASSERT_FALSE(IsGpuAcceleratorConstraint(c3));
+
+  // Wrong Operator
+  LabelConstraint c4(
+      kLabelKeyNodeAcceleratorType, LabelSelectorOperator::LABEL_NOT_IN, {kGB300});
+  ASSERT_FALSE(IsGpuAcceleratorConstraint(c4));
+
+  // Non-GPU value
+  LabelConstraint c5(
+      kLabelKeyNodeAcceleratorType, LabelSelectorOperator::LABEL_IN, {"N2D"});
+  ASSERT_FALSE(IsGpuAcceleratorConstraint(c5));
+}
+
 }  // namespace ray
