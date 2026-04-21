@@ -196,11 +196,12 @@ def collect_scheduling_overhead(
     for t in unfiltered:
         if not t.name:
             continue
-        for op_name in operator_names:
-            if op_name in t.name:
-                task_name_to_operator[t.name] = op_name
-                matched_tasks.append(t)
-                break
+        if not t.name in task_name_to_operator:
+            for op_name in operator_names:
+                if op_name in t.name:
+                    task_name_to_operator[t.name] = op_name
+                    break
+        matched_tasks.append(t)
 
     all_tasks = matched_tasks
 
