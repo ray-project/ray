@@ -68,7 +68,6 @@ if TYPE_CHECKING:
     from pyarrow.dataset import ParquetFileFragment
 
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
-    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 # Type aliases for tensor column schema
 ColumnName = str
 # Shape of the tensor
@@ -374,11 +373,9 @@ class ParquetDatasource(Datasource):
 
         local_scheduling = None
         if not supports_distributed_reads:
-            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-            local_scheduling = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            )
+            local_scheduling = {
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+            }
 
         # Need this property for lineage tracking. We should not directly assign paths
         # to self since it is captured every read_task_fn during serialization and
@@ -509,7 +506,7 @@ class ParquetDatasource(Datasource):
         self,
         *,
         supports_distributed_reads: bool,
-        local_scheduling: Optional["NodeAffinitySchedulingStrategy"],
+        local_scheduling: Optional[Dict[str, str]],
         source_paths_ref: "ray.ObjectRef",
         filesystem: "pyarrow.fs.FileSystem",
         fragments: List["ParquetFileFragment"],
@@ -644,13 +641,9 @@ class ParquetDatasource(Datasource):
                 )
 
             if is_local:
-                from ray.util.scheduling_strategies import (
-                    NodeAffinitySchedulingStrategy,
-                )
-
-                local_scheduling = NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False
-                )
+                local_scheduling = {
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                }
 
             infos = filesystem.get_file_info(pq_paths)
             file_sizes = [info.size if info.size is not None else 0 for info in infos]
@@ -1694,22 +1687,26 @@ def _fetch_file_infos(
     *,
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
-    local_scheduling: Optional[bool],
+    local_scheduling: Optional[Dict[str, str]],
 ) -> List[Optional[_ParquetFileInfo]]:
     fetch_file_info = cached_remote_fn(_fetch_parquet_file_info)
     futures = []
+
+    # Retry in case of transient errors during sampling.
+    task_options = {"retry_exceptions": [OSError]}
+    if local_scheduling:
+        task_options["label_selector"] = local_scheduling
+    else:
+        task_options[
+            "scheduling_strategy"
+        ] = DataContext.get_current().scheduling_strategy
 
     for fragment in sampled_fragments:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
         # same machine to cause OOM issue, as sampling can be memory-intensive.
         futures.append(
-            fetch_file_info.options(
-                scheduling_strategy=local_scheduling
-                or DataContext.get_current().scheduling_strategy,
-                # Retry in case of transient errors during sampling.
-                retry_exceptions=[OSError],
-            ).remote(
+            fetch_file_info.options(**task_options).remote(
                 fragment,
                 columns=columns,
                 schema=schema,
