@@ -7396,6 +7396,11 @@ class Dataset:
         """Create a StreamingExecutor for this dataset.
 
         Increments _run_index and tags the executor with get_dataset_id().
+
+        NOTE: Executor will be shutdown upon either of the 2 following conditions:
+
+            - Iterator is fully exhausted (ie until StopIteration is raised)
+            - Executor instances is garbage-collected
         """
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
