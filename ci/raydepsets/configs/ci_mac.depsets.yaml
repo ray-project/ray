@@ -12,6 +12,7 @@ depsets:
     requirements:
       - python/requirements/py313/test-requirements.txt
       - python/requirements/setuptools.txt
+      - python/requirements/macos-requirements.txt
     constraints:
       - /tmp/ray-deps/requirements_compiled_py3.13.txt
     output: python/deplocks/ci/macos_depset_py${PYTHON_VERSION}.lock
