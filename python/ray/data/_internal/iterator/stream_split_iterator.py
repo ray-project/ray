@@ -328,7 +328,7 @@ class SplitCoordinator:
         if executor:
             stats = executor.get_stats()
         else:
-            stats = self._base_dataset._plan.stats()
+            stats = self._base_dataset._raw_stats()
 
         stats.streaming_split_coordinator_s.add(coordinator_overhead_s)
         return stats
