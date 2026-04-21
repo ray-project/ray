@@ -80,7 +80,12 @@ def test_placement_group_cleaner_basic_lifecycle(monitoring_started_signal):
             lifetime="detached",
             get_if_exists=False,
         )
-        .remote(controller_actor_id=controller_id, check_interval_s=0.1)
+        .remote(
+            controller_actor_id=controller_id,
+            check_interval_s=0.1,
+            get_actor_timeout_s=2,
+            stop_timeout=5,
+        )
     )
 
     # Create a placement group
@@ -134,7 +139,12 @@ def test_pg_cleaner_cleans_up_on_controller_death(monitoring_started_signal):
             lifetime="detached",
             get_if_exists=False,
         )
-        .remote(controller_actor_id=controller_id, check_interval_s=0.1)
+        .remote(
+            controller_actor_id=controller_id,
+            check_interval_s=0.1,
+            get_actor_timeout_s=2,
+            stop_timeout=5,
+        )
     )
 
     # Create a placement group
@@ -188,6 +198,8 @@ def test_pg_cleaner_exits_on_controller_death_without_pg_registration(
         .remote(
             controller_actor_id=controller_id,
             check_interval_s=0.1,
+            get_actor_timeout_s=2,
+            stop_timeout=5,
         )
     )
 
@@ -217,7 +229,12 @@ def test_pg_cleaner_handles_duplicate_start():
             lifetime="detached",
             get_if_exists=False,
         )
-        .remote(controller_actor_id=controller_id, check_interval_s=0.1)
+        .remote(
+            controller_actor_id=controller_id,
+            check_interval_s=0.1,
+            get_actor_timeout_s=2,
+            stop_timeout=5,
+        )
     )
 
     pg = placement_group([{"CPU": 1}], strategy="SPREAD")

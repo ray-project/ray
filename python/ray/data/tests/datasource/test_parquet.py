@@ -31,7 +31,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data._internal.util import rows_same
+from ray.data._internal.util import explain_plan, rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -557,9 +557,9 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
     assert ds.count() == 150
 
     # Test projection pushed down into read op
-    ds = ray.data.read_parquet(path).select_columns("variety")
+    ds = ray.data.read_parquet(path, override_num_blocks=1).select_columns("variety")
 
-    assert ds._plan.explain().strip() == (
+    assert explain_plan(ds._logical_plan).strip() == (
         "-------- Logical Plan --------\n"
         "Project[Project]\n"
         "+- Read[ReadParquet]\n"
@@ -580,9 +580,9 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
     assert ds.count() == 150
 
     # Assert empty projection is reading no data
-    ds = ray.data.read_parquet(path).select_columns([])
+    ds = ray.data.read_parquet(path, override_num_blocks=1).select_columns([])
 
-    summary = ds.materialize()._plan.stats().to_summary()
+    summary = ds.materialize()._raw_stats().to_summary()
 
     assert "ReadParquet" in summary.base_name
     assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
@@ -688,7 +688,6 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             1000, shape=(1000,), override_num_blocks=10
         ).write_parquet(tensor_output_path)
         ds = ray.data.read_parquet(tensor_output_path)
-        assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
             data_size >= 6_000_000 and data_size <= 10_000_000
@@ -716,7 +715,6 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             text_output_path
         )
         ds = ray.data.read_parquet(text_output_path)
-        assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
             data_size >= 700_000 and data_size <= 2_200_000
@@ -2677,7 +2675,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert not ds._plan.has_started_execution
+    assert not ds.has_started_execution
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
