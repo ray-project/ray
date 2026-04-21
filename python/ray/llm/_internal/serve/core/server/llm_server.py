@@ -750,6 +750,8 @@ class LLMServer(LLMServerProtocol):
                         logger.info(
                             "Shutting down slice placement group for server replica."
                         )
+                        # We explicitly shutdown the SlicePlacementGroup to avoid leaking GCS resources
+                        # when the server replica scales down. The shutdown() method is idempotent.
                         tpu_pg.shutdown()
 
             except Exception as e:
