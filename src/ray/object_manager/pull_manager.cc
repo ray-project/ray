@@ -124,18 +124,18 @@ bool PullManager::ActivateNextBundlePullRequest(
   {
     absl::MutexLock lock(&active_objects_mu_);
 
-    // Bytes of objects in this bundle that no other active bundle is already
-    // tracking.
-    int64_t newly_tracked_bytes = 0;
-    // Subset of newly_tracked_bytes that isn't already local. Used for the quota check.
+    // Bytes of objects in this bundle that are not already active in any
+    // other bundle.
+    int64_t newly_active_bytes = 0;
+    // Subset of newly_active_bytes that isn't already local. Used for the quota check.
     int64_t remote_bytes = 0;
     for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       if (needs_pull) {
         // This is the first bundle request in the queue to require this object.
-        // Add the size to the number of bytes tracked.
+        // Add the size to the active total.
         const int64_t size = map_find_or_die(object_pull_requests_, obj_id).object_size;
-        newly_tracked_bytes += size;
+        newly_active_bytes += size;
         if (!object_is_local_(obj_id)) {
           remote_bytes += size;
         }
@@ -145,7 +145,7 @@ bool PullManager::ActivateNextBundlePullRequest(
     // Quota check.
     if (respect_quota && num_active_bundles_ >= 1 && remote_bytes > RemainingQuota()) {
       RAY_LOG(DEBUG) << "Bundle would exceed quota: "
-                     << "num_bytes_tracked(" << num_bytes_tracked_
+                     << "num_active_bytes(" << num_active_bytes_
                      << ") + "
                         "remote_bytes("
                      << remote_bytes
@@ -159,9 +159,9 @@ bool PullManager::ActivateNextBundlePullRequest(
     }
 
     RAY_LOG(DEBUG) << "Activating request " << next_request_id
-                   << " num bytes tracked: " << num_bytes_tracked_
+                   << " num active bytes: " << num_active_bytes_
                    << " num bytes available: " << num_bytes_available_;
-    num_bytes_tracked_ += newly_tracked_bytes;
+    num_active_bytes_ += newly_active_bytes;
     for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
       active_object_pull_requests_[obj_id].insert(next_request_id);
@@ -197,7 +197,7 @@ void PullManager::DeactivateBundlePullRequest(
     }
     if (it->second.empty()) {
       RAY_LOG(DEBUG) << "Deactivating pull for object " << obj_id;
-      num_bytes_tracked_ -= map_find_or_die(object_pull_requests_, obj_id).object_size;
+      num_active_bytes_ -= map_find_or_die(object_pull_requests_, obj_id).object_size;
       active_object_pull_requests_.erase(obj_id);
       UnpinObject(obj_id);
       objects_to_cancel->insert(obj_id);
@@ -220,7 +220,7 @@ void PullManager::DeactivateUntilMarginAvailable(
     }
     const uint64_t request_id = *(bundles.active_requests.rbegin());
     RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << request_id
-                   << " num bytes tracked: " << num_bytes_tracked_
+                   << " num active bytes: " << num_active_bytes_
                    << " num bytes available: " << num_bytes_available_;
     DeactivateBundlePullRequest(bundles, request_id, object_ids_to_cancel);
   }
@@ -228,7 +228,7 @@ void PullManager::DeactivateUntilMarginAvailable(
 
 int64_t PullManager::RemainingQuota() {
   // Note that plasma counts pinned bytes as used.
-  int64_t bytes_left_to_pull = num_bytes_tracked_ - pinned_objects_size_;
+  int64_t bytes_left_to_pull = num_active_bytes_ - pinned_objects_size_;
   return num_bytes_available_ - bytes_left_to_pull;
 }
 
@@ -435,8 +435,8 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
     }
 
     UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
-    RAY_LOG(DEBUG) << "Updated location of " << object_id << ", num bytes tracked is now "
-                   << num_bytes_tracked_;
+    RAY_LOG(DEBUG) << "Updated location of " << object_id << ", num active bytes is now "
+                   << num_active_bytes_;
   }
 
   RAY_LOG(DEBUG) << object_id << " OnLocationChange " << spilled_url << " num clients "
@@ -732,7 +732,7 @@ int64_t PullManager::NextRequestRemoteBytes(const BundlePullRequestQueue &bundle
 void PullManager::RecordMetrics() const {
   absl::MutexLock lock(&active_objects_mu_);
   pull_manager_usage_bytes_gauge_.Record(num_bytes_available_, {{"Type", "Available"}});
-  pull_manager_usage_bytes_gauge_.Record(num_bytes_tracked_ - pinned_objects_size_,
+  pull_manager_usage_bytes_gauge_.Record(num_active_bytes_ - pinned_objects_size_,
                                          {{"Type", "BeingPulled"}});
   pull_manager_usage_bytes_gauge_.Record(pinned_objects_size_, {{"Type", "Pinned"}});
   pull_manager_requested_bundles_gauge_.Record(get_request_bundles_.requests.size(),
@@ -761,8 +761,8 @@ std::string PullManager::DebugString() const {
   std::stringstream result;
   result << "PullManager:";
   result << "\n- num bytes available for pulled objects: " << num_bytes_available_;
-  result << "\n- num bytes tracked (all): " << num_bytes_tracked_;
-  result << "\n- num bytes tracked / pinned: " << pinned_objects_size_;
+  result << "\n- num active bytes (all): " << num_active_bytes_;
+  result << "\n- num active bytes / pinned: " << pinned_objects_size_;
   result << "\n- get request bundles: " << get_request_bundles_.DebugString();
   result << "\n- wait request bundles: " << wait_request_bundles_.DebugString();
   result << "\n- task request bundles: " << task_argument_bundles_.DebugString();
