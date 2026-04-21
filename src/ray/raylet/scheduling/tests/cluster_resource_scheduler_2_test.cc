@@ -125,7 +125,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     }
     const auto &result2 = cluster_resource_scheduler_->SchedulePlacementGroup(
         resource_request_list, scheduling_options);
-    ASSERT_TRUE(result2.status.IsFailed());
+    ASSERT_TRUE(result2.status.IsInfeasible());
     ASSERT_EQ(result2.selected_nodes.size(), 0);
 
     // Check for resource leaks.
