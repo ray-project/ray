@@ -420,8 +420,9 @@ class PullManager {
   std::string BundleInfo(const BundlePullRequestQueue &bundles) const;
 
   /// Return the incremental space required to pull the next bundle, if available.
-  /// If the next bundle is not ready for pulling, 0L will be returned.
-  int64_t NextRequestBundleSize(const BundlePullRequestQueue &bundles) const;
+  /// Objects already local to this node are excluded. If the next bundle is not
+  /// ready for pulling, 0 will be returned.
+  int64_t NextRequestRemoteBytes(const BundlePullRequestQueue &bundles) const;
 
   const BundlePullRequestQueue &GetBundlePullRequestQueue(uint64_t request_id) const;
   BundlePullRequestQueue &GetBundlePullRequestQueue(uint64_t request_id);

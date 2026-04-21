@@ -123,7 +123,7 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
   {
     absl::MutexLock lock(&active_objects_mu_);
 
-    int64_t network_bytes = 0;
+    int64_t remote_bytes = 0;
     int64_t bundle_bytes = 0;
     for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
@@ -133,18 +133,18 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
         const int64_t size = map_find_or_die(object_pull_requests_, obj_id).object_size;
         bundle_bytes += size;
         if (!object_is_local_(obj_id)) {
-          network_bytes += size;
+          remote_bytes += size;
         }
       }
     }
 
     // Quota check.
-    if (respect_quota && num_active_bundles_ >= 1 && network_bytes > RemainingQuota()) {
+    if (respect_quota && num_active_bundles_ >= 1 && remote_bytes > RemainingQuota()) {
       RAY_LOG(DEBUG) << "Bundle would exceed quota: "
                      << "num_bytes_being_pulled(" << num_bytes_being_pulled_
                      << ") + "
-                        "network_bytes("
-                     << network_bytes
+                        "remote_bytes("
+                     << remote_bytes
                      << ") - "
                         "pinned_objects_size("
                      << pinned_objects_size_
@@ -246,7 +246,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   // by canceling task args and wait requests.
   bool get_requests_remaining = !get_request_bundles_.inactive_requests.empty();
   while (get_requests_remaining) {
-    const int64_t margin_required = NextRequestBundleSize(get_request_bundles_);
+    const int64_t margin_required = NextRequestRemoteBytes(get_request_bundles_);
     DeactivateUntilMarginAvailable("task args request",
                                    task_argument_bundles_,
                                    /*retain_min=*/0,
@@ -267,7 +267,7 @@ void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available)
   // Do the same but for wait requests (medium priority).
   bool wait_requests_remaining = !wait_request_bundles_.inactive_requests.empty();
   while (wait_requests_remaining) {
-    const int64_t margin_required = NextRequestBundleSize(wait_request_bundles_);
+    const int64_t margin_required = NextRequestRemoteBytes(wait_request_bundles_);
     DeactivateUntilMarginAvailable("task args request",
                                    task_argument_bundles_,
                                    /*retain_min=*/0,
@@ -699,7 +699,7 @@ std::string PullManager::BundleInfo(const BundlePullRequestQueue &bundles) const
   return result.str();
 }
 
-int64_t PullManager::NextRequestBundleSize(const BundlePullRequestQueue &bundles) const {
+int64_t PullManager::NextRequestRemoteBytes(const BundlePullRequestQueue &bundles) const {
   if (bundles.inactive_requests.empty()) {
     // No inactive requests in the queue.
     return 0L;
@@ -712,18 +712,17 @@ int64_t PullManager::NextRequestBundleSize(const BundlePullRequestQueue &bundles
   absl::MutexLock lock(&active_objects_mu_);
 
   // Calculate the bytes we need.
-  int64_t bytes_needed_calculated = 0;
+  int64_t remote_bytes = 0;
   for (const auto &obj_id : next_request.objects_) {
     bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
     if (needs_pull && !object_is_local_(obj_id)) {
       // This is the first bundle request in the queue to require this object.
       // Add the size to the number of bytes being pulled.
-      bytes_needed_calculated +=
-          map_find_or_die(object_pull_requests_, obj_id).object_size;
+      remote_bytes += map_find_or_die(object_pull_requests_, obj_id).object_size;
     }
   }
 
-  return bytes_needed_calculated;
+  return remote_bytes;
 }
 
 void PullManager::RecordMetrics() const {
