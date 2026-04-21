@@ -1,7 +1,7 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build-py$PYTHON
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG PYTHON-3.10
+ARG PYTHON=3.10
 ARG PYTHON_DEPSET=python/deplocks/docs/doctest_depset_py$PYTHON.lock
 
 SHELL ["/bin/bash", "-ice"]
