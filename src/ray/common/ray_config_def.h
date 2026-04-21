@@ -94,6 +94,18 @@ RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 /// killing workers via the worker killing policy.
 RAY_CONFIG(uint64_t, kill_memory_buffer_bytes, 3ULL * 1024 * 1024 * 1024)  // 3GB
 
+/// The threshold monitor is poll based and may miss memory bursts occurring between
+/// polls. This buffer is subtracted from memory.max to give the threshold monitor
+/// time to react before memory max is reached under resource isolation.
+RAY_CONFIG(int64_t,
+           threshold_monitor_reaction_buffer_bytes,
+           2LL * 1024 * 1024 * 1024)  // 2GB
+
+/// Whether to use the group-by-owner worker killing policy instead of the
+/// default time-based worker killing policy. When true, workers killed by the
+/// by group killing policy (legacy policy).
+RAY_CONFIG(bool, WORKER_KILLING_POLICY_BY_GROUP, false)
+
 /// The reserved memory bytes for system processes
 /// enforced via cgroup memory.min constraint which guarantees
 /// that the system processes' memory will not be reclaimed under any conditions.

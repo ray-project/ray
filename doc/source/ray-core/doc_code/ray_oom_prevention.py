@@ -10,7 +10,7 @@ ray.init(
 # __last_task_start__
 import ray
 
-@ray.remote(max_retries=-1)
+@ray.remote(max_retries=0)
 def leaks_memory():
     chunks = []
     bits_to_allocate = 8 * 100 * 1024 * 1024  # ~100 MiB

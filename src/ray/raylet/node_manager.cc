@@ -242,7 +242,8 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
-      worker_killing_policy_(WorkerKillingPolicyFactory::Create()),
+      worker_killing_policy_(WorkerKillingPolicyFactory::Create(
+          config.enable_resource_isolation, *cgroup_manager)),
       memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
                                                    config.enable_resource_isolation,
                                                    *cgroup_manager)),
@@ -3082,7 +3083,9 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
               total_memory_bytes,
               RayConfig::instance().memory_usage_threshold(),
-              RayConfig::instance().min_memory_free_bytes());
+              RayConfig::instance().min_memory_free_bytes(),
+              initial_config_.enable_resource_isolation,
+              *cgroup_manager_);
           float computed_threshold_fraction =
               static_cast<float>(computed_threshold_bytes) /
               static_cast<float>(total_memory_bytes);
