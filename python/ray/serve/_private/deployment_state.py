@@ -5664,19 +5664,11 @@ class DeploymentStateManager:
                 if not self._app_deployment_mapping[deployment_id.app_name]:
                     del self._app_deployment_mapping[deployment_id.app_name]
 
-            # Publish a terminal tombstone for DEPLOYMENT_TARGETS so any
-            # router/proxy still parked on this key wakes with a definitive
-            # "gone" payload (is_available=False). Routers that read
-            # is_available on the fast path immediately fail fast on new
-            # requests rather than routing into a dead deployment. We
-            # deliberately do NOT evict the tombstone via remove_keys in
-            # the same control-loop tick: parked listen_for_change
-            # coroutines cannot resume until the event loop ticks, and if
-            # the snapshot maps were popped before they wake the guard in
-            # listen_for_change would swallow the tombstone. The
-            # DEPLOYMENT_TARGETS entry stays in the snapshot maps with an
-            # empty replicas list — negligible memory per deleted
-            # deployment, overwritten if the deployment is re-created.
+            # Publish is_available=False so routers fail fast instead of
+            # queuing requests on a deleted deployment. Do NOT evict the
+            # TARGETS key in the same sync tick: parked waiters don't run
+            # until update() returns, and the done-branch guard in
+            # listen_for_change would drop the tombstone.
             tombstone = DeploymentTargetInfo(is_available=False, running_replicas=[])
             self._long_poll_host.notify_changed(
                 {
@@ -5687,12 +5679,6 @@ class DeploymentStateManager:
                     ): tombstone,
                 }
             )
-            # DEPLOYMENT_CONFIG has no natural tombstone value and it is
-            # the heavier survivor of the two per-deployment snapshots
-            # (deletion never shrinks it, unlike DEPLOYMENT_TARGETS).
-            # Evict it. Any remaining waiter wakes with an empty dict and
-            # re-polls; re-polls for an unknown key hit the KeyError-skip
-            # branch of listen_for_change.
             self._long_poll_host.remove_keys(
                 [(LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id)]
             )
