@@ -1,10 +1,15 @@
 import asyncio
 import copy
+import inspect
 import os
+import time
+from collections import OrderedDict
 from typing import (
     TYPE_CHECKING,
     Any,
     AsyncGenerator,
+    Awaitable,
+    Callable,
     Dict,
     List,
     Optional,
@@ -99,6 +104,66 @@ def _merge_replica_actor_and_child_actor_bundles(
     ]
 
 
+class _LoraDiskModelLRUCache:
+    """LRU cache for downloaded LoRA disk configs without ``@serve.multiplexed``.
+
+    Serve's multiplex decorator registers model IDs with the controller for
+    router-based sticky routing, which is unsupported in HAProxy mode. Dynamic
+    LoRA only needs per-replica LRU caching of ``DiskMultiplexConfig`` payloads.
+    """
+
+    def __init__(
+        self,
+        load_fn: Callable[[str], Awaitable[DiskMultiplexConfig]],
+        max_num_models: int,
+    ):
+        self._load_fn = load_fn
+        self._max_num_models = max_num_models
+        self._models: OrderedDict[str, DiskMultiplexConfig] = OrderedDict()
+        self._lock = asyncio.Lock()
+
+    async def _unload_lru(self) -> None:
+        model_id, model = self._models.popitem(last=False)
+        logger.debug("Unloading LoRA disk config for model '%s'.", model_id)
+        if hasattr(model, "__del__"):
+            if not inspect.iscoroutinefunction(model.__del__):
+                await asyncio.get_running_loop().run_in_executor(None, model.__del__)
+            else:
+                await model.__del__()
+            model.__del__ = lambda _: None  # type: ignore[method-assign, assignment]
+
+    async def get(self, model_id: str) -> DiskMultiplexConfig:
+        if not isinstance(model_id, str):
+            raise TypeError("The model ID must be a string.")
+        if not model_id:
+            raise ValueError("The model ID cannot be empty.")
+
+        if model_id in self._models:
+            model = self._models.pop(model_id)
+            self._models[model_id] = model
+            return model
+
+        async with self._lock:
+            if model_id in self._models:
+                model = self._models.pop(model_id)
+                self._models[model_id] = model
+                return model
+            while (
+                self._max_num_models > 0 and len(self._models) >= self._max_num_models
+            ):
+                await self._unload_lru()
+
+            logger.debug("Loading LoRA disk config for model '%s'.", model_id)
+            load_start = time.time()
+            self._models[model_id] = await self._load_fn(model_id)
+            logger.debug(
+                "Successfully loaded LoRA disk config for model '%s' in %.1fms.",
+                model_id,
+                (time.time() - load_start) * 1000.0,
+            )
+            return self._models[model_id]
+
+
 class LLMServer(LLMServerProtocol):
     """This is a shim layer to decouple the LLM engine from the ingress
     deployment.
@@ -106,7 +171,7 @@ class LLMServer(LLMServerProtocol):
     It has a very similar API as the engine. Almost all of the abstractions are
     implemented by the engine. This class just a little bit more logic on top:
 
-    1. Logic for serve multiplexing (e.g. LoRA loading).
+    1. LRU-cached LoRA disk loading (HAProxy-safe; does not use @serve.multiplexed).
     2. Request id handing from serve context.
     3. Batching in case of streaming (only for chat and completions).
     4. Telemetry reporting.
@@ -198,7 +263,7 @@ class LLMServer(LLMServerProtocol):
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None
     ):
-        """Initialize the multiplex loader."""
+        """Initialize LoRA disk loading and LRU cache (no @serve.multiplexed)."""
 
         model_downloader_cls = model_downloader_cls or LoraModelLoader
         mx_config = self._llm_config.multiplex_config()
@@ -209,15 +274,17 @@ class LLMServer(LLMServerProtocol):
                 max_tries=mx_config.max_download_tries,
             )
 
-            async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:
+            async def _load_raw(lora_model_id: str) -> DiskMultiplexConfig:
                 return await model_downloader.load_model_from_config(
                     lora_model_id=lora_model_id,
                     llm_config=self._llm_config,
                 )
 
-            self._load_model = serve.multiplexed(
-                max_num_models_per_replica=mx_config.max_num_models_per_replica
-            )(_load_model)
+            self._lora_disk_cache = _LoraDiskModelLRUCache(
+                _load_raw,
+                max_num_models=mx_config.max_num_models_per_replica,
+            )
+            self._load_model = self._lora_disk_cache.get
         else:
 
             async def _load_model(lora_model_id: str) -> DiskMultiplexConfig:

@@ -660,6 +660,13 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# When "1", deployments using @serve.multiplexed fail at deploy time regardless of
+# proxy mode. Default "0" allows multiplexed deployments with a deprecation warning
+# unless HAProxy is enabled (which fails immediately).
+RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING = (
+    os.environ.get("RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING", "0") == "1"
+)
+
 # Feature flag to include client IP address in HTTP access logs.
 # Off by default for privacy; set to "1" to enable.
 RAY_SERVE_LOG_CLIENT_ADDRESS = (

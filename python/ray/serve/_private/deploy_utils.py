@@ -1,4 +1,5 @@
 import hashlib
+import inspect
 import json
 import logging
 import time
@@ -8,11 +9,39 @@ import ray
 import ray.util.serialization_addons
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.schema import ServeApplicationSchema
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def _deployment_uses_multiplexed(deployment_def) -> bool:
+    """Check if a deployment class or function uses @serve.multiplexed.
+
+    Multiplexing is not supported on ingress deployments. The multiplexed
+    decorator sets _serve_multiplexed=True on wrapped functions.
+    """
+    if not callable(deployment_def):
+        return False
+    if getattr(deployment_def, "_serve_multiplexed", False):
+        return True
+    if inspect.isclass(deployment_def):
+        for name in dir(deployment_def):
+            if name.startswith("__") and name.endswith("__"):
+                continue
+            try:
+                attr = getattr(deployment_def, name)
+                if getattr(attr, "_serve_multiplexed", False):
+                    return True
+            except (AttributeError, TypeError):
+                continue
+    return False
 
 
 def get_deploy_args(
@@ -37,6 +66,44 @@ def get_deploy_args(
         deployment_config = DeploymentConfig.model_validate(deployment_config)
     elif not isinstance(deployment_config, DeploymentConfig):
         raise TypeError("config must be a DeploymentConfig or a dictionary.")
+
+    deployment_def = replica_config.deployment_def
+    uses_multiplexed = _deployment_uses_multiplexed(deployment_def)
+
+    if ingress and RAY_SERVE_ENABLE_DIRECT_INGRESS:
+        if uses_multiplexed:
+            # HAProxy mode turns on direct ingress; prefer the HAProxy-specific error
+            # below so callers/tests see RAY_SERVE_ENABLE_HA_PROXY when applicable.
+            if not RAY_SERVE_ENABLE_HA_PROXY:
+                raise ValueError(
+                    "Model multiplexing (@serve.multiplexed) is not supported on "
+                    "ingress deployments when direct ingress is enabled. "
+                    "Multiplexing should only be used on downstream replicas composed "
+                    "via DeploymentHandle. The ingress is the routing entry point, "
+                    "not a model-serving leaf."
+                )
+
+    if uses_multiplexed:
+        if RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING:
+            raise ValueError(
+                "Model multiplexing (@serve.multiplexed) is disallowed because "
+                "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING=1 is set. "
+                "Remove multiplexed model loaders from your deployments or unset "
+                "this variable."
+            )
+        if RAY_SERVE_ENABLE_HA_PROXY:
+            raise ValueError(
+                "Model multiplexing (@serve.multiplexed) is not supported when "
+                "RAY_SERVE_ENABLE_HA_PROXY=1. Disable HAProxy or remove "
+                "@serve.multiplexed from your deployments."
+            )
+        logger.warning(
+            "This deployment uses @serve.multiplexed. Model multiplexing will be "
+            "disallowed in a future Ray Serve release. If you rely on this feature, "
+            "please reach out to the Ray team on GitHub or the Ray Slack. To fail "
+            "deployments that use multiplexing immediately, set "
+            "RAY_SERVE_STRICT_DISALLOW_MODEL_MULTIPLEXING=1."
+        )
 
     deployment_config.version = version
 
