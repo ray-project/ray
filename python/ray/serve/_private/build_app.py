@@ -58,9 +58,9 @@ class BuiltApplication:
     # them in other deployments' init args/kwargs.
     deployment_handles: Dict[str, DeploymentHandle]
     external_scaler_enabled: bool
-    # Name of the ingress request router deployment for ingress bypass (if any).
+    # Optional ingress request router deployment for ingress bypass mode.
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
-    ingress_request_router_deployment_name: Optional[str] = None
+    ingress_request_router_deployment: Optional[Deployment] = None
 
 
 def _make_deployment_handle_default(
@@ -107,7 +107,7 @@ def build_app(
         default_runtime_env=default_runtime_env,
         make_deployment_handle=make_deployment_handle,
     )
-    ingress_request_router_deployment_name = None
+    ingress_request_router_deployment = None
     if app._ingress_request_router is not None:
         ingress_request_router_deployments = _build_app_recursive(
             app._ingress_request_router,
@@ -117,10 +117,14 @@ def build_app(
             default_runtime_env=default_runtime_env,
             make_deployment_handle=make_deployment_handle,
         )
-        deployments.extend(ingress_request_router_deployments)
-        ingress_request_router_deployment_name = deployment_names[
-            app._ingress_request_router
-        ]
+        if len(ingress_request_router_deployments) != 1:
+            raise ValueError(
+                "Expected the ingress_request_router attachment to build into "
+                f"exactly one deployment, got {len(ingress_request_router_deployments)}."
+            )
+        ingress_request_router_deployment = ingress_request_router_deployments[0]
+
+    main_deployment_names = {deployment.name for deployment in deployments}
 
     return BuiltApplication(
         name=name,
@@ -129,10 +133,12 @@ def build_app(
         ingress_deployment_name=deployment_names[app],
         deployments=deployments,
         deployment_handles={
-            deployment_names[app]: handle for app, handle in handles.items()
+            deployment_names[app]: handle
+            for app, handle in handles.items()
+            if deployment_names[app] in main_deployment_names
         },
         external_scaler_enabled=external_scaler_enabled,
-        ingress_request_router_deployment_name=ingress_request_router_deployment_name,
+        ingress_request_router_deployment=ingress_request_router_deployment,
     )
 
 

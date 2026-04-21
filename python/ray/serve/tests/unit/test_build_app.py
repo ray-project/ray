@@ -569,11 +569,10 @@ def test_build_app_with_ingress_request_router_peer():
         make_deployment_handle=FakeDeploymentHandle.from_deployment,
     )
 
-    assert sorted(deployment.name for deployment in built_app.deployments) == [
-        "IngressRequestRouter",
-        "Ingress",
-    ]
-    assert built_app.ingress_request_router_deployment_name == "IngressRequestRouter"
+    assert [deployment.name for deployment in built_app.deployments] == ["Ingress"]
+    assert set(built_app.deployment_handles) == {"Ingress"}
+    assert built_app.ingress_request_router_deployment is not None
+    assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
 
 
 def test_imperative_ingress_check_ignores_ingress_request_router_peer():

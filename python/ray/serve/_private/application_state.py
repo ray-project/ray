@@ -1609,18 +1609,22 @@ def build_serve_application(
             application_serialized_autoscaling_policy_def = _get_serialized_def(
                 application_autoscaling_policy_function
             )
-        for deployment in built_app.deployments:
-            is_ingress_request_router = (
-                built_app.ingress_request_router_deployment_name is not None
-                and deployment.name == built_app.ingress_request_router_deployment_name
-            )
+        deployable_deployments = list(built_app.deployments)
+        if built_app.ingress_request_router_deployment is not None:
+            deployable_deployments.append(built_app.ingress_request_router_deployment)
+
+        for deployment in deployable_deployments:
             if (
-                not is_ingress_request_router
+                deployment in built_app.deployments
                 and inspect.isclass(deployment.func_or_class)
                 and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
             ):
                 num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
+            is_ingress_request_router = (
+                built_app.ingress_request_router_deployment is not None
+                and deployment.name == built_app.ingress_request_router_deployment.name
+            )
 
             if deployment._deployment_config.deployment_actors:
                 for cfg in deployment._deployment_config.deployment_actors:

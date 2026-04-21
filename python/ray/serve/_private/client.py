@@ -339,14 +339,18 @@ class ServeControllerClient:
         name_to_application_args = {}
         for app in built_apps:
             deployment_args_list = []
-            for deployment in app.deployments:
+            deployments_to_deploy = list(app.deployments)
+            if app.ingress_request_router_deployment is not None:
+                deployments_to_deploy.append(app.ingress_request_router_deployment)
+
+            for deployment in deployments_to_deploy:
                 if deployment.logging_config is None and app.logging_config:
                     deployment = deployment.options(logging_config=app.logging_config)
 
                 is_ingress = deployment.name == app.ingress_deployment_name
                 is_ingress_request_router = (
-                    app.ingress_request_router_deployment_name is not None
-                    and deployment.name == app.ingress_request_router_deployment_name
+                    app.ingress_request_router_deployment is not None
+                    and deployment.name == app.ingress_request_router_deployment.name
                 )
                 deployment_args = get_deploy_args(
                     deployment.name,
@@ -481,14 +485,8 @@ class ServeControllerClient:
         for app in built_apps:
             num_ingress_deployments = 0
             for deployment in app.deployments:
-                is_ingress_request_router = (
-                    app.ingress_request_router_deployment_name is not None
-                    and deployment.name == app.ingress_request_router_deployment_name
-                )
-                if (
-                    not is_ingress_request_router
-                    and inspect.isclass(deployment.func_or_class)
-                    and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
+                if inspect.isclass(deployment.func_or_class) and issubclass(
+                    deployment.func_or_class, ASGIAppReplicaWrapper
                 ):
                     num_ingress_deployments += 1
 
