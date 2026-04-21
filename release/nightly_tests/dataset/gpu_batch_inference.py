@@ -54,11 +54,7 @@ def main(args):
 
     print(f"Running GPU batch prediction with data from {data_url}")
 
-    # The preprocessing UDF converts images from uint8 to float64, which increases
-    # memory usage 8x. Each processed image is about 1.5 MiB (256×256×3×8 bytes). Since
-    # our target block size is 128 MiB, we set the batch size to around 90 images (128
-    # MiB / 1.5) to avoid running out of memory.
-    PREPROCESS_BATCH_SIZE = 90
+    PREPROCESS_BATCH_SIZE = "auto"
     # Largest batch that can fit on a T4.
     INFERENCE_BATCH_SIZE = 900
 
