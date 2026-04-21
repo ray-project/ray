@@ -947,6 +947,14 @@ class DeploymentActorConfig(BaseModel):
     deleted or serve.shutdown() is called. They are shared by all replicas of
     a deployment.
 
+    The controller periodically health-checks each deployment-scoped actor (via Ray's
+    built-in ``__ray_ready__`` task). If an actor fails repeatedly or its worker dies,
+    the controller stops it and starts a new instance. Ray actor auto-restart is not
+    used (``max_restarts=0``). An ``ActorHandle`` obtained before recreation may stay
+    bound to the dead instance; call :func:`ray.serve.get_deployment_actor` again (or
+    resolve by name with ``ray.get_actor``) instead of caching a handle across
+    potential failures.
+
     Example:
         .. code-block:: python
 

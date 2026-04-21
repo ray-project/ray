@@ -6,7 +6,17 @@ import queue
 import time
 from contextlib import asynccontextmanager
 from functools import wraps
-from typing import Any, AsyncIterator, Callable, Coroutine, Dict, Optional, Tuple, Union
+from typing import (
+    Any,
+    AsyncIterator,
+    Callable,
+    Coroutine,
+    Dict,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray import cloudpickle
@@ -375,6 +385,20 @@ class LocalRouter(Router):
             "dispatch is not supported in local testing mode. "
             "Use assign_request instead."
         )
+
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        """Broadcast in local testing mode calls the single local replica."""
+        result_future = self.assign_request(
+            request_meta, *request_args, **request_kwargs
+        )
+        # In local testing mode there is only one replica.
+        replica_result = result_future.result()
+        return [replica_result]
 
     def shutdown(self):
         noop_future = concurrent.futures.Future()

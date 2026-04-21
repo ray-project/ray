@@ -22,6 +22,7 @@
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/scheduling/policy/scheduling_context.h"
 #include "ray/raylet/scheduling/policy/scheduling_options.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 
@@ -38,6 +39,7 @@ class GcsResourceSchedulerTest : public ::testing::Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         fake_gauge_,
+        clock_,
         /*is_local_node_with_raylet=*/false);
   }
 
@@ -105,8 +107,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     for (auto &request : requests) {
       resource_request_list.emplace_back(&request);
     }
-    const auto &result1 =
-        cluster_resource_scheduler_->Schedule(resource_request_list, scheduling_options);
+    const auto &result1 = cluster_resource_scheduler_->SchedulePlacementGroup(
+        resource_request_list, scheduling_options);
     ASSERT_TRUE(result1.status.IsSuccess());
     ASSERT_EQ(result1.selected_nodes.size(), 3);
 
@@ -123,8 +125,8 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     for (auto &request : requests) {
       resource_request_list.emplace_back(&request);
     }
-    const auto &result2 =
-        cluster_resource_scheduler_->Schedule(resource_request_list, scheduling_options);
+    const auto &result2 = cluster_resource_scheduler_->SchedulePlacementGroup(
+        resource_request_list, scheduling_options);
     ASSERT_TRUE(result2.status.IsFailed());
     ASSERT_EQ(result2.selected_nodes.size(), 0);
 
@@ -178,13 +180,14 @@ class GcsResourceSchedulerTest : public ::testing::Test {
     for (auto &request : requests) {
       resource_request_list.emplace_back(&request);
     }
-    auto result =
-        cluster_resource_scheduler_->Schedule(resource_request_list, scheduling_options);
+    auto result = cluster_resource_scheduler_->SchedulePlacementGroup(
+        resource_request_list, scheduling_options);
     ASSERT_TRUE(result.status.IsSuccess());
     ASSERT_EQ(result.selected_nodes.size(), resources_list.size());
   }
   instrumented_io_context io_context_;
   ray::observability::FakeGauge fake_gauge_;
+  ray::Clock clock_;
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 };
 
@@ -229,7 +232,7 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   auto bundle_locations = std::make_shared<BundleLocations>();
   BundleID bundle_id{PlacementGroupID::Of(JobID::FromInt(1)), 0};
   bundle_locations->emplace(bundle_id, std::make_pair(node_id, nullptr));
-  auto result1 = cluster_resource_scheduler_->Schedule(
+  auto result1 = cluster_resource_scheduler_->SchedulePlacementGroup(
       resource_request_list,
       SchedulingOptions::BundleStrictSpread(
           std::make_unique<BundleSchedulingContext>(bundle_locations)));
@@ -237,7 +240,7 @@ TEST_F(GcsResourceSchedulerTest, TestNodeFilter) {
   ASSERT_EQ(result1.selected_nodes.size(), 0);
 
   // Scheduling succeeded.
-  auto result2 = cluster_resource_scheduler_->Schedule(
+  auto result2 = cluster_resource_scheduler_->SchedulePlacementGroup(
       resource_request_list,
       SchedulingOptions::BundleStrictSpread(
           std::make_unique<BundleSchedulingContext>(nullptr)));
@@ -266,7 +269,7 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
   for (auto &request : requests) {
     resource_request_list.emplace_back(&request);
   }
-  auto result1 = cluster_resource_scheduler_->Schedule(
+  auto result1 = cluster_resource_scheduler_->SchedulePlacementGroup(
       resource_request_list, SchedulingOptions::BundleStrictSpread());
   ASSERT_TRUE(result1.status.IsInfeasible());
   ASSERT_EQ(result1.selected_nodes.size(), 0);
@@ -287,7 +290,7 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
   for (auto &request : requests) {
     resource_request_list.emplace_back(&request);
   }
-  const auto &result2 = cluster_resource_scheduler_->Schedule(
+  const auto &result2 = cluster_resource_scheduler_->SchedulePlacementGroup(
       resource_request_list, SchedulingOptions::BundleStrictPack());
   ASSERT_TRUE(result2.status.IsInfeasible());
   ASSERT_EQ(result2.selected_nodes.size(), 0);
@@ -298,8 +301,3 @@ TEST_F(GcsResourceSchedulerTest, TestSchedulingResultStatusForStrictStrategy) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

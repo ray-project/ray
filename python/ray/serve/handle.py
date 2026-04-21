@@ -7,10 +7,12 @@ from contextlib import asynccontextmanager
 from typing import (
     Any,
     AsyncIterator,
+    Coroutine,
     Dict,
     Generator,
     Generic,
     Iterator,
+    List,
     Optional,
     Tuple,
     TypeVar,
@@ -810,6 +812,233 @@ class DeploymentResponseGenerator(_DeploymentResponseBase[R]):
         return replica_result.to_object_ref_gen()
 
 
+@PublicAPI(stability="alpha")
+class DeploymentBroadcastResponse:
+    """Wraps the results of a broadcast call to all replicas of a deployment.
+
+    Collects results from all replicas in parallel. Results are collected
+    from every replica that was live at the time ``broadcast()`` was called;
+    replicas added after the call are not included.
+
+    Example:
+
+    .. code-block:: python
+
+        handle = serve.get_deployment_handle("MyDeployment", "app")
+        response = handle.broadcast("reset_cache")
+        results = response.results()
+
+    """
+
+    def __init__(
+        self,
+        coro: Coroutine[Any, Any, List[ReplicaResult]],
+        loop: Optional[asyncio.AbstractEventLoop],
+    ):
+        """Initialize a DeploymentBroadcastResponse.
+
+        Args:
+            coro: Coroutine that resolves to the list of replica results
+                (i.e. ``Router.broadcast(...)``).
+            loop: The router's event loop. ``None`` in local testing mode.
+        """
+        self._coro = coro
+        self._loop = loop
+        self._replica_results: Optional[List[ReplicaResult]] = None
+        # Cached future so the single-use coroutine is only scheduled once.
+        # A retry after timeout reuses this future instead of re-scheduling.
+        self._scheduled_future: Optional[concurrent.futures.Future] = None
+
+    def _ensure_scheduled(self) -> concurrent.futures.Future:
+        """Schedule the coroutine on the router's loop exactly once."""
+        if self._scheduled_future is None:
+            assert self._loop is not None, "Cannot schedule without an event loop."
+            self._scheduled_future = asyncio.run_coroutine_threadsafe(
+                self._coro, self._loop
+            )
+        return self._scheduled_future
+
+    def _fetch_replica_results_sync(
+        self, timeout_s: Optional[float] = None
+    ) -> List[ReplicaResult]:
+        if self._replica_results is None:
+            if self._loop is None or self._loop.is_closed():
+                # Local testing mode: no running event loop.
+                # Cache the outcome in _scheduled_future so the single-use
+                # coroutine is never re-entered on a subsequent call.
+                if self._scheduled_future is None:
+                    cached_future: concurrent.futures.Future = (
+                        concurrent.futures.Future()
+                    )
+                    tmp_loop = asyncio.new_event_loop()
+                    try:
+                        cached_future.set_result(
+                            tmp_loop.run_until_complete(self._coro)
+                        )
+                    except Exception as e:
+                        cached_future.set_exception(e)
+                    finally:
+                        tmp_loop.close()
+                    self._scheduled_future = cached_future
+                self._replica_results = self._scheduled_future.result(timeout=timeout_s)
+            else:
+                self._replica_results = self._ensure_scheduled().result(
+                    timeout=timeout_s
+                )
+        return self._replica_results
+
+    async def _fetch_replica_results_async(self) -> List[ReplicaResult]:
+        if self._replica_results is None:
+            running_loop = None
+            try:
+                running_loop = asyncio.get_running_loop()
+            except RuntimeError:
+                pass
+
+            if self._loop is not None and running_loop is self._loop:
+                # Already running inside the router's event loop — just await.
+                self._replica_results = await self._coro
+            elif self._loop is not None:
+                # Different loop (router runs in a separate thread).
+                self._replica_results = await asyncio.wrap_future(
+                    self._ensure_scheduled()
+                )
+            else:
+                # No event loop (local testing mode).
+                self._replica_results = await self._coro
+        assert self._replica_results is not None
+        return self._replica_results
+
+    def results(
+        self,
+        *,
+        timeout_s: Optional[float] = None,
+        return_exceptions: bool = False,
+    ) -> List[Any]:
+        """Fetch results from all replicas synchronously.
+
+        Returns a list of results, one per replica. The order of results is
+        not guaranteed.
+
+        Args:
+            timeout_s: Timeout in seconds. If ``None``, blocks indefinitely.
+            return_exceptions: If ``False`` (default), raise immediately on the
+                first replica exception. If ``True``, collect exceptions in the
+                returned list instead of raising.
+
+        Returns:
+            A list of results, one per replica.
+
+        Raises:
+            TimeoutError: If the timeout is exceeded.
+        """
+        if is_running_in_asyncio_loop():
+            raise RuntimeError(
+                "Sync methods should not be called from within an `asyncio` event "
+                "loop. Use `await response.results_async()` instead."
+            )
+        if timeout_s is not None and timeout_s < 0:
+            raise ValueError("timeout_s must be None or non-negative.")
+
+        start_time_s = time.time()
+        try:
+            replica_results = self._fetch_replica_results_sync(timeout_s)
+        except concurrent.futures.TimeoutError:
+            raise TimeoutError("Timed out waiting for broadcast results.") from None
+
+        def _fetch_one(rr: ReplicaResult):
+            remaining = calculate_remaining_timeout(
+                timeout_s=timeout_s,
+                start_time_s=start_time_s,
+                curr_time_s=time.time(),
+            )
+            return rr.get(remaining)
+
+        executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=max(1, len(replica_results))
+        )
+        futures = [executor.submit(_fetch_one, rr) for rr in replica_results]
+
+        collected = []
+        first_error = None
+        for fut in futures:
+            try:
+                collected.append(fut.result())
+            except Exception as e:
+                if return_exceptions:
+                    collected.append(e)
+                else:
+                    first_error = e
+                    break
+
+        # Shut down without waiting so we don't block on slow replicas
+        # after an error has already been observed.
+        executor.shutdown(wait=first_error is None)
+
+        if first_error is not None:
+            raise first_error
+
+        return collected
+
+    async def results_async(
+        self,
+        *,
+        timeout_s: Optional[float] = None,
+        return_exceptions: bool = False,
+    ) -> List[Any]:
+        """Fetch results from all replicas asynchronously.
+
+        Args:
+            timeout_s: Timeout in seconds for the full broadcast collection.
+                If ``None``, waits indefinitely.
+            return_exceptions: If ``False`` (default), raise on replica
+                exception. If ``True``, collect exceptions in the returned list
+                instead of raising.
+
+        Returns:
+            A list of results, one per replica.
+
+        Raises:
+            TimeoutError: If the timeout is exceeded.
+        """
+        if timeout_s is not None and timeout_s < 0:
+            raise ValueError("timeout_s must be None or non-negative.")
+
+        start_time_s = time.time()
+        if timeout_s is not None:
+            try:
+                replica_results = await asyncio.wait_for(
+                    self._fetch_replica_results_async(),
+                    timeout=timeout_s,
+                )
+            except asyncio.TimeoutError:
+                raise TimeoutError("Timed out waiting for broadcast results.") from None
+        else:
+            replica_results = await self._fetch_replica_results_async()
+
+        gather_coro = asyncio.gather(
+            *[rr.get_async() for rr in replica_results],
+            return_exceptions=return_exceptions,
+        )
+        remaining_timeout_s = calculate_remaining_timeout(
+            timeout_s=timeout_s,
+            start_time_s=start_time_s,
+            curr_time_s=time.time(),
+        )
+        if remaining_timeout_s is not None:
+            try:
+                return list(
+                    await asyncio.wait_for(gather_coro, timeout=remaining_timeout_s)
+                )
+            except asyncio.TimeoutError:
+                raise TimeoutError("Timed out waiting for broadcast results.") from None
+
+        return list(await gather_coro)
+
+    def __repr__(self) -> str:
+        return "DeploymentBroadcastResponse()"
+
+
 @PublicAPI(stability="stable")
 class DeploymentHandle(_DeploymentHandleBase[T]):
     """A handle used to make requests to a deployment at runtime.
@@ -1018,3 +1247,75 @@ class DeploymentHandle(_DeploymentHandleBase[T]):
                 request_metadata,
                 _is_router_running_in_separate_loop=self._is_router_running_in_separate_loop(),
             )
+
+    def broadcast(
+        self,
+        method_name: str,
+        *args,
+        **kwargs,
+    ) -> DeploymentBroadcastResponse:
+        """Call a method on all replicas of this deployment in parallel.
+
+        Unlike ``remote()``, which routes the request to a single replica
+        via load balancing, ``broadcast()`` fans the call out to **every**
+        running replica concurrently.
+
+        This is useful for coordinated operations such as cache resets,
+        configuration updates, or state synchronization across replicas.
+
+        .. warning::
+
+            ``broadcast()`` bypasses per-replica backpressure
+            (``max_queued_requests`` is not enforced). It is intended for
+            **infrequent control-plane operations** such as cache
+            invalidation, configuration reload, or state synchronisation
+            across replicas. Do not call it on the hot request path — doing
+            so will send one request per replica on every call, with no
+            rate limiting.
+
+        Example:
+
+        .. code-block:: python
+
+            handle = serve.get_deployment_handle("MyDeployment", "app")
+
+            # Call reset_cache on every replica and collect results.
+            response = handle.broadcast("reset_cache")
+            results = response.results()
+
+            # Pass arguments to the broadcast call.
+            response = handle.broadcast("update_config", new_value=42)
+            results = response.results()
+
+        Args:
+            method_name: The name of the method to call on each replica.
+            *args: Positional arguments passed to the method.
+            **kwargs: Keyword arguments passed to the method.
+
+        Returns:
+            A :class:`DeploymentBroadcastResponse` that can be used to
+            collect results from all replicas.
+        """
+        if not self.is_initialized:
+            self._init()
+
+        metadata = serve._private.default_impl.get_request_metadata(
+            self.init_options,
+            self.handle_options.copy_and_update(
+                method_name=method_name,
+                stream=False,
+            ),
+        )
+
+        if self._router is None:
+            raise RuntimeError("Router is not initialized")
+
+        self.request_counter.inc(
+            tags={
+                "route": metadata.route,
+                "application": metadata.app_name,
+            }
+        )
+
+        coro = self._router.broadcast(metadata, *args, **kwargs)
+        return DeploymentBroadcastResponse(coro, self._router.event_loop)
