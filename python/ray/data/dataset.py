@@ -7500,6 +7500,21 @@ class Schema:
             elif isinstance(dtype, pd.StringDtype):
                 # StringDtype is not a BaseMaskedDtype, handle separately
                 return pa.string()
+            elif isinstance(dtype, pd.CategoricalDtype):
+                if dtype.categories is None:
+                    v_type = pa.string()
+                else:
+                    cat_dtype = dtype.categories.dtype
+                    if cat_dtype == np.object_ or isinstance(cat_dtype, pd.StringDtype):
+                        v_type = pa.string()
+                    else:
+                        v_type = pa.from_numpy_dtype(cat_dtype)
+
+                return pa.dictionary(
+                    index_type=pa.int8(),
+                    value_type=v_type,
+                    ordered=dtype.ordered,
+                )
             elif isinstance(dtype, BaseMaskedDtype):
                 dtype = dtype.numpy_dtype
             return pa.from_numpy_dtype(dtype)
