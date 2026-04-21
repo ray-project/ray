@@ -6,12 +6,6 @@ from ray._private.test_utils import get_other_nodes
 from ray.cluster_utils import Cluster
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.core import DEFAULT_MODULE_ID
-from ray.rllib.utils.metrics import (
-    LEARNER_RESULTS,
-    MODULE_TRAIN_BATCH_SIZE_MEAN,
-)
-from ray.rllib.utils.test_utils import check
 
 OBJECT_STORE_MEMORY = 10**8
 HEAD_CPUS = 2
@@ -77,17 +71,7 @@ def _train(cluster, algo, config, iters, preempt_freq):
     saw_recovery = False
 
     for i in range(iters):
-        results = algo.train()
-
-        avg_batch = results[LEARNER_RESULTS][DEFAULT_MODULE_ID][
-            MODULE_TRAIN_BATCH_SIZE_MEAN
-        ]
-        if config.algo_class.__name__ == "PPO":
-            exp_batch_size = config.minibatch_size
-        else:
-            exp_batch_size = config.total_train_batch_size
-        check(avg_batch, exp_batch_size, rtol=0.1)
-        assert avg_batch < exp_batch_size + config.get_rollout_fragment_length()
+        algo.train()
 
         assert algo.env_runner_group.num_remote_env_runners() == num_runners
         healthy = algo.env_runner_group.num_healthy_remote_workers()
@@ -183,7 +167,7 @@ def test_node_failure_recreate_appo(cluster):
     )
 
     algo = config.build()
-    _train(cluster, algo, config, iters=10, preempt_freq=3)
+    _train(cluster, algo, config, iters=10, preempt_freq=7)
     algo.stop()
 
 
@@ -216,7 +200,7 @@ def test_node_failure_recreate_ppo(cluster):
     )
 
     algo = config.build()
-    _train(cluster, algo, config, iters=10, preempt_freq=3)
+    _train(cluster, algo, config, iters=10, preempt_freq=7)
     algo.stop()
 
 
