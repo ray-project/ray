@@ -106,11 +106,9 @@ depsets:
       - python/requirements/data/pyarrow-nightly.txt
     output: python/deplocks/ci/data-pyarrow-nightly-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
-      - --extra-index-url https://pypi.fury.io/arrow-nightlies/
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
       - --unsafe-package ray
-      - --upgrade-package pyarrow
     build_arg_sets:
       - py310
 
