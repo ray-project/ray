@@ -53,6 +53,8 @@ class ExecutionPlan:
         """
         from ray.data._internal.execution.streaming_executor import StreamingExecutor
 
+        # TODO (kyuds): when this moves to `Dataset`, we should increment _run_index
+        # here.
         return StreamingExecutor(self._context, dataset_id)
 
     @omit_traceback_stdout
