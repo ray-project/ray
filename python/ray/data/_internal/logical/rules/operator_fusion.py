@@ -44,8 +44,8 @@ __all__ = [
 ]
 
 
-# Scheduling strategy can be inherited from upstream operator if not specified.
-INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+# Scheduling strategy and label selector can be inherited from upstream operator if not specified.
+INHERITABLE_REMOTE_ARGS = ["scheduling_strategy", "label_selector"]
 
 
 logger = logging.getLogger(__name__)
@@ -747,6 +747,7 @@ def are_remote_args_compatible(
 
     if prev_args != remote_args:
         return False
+
     return True
 
 

@@ -134,7 +134,6 @@ from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -5721,10 +5720,12 @@ class Dataset:
                     "If you're using Ray Client, Ray Data won't schedule write tasks "
                     "on the driver's node."
                 )
-            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            )
+            label_selector = ray_remote_args.get("label_selector", {})
+            label_selector[
+                ray._raylet.RAY_NODE_ID_KEY
+            ] = ray.get_runtime_context().get_node_id()
+            ray_remote_args["label_selector"] = label_selector
+            ray_remote_args.pop("scheduling_strategy", None)
 
             _validate_head_node_resources_for_local_scheduling(
                 ray_remote_args,

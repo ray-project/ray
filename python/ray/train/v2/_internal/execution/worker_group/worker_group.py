@@ -74,7 +74,6 @@ from ray.train.v2.api.config import ScalingConfig
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 from ray.util.tpu import (
@@ -304,10 +303,9 @@ class WorkerGroup(ExecutionGroup):
 
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=ray.get_runtime_context().get_node_id(),
-                    soft=False,
-                )
+                label_selector={
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                }
             ).remote(
                 timeout_s=self._collective_timeout_s,
                 warn_interval_s=self._collective_warn_interval_s,

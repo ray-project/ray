@@ -20,10 +20,6 @@ if TYPE_CHECKING:
     )
 
 
-# Scheduling strategy can be inherited from prev operator if not specified.
-INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
-
-
 logger = logging.getLogger(__name__)
 
 
