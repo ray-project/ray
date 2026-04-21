@@ -738,6 +738,23 @@ def test_report_validation_fn_resumption_checkpoint_status(tmp_path):
     assert result.metrics == {"score": 3}
 
 
+def test_multiple_workers_return_value_only_worker_zero():
+    """Check that the `return_value` is of worker 0."""
+
+    def train_fn():
+        return (
+            ray.train.get_context().get_world_size(),
+            ray.train.get_context().get_world_rank(),
+        )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=3),
+    )
+    result = trainer.fit()
+    assert result.return_value == (3, 0)
+
+
 def test_report_checkpoint_upload_fn(tmp_path):
     def checkpoint_upload_fn(checkpoint, checkpoint_dir_name):
         full_checkpoint_path = (

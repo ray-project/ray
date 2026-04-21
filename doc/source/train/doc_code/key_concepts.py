@@ -17,6 +17,8 @@ def train_fn(config):
                 checkpoint=ray.train.Checkpoint.from_directory(temp_checkpoint_dir),
             )
 
+    return {"total loss": 3}
+
 
 trainer = DataParallelTrainer(
     train_fn, scaling_config=ray.train.ScalingConfig(num_workers=2)
@@ -69,6 +71,11 @@ print("Observed metrics:", result.metrics)
 df = result.metrics_dataframe
 print("Minimum loss", min(df["loss"]))
 # __result_dataframe_end__
+
+
+# __result_return_value_start__
+print("Returned data", result.return_value)
+# __result_return_value_end__
 
 
 # __result_checkpoint_start__
