@@ -131,7 +131,7 @@ python-dateutil==2.8.2
 python-dotenv==1.2.1
 pytz==2022.7.1
 PyYAML==6.0.3
-ray @ file:///home/ray/ray-2.55.0-cp310-cp310-manylinux2014_x86_64.whl#sha256=2cf8c2a3f6cd947934cd75d99cf4b5615228fe6c0b42faa7a6926733a82c2467
+ray @ file:///home/ray/ray-2.55.1-cp310-cp310-manylinux2014_x86_64.whl#sha256=bb49fbbe53a1d931e1f92d17f9271338f0b738885f8f70b7f531aa33f019d8af
 referencing==0.36.2
 requests==2.32.5
 rich==13.7.1
