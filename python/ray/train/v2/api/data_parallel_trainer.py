@@ -149,7 +149,7 @@ class DataParallelTrainer:
                 "https://github.com/ray-project/ray/issues/49454"
             )
 
-    def _get_train_func(self) -> Callable[[], None]:
+    def _get_train_func(self) -> Callable[[], Any]:
         return construct_train_func(
             self.train_loop_per_worker,
             config=self.train_loop_config,
