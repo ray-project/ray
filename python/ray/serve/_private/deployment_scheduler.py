@@ -46,9 +46,23 @@ class SpreadDeploymentSchedulingPolicy:
 
 @total_ordering
 class Resources(dict):
+    """Base for per-node availability vs replica demand resource maps.
+
+    Do not instantiate directly; use ``AvailableNodeResources`` or
+    ``RequestedResources``.
+    """
+
     # Custom resource priority from environment variable
     CUSTOM_PRIORITY: List[str] = RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES
     EPSILON = 1e-9
+
+    def __new__(cls, *args, **kwargs):
+        if cls is Resources:
+            raise TypeError(
+                "Resources cannot be instantiated directly; use "
+                "AvailableNodeResources or RequestedResources."
+            )
+        return super().__new__(cls)
 
     def __eq__(self, other):
         keys = set(self.keys()) | set(other.keys())
@@ -70,6 +84,11 @@ class Resources(dict):
         keys = set(self.keys()) | set(other.keys())
         kwargs = {key: self.get(key) - other.get(key) for key in keys}
         return type(self)(kwargs)
+
+    def can_fit(self, other):
+        keys = set(self.keys()) | set(other.keys())
+        # We add a small epsilon to avoid floating point precision issues.
+        return all(self.get(k) + self.EPSILON >= other.get(k) for k in keys)
 
     def __lt__(self, other):
         """Determines priority when sorting a list of SoftResources.
@@ -115,7 +134,6 @@ class Resources(dict):
         return False
 
 
-@total_ordering
 class AvailableNodeResources(Resources):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -136,13 +154,7 @@ class AvailableNodeResources(Resources):
         # Otherwise by default there is 0 of this resource
         return 0
 
-    def can_fit(self, other):
-        keys = set(self.keys()) | set(other.keys())
-        # We add a small epsilon to avoid floating point precision issues.
-        return all(self.get(k) + self.EPSILON >= other.get(k) for k in keys)
 
-
-@total_ordering
 class RequestedResources(Resources):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -270,12 +282,15 @@ class DeploymentSchedulingInfo:
         ):
             return sum(self.placement_group_bundles, RequestedResources())
         else:
-            required = self.actor_resources
+            if self.actor_resources is None:
+                required = RequestedResources()
+            else:
+                required = RequestedResources(self.actor_resources)
 
             # Using implicit resource (resources that every node
             # implicitly has and total is 1)
             # to limit the number of replicas on a single node.
-            if self.max_replicas_per_node:
+            if self.max_replicas_per_node is not None:
                 implicit_resource = (
                     f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}"
                     f"{self.deployment_id.app_name}:{self.deployment_id.name}"
@@ -1011,7 +1026,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         self,
         scheduling_request: ReplicaSchedulingRequest,
         all_node_labels: Dict[str, Dict[str, str]],
-        available_resources_per_node: Dict[str, Resources],
+        available_resources_per_node: Dict[str, AvailableNodeResources],
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
     ) -> Optional[str]:
         """Attempts to schedule a single request on the best available node.
@@ -1052,7 +1067,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
     def _build_pack_placement_candidates(
         self, scheduling_request: ReplicaSchedulingRequest
-    ) -> List[Tuple[Resources, List[Dict[str, str]]]]:
+    ) -> List[Tuple[RequestedResources, List[Dict[str, str]]]]:
         """Returns a list of (resources, labels) tuples to attempt for scheduling."""
 
         # Collect a list of required resources and labels to try to schedule to
@@ -1208,10 +1223,10 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
     def _filter_nodes_by_label_selector(
         self,
-        available_nodes: Dict[str, Resources],
+        available_nodes: Dict[str, AvailableNodeResources],
         required_labels: Dict[str, str],
         node_labels: Dict[str, Dict[str, str]],
-    ) -> Dict[str, Resources]:
+    ) -> Dict[str, AvailableNodeResources]:
         """Filters available nodes based on label selector constraints."""
         return {
             node_id: resources
@@ -1221,8 +1236,8 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
 
     def _find_best_fit_node_for_pack(
         self,
-        required_resources: Resources,
-        available_resources_per_node: Dict[str, Resources],
+        required_resources: RequestedResources,
+        available_resources_per_node: Dict[str, AvailableNodeResources],
         node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
         required_labels_list: Optional[List[Dict[str, str]]] = None,
         node_labels: Optional[Dict[str, Dict[str, str]]] = None,
@@ -1234,7 +1249,7 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         over idle nodes.
 
         Args:
-            required_resources: Resources needed for this replica.
+            required_resources: Requested resources needed for this replica.
             available_resources_per_node: Available resources per node.
             node_to_assigned_replicas: Mapping of node IDs to replica IDs
                 (both running and newly scheduled in this batch).

@@ -77,6 +77,10 @@ def get_random_resources(n: int) -> List[dict]:
 
 
 class TestResources:
+    def test_base_resources_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="cannot be instantiated directly"):
+            Resources()
+
     @pytest.mark.parametrize("resource_type", ["CPU", "GPU", "memory"])
     def test_basic(self, resource_type: str):
         # basic resources
@@ -239,6 +243,24 @@ def test_deployment_scheduling_info():
     assert info.is_non_strict_pack_pg()
 
 
+def test_deployment_scheduling_info_required_resources_no_mutation():
+    dep_id = DeploymentID("app", "name")
+    actor = RequestedResources({"CPU": 1})
+    info = DeploymentSchedulingInfo(
+        deployment_id=dep_id,
+        scheduling_policy=SpreadDeploymentSchedulingPolicy,
+        actor_resources=actor,
+        max_replicas_per_node=2,
+    )
+    implicit = (
+        f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}"
+        f"{dep_id.app_name}:{dep_id.name}"
+    )
+    assert info.required_resources == RequestedResources({"CPU": 1, implicit: 0.5})
+    assert actor == RequestedResources({"CPU": 1})
+    assert implicit not in actor
+
+
 def test_get_available_resources_per_node():
     d_id = DeploymentID("a", "b")
 
@@ -272,7 +294,7 @@ def test_get_available_resources_per_node():
     scheduler._on_replica_launching(
         ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get("node1") == AvailableNodeResources(
         **{
             "GPU": 9,
             "CPU": 29,
@@ -287,7 +309,7 @@ def test_get_available_resources_per_node():
     scheduler.on_replica_running(
         ReplicaID(unique_id="replica1", deployment_id=d_id), node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get("node1") == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -304,7 +326,7 @@ def test_get_available_resources_per_node():
     cluster_node_info_cache.set_available_resources_per_node(
         "node1", {"GPU": 10, "CPU": 32, "memory": 256, "customx": 1}
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get("node1") == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -381,7 +403,7 @@ def test_get_available_resources_per_node_pg():
     scheduler._on_replica_launching(
         ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get("node1") == AvailableNodeResources(
         **{
             "GPU": 9,
             "CPU": 29,
@@ -395,7 +417,7 @@ def test_get_available_resources_per_node_pg():
     scheduler.on_replica_running(
         ReplicaID(unique_id="replica1", deployment_id=d_id), node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get("node1") == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -411,7 +433,7 @@ def test_get_available_resources_per_node_pg():
     cluster_node_info_cache.set_available_resources_per_node(
         "node1", {"GPU": 10, "CPU": 32, "memory": 256, "customx": 1}
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get("node1") == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -960,9 +982,9 @@ def test_filter_nodes_by_label_selector():
     scheduler = MockScheduler()
 
     nodes = {
-        "n1": Resources(),
-        "n2": Resources(),
-        "n3": Resources(),
+        "n1": AvailableNodeResources(),
+        "n2": AvailableNodeResources(),
+        "n3": AvailableNodeResources(),
     }
     node_labels = {
         "n1": {"region": "us-west", "gpu": "T4", "env": "prod"},
