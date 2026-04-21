@@ -777,10 +777,13 @@ class TestDeploymentActorWrapper:
 
     def test_check_ready_ref_ready_then_success(self):
         """Test check_ready() when _ready_ref is ready and ray.get succeeds."""
-        with patch(
-            "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
-            return_value=True,
-        ), patch("ray.serve._private.deployment_state.ray.get"):
+        with (
+            patch(
+                "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                return_value=True,
+            ),
+            patch("ray.serve._private.deployment_state.ray.get"),
+        ):
             config = DeploymentActorConfig(
                 name="counter", actor_class="builtins:object"
             )
@@ -797,12 +800,15 @@ class TestDeploymentActorWrapper:
 
     def test_check_ready_ref_ready_then_fails(self):
         """Test check_ready() when ray.get on _ready_ref raises."""
-        with patch(
-            "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
-            return_value=True,
-        ), patch(
-            "ray.serve._private.deployment_state.ray.get",
-            side_effect=RuntimeError("actor crashed"),
+        with (
+            patch(
+                "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                return_value=True,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.ray.get",
+                side_effect=RuntimeError("actor crashed"),
+            ),
         ):
             config = DeploymentActorConfig(
                 name="counter", actor_class="builtins:object"
@@ -836,10 +842,13 @@ class TestDeploymentActorWrapper:
     def test_kill_without_handle(self):
         """Test kill() when _handle is None - fetches via get_actor then kills."""
         fake_handle = object()
-        with patch(
-            "ray.serve._private.deployment_state.ray.get_actor",
-            return_value=fake_handle,
-        ), patch("ray.serve._private.deployment_state.ray.kill") as mock_kill:
+        with (
+            patch(
+                "ray.serve._private.deployment_state.ray.get_actor",
+                return_value=fake_handle,
+            ),
+            patch("ray.serve._private.deployment_state.ray.kill") as mock_kill,
+        ):
             config = DeploymentActorConfig(
                 name="counter", actor_class="builtins:object"
             )
@@ -853,10 +862,13 @@ class TestDeploymentActorWrapper:
 
     def test_kill_actor_already_stopped(self):
         """Test kill() when actor is already stopped - should not raise."""
-        with patch(
-            "ray.serve._private.deployment_state.ray.get_actor",
-            side_effect=ValueError("actor not found"),
-        ), patch("ray.serve._private.deployment_state.ray.kill"):
+        with (
+            patch(
+                "ray.serve._private.deployment_state.ray.get_actor",
+                side_effect=ValueError("actor not found"),
+            ),
+            patch("ray.serve._private.deployment_state.ray.kill"),
+        ):
             config = DeploymentActorConfig(
                 name="counter", actor_class="builtins:object"
             )
@@ -7659,6 +7671,40 @@ def test_pending_migration_prevents_in_transition_clear(
         f"Expected 0 PENDING_MIGRATION replicas but found {pending_migration_count}. "
         "The replica is stuck because _in_transition was incorrectly cleared."
     )
+
+
+class TestIsGangDeploymentProperty:
+    """Tests for DeploymentState._is_gang_deployment property."""
+
+    @pytest.mark.parametrize(
+        "gang_scheduling_config, expected_value",
+        [
+            pytest.param(GangSchedulingConfig(gang_size=2), True, id="gang"),
+            pytest.param(None, False, id="non-gang"),
+        ],
+    )
+    def test_is_gang_deployment(
+        self,
+        mock_deployment_state_manager,
+        gang_scheduling_config,
+        expected_value,
+    ):
+        """_is_gang_deployment reflects whether gang scheduling is configured."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        create_dsm_kwargs = {}
+        deployment_info_kwargs = {"num_replicas": 2}
+        if gang_scheduling_config is not None:
+            create_dsm_kwargs[
+                "create_placement_group_fn_override"
+            ] = lambda *args, **kwargs: Mock()
+            deployment_info_kwargs["gang_scheduling_config"] = gang_scheduling_config
+
+        dsm: DeploymentStateManager = create_dsm(**create_dsm_kwargs)
+        b_info, _ = deployment_info(**deployment_info_kwargs)
+        dsm.deploy(TEST_DEPLOYMENT_ID, b_info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        assert ds._is_gang_deployment is expected_value
 
 
 class TestScaleDeploymentGangReplicas:
