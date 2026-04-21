@@ -1,6 +1,6 @@
 import logging
 import os
-from typing import Callable
+from typing import Callable, Any
 
 import torch
 import torch.distributed as dist
@@ -76,7 +76,7 @@ class LocalTorchController(LocalController):
             )
         )
 
-    def run(self, train_func: Callable[[], None]) -> Result:
+    def run(self, train_func: Callable[[], Any]) -> Result:
         self._set_train_fn_utils()
         train_result = train_func()
         train_fn_utils = get_train_fn_utils()
