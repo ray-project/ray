@@ -19,6 +19,15 @@ set -ex
 
 uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
 
+if [[ "$IMAGE_TYPE" == "pyarrow-nightly" ]]; then
+  uv pip install \
+    --system \
+    --pre \
+    --prefer-binary \
+    --extra-index-url https://pypi.fury.io/arrow-nightlies/ \
+    pyarrow
+fi
+
 curl -fsSL https://pgp.mongodb.com/server-8.0.asc | \
   sudo gpg -o /usr/share/keyrings/mongodb-server-8.0.gpg --dearmor
 echo "deb [ arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.0.gpg ] \
