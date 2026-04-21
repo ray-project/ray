@@ -11,7 +11,7 @@ _BODY_TRUNCATED_HEADER = "x-body-truncated"
 
 _ReplicaCacheSignature = FrozenSet[ReplicaID]
 
-http_router_app = FastAPI()
+ingress_request_router_app = FastAPI()
 
 router_app = FastAPI()
 
