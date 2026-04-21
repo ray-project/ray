@@ -6992,7 +6992,10 @@ class Dataset:
         Returns:
             An iterator over this Dataset's ``RefBundles``.
         """
-        iter_ref_bundles, _, _ = self._execute_to_iterator()
+        # We don't capture iterator here so we can keep it alive post
+        # Dataset clean up.
+        iter_ref_bundles, _, _ = self._execute_to_iterator(capture_executor=False)
+        self._synchronize_progress_bar()
         return iter_ref_bundles
 
     @Deprecated
@@ -7414,14 +7417,15 @@ class Dataset:
         )
 
     def _execute_to_iterator(
-        self,
+        self, capture_executor: bool = True
     ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
         bundle_iter, stats, executor = self._plan.execute_to_iterator(
             self._create_executor,
         )
-        # Capture current executor to be able to clean it up properly, once
-        # dataset is garbage-collected
-        self._current_executor = executor
+        if capture_executor:
+            # Capture current executor to be able to clean it up properly,
+            # once dataset is garbage-collected
+            self._current_executor = executor
 
         return bundle_iter, stats, executor
 
