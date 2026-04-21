@@ -1,4 +1,4 @@
-"""LLMRouter: the dedicated HTTP router deployment.
+"""LLMRouter: the dedicated ingress request router deployment.
 
 When ingress bypass is enabled, HAProxy calls /internal/route on this
 deployment to get a replica ID, then forwards traffic directly to the
@@ -21,12 +21,12 @@ from ray.serve.handle import DeploymentHandle
 
 logger = get_logger(__name__)
 
-http_router_app = FastAPI()
+ingress_request_router_app = FastAPI()
 
 
-@serve.ingress(http_router_app)
+@serve.ingress(ingress_request_router_app)
 class LLMRouter:
-    """Lightweight HTTP router deployment for ingress bypass."""
+    """Lightweight ingress request router deployment for ingress bypass."""
 
     def __init__(self, llm_deployments: List[DeploymentHandle]):
         self._default_serve_handles: Dict[str, DeploymentHandle] = {}
@@ -122,8 +122,8 @@ class LLMRouter:
     async def check_health(self):
         await self._init_completed.wait()
 
-    @http_router_app.get("/")
-    @http_router_app.get("/health")
+    @ingress_request_router_app.get("/")
+    @ingress_request_router_app.get("/health")
     async def health(self):
         return JSONResponse({"status": "ok"})
 

@@ -142,23 +142,26 @@ def build_openai_app(builder_config: dict) -> Application:
         from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
         logger.info(
-            "Direct streaming enabled: LLMServer=ingress, " "LLMRouter=http_router"
+            "Direct streaming enabled: "
+            "LLMServer=ingress, LLMRouter=ingress_request_router"
         )
 
-        num_http_router_replicas = 1
+        num_ingress_request_router_replicas = 1
         logger.info(
-            f"Creating {num_http_router_replicas} HTTP router replicas (LLMRouter)"
+            "Creating "
+            f"{num_ingress_request_router_replicas} ingress request router "
+            "replicas (LLMRouter)"
         )
-        http_router_app = serve.deployment(
+        ingress_request_router_app = serve.deployment(
             LLMRouter,
-            num_replicas=num_http_router_replicas,
+            num_replicas=num_ingress_request_router_replicas,
             max_ongoing_requests=1000,
         ).bind(llm_deployments=llm_deployments)
 
         ingress_app = llm_deployments[0]
         return serve.Application(
             ingress_app._bound_deployment,
-            http_router=http_router_app,
+            ingress_request_router=ingress_request_router_app,
         )
 
     app = serve.deployment(ingress_cls, **ingress_options).bind(
