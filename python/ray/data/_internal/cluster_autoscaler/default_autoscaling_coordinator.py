@@ -146,7 +146,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     def __init__(self, requester_id: str):
         self._requester_id = requester_id
-        self._cached_allocated_resources: Dict[str, List[ResourceDict]] = {}
+        self._cached_allocated_resources: List[ResourceDict] = []
         self._consecutive_failures_request_resources: int = 0
         self._consecutive_failures_cancel_request: int = 0
         self._consecutive_failures_get_allocated_resources: int = 0
@@ -209,9 +209,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             " or CPU being overloaded, it's safe to ignore this error."
             " If this error persists, file a GitHub issue."
         ),
-        on_error_return=lambda self: self._cached_allocated_resources.get(
-            self._requester_id, []
-        ),
+        on_error_return=lambda self: self._cached_allocated_resources,
     )
     def get_allocated_resources(self) -> List[ResourceDict]:
         result = ray.get(
@@ -220,7 +218,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             ),
             timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
         )
-        self._cached_allocated_resources[self._requester_id] = result
+        self._cached_allocated_resources = result
         return result
 
 

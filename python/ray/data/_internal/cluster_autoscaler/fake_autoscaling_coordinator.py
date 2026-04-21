@@ -26,7 +26,6 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
         self,
         get_time: Callable[[], float] = time.time,
         initial_cluster_resources: Optional[List[ResourceDict]] = None,
-        requester_id: str = "default",
     ):
         """Initialize the coordinator.
 
@@ -37,13 +36,10 @@ class FakeAutoscalingCoordinator(AutoscalingCoordinator):
                 ``request_remaining`` is True, the coordinator allocates these resources
                 to the requester. Otherwise, the coordinator allocates the requested
                 resources.
-            requester_id: Identifier for this single requester. Defaults to
-                "default" for convenience in tests.
         """
         if initial_cluster_resources is None:
             initial_cluster_resources = []
 
-        self._requester_id = requester_id
         self._get_time = get_time
         self._initial_cluster_resources = initial_cluster_resources
         self._allocation: Optional[FakeAutoscalingCoordinator.Allocation] = None

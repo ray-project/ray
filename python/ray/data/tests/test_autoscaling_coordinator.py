@@ -387,7 +387,7 @@ def test_get_allocated_resources_handles_timeout_error(
 ):
     """Test get_allocated_resources handles timeout error."""
     coordinator = DefaultAutoscalingCoordinator("test")
-    coordinator._cached_allocated_resources["test"] = [{"CPU": 1}]
+    coordinator._cached_allocated_resources = [{"CPU": 1}]
 
     def call_method():
         return coordinator.get_allocated_resources()
