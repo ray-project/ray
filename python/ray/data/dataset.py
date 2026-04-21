@@ -6993,8 +6993,6 @@ class Dataset:
             An iterator over this Dataset's ``RefBundles``.
         """
         iter_ref_bundles, _, _ = self._execute_to_iterator()
-        self._synchronize_progress_bar()
-
         return iter_ref_bundles
 
     @Deprecated
