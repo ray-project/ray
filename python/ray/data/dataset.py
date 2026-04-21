@@ -332,7 +332,7 @@ class Dataset:
             _as = type(ds)
         if _deep_copy:
             return _as(
-                ds._logical_plan,
+                copy.copy(ds._logical_plan),
                 ds._context.copy(),
                 copy.copy(ds._in_stats),
                 cache=ds._cache.deep_copy(),
