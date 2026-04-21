@@ -435,7 +435,7 @@ class First(AggregateFnV2[List[Any], Any]):
             alias_name if alias_name else f"first({str(on)})",
             on=on,
             ignore_nulls=ignore_nulls,
-            zero_factory=lambda: list([None, False]),
+            zero_factory=lambda: list([None, False]),  # noqa: C410
         )
 
     def aggregate_block(self, block: Block) -> List[Any]:
