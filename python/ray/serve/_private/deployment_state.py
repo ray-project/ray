@@ -5664,6 +5664,39 @@ class DeploymentStateManager:
                 if not self._app_deployment_mapping[deployment_id.app_name]:
                     del self._app_deployment_mapping[deployment_id.app_name]
 
+            # Publish a terminal tombstone for DEPLOYMENT_TARGETS so any
+            # router/proxy still parked on this key wakes with a definitive
+            # "gone" payload (is_available=False). Routers that read
+            # is_available on the fast path immediately fail fast on new
+            # requests rather than routing into a dead deployment. We
+            # deliberately do NOT evict the tombstone via remove_keys in
+            # the same control-loop tick: parked listen_for_change
+            # coroutines cannot resume until the event loop ticks, and if
+            # the snapshot maps were popped before they wake the guard in
+            # listen_for_change would swallow the tombstone. The
+            # DEPLOYMENT_TARGETS entry stays in the snapshot maps with an
+            # empty replicas list — negligible memory per deleted
+            # deployment, overwritten if the deployment is re-created.
+            tombstone = DeploymentTargetInfo(is_available=False, running_replicas=[])
+            self._long_poll_host.notify_changed(
+                {
+                    (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id): tombstone,
+                    (
+                        LongPollNamespace.DEPLOYMENT_TARGETS,
+                        deployment_id.name,
+                    ): tombstone,
+                }
+            )
+            # DEPLOYMENT_CONFIG has no natural tombstone value and it is
+            # the heavier survivor of the two per-deployment snapshots
+            # (deletion never shrinks it, unlike DEPLOYMENT_TARGETS).
+            # Evict it. Any remaining waiter wakes with an empty dict and
+            # re-polls; re-polls for an unknown key hit the KeyError-skip
+            # branch of listen_for_change.
+            self._long_poll_host.remove_keys(
+                [(LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id)]
+            )
+
         if len(deleted_ids):
             self._record_deployment_usage()
 
