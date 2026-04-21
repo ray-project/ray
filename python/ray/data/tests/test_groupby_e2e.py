@@ -487,6 +487,7 @@ def test_groupby_tabular_sum(
         result,
     )
 
+
 @pytest.mark.parametrize("num_parts", [1, 10])
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
 def test_first_e2e(
@@ -495,11 +496,16 @@ def test_first_e2e(
     num_parts,
     disable_fallback_to_object_extension,
 ):
-    df = pd.DataFrame({"A": [1, 1, 1, 1, 1, 2, 2, 2, 3, 3],
-                       "B": [None, 12, 13, 14, 15, None, 22, 23, 31, 32]})
-    ds = (ray.data.from_pandas(df)
-          .repartition(num_parts)
-          .map_batches(lambda x: x, batch_format=batch_format)
+    df = pd.DataFrame(
+        {
+            "A": [1, 1, 1, 1, 1, 2, 2, 2, 3, 3],
+            "B": [None, 12, 13, 14, 15, None, 22, 23, 31, 32],
+        }
+    )
+    ds = (
+        ray.data.from_pandas(df)
+        .repartition(num_parts)
+        .map_batches(lambda x: x, batch_format=batch_format)
     )
 
     result = ds.groupby("A").aggregate(First(on="B")).take_all()
@@ -509,12 +515,15 @@ def test_first_e2e(
         {"A": 3, "first(B)": 31},
     ]
 
-    result_with_null = ds.groupby("A").aggregate(First(on="B", ignore_nulls=False)).take_all()
+    result_with_null = (
+        ds.groupby("A").aggregate(First(on="B", ignore_nulls=False)).take_all()
+    )
     assert sorted(result_with_null, key=lambda x: x["A"]) == [
         {"A": 1, "first(B)": None},
         {"A": 2, "first(B)": None},
         {"A": 3, "first(B)": 31},
     ]
+
 
 @pytest.mark.parametrize("num_parts", [1, 10])
 @pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])

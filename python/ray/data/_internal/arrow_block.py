@@ -542,6 +542,7 @@ class ArrowBlockColumnAccessor(BlockColumnAccessor):
 
     def first(self, *, ignore_nulls: bool, as_py: bool = True) -> Any:
         import pyarrow.compute as pac
+
         # If there are only null-values, the column's type is `NullType`.
         # Pyarrow call will throw a 'no kernel matching input types (null)' Exception
         try:

@@ -396,6 +396,7 @@ class Count(AggregateFnV2[int, int]):
     def combine(self, current_accumulator: int, new: int) -> int:
         return current_accumulator + new
 
+
 @PublicAPI
 class First(AggregateFnV2[List[Any], Any]):
     """Defines first aggregation.
@@ -447,11 +448,11 @@ class First(AggregateFnV2[List[Any], Any]):
         else:
             return [result, True]
 
-
-    def combine(self, current_accumulator: List[Any],
-                new: List[Any]) -> List[Any]:
-        return [current_accumulator[0] if current_accumulator[1] else new[0],
-                current_accumulator[1] or new[1]]
+    def combine(self, current_accumulator: List[Any], new: List[Any]) -> List[Any]:
+        return [
+            current_accumulator[0] if current_accumulator[1] else new[0],
+            current_accumulator[1] or new[1],
+        ]
 
     def finalize(self, accumulator: List[Any]) -> Optional[Any]:
         return accumulator[0]
