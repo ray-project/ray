@@ -1267,6 +1267,54 @@ def test_get_top_level_dir_from_tar_package(tmp_path):
     assert get_top_level_dir_from_tar_package(str(tar_path)) == "myproject"
 
 
+def test_get_top_level_dir_from_tar_package_dot_slash_prefix(tmp_path):
+    """GNU tar commonly prefixes members with ./ — must not return '.'."""
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dir_info = tarfile.TarInfo(name="./myproject/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"content"
+        info = tarfile.TarInfo(name="./myproject/main.py")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) == "myproject"
+
+
+def test_get_top_level_dir_from_tar_package_dot_slash_no_top_level(tmp_path):
+    """./file.txt at the root means no single top-level directory."""
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        file_content = b"content"
+        info = tarfile.TarInfo(name="./file.txt")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) is None
+
+
+def test_get_top_level_dir_from_tar_package_bare_dot_entry(tmp_path):
+    """Archives with a bare '.' entry should handle it gracefully."""
+    tar_path = tmp_path / "test.tar.gz"
+    with tarfile.open(tar_path, "w:gz") as tar:
+        dot_info = tarfile.TarInfo(name=".")
+        dot_info.type = tarfile.DIRTYPE
+        tar.addfile(dot_info)
+
+        dir_info = tarfile.TarInfo(name="./myproject/")
+        dir_info.type = tarfile.DIRTYPE
+        tar.addfile(dir_info)
+
+        file_content = b"content"
+        info = tarfile.TarInfo(name="./myproject/main.py")
+        info.size = len(file_content)
+        tar.addfile(info, io.BytesIO(file_content))
+
+    assert get_top_level_dir_from_tar_package(str(tar_path)) == "myproject"
+
+
 def test_get_top_level_dir_from_tar_package_no_top_level(tmp_path):
     tar_path = tmp_path / "test.tar.gz"
     with tarfile.open(tar_path, "w:gz") as tar:

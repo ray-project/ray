@@ -1141,7 +1141,14 @@ def get_top_level_dir_from_tar_package(package_path: str):
     with tarfile.open(package_path, "r:*") as tar:
         top_level_directory = None
         for member in tar.getmembers():
-            parts = member.name.split("/")
+            # GNU tar commonly prefixes members with "./" — strip it so
+            # we don't treat "." as the top-level directory name.
+            name = member.name
+            while name.startswith("./"):
+                name = name[2:]
+            if not name or name == ".":
+                continue
+            parts = name.split("/")
             if len(parts) == 1 and not member.isdir():
                 return None
             dir_name = parts[0]
