@@ -363,7 +363,7 @@ def _make_coordinator_with_mock_actor():
     into the instance __dict__, so no real actor is created. ray.wait and ray.get
     must be patched by the caller as needed.
     """
-    coordinator = DefaultAutoscalingCoordinator()
+    coordinator = DefaultAutoscalingCoordinator("test")
     coordinator._cached_allocated_resources = [{"CPU": 1}]
     mock_ref = object()
     mock_actor = Mock()
@@ -381,7 +381,7 @@ def test_get_allocated_resources_returns_cached_while_inflight(
     coordinator._pending_allocated_resources = mock_ref
     # mock_ref is not ready
     with patch("ray.wait", return_value=([], [mock_ref])):
-        result = coordinator.get_allocated_resources("test")
+        result = coordinator.get_allocated_resources()
 
     assert result == [{"CPU": 1}]
     # The pending entry must survive — it is the in-flight request.
@@ -400,7 +400,7 @@ def test_get_allocated_resources_updates_cache_on_success(
     # mock_ref is ready and the request completes with success
     with patch("ray.wait", return_value=([mock_ref], [])):
         with patch("ray.get", return_value=[{"CPU": 2}]):
-            result = coordinator.get_allocated_resources("test")
+            result = coordinator.get_allocated_resources()
 
     assert result == [{"CPU": 2}]
     assert coordinator._cached_allocated_resources == [{"CPU": 2}]
@@ -420,7 +420,7 @@ def test_get_allocated_resources_returns_cached_on_actor_exception(
 
     with patch("ray.wait", return_value=([mock_ref], [])):
         with patch("ray.get", side_effect=ray.exceptions.RayActorError()):
-            result = coordinator.get_allocated_resources("test")
+            result = coordinator.get_allocated_resources()
 
     assert result == [{"CPU": 1}]
     # The pending slot is freed and a fresh request is submitted.
@@ -438,7 +438,7 @@ def test_cancel_request_clears_client_side_state(
     coordinator._pending_allocated_resources = mock_ref
     assert coordinator._cached_allocated_resources == [{"CPU": 1}]
 
-    coordinator.cancel_request("test")
+    coordinator.cancel_request()
 
     assert coordinator._pending_allocated_resources is None
     assert coordinator._cached_allocated_resources == []
@@ -457,7 +457,7 @@ def test_non_ray_errors_propagate(teardown_autoscaling_coordinator):
     with patch("ray.wait", return_value=([mock_ref], [])):
         with patch("ray.get", side_effect=ValueError("unexpected local error")):
             with pytest.raises(ValueError, match="unexpected local error"):
-                coordinator.get_allocated_resources("test")
+                coordinator.get_allocated_resources()
 
 
 def test_coordinator_accepts_zero_resource_for_missing_resource_type(
@@ -465,15 +465,13 @@ def test_coordinator_accepts_zero_resource_for_missing_resource_type(
 ):
     # This is a regression test for a bug where the coordinator crashes when you request
     # a resource type (e.g., GPU: 0) that doesn't exist on the cluster.
-    coordinator = DefaultAutoscalingCoordinator()
+    coordinator = DefaultAutoscalingCoordinator("spam")
 
-    coordinator.request_resources(
-        requester_id="spam", resources=[{"CPU": 1, "GPU": 0}], expire_after_s=1
-    )
+    coordinator.request_resources(resources=[{"CPU": 1, "GPU": 0}], expire_after_s=1)
 
     # get_allocated_resources is now async; poll until the result arrives.
     def check():
-        result = coordinator.get_allocated_resources("spam")
+        result = coordinator.get_allocated_resources()
         return result == [{"CPU": 1, "GPU": 0}]
 
     wait_for_condition(check, retry_interval_ms=100, timeout=5)

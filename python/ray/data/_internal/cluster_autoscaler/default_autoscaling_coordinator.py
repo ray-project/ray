@@ -69,7 +69,8 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     ``cancel_request`` are truly fire-and-forget with no result observation.
     """
 
-    def __init__(self):
+    def __init__(self, requester_id: str):
+        self._requester_id = requester_id
         self._cached_allocated_resources: List[ResourceDict] = []
         # In-flight get_allocated_resources ref, or None if no request is pending.
         self._pending_allocated_resources: Optional[ray.ObjectRef] = None
@@ -81,7 +82,6 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     def request_resources(
         self,
-        requester_id: str,
         resources: List[ResourceDict],
         expire_after_s: float,
         request_remaining: bool = False,
@@ -93,14 +93,14 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         errors (e.g. type mismatches) are not surfaced to the caller.
         """
         self._autoscaling_coordinator.request_resources.remote(
-            requester_id=requester_id,
+            requester_id=self._requester_id,
             resources=resources,
             expire_after_s=expire_after_s,
             request_remaining=request_remaining,
             priority=priority,
         )
 
-    def cancel_request(self, requester_id: str) -> None:
+    def cancel_request(self) -> None:
         """Fire-and-forget: cancel a resource request on the coordinator actor.
 
         Returns immediately without observing the result. Drops any in-flight
@@ -109,9 +109,9 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         """
         self._pending_allocated_resources = None
         self._cached_allocated_resources = []
-        self._autoscaling_coordinator.cancel_request.remote(requester_id)
+        self._autoscaling_coordinator.cancel_request.remote(self._requester_id)
 
-    def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
+    def get_allocated_resources(self) -> List[ResourceDict]:
         """Get the allocated resources for the requester without blocking.
 
         Submits an async request to the autoscaling coordinator actor and
@@ -134,7 +134,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
                     self._cached_allocated_resources = ray.get(ref)
                 except ray.exceptions.RayError:
                     logger.warning(
-                        f"Failed to get allocated resources for {requester_id};"
+                        f"Failed to get allocated resources for {self._requester_id};"
                         " falling back to the cached value."
                         " If this persists, file a GitHub issue.",
                         exc_info=RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK,
@@ -145,7 +145,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         if self._pending_allocated_resources is None:
             self._pending_allocated_resources = (
                 self._autoscaling_coordinator.get_allocated_resources.remote(
-                    requester_id,
+                    self._requester_id,
                 )
             )
 
