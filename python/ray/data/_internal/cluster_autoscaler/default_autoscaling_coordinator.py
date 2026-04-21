@@ -61,6 +61,13 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     All public methods (request_resources, cancel_request,
     get_allocated_resources) are non-blocking. Not thread-safe; assumed to be
     called from a single scheduling thread per instance.
+
+    Single-tenant: every instance is owned by exactly one
+    DefaultClusterAutoscalerV2 and must be called with a single, fixed
+    requester_id for its entire lifetime. Passing different requester_ids to
+    the same instance would corrupt in-flight state because the pending slots
+    and failure counters are scalars, not keyed dicts. Violating this is
+    undefined behavior.
     """
 
     AUTOSCALING_REQUEST_GET_TIMEOUT_S = env_integer(
@@ -71,13 +78,12 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     )
 
     def __init__(self):
-        self._cached_allocated_resources: Dict[str, List[ResourceDict]] = {}
-        # In-flight async requests per public method, keyed by requester_id.
-        # Value is (ObjectRef, submit_time). cancel_request additionally clears
-        # the other two dicts via _clear_requester_state.
-        self._pending_allocated_resources: Dict[str, Tuple[ray.ObjectRef, float]] = {}
-        self._pending_request_resources: Dict[str, Tuple[ray.ObjectRef, float]] = {}
-        self._pending_cancel_request: Dict[str, Tuple[ray.ObjectRef, float]] = {}
+        self._cached_allocated_resources: List[ResourceDict] = []
+
+        # In-flight async request per public method: (ObjectRef, submit_time) or None.
+        self._pending_allocated_resources: Optional[Tuple[ray.ObjectRef, float]] = None
+        self._pending_request_resources: Optional[Tuple[ray.ObjectRef, float]] = None
+        self._pending_cancel_request: Optional[Tuple[ray.ObjectRef, float]] = None
 
         self._consecutive_failures_request_resources: int = 0
         self._consecutive_failures_cancel_request: int = 0
@@ -142,7 +148,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
     def _resolve_pending(
         self,
-        pending_dict: Dict[str, Tuple[ray.ObjectRef, float]],
+        pending_attr: str,
         requester_id: str,
         counter_attr: str,
         operation_name: str,
@@ -153,16 +159,15 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         If the request is ready, consume it: reset the failure counter and call
         on_success on success, or call _record_failure on actor error. If the
         request has timed out, issue a soft cancel (force=False) and discard the
-        ref, then record a timeout failure. Does nothing if no request is pending
-        for requester_id.
+        ref, then record a timeout failure. Does nothing if no request is pending.
         """
-        pending = pending_dict.get(requester_id)
+        pending = getattr(self, pending_attr)
         if pending is None:
             return
         ref, submit_time = pending
         ready, _ = ray.wait([ref], timeout=0)
         if ready:
-            del pending_dict[requester_id]
+            setattr(self, pending_attr, None)
             try:
                 result = ray.get(ref)
                 setattr(self, counter_attr, 0)
@@ -171,9 +176,9 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             except ray.exceptions.RayError as exc:
                 self._record_failure(counter_attr, operation_name, requester_id, exc)
         elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
-            # Delete before cancelling for defense-in-depth: _try_cancel doesn't raise,
+            # Clear before cancelling for defense-in-depth: _try_cancel doesn't raise,
             # but cleanup should not depend on that guarantee.
-            del pending_dict[requester_id]
+            setattr(self, pending_attr, None)
             self._try_cancel(ref, operation_name, requester_id)
             self._record_failure(counter_attr, operation_name, requester_id)
 
@@ -187,34 +192,34 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     ) -> None:
         """Fire-and-forget: submit a resource request to the coordinator actor.
 
-        Returns immediately. If the previous request for requester_id has
-        completed, its result (including any actor error) is checked first and
-        the failure counter is updated accordingly. If the previous request is
-        still in-flight, it is soft-cancelled and replaced — latest state wins,
-        and this prevents actor queue buildup under slow-actor conditions.
+        Returns immediately. If the previous request has completed, its result
+        (including any actor error) is checked first and the failure counter is
+        updated accordingly. If the previous request is still in-flight, this
+        call is skipped — the next call after the slot frees will carry the
+        latest state.
         """
         self._resolve_pending(
-            self._pending_request_resources,
+            "_pending_request_resources",
             requester_id,
             "_consecutive_failures_request_resources",
             "send resource request",
         )
-        # Cancel any still-in-flight request before submitting the new one.
-        # Unlike get_allocated_resources (which polls and waits for the slot to
-        # free), command methods always push the latest state immediately.
-        if requester_id in self._pending_request_resources:
-            old_ref, _ = self._pending_request_resources.pop(requester_id)
-            self._try_cancel(old_ref, "send resource request", requester_id)
-        self._pending_request_resources[requester_id] = (
-            self._autoscaling_coordinator.request_resources.remote(
-                requester_id=requester_id,
-                resources=resources,
-                expire_after_s=expire_after_s,
-                request_remaining=request_remaining,
-                priority=priority,
-            ),
-            time.time(),
-        )
+        if self._pending_request_resources is None:
+            self._pending_request_resources = (
+                self._autoscaling_coordinator.request_resources.remote(
+                    requester_id=requester_id,
+                    resources=resources,
+                    expire_after_s=expire_after_s,
+                    request_remaining=request_remaining,
+                    priority=priority,
+                ),
+                time.time(),
+            )
+        else:
+            logger.debug(
+                "Skipping request_resources for %s; previous request still in-flight.",
+                requester_id,
+            )
 
     def _clear_requester_state(self, requester_id: str) -> None:
         """Cancel in-flight requests and clear all client-side state for a requester.
@@ -222,40 +227,46 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         Called by cancel_request to prevent memory accumulation across many
         executions in a long-running process.
         """
-        for pending_dict, operation_name in [
-            (self._pending_request_resources, "send resource request"),
-            (self._pending_allocated_resources, "get allocated resources"),
+        for pending_attr, operation_name in [
+            ("_pending_request_resources", "send resource request"),
+            ("_pending_allocated_resources", "get allocated resources"),
         ]:
-            if requester_id in pending_dict:
-                old_ref, _ = pending_dict.pop(requester_id)
+            pending = getattr(self, pending_attr)
+            if pending is not None:
+                old_ref, _ = pending
+                setattr(self, pending_attr, None)
                 self._try_cancel(old_ref, operation_name, requester_id)
-        self._cached_allocated_resources.pop(requester_id, None)
+        self._cached_allocated_resources = []
 
     def cancel_request(self, requester_id: str) -> None:
         """Fire-and-forget: cancel a resource request on the coordinator actor.
 
-        Returns immediately. If the previous cancel for requester_id has
-        completed, its result is checked first and the failure counter updated.
-        Any still-in-flight cancel is soft-cancelled and replaced. Clears all
-        other client-side state for requester_id so memory does not accumulate
-        across many executions in a long-running process.
+        Returns immediately. If the previous cancel has completed, its result is
+        checked first and the failure counter updated. If a cancel is already
+        in-flight, the actor RPC is skipped — the in-flight cancel is idempotent
+        provided no request_resources call arrives after this cancel_request.
         """
         self._resolve_pending(
-            self._pending_cancel_request,
+            "_pending_cancel_request",
             requester_id,
             "_consecutive_failures_cancel_request",
             "cancel resource request",
         )
-        # Replace any still-in-flight cancel.
-        if requester_id in self._pending_cancel_request:
-            old_ref, _ = self._pending_cancel_request.pop(requester_id)
-            self._try_cancel(old_ref, "cancel resource request", requester_id)
-        # Clear all other client-side state for this requester.
+        # Always clear client-side state, regardless of whether an actor RPC
+        # is in-flight. This ensures in-flight request_resources and
+        # get_allocated_resources refs are cancelled and the cache is zeroed
+        # even if the actor cancel RPC is skipped.
         self._clear_requester_state(requester_id)
-        self._pending_cancel_request[requester_id] = (
-            self._autoscaling_coordinator.cancel_request.remote(requester_id),
-            time.time(),
-        )
+        if self._pending_cancel_request is None:
+            self._pending_cancel_request = (
+                self._autoscaling_coordinator.cancel_request.remote(requester_id),
+                time.time(),
+            )
+        else:
+            logger.debug(
+                "Skipping cancel_request for %s; previous cancel still in-flight.",
+                requester_id,
+            )
 
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
         """Get the allocated resources for the requester without blocking.
@@ -273,10 +284,10 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         """
 
         def _on_success(result):
-            self._cached_allocated_resources[requester_id] = result
+            self._cached_allocated_resources = result
 
         self._resolve_pending(
-            self._pending_allocated_resources,
+            "_pending_allocated_resources",
             requester_id,
             "_consecutive_failures_get_allocated_resources",
             "get allocated resources",
@@ -285,13 +296,13 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
 
         # Submit a new request if none is currently in-flight
         # (first call, or the previous request completed, errored, or timed out).
-        if requester_id not in self._pending_allocated_resources:
+        if self._pending_allocated_resources is None:
             ref = self._autoscaling_coordinator.get_allocated_resources.remote(
                 requester_id,
             )
-            self._pending_allocated_resources[requester_id] = (ref, time.time())
+            self._pending_allocated_resources = (ref, time.time())
 
-        return self._cached_allocated_resources.get(requester_id, [])
+        return self._cached_allocated_resources
 
 
 class _AutoscalingCoordinatorActor:
