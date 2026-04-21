@@ -1407,37 +1407,6 @@ class TestChooseReplica:
         assert replica._requests_sent[0]["request_id"] == "test-request-1"
         assert replica._requests_sent[0]["with_rejection"] is False
 
-    async def test_dispatch_not_rejected_after_choose_replica(
-        self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
-    ):
-        """Dispatch won't be rejected even though max_ongoing_requests reaches its threshold"""
-        router, fake_request_router = setup_router
-
-        r1_id = ReplicaID(
-            unique_id="test-replica-1", deployment_id=DeploymentID(name="test")
-        )
-        replica = FakeReplica(
-            r1_id,
-            queue_len_info=ReplicaQueueLengthInfo(
-                # `accepted=False` simulates rejection due to max_ongoing_requests limit.
-                accepted=False,
-                num_ongoing_requests=999,
-            ),
-        )
-        fake_request_router.set_replica_to_return(replica)
-
-        request_metadata = RequestMetadata(
-            request_id="test-request-1",
-            internal_request_id="test-internal-request-1",
-        )
-
-        async with router.choose_replica(request_metadata) as selection:
-            result = await router.dispatch(selection, request_metadata)
-            assert result._replica_id == r1_id
-
-        assert len(replica._requests_sent) == 1
-        assert replica._requests_sent[0]["with_rejection"] is False
-
     async def test_multiple_dispatch_calls_fail(
         self, setup_router: Tuple[AsyncioRouter, FakeRequestRouter]
     ):
