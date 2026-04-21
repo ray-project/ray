@@ -542,9 +542,7 @@ class ReadOnlyProviderConfigReader(IConfigReader):
         if available_node_types:
             self._configs["available_node_types"].update(available_node_types)
             self._configs["max_workers"] = sum(
-                v["max_workers"]
-                for k, v in available_node_types.items()
-                if k != head_node_type
+                v["max_workers"] for v in available_node_types.values()
             )
             assert head_node_type, "Head node type should be found."
             self._configs["head_node_type"] = head_node_type
