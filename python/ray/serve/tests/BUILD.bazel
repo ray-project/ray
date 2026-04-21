@@ -105,6 +105,7 @@ py_test_module_list(
         "test_backpressure.py",
         "test_backpressure_grpc.py",
         "test_batching.py",
+        "test_broadcast.py",
         "test_callback.py",
         "test_cluster.py",
         "test_controller.py",
@@ -209,6 +210,7 @@ py_test_module_list(
         "test_grpc.py",
         "test_logging.py",
         "test_logging_2.py",
+        "test_shutdown.py",
         "test_standalone.py",
         "test_standalone_3.py",
         "test_target_capacity.py",
@@ -216,6 +218,26 @@ py_test_module_list(
         "test_telemetry_1.py",
         "test_telemetry_2.py",
     ],
+    tags = [
+        "exclusive",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Logging tests with client IP logging enabled.
+py_test_module_list(
+    size = "enormous",
+    env = {"RAY_SERVE_LOG_CLIENT_ADDRESS": "1"},
+    files = [
+        "test_logging.py",
+        "test_logging_2.py",
+    ],
+    name_suffix = "_with_client_address_logging",
     tags = [
         "exclusive",
         "team:serve",
@@ -250,6 +272,7 @@ py_test_module_list(
     size = "large",
     data = glob(["test_config_files/**/*"]),
     files = [
+        "test_capacity_queue_router.py",
         "test_cli.py",
         "test_cli_2.py",
         "test_cli_3.py",
@@ -296,15 +319,47 @@ py_test_module_list(
         "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "5",
         "RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S": "1",
         "RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS": "10",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S": "5",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S": "1",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS": "5",
         "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
     },
     files = [
         "test_deploy_app.py",
         "test_deploy_app_2.py",
-        "test_deployment_actors.py",
         "test_metrics.py",
         "test_metrics_2.py",
         "test_metrics_3.py",
+    ],
+    tags = [
+        "exclusive",
+        "team:serve",
+        "use_all_core_windows",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+# Deployment actors tests: split into own target with size=large because
+# the test file has 39 tests including heavyweight crash-recovery tests
+# with 120s waits that exceed the medium/long (900s) timeout under CI load.
+py_test_module_list(
+    size = "large",
+    data = glob(["test_config_files/**/*"]),
+    env = {
+        "RAY_SERVE_ROUTER_QUEUE_LEN_GAUGE_THROTTLE_S": "0",
+        "RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1",
+        "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "5",
+        "RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S": "1",
+        "RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS": "10",
+        "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
+    },
+    files = [
+        "test_deployment_actors.py",
+        "test_deployment_actors_recovery.py",
     ],
     tags = [
         "exclusive",
