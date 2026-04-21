@@ -10,7 +10,7 @@ Measures per configuration:
 
 Methodology:
 - Parent->Child deployment chain where Child simulates work via asyncio.sleep
-  with exponential distribution (mean=1s, cap=10s).
+  with an exponential distribution (mean/cap configurable via CLI).
 - Closed-loop load generation: N concurrent users each making sequential
   requests through DeploymentHandle, distributed across remote actors.
 - Load level: 100% of theoretical max throughput, which equals to
@@ -51,12 +51,12 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Workload configuration
+# Workload configuration (defaults; overridable via CLI)
 # ---------------------------------------------------------------------------
-SIMULATED_LATENCY_MEAN_S = 1.0
-SIMULATED_LATENCY_CAP_S = 10.0
-MAX_ONGOING_REQUESTS_CHILD = 2
-MAX_ONGOING_REQUESTS_PARENT = 5
+DEFAULT_SIMULATED_LATENCY_MEAN_S = 1.0
+DEFAULT_SIMULATED_LATENCY_CAP_S = 10.0
+DEFAULT_MAX_ONGOING_REQUESTS_CHILD = 2
+DEFAULT_MAX_ONGOING_REQUESTS_PARENT = 5
 
 # ---------------------------------------------------------------------------
 # Load-test configuration
@@ -83,7 +83,6 @@ APP_NAME = "router-benchmark"
 
 
 @serve.deployment(
-    max_ongoing_requests=MAX_ONGOING_REQUESTS_CHILD,
     max_queued_requests=-1,
     graceful_shutdown_timeout_s=0.1,
     graceful_shutdown_wait_loop_s=0.1,
@@ -92,20 +91,25 @@ APP_NAME = "router-benchmark"
 class BenchmarkChild:
     """Simulates work with variable latency drawn from an exponential distribution."""
 
-    def __init__(self):
+    def __init__(
+        self,
+        simulated_latency_mean_s: float,
+        simulated_latency_cap_s: float,
+    ):
         self._replica_id = serve.get_replica_context().replica_id.unique_id
+        self._mean_s = simulated_latency_mean_s
+        self._cap_s = simulated_latency_cap_s
 
     async def __call__(self) -> dict:
         latency_s = min(
-            random.expovariate(1 / SIMULATED_LATENCY_MEAN_S),
-            SIMULATED_LATENCY_CAP_S,
+            random.expovariate(1 / self._mean_s),
+            self._cap_s,
         )
         await asyncio.sleep(latency_s)
         return {"replica_id": self._replica_id, "processing_s": latency_s}
 
 
 @serve.deployment(
-    max_ongoing_requests=MAX_ONGOING_REQUESTS_PARENT,
     max_queued_requests=-1,
     graceful_shutdown_timeout_s=0.1,
     graceful_shutdown_wait_loop_s=0.1,
@@ -126,13 +130,27 @@ class BenchmarkParent:
 # ===================================================================
 
 
-def _build_pow2_app(num_replicas: int):
+@dataclass
+class WorkloadConfig:
+    simulated_latency_mean_s: float
+    simulated_latency_cap_s: float
+    max_ongoing_requests_child: int
+    max_ongoing_requests_parent: int
+
+
+def _build_pow2_app(num_replicas: int, wl: WorkloadConfig):
     """Build app with default Power-of-Two-Choices router."""
-    child = BenchmarkChild.options(num_replicas=num_replicas).bind()
-    return BenchmarkParent.options(num_replicas=num_replicas).bind(child)
+    child = BenchmarkChild.options(
+        num_replicas=num_replicas,
+        max_ongoing_requests=wl.max_ongoing_requests_child,
+    ).bind(wl.simulated_latency_mean_s, wl.simulated_latency_cap_s)
+    return BenchmarkParent.options(
+        num_replicas=num_replicas,
+        max_ongoing_requests=wl.max_ongoing_requests_parent,
+    ).bind(child)
 
 
-def _build_capacity_queue_app(num_replicas: int):
+def _build_capacity_queue_app(num_replicas: int, wl: WorkloadConfig):
     """Build app with CapacityQueueRouter."""
     router_config = RequestRouterConfig(
         request_router_class=(
@@ -162,22 +180,24 @@ def _build_capacity_queue_app(num_replicas: int):
 
     child = BenchmarkChild.options(
         num_replicas=num_replicas,
+        max_ongoing_requests=wl.max_ongoing_requests_child,
         request_router_config=router_config,
         deployment_actors=_capacity_queue_actors(),
-    ).bind()
+    ).bind(wl.simulated_latency_mean_s, wl.simulated_latency_cap_s)
     return BenchmarkParent.options(
         num_replicas=num_replicas,
+        max_ongoing_requests=wl.max_ongoing_requests_parent,
         request_router_config=router_config,
         deployment_actors=_capacity_queue_actors(),
     ).bind(child)
 
 
-def _build_app(router_type: str, num_replicas: int):
+def _build_app(router_type: str, num_replicas: int, wl: WorkloadConfig):
     """Build a Parent->Child app with the given router type and scale."""
     if router_type == "pow2":
-        return _build_pow2_app(num_replicas)
+        return _build_pow2_app(num_replicas, wl)
     elif router_type == "capacity_queue":
-        return _build_capacity_queue_app(num_replicas)
+        return _build_capacity_queue_app(num_replicas, wl)
     raise ValueError(f"Unknown router type: {router_type}")
 
 
@@ -336,6 +356,7 @@ def _compute_utilization(
     results: List[RequestResult],
     num_replicas: int,
     duration_s: float,
+    max_ongoing_requests_child: int,
 ) -> List[float]:
     """Per-replica utilization as a list (one value per replica).
 
@@ -348,7 +369,7 @@ def _compute_utilization(
     if not successful:
         return [0.0] * num_replicas
 
-    available_s = duration_s * MAX_ONGOING_REQUESTS_CHILD
+    available_s = duration_s * max_ongoing_requests_child
 
     # Measurement window: starts at earliest request, spans duration_s
     window_start = min(r.start_time for r in successful)
@@ -402,6 +423,7 @@ async def _wait_for_ready(
 
 
 async def run_router_benchmark(
+    workload: WorkloadConfig,
     warmup_s: float = WARMUP_S,
     duration_s: float = DURATION_S,
     num_replicas_list: Optional[List[int]] = None,
@@ -424,7 +446,7 @@ async def run_router_benchmark(
         for num_replicas in num_replicas_list:
             num_concurrent = max(
                 1,
-                int(num_replicas * MAX_ONGOING_REQUESTS_CHILD * LOAD_LEVEL),
+                int(num_replicas * workload.max_ongoing_requests_child * LOAD_LEVEL),
             )
             prefix = f"router_{router_type}_{num_replicas}"
 
@@ -433,7 +455,9 @@ async def run_router_benchmark(
                 f"({num_concurrent} users) ==="
             )
 
-            handle = serve.run(_build_app(router_type, num_replicas), name=APP_NAME)
+            handle = serve.run(
+                _build_app(router_type, num_replicas, workload), name=APP_NAME
+            )
 
             try:
                 # Scale readiness probes with replica count so routing
@@ -481,7 +505,12 @@ async def run_router_benchmark(
                     )
 
                 # -- utilization --
-                utils = _compute_utilization(results, num_replicas, duration_s)
+                utils = _compute_utilization(
+                    results,
+                    num_replicas,
+                    duration_s,
+                    workload.max_ongoing_requests_child,
+                )
                 utilization_raw[prefix] = [round(u, 4) for u in utils]
                 for pct, label in [(25, "p25"), (50, "p50"), (75, "p75")]:
                     perf_metrics.append(
@@ -521,14 +550,65 @@ async def run_router_benchmark(
     default=NUM_REPLICAS,
     help="Replica counts to benchmark. Default: 512, 128, 32, 8.",
 )
-def main(output_path: Optional[str], num_replicas: List[int]):
-    logger.info(f"Running router benchmark for replica counts: {list(num_replicas)}")
+@click.option(
+    "--router-type",
+    "-r",
+    multiple=True,
+    type=click.Choice(["pow2", "capacity_queue"]),
+    default=ROUTER_TYPES,
+    help="Routers to benchmark. Repeat flag for multiple.",
+)
+@click.option(
+    "--simulated-latency-mean-s",
+    type=float,
+    default=DEFAULT_SIMULATED_LATENCY_MEAN_S,
+    help="Mean of the exponential distribution for simulated child work.",
+)
+@click.option(
+    "--simulated-latency-cap-s",
+    type=float,
+    default=DEFAULT_SIMULATED_LATENCY_CAP_S,
+    help="Cap on simulated child work latency.",
+)
+@click.option(
+    "--max-ongoing-requests-child",
+    type=int,
+    default=DEFAULT_MAX_ONGOING_REQUESTS_CHILD,
+    help="max_ongoing_requests for the child deployment.",
+)
+@click.option(
+    "--max-ongoing-requests-parent",
+    type=int,
+    default=DEFAULT_MAX_ONGOING_REQUESTS_PARENT,
+    help="max_ongoing_requests for the parent deployment.",
+)
+def main(
+    output_path: Optional[str],
+    num_replicas: List[int],
+    router_type: List[str],
+    simulated_latency_mean_s: float,
+    simulated_latency_cap_s: float,
+    max_ongoing_requests_child: int,
+    max_ongoing_requests_parent: int,
+):
+    workload = WorkloadConfig(
+        simulated_latency_mean_s=simulated_latency_mean_s,
+        simulated_latency_cap_s=simulated_latency_cap_s,
+        max_ongoing_requests_child=max_ongoing_requests_child,
+        max_ongoing_requests_parent=max_ongoing_requests_parent,
+    )
+    logger.info(
+        f"Running router benchmark: replicas={list(num_replicas)} "
+        f"routers={list(router_type)} workload={workload}"
+    )
 
     results = asyncio.run(
         run_router_benchmark(
+            workload=workload,
             warmup_s=WARMUP_S,
             duration_s=DURATION_S,
             num_replicas_list=list(num_replicas),
+            router_types=list(router_type),
         )
     )
 
