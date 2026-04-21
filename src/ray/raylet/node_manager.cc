@@ -301,9 +301,12 @@ NodeManager::NodeManager(
                                         "NodeManager.GCTaskFailureReason");
 
   if (RayConfig::instance().enable_plasma_move_semantics()) {
+    RAY_LOG(INFO) << "Plasma move semantics enabled.";
     object_manager_.SetOnPushComplete([this](const ObjectID &object_id) {
-      RAY_LOG(DEBUG) << "Move semantic: releasing local copy of " << object_id
-                     << " after push complete";
+      RAY_LOG(INFO) << "Move semantic: releasing local copy of " << object_id
+                    << " after push complete. Object store used before release: "
+                    << object_manager_.GetUsedMemory() << " bytes ("
+                    << object_manager_.GetUsedMemoryPercentage() * 100 << "%)";
       local_object_manager_.ReleaseFreedObject(object_id);
     });
   }

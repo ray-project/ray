@@ -175,6 +175,10 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;
+  RAY_LOG(INFO) << "Object added " << object_id
+                << " size=" << (object_info.data_size + object_info.metadata_size)
+                << " used_memory=" << used_memory_
+                << " num_local_objects=" << local_objects_.size();
   object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
 
   // Give the pull manager a chance to pin actively pulled objects.
@@ -204,6 +208,10 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   local_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
   RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
+  RAY_LOG(INFO) << "Object deleted " << object_id
+                << " size=" << (object_info.data_size + object_info.metadata_size)
+                << " used_memory=" << used_memory_
+                << " num_local_objects=" << local_objects_.size();
   object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
 
   // Ask the pull manager to fetch this object again as soon as possible, if
@@ -776,6 +784,13 @@ std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";
   result << "\n- num local objects: " << local_objects_.size();
+  result << "\n- object store used (bytes): " << used_memory_;
+  result << "\n- object store capacity (bytes): " << config_.object_store_memory;
+  result << "\n- object store used (%): "
+         << (config_.object_store_memory > 0
+                 ? 100.0 * used_memory_ / config_.object_store_memory
+                 : 0)
+         << "%";
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num object pull requests: " << pull_manager_->NumObjectPullRequests();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
