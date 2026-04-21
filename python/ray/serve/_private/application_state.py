@@ -1609,17 +1609,27 @@ def build_serve_application(
             application_serialized_autoscaling_policy_def = _get_serialized_def(
                 application_autoscaling_policy_function
             )
+        num_ingress_deployments = sum(
+            inspect.isclass(deployment.func_or_class)
+            and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
+            for deployment in built_app.deployments
+        )
+        if num_ingress_deployments > 1:
+            return (
+                None,
+                None,
+                (
+                    f'Found multiple FastAPI deployments in application "{built_app.name}". '
+                    "Please only include one deployment with @serve.ingress "
+                    "in your application to avoid this issue."
+                ),
+            )
+
         deployable_deployments = list(built_app.deployments)
         if built_app.ingress_request_router_deployment is not None:
             deployable_deployments.append(built_app.ingress_request_router_deployment)
 
         for deployment in deployable_deployments:
-            if (
-                deployment in built_app.deployments
-                and inspect.isclass(deployment.func_or_class)
-                and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
-            ):
-                num_ingress_deployments += 1
             is_ingress = deployment.name == built_app.ingress_deployment_name
             is_ingress_request_router = (
                 built_app.ingress_request_router_deployment is not None
@@ -1666,16 +1676,6 @@ def build_serve_application(
                     serialized_request_router_cls=deployment_to_serialized_request_router_cls,
                     serialized_deployment_actors=serialized_deployment_actors,
                 )
-            )
-        if num_ingress_deployments > 1:
-            return (
-                None,
-                None,
-                (
-                    f'Found multiple FastAPI deployments in application "{built_app.name}". '
-                    "Please only include one deployment with @serve.ingress "
-                    "in your application to avoid this issue."
-                ),
             )
         return application_serialized_autoscaling_policy_def, deploy_args_list, None
     except KeyboardInterrupt:
