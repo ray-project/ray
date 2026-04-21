@@ -7,10 +7,21 @@ from ray.cluster_utils import Cluster
 from ray.rllib.algorithms.appo import APPOConfig
 from ray.rllib.algorithms.ppo import PPOConfig
 
-OBJECT_STORE_MEMORY = 10**8
+EXPECTED_PER_NODE_OBJECT_STORE_MEMORY = 10**8
+HEAD_REDIS_PORT = 6379
 HEAD_CPUS = 2
 WORKER_CPUS = 4
 NUM_ENV_RUNNERS = 4
+
+
+def _add_node(cluster, worker=True):
+    cluster.add_node(
+        redis_port=HEAD_REDIS_PORT if worker else None,
+        num_cpus=HEAD_CPUS if worker else WORKER_CPUS,
+        num_gpus=0,
+        object_store_memory=EXPECTED_PER_NODE_OBJECT_STORE_MEMORY,
+        include_dashboard=False if worker else True,
+    )
 
 
 @pytest.fixture
@@ -21,23 +32,13 @@ def cluster():
     Worker holds all 4 remote env runners (deterministic placement).
     """
     assert (
-        2 * OBJECT_STORE_MEMORY < ray._common.utils.get_system_memory() / 2
+        2 * EXPECTED_PER_NODE_OBJECT_STORE_MEMORY
+        < ray._common.utils.get_system_memory() / 2
     ), "Not enough memory on this machine to run this workload."
 
     cluster = Cluster()
-    cluster.add_node(
-        redis_port=6379,
-        num_cpus=HEAD_CPUS,
-        num_gpus=0,
-        object_store_memory=OBJECT_STORE_MEMORY,
-        include_dashboard=False,
-    )
-    cluster.add_node(
-        redis_port=None,
-        num_cpus=WORKER_CPUS,
-        num_gpus=0,
-        object_store_memory=OBJECT_STORE_MEMORY,
-    )
+    _add_node(cluster, worker=False)
+    _add_node(cluster)
     cluster.wait_for_nodes()
     ray.init(address=cluster.address)
 
@@ -53,15 +54,6 @@ def _kill_worker_node(cluster):
         cluster.remove_node(others[0])
         return True
     return False
-
-
-def _add_worker_node(cluster):
-    cluster.add_node(
-        redis_port=None,
-        num_cpus=WORKER_CPUS,
-        num_gpus=0,
-        object_store_memory=OBJECT_STORE_MEMORY,
-    )
 
 
 def _train(cluster, algo, config, iters, preempt_freq):
@@ -93,7 +85,7 @@ def _train(cluster, algo, config, iters, preempt_freq):
 
         # Bring back a previously failed node.
         elif (i - 1) % preempt_freq == 0:
-            _add_worker_node(cluster)
+            _add_node(cluster)
 
     # Workers must have gone down at some point.
     assert saw_healthy_drop, (
@@ -168,7 +160,6 @@ def test_node_failure_recreate_appo(cluster):
 
     algo = config.build()
     _train(cluster, algo, config, iters=10, preempt_freq=7)
-    algo.stop()
 
 
 def test_node_failure_recreate_ppo(cluster):
@@ -201,7 +192,6 @@ def test_node_failure_recreate_ppo(cluster):
 
     algo = config.build()
     _train(cluster, algo, config, iters=10, preempt_freq=7)
-    algo.stop()
 
 
 def test_node_failure_no_recovery(cluster):
@@ -229,11 +219,10 @@ def test_node_failure_no_recovery(cluster):
     )
 
     algo = config.build()
-    # _train will crash with a RayError when dead workers are detected
+    # _train will crash with an ActorDiedError when dead workers are detected
     # (ignore=False, restart=False → errors propagate).
-    with pytest.raises(Exception):
+    with pytest.raises(ray.exceptions.ActorDiedError, match="actor died unexpectedly"):
         _train(cluster, algo, config, iters=10, preempt_freq=3)
-    algo.stop()
 
 
 if __name__ == "__main__":
