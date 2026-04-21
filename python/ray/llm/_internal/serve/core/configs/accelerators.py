@@ -43,7 +43,6 @@ def _compute_use_gpu(
         if bundle_per_worker:
             return bundle_per_worker.get("GPU", 0) > 0
 
-        # Check bundles list (empty list → no GPUs → CPU-only)
         bundles = placement_group_config.get("bundles")
         if bundles is not None:
             return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
@@ -157,16 +156,14 @@ class TPUAccelerator(AcceleratorBackend):
 
         placement_bundles = self.config.placement_bundles
         if placement_bundles:
-            # 1. Filter out CPU-only driver bundles
+            # Filter for bundles that specify TPU
             tpu_bundles = [b for b in placement_bundles if b.get("TPU", 0) > 0]
 
             if not tpu_bundles:
                 worker_bundle = {"TPU": 1}
             else:
-                # 2. Safely grab the first actual TPU bundle
                 worker_bundle = tpu_bundles[0]
 
-                # 3. Raise an error ONLY if the TPU bundles are heterogeneous (fixes the bug!)
                 if any(b != worker_bundle for b in tpu_bundles):
                     raise ValueError(
                         "Heterogeneous TPU bundles are not supported when `topology` is set. "
