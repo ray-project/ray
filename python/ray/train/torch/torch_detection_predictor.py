@@ -29,7 +29,7 @@ class TorchDetectionPredictor(TorchPredictor):
 
             from ray.train.torch import TorchDetectionPredictor
 
-            model = models.detection.fasterrcnn_resnet50_fpn_v2(pretrained=True)
+            model = models.detection.fasterrcnn_resnet50_fpn_v2(weights=None)
 
             predictor = TorchDetectionPredictor(model=model)
             predictions = predictor.predict(np.zeros((4, 3, 32, 32), dtype=np.float32))
