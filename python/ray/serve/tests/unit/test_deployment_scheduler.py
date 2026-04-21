@@ -587,7 +587,7 @@ def test_schedule_replica():
     scheduling_request = ReplicaSchedulingRequest(
         replica_id=r0_id,
         actor_def=MockActorClass(),
-        actor_resources=RequestedResources({"CPU": 1}),
+        actor_resources={"CPU": 1},
         placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
         placement_group_strategy="STRICT_PACK",
         actor_options={"name": "r0"},
@@ -611,7 +611,7 @@ def test_schedule_replica():
     scheduling_request = ReplicaSchedulingRequest(
         replica_id=r1_id,
         actor_def=MockActorClass(),
-        actor_resources=RequestedResources({"CPU": 1}),
+        actor_resources={"CPU": 1},
         placement_group_bundles=[{"CPU": 1}, {"CPU": 1}],
         placement_group_strategy="STRICT_PACK",
         actor_options={"name": "r1"},
