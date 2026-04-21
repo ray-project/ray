@@ -226,7 +226,10 @@ class GroupedData:
         #     same key values)
         if self._key is None:
             shuffled_ds = self._dataset.repartition(1)
-        elif self._dataset.context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        elif self._dataset.context.shuffle_strategy in (
+            ShuffleStrategy.HASH_SHUFFLE,
+            ShuffleStrategy.GPU_SHUFFLE,
+        ):
             num_partitions = (
                 self._num_partitions
                 or self._dataset.context.default_hash_shuffle_parallelism

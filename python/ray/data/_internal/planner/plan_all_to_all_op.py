@@ -39,6 +39,7 @@ def _plan_gpu_shuffle_repartition(
         key_columns=tuple(normalized_key_columns),
         columns=columns,
         num_partitions=logical_op.num_outputs,
+        should_sort=logical_op.sort,
     )
 
 
