@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Union
 import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup, placement_group
+from ray.util.tpu import get_tpu_version_from_type, slice_placement_group
 
 AcceleratorType = Enum("AcceleratorType", vars(accelerators))
 
@@ -141,8 +142,6 @@ class TPUAccelerator(AcceleratorBackend):
                 strategy=self.config.placement_strategy,
                 name=name,
             )
-
-        from ray.util.tpu import get_tpu_version_from_type, slice_placement_group
 
         accel_str = (
             self.config.accelerator_type.value

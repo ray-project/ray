@@ -3,7 +3,10 @@ import sys
 import pytest
 
 import ray
-from ray.llm._internal.serve.core.configs.accelerators import TPUAccelerator
+from ray.llm._internal.serve.core.configs.accelerators import (
+    TPUAccelerator,
+    _compute_use_gpu,
+)
 from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.tests.conftest import _ray_start_cluster
@@ -180,7 +183,6 @@ def test_compute_use_gpu_with_tpu_and_use_cpu_false():
     Verifies that _compute_use_gpu returns False for TPU configurations
     even when use_cpu=False is explicitly set.
     """
-    from ray.llm._internal.serve.core.configs.accelerators import _compute_use_gpu
 
     # Test with use_cpu=False and TPU accelerator
     assert (
