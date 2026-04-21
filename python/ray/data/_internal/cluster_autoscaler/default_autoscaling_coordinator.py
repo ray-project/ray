@@ -16,7 +16,9 @@ from .base_autoscaling_coordinator import (
 )
 from ray._common.utils import env_bool
 from ray.autoscaler._private.constants import env_integer
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.data._internal.head_node_placement import (
+    head_node_placement_options,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -450,12 +452,6 @@ _get_or_create_lock = threading.Lock()
 
 def get_or_create_autoscaling_coordinator():
     """Get or create the AutoscalingCoordinator actor."""
-    # Create the actor on the local node,
-    # to reduce network overhead.
-    scheduling_strategy = NodeAffinitySchedulingStrategy(
-        ray.get_runtime_context().get_node_id(),
-        soft=False,
-    )
     actor_cls = ray.remote(num_cpus=0, max_restarts=-1, max_task_retries=-1)(
         _AutoscalingCoordinatorActor
     ).options(
@@ -463,7 +459,7 @@ def get_or_create_autoscaling_coordinator():
         namespace="AutoscalingCoordinator",
         get_if_exists=True,
         lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
+        **head_node_placement_options(),
     )
     # NOTE: Need the following lock, because Ray Core doesn't allow creating the same
     # actor from multiple threads simultaneously.
