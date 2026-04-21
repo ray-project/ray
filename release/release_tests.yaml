@@ -2495,6 +2495,8 @@
         cluster_compute: stress_tests/stress_tests_compute_large_gce.yaml
       smoke_test:
         frequency: manual
+        cluster:
+          cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 
 - name: shuffle_20gb_with_state_api
@@ -2566,6 +2568,8 @@
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
+        cluster:
+          cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 - name: stress_test_dead_actors
   python: "3.10"
@@ -2610,6 +2614,8 @@
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
+        cluster:
+          cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 # The full test is not stable, so run the smoke test only.
 # See https://github.com/ray-project/ray/issues/23244.
