@@ -136,7 +136,7 @@ def test_single_tpu_fallback(ray_tpu_cluster):
 
     pg_table = placement_group_table(pg)
 
-    # It should fall back to the default PACK strategy for 1 GPU/TPU
+    # Verify it falls back to the default PACK strategy for 1 GPU/TPU
     assert len(pg_table["bundles"]) == 1
     assert pg_table["strategy"] == "PACK"
 
@@ -166,10 +166,9 @@ def test_tpu_slice_placement_group_creation_bundle_per_worker(ray_tpu_cluster):
 
     engine_config = llm_config.get_engine_config()
 
-    # Test use_tpu property with bundle_per_worker
+    # Validate use_tpu property with bundle_per_worker
     assert engine_config.use_tpu is True
 
-    # Test placement_bundles property directly to verify the user's fix
     bundles = engine_config.placement_bundles
     assert len(bundles) == 2
     for bundle in bundles:
@@ -184,7 +183,7 @@ def test_compute_use_gpu_with_tpu_and_use_cpu_false():
     even when use_cpu=False is explicitly set.
     """
 
-    # Test with use_cpu=False and TPU accelerator
+    # Validate use_gpu property with use_cpu=False and TPU accelerator
     assert (
         _compute_use_gpu(
             use_cpu=False, placement_group_config=None, accelerator_type="TPU-V6E"
@@ -192,7 +191,7 @@ def test_compute_use_gpu_with_tpu_and_use_cpu_false():
         is False
     )
 
-    # Test with use_cpu=None and TPU accelerator
+    # Validate use_gpu property with use_cpu=None and TPU accelerator
     assert (
         _compute_use_gpu(
             use_cpu=None, placement_group_config=None, accelerator_type="TPU-V6E"
@@ -200,7 +199,7 @@ def test_compute_use_gpu_with_tpu_and_use_cpu_false():
         is False
     )
 
-    # Test with use_cpu=False and GPU accelerator (should return True by default)
+    # Validate use_gpu property with use_cpu=False and GPU accelerator (True by default)
     assert (
         _compute_use_gpu(
             use_cpu=False, placement_group_config=None, accelerator_type="A10G"
@@ -231,7 +230,7 @@ def test_tpu_slice_placement_group_creation_cpu_driver_homogeneous_tpu_bundles_p
     ray_tpu_cluster,
 ):
     """
-    Verifies that CPU-only driver bundles are ignored and do not trigger the error
+    Verifies that CPU-only driver bundles are ignored and do not trigger an error
     if subsequent TPU bundles are homogeneous.
     """
 
@@ -247,7 +246,7 @@ def test_tpu_slice_placement_group_creation_cpu_driver_homogeneous_tpu_bundles_p
 
     pg = accelerator.create_placement_group(name="test-pg")
 
-    # Verify that it created a valid placement group
+    # Verify valid PG creation
     assert isinstance(pg, PlacementGroup)
 
     ray.util.remove_placement_group(pg)
