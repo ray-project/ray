@@ -29,7 +29,7 @@ namespace raylet {
 
 std::unique_ptr<WorkerKillingPolicyInterface> WorkerKillingPolicyFactory::Create(
     bool resource_isolation_enabled, const CgroupManagerInterface &cgroup_manager) {
-  if (RayConfig::instance().WORKER_KILLING_POLICY_BY_GROUP()) {
+  if (RayConfig::instance().worker_killing_policy_by_group()) {
     return std::make_unique<GroupByOwnerIdWorkerKillingPolicy>();
   }
 

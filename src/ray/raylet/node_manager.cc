@@ -3287,8 +3287,11 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
       "parallelism by requesting more CPUs per task. %s"
       "To adjust the kill "
       "threshold, set the environment variable "
-      "`RAY_memory_usage_threshold` when starting Ray. To disable "
-      "worker killing, set the environment variable "
+      "`RAY_memory_usage_threshold` when starting Ray. "
+      "To determine worker to oom kill based on owner group size or only select "
+      "a single worker to kill at a time, set the environment variable "
+      "`RAY_worker_killing_policy_by_group` to true before starting Ray. "
+      "To disable worker killing, set the environment variable "
       "`RAY_memory_monitor_refresh_ms` to zero.",
       not_retriable_recommendation_ss.str());
 }
