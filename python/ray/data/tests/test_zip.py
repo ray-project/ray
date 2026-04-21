@@ -165,7 +165,7 @@ def test_zip_does_not_free_shared_materialized_blocks(ray_start_regular_shared):
     # Create a dataset with 3 blocks (rows [7, 7, 6]) and materialize it.
     # The materialized blocks have owns_blocks=False.
     ds = ray.data.range(20, override_num_blocks=3).materialize()
-    assert not all(b.owns_blocks for b in ds._plan.execute()._blocks)
+    assert not ds._plan.execute().owns_blocks
 
     # Consumer 1: a map_batches that uses the same materialized dataset.
     mapped_ds = ds.map_batches(lambda batch: batch, batch_format="pandas")
