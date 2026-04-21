@@ -282,6 +282,11 @@ class OpState:
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
+        # Update actor pool utilization metrics for monitoring scaling behavior
+        self.op.metrics.num_active_actors = actor_info.active
+        self.op.metrics.num_idle_actors = actor_info.idle
+        self.op.metrics.pool_utilization = actor_info.pool_utilization
+        self.op.metrics.num_tasks_in_flight = actor_info.tasks_in_flight
         for next_op in self.op.output_dependencies:
             next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
