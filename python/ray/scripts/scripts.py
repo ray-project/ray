@@ -12,7 +12,7 @@ import urllib.parse
 import warnings
 from collections import deque
 from datetime import datetime
-from typing import List, Optional, Set, Tuple
+from typing import List, Optional, Set, Tuple, Union
 
 import click
 import colorama
@@ -1305,7 +1305,9 @@ def stop(force: bool, grace_period: int):
     procs_not_gracefully_killed = []
 
     def kill_procs(
-        force: bool, grace_period: int, processes_to_kill: List[str]
+        force: bool,
+        grace_period: int,
+        processes_to_kill: List[List[Union[str, bool]]],
     ) -> Tuple[int, int, List[psutil.Process]]:
         """Find all processes from `processes_to_kill` and terminate them.
 
