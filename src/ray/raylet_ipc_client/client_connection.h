@@ -220,12 +220,10 @@ class ClientConnection : public ServerConnection {
   /// Register the client.
   void Register();
 
-  /// Close the connection forcefully.
-  ///
-  /// - Clients will receive an error the next time they interact with the connection.
-  /// - No further messages will be processed from `ProcessMessages`.
-  /// - The `ConnectionErrorHandler` may be called with an error indicating that
-  ///   outstanding reads failed.
+  /**
+   * @brief Close the connection forcefully.
+   * - No further messages will be processed from `ProcessMessages`.
+   */
   void Close();
 
   /// Listen for and process messages from the client connection. Once a
@@ -248,12 +246,25 @@ class ClientConnection : public ServerConnection {
                          std::move(socket),
                          std::move(debug_label),
                          std::move(message_type_enum_names)) {}
-  /// Process an error from the last operation, then process the  message
-  /// header from the client.
+
+  /**
+   * Process an error code from the reading the message if applicable,
+   * then process the message header from the client.
+   * Ignores the message if the connection is closed.
+   *
+   * @param error The error from the last operation.
+   */
   void ProcessMessageHeader(const boost::system::error_code &error);
-  /// Process an error from reading the message header, then process the
-  /// message from the client.
+
+  /**
+   * Process an error code from the reading the message if applicable,
+   * then process the message from the client.
+   * Ignores the message if the connection is closed.
+   *
+   * @param error The error from the last operation.
+   */
   void ProcessMessage(const boost::system::error_code &error);
+
   /// Check if the ray cookie in a received message is correct. Note, if the cookie
   /// is wrong and the remote endpoint is known, raylet process will crash. If the remote
   /// endpoint is unknown, this method will only print a warning.
