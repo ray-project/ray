@@ -60,6 +60,7 @@ defaults
     {%- if config.enable_hap_optimization %}
     load-server-state-from-file global
     {%- endif %}
+    balance {{ config.balance_algorithm }}
 frontend prometheus
     bind :{{ config.metrics_port }}
     mode http
@@ -90,7 +91,6 @@ backend default_backend
 {%- set hc = item.health_config %}
 backend {{ backend.name or 'unknown' }}
     log global
-    balance leastconn
     # Enable HTTP connection reuse for better performance
     http-reuse always
     # Set backend-specific timeouts, overriding defaults if specified
@@ -127,6 +127,10 @@ backend {{ backend.name or 'unknown' }}
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
     {%- endfor %}
+    {%- if backend.fallback_server %}
+    # Fallback to head node's Serve proxy when no ingress replicas are available
+    server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
+    {%- endif %}
 {%- endfor %}
 listen stats
   bind *:{{ config.stats_port }}

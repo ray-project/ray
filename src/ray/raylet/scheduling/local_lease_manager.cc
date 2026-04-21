@@ -655,11 +655,29 @@ bool LocalLeaseManager::PoppedWorkerHandler(
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
       } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
+        work->IncrementPopWorkerRetries();
       } else {
         RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
                        << status;
       }
-      work->SetStateWaiting(cause);
+
+      auto max_retries = RayConfig::instance().pop_worker_max_retries();
+      if (max_retries >= 0 && work->GetPopWorkerRetries() > max_retries) {
+        // In case of too many retries, we cancel this task
+        // directly and raise a `RaySystemError` exception to user
+        // eventually. The task will be removed from dispatch queue in
+        // `CancelTask`.
+        CancelLeases(
+            [lease_id](const auto &w) {
+              return lease_id == w->lease_.GetLeaseSpecification().LeaseId();
+            },
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED,
+            absl::StrCat("Failed to startup worker after retrying ",
+                         RayConfig::instance().pop_worker_max_retries(),
+                         " times."));
+      } else {
+        work->SetStateWaiting(cause);
+      }
     }
   } else {
     // A worker has successfully popped for a valid lease. Grant the lease to
@@ -1046,16 +1064,20 @@ void LocalLeaseManager::ClearWorkerBacklog(const WorkerID &worker_id) {
   }
 }
 
-void LocalLeaseManager::SetWorkerBacklog(SchedulingClass scheduling_class,
-                                         const WorkerID &worker_id,
-                                         int64_t backlog_size) {
-  if (backlog_size == 0) {
-    backlog_tracker_[scheduling_class].erase(worker_id);
-    if (backlog_tracker_[scheduling_class].empty()) {
-      backlog_tracker_.erase(scheduling_class);
+void LocalLeaseManager::SetWorkerBacklog(rpc::ReportWorkerBacklogRequest request) {
+  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+
+  ClearWorkerBacklog(worker_id);
+
+  for (auto &backlog_report : *request.mutable_backlog_reports()) {
+    // Have to recreate the LeaseSpecification to create the raylet-side scheduling
+    // class because the worker-side scheduling class int is local to the worker.
+    const SchedulingClass scheduling_class =
+        LeaseSpecification(std::move(*backlog_report.mutable_lease_spec()))
+            .GetSchedulingClass();
+    if (backlog_report.backlog_size() > 0) {
+      backlog_tracker_[scheduling_class][worker_id] = backlog_report.backlog_size();
     }
-  } else {
-    backlog_tracker_[scheduling_class][worker_id] = backlog_size;
   }
 }
 
@@ -1150,37 +1172,6 @@ bool LocalLeaseManager::ReturnCpuResourcesToUnblockedWorker(
   } else {
     return false;
   }
-}
-
-ResourceSet LocalLeaseManager::CalcNormalTaskResources() const {
-  ResourceSet total_normal_task_resources;
-  for (auto &entry : leased_workers_) {
-    std::shared_ptr<WorkerInterface> worker = entry.second;
-    auto &lease_spec = worker->GetGrantedLease().GetLeaseSpecification();
-    if (!lease_spec.PlacementGroupBundleId().first.IsNil()) {
-      continue;
-    }
-
-    auto actor_id = worker->GetActorId();
-    if (!actor_id.IsNil() && lease_spec.IsActorCreationTask()) {
-      // This task ID corresponds to an actor creation task.
-      continue;
-    }
-
-    if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto resource_set = allocated_instances->ToResourceSet();
-      // Blocked normal task workers have temporarily released its allocated CPU.
-      if (worker->IsBlocked()) {
-        for (const auto &resource_id : allocated_instances->ResourceIds()) {
-          if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
-            resource_set.Set(resource_id, 0);
-          }
-        }
-      }
-      total_normal_task_resources += resource_set;
-    }
-  }
-  return total_normal_task_resources;
 }
 
 uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(

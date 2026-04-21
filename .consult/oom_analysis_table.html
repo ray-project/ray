@@ -1,0 +1,101 @@
+<table style="border-collapse: collapse; font-family: Arial, sans-serif; width: 100%;">
+  <thead>
+    <tr style="background-color: #f2f2f2;">
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">PID</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Process</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">RSS (GB)</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">% of RAM</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">oom_score_adj</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background-color: #ffcccc;">
+      <td style="border: 1px solid #ddd; padding: 8px;">3278</td>
+      <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">ray::ServeController</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">24.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">77.5%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1000</td>
+      <td style="border: 1px solid #ddd; padding: 8px; color: red; font-weight: bold;">ROOT CAUSE - OOM killed at 23:14:23</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">2768</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">raylet</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">3.1</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">9.8%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-998</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Protected, includes object store</td>
+    </tr>
+    <tr style="background-color: #fff3cd;">
+      <td style="border: 1px solid #ddd; padding: 8px;">3334</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">ray::ProxyActor</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1.3</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">4.1%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1000</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">OOM killed at 23:14:35</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">1858</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">vector</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1.0</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">3.0%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-998</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Log collector</td>
+    </tr>
+    <tr style="background-color: #ffe0cc;">
+      <td style="border: 1px solid #ddd; padding: 8px;">2378</td>
+      <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">gcs_server</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.9</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">2.8%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-998</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Grew to 23.2 GB in 12s after controller death. OOM killed at 23:39:45</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">2798</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">ray::DashboardAgent</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1.7%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-998</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Protected</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">2337</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">vector</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.4</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1.1%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-998</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Log collector (2nd instance)</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">465</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">anyscaled</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.1</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.4%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-1000</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Unkillable</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">3239</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">ray::IDLE</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.1</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.3%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1000</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Idle worker</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">2800</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">ray::RuntimeEnv</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.1</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.3%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-998</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Protected</td>
+    </tr>
+    <tr style="background-color: #e8e8e8; font-weight: bold;">
+      <td style="border: 1px solid #ddd; padding: 8px;" colspan="2">TOTAL</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">~31.6</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">~100%</td>
+      <td style="border: 1px solid #ddd; padding: 8px;"></td>
+      <td style="border: 1px solid #ddd; padding: 8px;">m5.2xlarge = 31.6 GB RAM. Free: 62 MB</td>
+    </tr>
+  </tbody>
+</table>

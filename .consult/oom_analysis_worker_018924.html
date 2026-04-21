@@ -1,0 +1,136 @@
+<h3>Worker Node Process Table at 23:16:45 (~2.5 min after controller death on head node)</h3>
+<p><strong>Node:</strong> i-018924044e4768a0f | <strong>Instance:</strong> g4dn.2xlarge (31.6 GB RAM, 1x T4 GPU) | <strong>Swap:</strong> 0 KB</p>
+<p><strong>Killed:</strong> ray::ServeRepli (PID 2935) | <strong>OOM trigger:</strong> event_engine (oom_score_adj: -998) — a gRPC thread inside the raylet tried to allocate memory.</p>
+
+<table style="border-collapse: collapse; font-family: Arial, sans-serif; width: 100%;">
+  <thead>
+    <tr style="background-color: #f2f2f2;">
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">PID</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Process</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">RSS (GB)</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">% of RAM</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">oom_score_adj</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Notes</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr style="background-color: #ffcccc;">
+      <td style="border: 1px solid #ddd; padding: 8px;">2434</td>
+      <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">raylet</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">25.7</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">81.3%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-998</td>
+      <td style="border: 1px solid #ddd; padding: 8px; color: red; font-weight: bold;">PROTECTED. Expected ~9.6 GB (object store). Excess: ~16 GB unexplained. pgtables: 58.5 MB.</td>
+    </tr>
+    <tr style="background-color: #fff3cd;">
+      <td style="border: 1px solid #ddd; padding: 8px;">2935</td>
+      <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">ray::ServeRepli</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.9</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">3.0%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1000</td>
+      <td style="border: 1px solid #ddd; padding: 8px; color: #cc6600; font-weight: bold;">KILLED — normal memory, collateral damage from raylet bloat</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">2936</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">ray::ServeRepli</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.9</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">2.9%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1000</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Normal memory</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">3078</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">ray::ProxyActor</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.8</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">2.6%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1000</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Normal memory</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">2238</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">dcgm-exporter</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.5</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1.4%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-998</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">GPU metrics exporter</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">1862</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">vector</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.4</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1.3%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-998</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Log collector</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">499</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">anyscaled</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.1</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.3%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-1000</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Unkillable</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">2464</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">ray::DashboardAgent</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.1</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.3%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">-998</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">Protected</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">-</td>
+      <td style="border: 1px solid #ddd; padding: 8px; font-style: italic; color: #999;">Other (vector2, RuntimeEnv, python, infra)</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">0.4</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">1.4%</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">mixed</td>
+      <td style="border: 1px solid #ddd; padding: 8px;">vector, RuntimeEnv, python3.10, dcgm, supervisord, etc.</td>
+    </tr>
+    <tr style="background-color: #e8e8e8; font-weight: bold;">
+      <td style="border: 1px solid #ddd; padding: 8px;" colspan="2">TOTAL</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">~29.8</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">~94%</td>
+      <td style="border: 1px solid #ddd; padding: 8px;"></td>
+      <td style="border: 1px solid #ddd; padding: 8px;">g4dn.2xlarge = 31.6 GB RAM. Swap: 0 KB.</td>
+    </tr>
+  </tbody>
+</table>
+
+<br>
+<h4>Key Observations</h4>
+<ul>
+  <li><strong>Raylet at 25.7 GB = 81% of total RAM</strong>, protected by oom_score_adj: -998.</li>
+  <li><strong>Expected raylet size: ~9.6 GB</strong> (30% of 32 GB for object store). The extra ~16 GB is unexplained — likely object store fallback allocation + GCS gRPC buffer.</li>
+  <li><strong>Replicas at normal memory</strong> (0.9 GB each) — killed purely because of oom_score_adj: 1000.</li>
+  <li><strong>OOM triggered by event_engine</strong> (PID 7256, oom_score_adj: -998) — this is a gRPC event engine thread inside the raylet, trying to allocate memory for RPC processing.</li>
+  <li><strong>This is 2.5 minutes after the controller died on the head node</strong> (23:14:23) — the worker node raylet has already bloated significantly.</li>
+</ul>
+
+<br>
+<h4>Raylet Memory Breakdown (Estimated)</h4>
+<table style="border-collapse: collapse; font-family: Arial, sans-serif; width: 60%;">
+  <thead>
+    <tr style="background-color: #f2f2f2;">
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: left;">Component</th>
+      <th style="border: 1px solid #ddd; padding: 8px; text-align: right;">Estimated Size</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">Plasma object store (30% of RAM)</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">~9.6 GB</td>
+    </tr>
+    <tr style="background-color: #ffe0cc;">
+      <td style="border: 1px solid #ddd; padding: 8px; font-weight: bold;">Unexplained excess</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right; font-weight: bold;">~16.1 GB</td>
+    </tr>
+    <tr>
+      <td style="border: 1px solid #ddd; padding: 8px;">Raylet heap (normal)</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">~0.5 GB</td>
+    </tr>
+    <tr style="background-color: #e8e8e8; font-weight: bold;">
+      <td style="border: 1px solid #ddd; padding: 8px;">Total measured</td>
+      <td style="border: 1px solid #ddd; padding: 8px; text-align: right;">25.7 GB</td>
+    </tr>
+  </tbody>
+</table>

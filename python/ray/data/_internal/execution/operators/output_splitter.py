@@ -1,5 +1,7 @@
+import logging
 import math
 import time
+from dataclasses import replace
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
 from ray._common.utils import env_float
@@ -22,6 +24,8 @@ from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata
 from ray.data.context import DataContext
 from ray.types import ObjectRef
+
+logger = logging.getLogger(__name__)
 
 DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR = env_float(
     "RAY_DATA_DEFAULT_OUTPUT_SPLITTER_MAX_BUFFERING_FACTOR", 2
@@ -55,6 +59,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             f"split({n}, equal={equal})",
             [input_op],
             data_context,
+            num_output_splits=n,
         )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
@@ -90,6 +95,11 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
 
         self._locality_hits = 0
         self._locality_misses = 0
+
+        logger.debug(
+            f"OutputSplitter created: {n=}, {equal=}, {locality_hints=}, "
+            f"{self._max_buffer_size=}"
+        )
 
     def num_outputs_total(self) -> Optional[int]:
         # OutputSplitter does not change the number of blocks,
@@ -179,10 +189,14 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
         for i, count in enumerate(allocation):
             bundles = self._split_from_buffer(count)
             for b in bundles:
-                b.output_split_idx = i
+                b = replace(b, output_split_idx=i)
                 self._output_queue.add(b)
                 self._metrics.on_output_queued(b)
-        self._buffer.clear()
+        # Drain truncated remainder through the metrics layer.
+        # A bare self._buffer.clear() would bypass on_input_dequeued,
+        # orphaning RefBundle references in _metrics._internal_inqueues
+        # that pin ObjectRefs in the object store.
+        self.clear_internal_input_queue()
 
     def internal_input_queue_num_blocks(self) -> int:
         return self._buffer.num_blocks()
@@ -258,7 +272,7 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             self._buffer.remove(target_bundle)
             self._metrics.on_input_dequeued(target_bundle, input_index=0)
 
-            target_bundle.output_split_idx = target_output_index
+            target_bundle = replace(target_bundle, output_split_idx=target_output_index)
 
             self._num_output[target_output_index] += target_bundle.num_rows()
             self._output_queue.add(target_bundle)

@@ -273,6 +273,81 @@ class MockDeploymentHandle:
         self._running_replicas_populated = val
 
 
+class MockDeploymentActorWrapper:
+    """Mock for DeploymentActorWrapper with per-instance setters."""
+
+    def __init__(
+        self,
+        deployment_id: DeploymentID,
+        config,
+        code_version: str,
+        recovered_handle=None,
+    ):
+        self._deployment_id = deployment_id
+        self._config = config
+        self._code_version = code_version
+        self._handle = recovered_handle
+        self._ready = False  # Recovered starts pending until set_ready()
+        self._start_error_msg: Optional[str] = None
+        self._check_ready_error_msg: Optional[str] = None
+        self.killed = False
+        self.pending_killed = False
+        self._start_fail_count = 0
+        self._start_fail_msg = None
+        self._health_ok = True
+        self.reset_health_state_after_running_count = 0
+
+    @property
+    def actor_logical_name(self) -> str:
+        return self._config.name
+
+    @property
+    def code_version(self) -> str:
+        return self._code_version
+
+    def set_ready(self):
+        self._ready = True
+
+    def set_start_error(self, error_msg: str):
+        """Make start() fail with this error (persists until cleared)."""
+        self._start_error_msg = error_msg
+
+    def set_check_ready_error(self, error_msg: str):
+        self._check_ready_error_msg = error_msg
+
+    def set_failed_to_start(self, error_msg: str = "constructor failed"):
+        """Simulate start failure (like replica's set_failed_to_start). check_ready will return this error."""
+        self._check_ready_error_msg = error_msg
+
+    def start(self, deployment_runtime_env=None):
+        if self._start_error_msg is not None:
+            return False, self._start_error_msg
+        # Match real behavior: created actor starts as pending until ready.
+        return True, None
+
+    def check_ready(self):
+        if self._check_ready_error_msg is not None:
+            return False, self._check_ready_error_msg
+        if self._ready:
+            return True, None
+        return False, None
+
+    def set_health_ok(self, ok: bool) -> None:
+        """If False, ``check_health`` returns False (failed health reconciliation)."""
+        self._health_ok = ok
+
+    def reset_health_state_after_running(self) -> None:
+        """Match DeploymentActorWrapper; increments counter for unit tests."""
+        self.reset_health_state_after_running_count += 1
+
+    def check_health(self) -> bool:
+        """Match DeploymentActorWrapper; controlled via ``set_health_ok``."""
+        return self._health_ok
+
+    def kill(self) -> None:
+        self.killed = True
+
+
 class MockReplicaActorWrapper:
     def __init__(
         self,
@@ -307,6 +382,7 @@ class MockReplicaActorWrapper:
         self._node_id_is_set = False
         self._actor_id = None
         self._internal_grpc_port = None
+        self._http_port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
         self._docs_path = None
@@ -1005,7 +1081,93 @@ def get_deployment_details(
     return details["applications"][app_name]["deployments"][deployment_name]
 
 
-@ray.remote
+@ray.remote(num_cpus=0)
+class Barrier:
+    """Block until n participants have called wait()."""
+
+    def __init__(self, n: int):
+        self.n = n
+        self.count = 0
+        self.event = asyncio.Event()
+
+    async def wait(self):
+        self.count += 1
+        if self.count >= self.n:
+            self.event.set()
+        else:
+            await self.event.wait()
+
+    def get_count(self) -> int:
+        return self.count
+
+
+@ray.remote(num_cpus=0)
+class Accumulator:
+    """Collect items from multiple actors/replicas."""
+
+    def __init__(self):
+        self.items = []
+
+    def add(self, item):
+        self.items.append(item)
+
+    def get(self) -> list:
+        return list(self.items)
+
+    def count(self) -> int:
+        return len(self.items)
+
+
+@ray.remote(num_cpus=0)
+class FailedReplicaStore:
+    """Stores the first replica ID that failed, for constructor failure tests."""
+
+    def __init__(self):
+        self.failed_replica_id = None
+
+    def set_if_first(self, replica_id: str) -> bool:
+        if self.failed_replica_id is None:
+            self.failed_replica_id = replica_id
+            return True
+        return False
+
+    def get(self):
+        return self.failed_replica_id
+
+
+@ray.remote(num_cpus=0)
+class SharedFlag:
+    """Non-blocking boolean flag shared across actors."""
+
+    def __init__(self):
+        self.value = False
+
+    def set(self):
+        self.value = True
+
+    def clear(self):
+        self.value = False
+
+    def is_set(self) -> bool:
+        return self.value
+
+
+@ray.remote(num_cpus=0)
+class SharedCounter:
+    """Simple shared counter for cross-actor coordination."""
+
+    def __init__(self):
+        self.count = 0
+
+    def inc(self) -> int:
+        self.count += 1
+        return self.count
+
+    def get(self) -> int:
+        return self.count
+
+
+@ray.remote(num_cpus=0)
 class Counter:
     def __init__(self, target: int):
         self.count = 0
@@ -1073,7 +1235,7 @@ def get_application_urls(
     Returns:
         The URLs of the application.
     """
-    client = _get_global_client(_health_check_controller=True)
+    client = _get_global_client()
     serve_details = client.get_serve_details()
     assert (
         app_name in serve_details["applications"]
@@ -1221,7 +1383,20 @@ def get_metric_dictionaries(
     name: str,
     timeout: float = 20,
     timeseries: Optional[PrometheusTimeseries] = None,
+    wait: bool = True,
 ) -> List[Dict]:
+    """Get metric samples as list of label dicts.
+
+    Args:
+        name: Metric name to fetch.
+        timeout: Timeout for each fetch attempt.
+        timeseries: Optional shared timeseries to populate.
+        wait: If True (default), wait for metric to appear before returning.
+            If False, fetch once and return immediately (possibly empty).
+
+    Returns:
+        List of metric samples as label dicts.
+    """
     if timeseries is None:
         timeseries = PrometheusTimeseries()
 
@@ -1235,7 +1410,18 @@ def get_metric_dictionaries(
         )
         return True
 
-    wait_for_condition(metric_available, retry_interval_ms=1000, timeout=timeout * 4)
+    if wait:
+        wait_for_condition(
+            metric_available, retry_interval_ms=1000, timeout=timeout * 4
+        )
+    else:
+        # Fetch once without asserting - allows outer wait_for_condition to retry
+        fetch_prometheus_metric_timeseries(
+            [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+            timeseries,
+            timeout=PROMETHEUS_METRICS_TIMEOUT_S,
+        )
+
     metric_dicts = []
     for sample in timeseries.metric_samples.values():
         if sample.name == name:

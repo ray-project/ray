@@ -1,9 +1,15 @@
+import os
 import re
 from typing import Any, List
 
+import lance
 import pandas as pd
+import pyarrow as pa
 import pyarrow.compute as pc
+import pyarrow.parquet as pq
 import pytest
+from packaging.version import Version, parse as version_parse
+from pytest_lazy_fixtures import lf as lazy_fixture
 
 import ray
 from ray.data import Dataset
@@ -16,6 +22,7 @@ from ray.data._internal.logical.operators import (
 )
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.util import rows_same
+from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_execution_optimizer_limit_pushdown import (
@@ -150,6 +157,40 @@ def test_chained_filter_with_expressions(parquet_ds):
         filtered_expr_chained_ds,
         "",  # All filters combined and pushed down to read
         filtered_udf_data,
+    )
+
+
+@pytest.mark.parametrize(
+    "fs,data_path",
+    [
+        (None, lazy_fixture("local_path")),
+        (lazy_fixture("local_fs"), lazy_fixture("local_path")),
+        (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
+    ],
+)
+# Same pylance version gate as tests/datasource/test_lance.py
+@pytest.mark.skipif(
+    Version(lance.__version__) <= Version("0.3.19"),
+    reason=f"pylance {lance.__version__} <= 0.3.19; API incompatible",
+)
+def test_pushdown_filter_lance(ray_start_regular_shared, fs, data_path):
+    """Test that Lance predicate pushdown absorbs expression filters into Read."""
+
+    df1 = pa.table({"a": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    lance.write_dataset(df1, path)
+    # Both filters specified on read_lance() and .filter() should be applied
+    lance_ds = ray.data.read_lance(path, filter="a <= 5")
+    filtered_expr_ds = lance_ds.filter(expr=col("a") >= 1.0)
+
+    filtered_expr_data = lance_ds.filter(
+        lambda r: r["a"] <= 5.0 and r["a"] >= 1.0
+    ).take_all()
+    _check_plan_with_flexible_read(
+        filtered_expr_ds,
+        "",  # Pushed down to read, no additional Filter operator
+        filtered_expr_data,
     )
 
 
@@ -409,10 +450,14 @@ class TestPassthroughBehavior:
         [
             (lambda ds: ds.sort("id"), "Sort"),
             (lambda ds: ds.repartition(10), "Repartition"),
+            (
+                lambda ds: ds.repartition(target_num_rows_per_block=10),
+                "StreamingRepartition",
+            ),
             (lambda ds: ds.random_shuffle(), "RandomShuffle"),
             (lambda ds: ds.limit(50), "Limit"),
         ],
-        ids=["sort", "repartition", "random_shuffle", "limit"],
+        ids=["sort", "repartition", "streaming_repartition", "random_shuffle", "limit"],
     )
     def test_filter_pushes_through_operator(self, base_ds, transform, expected_op_type):
         """Filter should push through passthrough operators."""
@@ -723,6 +768,155 @@ class TestProjectionWithFilterEdgeCases:
             raise AssertionError(
                 f"Unexpected optimization state: has_filter={has_filter}, has_project={has_project}"
             )
+
+
+class TestPyArrowComputeUDFPushdown:
+    """Tests for predicate pushdown of PyArrow-compute-backed UDF expressions.
+
+    String namespace methods (str.match_regex, str.starts_with, etc.) and
+    numeric helpers (ceil, abs, etc.) produce PyArrowComputeUDFExpr nodes
+    that should be pushed into Read operators just like plain comparison
+    expressions.
+    """
+
+    @pytest.fixture
+    def parquet_ds(self, ray_start_regular_shared):
+        return ray.data.read_parquet("example://iris.parquet")
+
+    @pytest.mark.parametrize(
+        "build_filter,equivalent_fn",
+        [
+            pytest.param(
+                lambda: ~col("variety").str.match_regex("Set.*"),
+                lambda r: not bool(re.search("Set.*", r["variety"])),
+                id="negated_match_regex",
+            ),
+            pytest.param(
+                lambda: col("variety").str.starts_with("Vir"),
+                lambda r: r["variety"].startswith("Vir"),
+                id="starts_with",
+            ),
+            pytest.param(
+                lambda: col("variety").str.contains("set"),
+                lambda r: "set" in r["variety"],
+                id="contains",
+            ),
+        ],
+    )
+    @pytest.mark.skipif(
+        version_parse(pa.__version__) < version_parse("15.0.0"),
+        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
+    )
+    def test_string_udf_pushdown_into_parquet(
+        self, parquet_ds, build_filter, equivalent_fn
+    ):
+        """String UDF predicates should be pushed into the Parquet reader."""
+        ds = parquet_ds.filter(expr=build_filter())
+        expected = parquet_ds.filter(fn=equivalent_fn)
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "PyArrow-compute UDF filter should be pushed into Read"
+
+    @pytest.mark.skipif(
+        version_parse(pa.__version__) < version_parse("15.0.0"),
+        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
+    )
+    def test_udf_combined_with_comparison_pushdown(self, parquet_ds):
+        """UDF predicate combined with comparison should both push down."""
+        ds = parquet_ds.filter(
+            expr=col("variety").str.starts_with("Vir") & (col("sepal.length") > 6.0)
+        )
+        expected = parquet_ds.filter(
+            fn=lambda r: r["variety"].startswith("Vir") and r["sepal.length"] > 6.0
+        )
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "Combined UDF + comparison filter should be pushed into Read"
+
+    @pytest.mark.skipif(
+        version_parse(pa.__version__) < version_parse("15.0.0"),
+        reason="Requires PyArrow >= 15 for string compute UDF pushdown",
+    )
+    def test_chained_udf_filters_fuse_and_push(self, parquet_ds):
+        """Multiple UDF filters should fuse and push into Read."""
+        ds = parquet_ds.filter(expr=col("variety").str.contains("set")).filter(
+            expr=col("sepal.length") > 5.0
+        )
+        expected = parquet_ds.filter(
+            fn=lambda r: "set" in r["variety"] and r["sepal.length"] > 5.0
+        )
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "Chained UDF filters should fuse and push into Read"
+
+    @pytest.mark.skipif(
+        version_parse(pa.__version__) < version_parse("15.0.0"),
+        reason="Requires PyArrow >= 15 for complex type UDF pushdown",
+    )
+    @pytest.mark.parametrize(
+        "table,build_filter,equivalent_fn",
+        [
+            pytest.param(
+                pa.table(
+                    {
+                        "tags": [[1, 2, 3], [4, 5], [6], [7, 8, 9, 10]],
+                        "value": [10, 20, 30, 40],
+                    }
+                ),
+                lambda: col("tags").list.len() > 2,
+                lambda r: len(r["tags"]) > 2,
+                id="list_len",
+            ),
+            pytest.param(
+                pa.table(
+                    {
+                        "info": pa.array(
+                            [
+                                {"name": "Alice", "age": 30},
+                                {"name": "Bob", "age": 25},
+                                {"name": "Carol", "age": 35},
+                                {"name": "Dave", "age": 20},
+                            ],
+                            type=pa.struct(
+                                [
+                                    pa.field("name", pa.string()),
+                                    pa.field("age", pa.int64()),
+                                ]
+                            ),
+                        ),
+                        "id": [1, 2, 3, 4],
+                    }
+                ),
+                lambda: col("info").struct.field("age") > 25,
+                lambda r: r["info"]["age"] > 25,
+                id="struct_field",
+            ),
+        ],
+    )
+    def test_complex_type_udf_pushdown(
+        self, ray_start_regular_shared, tmp_path, table, build_filter, equivalent_fn
+    ):
+        """List/struct UDF predicates should be pushed into the Parquet reader."""
+        path = str(tmp_path / "data.parquet")
+        pq.write_table(table, path)
+
+        ds = ray.data.read_parquet(path).filter(expr=build_filter())
+        expected = ray.data.read_parquet(path).filter(fn=equivalent_fn)
+        assert rows_same(ds.to_pandas(), expected.to_pandas())
+
+        optimized_plan = LogicalOptimizer().optimize(ds._plan._logical_plan)
+        assert not plan_has_operator(
+            optimized_plan, Filter
+        ), "Complex-type UDF filter should be pushed into Read"
 
 
 class TestPushIntoBranchesBehavior:

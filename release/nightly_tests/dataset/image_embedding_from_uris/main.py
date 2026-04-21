@@ -6,7 +6,12 @@ from typing import Any, Dict
 import numpy as np
 import pandas as pd
 import torch
-from benchmark import Benchmark
+from benchmark import (
+    Benchmark,
+    RuntimeEnvSetupTracker,
+    benchmark_py_modules,
+    collect_dataset_stats,
+)
 from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
 import albumentations as A
@@ -204,7 +209,7 @@ def main(args: argparse.Namespace):
         transform = weights.transforms()
         model_ref = ray.put(model)
 
-        (
+        ds = (
             ray.data.from_pandas(metadata)
             .with_column("channel0", download("channel0_uris"))
             .with_column("channel1", download("channel1_uris"))
@@ -221,8 +226,11 @@ def main(args: argparse.Namespace):
                 concurrency=tuple(args.inference_concurrency),
                 fn_constructor_kwargs={"model": model_ref, "device": "cuda"},
             )
-            .write_parquet(WRITE_PATH)
         )
+        ds.write_parquet(WRITE_PATH)
+        metrics = collect_dataset_stats(ds)
+        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+        return metrics
 
     benchmark.run_fn("main", benchmark_fn)
     benchmark.write_result()
@@ -246,5 +254,5 @@ def start_chaos():
 
 if __name__ == "__main__":
     args = parse_args()
-    ray.init()
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     main(args)

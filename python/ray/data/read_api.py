@@ -1,6 +1,7 @@
 import collections
 import logging
 import warnings
+from dataclasses import replace
 from datetime import datetime
 from typing import (
     TYPE_CHECKING,
@@ -47,6 +48,7 @@ from ray.data._internal.datasource.json_datasource import (
 from ray.data._internal.datasource.kafka_datasource import (
     KafkaAuthConfig,
     KafkaDatasource,
+    PerPartitionOffsets,
 )
 from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data._internal.datasource.mcap_datasource import MCAPDatasource, TimeRange
@@ -113,7 +115,6 @@ from ray.data.datasource.util import (
 )
 from ray.types import ObjectRef
 from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import daft
@@ -460,12 +461,17 @@ def read_datasource(
         ray_remote_args = {}
 
     if not datasource.supports_distributed_reads:
-        ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-            ray.get_runtime_context().get_node_id(),
-            soft=False,
-        )
+        label_selector = ray_remote_args.get("label_selector", {})
+        label_selector[
+            ray._raylet.RAY_NODE_ID_KEY
+        ] = ray.get_runtime_context().get_node_id()
+        ray_remote_args["label_selector"] = label_selector
+        ray_remote_args.pop("scheduling_strategy", None)
 
-    if "scheduling_strategy" not in ray_remote_args:
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and "label_selector" not in ray_remote_args
+    ):
         ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
 
     ray_remote_args = merge_resources_to_ray_remote_args(
@@ -501,7 +507,15 @@ def read_datasource(
     read_tasks = datasource_or_legacy_reader.get_read_tasks(requested_parallelism)
 
     stats = DatasetStats(
-        metadata={"Read": [read_task.metadata for read_task in read_tasks]},
+        metadata={
+            "Read": [
+                # NOTE: We're truncating `input_files` from metadata as it could
+                #       be carrying 1000s of input files (for `ImageDatasource` for ex)
+                #       and isn't useful inside `DatasetStats`
+                replace(read_task.metadata, input_files=None)
+                for read_task in read_tasks
+            ]
+        },
         parent=None,
     )
 
@@ -2819,6 +2833,7 @@ def read_databricks_tables(
     """  # noqa: E501
     # Resolve credential provider (single source of truth for token and host)
     from ray.data._internal.datasource.databricks_credentials import (
+        DatabricksTableCredentialConfig,
         resolve_credential_provider,
     )
     from ray.data._internal.datasource.databricks_uc_datasource import (
@@ -2826,7 +2841,7 @@ def read_databricks_tables(
     )
 
     resolved_provider = resolve_credential_provider(
-        credential_provider=credential_provider
+        DatabricksTableCredentialConfig(credential_provider=credential_provider)
     )
 
     if not catalog:
@@ -3865,10 +3880,9 @@ def from_torch(
     ray_remote_args = {}
     if local_read:
         ray_remote_args = {
-            "scheduling_strategy": NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            ),
+            "label_selector": {
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+            },
             # The user might have initialized Ray to have num_cpus = 0 for the head
             # node. For a local read we expect the read task to be executed on the
             # head node, so we should set num_cpus = 0 for the task to allow it to
@@ -4043,6 +4057,7 @@ def read_lance(
             only the rows matching the filter. See
             `Lance filter push-down <https://lance.org/guide/read_and_write/#filter-push-down>`_
             for valid SQL expressions. By default, no filter is applied.
+            **Deprecated**. Use `dataset.filter(expr=expr)` instead to filter rows.
         storage_options: Extra options that make sense for a particular storage
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. For more information, see `Object Store Configuration <https://lance.org/guide/object_store/>`_.
@@ -4067,6 +4082,16 @@ def read_lance(
     Returns:
         A :class:`~ray.data.Dataset` producing records read from the Lance dataset.
     """  # noqa: E501
+
+    # Check for deprecated filter parameter
+    if filter is not None:
+        warnings.warn(
+            "The `filter` argument is deprecated and will not be supported in a future release. "
+            "Use `dataset.filter(expr=expr)` instead to filter rows.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
     datasource = LanceDatasource(
         uri=uri,
         version=version,
@@ -4255,20 +4280,15 @@ def read_unity_catalog(
         A :class:`~ray.data.Dataset` containing the data from Unity Catalog.
     """  # noqa: E501
     from ray.data._internal.datasource.databricks_credentials import (
-        StaticCredentialProvider,
+        UnityCatalogCredentialConfig,
         resolve_credential_provider,
     )
 
-    # Resolve credentials: either from credential_provider or from url/token
-    if credential_provider is not None:
-        resolved_provider = resolve_credential_provider(credential_provider)
-    elif url is not None and token is not None:
-        # Backwards compatible: create provider from url/token
-        resolved_provider = StaticCredentialProvider(token=token, host=url)
-    else:
-        raise ValueError(
-            "Either 'credential_provider' or both 'url' and 'token' must be provided."
+    resolved_provider = resolve_credential_provider(
+        UnityCatalogCredentialConfig(
+            credential_provider=credential_provider, url=url, token=token
         )
+    )
 
     connector = UnityCatalogConnector(
         table_full_name=table,
@@ -4285,6 +4305,7 @@ def read_delta(
     path: Union[str, List[str]],
     version: Optional[int] = None,
     *,
+    storage_options: Optional[Dict[str, Any]] = None,
     filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     columns: Optional[List[str]] = None,
     parallelism: int = -1,
@@ -4292,25 +4313,61 @@ def read_delta(
     num_gpus: Optional[float] = None,
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
-    partition_filter: Optional[PathPartitionFilter] = None,
-    partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Union[Literal["files"], None] = None,
     include_paths: bool = False,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
     **arrow_parquet_args,
 ):
-    """Creates a :class:`~ray.data.Dataset` from Delta Lake files.
+    """Creates a :class:`~ray.data.Dataset` from a Delta Lake table.
+
+    This reader uses the ``deltalake`` library to read the Delta transaction
+    log and constructs a PyArrow dataset that preserves the table's unified
+    schema, partition information, and column statistics. This enables:
+
+    - Schema evolution support (older files with missing columns are null-filled)
+    - Correct handling of cloud storage URIs (Azure, S3, GCS)
+    - Column statistics from the Delta log for row-group pruning
+    - Authentication via ``storage_options``
 
     Examples:
 
+        Read a local Delta table:
+
         >>> import ray
-        >>> ds = ray.data.read_delta("s3://bucket@path/to/delta-table/") # doctest: +SKIP
+        >>> ds = ray.data.read_delta("/path/to/delta-table/") # doctest: +SKIP
+
+        Read from S3 with credentials:
+
+        >>> ds = ray.data.read_delta(  # doctest: +SKIP
+        ...     "s3://bucket/delta-table/",
+        ...     storage_options={
+        ...         "AWS_ACCESS_KEY_ID": "...",
+        ...         "AWS_SECRET_ACCESS_KEY": "...",
+        ...     },
+        ... )
+
+        Read from Azure with default credentials:
+
+        >>> ds = ray.data.read_delta(  # doctest: +SKIP
+        ...     "az://container/delta-table/",
+        ...     storage_options={"use_azure_cli": "true"},
+        ... )
 
     Args:
-        path: A single file path for a Delta Lake table. Multiple tables are not yet
+        path: A single path to a Delta Lake table. Multiple tables are not
             supported.
-        version: The version of the Delta Lake table to read. If not specified, the latest version is read.
+        version: The version of the Delta Lake table to read. If not specified,
+            the latest version is read.
+        storage_options: A dictionary of storage options passed to the
+            ``deltalake`` library for authentication and configuration.
+            Supported keys depend on the storage backend:
+            `S3 options <https://docs.rs/object_store/latest/object_store/\
+            aws/enum.AmazonS3ConfigKey.html#variants>`_,
+            `Azure options <https://docs.rs/object_store/latest/object_store/\
+            azure/enum.AzureConfigKey.html#variants>`_,
+            `GCS options <https://docs.rs/object_store/latest/object_store/\
+            gcp/enum.GoogleConfigKey.html#variants>`_.
         filesystem: The PyArrow filesystem
             implementation to read from. These filesystems are specified in the
             `pyarrow docs <https://arrow.apache.org/docs/python/api/\
@@ -4328,11 +4385,6 @@ def read_delta(
             worker.
         memory: The heap memory in bytes to reserve for each parallel read worker.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-        partition_filter: A
-            :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
-            with a custom callback to read only selected partitions of a dataset.
-        partitioning: A :class:`~ray.data.datasource.partitioning.Partitioning` object
-            that describes how paths are organized. Defaults to HIVE partitioning.
         shuffle: If setting to "files", randomly shuffle input files order before read.
             Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
@@ -4351,8 +4403,8 @@ def read_delta(
                     #pyarrow.dataset.Scanner.from_fragment>`_
 
     Returns:
-        :class:`~ray.data.Dataset` producing records read from the specified parquet
-        files.
+        :class:`~ray.data.Dataset` producing records read from the specified
+        Delta Lake table.
 
     """
     # Modified from ray.data._internal.util._check_import, which is meant for objects,
@@ -4376,22 +4428,26 @@ def read_delta(
     if not isinstance(path, str):
         raise ValueError("Only a single Delta Lake table path is supported.")
 
-    # Get the parquet file paths from the DeltaTable
-    paths = DeltaTable(path, version=version).file_uris()
+    dt = DeltaTable(path, version=version, storage_options=storage_options)
+    pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
 
-    return read_parquet(
-        paths,
-        filesystem=filesystem,
+    datasource = ParquetDatasource.from_pyarrow_dataset(
+        pa_dataset,
         columns=columns,
-        parallelism=parallelism,
-        ray_remote_args=ray_remote_args,
-        partition_filter=partition_filter,
-        partitioning=partitioning,
+        to_batch_kwargs=arrow_parquet_args if arrow_parquet_args else None,
         shuffle=shuffle,
         include_paths=include_paths,
+    )
+
+    return read_datasource(
+        datasource,
+        parallelism=parallelism,
+        num_cpus=num_cpus,
+        num_gpus=num_gpus,
+        memory=memory,
+        ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
-        **arrow_parquet_args,
     )
 
 
@@ -4401,8 +4457,10 @@ def read_kafka(
     *,
     bootstrap_servers: Union[str, List[str]],
     trigger: Literal["once"] = "once",
-    start_offset: Union[int, datetime, Literal["earliest"]] = "earliest",
-    end_offset: Union[int, datetime, Literal["latest"]] = "latest",
+    start_offset: Union[
+        int, datetime, Literal["earliest"], PerPartitionOffsets
+    ] = "earliest",
+    end_offset: Union[int, datetime, Literal["latest"], PerPartitionOffsets] = "latest",
     kafka_auth_config: Optional[KafkaAuthConfig] = None,
     consumer_config: Optional[Dict[str, Any]] = None,
     num_cpus: Optional[float] = None,
@@ -4443,6 +4501,23 @@ def read_kafka(
                 end_offset=datetime(2025, 1, 2),
             )
 
+        .. testcode::
+            :skipif: True
+
+            # Read using per-partition start offsets; partition 2 falls back
+            # to "earliest" because it is not listed
+            ds = ray.data.read_kafka(
+                topics="my-topic",
+                bootstrap_servers="localhost:9092",
+                start_offset={
+                    "my-topic": {
+                        0: 1500,
+                        1: "earliest",
+                    }
+                },
+                end_offset="latest",
+            )
+
 
     Args:
         topics: Kafka topic name(s) to read from. Can be a single topic name
@@ -4456,12 +4531,18 @@ def read_kafka(
             - int: Offset number
             - datetime: Read from the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "earliest"
+            - Dict[str, Dict[int, Union[int, str]]]: Per-partition offsets
+              mapping ``{topic: {partition_id: offset}}``. Partitions not
+              listed fall back to ``"earliest"``.
 
         end_offset: Ending position for reading (exclusive). Can be:
 
             - int: Offset number
             - datetime: Read up to (but not including) the first message at or after this time. Datetimes with no timezone info are treated as UTC.
             - str: "latest"
+            - Dict[str, Dict[int, Union[int, str]]]: Per-partition offsets
+              mapping ``{topic: {partition_id: offset}}``. Partitions not
+              listed fall back to ``"latest"``.
 
         kafka_auth_config: Authentication configuration (kafka-python style). Deprecated; prefer consumer_config with Confluent keys. Mutually exclusive with consumer_config.
         consumer_config: Confluent/librdkafka consumer configuration dict to
