@@ -344,14 +344,14 @@ class ServeControllerClient:
                     deployment = deployment.options(logging_config=app.logging_config)
 
                 is_ingress = deployment.name == app.ingress_deployment_name
-                is_http_router = (
-                    app.http_router_deployment_name is not None
-                    and deployment.name == app.http_router_deployment_name
+                is_ingress_request_router = (
+                    app.ingress_request_router_deployment_name is not None
+                    and deployment.name == app.ingress_request_router_deployment_name
                 )
                 deployment_args = get_deploy_args(
                     deployment.name,
                     ingress=is_ingress,
-                    http_router=is_http_router,
+                    ingress_request_router=is_ingress_request_router,
                     replica_config=deployment._replica_config,
                     deployment_config=deployment._deployment_config,
                     version=deployment._version or get_random_string(),
@@ -374,7 +374,9 @@ class ServeControllerClient:
                 if deployment_args["route_prefix"]:
                     deployment_args_proto.route_prefix = deployment_args["route_prefix"]
                 deployment_args_proto.ingress = deployment_args["ingress"]
-                deployment_args_proto.http_router = deployment_args["http_router"]
+                deployment_args_proto.ingress_request_router = deployment_args[
+                    "ingress_request_router"
+                ]
 
                 deployment_args_list.append(deployment_args_proto.SerializeToString())
 
@@ -479,12 +481,12 @@ class ServeControllerClient:
         for app in built_apps:
             num_ingress_deployments = 0
             for deployment in app.deployments:
-                is_http_router = (
-                    app.http_router_deployment_name is not None
-                    and deployment.name == app.http_router_deployment_name
+                is_ingress_request_router = (
+                    app.ingress_request_router_deployment_name is not None
+                    and deployment.name == app.ingress_request_router_deployment_name
                 )
                 if (
-                    not is_http_router
+                    not is_ingress_request_router
                     and inspect.isclass(deployment.func_or_class)
                     and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
                 ):

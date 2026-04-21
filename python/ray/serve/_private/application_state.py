@@ -1550,7 +1550,7 @@ def build_serve_application(
 
     Args:
         import_path: import path to a top-level Serve application object or
-            application builder return value. Any HTTP router peer should
+            application builder return value. Any ingress request router peer should
             already be attached to the imported application.
         code_version: code version inferred from app config. All
             deployment versions are set to this code version.
@@ -1610,12 +1610,12 @@ def build_serve_application(
                 application_autoscaling_policy_function
             )
         for deployment in built_app.deployments:
-            is_http_router = (
-                built_app.http_router_deployment_name is not None
-                and deployment.name == built_app.http_router_deployment_name
+            is_ingress_request_router = (
+                built_app.ingress_request_router_deployment_name is not None
+                and deployment.name == built_app.ingress_request_router_deployment_name
             )
             if (
-                not is_http_router
+                not is_ingress_request_router
                 and inspect.isclass(deployment.func_or_class)
                 and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
             ):
@@ -1654,7 +1654,7 @@ def build_serve_application(
                     name=deployment._name,
                     replica_config=deployment._replica_config,
                     ingress=is_ingress,
-                    http_router=is_http_router,
+                    ingress_request_router=is_ingress_request_router,
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,

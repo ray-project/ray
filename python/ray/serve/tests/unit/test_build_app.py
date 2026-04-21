@@ -548,19 +548,19 @@ def test_ingress_name_got_modified():
     assert built_app.deployments[-1].name == "D_2"
 
 
-def test_build_app_with_http_router_peer():
+def test_build_app_with_ingress_request_router_peer():
     @serve.deployment
     class Ingress:
         pass
 
     @serve.deployment
-    class HttpRouter:
+    class IngressRequestRouter:
         pass
 
     ingress_app = Ingress.bind()
     app = serve.Application(
         ingress_app._bound_deployment,
-        http_router=HttpRouter.bind(),
+        ingress_request_router=IngressRequestRouter.bind(),
     )
 
     built_app: BuiltApplication = build_app(
@@ -570,13 +570,13 @@ def test_build_app_with_http_router_peer():
     )
 
     assert sorted(deployment.name for deployment in built_app.deployments) == [
-        "HttpRouter",
+        "IngressRequestRouter",
         "Ingress",
     ]
-    assert built_app.http_router_deployment_name == "HttpRouter"
+    assert built_app.ingress_request_router_deployment_name == "IngressRequestRouter"
 
 
-def test_imperative_ingress_check_ignores_http_router_peer():
+def test_imperative_ingress_check_ignores_ingress_request_router_peer():
     ingress_api = FastAPI()
     router_api = FastAPI()
 
@@ -587,13 +587,13 @@ def test_imperative_ingress_check_ignores_http_router_peer():
 
     @serve.deployment
     @serve.ingress(router_api)
-    class HttpRouter:
+    class IngressRequestRouter:
         pass
 
     ingress_app = Ingress.bind()
     app = serve.Application(
         ingress_app._bound_deployment,
-        http_router=HttpRouter.bind(),
+        ingress_request_router=IngressRequestRouter.bind(),
     )
 
     built_app: BuiltApplication = build_app(

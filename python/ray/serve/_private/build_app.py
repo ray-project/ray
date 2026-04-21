@@ -58,9 +58,9 @@ class BuiltApplication:
     # them in other deployments' init args/kwargs.
     deployment_handles: Dict[str, DeploymentHandle]
     external_scaler_enabled: bool
-    # Name of the HTTP router deployment for ingress bypass (if any).
+    # Name of the ingress request router deployment for ingress bypass (if any).
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
-    http_router_deployment_name: Optional[str] = None
+    ingress_request_router_deployment_name: Optional[str] = None
 
 
 def _make_deployment_handle_default(
@@ -107,18 +107,20 @@ def build_app(
         default_runtime_env=default_runtime_env,
         make_deployment_handle=make_deployment_handle,
     )
-    http_router_deployment_name = None
-    if app._http_router is not None:
-        http_router_deployments = _build_app_recursive(
-            app._http_router,
+    ingress_request_router_deployment_name = None
+    if app._ingress_request_router is not None:
+        ingress_request_router_deployments = _build_app_recursive(
+            app._ingress_request_router,
             app_name=name,
             handles=handles,
             deployment_names=deployment_names,
             default_runtime_env=default_runtime_env,
             make_deployment_handle=make_deployment_handle,
         )
-        deployments.extend(http_router_deployments)
-        http_router_deployment_name = deployment_names[app._http_router]
+        deployments.extend(ingress_request_router_deployments)
+        ingress_request_router_deployment_name = deployment_names[
+            app._ingress_request_router
+        ]
 
     return BuiltApplication(
         name=name,
@@ -130,7 +132,7 @@ def build_app(
             deployment_names[app]: handle for app, handle in handles.items()
         },
         external_scaler_enabled=external_scaler_enabled,
-        http_router_deployment_name=http_router_deployment_name,
+        ingress_request_router_deployment_name=ingress_request_router_deployment_name,
     )
 
 

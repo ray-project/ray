@@ -704,8 +704,9 @@ class ServeApplicationSchema(BaseModel):
             "builder return value. Should be of the form "
             '"module.submodule_1...submodule_n.app". This is equivalent to '
             '"from module.submodule_1...submodule_n import app". If the '
-            "application uses an HTTP router, the imported application should "
-            "already have that router attached. Only works with Python "
+            "application uses an ingress request router, the imported "
+            "application should already have that router attached. Only works "
+            "with Python "
             "applications. This field is REQUIRED when deploying Serve config "
             "to a Ray cluster."
         ),
