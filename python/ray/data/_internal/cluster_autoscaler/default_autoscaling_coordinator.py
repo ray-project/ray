@@ -5,7 +5,7 @@ import math
 import threading
 import time
 from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional
 
 import ray
 import ray.exceptions
@@ -15,7 +15,6 @@ from .base_autoscaling_coordinator import (
     ResourceRequestPriority,
 )
 from ray._common.utils import env_bool
-from ray.autoscaler._private.constants import env_integer
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -65,20 +64,15 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     Single-tenant: every instance is owned by exactly one
     DefaultClusterAutoscalerV2 and is called with a single, fixed requester_id
     for its entire lifetime. Violating this is undefined behavior.
-    get_allocated_resources tracks an in-flight slot and falls back to the
-    cached value on actor errors or timeouts;
-    request_resources and cancel_request are truly fire-and-forget with no
-    result observation.
+    ``get_allocated_resources`` tracks a single in-flight ref and falls back
+    to the cached value on actor errors; ``request_resources`` and
+    ``cancel_request`` are truly fire-and-forget with no result observation.
     """
-
-    AUTOSCALING_REQUEST_GET_TIMEOUT_S = env_integer(
-        "RAY_DATA_AUTOSCALING_COORDINATOR_REQUEST_GET_TIMEOUT_S", 5
-    )
 
     def __init__(self):
         self._cached_allocated_resources: List[ResourceDict] = []
-        # In-flight get_allocated_resources request: (ObjectRef, submit_time) or None.
-        self._pending_allocated_resources: Optional[Tuple[ray.ObjectRef, float]] = None
+        # In-flight get_allocated_resources ref, or None if no request is pending.
+        self._pending_allocated_resources: Optional[ray.ObjectRef] = None
 
     @functools.cached_property
     def _autoscaling_coordinator(self):
@@ -128,11 +122,11 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         response reflects state after all previously submitted request_resources
         calls from this driver.
 
-        On actor errors or timeouts, falls back to the last cached value and
-        logs a warning; never raises.
+        On actor errors, falls back to the last cached value and logs a warning;
+        never raises.
         """
-        if self._pending_allocated_resources is not None:
-            ref, submit_time = self._pending_allocated_resources
+        ref = self._pending_allocated_resources
+        if ref is not None:
             ready, _ = ray.wait([ref], timeout=0)
             if ready:
                 self._pending_allocated_resources = None
@@ -145,21 +139,15 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
                         " If this persists, file a GitHub issue.",
                         exc_info=RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK,
                     )
-            elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
-                self._pending_allocated_resources = None
-                logger.warning(
-                    f"Timed out on get allocated resources for {requester_id};"
-                    " falling back to the cached value."
-                    " If this persists, file a GitHub issue."
-                )
 
         # Submit a new request if none is currently in-flight
-        # (first call, or the previous request completed, errored, or timed out).
+        # (first call, or the previous request completed or errored).
         if self._pending_allocated_resources is None:
-            ref = self._autoscaling_coordinator.get_allocated_resources.remote(
-                requester_id,
+            self._pending_allocated_resources = (
+                self._autoscaling_coordinator.get_allocated_resources.remote(
+                    requester_id,
+                )
             )
-            self._pending_allocated_resources = (ref, time.time())
 
         return self._cached_allocated_resources
 
