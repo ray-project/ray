@@ -296,7 +296,7 @@ class VLLMEngineConfig(BaseModelExtended):
                 bundles = []
                 for _ in range(self.num_devices):
                     bundle = bundle_per_worker.copy()
-                    if self.accelerator_type and (self.use_gpu or self.use_tpu):
+                    if self.accelerator_type:
                         bundle.setdefault(self.ray_accelerator_type(), 0.001)
                     bundles.append(bundle)
                 return bundles
@@ -305,7 +305,7 @@ class VLLMEngineConfig(BaseModelExtended):
             bundles = []
             for bundle_dict in self.placement_group_config["bundles"]:
                 bundle = bundle_dict.copy()
-                if self.accelerator_type and (self.use_gpu or self.use_tpu):
+                if self.accelerator_type:
                     # Use setdefault to add accelerator hint WITHOUT overriding explicit user values
                     bundle.setdefault(self.ray_accelerator_type(), 0.001)
                 bundles.append(bundle)
