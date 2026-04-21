@@ -112,7 +112,7 @@ class PullManagerTest : public PullManagerTestWithCapacity,
     ASSERT_EQ(pull_manager_.active_object_pull_requests_.size(), num_requests);
   }
 
-  int64_t NumBytesBeingPulled() { return pull_manager_.num_bytes_tracked_; }
+  int64_t NumBytesTracked() { return pull_manager_.num_bytes_tracked_; }
 };
 
 class PullManagerWithAdmissionControlTest
@@ -1217,6 +1217,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestLocalObjectsDoNotConsumeQuota) {
       local_oid, client_ids, "", NodeID::Nil(), false, /*object_size=*/7);
 
   ASSERT_TRUE(pull_manager_.IsObjectActive(local_oid));
+  ASSERT_EQ(pull_manager_.num_bytes_tracked_, 11);
 
   pull_manager_.CancelPull(remote_req);
   pull_manager_.CancelPull(local_req);
@@ -1253,6 +1254,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestLocalGetDoesNotEvictTaskArgs) {
   ASSERT_TRUE(pull_manager_.IsObjectActive(task_oid));
   ASSERT_TRUE(pull_manager_.IsObjectActive(get_oid));
   ASSERT_EQ(num_abort_calls_[task_oid], 0);
+  ASSERT_EQ(pull_manager_.num_bytes_tracked_, 11);
 
   pull_manager_.CancelPull(task_req);
   pull_manager_.CancelPull(get_req);

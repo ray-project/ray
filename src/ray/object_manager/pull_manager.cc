@@ -719,7 +719,6 @@ int64_t PullManager::NextRequestRemoteBytes(const BundlePullRequestQueue &bundle
     bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
     if (needs_pull && !object_is_local_(obj_id)) {
       // This is the first bundle request in the queue to require this object.
-      // Add the size to the number of bytes tracked.
       remote_bytes += map_find_or_die(object_pull_requests_, obj_id).object_size;
     }
   }
@@ -771,7 +770,7 @@ std::string PullManager::DebugString() const {
   result << "\n- num objects actively pulled (all): "
          << active_object_pull_requests_.size();
   result << "\n- num objects actively pulled / pinned: " << pinned_objects_.size();
-  result << "\n- num bundles being pulled: " << num_active_bundles_;
+  result << "\n- num active bundles: " << num_active_bundles_;
   result << "\n- num pull retries: " << num_retries_total_;
   result << "\n- max timeout seconds: " << max_timeout_;
   auto it = object_pull_requests_.find(max_timeout_object_id_);
