@@ -3288,11 +3288,15 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
       "To adjust the kill "
       "threshold, set the environment variable "
       "`RAY_memory_usage_threshold` when starting Ray. "
-      "To determine worker to oom kill based on owner group size or only select "
-      "a single worker to kill at a time, set the environment variable "
-      "`RAY_worker_killing_policy_by_group` to true before starting Ray. "
       "To disable worker killing, set the environment variable "
-      "`RAY_memory_monitor_refresh_ms` to zero.",
+      "`RAY_memory_monitor_refresh_ms` to zero."
+      "Since 2.56, Ray updated the oom killing policy to enabling killing "
+      "multiple workers and selecting workers based on the time since "
+      "the task start executing. To revert to the legacy policy of "
+      "determining worker to oom kill based on owner group size or only "
+      "selecting a single worker to kill at a time, set the environment "
+      "variable `RAY_worker_killing_policy_by_group` to true before "
+      "starting Ray. ",
       not_retriable_recommendation_ss.str());
 }
 
