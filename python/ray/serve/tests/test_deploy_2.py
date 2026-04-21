@@ -15,6 +15,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.common import DeploymentStatus
 from ray.serve._private.logging_utils import get_serve_logs_dir
 from ray.serve._private.test_utils import (
+    SharedFlag,
     check_deployment_status,
     check_num_replicas_eq,
     get_application_url,
@@ -174,18 +175,7 @@ def test_nonserializable_deployment(serve_instance):
 def test_deploy_application_unhealthy(serve_instance):
     """Test deploying an application that becomes unhealthy."""
 
-    @ray.remote
-    class Event:
-        def __init__(self):
-            self.is_set = False
-
-        def set(self):
-            self.is_set = True
-
-        def is_set(self):
-            return self.is_set
-
-    event = Event.remote()
+    event = SharedFlag.remote()
 
     @serve.deployment(health_check_period_s=1, health_check_timeout_s=3)
     class Model:
@@ -333,7 +323,8 @@ def test_num_replicas_auto_api(serve_instance, use_options):
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {
-            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
         },
     }
 
@@ -399,7 +390,8 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
         "initial_replicas": None,
         "aggregation_function": "mean",
         "policy": {
-            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy"
+            "policy_function": "ray.serve.autoscaling_policy:default_autoscaling_policy",
+            "policy_kwargs": {},
         },
     }
 
@@ -410,9 +402,9 @@ def test_num_replicas_auto_basic(serve_instance, use_options):
             assert ray.get(signal.cur_num_waiters.remote()) == target
             return True
 
-        wait_for_condition(check_num_waiters, target=2 * (i + 1))
+        wait_for_condition(check_num_waiters, target=2 * (i + 1), timeout=30)
         print(time.time(), f"Number of waiters on signal reached {2*(i+1)}.")
-        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1)
+        wait_for_condition(check_num_replicas_eq, name="A", target=i + 1, timeout=30)
         print(time.time(), f"Confirmed number of replicas are at {i+1}.")
 
 

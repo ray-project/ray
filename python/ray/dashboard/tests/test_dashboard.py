@@ -29,7 +29,11 @@ from ray._common.ray_constants import (
     LOGGING_ROTATE_BACKUP_COUNT,
     LOGGING_ROTATE_BYTES,
 )
-from ray._common.test_utils import wait_for_condition
+from ray._common.test_utils import (
+    fetch_prometheus_metrics,
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray._common.utils import get_or_create_event_loop
 from ray._private.ray_constants import (
     AGENT_PROCESS_TYPE_DASHBOARD_AGENT,
@@ -37,11 +41,9 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS_LEGACY,
 )
 from ray._private.test_utils import (
-    fetch_prometheus_metrics,
     format_web_url,
     get_error_message,
     init_error_pubsub,
-    run_string_as_driver,
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
@@ -416,7 +418,7 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     os.environ.get("RAY_MINIMAL") == "1",
     reason="This test is not supposed to work for minimal installation.",
 )
-def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
+def test_browser_safe_methods_only(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
     webui_url = ray_start_with_dashboard["webui_url"]
     webui_url = format_web_url(webui_url)
@@ -673,6 +675,23 @@ def test_browser_no_post_no_put(enable_test_module, ray_start_with_dashboard):
         with pytest.raises(HTTPError):
             response.raise_for_status()
 
+    # DELETE should be blocked for browsers
+    for testcase in testcases:
+        response = requests.delete(
+            webui_url + "/api/jobs/nonexistent-job-id",
+            headers=testcase,
+        )
+        assert response.status_code == 405, "DELETE should be blocked for browsers"
+
+    # PATCH should also be blocked for browsers
+    for testcase in testcases:
+        response = requests.patch(
+            webui_url + "/api/jobs/nonexistent-job-id",
+            headers=testcase,
+            json={},
+        )
+        assert response.status_code == 405, "PATCH should be blocked for browsers"
+
     # Getting jobs should be fine for browsers
     response = requests.get(webui_url + "/api/jobs/")
     response.raise_for_status()
@@ -716,6 +735,42 @@ def test_deny_fetch_requests(enable_test_module, ray_start_with_dashboard):
     # Getting jobs should be fine for browsers
     response = requests.get(webui_url + "/api/jobs/")
     response.raise_for_status()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_profiling_endpoints_disabled_by_default(
+    enable_test_module, ray_start_with_dashboard
+):
+    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    webui_url = ray_start_with_dashboard["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    profiling_endpoints = [
+        "/worker/traceback?pid=1&node_id=abc",
+        "/worker/cpu_profile?pid=1&node_id=abc",
+        "/worker/gpu_profile?pid=1&node_id=abc",
+        "/task/traceback?task_id=abc&attempt_number=0&node_id=abc",
+        "/task/cpu_profile?task_id=abc&attempt_number=0&node_id=abc",
+        "/memory_profile?pid=1&node_id=abc",
+        "/memory_profile?task_id=abc&attempt_number=0&node_id=abc",
+    ]
+
+    for endpoint in profiling_endpoints:
+        response = requests.get(webui_url + endpoint)
+        assert response.status_code == 403, (
+            f"Expected 403 for {endpoint} when profiling is disabled, "
+            f"got {response.status_code}"
+        )
+        assert "RAY_DASHBOARD_ENABLE_PROFILING" in response.text
+
+    # The status endpoint should report profiling as disabled.
+    response = requests.get(webui_url + "/api/profiling_enabled")
+    response.raise_for_status()
+    data = response.json()
+    assert data["data"]["profilingEnabled"] is False
 
 
 @pytest.mark.skipif(
@@ -1011,7 +1066,6 @@ def test_get_cluster_status(ray_start_with_dashboard):
     indirect=True,
 )
 def test_get_nodes_summary(call_ray_start):
-
     # The sleep is needed since it seems a previous shutdown could be not yet
     # done when the next test starts. This prevents a previous cluster to be
     # connected the current test session.
@@ -1177,33 +1231,37 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     gcs_client = make_gcs_client(address_info)
     ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
     host, port = parse_address(address_info["webui_url"])
-    temp_dir = "/tmp/ray"
-    session_dir = "/tmp/ray/session_latest"
-    log_dir = "/tmp/ray/session_latest/logs"
+
     dashboard_cmd = [
         sys.executable,
         dashboard.__file__,
         f"--host={host}",
         f"--port={port}",
-        f"--temp-dir={temp_dir}",
-        f"--log-dir={log_dir}",
+        "--temp-dir=/tmp/ray",
+        "--log-dir=/tmp/ray/session_latest/logs",
         f"--gcs-address={address_info['gcs_address']}",
         f"--cluster-id-hex={gcs_client.cluster_id.hex()}",
-        f"--session-dir={session_dir}",
+        "--session-dir=/tmp/ray/session_latest",
         "--node-ip-address=127.0.0.1",
     ]
-    logger.info("The dashboard should be exit: %s", dashboard_cmd)
+
+    # Start a duplicate dashboard process with no port retries,
+    # it should crash due to port conflict.
+    print("Starting dashboard process *without* port retries:", dashboard_cmd)
     dashboard_process = subprocess.Popen(dashboard_cmd)
-    dashboard_process.wait(5)
+    try:
+        dashboard_process.wait(30)
+    finally:
+        dashboard_process.kill()
+        dashboard_process.wait()
 
+    # Now retry with port retries, it should find a port and succeed.
     dashboard_cmd.append("--port-retries=10")
+    print("Starting dashboard process *with* port retries:", dashboard_cmd)
     conflicting_dashboard_process = subprocess.Popen(dashboard_cmd)
+    try:
 
-    timeout_seconds = 10
-    start_time = time.time()
-    while True:
-        time.sleep(1)
-        try:
+        def _new_dashboard_url_populated():
             dashboard_url = ray.experimental.internal_kv._internal_kv_get(
                 ray_constants.DASHBOARD_ADDRESS,
                 namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
@@ -1211,16 +1269,14 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
             if dashboard_url:
                 new_port = int(dashboard_url.split(b":")[-1])
                 assert new_port > int(port)
-                break
-        except AssertionError as e:
-            logger.info("Retry because of %s", e)
-        finally:
-            if time.time() > start_time + timeout_seconds:
-                raise Exception("Timed out while testing.")
-    dashboard_process.kill()
-    conflicting_dashboard_process.kill()
-    dashboard_process.wait()
-    conflicting_dashboard_process.wait()
+                return True
+
+            return False
+
+        wait_for_condition(_new_dashboard_url_populated)
+    finally:
+        conflicting_dashboard_process.kill()
+        conflicting_dashboard_process.wait()
 
 
 @pytest.mark.skipif(
@@ -1468,6 +1524,56 @@ def test_dashboard_module_no_warnings(enable_test_module):
             dashboard_utils.get_all_modules(dashboard_utils.DashboardAgentModule)
     finally:
         debug._disabled = old_val
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_middleware_with_httpserver_for_proxy_server(
+    httpserver, ray_start_with_dashboard_and_proxy
+):
+    """
+    Test that the dashboard middleware correctly forwards requests to an external server.
+    """
+    target_path = "/api/call"
+    mock_response = {"status": "success", "data": "mocked_payload"}
+    httpserver.expect_request(target_path).respond_with_json(mock_response)
+
+    assert (
+        wait_until_server_available(ray_start_with_dashboard_and_proxy["webui_url"])
+        is True
+    )
+    address_info = ray_start_with_dashboard_and_proxy
+    webui_url = address_info["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    response = requests.get(f"{webui_url}{target_path}")
+    assert response.json() == mock_response
+    assert response.status_code == 200
+
+
+@pytest.mark.skipif(
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
+)
+def test_middleware_with_httpserver_for_proxy_server_with_ray_start(
+    httpserver, call_ray_start_context_with_proxy_server
+):
+    """
+    Test that the dashboard middleware correctly forwards requests to an external server when using `ray start`.
+    """
+    target_path = "/api/call"
+    mock_response = {"status": "success", "data": "mocked_payload"}
+    httpserver.expect_request(target_path).respond_with_json(mock_response)
+
+    address = ray.init(address=call_ray_start_context_with_proxy_server)
+    webui_url = address["webui_url"]
+    webui_url = format_web_url(webui_url)
+
+    response = requests.get(f"{webui_url}{target_path}")
+    assert response.json() == mock_response
+    assert response.status_code == 200
 
 
 def test_dashboard_not_included_ray_init(shutdown_only, capsys):

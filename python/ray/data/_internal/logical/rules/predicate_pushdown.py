@@ -1,4 +1,5 @@
 import copy
+from dataclasses import is_dataclass, replace
 from typing import List
 
 from ray.data._internal.logical.interfaces import (
@@ -9,7 +10,17 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators import Filter, Project
+from ray.data._internal.logical.operators import (
+    AbstractAllToAll,
+    AbstractMap,
+    Filter,
+    Join,
+    Limit,
+    Project,
+    RandomShuffle,
+    Repartition,
+    Union,
+)
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
@@ -59,7 +70,7 @@ class PredicatePushdown(Rule):
             return op
 
         # Combine predicates
-        combined_predicate = op._predicate_expr & input_op._predicate_expr
+        combined_predicate = op.predicate_expr & input_op.predicate_expr
 
         # Create new filter on the input of the lower filter
         return Filter(
@@ -93,7 +104,7 @@ class PredicatePushdown(Rule):
         from ray.data.expressions import AliasExpr
 
         collector = _ColumnReferenceCollector()
-        collector.visit(filter_op._predicate_expr)
+        collector.visit(filter_op.predicate_expr)
         predicate_columns = set(collector.get_column_refs() or [])
 
         output_columns = set()
@@ -180,7 +191,7 @@ class PredicatePushdown(Rule):
             return op
         filter_op: Filter = op
         input_op = filter_op.input_dependencies[0]
-        predicate_expr = filter_op._predicate_expr
+        predicate_expr = filter_op.predicate_expr
 
         # Case 1: Check if operator supports predicate pushdown (e.g., Read)
         if (
@@ -283,7 +294,7 @@ class PredicatePushdown(Rule):
             return filter_op
 
         push_side = conditional_op.which_side_to_push_predicate(
-            filter_op._predicate_expr
+            filter_op.predicate_expr
         )
 
         if push_side is None:
@@ -297,7 +308,7 @@ class PredicatePushdown(Rule):
         new_inputs = list(conditional_op.input_dependencies)
         branch_filter = Filter(
             new_inputs[branch_idx],
-            predicate_expr=filter_op._predicate_expr,
+            predicate_expr=filter_op.predicate_expr,
         )
         new_inputs[branch_idx] = cls._try_push_down_predicate(branch_filter)
 
@@ -317,10 +328,36 @@ class PredicatePushdown(Rule):
         Returns:
             A shallow copy of the operator with updated input dependencies
         """
+        if isinstance(op, Limit):
+            assert len(new_inputs) == 1, len(new_inputs)
+            return Limit(new_inputs[0], op.limit)
+        if isinstance(op, AbstractMap) and is_dataclass(op):
+            assert len(new_inputs) == 1, len(new_inputs)
+            return replace(op, input_op=new_inputs[0])
+        if isinstance(op, AbstractAllToAll) and is_dataclass(op):
+            assert len(new_inputs) == 1, len(new_inputs)
+            kwargs = {"input_op": new_inputs[0]}
+            if isinstance(op, Repartition):
+                kwargs["num_outputs"] = op.num_outputs
+            if isinstance(op, RandomShuffle):
+                kwargs["name"] = op.name
+            return replace(op, **kwargs)
+        if isinstance(op, Join) and is_dataclass(op):
+            assert len(new_inputs) == 2, len(new_inputs)
+            return Join(
+                new_inputs[0],
+                new_inputs[1],
+                op.join_type,
+                op.left_key_columns,
+                op.right_key_columns,
+                num_partitions=op.num_outputs,
+                left_columns_suffix=op.left_columns_suffix,
+                right_columns_suffix=op.right_columns_suffix,
+                partition_size_hint=op.partition_size_hint,
+                aggregator_ray_remote_args=op.aggregator_ray_remote_args,
+            )
+        if isinstance(op, Union) and is_dataclass(op):
+            return Union(*new_inputs)
         new_op = copy.copy(op)
-        new_op._input_dependencies = new_inputs
-        # Clear and re-wire dependencies for the new operator.
-        # The output dependencies will be wired by the parent transform's traversal.
-        new_op._output_dependencies = []
-        new_op._wire_output_deps(new_inputs)
+        new_op.input_dependencies = new_inputs
         return new_op

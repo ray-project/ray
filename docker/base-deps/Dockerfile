@@ -4,6 +4,46 @@
 
 # The GPU options are NVIDIA CUDA developer images.
 ARG BASE_IMAGE="ubuntu:22.04"
+
+# --- HAProxy Build Stage ---
+FROM ${BASE_IMAGE} AS haproxy-builder
+
+RUN <<EOF
+#!/bin/bash
+set -euo pipefail
+
+apt-get update -y
+apt-get install -y --no-install-recommends \
+    build-essential \
+    ca-certificates \
+    curl \
+    libc6-dev \
+    liblua5.3-dev \
+    libpcre3-dev \
+    libssl-dev \
+    zlib1g-dev
+
+# Install HAProxy from source.
+# Fetched from ray-project/haproxy-release (a GitHub release mirror) because
+# www.haproxy.org's wildcard TLS cert expired 2026-04-17 and the release tarball
+# disappeared from the upstream download site. Integrity is enforced by sha256
+# verification. Drop this mirror and switch back to www.haproxy.org once the
+# cert is renewed and the tarball is republished.
+HAPROXY_VERSION="2.8.20"
+HAPROXY_SHA256="c8301de11dabfbf049db07080e43b9570a63f99e41d4b0754760656bf7ea00b7"
+HAPROXY_BUILD_DIR=$(mktemp -d)
+curl --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
+     -sSfL -o "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" \
+     "https://github.com/ray-project/haproxy-release/releases/download/${HAPROXY_VERSION}/haproxy-${HAPROXY_VERSION}.tar.gz"
+echo "${HAPROXY_SHA256}  ${HAPROXY_BUILD_DIR}/haproxy.tar.gz" | sha256sum -c -
+tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
+make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
+make -C "${HAPROXY_BUILD_DIR}" install SBINDIR=/usr/local/bin
+rm -rf "${HAPROXY_BUILD_DIR}"
+
+EOF
+
+# --- Main image ---
 FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
 ENV TZ=America/Los_Angeles
@@ -55,6 +95,9 @@ APT_PKGS=(
     netbase
     openssh-client
     gnupg
+
+    # For HAProxy
+    liblua5.3-0
 )
 
 apt-get install -y "${APT_PKGS[@]}"
@@ -63,14 +106,20 @@ useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID
 usermod -aG sudo ray
 echo 'ray ALL=NOPASSWD: ALL' >> /etc/sudoers
 
+mkdir -p /etc/haproxy /run/haproxy /var/log/haproxy
+chown -R ray:"$(id -gn ray)" /run/haproxy
+
 EOF
+
+COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
 
 USER $RAY_UID
 ENV HOME=/home/ray
 WORKDIR /home/ray
 
-COPY "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
-COPY "$PYTHON_DEPSET" /home/ray/python_depset.lock
+COPY --chown=ray "$CONSTRAINTS_FILE" /home/ray/requirements_compiled.txt
+COPY --chown=ray "$PYTHON_DEPSET" /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-c"]
 

@@ -10,7 +10,7 @@ from ray.data._internal.execution.operators.hash_aggregate import HashAggregateO
 from ray.data._internal.execution.operators.hash_shuffle import HashShuffleOperator
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators.join_operator import JoinType
+from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
 from ray.data.aggregate import Count, Sum
 from ray.data.block import BlockMetadata
@@ -195,6 +195,7 @@ def test_join_aggregator_remote_args(
     left_op_mock = MagicMock(PhysicalOperator)
     left_op_mock._output_dependencies = []
     left_op_mock._logical_operators = [left_logical_op_mock]
+    left_op_mock.num_output_splits.return_value = 1
 
     right_logical_op_mock = MagicMock(LogicalOperator)
     right_logical_op_mock.infer_metadata.return_value = BlockMetadata(
@@ -208,6 +209,7 @@ def test_join_aggregator_remote_args(
     right_op_mock = MagicMock(PhysicalOperator)
     right_op_mock._output_dependencies = []
     right_op_mock._logical_operators = [right_logical_op_mock]
+    right_op_mock.num_output_splits.return_value = 1
 
     # Patch the total cluster resources
     with patch(
@@ -362,6 +364,7 @@ def test_hash_aggregate_operator_remote_args(
     op_mock = MagicMock(PhysicalOperator)
     op_mock._output_dependencies = []
     op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
 
     # Create some test aggregation functions
     agg_fns = [Sum("value"), Count()]
@@ -532,6 +535,7 @@ def test_hash_shuffle_operator_remote_args(
     op_mock = MagicMock(PhysicalOperator)
     op_mock._output_dependencies = []
     op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
 
     # Patch the total cluster resources
     with patch(
@@ -581,6 +585,7 @@ def test_aggregator_ray_remote_args_partial_override(ray_start_regular):
     op_mock = MagicMock(PhysicalOperator)
     op_mock._output_dependencies = []
     op_mock._logical_operators = [logical_op_mock]
+    op_mock.num_output_splits.return_value = 1
 
     # Patch the total cluster resources
     with patch(

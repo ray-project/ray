@@ -54,10 +54,7 @@ class ClusterManager(abc.ABC):
             .replace(":", "_")
             .replace(".", "_")
         )
-        self.cluster_env_name = (
-            f"{byod_image_name_normalized}"
-            f"__env__{dict_hash(self.test.get_byod_runtime_env())}"
-        )
+        self.cluster_env_name = byod_image_name_normalized
 
     def set_cluster_compute(
         self,
@@ -72,9 +69,11 @@ class ClusterManager(abc.ABC):
         self.cluster_compute.setdefault(
             "maximum_uptime_minutes", self.maximum_uptime_minutes
         )
+        is_new_schema = self.test.uses_anyscale_sdk_2026()
         self.cluster_compute = self._annotate_cluster_compute(
             self.cluster_compute,
             extra_tags=extra_tags,
+            is_new_schema=is_new_schema,
         )
 
         self.cluster_compute_name = (
@@ -87,20 +86,46 @@ class ClusterManager(abc.ABC):
         self,
         cluster_compute: Dict[str, Any],
         extra_tags: Dict[str, str],
+        is_new_schema: bool = False,
     ) -> Dict[str, Any]:
         if not extra_tags or self.cloud_provider != "aws":
             return cluster_compute
 
         cluster_compute = cluster_compute.copy()
-        if "aws" in cluster_compute:
-            raise ValueError(
-                "aws field is invalid in compute config, "
-                "use advanced_configurations_json instead"
+
+        if is_new_schema:
+            # Top-level advanced_instance_config
+            aws = cluster_compute.get("advanced_instance_config", {})
+            cluster_compute["advanced_instance_config"] = add_tags_to_aws_config(
+                aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
             )
-        aws = cluster_compute.get("advanced_configurations_json", {})
-        cluster_compute["advanced_configurations_json"] = add_tags_to_aws_config(
-            aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
-        )
+            # head_node.advanced_instance_config
+            if "head_node" in cluster_compute:
+                head = cluster_compute["head_node"]
+                head_aws = head.get("advanced_instance_config", {})
+                head["advanced_instance_config"] = add_tags_to_aws_config(
+                    head_aws,
+                    extra_tags,
+                    RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
+                )
+            # worker_nodes[*].advanced_instance_config
+            for worker in cluster_compute.get("worker_nodes", []):
+                worker_aws = worker.get("advanced_instance_config", {})
+                worker["advanced_instance_config"] = add_tags_to_aws_config(
+                    worker_aws,
+                    extra_tags,
+                    RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
+                )
+        else:
+            if "aws" in cluster_compute:
+                raise ValueError(
+                    "aws field is invalid in compute config, "
+                    "use advanced_configurations_json instead"
+                )
+            aws = cluster_compute.get("advanced_configurations_json", {})
+            cluster_compute["advanced_configurations_json"] = add_tags_to_aws_config(
+                aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
+            )
         return cluster_compute
 
     def build_configs(self, timeout: float = 30.0):

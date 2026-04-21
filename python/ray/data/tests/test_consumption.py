@@ -18,6 +18,9 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 )
 from ray.data.block import BlockAccessor
 from ray.data.dataset import Dataset, MaterializedDataset
+from ray.data.datasource.util import (
+    _validate_head_node_resources_for_local_scheduling,
+)
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
@@ -90,7 +93,7 @@ def test_schema_no_execution(ray_start_regular):
         last_snapshot,
     )
     # We do not kick off the read task by default.
-    assert not ds._plan.has_started_execution
+    assert not ds.has_started_execution
     schema = ds.schema()
     assert schema.names == ["id"]
 
@@ -100,7 +103,7 @@ def test_schema_no_execution(ray_start_regular):
         CoreExecutionMetrics(task_count={}), last_snapshot
     )
     # Fetching the schema should not trigger execution of extra read tasks.
-    assert not ds._plan.has_started_execution
+    assert not ds.has_started_execution
 
 
 def test_schema_cached(ray_start_regular):
@@ -256,12 +259,12 @@ def test_basic(ray_start_regular_shared):
 
 def test_range(ray_start_regular_shared):
     ds = ray.data.range(10, override_num_blocks=10)
-    assert ds._plan.initial_num_blocks() == 10
+    assert ds._logical_plan.initial_num_blocks() == 10
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
     ds = ray.data.range(10, override_num_blocks=2)
-    assert ds._plan.initial_num_blocks() == 2
+    assert ds._logical_plan.initial_num_blocks() == 2
     assert ds.count() == 10
     assert ds.take() == [{"id": i} for i in range(10)]
 
@@ -269,7 +272,7 @@ def test_range(ray_start_regular_shared):
 def test_empty_dataset(ray_start_regular_shared):
     ds = ray.data.range(0)
     assert ds.count() == 0
-    assert ds.size_bytes() is None
+    assert ds.size_bytes() == 0
     assert ds.schema() is None
 
     ds = ray.data.range(1)
@@ -366,7 +369,7 @@ def test_schema_repr(ray_start_regular_shared):
 def _check_none_computed(ds):
     # In streaming executor, ds.take() will not invoke partial execution
     # in LazyBlocklist.
-    assert not ds._plan.has_started_execution
+    assert not ds.has_started_execution
 
 
 def test_lazy_loading_exponential_rampup(ray_start_regular_shared):
@@ -561,7 +564,7 @@ def test_union(ray_start_regular_shared, restore_data_context):
 
     # Test lazy union.
     ds = ds.union(ds, ds, ds, ds)
-    assert ds._plan.initial_num_blocks() == 50
+    assert ds._logical_plan.initial_num_blocks() == 50
     assert ds.count() == 100
     assert ds.sum() == 950
 
@@ -741,6 +744,21 @@ def test_read_write_local_node(ray_start_cluster):
         ds = ray.data.read_parquet(
             ["example://iris.parquet", local_path + "/test1.parquet"]
         ).materialize()
+
+
+def test_validate_head_node_resources_zero_head_cpu(ray_start_cluster):
+
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    cluster.wait_for_nodes()
+
+    ray.shutdown()
+    ray.init(address=cluster.address)
+
+    with pytest.raises(ValueError, match=r"head node doesn't have enough resources"):
+        _validate_head_node_resources_for_local_scheduling(
+            {}, op_description="read local"
+        )
 
 
 class FlakyCSVDatasource(CSVDatasource):

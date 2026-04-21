@@ -27,7 +27,6 @@ def mock_serve_deployment_handle():
         yield mock_handle
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "method,test_data",
     [
@@ -61,6 +60,7 @@ def mock_serve_deployment_handle():
         ),
     ],
 )
+@pytest.mark.asyncio
 async def test_serve_deployment_udf_methods(
     mock_serve_deployment_handle, method, test_data
 ):
@@ -141,10 +141,10 @@ async def test_serve_deployment_invalid_method(mock_serve_deployment_handle):
             pass
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "dtype_mapping", [None, {"ChatCompletionRequest": ChatCompletionRequest}]
 )
+@pytest.mark.asyncio
 async def test_serve_deployment_missing_dtype(
     mock_serve_deployment_handle, dtype_mapping
 ):
@@ -319,15 +319,14 @@ async def test_serve_udf_mixed_success_and_error(mock_serve_deployment_handle):
 
     assert len(results) == 3
 
-    errors = [r for r in results if r.get("__inference_error__") is not None]
-    successes = [r for r in results if r.get("__inference_error__") is None]
+    errors = [r for r in results if r.get("__inference_error__", "") != ""]
+    successes = [r for r in results if r.get("__inference_error__", "") == ""]
 
     assert len(errors) == 1
     assert len(successes) == 2
     assert "ValueError" in errors[0]["__inference_error__"]
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "fatal_error",
     [
@@ -338,6 +337,7 @@ async def test_serve_udf_mixed_success_and_error(mock_serve_deployment_handle):
         ),
     ],
 )
+@pytest.mark.asyncio
 async def test_serve_udf_fatal_errors_always_propagate(
     mock_serve_deployment_handle, fatal_error
 ):
@@ -452,7 +452,7 @@ async def test_serve_udf_success_with_continue_on_error_includes_none_error(
         results.extend(result["__data"])
 
     assert len(results) == 1
-    assert results[0]["__inference_error__"] is None
+    assert results[0]["__inference_error__"] == ""
     assert results[0]["generated_text"] == "Hello!"
 
 

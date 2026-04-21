@@ -5,47 +5,9 @@ import logging
 import os
 import sys
 
+from ray._common.utils import env_bool, env_float, env_integer  # noqa: F401
+
 logger = logging.getLogger(__name__)
-
-
-def env_integer(key, default):
-    if key in os.environ:
-        value = os.environ[key]
-        if value.isdigit():
-            return int(os.environ[key])
-
-        logger.debug(
-            f"Found {key} in environment, but value must "
-            f"be an integer. Got: {value}. Returning "
-            f"provided default {default}."
-        )
-        return default
-    return default
-
-
-def env_float(key, default):
-    if key in os.environ:
-        value = os.environ[key]
-        try:
-            return float(value)
-        except ValueError:
-            logger.debug(
-                f"Found {key} in environment, but value must "
-                f"be a float. Got: {value}. Returning "
-                f"provided default {default}."
-            )
-            return default
-    return default
-
-
-def env_bool(key, default):
-    if key in os.environ:
-        return (
-            True
-            if os.environ[key].lower() == "true" or os.environ[key] == "1"
-            else False
-        )
-    return default
 
 
 def env_set_by_user(key):
@@ -101,7 +63,7 @@ DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_float(
 # The default minimum number of bytes to reserve for ray system processes.
 # This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION < this value.
 DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
-    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES", (500) * (1024**2)
+    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES", (1) * (1024**3)
 )
 # The default maximum number of bytes to reserve for ray system processes.
 # This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION > this value.
@@ -187,6 +149,9 @@ RAY_JOB_HEADERS = "RAY_JOB_HEADERS"
 
 # Timeout waiting for the dashboard to come alive during node startup.
 RAY_DASHBOARD_STARTUP_TIMEOUT_S = env_integer("RAY_DASHBOARD_STARTUP_TIMEOUT_S", 60)
+
+# Enable profiling endpoints in the dashboard.
+RAY_DASHBOARD_ENABLE_PROFILING = env_bool("RAY_DASHBOARD_ENABLE_PROFILING", False)
 
 DEFAULT_DASHBOARD_IP = "127.0.0.1"
 DEFAULT_DASHBOARD_PORT = 8265
@@ -629,3 +594,12 @@ RDT_FETCH_FAIL_TIMEOUT_SECONDS = (
 RAY_ENABLE_ZERO_COPY_TORCH_TENSORS = env_bool(
     "RAY_ENABLE_ZERO_COPY_TORCH_TENSORS", False
 )
+
+# Max number of cached NIXL remote agents. When exceeded, the least recently used
+# remote agent is evicted. When set to 0, there will be no remote agent reuse.
+NIXL_REMOTE_AGENT_CACHE_MAXSIZE = env_integer(
+    "RAY_NIXL_REMOTE_AGENT_CACHE_MAXSIZE", 1000
+)
+
+# Name of the environment variable for the Redis password.
+RAY_REDIS_PASSWORD_ENV = "RAY_REDIS_PASSWORD"

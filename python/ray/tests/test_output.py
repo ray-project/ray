@@ -8,9 +8,11 @@ import time
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     run_string_as_driver,
+    wait_for_condition,
+)
+from ray._private.test_utils import (
     run_string_as_driver_nonblocking,
     run_string_as_driver_stdout_stderr,
 )
@@ -48,34 +50,24 @@ ray.get(refs)
 
 def test_dedup_error_warning_logs(ray_start_cluster, monkeypatch):
     with monkeypatch.context() as m:
-        m.setenv("RAY_DEDUP_LOGS_AGG_WINDOW_S", 5)
+        m.setenv("RAY_DEDUP_LOGS_AGG_WINDOW_S", "2")
+        m.setenv("RAY_max_io_workers", "0")
         cluster = ray_start_cluster
-        cluster.add_node(num_cpus=1)
-        cluster.add_node(num_cpus=1)
         cluster.add_node(num_cpus=1)
 
         script = """
 import ray
-import time
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 ray.init()
 
 @ray.remote(num_cpus=0)
 class Foo:
-    def __init__(self):
-        time.sleep(1)
+    pass
 
-# NOTE: We should save actor, otherwise it will be out of scope.
-actors = [Foo.remote() for _ in range(30)]
-for actor in actors:
-    try:
-        ray.get(actor.__ray_ready__.remote())
-    except ray.exceptions.OutOfMemoryError:
-        # When running the test on a small machine,
-        # some actors might be killed by the memory monitor.
-        # We just catch and ignore the error.
-        pass
+# Need enough actors to trigger repeated worker-pool warnings from the
+# raylet so the log deduplicator can aggregate them.
+actors = [Foo.remote() for _ in range(10)]
+ray.get([a.__ray_ready__.remote() for a in actors])
 """
         out_str = run_string_as_driver(script)
         print(out_str)
@@ -376,24 +368,6 @@ ray.get(foo.remote())
     print(err_str)
     assert "ModuleNotFoundError: No module named" in err_str
     assert "RuntimeError: The remote function failed to import" in err_str
-
-
-def test_core_worker_error_message():
-    script = """
-import ray
-import sys
-
-ray.init(local_mode=True)
-
-# In local mode this generates an ERROR level log.
-ray._private.utils.push_error_to_driver(
-    ray._private.worker.global_worker, "type", "Hello there")
-    """
-
-    proc = run_string_as_driver_nonblocking(script)
-    err_str = proc.stderr.read().decode("ascii")
-
-    assert "Hello there" in err_str, err_str
 
 
 def test_task_stdout_stderr():

@@ -18,6 +18,7 @@
 #include <optional>
 #include <sstream>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -313,8 +314,6 @@ class NodeResources {
   NodeResourceSet available;
   /// Only used by light resource report.
   ResourceSet load;
-  /// Resources owned by normal tasks.
-  ResourceSet normal_task_resources;
 
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
@@ -334,10 +333,6 @@ class NodeResources {
   // The timestamp of the last resource update if there was a resource report.
   std::optional<absl::Time> last_resource_update_time = absl::nullopt;
 
-  /// Normal task resources could be uploaded by 1) Raylets' periodical reporters; 2)
-  /// Rejected RequestWorkerLeaseReply. So we need the timestamps to decide whether an
-  /// upload is latest.
-  int64_t latest_resources_normal_task_timestamp = 0;
   bool object_pulls_queued = false;
 
   /// Amongst CPU, memory, and object store memory, calculate the utilization percentage
@@ -419,5 +414,15 @@ ResourceRequest ResourceMapToResourceRequest(
 ResourceRequest ResourceMapToResourceRequest(
     const absl::flat_hash_map<ResourceID, double> &resource_map,
     bool requires_object_store_memory);
+
+// Helper function convert a std::unordered_map to the absl::flat_hash_map used
+// by the NodeResources labels field.
+inline void SetNodeResourcesLabels(
+    NodeResources &resources,
+    const std::unordered_map<std::string, std::string> &labels) {
+  for (const auto &pair : labels) {
+    resources.labels[pair.first] = pair.second;
+  }
+}
 
 }  // namespace ray

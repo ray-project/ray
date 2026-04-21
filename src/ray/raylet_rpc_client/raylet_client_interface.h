@@ -97,11 +97,8 @@ class RayletClientInterface {
 
   /// Report the backlog size of a given worker and a given scheduling class to the
   /// raylet.
-  /// \param worker_id The ID of the worker that reports the backlog size.
-  /// \param backlog_reports The backlog report for each scheduling class
-  virtual void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<rpc::WorkerBacklogReport> &backlog_reports) = 0;
+  /// \param request The request containing the worker ID and the backlog reports.
+  virtual void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) = 0;
 
   virtual void GetWorkerFailureCause(
       const LeaseID &lease_id,
@@ -196,6 +193,10 @@ class RayletClientInterface {
       const std::string &reason_message,
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
+
+  virtual void ResizeLocalResourceInstances(
+      google::protobuf::Map<std::string, double> resources,
+      const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback) = 0;
 
   virtual void CancelLeasesWithResourceShapes(
       const std::vector<google::protobuf::Map<std::string, double>> &resource_shapes,

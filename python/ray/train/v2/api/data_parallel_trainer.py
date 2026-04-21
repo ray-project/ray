@@ -58,7 +58,6 @@ from ray.train.v2._internal.util import ObjectRefWrapper, construct_train_func
 from ray.train.v2.api.callback import UserCallback
 from ray.train.v2.api.validation_config import ValidationConfig
 from ray.util.annotations import Deprecated, DeveloperAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -103,7 +102,6 @@ class DataParallelTrainer:
             train_loop_config=self.train_loop_config,
             scaling_config=self.scaling_config,
             backend_config=self.backend_config,
-            datasets=self.datasets,
             dataset_config=self.data_config,
         )
 
@@ -117,6 +115,10 @@ class DataParallelTrainer:
 
         usage_lib.record_library_usage("train")
         tag_train_v2_trainer(self)
+        if self.scaling_config.elasticity_enabled:
+            usage_lib.record_extra_usage_tag(
+                usage_lib.TagKey.TRAIN_ELASTICITY_ENABLED, "1"
+            )
 
     def _validate_configs(self):
         if not is_v2_enabled():
@@ -206,7 +208,10 @@ class DataParallelTrainer:
             self.backend_config, self.scaling_config
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
-        datasets_callback = DatasetsCallback(train_run_context=self.train_run_context)
+        datasets_callback = DatasetsCallback(
+            train_run_context=self.train_run_context,
+            datasets=self.datasets,
+        )
         placement_group_cleaner_callback = PlacementGroupCleanerCallback()
         callbacks.extend(
             [
@@ -225,7 +230,7 @@ class DataParallelTrainer:
             callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
         if env_bool(RAY_TRAIN_ENABLE_STATE_TRACKING, False):
-            callbacks.append(StateManagerCallback())
+            callbacks.append(StateManagerCallback(datasets=self.datasets))
 
         run_config_callbacks = (
             self.run_config.callbacks if self.run_config.callbacks is not None else []
@@ -263,9 +268,9 @@ class DataParallelTrainer:
         # Attach the controller to the node running the driver script.
         controller_actor_cls = ray.remote(
             num_cpus=0,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=ray.get_runtime_context().get_node_id(), soft=False
-            ),
+            label_selector={
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+            },
             # TODO: Extract env variables that affect controller behavior
             # and pass them as explicit args
             runtime_env={"env_vars": env_vars},
@@ -302,7 +307,7 @@ class DataParallelTrainer:
             if sigint_count <= 1:
                 try:
                     ray.get(controller.abort.remote())
-                except ray.exceptions.ActorDiedError:
+                except ray.exceptions.RayActorError:
                     # We catch the error and exit 0 to indicate graceful termination.
                     # However, for some reason the process still exits with 1.
                     sys.exit(0)

@@ -271,7 +271,7 @@ class CloudFileSystem:
 
             # Download files
             tokenizer_file_substrings = (
-                ["tokenizer", "config.json"] if tokenizer_only else []
+                ["tokenizer", "config.json", "chat_template"] if tokenizer_only else []
             )
 
             safetensors_to_exclude = [".safetensors"] if exclude_safetensors else None
@@ -494,10 +494,10 @@ class CloudModelAccessor:
         if Path(self.model_id).exists():
             return Path(self.model_id)
         # Delayed import to avoid circular dependencies
-        from transformers.utils.hub import TRANSFORMERS_CACHE
+        from huggingface_hub.constants import HF_HUB_CACHE
 
         return Path(
-            TRANSFORMERS_CACHE, f"models--{self.model_id.replace('/', '--')}"
+            HF_HUB_CACHE, f"models--{self.model_id.replace('/', '--')}"
         ).expanduser()
 
 

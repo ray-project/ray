@@ -1,3 +1,4 @@
+import json
 import os
 import subprocess
 import sys
@@ -10,9 +11,10 @@ import httpx
 import pytest
 import yaml
 
+import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.scripts import remove_ansi_escape_sequences
@@ -639,7 +641,7 @@ def test_status_package_unavailable_in_controller(serve_instance):
         assert "some_wrong_url" in status["deployments"]["TestDeployment"]["message"]
         return True
 
-    wait_for_condition(check_for_failed_deployment, timeout=20)
+    wait_for_condition(check_for_failed_deployment, timeout=40)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -809,6 +811,140 @@ def test_deploy_use_custom_autoscaling(serve_instance):
         lambda: httpx.post(f"{get_application_url(app_name='app1')}/").text
         == "hello_from_custom_autoscaling_policy"
     )
+
+
+def test_deploy_gang_scheduling(serve_instance):
+    """Test that gang scheduling config can be deployed via YAML config."""
+    config_file = os.path.join(
+        os.path.dirname(__file__),
+        "test_config_files",
+        "gang_scheduling.yaml",
+    )
+    subprocess.check_output(["serve", "deploy", config_file], stderr=subprocess.STDOUT)
+    wait_for_condition(
+        lambda: httpx.post(f"{get_application_url(app_name='gang_app')}/").status_code
+        == 200
+    )
+
+
+@pytest.mark.parametrize(
+    "initial_replicas, final_replicas",
+    [
+        (4, 2),  # Downscale: 2 gangs -> 1 gang
+        (2, 4),  # Upscale:   1 gang  -> 2 gangs
+    ],
+)
+def test_deploy_gang_scaling(serve_instance, initial_replicas, final_replicas):
+    """Test gang-aware scaling via serve deploy preserves existing gangs."""
+    gang_size = 2
+    deployment_id = DeploymentID(name="GangApp", app_name="gang_app")
+    controller = serve.context._get_global_client()._controller
+    config_files = {
+        replicas: os.path.join(
+            os.path.dirname(__file__),
+            "test_config_files",
+            f"gang_scheduling_{replicas}_replicas.yaml",
+        )
+        for replicas in (initial_replicas, final_replicas)
+    }
+
+    def collect_gang_ids(num_replicas):
+        # Query the controller directly for replica gang contexts. Probing
+        # via HTTP is unreliable for observing every replica: under direct
+        # ingress, get_application_url returns a single replica's port, so
+        # all requests land on one replica.
+        collected = []
+
+        def _ready():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != num_replicas:
+                return False
+            collected.append({r.gang_context.gang_id for r in running})
+            return True
+
+        wait_for_condition(_ready, timeout=30)
+        return collected[-1]
+
+    subprocess.check_output(["serve", "deploy", config_files[initial_replicas]])
+    initial_num_gangs = initial_replicas // gang_size
+    initial_gang_ids = collect_gang_ids(initial_replicas)
+    assert len(initial_gang_ids) == initial_num_gangs
+
+    subprocess.check_output(["serve", "deploy", config_files[final_replicas]])
+    final_num_gangs = final_replicas // gang_size
+    final_gang_ids = collect_gang_ids(final_replicas)
+    assert len(final_gang_ids) == final_num_gangs
+
+    # The smaller set of gangs must be a subset of the larger set,
+    # proving that existing gangs were preserved during rescaling.
+    smaller, larger = sorted([initial_gang_ids, final_gang_ids], key=len)
+    assert smaller.issubset(larger)
+
+
+def test_controller_health(serve_instance):
+
+    # Wait for control loops to run
+    time.sleep(1)
+
+    # Test YAML output (default)
+    # Note: We don't capture stderr because Ray connection logs would be mixed in
+    output = subprocess.check_output(
+        ["serve", "controller-health"],
+    )
+    output_str = output.decode("utf-8")
+
+    # Verify expected fields are present in YAML output
+    expected_fields = [
+        "timestamp:",
+        "controller_start_time:",
+        "uptime_s:",
+        "num_control_loops:",
+        "loop_duration_s:",
+        "loops_per_second:",
+        "num_asyncio_tasks:",
+        "process_memory_mb:",
+    ]
+    for field in expected_fields:
+        assert field in output_str, f"Missing field in YAML output: {field}"
+
+    # Verify DurationStats structure is present
+    assert "mean:" in output_str
+    assert "std:" in output_str
+    assert "min:" in output_str
+    assert "max:" in output_str
+
+    # Test JSON output
+    json_output = subprocess.check_output(
+        ["serve", "controller-health", "--json"],
+    )
+    metrics = json.loads(json_output.decode("utf-8"))
+
+    # Verify it's a valid dictionary with expected fields
+    assert isinstance(metrics, dict)
+    assert metrics["timestamp"] > 0
+    assert metrics["controller_start_time"] > 0
+    assert metrics["num_control_loops"] > 0
+    assert metrics["loop_duration_s"]["mean"] > 0
+    assert "handle_metrics_delay_ms" in metrics
+    assert "replica_metrics_delay_ms" in metrics
+
+
+def test_controller_health_serve_not_running(start_and_shutdown_ray_cli_module):
+    """Test that controller-health shows a helpful error when Serve isn't running."""
+
+    with pytest.raises(subprocess.CalledProcessError) as exc_info:
+        subprocess.check_output(
+            ["serve", "controller-health"],
+            stderr=subprocess.STDOUT,
+        )
+
+    output = exc_info.value.output.decode("utf-8")
+
+    # Verify the error message contains the helpful RayServeException message
+    assert "no serve instance running" in output.lower()
 
 
 if __name__ == "__main__":

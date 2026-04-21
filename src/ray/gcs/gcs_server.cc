@@ -70,7 +70,11 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                   config.grpc_server_port,
                   config.node_ip_address == "127.0.0.1",
                   config.grpc_server_thread_num,
-                  /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms()),
+                  /*keepalive_time_ms=*/RayConfig::instance().grpc_keepalive_time_ms(),
+                  /*auth_token=*/nullptr,
+                  // The health check implementation is overridden to check the health
+                  // of our boost::asio event loop threads.
+                  /*enable_default_health_check_service=*/false),
       client_call_manager_(main_service,
                            /*record_stats=*/true,
                            config.node_ip_address,
@@ -294,6 +298,12 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsAutoscalerStateManager(gcs_init_data);
   InitUsageStatsClient();
 
+  // Register a custom health check service that runs on the io_context instead of the
+  // default gRPC health check (which responds directly from gRPC threads). This way,
+  // if the GCS event loop is stuck, health checks will time out.
+  rpc_server_.RegisterService(std::make_unique<rpc::HealthCheckGrpcService>(
+      io_context_provider_.GetDefaultIOContext()));
+
   // Start RPC server when all tables have finished loading initial
   // data.
   rpc_server_.Run();
@@ -324,6 +334,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
 void GcsServer::Stop() {
   if (!is_stopped_) {
     RAY_LOG(INFO) << "Stopping GCS server.";
+
+    // Flush any remaining events before stopping.
+    if (ray_event_recorder_) {
+      ray_event_recorder_->StopExportingEvents();
+    }
 
     io_context_provider_.StopAllDedicatedIOContexts();
 
@@ -439,6 +454,7 @@ void GcsServer::InitClusterResourceScheduler() {
       /*is_node_available_fn=*/
       [](auto) { return true; },
       /*resource_usage_gauge=*/metrics_.resource_usage_gauge,
+      /*clock=*/clock_,
       /*is_local_node_with_raylet=*/false);
 }
 

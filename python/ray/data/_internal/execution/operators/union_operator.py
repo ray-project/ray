@@ -85,15 +85,15 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def clear_internal_input_queue(self) -> None:
         """Clear internal input queues."""
-        for input_buffer in self._input_buffers:
+        for idx, input_buffer in enumerate(self._input_buffers):
             while input_buffer:
                 bundle = input_buffer.get_next()
-                self._metrics.on_input_dequeued(bundle)
+                self._metrics.on_input_dequeued(bundle, input_index=idx)
 
     def clear_internal_output_queue(self) -> None:
         """Clear internal output queue."""
         while self._output_buffer:
-            bundle = self._output_buffer.popleft()
+            bundle = self._output_buffer.get_next()
             self._metrics.on_output_dequeued(bundle)
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
@@ -101,7 +101,7 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
         assert 0 <= input_index <= len(self._input_dependencies), input_index
         if self._preserve_order:
             self._input_buffers[input_index].add(refs)
-            self._metrics.on_input_queued(refs)
+            self._metrics.on_input_queued(refs, input_index=input_index)
             self._try_round_robin()
         else:
             self._output_buffer.add(refs)
@@ -153,7 +153,9 @@ class UnionOperator(InternalQueueOperatorMixin, NAryOperator):
 
             if buffer.has_next():
                 refs = buffer.get_next()
-                self._metrics.on_input_dequeued(refs)
+                self._metrics.on_input_dequeued(
+                    refs, input_index=self._current_input_index
+                )
                 self._output_buffer.add(refs)
                 self._metrics.on_output_queued(refs)
             elif not self._input_done_flags[self._current_input_index] or all(

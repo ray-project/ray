@@ -176,11 +176,9 @@ def test_torch_conversion_collate_fn(ray_start_regular_shared):
             assert batch.tolist() == list(range(5, 10))
 
     # Test that we don't automatically set device if collate_fn is specified.
-    with patch(
-        "ray.air._internal.torch_utils.get_devices", lambda: [torch.device("cuda")]
-    ):
-        devices = ray.air._internal.torch_utils.get_devices()
-        assert devices[0].type == "cuda"
+    with patch("ray.train.torch.get_device", lambda: torch.device("cuda")):
+        devices = ray.train.torch.get_device()
+        assert devices.type == "cuda"
 
         it._iter_batches = MagicMock()
         for batch in it.iter_torch_batches(collate_fn=collate_fn):
@@ -290,6 +288,11 @@ def test_torch_conversion_default_collate_fn_threading(
             assert len(b1[col]) == len(b2[col])
             for t1, t2 in zip(b1[col], b2[col]):
                 assert torch.equal(t1, t2)
+
+
+def test_to_torch_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(DeprecationWarning):
+        ray.data.range(1).iterator().to_torch()
 
 
 @pytest.mark.parametrize("should_equalize", [True, False])

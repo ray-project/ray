@@ -3,7 +3,6 @@ import math
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional, Set, Tuple, Type
 
-from ray._private.arrow_utils import get_pyarrow_version
 from ray.data._internal.arrow_block import ArrowBlockAccessor
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES,
@@ -15,8 +14,9 @@ from ray.data._internal.execution.operators.hash_shuffle import (
     ShuffleAggregation,
     _combine,
 )
-from ray.data._internal.logical.operators.join_operator import JoinType
+from ray.data._internal.logical.operators import JoinType
 from ray.data._internal.util import GiB, MiB
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data._internal.utils.transform_pyarrow import _is_pa_extension_type
 from ray.data.block import Block
 from ray.data.context import DataContext
@@ -106,6 +106,33 @@ class JoiningAggregation(ShuffleAggregation):
 
         left_on = list(self._left_key_col_names)
         right_on = list(self._right_key_col_names)
+
+        # Eagerly validate suffix conflicts so callers get a clear error instead
+        # of the opaque PyArrow schema-merge error ('Field X exists 2 times').
+        # Skip for semi/anti joins: only one side's columns appear in the result,
+        # so overlapping non-key names between left and right are harmless.
+        if self._join_type not in (
+            JoinType.LEFT_SEMI,
+            JoinType.LEFT_ANTI,
+            JoinType.RIGHT_SEMI,
+            JoinType.RIGHT_ANTI,
+        ):
+            left_cols = set(left_table.schema.names)
+            # PyArrow drops right key columns from output (coalescing them into
+            # the left keys), so only right non-key columns can collide with
+            # left columns. Subtracting only right_on (not left_on) correctly
+            # handles asymmetric key names (left_on != right_on).
+            right_output_cols = set(right_table.schema.names) - set(right_on)
+            collisions = left_cols & right_output_cols
+            if (
+                self._left_columns_suffix is None
+                and self._right_columns_suffix is None
+                and collisions
+            ):
+                raise ValueError(
+                    "Left and right columns suffixes cannot be both None "
+                    f"(overlapping columns: {sorted(collisions)})"
+                )
 
         # Preprocess: split unsupported columns and add index columns if needed
         preprocess_result_l, preprocess_result_r = self._preprocess(

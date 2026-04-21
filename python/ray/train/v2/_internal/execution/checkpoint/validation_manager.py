@@ -1,5 +1,5 @@
+import asyncio
 import logging
-import time
 from collections import OrderedDict, deque
 from typing import TYPE_CHECKING, Any, Dict, List, Union
 
@@ -54,7 +54,7 @@ def run_validation_fn(
     )
     if not isinstance(metrics_dict, dict):
         raise ValueError(
-            "The validate function must return a dictionary of metrics. "
+            "The validation function must return a dictionary of metrics. "
             f"Got {type(metrics_dict)} instead."
         )
     return metrics_dict
@@ -79,7 +79,22 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         # Finished validations that have yet to be processed
         self._finished_validations = OrderedDict()
 
-        # TODO: checkpoint/restore validation manager state
+        self._requeue_incomplete_validations()
+
+    def _requeue_incomplete_validations(self):
+        """Add _TrainingReports for incomplete validations to the queue."""
+        for checkpoint, (
+            training_result,
+            validation,
+        ) in self._checkpoint_manager.get_pending_training_results().items():
+            if validation:
+                self._training_report_queue.append(
+                    _TrainingReport(
+                        metrics=training_result.metrics,
+                        checkpoint=checkpoint,
+                        validation=validation,
+                    )
+                )
 
     def after_report(
         self,
@@ -132,14 +147,9 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         for _ in range(num_validations_to_start):
             training_report = self._training_report_queue.popleft()
             # TODO: handle timeouts - ray.remote() does not have them
-            if isinstance(training_report.validation, ValidationTaskConfig):
-                merged_kwargs = {
-                    **self._validation_config.task_config.ray_remote_kwargs,
-                    **training_report.validation.ray_remote_kwargs,
-                }
-            else:
-                merged_kwargs = self._validation_config.task_config.ray_remote_kwargs
-            run_validation_fn_with_options = run_validation_fn.options(**merged_kwargs)
+            run_validation_fn_with_options = run_validation_fn.options(
+                **self._validation_config.ray_remote_kwargs,
+            )
             validate_task = run_validation_fn_with_options.remote(
                 self._validation_config,
                 training_report.validation,
@@ -158,15 +168,20 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         checkpoint_to_metrics = {}
         try:
             checkpoint_to_metrics[checkpoint] = ray.get(task)
-        except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
+        except ray.exceptions.TaskCancelledError:
+            logger.info(
+                f"Validation was cancelled for checkpoint {checkpoint}, likely because the train run was aborted. "
+                "It will be retried in the next train run with the same storage path if there is one."
+            )
+        except ray.exceptions.RayTaskError:
             checkpoint_to_metrics[checkpoint] = {}
             logger.exception(f"Validation failed for checkpoint {checkpoint}")
             # TODO: track failed validations - see ed45912bb6ed435de06ac1cd58e9918e6825b4fe
         return checkpoint_to_metrics
 
-    def before_controller_shutdown(self):
+    async def before_controller_shutdown(self):
         while self._poll_validations() != 0 or self._kick_off_validations() != 0:
-            time.sleep(VALIDATION_TASK_POLL_INTERVAL_S)
+            await asyncio.sleep(VALIDATION_TASK_POLL_INTERVAL_S)
         checkpoint_to_metrics = {}
         tasks = list(self._finished_validations.keys())
         for task in tasks:
@@ -177,13 +192,18 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
             )
         self._checkpoint_manager.update_checkpoints_with_metrics(checkpoint_to_metrics)
 
+    def before_controller_abort(self):
+        for task in self._pending_validations.keys():
+            ray.cancel(task)
+
     def after_controller_state_update(
         self,
         previous_state: "TrainControllerState",
         current_state: "TrainControllerState",
     ):
         # TODO: figure out if there's a better place to poll validations
-        # TODO: consider cleaning up validation tasks in before_controller_abort
+        if current_state.is_terminal():
+            return
         self._poll_validations()
         self._kick_off_validations()
 

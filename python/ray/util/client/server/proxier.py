@@ -24,6 +24,8 @@ from ray._common.network_utils import (
     is_ipv6,
     is_localhost,
 )
+from ray._common.tls_utils import add_port_to_grpc_server
+from ray._common.utils import env_integer
 from ray._private.authentication.http_token_authentication import (
     format_authentication_http_error,
     get_auth_headers_if_auth_enabled,
@@ -37,7 +39,6 @@ from ray._private.services import (
     get_node_with_retry,
     start_ray_client_server,
 )
-from ray._private.tls_utils import add_port_to_grpc_server
 from ray._private.utils import detect_fate_sharing_support
 from ray._raylet import GcsClient
 from ray.cloudpickle.compat import pickle
@@ -62,7 +63,7 @@ CHECK_PROCESS_INTERVAL_S = 30
 MIN_SPECIFIC_SERVER_PORT = 23000
 MAX_SPECIFIC_SERVER_PORT = 24000
 
-CHECK_CHANNEL_TIMEOUT_S = 30
+CHECK_CHANNEL_TIMEOUT_S = env_integer("RAY_CLIENT_SERVER_CHECK_CHANNEL_TIMEOUT_S", 30)
 
 LOGSTREAM_RETRIES = 5
 LOGSTREAM_RETRY_INTERVAL_SEC = 2

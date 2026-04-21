@@ -15,9 +15,10 @@ import pyarrow.compute as pc
 import pytest
 
 import ray
-from ray._common.test_utils import wait_for_condition
-from ray._private.arrow_utils import get_pyarrow_version
-from ray._private.test_utils import run_string_as_driver
+from ray._common.test_utils import (
+    run_string_as_driver,
+    wait_for_condition,
+)
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     MIN_PYARROW_VERSION_TYPE_PROMOTION,
 )
@@ -25,6 +26,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
     _generate_transform_fn_for_async_map,
     _MapActorContext,
 )
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
@@ -514,17 +516,6 @@ def test_rename_columns(
     assert sorted(renamed_schema_names) == sorted(expected_schema)
 
 
-def test_default_batch_size_emits_deprecation_warning(
-    ray_start_regular_shared, target_max_block_size_infinite_or_default
-):
-    with pytest.warns(
-        DeprecationWarning,
-        match="Passing 'default' to `map_batches` is deprecated and won't be "
-        "supported after September 2025. Use `batch_size=None` instead.",
-    ):
-        ray.data.range(1).map_batches(lambda x: x, batch_size="default")
-
-
 @pytest.mark.parametrize(
     "names, expected_exception, expected_message",
     [
@@ -886,8 +877,6 @@ def test_actor_udf_cleanup(
     """Test that for the actor map operator, the UDF object is deleted properly."""
     ray.shutdown()
     ray.init(num_cpus=2)
-    ctx = DataContext.get_current()
-    ctx._enable_actor_pool_on_exit_hook = True
 
     test_file = tmp_path / "test.txt"
 

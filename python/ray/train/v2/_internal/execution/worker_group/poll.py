@@ -1,10 +1,13 @@
 import re
 from collections import defaultdict
 from dataclasses import dataclass
-from typing import Dict, Optional
+from typing import Dict, Optional, Set
 
 from ray._private.ray_logging import NUMBERS
-from ray.train.v2._internal.exceptions import WorkerHealthCheckFailedError
+from ray.train.v2._internal.exceptions import (
+    UserExceptionWithTraceback,
+    WorkerHealthCheckFailedError,
+)
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2.api.exceptions import WorkerGroupError
 from ray.types import ObjectRef
@@ -42,14 +45,36 @@ class WorkerStatus:
 @dataclass(frozen=True)
 class WorkerGroupPollStatus:
     worker_statuses: Dict[int, WorkerStatus]
+    worker_rank_to_replica_group_rank: Optional[Dict[int, int]] = None
+
+    @property
+    def all_replica_group_indices(self) -> Set[int]:
+        """Return the set of all replica group indices."""
+        if self.worker_rank_to_replica_group_rank is None:
+            return set()
+        return set(self.worker_rank_to_replica_group_rank.values())
+
+    @property
+    def failing_replica_group_indices(self) -> Set[int]:
+        """Return the set of replica group indices that have failing workers."""
+        if self.worker_rank_to_replica_group_rank is None:
+            return set()
+        return {
+            self.worker_rank_to_replica_group_rank[rank]
+            for rank in self.errors
+            if rank in self.worker_rank_to_replica_group_rank
+        }
 
     @property
     def errors(self) -> Dict[int, Exception]:
-        return {
-            world_rank: status.error
-            for world_rank, status in self.worker_statuses.items()
-            if status.error is not None
-        }
+        errors = {}
+        for world_rank, status in self.worker_statuses.items():
+            if status.error is not None:
+                error = status.error
+                if isinstance(error, UserExceptionWithTraceback):
+                    error = error._base_exc
+                errors[world_rank] = error
+        return errors
 
     def get_worker_group_error(self) -> WorkerGroupError:
         return WorkerGroupError(

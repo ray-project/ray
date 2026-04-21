@@ -14,6 +14,7 @@ from ray._private.ray_constants import (
 )
 from ray.dashboard.modules.metrics.grafana_dashboard_factory import (
     generate_data_grafana_dashboard,
+    generate_data_llm_grafana_dashboard,
     generate_default_grafana_dashboard,
     generate_serve_deployment_grafana_dashboard,
     generate_serve_grafana_dashboard,
@@ -363,6 +364,18 @@ class MetricsHead(SubprocessModule):
                 content,
                 self._dashboard_uids["data"],
             ) = generate_data_grafana_dashboard()
+            f.write(content)
+        with open(
+            os.path.join(
+                self._grafana_dashboard_output_dir,
+                "data_llm_grafana_dashboard.json",
+            ),
+            "w",
+        ) as f:
+            (
+                content,
+                self._dashboard_uids["data_llm"],
+            ) = generate_data_llm_grafana_dashboard()
             f.write(content)
         with open(
             os.path.join(
