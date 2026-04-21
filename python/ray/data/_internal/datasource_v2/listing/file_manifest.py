@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import List
+from typing import List, Optional
 
 import numpy as np
 import pyarrow as pa
@@ -57,6 +57,24 @@ class FileManifest:
         This doesn't make a copy of the underlying data.
         """
         return self._block
+
+    def shuffle(self, seed: Optional[int]) -> "FileManifest":
+        """Return a new `FileManifest` with rows permuted.
+
+        Args:
+            seed: Random seed. ``None`` for non-deterministic shuffling.
+
+        Returns:
+            A new `FileManifest` with the same rows in a shuffled order. The
+            underlying row alignment between `paths` and `file_sizes` is
+            preserved because the permutation is applied to the block as a
+            whole.
+        """
+        n = len(self)
+        if n <= 1:
+            return self
+        permutation = np.random.default_rng(seed).permutation(n)
+        return FileManifest(self._block.take(permutation))
 
     @classmethod
     def construct_manifest(
