@@ -3921,6 +3921,54 @@ def test_shutdown(mock_deployment_state_manager):
     assert dsm.is_ready_for_shutdown()
 
 
+def test_shutdown_does_not_delete_checkpoint(mock_deployment_state_manager):
+    """Tests checkpoint must survive `shutdown() and `is_ready_for_shutdown().
+    Only an explicit `delete_checkpoint() call should remove it.
+    """
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    grace_period_s = 10
+    b_info_1, _ = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    dsm.save_checkpoint()
+
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Single replica should be created and become running.
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    # Checkpoint should exist after save.
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is not None
+
+    # shutdown() must NOT delete the checkpoint.
+    dsm.shutdown()
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is not None
+
+    # save_checkpoint() after shutdown should be a no-op.
+    pre_shutdown_checkpoint = dsm._kv_store.get(CHECKPOINT_KEY)
+    dsm.save_checkpoint()
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is pre_shutdown_checkpoint
+
+    timer.advance(grace_period_s + 0.1)
+    dsm.update()
+    replica = ds._replicas.get()[0]
+    replica._actor.set_done_stopping()
+    dsm.update()
+    assert dsm.is_ready_for_shutdown()
+
+    # is_ready_for_shutdown() must NOT delete the checkpoint.
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is not None
+
+    # Only delete_checkpoint() should remove it.
+    dsm.delete_checkpoint()
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is None
+
+
 def test_resource_requirements_none():
     """Ensure resource_requirements doesn't break if a requirement is None"""
 

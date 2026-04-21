@@ -122,6 +122,7 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
+SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 
 
 class ServeController:
@@ -265,6 +266,8 @@ class ServeController:
             log_file_path=get_component_logger_file_path(),
         )
         self._shutting_down = False
+        if self.kv_store.get(SHUTDOWN_IN_PROGRESS_KEY) is not None:
+            self._shutting_down = True
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
@@ -753,6 +756,11 @@ class ServeController:
         )
 
     def _recover_state_from_checkpoint(self):
+        if self._shutting_down:
+            # If we're recovering into a `shutdown-in-progress state, don't
+            # re-apply the config.
+            return
+
         (
             deployment_time,
             serve_config,
@@ -980,6 +988,9 @@ class ServeController:
             and proxy_state_is_shutdown
         ):
             self._kill_registered_cleanup_actors()
+            self.application_state_manager.delete_checkpoint()
+            self.deployment_state_manager.delete_checkpoint()
+            self.kv_store.delete(SHUTDOWN_IN_PROGRESS_KEY)
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},
@@ -1741,6 +1752,7 @@ class ServeController:
                 is killed, which raises a RayActorError.
         """
         self._shutting_down = True
+        self.kv_store.put(SHUTDOWN_IN_PROGRESS_KEY, b"1")
         if not wait:
             return
 
