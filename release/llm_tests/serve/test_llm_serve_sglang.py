@@ -6,7 +6,7 @@ from openai import OpenAI
 
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.llm.examples.sglang.modules.sglang_engine import SGLangServer
+from ray.llm._internal.serve.engines.sglang import SGLangServer
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.llm import LLMConfig, build_openai_app
 from ray.serve.schema import ApplicationStatus
