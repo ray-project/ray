@@ -1,6 +1,6 @@
 import itertools
 import logging
-from typing import TYPE_CHECKING, Iterator, Optional, Tuple
+from typing import TYPE_CHECKING, Callable, Iterator, Optional, Tuple
 
 import ray
 from ray._private.internal_api import get_memory_info_reply, get_state_from_address
@@ -43,31 +43,17 @@ class ExecutionPlan:
         self._in_stats = in_stats
         self._logical_plan = logical_plan
 
-    def create_executor(self, dataset_id: str) -> "StreamingExecutor":
-        """Create an executor for this plan.
-
-        NOTE: Executor will be shutdown upon either of the 2 following conditions:
-
-            - Iterator is fully exhausted (ie until StopIteration is raised)
-            - Executor instances is garbage-collected
-        """
-        from ray.data._internal.execution.streaming_executor import StreamingExecutor
-
-        # TODO (kyuds): when this moves to `Dataset`, we should increment _run_index
-        # here.
-        return StreamingExecutor(self._context, dataset_id)
-
     @omit_traceback_stdout
     def execute_to_iterator(
         self,
-        dataset_id: str,
+        create_executor_fn: Callable[[], "StreamingExecutor"],
     ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
         """Execute this plan, returning an iterator.
 
         This will use streaming execution to generate outputs.
 
         Args:
-            dataset_id: The unique dataset ID for executor tagging.
+            create_executor_fn: Factory that creates a StreamingExecutor.
 
         Returns:
             Tuple of iterator over output RefBundles, DatasetStats, and the executor.
@@ -80,7 +66,7 @@ class ExecutionPlan:
             execute_to_legacy_bundle_iterator,
         )
 
-        executor = self.create_executor(dataset_id)
+        executor = create_executor_fn()
         bundle_iter = execute_to_legacy_bundle_iterator(executor, self)
         # Since the generator doesn't run any code until we try to fetch the first
         # value, force execution of one bundle before we call get_stats().
@@ -96,14 +82,14 @@ class ExecutionPlan:
     def execute(
         self,
         dataset_uuid: str,
-        dataset_id: str,
+        create_executor_fn: Callable[[], "StreamingExecutor"],
         preserve_order: bool = False,
     ) -> RefBundle:
         """Executes this plan (eagerly).
 
         Args:
             dataset_uuid: The dataset UUID for stats tagging.
-            dataset_id: The unique dataset ID for executor tagging.
+            create_executor_fn: Factory that creates a StreamingExecutor.
             preserve_order: Whether to preserve order in execution.
 
         Returns:
@@ -154,7 +140,7 @@ class ExecutionPlan:
                 )
             else:
                 # Make sure executor is properly shutdown
-                with self.create_executor(dataset_id) as executor:
+                with create_executor_fn() as executor:
                     bundle = execute_to_ref_bundle(
                         executor,
                         self,

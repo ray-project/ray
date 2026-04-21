@@ -7392,21 +7392,29 @@ class Dataset:
             self._current_executor.shutdown(force=True)
             self._current_executor = None
 
+    def _create_executor(self) -> "StreamingExecutor":
+        """Create a StreamingExecutor for this dataset.
+
+        Increments _run_index and tags the executor with get_dataset_id().
+        """
+        from ray.data._internal.execution.streaming_executor import StreamingExecutor
+
+        self._run_index += 1
+        return StreamingExecutor(self._context, self.get_dataset_id())
+
     def _execute(self, preserve_order: bool = False) -> RefBundle:
         """Execute this dataset eagerly, returning a RefBundle."""
-        self._run_index += 1
         return self._plan.execute(
             dataset_uuid=self._uuid,
-            dataset_id=self.get_dataset_id(),
+            create_executor_fn=self._create_executor,
             preserve_order=preserve_order,
         )
 
     def _execute_to_iterator(
         self,
     ) -> Tuple[Iterator[RefBundle], DatasetStats, Optional["StreamingExecutor"]]:
-        self._run_index += 1
         bundle_iter, stats, executor = self._plan.execute_to_iterator(
-            self.get_dataset_id()
+            self._create_executor,
         )
         # Capture current executor to be able to clean it up properly, once
         # dataset is garbage-collected

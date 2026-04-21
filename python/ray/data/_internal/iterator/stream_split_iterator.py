@@ -256,15 +256,10 @@ class SplitCoordinator:
                         self._current_executor.shutdown(force=True)
 
                     ds = self._base_dataset
-                    # TODO (kyuds): move _run_index increment into `create_executor`
-                    # again when ExecutionPlan is fully removed.
-                    ds._run_index += 1
-                    dataset_id = ds.get_dataset_id()
-                    plan = ds._plan
                     # Re-execute dataset
-                    self._current_executor = plan.create_executor(dataset_id)
+                    self._current_executor = ds._create_executor()
                     self._output_iterator = execute_to_legacy_bundle_iterator(
-                        self._current_executor, plan
+                        self._current_executor, ds._plan
                     )
                     logger.debug(
                         f"Starting epoch {self._cur_epoch} (all {self._n} clients "
