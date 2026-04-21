@@ -299,11 +299,11 @@ def get_imagenet_data_dirs(task_config: ImageClassificationConfig) -> Dict[str, 
     )
     from image_classification.parquet.imagenet import (
         IMAGENET_PARQUET_SPLIT_S3_DIRS,
+        IMAGENET_PARQUET_SPLIT_1T_S3_DIRS,
     )
     from image_classification.s3_url.imagenet import (
         IMAGENET_S3_URL_SPLIT_DIRS,
     )
-    from constants import DatasetKey
 
     data_format = task_config.image_classification_data_format
 
@@ -313,13 +313,8 @@ def get_imagenet_data_dirs(task_config: ImageClassificationConfig) -> Dict[str, 
     if data_format == ImageClassificationConfig.ImageFormat.JPEG:
         return IMAGENET_JPEG_SPLIT_S3_DIRS
     elif data_format == ImageClassificationConfig.ImageFormat.PARQUET:
-        if task_config.image_classification_parquet_data_root:
-            root = task_config.image_classification_parquet_data_root.rstrip("/")
-            return {
-                DatasetKey.TRAIN: f"{root}/train",
-                DatasetKey.VALID: f"{root}/val",
-                DatasetKey.TEST: f"{root}/test",
-            }
+        if task_config.image_classification_use_1t_dataset:
+            return IMAGENET_PARQUET_SPLIT_1T_S3_DIRS
         return IMAGENET_PARQUET_SPLIT_S3_DIRS
     elif data_format == ImageClassificationConfig.ImageFormat.S3_URL:
         return IMAGENET_S3_URL_SPLIT_DIRS

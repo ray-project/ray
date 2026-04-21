@@ -33,10 +33,11 @@ class ImageClassificationConfig(TaskConfig):
 
     image_classification_local_dataset: bool = False
     image_classification_data_format: ImageFormat = ImageFormat.PARQUET
-    # When non-empty and data_format=PARQUET, overrides the default
-    # IMAGENET_PARQUET_SPLIT_S3_ROOT so variants can point at a larger
-    # dataset (e.g. parquet_split_1t) without editing code.
-    image_classification_parquet_data_root: str = ""
+    # When True and data_format=PARQUET, read from the larger
+    # IMAGENET_PARQUET_SPLIT_1T_S3_ROOT dataset instead of the default
+    # parquet_split root. Used by the slow-consumer benchmarks to sustain
+    # backpressure.
+    image_classification_use_1t_dataset: bool = False
 
 
 class RecsysConfig(TaskConfig):
