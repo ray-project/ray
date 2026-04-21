@@ -324,15 +324,17 @@ class ParquetDatasource(Datasource):
 
     # Denotes number of batches to read ahead in a fragment. Default is 16
     # as per https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Dataset.html#pyarrow.dataset.Dataset.to_batches
+    # Chose 8 based on past experiments.
     _DEFAULT_BATCH_READAHEAD = env_integer("RAY_DATA_PARQUET_READER_BATCH_READAHEAD", 8)
     # NOTE: We're essentially stubbing out this value as currently
     #       ParquetDatasource reads individual fragments independently
-    # Default is 4. This is the number of files to readahead.
+    # Default is 4. This refers to the number of files to readahead, which was chosen based on past experiments.
     _DEFAULT_FRAGMENT_READAHEAD = env_integer(
         "RAY_DATA_PARQUET_READER_FRAGMENT_READAHEAD", 1
     )
 
     # Default is False as per https://arrow.apache.org/docs/python/generated/pyarrow.dataset.ParquetFragmentScanOptions.html
+    # This parameter when set to True, reads files through buffered input streams rather than loading entire row groups at once.
     _DEFAULT_FRAGMENT_USE_BUFFERED_STREAM = env_bool(
         "RAY_DATA_PARQUET_READER_FRAGMENT_USE_BUFFERED_STREAM", True
     )
