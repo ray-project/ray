@@ -459,9 +459,10 @@ class PullManager {
   /// Bundle pull requests of arguments of queued tasks.
   BundlePullRequestQueue task_argument_bundles_;
 
-  /// The total number of bytes that we are currently tracking. This includes
-  /// objects that need to be pulled from a remote node, and objects already
-  /// in the local store.
+  /// The total number of bytes that we are currently tracking. An object is
+  /// tracked when the pull manager is responsible for keeping it locally
+  /// available, regardless of whether it's already in plasma or hasn't
+  /// arrived yet.
   ///
   /// To avoid starvation, this count minus pinned_objects_size_ (the subset
   /// already in plasma) stays below the available capacity in the local
@@ -469,7 +470,7 @@ class PullManager {
   int64_t num_bytes_tracked_ = 0;
 
   /// The total number of bytes that is available to store objects that we are
-  /// pulling.
+  /// tracking.
   int64_t num_bytes_available_;
 
   /// The number of currently active bundles.
@@ -486,7 +487,7 @@ class PullManager {
   // chunks.
   mutable absl::Mutex active_objects_mu_;
 
-  /// The objects that we are currently fetching. This is a subset of the
+  /// The objects that we are currently tracking. This is a subset of the
   /// objects that we have been asked to fetch. The total size of these objects
   /// equals num_bytes_tracked_.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>

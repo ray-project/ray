@@ -124,7 +124,7 @@ bool PullManager::ActivateNextBundlePullRequest(BundlePullRequestQueue &bundles,
     absl::MutexLock lock(&active_objects_mu_);
 
     // Bytes of objects in this bundle that no other active bundle is already
-    // pulling (pulling here can be a remote pull or a "pull" of a local object).
+    // tracking.
     int64_t newly_tracked_bytes = 0;
     // Subset of newly_tracked_bytes that isn't already local. Used for the quota check.
     int64_t remote_bytes = 0;
