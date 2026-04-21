@@ -85,62 +85,6 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         # Create the coordinator actor lazily rather than eagerly in the constructor.
         return get_or_create_autoscaling_coordinator()
 
-    def _try_cancel(self, ref, operation_name: str, requester_id: str) -> None:
-        """Best-effort soft cancel of an ObjectRef.
-
-        Swallows all exceptions rather than propagating them, so a failing
-        cancel cannot derail the caller. Logs the suppressed exception at DEBUG.
-        """
-        try:
-            ray.cancel(ref, force=False)
-        except Exception:
-            logger.debug(
-                f"Best-effort cancel failed for {operation_name} for {requester_id}.",
-                exc_info=True,
-            )
-
-    def _resolve_pending(
-        self,
-        pending_attr: str,
-        requester_id: str,
-        operation_name: str,
-        on_success: Optional[Callable] = None,
-    ) -> None:
-        """Check if a pending async request has completed and handle the result.
-
-        If the request is ready, consume it and call on_success on success, or
-        log a warning on actor error. If the request has timed out, issue a soft
-        cancel (force=False), discard the ref, and log a warning. Does nothing
-        if no request is pending. Never raises: callers fall back to the cached
-        value on any failure.
-        """
-        pending = getattr(self, pending_attr)
-        if pending is None:
-            return
-        ref, submit_time = pending
-        ready, _ = ray.wait([ref], timeout=0)
-        if ready:
-            setattr(self, pending_attr, None)
-            try:
-                result = ray.get(ref)
-                if on_success is not None:
-                    on_success(result)
-            except ray.exceptions.RayError:
-                logger.warning(
-                    f"Failed to {operation_name} for {requester_id}; falling back"
-                    " to the cached value. If this persists, file a GitHub issue.",
-                    exc_info=RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK,
-                )
-        elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
-            # Clear before cancelling for defense-in-depth: _try_cancel doesn't raise,
-            # but cleanup should not depend on that guarantee.
-            setattr(self, pending_attr, None)
-            self._try_cancel(ref, operation_name, requester_id)
-            logger.warning(
-                f"Timed out on {operation_name} for {requester_id}; falling back"
-                " to the cached value. If this persists, file a GitHub issue."
-            )
-
     def request_resources(
         self,
         requester_id: str,
@@ -162,27 +106,15 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             priority=priority,
         )
 
-    def _clear_requester_state(self, requester_id: str) -> None:
-        """Cancel the in-flight get_allocated_resources ref and clear cached state.
-
-        Called by cancel_request to prevent memory accumulation across many
-        executions in a long-running process.
-        """
-        pending = self._pending_allocated_resources
-        if pending is not None:
-            old_ref, _ = pending
-            self._pending_allocated_resources = None
-            self._try_cancel(old_ref, "get allocated resources", requester_id)
-        self._cached_allocated_resources = []
-
     def cancel_request(self, requester_id: str) -> None:
         """Fire-and-forget: cancel a resource request on the coordinator actor.
 
-        Returns immediately without observing the result. Clears client-side
-        state unconditionally (cancels any in-flight get_allocated_resources ref
-        and zeroes the cached allocation) to prevent memory accumulation.
+        Returns immediately without observing the result. Drops any in-flight
+        get_allocated_resources ref and zeroes the cached allocation so a
+        long-running process doesn't accumulate state across many executions.
         """
-        self._clear_requester_state(requester_id)
+        self._pending_allocated_resources = None
+        self._cached_allocated_resources = []
         self._autoscaling_coordinator.cancel_request.remote(requester_id)
 
     def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
@@ -199,16 +131,27 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
         On actor errors or timeouts, falls back to the last cached value and
         logs a warning; never raises.
         """
-
-        def _on_success(result):
-            self._cached_allocated_resources = result
-
-        self._resolve_pending(
-            "_pending_allocated_resources",
-            requester_id,
-            "get allocated resources",
-            on_success=_on_success,
-        )
+        if self._pending_allocated_resources is not None:
+            ref, submit_time = self._pending_allocated_resources
+            ready, _ = ray.wait([ref], timeout=0)
+            if ready:
+                self._pending_allocated_resources = None
+                try:
+                    self._cached_allocated_resources = ray.get(ref)
+                except ray.exceptions.RayError:
+                    logger.warning(
+                        f"Failed to get allocated resources for {requester_id};"
+                        " falling back to the cached value."
+                        " If this persists, file a GitHub issue.",
+                        exc_info=RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK,
+                    )
+            elif time.time() - submit_time > self.AUTOSCALING_REQUEST_GET_TIMEOUT_S:
+                self._pending_allocated_resources = None
+                logger.warning(
+                    f"Timed out on get allocated resources for {requester_id};"
+                    " falling back to the cached value."
+                    " If this persists, file a GitHub issue."
+                )
 
         # Submit a new request if none is currently in-flight
         # (first call, or the previous request completed, errored, or timed out).

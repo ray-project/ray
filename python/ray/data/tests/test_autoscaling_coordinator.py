@@ -369,8 +369,6 @@ def _make_coordinator_with_mock_actor():
     mock_ref = object()
     mock_actor = Mock()
     mock_actor.get_allocated_resources.remote.return_value = mock_ref
-    mock_actor.request_resources.remote.return_value = mock_ref
-    mock_actor.cancel_request.remote.return_value = mock_ref
     coordinator.__dict__["_autoscaling_coordinator"] = mock_actor
     return coordinator, mock_ref, mock_actor
 
@@ -433,22 +431,21 @@ def test_get_allocated_resources_returns_cached_on_actor_exception(
 def test_get_allocated_resources_returns_cached_on_timeout(
     teardown_autoscaling_coordinator,
 ):
-    """Timeouts fall back to the cached value, cancel the stale task, never raise.
+    """Timeouts fall back to the cached value and never raise.
 
     A fresh request must be submitted on the next call so recovery is automatic.
+    The abandoned actor task is left to complete and be discarded by ref GC.
     """
     coordinator, mock_ref, mock_actor = _make_coordinator_with_mock_actor()
     stale_time = time.time() - coordinator.AUTOSCALING_REQUEST_GET_TIMEOUT_S - 1
     coordinator._pending_allocated_resources = (mock_ref, stale_time)
 
     with patch("ray.wait", return_value=([], [mock_ref])):
-        with patch("ray.cancel") as mock_cancel:
-            result = coordinator.get_allocated_resources("test")
+        result = coordinator.get_allocated_resources("test")
 
-    # The stale task must be cancelled to avoid piling up the actor queue.
-    mock_cancel.assert_called_once_with(mock_ref, force=False)
     assert result == [{"CPU": 1}]
     # The pending slot is freed and a fresh request is submitted.
+    assert coordinator._pending_allocated_resources is not None
     assert mock_actor.get_allocated_resources.remote.call_count == 1
 
 
@@ -459,37 +456,16 @@ def test_cancel_request_clears_client_side_state(
 
     Prevents memory accumulation across many executions in a long-running process.
     """
-    coordinator, mock_ref, _ = _make_coordinator_with_mock_actor()
+    coordinator, mock_ref, mock_actor = _make_coordinator_with_mock_actor()
     coordinator._pending_allocated_resources = (mock_ref, time.time())
     assert coordinator._cached_allocated_resources == [{"CPU": 1}]
 
-    with patch("ray.cancel") as mock_cancel:
-        coordinator.cancel_request("test")
+    coordinator.cancel_request("test")
 
     assert coordinator._pending_allocated_resources is None
     assert coordinator._cached_allocated_resources == []
-    mock_cancel.assert_any_call(mock_ref, force=False)
-
-
-def test_try_cancel_absorbs_exceptions(teardown_autoscaling_coordinator):
-    """_try_cancel swallows exceptions so a failing cancel cannot derail the caller.
-
-    Regression guard: if _try_cancel is simplified to a bare ray.cancel call,
-    this test will fail — the timeout branch in _resolve_pending would raise
-    instead of falling back to the cached value and continuing.
-    """
-    coordinator, mock_ref, mock_actor = _make_coordinator_with_mock_actor()
-    stale_time = time.time() - coordinator.AUTOSCALING_REQUEST_GET_TIMEOUT_S - 1
-    coordinator._pending_allocated_resources = (mock_ref, stale_time)
-
-    with patch("ray.wait", return_value=([], [mock_ref])):
-        with patch("ray.cancel", side_effect=RuntimeError("cancel failed")):
-            # Must not raise despite ray.cancel failing.
-            result = coordinator.get_allocated_resources("test")
-
-    # Falls back to cached value; a fresh request was submitted after the timeout.
-    assert result == [{"CPU": 1}]
-    assert mock_actor.get_allocated_resources.remote.call_count == 1
+    # The actor-side cancel RPC is still submitted fire-and-forget.
+    mock_actor.cancel_request.remote.assert_called_once_with("test")
 
 
 def test_non_ray_errors_propagate(teardown_autoscaling_coordinator):
