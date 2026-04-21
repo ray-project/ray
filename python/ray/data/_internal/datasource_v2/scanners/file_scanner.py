@@ -107,6 +107,7 @@ class FileScanner(Scanner[FileManifest]):
         Client because cluster nodes can't see the driver's local files.
         """
         import ray
+        import ray.util.client
 
         if not _is_local_scheme(paths):
             return None
