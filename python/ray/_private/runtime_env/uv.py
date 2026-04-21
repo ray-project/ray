@@ -112,6 +112,7 @@ class UvProcessor:
             python,
             "-m",
             "uv",
+            "self",
             "version",
         ]
 
