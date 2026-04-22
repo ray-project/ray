@@ -1428,11 +1428,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         << "Disconnecting driver, graceful=" << std::boolalpha << graceful
         << ", disconnect_type=" << disconnect_type;
   } else {
-    if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
-      node_manager_unexpected_worker_failure_total_count_.Record(
-          1, {{"Type", "Raylet.UnexpectedIdleWorkerFailure.Total"}, {"Name", ""}});
-    }
-
     RAY_LOG(INFO) << "Got disconnect message from an unregistered client, ignoring.";
     return;
   }
@@ -1518,6 +1513,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
               {{"Type", "Raylet.UnexpectedActorFailure.Total"},
                {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
         }
+      }
+    } else if (lease_id.IsNil() && actor_id.IsNil() && !worker->IsDead()) {
+      if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+        node_manager_unexpected_worker_failure_total_count_.Record(
+            1, {{"Type", "Raylet.UnexpectedIdleWorkerFailure.Total"}, {"Name", ""}});
       }
     }
 
