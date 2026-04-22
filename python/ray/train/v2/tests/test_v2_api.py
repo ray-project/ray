@@ -164,13 +164,13 @@ def test_report_callback_v2_only_arguments(monkeypatch, env_v2_enabled):
     else:
         with pytest.raises(
             ValueError,
-            match="checkpoint_upload_mode is not supported when using Ray Train V1",
+            match="`checkpoint_upload_mode` is only supported in Ray Train v2",
         ):
             ray.train.lightning._lightning_utils.RayTrainReportCallback(
                 checkpoint_upload_mode="anything"
             )
         with pytest.raises(
-            ValueError, match="validation is not supported when using Ray Train V1"
+            ValueError, match="`validation` is only supported in Ray Train v2"
         ):
             ray.train.lightning._lightning_utils.RayTrainReportCallback(
                 validation="anything"
