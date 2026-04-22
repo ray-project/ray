@@ -731,6 +731,7 @@
           fail_on_dead_nodes: 0
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
@@ -777,6 +778,7 @@
           fail_on_dead_nodes: 0
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
@@ -818,6 +820,7 @@
           fail_on_dead_nodes: 0
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
