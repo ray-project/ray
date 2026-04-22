@@ -16,11 +16,10 @@ NUM_ENV_RUNNERS = 4
 
 def _add_node(cluster, worker=True):
     cluster.add_node(
-        redis_port=HEAD_REDIS_PORT if worker else None,
-        num_cpus=HEAD_CPUS if worker else WORKER_CPUS,
-        num_gpus=0,
+        redis_port=None if worker else HEAD_REDIS_PORT,
+        num_cpus=WORKER_CPUS if worker else HEAD_CPUS,
         object_store_memory=EXPECTED_PER_NODE_OBJECT_STORE_MEMORY,
-        include_dashboard=False if worker else True,
+        include_dashboard=not worker,
     )
 
 
@@ -112,7 +111,6 @@ def test_node_failure_ignore(cluster):
         .environment("CartPole-v1")
         .env_runners(
             num_env_runners=NUM_ENV_RUNNERS,
-            validate_env_runners_after_construction=True,
             sample_timeout_s=5.0,
         )
         .training(
@@ -130,7 +128,6 @@ def test_node_failure_ignore(cluster):
 
     algo = config.build()
     _train(cluster, algo, config, iters=10, preempt_freq=3)
-    algo.stop()
 
 
 def test_node_failure_recreate_appo(cluster):
@@ -143,7 +140,6 @@ def test_node_failure_recreate_appo(cluster):
         .experimental(_validate_config=False)
         .env_runners(
             num_env_runners=NUM_ENV_RUNNERS,
-            validate_env_runners_after_construction=True,
         )
         .reporting(
             # Must be >= 2s so APPO's async mechanism has time to detect
@@ -153,7 +149,6 @@ def test_node_failure_recreate_appo(cluster):
         )
         .fault_tolerance(
             restart_failed_env_runners=True,
-            ignore_env_runner_failures=False,
             env_runner_health_probe_timeout_s=20.0,
         )
     )
@@ -171,7 +166,6 @@ def test_node_failure_recreate_ppo(cluster):
         .learners(num_learners=0)
         .env_runners(
             num_env_runners=NUM_ENV_RUNNERS,
-            validate_env_runners_after_construction=True,
             sample_timeout_s=5.0,
         )
         .training(
@@ -185,7 +179,6 @@ def test_node_failure_recreate_ppo(cluster):
         )
         .fault_tolerance(
             restart_failed_env_runners=True,
-            ignore_env_runner_failures=False,
             env_runner_health_probe_timeout_s=20.0,
         )
     )
@@ -202,7 +195,6 @@ def test_node_failure_no_recovery(cluster):
         .environment("CartPole-v1")
         .env_runners(
             num_env_runners=NUM_ENV_RUNNERS,
-            validate_env_runners_after_construction=True,
             sample_timeout_s=5.0,
         )
         .training(
@@ -212,7 +204,6 @@ def test_node_failure_no_recovery(cluster):
         )
         .reporting(min_train_timesteps_per_iteration=1)
         .fault_tolerance(
-            ignore_env_runner_failures=False,
             restart_failed_env_runners=False,
             env_runner_health_probe_timeout_s=20.0,
         )
