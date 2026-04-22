@@ -635,7 +635,7 @@
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
-      python_depset: image_classification_py3.10.lock
+      python_depset: image_classification_py3.13.lock
     cluster_compute: "{{scaling}}_gpu_compute.yaml"
 
   matrix:
@@ -664,7 +664,7 @@
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
-      python_depset: image_classification_py3.10.lock
+      python_depset: image_classification_py3.13.lock
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
 
   run:
@@ -688,7 +688,7 @@
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
       #       that is removed in Pyarrow 21.0
-      python_depset: image_classification_py3.10.lock
+      python_depset: image_classification_py3.13.lock
     cluster_compute: "{{scaling}}_gpu_compute.yaml"
 
   matrix:
