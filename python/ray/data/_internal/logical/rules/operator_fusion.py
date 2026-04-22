@@ -44,8 +44,8 @@ __all__ = [
 ]
 
 
-# Scheduling strategy can be inherited from upstream operator if not specified.
-INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
+# Scheduling strategy and label selector can be inherited from upstream operator if not specified.
+INHERITABLE_REMOTE_ARGS = ["scheduling_strategy", "label_selector"]
 
 
 logger = logging.getLogger(__name__)
@@ -294,8 +294,10 @@ class FuseOperators(Rule):
             # When batch_size % target == 0, each batch can be perfectly sliced into chunks
             # without cross-task buffering. See `_fuse_streaming_repartition_operators_in_dag`
             # docstring for details.
+            # "auto" batch_size is resolved at task runtime, so divisibility is unknown at
+            # plan time — skip fusion and let the operators run separately.
             return (
-                up_logical_op.batch_size is not None
+                isinstance(up_logical_op.batch_size, int)
                 and up_logical_op.batch_size % down_logical_op.target_num_rows_per_block
                 == 0
             )
@@ -357,7 +359,11 @@ class FuseOperators(Rule):
 
         # In non-strict mode, use min_rows_per_bundle to ensure creating batches with batch_size.
         # In strict mode, ref_bundler handles bundling, so do not set min_rows_per_bundle.
-        min_rows = None if down_logical_op.strict else batch_size
+        # "auto" batch_size is resolved at task runtime, so we cannot set a fixed
+        # min_rows_per_bundle at plan time — leave it as None and let bundling use its default.
+        min_rows = (
+            None if (down_logical_op.strict or batch_size == "auto") else batch_size
+        )
 
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
@@ -388,7 +394,7 @@ class FuseOperators(Rule):
             fn_kwargs=up_logical_op.fn_kwargs,
             fn_constructor_args=up_logical_op.fn_constructor_args,
             fn_constructor_kwargs=up_logical_op.fn_constructor_kwargs,
-            min_rows_per_bundled_input=batch_size,
+            min_rows_per_bundled_input=min_rows,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
@@ -741,6 +747,7 @@ def are_remote_args_compatible(
 
     if prev_args != remote_args:
         return False
+
     return True
 
 
