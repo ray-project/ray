@@ -397,6 +397,9 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/plugboard.png
+            :class: card-figure
+
         .. div::
 
             .. image:: https://img.shields.io/github/stars/plugboard-dev/plugboard?style=social
