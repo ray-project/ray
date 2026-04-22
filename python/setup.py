@@ -145,7 +145,6 @@ else:
 # NOTE: The lists below must be kept in sync with ray/BUILD.bazel.
 ray_files = [
     "ray/_raylet" + pyd_suffix,
-    "ray/_flight_store" + pyd_suffix,
     "ray/core/src/ray/gcs/gcs_server" + exe_suffix,
     "ray/core/src/ray/raylet/raylet" + exe_suffix,
 ]
@@ -551,6 +550,15 @@ def build(build_python, build_java, build_cpp, build_redis):
     #
     # TODO(ray-core, ray-ci): the version of these vendored packages should be
     # pinned, so that the build is reproducible.
+    # Ensure pyarrow is installed before Bazel runs — the @pyarrow repository
+    # rule discovers Arrow C++ headers/libs from the installed pyarrow package.
+    try:
+        import pyarrow
+    except ImportError:
+        subprocess.check_call(
+            [sys.executable, "-m", "pip", "install", "-q", "pyarrow>=9.0.0"],
+        )
+
     if not os.getenv("SKIP_THIRDPARTY_INSTALL_CONDA_FORGE"):
         pip_packages = ["psutil", "colorama"]
         subprocess.check_call(

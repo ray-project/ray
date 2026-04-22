@@ -179,6 +179,11 @@ from ray.includes.global_state_accessor cimport (
     RedisGetKeySync
 )
 
+from ray.includes.flight_store cimport (
+    CArrowFlightStore,
+    CObjectTransferInfo,
+)
+
 cimport cpython
 
 include "includes/network_util.pxi"
@@ -199,6 +204,7 @@ include "includes/gcs_subscriber.pxi"
 include "includes/rpc_token_authentication.pxi"
 # Ray Serve-only: Cython timeseries utilities for autoscaling metrics.
 include "includes/timeseries_utils.pxi"
+include "includes/flight_store.pxi"
 
 import ray
 from ray.exceptions import (
@@ -271,7 +277,7 @@ if _os.environ.get("RAY_USE_FLIGHT_STORE", "0") == "1":
     try:
         import pyarrow as _pa
         _pyarrow_Table = _pa.Table
-        from ray._flight_store import get_flight_store
+        from ray._raylet import get_flight_store
         _flight_store_instance = get_flight_store()
         _flight_store_enabled = True
         logger.info("Flight store enabled: %s", _flight_store_instance.get_uri())
