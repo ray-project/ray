@@ -4,7 +4,7 @@ from typing import List
 
 
 class _ThreadBuckets:
-    """Per-thread bucket storage for rolling window accumulator.
+    """Per-thread bucket storage for rolling window.
 
     Each thread gets its own instance to avoid lock contention on the hot path.
     """
@@ -27,34 +27,16 @@ class _ThreadLocalRef(threading.local):
         self.data: _ThreadBuckets = None
 
 
-class RollingWindowAccumulator:
-    """Tracks cumulative values over a rolling time window.
+class _RollingWindowBase:
+    """Base class for rolling window trackers.
+
+    Provides the shared infrastructure: bucketing, rotation, thread-local
+    storage, and thread registration. Subclasses define how values are
+    recorded into buckets and how buckets are aggregated.
 
     Uses bucketing for memory efficiency - divides the window into N buckets
     and rotates them as time passes. This allows efficient tracking of values
     over a sliding window without storing individual data points.
-
-    Uses thread-local storage for lock-free writes on the hot path (add()).
-    Only get_total() requires synchronization to aggregate across threads.
-
-    Example:
-        # Create a 10-minute rolling window with 60 buckets (10s each)
-        accumulator = RollingWindowAccumulator(
-            window_duration_s=600.0,
-            num_buckets=60,
-        )
-
-        # Add values (lock-free, safe from multiple threads)
-        accumulator.add(100.0)
-        accumulator.add(50.0)
-
-        # Get total (aggregates across all threads)
-        total = accumulator.get_total()
-
-    Thread Safety:
-        - add() is lock-free after the first call from each thread
-        - get_total() acquires a lock to aggregate across threads
-        - Safe to call from multiple threads concurrently
     """
 
     def __init__(
@@ -62,18 +44,6 @@ class RollingWindowAccumulator:
         window_duration_s: float,
         num_buckets: int = 60,
     ):
-        """Initialize the rolling window accumulator.
-
-        Args:
-            window_duration_s: Total duration of the rolling window in seconds.
-                Values older than this are automatically expired.
-            num_buckets: Number of buckets to divide the window into. More buckets
-                gives finer granularity but uses slightly more memory. Default is 60,
-                which for a 10-minute window gives 10-second granularity.
-
-        Raises:
-            ValueError: If window_duration_s <= 0 or num_buckets <= 0.
-        """
         if window_duration_s <= 0:
             raise ValueError(
                 f"window_duration_s must be positive, got {window_duration_s}"
@@ -154,6 +124,44 @@ class RollingWindowAccumulator:
 
             data.last_rotation_time = now
 
+    def get_num_registered_threads(self) -> int:
+        """Get the number of threads that have called add().
+
+        Useful for debugging and testing.
+
+        Returns:
+            The number of threads registered with this accumulator.
+        """
+        with self._registry_lock:
+            return len(self._all_thread_data)
+
+
+class RollingWindowAccumulator(_RollingWindowBase):
+    """Tracks cumulative values over a rolling time window.
+
+    Uses thread-local storage for lock-free writes on the hot path (add()).
+    Only get_total() requires synchronization to aggregate across threads.
+
+    Example:
+        # Create a 10-minute rolling window with 60 buckets (10s each)
+        accumulator = RollingWindowAccumulator(
+            window_duration_s=600.0,
+            num_buckets=60,
+        )
+
+        # Add values (lock-free, safe from multiple threads)
+        accumulator.add(100.0)
+        accumulator.add(50.0)
+
+        # Get total (aggregates across all threads)
+        total = accumulator.get_total()
+
+    Thread Safety:
+        - add() is lock-free after the first call from each thread
+        - get_total() acquires a lock to aggregate across threads
+        - Safe to call from multiple threads concurrently
+    """
+
     def add(self, value: float) -> None:
         """Add a value to the current bucket.
 
@@ -207,13 +215,74 @@ class RollingWindowAccumulator:
 
         return total
 
-    def get_num_registered_threads(self) -> int:
-        """Get the number of threads that have called add().
 
-        Useful for debugging and testing.
+class RollingWindowMax(_RollingWindowBase):
+    """Tracks the maximum value over a rolling time window.
+
+    Uses the same bucketed rolling window approach as RollingWindowAccumulator,
+    but each bucket stores the maximum observed value instead of a cumulative
+    sum. Querying returns the max across all non-expired buckets.
+
+    Example:
+        # Create a 30-second rolling window with 6 buckets (5s each)
+        tracker = RollingWindowMax(
+            window_duration_s=30.0,
+            num_buckets=6,
+        )
+
+        # Record values (lock-free, safe from multiple threads)
+        tracker.add(100.0)
+        tracker.add(500.0)
+        tracker.add(50.0)
+
+        # Get max in the window (aggregates across all threads)
+        maximum = tracker.get_max()  # returns 500.0
+
+    Thread Safety:
+        - add() is lock-free after the first call from each thread
+        - get_max() acquires a lock to aggregate across threads
+        - Safe to call from multiple threads concurrently
+    """
+
+    def add(self, value: float) -> None:
+        """Record a value, updating the current bucket's max if exceeded.
+
+        This operation is lock-free for the calling thread after the first call.
+        Safe to call from multiple threads concurrently.
+
+        Args:
+            value: The value to record.
+        """
+        data = self._ensure_initialized()
+
+        self._rotate_buckets_if_needed(data)
+        if value > data.buckets[data.current_bucket_idx]:
+            data.buckets[data.current_bucket_idx] = value
+
+    def get_max(self) -> float:
+        """Get max value across all non-expired buckets in the window.
+
+        This aggregates values from all threads that have called add().
+        Expired buckets (older than window_duration_s) are not included.
 
         Returns:
-            The number of threads registered with this accumulator.
+            The maximum value observed in the rolling window, or 0.0
+            if no values have been recorded.
         """
+        result = 0.0
+        now = time.time()
+
         with self._registry_lock:
-            return len(self._all_thread_data)
+            for data in self._all_thread_data:
+                elapsed = now - data.last_rotation_time
+                buckets_expired = int(elapsed / self._bucket_duration_s)
+
+                if buckets_expired >= self._num_buckets:
+                    continue
+
+                for i in range(self._num_buckets - buckets_expired):
+                    idx = (data.current_bucket_idx - i) % self._num_buckets
+                    if data.buckets[idx] > result:
+                        result = data.buckets[idx]
+
+        return result
