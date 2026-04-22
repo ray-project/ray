@@ -6,6 +6,7 @@ from collections import defaultdict
 from contextlib import contextmanager
 from dataclasses import dataclass, fields
 from typing import (
+    TYPE_CHECKING,
     Any,
     DefaultDict,
     Dict,
@@ -16,6 +17,9 @@ from typing import (
     Tuple,
     Union,
 )
+
+if TYPE_CHECKING:
+    from ray.data._internal.scheduling_overhead import BucketedSchedulingOverhead
 from uuid import uuid4
 
 import ray
@@ -41,7 +45,6 @@ from ray.data.block import BlockStats
 from ray.data.context import DataContext
 from ray.util.annotations import DeveloperAPI
 from ray.util.metrics import Counter, Gauge, Histogram, Metric
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
@@ -869,17 +872,16 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
 
     # so it fate-shares with the driver.
-    scheduling_strategy = NodeAffinitySchedulingStrategy(
-        ray.get_runtime_context().get_node_id(),
-        soft=False,
-    )
+    label_selector = {
+        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+    }
 
     return _StatsActor.options(
         name=STATS_ACTOR_NAME,
         namespace=STATS_ACTOR_NAMESPACE,
         get_if_exists=True,
         lifetime="detached",
-        scheduling_strategy=scheduling_strategy,
+        label_selector=label_selector,
     ).remote()
 
 
@@ -1463,6 +1465,7 @@ class OperatorStatsSummary:
     output_size_bytes: Optional[StatsSummary] = None
     node_count: Optional[StatsSummary] = None
     task_rows: Optional[StatsSummary] = None
+    scheduling_overhead: Optional[List["BucketedSchedulingOverhead"]] = None
 
     @property
     def num_rows_per_s(self) -> float:
