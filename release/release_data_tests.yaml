@@ -116,6 +116,7 @@
 - name: "iceberg_benchmark_{{mode}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_pyiceberg.sh
     cluster_compute: iceberg_benchmark_compute.yaml
@@ -319,6 +320,7 @@
   working_dir: nightly_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       post_build_script: byod_install_mosaicml.sh
     cluster_compute: dataset/multi_node_train_16_workers.yaml
@@ -346,6 +348,9 @@
 - name: training_ingest_benchmark
   python: "3.10"
   working_dir: nightly_tests
+
+  cluster:
+    anyscale_sdk_2026: true
 
   variations:
     - __suffix__: s3_parquet_cpu
@@ -434,6 +439,7 @@
 - name: iter_torch_batches
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
@@ -844,6 +850,7 @@
   env: gce
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: autoscaling_gpu_g2_gce.yaml
 
   run:
@@ -1072,6 +1079,7 @@
   frequency: manual
   env: gce
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: cross_az_250_350_compute_gce.yaml
 
   run:
@@ -1113,6 +1121,7 @@
   working_dir: nightly_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_health_check_period_ms=10000
@@ -1146,6 +1155,7 @@
   frequency: manual
 
   cluster:
+    anyscale_sdk_2026: true
     byod: {}
     cluster_compute: autoscaling/does_not_over_provision_cluster_compute.yaml
 

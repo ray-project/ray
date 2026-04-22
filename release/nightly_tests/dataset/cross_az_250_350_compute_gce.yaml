@@ -1,18 +1,13 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west1
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-head_node_type:
-  name: head
+head_node:
   instance_type: n2-standard-8
-  resources:
-    CPU: 0
-    GPU: 0
 
-worker_node_types:
-  - name: worker
-    instance_type: n2-standard-8
-    min_workers: 250
-    max_workers: 350
+worker_nodes:
+  - instance_type: n2-standard-8
+    min_nodes: 250
+    max_nodes: 350
+    market_type: ON_DEMAND
 
 flags:
   enable_multi_az_serve: true
