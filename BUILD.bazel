@@ -53,6 +53,8 @@ config_setting(
     flag_values = {":jemalloc_flag": "true"},
 )
 
+
+
 alias(
     name = "uv_file",
     actual = select({
@@ -209,47 +211,9 @@ pyx_library(
         "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
-    ],
-)
-
-pyx_library(
-    name = "_flight_store",
-    srcs = [
-        "python/ray/__init__.py",
-        "python/ray/_flight_store.pyx",
-        "python/ray/includes/flight_store.pxd",
-    ],
-    cc_kwargs = dict(
-        srcs = PYX_SRCS,
-        copts = COPTS + PYX_COPTS,
-        features = ["compiler_param_file"],
-        linkopts = select({
-            "@platforms//os:osx": [
-                "-Wl,-undefined,dynamic_lookup",
-            ],
-            "@platforms//os:windows": [],
-            "//conditions:default": [],
-        }),
-        linkstatic = 1,
-    ),
-    deps = [
         "//src/ray/flight_store:arrow_flight_store",
         "@pyarrow//:arrow",
     ],
-)
-
-pkg_files(
-    name = "flight_store_so_files",
-    srcs = ["python/ray/_flight_store.so"],
-    attributes = pkg_attributes(mode = "755"),
-    prefix = "ray/",
-    renames = select({
-        "@platforms//os:windows": {
-            "python/ray/_flight_store.so": "_flight_store.pyd",
-        },
-        "//conditions:default": {},
-    }),
-    visibility = ["//visibility:private"],
 )
 
 filegroup(
@@ -394,7 +358,6 @@ pkg_files(
 pkg_zip(
     name = "ray_pkg_zip",
     srcs = [
-        ":flight_store_so_files",
         ":gcs_server_files",
         ":raylet_files",
         ":raylet_so_files",
