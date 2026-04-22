@@ -242,7 +242,8 @@ NodeManager::NodeManager(
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
-      worker_killing_policy_(WorkerKillingPolicyFactory::Create()),
+      worker_killing_policy_(WorkerKillingPolicyFactory::Create(
+          config.enable_resource_isolation, *cgroup_manager)),
       memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
                                                    config.enable_resource_isolation,
                                                    *cgroup_manager)),
@@ -1427,11 +1428,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         << "Disconnecting driver, graceful=" << std::boolalpha << graceful
         << ", disconnect_type=" << disconnect_type;
   } else {
-    if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
-      node_manager_unexpected_worker_failure_total_count_.Record(
-          1, {{"Type", "Raylet.UnexpectedIdleWorkerFailure.Total"}, {"Name", ""}});
-    }
-
     RAY_LOG(INFO) << "Got disconnect message from an unregistered client, ignoring.";
     return;
   }
@@ -1517,6 +1513,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
               {{"Type", "Raylet.UnexpectedActorFailure.Total"},
                {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
         }
+      }
+    } else if (lease_id.IsNil() && actor_id.IsNil() && !worker->IsDead()) {
+      if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+        node_manager_unexpected_worker_failure_total_count_.Record(
+            1, {{"Type", "Raylet.UnexpectedIdleWorkerFailure.Total"}, {"Name", ""}});
       }
     }
 
@@ -2138,8 +2139,10 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
 void NodeManager::HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                           rpc::IsLocalWorkerDeadReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  reply->set_is_dead(worker_pool_.GetRegisteredWorker(
-                         WorkerID::FromBinary(request.worker_id())) == nullptr);
+  const auto worker_id = WorkerID::FromBinary(request.worker_id());
+  const bool registered = worker_pool_.GetRegisteredWorker(worker_id) != nullptr ||
+                          worker_pool_.GetRegisteredDriver(worker_id) != nullptr;
+  reply->set_is_dead(!registered);
   send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
 }
 
@@ -3080,7 +3083,9 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
               total_memory_bytes,
               RayConfig::instance().memory_usage_threshold(),
-              RayConfig::instance().min_memory_free_bytes());
+              RayConfig::instance().min_memory_free_bytes(),
+              initial_config_.enable_resource_isolation,
+              *cgroup_manager_);
           float computed_threshold_fraction =
               static_cast<float>(computed_threshold_bytes) /
               static_cast<float>(total_memory_bytes);
@@ -3282,9 +3287,16 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
       "parallelism by requesting more CPUs per task. %s"
       "To adjust the kill "
       "threshold, set the environment variable "
-      "`RAY_memory_usage_threshold` when starting Ray. To disable "
-      "worker killing, set the environment variable "
-      "`RAY_memory_monitor_refresh_ms` to zero.",
+      "`RAY_memory_usage_threshold` when starting Ray. "
+      "To disable worker killing, set the environment variable "
+      "`RAY_memory_monitor_refresh_ms` to zero. "
+      "Since 2.56, Ray updated the oom killing policy to enabling killing "
+      "multiple workers and selecting workers based on the time since "
+      "the task start executing. To revert to the legacy policy of "
+      "determining worker to oom kill based on owner group size or only "
+      "selecting a single worker to kill at a time, set the environment "
+      "variable `RAY_worker_killing_policy_by_group` to true before "
+      "starting Ray.",
       not_retriable_recommendation_ss.str());
 }
 

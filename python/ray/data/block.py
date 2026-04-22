@@ -554,7 +554,7 @@ class BlockAccessor:
         # implements the Mapping protocol. Use bulk GPU->CPU transfer via
         # to_arrow() instead of the slow column-by-column Mapping path.
         elif _is_cudf_dataframe(batch):
-            return batch.to_arrow()
+            return batch.to_arrow(preserve_index=False)
 
         elif isinstance(batch, pandas.DataFrame):
             if (block_type == BlockType.ARROW) or (

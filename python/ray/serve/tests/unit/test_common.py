@@ -189,6 +189,67 @@ def test_running_replica_info():
     assert replica1._hash == replica2._hash
     assert replica3._hash != replica1._hash
 
+    # Test that backend_http_port affects hash so long-poll updates
+    # propagate when the backend HTTP port changes.
+    replica4 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        backend_http_port=8001,
+    )
+    replica5 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        backend_http_port=8002,
+    )
+    assert replica4._hash != replica1._hash
+    assert replica4._hash != replica5._hash
+
+    # Test that network endpoint changes affect hash so wrappers and
+    # long-poll consumers refresh when the replica moves or its gRPC
+    # port changes.
+    replica6 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_a",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9000,
+    )
+    replica7 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_b",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9000,
+    )
+    replica8 = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node_id",
+        node_ip="node_ip_a",
+        availability_zone="some-az",
+        actor_name=actor_name,
+        max_ongoing_requests=1,
+        is_cross_language=False,
+        port=9001,
+    )
+    assert replica6._hash != replica7._hash
+    assert replica6._hash != replica8._hash
+
 
 if __name__ == "__main__":
     import sys
