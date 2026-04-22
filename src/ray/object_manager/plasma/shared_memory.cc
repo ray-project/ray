@@ -78,16 +78,16 @@ void ClientMmapTableEntry::MaybeMadviseDontdump() {
 
 void ClientMmapTableEntry::MadviseRelease(ptrdiff_t offset, int64_t length) {
 #ifndef _WIN32
-  if (length <= 0) {
+  static const long page_size = sysconf(_SC_PAGESIZE);
+  if (page_size <= 0 || length <= 0) {
     return;
   }
-  long page_size = sysconf(_SC_PAGESIZE);
+  const uintptr_t page_mask = static_cast<uintptr_t>(page_size) - 1;
   // Page-align conservatively: round start up and end down so we never
   // touch pages that may contain adjacent objects' data.
   uintptr_t region_start = reinterpret_cast<uintptr_t>(pointer_) + offset;
-  uintptr_t aligned_start = (region_start + page_size - 1) & ~(page_size - 1);
-  uintptr_t aligned_end =
-      (region_start + length) & ~(static_cast<uintptr_t>(page_size) - 1);
+  uintptr_t aligned_start = (region_start + page_mask) & ~page_mask;
+  uintptr_t aligned_end = (region_start + length) & ~page_mask;
   if (aligned_end <= aligned_start) {
     return;
   }
