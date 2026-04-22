@@ -1,4 +1,5 @@
 aim==3.23.0; python_version < "3.12"
+boto3==1.29.7
 
 jupyterlab
 matplotlib!=3.4.3
