@@ -410,7 +410,9 @@ Configuring Batch Size
 
 Configure the size of the input batch that's passed to ``__call__`` by setting the ``batch_size`` argument for :meth:`ds.map_batches() <ray.data.Dataset.map_batches>`
 
-Increasing batch size results in faster execution because inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization. Set the batch size to as large possible without running out of memory. If you encounter out-of-memory errors, decreasing ``batch_size`` may help.
+Increasing batch size results in faster execution because inference is a vectorized operation. For GPU inference, increasing batch size increases GPU utilization.
+
+For **CPU inference**, use ``batch_size="auto"`` to let Ray Data automatically determine an appropriate batch size based on your data. For **GPU inference**, specify an explicit integer ``batch_size`` as large as possible without running out of GPU memory. If you encounter out-of-memory errors, decrease ``batch_size``.
 
 .. testcode::
 
