@@ -196,7 +196,7 @@ def collect_scheduling_overhead(
     for t in unfiltered:
         if not t.name:
             continue
-        if not t.name in task_name_to_operator:
+        if t.name not in task_name_to_operator:
             found_op_name: bool = False
             for op_name in operator_names:
                 if op_name in t.name:
