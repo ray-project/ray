@@ -134,7 +134,6 @@ from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -492,7 +491,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["default"], Literal["auto"]] = None,
+        batch_size: Union[int, None, Literal["auto"]] = None,
         compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         zero_copy_batch: bool = True,
@@ -729,9 +728,7 @@ class Dataset:
             A new :class:`Dataset` with the transformation applied to each batch.
         """  # noqa: E501
         use_gpus = num_gpus is not None and num_gpus > 0
-        if use_gpus and (
-            batch_size is None or batch_size == "default" or batch_size == "auto"
-        ):
+        if use_gpus and (batch_size is None or batch_size == "auto"):
             raise ValueError(
                 "You must provide `batch_size` to `map_batches` when requesting GPUs. "
                 "The optimal batch size depends on the model, data, and GPU used. "
@@ -766,7 +763,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["default"], Literal["auto"]],
+        batch_size: Union[int, None, Literal["auto"]],
         compute: Optional[ComputeStrategy],
         batch_format: Optional[str],
         zero_copy_batch: bool,
@@ -788,14 +785,6 @@ class Dataset:
         # to call `map_groups` with  GPUs, we need a separate method that doesn't
         # perform batch size validation.
         if batch_size is None or batch_size == "auto":
-            min_rows_per_bundled_input = None
-        elif batch_size == "default":
-            warnings.warn(
-                "Passing 'default' to `map_batches` is deprecated and won't be "
-                "supported after September 2025. Use `batch_size=None` instead.",
-                DeprecationWarning,
-            )
-            batch_size = None
             min_rows_per_bundled_input = None
         else:  # batch size is an int
             min_rows_per_bundled_input = batch_size
@@ -5731,10 +5720,12 @@ class Dataset:
                     "If you're using Ray Client, Ray Data won't schedule write tasks "
                     "on the driver's node."
                 )
-            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            )
+            label_selector = ray_remote_args.get("label_selector", {})
+            label_selector[
+                ray._raylet.RAY_NODE_ID_KEY
+            ] = ray.get_runtime_context().get_node_id()
+            ray_remote_args["label_selector"] = label_selector
+            ray_remote_args.pop("scheduling_strategy", None)
 
             _validate_head_node_resources_for_local_scheduling(
                 ray_remote_args,
