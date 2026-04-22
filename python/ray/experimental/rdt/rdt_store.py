@@ -259,15 +259,13 @@ class RDTStore:
             # existing primary — do not re-store — and return metadata
             # derived from it so the metadata matches what `__ray_send__`
             # will actually transmit.
-            existing_primary = None
             queue = self._rdt_store.get(obj_id)
             if queue:
-                existing_primary = queue[0]
-            if existing_primary is None:
+                tensors_to_describe = queue[0].data
+            else:
                 self.add_object(obj_id, tensors, is_primary=True)
                 tensors_to_describe = tensors
-            else:
-                tensors_to_describe = existing_primary.data
+
         tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
         tensor_transport_meta = (
             tensor_transport_manager.extract_tensor_transport_metadata(
