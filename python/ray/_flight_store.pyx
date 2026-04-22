@@ -3,70 +3,70 @@
 
 from ray.includes.flight_store cimport (
     CArrowFlightStore, CTable, CObjectTransferInfo,
+    ArrowArray, ArrowSchema,
+    CRecordBatch, ExportRecordBatch, ImportRecordBatch, CResult, CStatus,
 )
+from libcpp cimport bool as c_bool
 from libcpp.memory cimport shared_ptr
 from libcpp.string cimport string as c_string
-
-# Use PyArrow's C++ interop for zero-copy table exchange.
-# pyarrow.lib exposes unwrap_table / wrap_table via Cython.
-from pyarrow.lib cimport (
-    pyarrow_unwrap_table,
-    pyarrow_wrap_table,
-)
+from libc.stdint cimport uintptr_t
 
 import pyarrow as pa
 
 
 cdef class PyArrowFlightStore:
-    """Python wrapper around the C++ ArrowFlightStore.
-
-    Provides a Flight-RPC-based object store where Arrow tables are stored
-    in the C++ heap and served via a C++ Flight server (no GIL overhead).
-    """
-    cdef CArrowFlightStore *store
+    """Python wrapper around the C++ ArrowFlightStore."""
+    cdef CArrowFlightStore *_store
 
     def __cinit__(self):
-        self.store = new CArrowFlightStore()
+        self._store = new CArrowFlightStore()
 
     def __dealloc__(self):
-        if self.store != NULL:
-            del self.store
-            self.store = NULL
+        cdef CArrowFlightStore *p = self._store
+        self._store = NULL
+        if p != NULL:
+            p.StopServer()
 
     def start_server(self) -> int:
-        """Start the Flight server. Returns the port."""
-        return self.store.StartServer()
+        return self._store.StartServer()
 
     def stop_server(self):
-        """Stop the Flight server."""
-        self.store.StopServer()
+        self._store.StopServer()
 
     def get_uri(self) -> str:
-        """Get the Flight URI (grpc://ip:port)."""
-        return self.store.GetUri().decode("utf-8")
+        return self._store.GetUri().decode("utf-8")
 
     def put(self, str key, table):
-        """Store a PyArrow Table by key (zero-copy to C++).
+        """Store a PyArrow Table by key.
 
-        Also pre-serializes to IPC bytes for same-node VM transfers.
+        Converts to IPC bytes in Python, passes bytes to C++ which
+        deserializes to arrow::Table. One copy, but avoids Cython template issues.
         """
         if not isinstance(table, pa.Table):
             raise TypeError(f"Expected pyarrow.Table, got {type(table)}")
-        cdef shared_ptr[CTable] c_table = pyarrow_unwrap_table(table)
+        # Serialize table to IPC bytes in Python.
+        sink = pa.BufferOutputStream()
+        writer = pa.ipc.new_stream(sink, table.schema)
+        writer.write_table(table)
+        writer.close()
+        cdef bytes ipc_bytes = sink.getvalue().to_pybytes()
         cdef c_string c_key = key.encode("utf-8")
-        self.store.Put(c_key, c_table)
+        cdef c_string c_ipc = ipc_bytes
+        self._store.PutFromIPC(c_key, c_ipc)
 
     def put_and_get_transfer_info(self, str key, table):
-        """Store a table and return transfer info for same-node VM fetch.
-
-        Returns dict with: flight_uri, key, pid, ipc_address, ipc_size.
-        """
+        """Store a table and return transfer info."""
         if not isinstance(table, pa.Table):
             raise TypeError(f"Expected pyarrow.Table, got {type(table)}")
-        cdef shared_ptr[CTable] c_table = pyarrow_unwrap_table(table)
+        sink = pa.BufferOutputStream()
+        writer = pa.ipc.new_stream(sink, table.schema)
+        writer.write_table(table)
+        writer.close()
+        cdef bytes ipc_bytes = sink.getvalue().to_pybytes()
         cdef c_string c_key = key.encode("utf-8")
-        cdef CObjectTransferInfo info = self.store.PutAndGetTransferInfo(
-            c_key, c_table)
+        cdef c_string c_ipc = ipc_bytes
+        cdef CObjectTransferInfo info = self._store.PutFromIPCAndGetTransferInfo(
+            c_key, c_ipc)
         return {
             "flight_uri": info.flight_uri.decode("utf-8"),
             "key": info.key.decode("utf-8"),
@@ -75,55 +75,37 @@ cdef class PyArrowFlightStore:
         }
 
     def get_local(self, str key):
-        """Get a locally stored table. Returns None if not found."""
+        """Get a locally stored table as IPC bytes, deserialize in Python."""
         cdef c_string c_key = key.encode("utf-8")
-        cdef shared_ptr[CTable] c_table = self.store.GetLocal(c_key)
-        if c_table.get() == NULL:
+        cdef c_string ipc_bytes = self._store.GetLocalAsIPC(c_key)
+        if ipc_bytes.empty():
             return None
-        return pyarrow_wrap_table(c_table)
+        reader = pa.ipc.open_stream(ipc_bytes)
+        return reader.read_all()
 
     def fetch(self, str uri, str key):
-        """Fetch a table from a remote Flight server.
-
-        The actual Flight RPC runs in C++ with the GIL released.
-        """
+        """Fetch a table from a remote Flight server, return as PyArrow Table."""
         cdef c_string c_uri = uri.encode("utf-8")
         cdef c_string c_key = key.encode("utf-8")
-        cdef shared_ptr[CTable] c_table
-        with nogil:
-            result = self.store.Fetch(c_uri, c_key)
-        if not result.ok():
-            raise RuntimeError(f"Flight fetch failed for {key} from {uri}")
-        c_table = result.ValueUnsafe()
-        return pyarrow_wrap_table(c_table)
+        cdef c_string ipc_bytes = self._store.FetchAsIPC(c_uri, c_key)
+        reader = pa.ipc.open_stream(ipc_bytes)
+        return reader.read_all()
 
     def fetch_via_vm(self, str flight_uri, str key, long long ipc_size):
-        """Fetch a table from a same-node producer using process_vm_writev.
-
-        The producer serializes IPC and writes directly into our buffer.
-        One small Flight RPC (DoAction) to trigger the write, bulk data
-        transferred via process_vm_writev — no gRPC data transfer.
-        """
+        """Fetch a table from a same-node producer using process_vm_writev."""
         cdef c_string c_uri = flight_uri.encode("utf-8")
         cdef c_string c_key = key.encode("utf-8")
-        cdef shared_ptr[CTable] c_table
-        with nogil:
-            result = self.store.FetchViaVM(c_uri, c_key, ipc_size)
-        if not result.ok():
-            raise RuntimeError(
-                f"process_vm_writev fetch failed (uri={flight_uri}, "
-                f"key={key}, size={ipc_size})")
-        c_table = result.ValueUnsafe()
-        return pyarrow_wrap_table(c_table)
+        cdef c_string ipc_bytes = self._store.FetchViaVMAsIPC(
+            c_uri, c_key, ipc_size)
+        reader = pa.ipc.open_stream(ipc_bytes)
+        return reader.read_all()
 
     def delete(self, str key):
-        """Delete a stored table."""
         cdef c_string c_key = key.encode("utf-8")
-        self.store.Delete(c_key)
+        self._store.Delete(c_key)
 
     def size(self) -> int:
-        """Number of stored tables."""
-        return self.store.Size()
+        return self._store.Size()
 
 
 # ---------------------------------------------------------------------------
@@ -136,7 +118,6 @@ _global_store = None
 
 
 def get_flight_store():
-    """Get or create the per-worker Flight store singleton."""
     global _global_store
     if _global_store is None:
         _global_store = PyArrowFlightStore()
@@ -145,5 +126,4 @@ def get_flight_store():
 
 
 def is_flight_store_enabled():
-    """Check if the Flight store is enabled via env var."""
     return _os.environ.get("RAY_USE_FLIGHT_STORE", "0") == "1"

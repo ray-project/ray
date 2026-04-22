@@ -4,6 +4,7 @@ cc_library(
     name = "arrow_flight_store",
     srcs = ["arrow_flight_store.cc"],
     hdrs = ["arrow_flight_store.h"],
+    strip_include_prefix = "//src",
     visibility = ["//visibility:public"],
     deps = [
         "@pyarrow//:arrow",

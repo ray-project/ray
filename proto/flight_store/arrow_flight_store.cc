@@ -3,10 +3,13 @@
 #include <arpa/inet.h>
 #include <arrow/io/api.h>
 #include <arrow/ipc/api.h>
+#include <arrow/util/logging.h>
 #include <ifaddrs.h>
 #include <netinet/in.h>
-#include <sys/uio.h>
 #include <unistd.h>
+#ifdef __linux__
+#include <sys/uio.h>
+#endif
 
 #include <sstream>
 
@@ -105,8 +108,7 @@ ArrowFlightStore::~ArrowFlightStore() { StopServer(); }
 int ArrowFlightStore::StartServer() {
   server_ = std::make_unique<FlightServerImpl>(this);
 
-  arrow::flight::Location location;
-  ARROW_CHECK_OK(arrow::flight::Location::ForGrpcTcp("0.0.0.0", 0, &location));
+  auto location = arrow::flight::Location::ForGrpcTcp("0.0.0.0", 0).ValueOrDie();
 
   arrow::flight::FlightServerOptions options(location);
   ARROW_CHECK_OK(server_->Init(options));
@@ -162,8 +164,9 @@ static int64_t EstimateIPCStreamSize(const std::shared_ptr<arrow::Table> &table)
   return size;
 }
 
+#ifdef __linux__
 // Serialize a table to IPC stream format into a pre-allocated buffer.
-// Returns the actual number of bytes written.
+// Returns the actual number of bytes written. Used by WriteToRemoteVM.
 static arrow::Result<int64_t> SerializeTableToIPCBuffer(
     const std::shared_ptr<arrow::Table> &table, uint8_t *dest, int64_t capacity) {
   auto sink = std::make_shared<arrow::io::FixedSizeBufferWriter>(
@@ -180,6 +183,7 @@ static arrow::Result<int64_t> SerializeTableToIPCBuffer(
   ARROW_ASSIGN_OR_RAISE(auto pos, sink->Tell());
   return pos;
 }
+#endif  // __linux__
 
 void ArrowFlightStore::Put(const std::string &key, std::shared_ptr<arrow::Table> table) {
   int64_t estimated_size = EstimateIPCStreamSize(table);
@@ -204,6 +208,7 @@ arrow::Status ArrowFlightStore::WriteToRemoteVM(const std::string &key,
                                                 pid_t remote_pid,
                                                 uintptr_t remote_address,
                                                 int64_t remote_size) {
+#ifdef __linux__
   // Get the table.
   std::shared_ptr<arrow::Table> table;
   {
@@ -239,6 +244,9 @@ arrow::Status ArrowFlightStore::WriteToRemoteVM(const std::string &key,
         "process_vm_writev partial write: ", nwritten, " of ", actual_size);
   }
   return arrow::Status::OK();
+#else
+  return arrow::Status::NotImplemented("process_vm_writev is Linux-only");
+#endif
 }
 
 arrow::Result<std::shared_ptr<arrow::Table>> ArrowFlightStore::DeserializeIPCBuffer(
@@ -289,7 +297,7 @@ arrow::Result<std::shared_ptr<arrow::Table>> ArrowFlightStore::FetchViaVM(
   }
 
   // 4. Producer has written IPC data into our buffer. Deserialize.
-  return DeserializeIPCBuffer(local_buf);
+  return DeserializeIPCBuffer(std::shared_ptr<arrow::Buffer>(std::move(local_buf)));
 }
 
 std::shared_ptr<arrow::Table> ArrowFlightStore::GetLocal(const std::string &key) {
@@ -324,6 +332,81 @@ arrow::Result<std::shared_ptr<arrow::Table>> ArrowFlightStore::Fetch(
   return table;
 }
 
+std::shared_ptr<arrow::Table> ArrowFlightStore::FetchOrThrow(
+    const std::string &uri, const std::string &key) {
+  auto result = Fetch(uri, key);
+  if (!result.ok()) {
+    throw std::runtime_error("Flight fetch failed: " + result.status().ToString());
+  }
+  return result.MoveValueUnsafe();
+}
+
+std::shared_ptr<arrow::Table> ArrowFlightStore::FetchViaVMOrThrow(
+    const std::string &flight_uri, const std::string &key, int64_t ipc_size) {
+  auto result = FetchViaVM(flight_uri, key, ipc_size);
+  if (!result.ok()) {
+    throw std::runtime_error("FetchViaVM failed: " + result.status().ToString());
+  }
+  return result.MoveValueUnsafe();
+}
+
+// ---------------------------------------------------------------------------
+// IPC-based methods for Cython (avoids shared_ptr<Table> template issues).
+// ---------------------------------------------------------------------------
+
+static std::shared_ptr<arrow::Table> DeserializeIPC(const std::string &ipc_bytes) {
+  auto buf = arrow::Buffer::FromString(ipc_bytes);
+  arrow::io::BufferReader reader(buf);
+  auto stream_reader = arrow::ipc::RecordBatchStreamReader::Open(&reader).ValueOrDie();
+  return stream_reader->ToTable().ValueOrDie();
+}
+
+static std::string SerializeIPC(const std::shared_ptr<arrow::Table> &table) {
+  auto sink = arrow::io::BufferOutputStream::Create().ValueOrDie();
+  auto writer = arrow::ipc::MakeStreamWriter(sink, table->schema()).ValueOrDie();
+  arrow::TableBatchReader reader(*table);
+  std::shared_ptr<arrow::RecordBatch> batch;
+  while (true) {
+    ARROW_CHECK_OK(reader.ReadNext(&batch));
+    if (!batch) break;
+    ARROW_CHECK_OK(writer->WriteRecordBatch(*batch));
+  }
+  ARROW_CHECK_OK(writer->Close());
+  auto buf = sink->Finish().ValueOrDie();
+  return std::string(reinterpret_cast<const char *>(buf->data()), buf->size());
+}
+
+void ArrowFlightStore::PutFromIPC(const std::string &key,
+                                   const std::string &ipc_bytes) {
+  auto table = DeserializeIPC(ipc_bytes);
+  Put(key, table);
+}
+
+ObjectTransferInfo ArrowFlightStore::PutFromIPCAndGetTransferInfo(
+    const std::string &key, const std::string &ipc_bytes) {
+  auto table = DeserializeIPC(ipc_bytes);
+  return PutAndGetTransferInfo(key, table);
+}
+
+std::string ArrowFlightStore::GetLocalAsIPC(const std::string &key) {
+  auto table = GetLocal(key);
+  if (!table) return "";
+  return SerializeIPC(table);
+}
+
+std::string ArrowFlightStore::FetchAsIPC(const std::string &uri,
+                                          const std::string &key) {
+  auto table = FetchOrThrow(uri, key);
+  return SerializeIPC(table);
+}
+
+std::string ArrowFlightStore::FetchViaVMAsIPC(const std::string &flight_uri,
+                                               const std::string &key,
+                                               int64_t ipc_size) {
+  auto table = FetchViaVMOrThrow(flight_uri, key, ipc_size);
+  return SerializeIPC(table);
+}
+
 void ArrowFlightStore::Delete(const std::string &key) {
   std::lock_guard<std::mutex> lock(mu_);
   tables_.erase(key);
@@ -342,13 +425,12 @@ arrow::flight::FlightClient *ArrowFlightStore::GetOrCreateClient(const std::stri
     return it->second.get();
   }
 
-  arrow::flight::Location location;
-  auto status = arrow::flight::Location::Parse(uri, &location);
-  if (!status.ok()) return nullptr;
+  auto location_result = arrow::flight::Location::Parse(uri);
+  if (!location_result.ok()) return nullptr;
 
-  std::unique_ptr<arrow::flight::FlightClient> client;
-  status = arrow::flight::FlightClient::Connect(location, &client);
-  if (!status.ok()) return nullptr;
+  auto client_result = arrow::flight::FlightClient::Connect(*location_result);
+  if (!client_result.ok()) return nullptr;
+  auto client = std::move(*client_result);
 
   auto *raw = client.get();
   clients_[uri] = std::move(client);

@@ -85,6 +85,23 @@ class ArrowFlightStore {
                                                           const std::string &key,
                                                           int64_t ipc_size);
 
+  /// Throwing wrappers for Cython (avoids arrow::Result template issues).
+  std::shared_ptr<arrow::Table> FetchOrThrow(const std::string &uri,
+                                              const std::string &key);
+  std::shared_ptr<arrow::Table> FetchViaVMOrThrow(const std::string &flight_uri,
+                                                   const std::string &key,
+                                                   int64_t ipc_size);
+
+  /// IPC-based methods for Cython (pass IPC bytes as std::string to avoid
+  /// shared_ptr<Table> template issues across the Cython boundary).
+  void PutFromIPC(const std::string &key, const std::string &ipc_bytes);
+  ObjectTransferInfo PutFromIPCAndGetTransferInfo(const std::string &key,
+                                                   const std::string &ipc_bytes);
+  std::string GetLocalAsIPC(const std::string &key);
+  std::string FetchAsIPC(const std::string &uri, const std::string &key);
+  std::string FetchViaVMAsIPC(const std::string &flight_uri,
+                               const std::string &key, int64_t ipc_size);
+
   /// Delete a stored table (and its IPC buffer).
   void Delete(const std::string &key);
 

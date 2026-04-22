@@ -215,6 +215,7 @@ pyx_library(
 pyx_library(
     name = "_flight_store",
     srcs = [
+        "python/ray/__init__.py",
         "python/ray/_flight_store.pyx",
         "python/ray/includes/flight_store.pxd",
     ],
