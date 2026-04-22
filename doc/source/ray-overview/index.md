@@ -14,7 +14,7 @@ For data scientists and machine learning practitioners, Ray lets you scale jobs 
 
 For ML platform builders and ML engineers, Ray:
 * Provides compute abstractions for creating a scalable and robust ML platform.
-* Provides a unified API that simplifies onboarding and integration with the broader ML ecosystem.
+* Provides a unified API that simplifies onboarding and integration with the broader AI ecosystem.
 * Reduces friction between development and production by enabling the same Python code to scale seamlessly from a laptop to a large cluster.
 
 For distributed systems engineers, Ray automatically handles key processes:
