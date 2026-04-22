@@ -136,6 +136,7 @@ def get_tpu_worker_resources(
     accelerator_type: str,
     resources_per_unit: Optional[Dict[str, float]] = None,
     num_slices: int = 1,
+    chips_per_vm: Optional[int] = None,
 ) -> Tuple[int, Dict[str, float]]:
     """
     Calculates the number of workers and the resources required for each worker
@@ -147,6 +148,9 @@ def get_tpu_worker_resources(
         resources_per_unit: Optional manual override for resources per unit. If
             unspecified, the number of TPU chips in a host is assumed.
         num_slices: The number of TPU slices.
+        chips_per_vm: An optional override for the number of chips per VM.
+            If unspecified, this is inferred automatically from the topology
+            and accelerator type.
 
     Returns:
         A tuple containing:
@@ -155,7 +159,9 @@ def get_tpu_worker_resources(
     """
     accelerator_version = get_tpu_version_from_type(accelerator_type)
 
-    chips_per_host = get_chips_per_host(topology, accelerator_version)
+    resolved_chips_per_vm = chips_per_vm or get_chips_per_host(
+        topology, accelerator_version
+    )
     total_chips_per_slice = get_num_chips_from_topology(topology)
 
     total_chips_available = total_chips_per_slice * num_slices
@@ -168,7 +174,7 @@ def get_tpu_worker_resources(
 
     # If user didn't specify TPU, default to # of chips on 1 host.
     if "TPU" not in final_resources:
-        final_resources["TPU"] = chips_per_host
+        final_resources["TPU"] = resolved_chips_per_vm
 
     tpus_per_unit = final_resources["TPU"]
 
@@ -415,51 +421,53 @@ class SlicePlacementGroup:
     - Pod type: The TPU accelerator version and the number of chips in a topology. (e.g. v6e-128, v5p-8).
     - Accelerator topology: The physical topology representing the structure (e.g. 2x2x2, 16x16).
 
-        Args:
-            topology: The TPU topology string (e.g. "2x2x2").
-            accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
-            resources_per_bundle: Optionally specify the resources to include in every worker bundle.
-            strategy: PlacementGroup parameter. The strategy to create the placement group. Currently default to "SPREAD"
+    Args:
+        topology: The TPU topology string (e.g. "2x2x2").
+        accelerator_version: The TPU accelerator generation (e.g. "v6e", "v5p", "v4").
+        resources_per_bundle: Optionally specify the resources to include in every worker bundle.
+        strategy: PlacementGroup parameter. The strategy to create the placement group. Currently default to "SPREAD"
 
-             - "PACK": Packs Bundles into as few nodes as possible.
-             - "SPREAD": Places Bundles across distinct nodes as even as possible.
-             - "STRICT_PACK": Packs Bundles into one node. The group is
-               not allowed to span multiple nodes.
-             - "STRICT_SPREAD": Packs Bundles across distinct nodes.
+            - "PACK": Packs Bundles into as few nodes as possible.
+            - "SPREAD": Places Bundles across distinct nodes as even as possible.
+            - "STRICT_PACK": Packs Bundles into one node. The group is
+              not allowed to span multiple nodes.
+            - "STRICT_SPREAD": Packs Bundles across distinct nodes.
 
-            lifetime: PlacementGroup parameter. Either `None`, which defaults to the placement group
-                will fate share with its creator and will be deleted once its
-                creator is dead, or "detached", which means the placement group
-                will live as a global object independent of the creator.
+        name: PlacementGroup parameter. The name of the placement group.
+        lifetime: PlacementGroup parameter. Either `None`, which defaults to the placement group
+            will fate share with its creator and will be deleted once its
+            creator is dead, or "detached", which means the placement group
+            will live as a global object independent of the creator.
+        num_slices: Number of TPU slices in the SlicePlacementGroup. Defaults to 1 when unspecified.
+        chips_per_vm: An optional override for the number of chips per VM. Useful for resolving
+            ambiguous topologies (e.g. v6e 2x4) where the slice could physically consist of
+            a single 8-chip VM or two 4-chip VMs.
 
-            num_slices: Number of TPU slices in the SlicePlacementGroup. Defaults to 1 when unspecified.
+    Examples:
 
-        Examples:
+    .. testcode:: python
+        :skipif: True
 
-        .. testcode:: python
-            :skipif: True
+        import ray
+        from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
+        from ray.util.tpu import SlicePlacementGroup
 
-            import ray
-            from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
-            from ray.util.tpu import SlicePlacementGroup
+        slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
+        slice_pg = slice_handle.placement_group
+        ray.get(slice_pg.ready(), timeout=10)
 
-            slice_handle = SlicePlacementGroup(topology="4x4", accelerator_version="v6e")
-            slice_pg = slice_handle.placement_group
-            ray.get(slice_pg.ready(), timeout=10)
+        @ray.remote(num_cpus=0, resources={'TPU': 4})
+        def spmd_task(world, rank):
+            print(f"Current TPU is rank {rank} of {world}")
 
-            @ray.remote(num_cpus=0, resources={'TPU': 4})
-            def spmd_task(world, rank):
-                print(f"Current TPU is rank {rank} of {world}")
-
-            tasks = [
-                spmd_task.options(
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=slice_pg,
-                    )
-                ).remote(world=4, rank=i)
-                for i in range(slice_handle.num_hosts)
-            ]
-
+        tasks = [
+            spmd_task.options(
+                scheduling_strategy=PlacementGroupSchedulingStrategy(
+                    placement_group=slice_pg,
+                )
+            ).remote(world=4, rank=i)
+            for i in range(slice_handle.num_hosts)
+        ]
     """
 
     def __init__(
@@ -473,6 +481,7 @@ class SlicePlacementGroup:
         lifetime: Optional[str] = None,
         # default
         num_slices: int = 1,
+        chips_per_vm: Optional[int] = None,
     ):
         self._topology = topology.strip().lower()
         self._accelerator_version = get_tpu_version_from_type(
@@ -487,12 +496,15 @@ class SlicePlacementGroup:
             accelerator_type=self._accelerator_version,
             resources_per_unit=resources_per_bundle,
             num_slices=self._num_slices,
+            chips_per_vm=chips_per_vm,
         )
 
-        self._chips_per_host = get_chips_per_host(
+        self._chips_per_host = chips_per_vm or get_chips_per_host(
             self._topology, self._accelerator_version
         )
 
+        # Within Ray, a "host" corresponds to a user-visible compute VM.
+        # This may differ from the physical hardware host definitions in GCP/GKE docs.
         total_chips = get_num_chips_from_topology(self._topology)
         hosts_per_slice = max(1, total_chips // self._chips_per_host)
         self._num_hosts = hosts_per_slice * self._num_slices
@@ -639,6 +651,7 @@ def slice_placement_group(
     accelerator_version: str,
     resources_per_bundle: Optional[Dict[str, float]] = None,
     num_slices: int = 1,
+    chips_per_vm: Optional[int] = None,
     **kwargs,
 ) -> SlicePlacementGroup:
     """Asynchronously creates a PlacementGroup for a TPU slice.
@@ -654,7 +667,10 @@ def slice_placement_group(
             a topology, with the bundle resources set to the number of TPU in a host.
             Ex: Specifying {"TPU": 1} for a 4x4 topology would result in 16 bundles, each with 1 TPU.
             If resources_per_bundle=None for the same topology, there would be 4 bundles with 4 TPU each.
-        num_slices: The number of tpu slices within the placement group
+        num_slices: The number of tpu slices within the placement group.
+        chips_per_vm: An optional override for the number of chips per TPU VM.
+            Useful for ambiguous topologies like v6e 2x4 which have 1 host, but can be provisioned
+            as either 1 VM (8 chips) or 2 VMs (4 chips each).
         **kwargs: Additional arguments for the placement group, such as 'name', 'lifetime', or 'strategy'.
 
     Returns:
@@ -666,5 +682,6 @@ def slice_placement_group(
         accelerator_version=accelerator_version,
         resources_per_bundle=resources_per_bundle,
         num_slices=num_slices,
+        chips_per_vm=chips_per_vm,
         **kwargs,
     )

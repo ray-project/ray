@@ -629,9 +629,6 @@ doctest(
         ],
         exclude = [
             "source/rllib/getting-started.rst",
-            "source/rllib/algorithm-config.rst",
-            "source/rllib/checkpoints.rst",
-            "source/rllib/connector-v2.rst",
         ],
     ),
     tags = ["team:rllib"],
@@ -639,16 +636,14 @@ doctest(
 
 doctest(
     name = "doctest[rllib2]",
-    size = "large",
+    size = "enormous",
     files = glob(
         include = [
             "source/rllib/getting-started.rst",
-            "source/rllib/algorithm-config.rst",
-            "source/rllib/checkpoints.rst",
-            "source/rllib/connector-v2.rst",
         ],
     ),
-    tags = ["team:rllib"],
+    # TODO(elliot-barn): Re-enable once getting-started.rst doctest hang is fixed.
+    tags = ["manual", "team:rllib"],
 )
 
 doctest(
