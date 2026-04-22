@@ -4,42 +4,46 @@ from unittest.mock import patch
 
 import pytest
 
-from ray.serve._private.rolling_window_accumulator import RollingWindowAccumulator
+from ray.serve._private.rolling_window import (
+    RollingWindowAccumulator,
+    RollingWindowMax,
+    _RollingWindowBase,
+)
 
 
-class TestRollingWindowAccumulatorInit:
+class TestRollingWindowBaseInit:
     def test_basic_initialization(self):
         """Test basic initialization with default parameters."""
-        accumulator = RollingWindowAccumulator(window_duration_s=10.0)
-        assert accumulator.window_duration_s == 10.0
-        assert accumulator.num_buckets == 60  # default
-        assert accumulator.bucket_duration_s == 10.0 / 60
+        base = _RollingWindowBase(window_duration_s=10.0)
+        assert base.window_duration_s == 10.0
+        assert base.num_buckets == 60  # default
+        assert base.bucket_duration_s == 10.0 / 60
 
     def test_custom_num_buckets(self):
         """Test initialization with custom number of buckets."""
-        accumulator = RollingWindowAccumulator(
+        base = _RollingWindowBase(
             window_duration_s=100.0,
             num_buckets=10,
         )
-        assert accumulator.window_duration_s == 100.0
-        assert accumulator.num_buckets == 10
-        assert accumulator.bucket_duration_s == 10.0
+        assert base.window_duration_s == 100.0
+        assert base.num_buckets == 10
+        assert base.bucket_duration_s == 10.0
 
     def test_invalid_window_duration(self):
         """Test that invalid window duration raises ValueError."""
         with pytest.raises(ValueError, match="window_duration_s must be positive"):
-            RollingWindowAccumulator(window_duration_s=0)
+            _RollingWindowBase(window_duration_s=0)
 
         with pytest.raises(ValueError, match="window_duration_s must be positive"):
-            RollingWindowAccumulator(window_duration_s=-1.0)
+            _RollingWindowBase(window_duration_s=-1.0)
 
     def test_invalid_num_buckets(self):
         """Test that invalid num_buckets raises ValueError."""
         with pytest.raises(ValueError, match="num_buckets must be positive"):
-            RollingWindowAccumulator(window_duration_s=10.0, num_buckets=0)
+            _RollingWindowBase(window_duration_s=10.0, num_buckets=0)
 
         with pytest.raises(ValueError, match="num_buckets must be positive"):
-            RollingWindowAccumulator(window_duration_s=10.0, num_buckets=-1)
+            _RollingWindowBase(window_duration_s=10.0, num_buckets=-1)
 
 
 class TestRollingWindowAccumulatorSingleThread:
@@ -636,6 +640,447 @@ class TestEdgeCases:
 
         # Should be approximately 1000 * 1e-15 = 1e-12
         assert abs(accumulator.get_total() - 1e-12) < 1e-14
+
+
+class TestRollingWindowMaxSingleThread:
+    def test_basic_add_and_get_max(self):
+        """Test that get_max returns the largest value added."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        tracker.add(100.0)
+        tracker.add(500.0)
+        tracker.add(50.0)
+
+        assert tracker.get_max() == 500.0
+
+    def test_single_value(self):
+        """Test get_max with a single value."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        tracker.add(42.0)
+        assert tracker.get_max() == 42.0
+
+    def test_empty_tracker(self):
+        """Test get_max on empty tracker returns 0."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+        assert tracker.get_max() == 0.0
+
+    def test_all_same_values(self):
+        """Test get_max when all values are identical."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        for _ in range(100):
+            tracker.add(42.0)
+
+        assert tracker.get_max() == 42.0
+
+    def test_increasing_values(self):
+        """Test that max tracks the latest highest value."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        for i in range(1, 11):
+            tracker.add(float(i * 100))
+
+        assert tracker.get_max() == 1000.0
+
+    def test_decreasing_values(self):
+        """Test that max retains the first (highest) value."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        for i in range(10, 0, -1):
+            tracker.add(float(i * 100))
+
+        assert tracker.get_max() == 1000.0
+
+    def test_max_across_buckets(self):
+        """Test that get_max returns max across different time buckets."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMax(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            # Bucket 0: max 100
+            tracker.add(100.0)
+            tracker.add(50.0)
+
+            # Bucket 1: max 500
+            mock_time.return_value = 1.0
+            tracker.add(500.0)
+            tracker.add(200.0)
+
+            # Bucket 2: max 30
+            mock_time.return_value = 2.0
+            tracker.add(30.0)
+
+            assert tracker.get_max() == 500.0
+
+    def test_max_expires_with_window(self):
+        """Test that the max value expires when its bucket rotates out."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMax(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            # Add a high value in bucket 0
+            tracker.add(999.0)
+            assert tracker.get_max() == 999.0
+
+            # Add a lower value in bucket 1
+            mock_time.return_value = 1.0
+            tracker.add(50.0)
+            assert tracker.get_max() == 999.0
+
+            # Advance past the window so bucket 0 expires
+            mock_time.return_value = 10.0
+            tracker.add(50.0)
+            # The 999 from bucket 0 should be gone
+            assert tracker.get_max() == 50.0
+
+    def test_full_window_idle(self):
+        """Test that get_max returns 0 after being idle for full window."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMax(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            tracker.add(999.0)
+            assert tracker.get_max() == 999.0
+
+            # Advance past the full window
+            mock_time.return_value = 15.0
+            assert tracker.get_max() == 0.0
+
+    def test_gradual_max_expiry(self):
+        """Test that the max shifts as old buckets expire."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMax(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            # Bucket 0 (t=0): max=1000
+            tracker.add(1000.0)
+
+            # Bucket 3 (t=3): max=500
+            mock_time.return_value = 3.0
+            tracker.add(500.0)
+
+            # Bucket 7 (t=7): max=200
+            mock_time.return_value = 7.0
+            tracker.add(200.0)
+
+            # At t=7, all buckets are valid
+            assert tracker.get_max() == 1000.0
+
+            # At t=10, bucket 0 (with 1000) expires
+            mock_time.return_value = 10.0
+            tracker.add(10.0)
+            assert tracker.get_max() == 500.0
+
+            # At t=13, bucket 3 (with 500) expires
+            mock_time.return_value = 13.0
+            tracker.add(10.0)
+            assert tracker.get_max() == 200.0
+
+            # At t=17, bucket 7 (with 200) expires
+            mock_time.return_value = 17.0
+            tracker.add(10.0)
+            assert tracker.get_max() == 10.0
+
+    def test_large_time_jump(self):
+        """Test handling of large time jumps."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMax(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            tracker.add(999.0)
+            assert tracker.get_max() == 999.0
+
+            # Jump forward by a very large amount
+            mock_time.return_value = 1000000.0
+            assert tracker.get_max() == 0.0
+
+            # Should still work after the jump
+            tracker.add(42.0)
+            assert tracker.get_max() == 42.0
+
+    def test_max_does_not_accumulate(self):
+        """Test that add() takes max, not sum, within a bucket."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        tracker.add(100.0)
+        tracker.add(100.0)
+        tracker.add(100.0)
+
+        # Should be 100 (max), not 300 (sum)
+        assert tracker.get_max() == 100.0
+
+
+class TestRollingWindowMaxMultiThread:
+    def test_thread_registration(self):
+        """Test that threads are correctly registered."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        assert tracker.get_num_registered_threads() == 0
+
+        tracker.add(100.0)
+        assert tracker.get_num_registered_threads() == 1
+
+        tracker.add(200.0)
+        assert tracker.get_num_registered_threads() == 1
+
+    def test_multiple_threads_registration(self):
+        """Test that multiple threads are correctly registered."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        num_threads = 8
+        barrier = threading.Barrier(num_threads)
+
+        def worker():
+            barrier.wait()
+            tracker.add(1.0)
+
+        threads = [threading.Thread(target=worker) for _ in range(num_threads)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert tracker.get_num_registered_threads() == num_threads
+
+    def test_max_across_threads(self):
+        """Test that get_max returns the global max across all threads."""
+        tracker = RollingWindowMax(
+            window_duration_s=600.0,
+            num_buckets=60,
+        )
+
+        num_threads = 8
+        barrier = threading.Barrier(num_threads)
+
+        def worker(thread_idx):
+            barrier.wait()
+            tracker.add(float((thread_idx + 1) * 100))
+
+        threads = [
+            threading.Thread(target=worker, args=(i,)) for i in range(num_threads)
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert tracker.get_max() == float(num_threads * 100)
+
+    def test_concurrent_adds_with_threadpool(self):
+        """Test concurrent adds using ThreadPoolExecutor."""
+        tracker = RollingWindowMax(
+            window_duration_s=600.0,
+            num_buckets=60,
+        )
+
+        num_workers = 16
+        adds_per_worker = 500
+
+        def worker(worker_idx):
+            for i in range(adds_per_worker):
+                tracker.add(float(worker_idx * adds_per_worker + i))
+
+        with ThreadPoolExecutor(max_workers=num_workers) as executor:
+            futures = [executor.submit(worker, i) for i in range(num_workers)]
+            for f in futures:
+                f.result()
+
+        expected_max = float(num_workers * adds_per_worker - 1)
+        assert tracker.get_max() == expected_max
+
+    def test_add_and_get_max_concurrent(self):
+        """Test concurrent add() and get_max() calls."""
+        tracker = RollingWindowMax(
+            window_duration_s=600.0,
+            num_buckets=60,
+        )
+
+        num_threads = 4
+        iterations = 1000
+        max_value = float(num_threads * iterations)
+        results = []
+        lock = threading.Lock()
+
+        def adder(thread_idx):
+            for i in range(iterations):
+                tracker.add(float(thread_idx * iterations + i))
+
+        def reader():
+            maxes = []
+            for _ in range(iterations):
+                maxes.append(tracker.get_max())
+            with lock:
+                results.extend(maxes)
+
+        threads = []
+        for i in range(num_threads):
+            threads.append(threading.Thread(target=adder, args=(i,)))
+            threads.append(threading.Thread(target=reader))
+
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+
+        assert tracker.get_max() == max_value - 1
+
+        # All read values should be non-negative and <= max_value
+        assert all(0 <= r <= max_value for r in results)
+
+    def test_thread_isolation_with_expiry(self):
+        """Test that bucket expiry works correctly across threads."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMax(
+                window_duration_s=10.0,
+                num_buckets=10,
+            )
+
+            results = {}
+            lock = threading.Lock()
+
+            def thread_a():
+                # Thread A adds high value at time 0
+                tracker.add(1000.0)
+                with lock:
+                    results["a_added"] = True
+
+            def thread_b():
+                while "a_added" not in results:
+                    pass
+                # Thread B adds lower value at time 5
+                mock_time.return_value = 5.0
+                tracker.add(200.0)
+                with lock:
+                    results["b_added"] = True
+
+            t_a = threading.Thread(target=thread_a)
+            t_b = threading.Thread(target=thread_b)
+
+            t_a.start()
+            t_a.join()
+            t_b.start()
+            t_b.join()
+
+            assert tracker.get_num_registered_threads() == 2
+
+            # At time 5, thread A's 1000 is still valid
+            mock_time.return_value = 5.0
+            assert tracker.get_max() == 1000.0
+
+            # At time 12, thread A's data (added at time 0) has expired
+            mock_time.return_value = 12.0
+            assert tracker.get_max() == 200.0
+
+
+class TestRollingWindowMaxEdgeCases:
+    def test_single_bucket(self):
+        """Test with a single bucket."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMax(
+                window_duration_s=10.0,
+                num_buckets=1,
+            )
+
+            tracker.add(100.0)
+            tracker.add(500.0)
+            assert tracker.get_max() == 500.0
+
+            # After window expires, everything is cleared
+            mock_time.return_value = 15.0
+            assert tracker.get_max() == 0.0
+
+    def test_many_buckets(self):
+        """Test with many buckets."""
+        tracker = RollingWindowMax(
+            window_duration_s=10.0,
+            num_buckets=1000,
+        )
+
+        for i in range(100):
+            tracker.add(float(i))
+
+        assert tracker.get_max() == 99.0
+
+    def test_very_large_values(self):
+        """Test with very large values."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        large_value = 1e15
+        tracker.add(large_value)
+        tracker.add(large_value - 1)
+
+        assert tracker.get_max() == large_value
+
+    def test_very_small_values(self):
+        """Test with very small positive values."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        tracker.add(1e-15)
+        tracker.add(2e-15)
+        tracker.add(1e-15)
+
+        assert tracker.get_max() == 2e-15
+
+    def test_zero_values(self):
+        """Test that zero values are handled correctly."""
+        tracker = RollingWindowMax(window_duration_s=10.0, num_buckets=10)
+
+        tracker.add(0.0)
+        tracker.add(0.0)
+
+        assert tracker.get_max() == 0.0
+
+    def test_new_max_replaces_old_after_expiry(self):
+        """Test the typical latency tracking scenario: old spike expires,
+        new lower steady-state values become the max."""
+        with patch("time.time") as mock_time:
+            mock_time.return_value = 0.0
+
+            tracker = RollingWindowMax(
+                window_duration_s=60.0,
+                num_buckets=6,
+            )
+
+            # Latency spike at t=0
+            tracker.add(5000.0)
+
+            # Normal latencies at t=10, t=20, t=30
+            for t in [10.0, 20.0, 30.0]:
+                mock_time.return_value = t
+                tracker.add(50.0)
+
+            # Spike is still in window
+            assert tracker.get_max() == 5000.0
+
+            # At t=60, the spike bucket (t=0) has expired
+            mock_time.return_value = 60.0
+            tracker.add(50.0)
+            assert tracker.get_max() == 50.0
 
 
 if __name__ == "__main__":

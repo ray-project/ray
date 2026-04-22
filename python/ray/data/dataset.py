@@ -134,7 +134,6 @@ from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -492,7 +491,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["default"]] = None,
+        batch_size: Union[int, None, Literal["auto"]] = None,
         compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         zero_copy_batch: bool = True,
@@ -633,7 +632,9 @@ class Dataset:
                 entire blocks as batches (blocks may contain different numbers of rows).
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
-                to a given map task. Default ``batch_size`` is ``None``.
+                to a given map task. Default ``batch_size`` is ``None``. Only use
+                ``None`` if you intend to process entire blocks as batches. Otherwise,
+                prefer ``auto``, or an explicit batch size (e.g., ``1024``)
             compute: The compute strategy to use for the map operation.
 
                 * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
@@ -727,7 +728,7 @@ class Dataset:
             A new :class:`Dataset` with the transformation applied to each batch.
         """  # noqa: E501
         use_gpus = num_gpus is not None and num_gpus > 0
-        if use_gpus and (batch_size is None or batch_size == "default"):
+        if use_gpus and (batch_size is None or batch_size == "auto"):
             raise ValueError(
                 "You must provide `batch_size` to `map_batches` when requesting GPUs. "
                 "The optimal batch size depends on the model, data, and GPU used. "
@@ -762,7 +763,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["default"]],
+        batch_size: Union[int, None, Literal["auto"]],
         compute: Optional[ComputeStrategy],
         batch_format: Optional[str],
         zero_copy_batch: bool,
@@ -783,14 +784,10 @@ class Dataset:
         # `batch_size=None`, then `map_batches` raises a value error. So, to allow users
         # to call `map_groups` with  GPUs, we need a separate method that doesn't
         # perform batch size validation.
-
-        if batch_size == "default":
-            warnings.warn(
-                "Passing 'default' to `map_batches` is deprecated and won't be "
-                "supported after September 2025. Use `batch_size=None` instead.",
-                DeprecationWarning,
-            )
-            batch_size = None
+        if batch_size is None or batch_size == "auto":
+            min_rows_per_bundled_input = None
+        else:  # batch size is an int
+            min_rows_per_bundled_input = batch_size
 
         compute = get_compute_strategy(
             fn,
@@ -818,7 +815,7 @@ class Dataset:
             can_modify_num_rows=udf_modifying_row_count,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
-            min_rows_per_bundled_input=batch_size,
+            min_rows_per_bundled_input=min_rows_per_bundled_input,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -1997,7 +1994,7 @@ class Dataset:
         import pandas as pd
         import pyarrow as pa
 
-        if self._plan.initial_num_blocks() == 0:
+        if self._logical_plan.initial_num_blocks() == 0:
             raise ValueError("Cannot sample from an empty Dataset.")
 
         if fraction < 0 or fraction > 1:
@@ -2222,7 +2219,7 @@ class Dataset:
         bundle: RefBundle = self._plan.execute()
         # We should not free blocks since we will materialize the Datasets.
         owned_by_consumer = False
-        stats = self._plan.stats()
+        stats = self._raw_stats()
         block_refs, metadata = zip(*bundle.blocks)
 
         if locality_hints is None:
@@ -2427,7 +2424,7 @@ class Dataset:
             False,
         )
         split_duration = time.perf_counter() - start_time
-        parent_stats = self._plan.stats()
+        parent_stats = self._raw_stats()
         splits = []
 
         for bs, ms in zip(blocks, metadata):
@@ -2880,7 +2877,7 @@ class Dataset:
 
         stats = DatasetStats(
             metadata={"Union": []},
-            parent=[d._plan.stats() for d in datasets],
+            parent=[d._raw_stats() for d in datasets],
         )
         stats.time_total_s = time.perf_counter() - start_time
         return Dataset(
@@ -3784,7 +3781,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._cache.set_stats(limited_ds._plan.stats())
+        self._plan._cache.set_stats(limited_ds._raw_stats())
         return res
 
     @ConsumptionAPI
@@ -3835,7 +3832,7 @@ class Dataset:
         self._synchronize_progress_bar()
 
         # Save the computed stats to the original dataset.
-        self._plan._cache.set_stats(limited_ds._plan.stats())
+        self._plan._cache.set_stats(limited_ds._raw_stats())
         return output
 
     @ConsumptionAPI
@@ -3932,7 +3929,7 @@ class Dataset:
             The number of records in the dataset.
         """
         # Handle empty dataset.
-        if self._plan.initial_num_blocks() == 0:
+        if self._logical_plan.initial_num_blocks() == 0:
             return 0
 
         # For parquet, we can return the count directly from metadata.
@@ -5723,10 +5720,12 @@ class Dataset:
                     "If you're using Ray Client, Ray Data won't schedule write tasks "
                     "on the driver's node."
                 )
-            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            )
+            label_selector = ray_remote_args.get("label_selector", {})
+            label_selector[
+                ray._raylet.RAY_NODE_ID_KEY
+            ] = ray.get_runtime_context().get_node_id()
+            ray_remote_args["label_selector"] = label_selector
+            ray_remote_args.pop("scheduling_strategy", None)
 
             _validate_head_node_resources_for_local_scheduling(
                 ray_remote_args,
@@ -6832,7 +6831,7 @@ class Dataset:
         ]
         logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
-            ExecutionPlan(copy._plan.stats(), data_context=copy.context),
+            ExecutionPlan(copy._raw_stats(), data_context=copy.context),
             logical_plan,
         )
         # Metrics are tagged with `copy`s uuid, update the output uuid with
@@ -6916,7 +6915,7 @@ class Dataset:
         print(explain_plan(self._logical_plan))
 
     def _get_stats_summary(self) -> DatasetStatsSummary:
-        return self._plan.stats().to_summary()
+        return self._raw_stats().to_summary()
 
     @DeveloperAPI
     def get_stats_summary(self, detail: bool = False) -> DatasetStatsSummary:
@@ -6935,10 +6934,10 @@ class Dataset:
         """
         if self._current_executor:
             summary = self._current_executor.get_stats().to_summary()
-        elif self._write_ds is not None and self._write_ds._plan.has_computed_output():
+        elif self._write_ds is not None and self._write_ds.has_computed_output():
             summary = self._write_ds.get_stats_summary(detail=detail)
         else:
-            summary = self._plan.stats().to_summary()
+            summary = self._raw_stats().to_summary()
 
         if detail:
             from ray.data._internal.scheduling_overhead import (
@@ -7082,9 +7081,9 @@ class Dataset:
         # Copy Dataset and clear the blocks from the execution plan so only the
         # Dataset's lineage is serialized.
         plan_copy = self._plan.deep_copy()
-        logical_plan_copy = copy.copy(self._plan._logical_plan)
+        logical_plan_copy = copy.copy(self._logical_plan)
         ds = Dataset(plan_copy, logical_plan_copy)
-        ds._plan.clear_cache()
+        ds._plan._cache.clear()
         ds._set_uuid(self._get_uuid())
 
         def _reduce_remote_fn(rf: ray.remote_function.RemoteFunction):
@@ -7236,7 +7235,7 @@ class Dataset:
         from ipywidgets import HTML, Tab
 
         metadata = {
-            "num_blocks": self._plan.initial_num_blocks(),
+            "num_blocks": self._logical_plan.initial_num_blocks(),
             "num_rows": self._meta_count(),
         }
         # Show metadata if available, but don't trigger execution.
@@ -7320,6 +7319,25 @@ class Dataset:
             for block_ref in ref_bundle.block_refs:
                 num_rows.append(get_num_rows.remote(block_ref))
         return ray.get(num_rows)
+
+    def _raw_stats(self) -> DatasetStats:
+        """Return the DatasetStats object for this dataset's execution.
+
+        If the dataset hasn't been executed, returns an empty stats object.
+        """
+        stats = self._plan._cache.get_stats()
+        if not stats:
+            return DatasetStats(metadata={}, parent=None)
+        return stats
+
+    def has_computed_output(self) -> bool:
+        """Whether this dataset has cached output from a prior execution."""
+        return self._plan._cache.get_bundle(self._logical_plan.dag) is not None
+
+    @property
+    def has_started_execution(self) -> bool:
+        """Return ``True`` if this dataset has been partially or fully executed."""
+        return self._plan._has_started_execution
 
     def _meta_count(self) -> Optional[int]:
         """Get the number of rows after applying all plan optimizations, if possible.
@@ -7424,7 +7442,7 @@ class MaterializedDataset(Dataset, Generic[T]):
         Returns:
             The number of blocks of this :class:`Dataset`.
         """
-        return self._plan.initial_num_blocks()
+        return self._logical_plan.initial_num_blocks()
 
 
 @PublicAPI(stability="beta")

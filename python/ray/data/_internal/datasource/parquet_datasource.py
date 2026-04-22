@@ -20,6 +20,7 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 import ray
+from ray._common.utils import env_bool, env_integer
 from ray.data._internal.arrow_block import (
     _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
     ArrowBlockAccessor,
@@ -30,6 +31,7 @@ from ray.data._internal.planner.plan_expression.expression_visitors import (
 from ray.data._internal.progress.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.util import (
+    MiB,
     RetryingPyFileSystem,
     _check_pyarrow_version,
     _is_local_scheme,
@@ -66,7 +68,6 @@ if TYPE_CHECKING:
     from pyarrow.dataset import ParquetFileFragment
 
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
-    from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 # Type aliases for tensor column schema
 ColumnName = str
 # Shape of the tensor
@@ -127,6 +128,8 @@ PARQUET_ENCODING_RATIO_ESTIMATE_NUM_ROWS = 1024
 # Arrow's nested type chunking limit
 # See: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
 _ARROW_CHUNK_LIMIT = 2 * 1024**3  # 2GB
+
+_MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS = parse_version("12.0.1")
 
 
 class _ParquetFragment:
@@ -318,6 +321,28 @@ class ParquetDatasource(Datasource):
 
     _FILE_EXTENSIONS = ["parquet"]
 
+    # Denotes number of batches to read ahead in a fragment. Default is 16
+    # as per https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Dataset.html#pyarrow.dataset.Dataset.to_batches
+    # Chose 8 based on past experiments.
+    _DEFAULT_BATCH_READAHEAD = env_integer("RAY_DATA_PARQUET_READER_BATCH_READAHEAD", 8)
+    # NOTE: We're essentially stubbing out this value as currently
+    #       ParquetDatasource reads individual fragments independently
+    # Default is 4. This refers to the number of files to readahead, which was chosen based on past experiments.
+    _DEFAULT_FRAGMENT_READAHEAD = env_integer(
+        "RAY_DATA_PARQUET_READER_FRAGMENT_READAHEAD", 1
+    )
+
+    # Default is False as per https://arrow.apache.org/docs/python/generated/pyarrow.dataset.ParquetFragmentScanOptions.html
+    # This parameter when set to True, reads files through buffered input streams rather than loading entire row groups at once.
+    _DEFAULT_FRAGMENT_USE_BUFFERED_STREAM = env_bool(
+        "RAY_DATA_PARQUET_READER_FRAGMENT_USE_BUFFERED_STREAM", True
+    )
+    # Default is 8 KiB as per https://arrow.apache.org/docs/python/generated/pyarrow.dataset.ParquetFragmentScanOptions.html
+    # Based on experiments, this was a good default.
+    _DEFAULT_FRAGMENT_SCAN_BUFFER_SIZE = env_integer(
+        "RAY_DATA_PARQUET_READER_FRAGMENT_SCAN_BUFFER_SIZE", 8 * MiB
+    )
+
     def __init__(
         self,
         paths: Union[str, List[str]],
@@ -348,11 +373,9 @@ class ParquetDatasource(Datasource):
 
         local_scheduling = None
         if not supports_distributed_reads:
-            from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
-
-            local_scheduling = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            )
+            local_scheduling = {
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+            }
 
         # Need this property for lineage tracking. We should not directly assign paths
         # to self since it is captured every read_task_fn during serialization and
@@ -483,7 +506,7 @@ class ParquetDatasource(Datasource):
         self,
         *,
         supports_distributed_reads: bool,
-        local_scheduling: Optional["NodeAffinitySchedulingStrategy"],
+        local_scheduling: Optional[Dict[str, str]],
         source_paths_ref: "ray.ObjectRef",
         filesystem: "pyarrow.fs.FileSystem",
         fragments: List["ParquetFileFragment"],
@@ -520,7 +543,6 @@ class ParquetDatasource(Datasource):
         ]
         self._pq_paths = [f.path for f in fragments]
         self._block_udf = _block_udf
-        self._scanner_kwargs = to_batch_kwargs or {}
         self._projection_map = projection_map
         self._partition_columns = partition_columns
         self._partition_columns_selected = partition_columns_selected
@@ -554,8 +576,12 @@ class ParquetDatasource(Datasource):
             sampled_file_infos,
         )
 
-        self._default_batch_size = _estimate_reader_batch_size(
+        estimated_batch_size = _estimate_reader_batch_size(
             sampled_file_infos, DataContext.get_current().target_max_block_size
+        )
+
+        self._scanner_kwargs = self._get_scanner_kwargs(
+            to_batch_kwargs, estimated_batch_size
         )
 
     @classmethod
@@ -615,13 +641,9 @@ class ParquetDatasource(Datasource):
                 )
 
             if is_local:
-                from ray.util.scheduling_strategies import (
-                    NodeAffinitySchedulingStrategy,
-                )
-
-                local_scheduling = NodeAffinitySchedulingStrategy(
-                    ray.get_runtime_context().get_node_id(), soft=False
-                )
+                local_scheduling = {
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                }
 
             infos = filesystem.get_file_info(pq_paths)
             file_sizes = [info.size if info.size is not None else 0 for info in infos]
@@ -666,6 +688,47 @@ class ParquetDatasource(Datasource):
             return 0
 
         return self._estimate_in_mem_size(self._pq_fragments)
+
+    def _get_scanner_kwargs(
+        self,
+        to_batch_kwargs: Optional[Dict[str, Any]],
+        batch_size: Optional[int],
+    ) -> dict[str, Any]:
+        import pyarrow.dataset as pds
+
+        scanner_kwargs: Dict[str, Any] = (to_batch_kwargs or {}).copy()
+
+        # NOTE: We inject ``batch_size`` via kwargs, since Scanner doesn't accept
+        # nulls. Use setdefault so a user-provided ``batch_size`` in
+        # ``to_batch_kwargs`` wins.
+        if batch_size is not None:
+            scanner_kwargs.setdefault("batch_size", batch_size)
+
+        # Override default `batch_readahead` value to reduce amount of data prefetched
+        # by Pyarrow's Parquet reader
+        pyarrow_version = get_pyarrow_version()
+        if (
+            pyarrow_version is not None
+            and pyarrow_version >= _MIN_PYARROW_VERSION_FOR_SCANNER_DEFAULTS
+        ):
+            scanner_kwargs.setdefault("batch_readahead", self._DEFAULT_BATCH_READAHEAD)
+            scanner_kwargs.setdefault(
+                "fragment_readahead", self._DEFAULT_FRAGMENT_READAHEAD
+            )
+
+            # Refer https://arrow.apache.org/docs/python/generated/pyarrow.dataset.ParquetFragmentScanOptions.html
+            # Read files through buffered input streams rather than loading
+            # entire row groups at once.
+            if self._DEFAULT_FRAGMENT_USE_BUFFERED_STREAM:
+                scanner_kwargs.setdefault(
+                    "fragment_scan_options",
+                    pds.ParquetFragmentScanOptions(
+                        use_buffered_stream=True,
+                        buffer_size=self._DEFAULT_FRAGMENT_SCAN_BUFFER_SIZE,
+                    ),
+                )
+
+        return scanner_kwargs
 
     def get_read_tasks(
         self,
@@ -719,7 +782,6 @@ class ParquetDatasource(Datasource):
             (
                 block_udf,
                 to_batches_kwargs,
-                default_read_batch_size_rows,
                 data_columns,
                 data_columns_rename_map,
                 partition_columns,
@@ -729,7 +791,6 @@ class ParquetDatasource(Datasource):
             ) = (
                 self._block_udf,
                 self._scanner_kwargs,
-                self._default_batch_size,
                 self._get_data_columns(),
                 self.get_column_renames(),
                 self._get_partition_columns(),
@@ -743,7 +804,6 @@ class ParquetDatasource(Datasource):
                     lambda f=fragments: read_fragments(
                         block_udf,
                         to_batches_kwargs,
-                        default_read_batch_size_rows,
                         data_columns,
                         data_columns_rename_map,
                         partition_columns,
@@ -998,7 +1058,6 @@ class ParquetDatasource(Datasource):
 def read_fragments(
     block_udf: Callable[[Block], Optional[Block]],
     to_batches_kwargs: Dict[str, Any],
-    default_read_batch_size_rows: Optional[int],
     data_columns: Optional[List[str]],
     data_columns_rename_map: Optional[Dict[str, str]],
     partition_columns: Optional[List[str]],
@@ -1009,6 +1068,7 @@ def read_fragments(
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
 ) -> Iterator["pyarrow.Table"]:
+    """Yield Arrow tables from Parquet fragments via ``to_batches_kwargs``."""
     # This import is necessary to load the tensor extension type.
     from ray.data.extensions.tensor_extension import ArrowTensorType  # noqa
 
@@ -1031,7 +1091,6 @@ def read_fragments(
                 include_path=include_paths,
                 filter_expr=filter_expr,
                 filter_columns=filter_columns,
-                batch_size=default_read_batch_size_rows,
                 to_batches_kwargs=to_batches_kwargs,
             ),
             "reading batches",
@@ -1248,7 +1307,6 @@ def _iter_batches_with_nested_fallback(
     *,
     columns: Optional[List[str]] = None,
     schema: Optional["pyarrow.Schema"] = None,
-    batch_size: Optional[int] = None,
     to_batches_kwargs: Optional[Dict[str, Any]] = None,
     use_threads: bool = False,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
@@ -1266,8 +1324,6 @@ def _iter_batches_with_nested_fallback(
     ``fragment.subset(filter=)`` and row-level filtering is done post-read.
     """
     to_batches_kwargs = dict(to_batches_kwargs or {})
-    if batch_size is not None:
-        to_batches_kwargs.setdefault("batch_size", batch_size)
 
     read_columns = _resolve_read_columns(columns, filter_expr, filter_columns)
 
@@ -1395,12 +1451,15 @@ def _read_batches_from(
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
-    batch_size: Optional[int] = None,
     include_path: bool = False,
     use_threads: bool = False,
     to_batches_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Iterable["pyarrow.Table"]:
-    """Get an iterable of batches from a parquet fragment."""
+    """Get an iterable of batches from a parquet fragment.
+
+    Row batching is controlled via ``to_batches_kwargs["batch_size"]`` (when
+    present), which is coerced to values PyArrow accepts as a C ``int``.
+    """
 
     import pyarrow as pa
 
@@ -1423,9 +1482,6 @@ def _read_batches_from(
         # Cannot determine columns from an opaque PyArrow filter expression,
         # so invalidate filter_columns to fall back to reading all columns.
         filter_columns = None
-    # NOTE: Arrow's ``to_batches`` expects ``batch_size`` as an int
-    if batch_size is not None:
-        to_batches_kwargs.setdefault("batch_size", batch_size)
 
     if to_batches_kwargs.get("batch_size") is not None:
         to_batches_kwargs["batch_size"] = _coerce_pyarrow_fragment_batch_size(
@@ -1476,7 +1532,6 @@ def _read_batches_from(
                 filter_expr=filter_expr,
                 filter_columns=filter_columns,
                 schema=schema,
-                batch_size=batch_size,
                 use_threads=use_threads,
                 to_batches_kwargs=to_batches_kwargs,
             ):
@@ -1556,13 +1611,14 @@ def _fetch_parquet_file_info(
         # Limit prefetching to just 1 batch
         to_batches_kwargs["batch_readahead"] = 1
 
+    to_batches_kwargs["batch_size"] = batch_size
+
     avg_row_size: Optional[int] = None
     # Use first non-empty batch to estimate the avg size of the row in-memory
     for batch in _iter_batches_with_nested_fallback(
         row_group_fragment,
         columns=columns,
         schema=schema,
-        batch_size=batch_size,
         to_batches_kwargs=to_batches_kwargs,
     ):
         if batch.num_rows > 0:
@@ -1631,22 +1687,26 @@ def _fetch_file_infos(
     *,
     columns: Optional[List[str]],
     schema: Optional["pyarrow.Schema"],
-    local_scheduling: Optional[bool],
+    local_scheduling: Optional[Dict[str, str]],
 ) -> List[Optional[_ParquetFileInfo]]:
     fetch_file_info = cached_remote_fn(_fetch_parquet_file_info)
     futures = []
+
+    # Retry in case of transient errors during sampling.
+    task_options = {"retry_exceptions": [OSError]}
+    if local_scheduling:
+        task_options["label_selector"] = local_scheduling
+    else:
+        task_options[
+            "scheduling_strategy"
+        ] = DataContext.get_current().scheduling_strategy
 
     for fragment in sampled_fragments:
         # Sample the first rows batch in i-th file.
         # Use SPREAD scheduling strategy to avoid packing many sampling tasks on
         # same machine to cause OOM issue, as sampling can be memory-intensive.
         futures.append(
-            fetch_file_info.options(
-                scheduling_strategy=local_scheduling
-                or DataContext.get_current().scheduling_strategy,
-                # Retry in case of transient errors during sampling.
-                retry_exceptions=[OSError],
-            ).remote(
+            fetch_file_info.options(**task_options).remote(
                 fragment,
                 columns=columns,
                 schema=schema,

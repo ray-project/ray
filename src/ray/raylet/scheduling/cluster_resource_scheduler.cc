@@ -401,11 +401,10 @@ scheduling::NodeID ClusterResourceScheduler::GetBestSchedulableNode(
 SchedulingResult ClusterResourceScheduler::SchedulePlacementGroup(
     const std::vector<const ResourceRequest *> &resource_request_list,
     SchedulingOptions options) {
-  absl::flat_hash_map<scheduling::NodeID, const Node *> candidate_nodes;
-  for (const std::pair<const scheduling::NodeID, Node> &entry :
-       cluster_resource_manager_->GetResourceView()) {
-    if (NodeAvailable(entry.first)) {
-      candidate_nodes.emplace(entry.first, &entry.second);
+  absl::flat_hash_set<scheduling::NodeID> candidate_nodes;
+  for (const auto &[node_id, _] : cluster_resource_manager_->GetResourceView()) {
+    if (NodeAvailable(node_id)) {
+      candidate_nodes.insert(node_id);
     }
   }
   return bundle_scheduling_policy_->Schedule(

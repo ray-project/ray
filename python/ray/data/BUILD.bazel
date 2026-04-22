@@ -833,6 +833,20 @@ py_test(
 )
 
 py_test(
+    name = "test_auto_batch_size",
+    size = "medium",
+    srcs = ["tests/test_auto_batch_size.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_with_column",
     size = "medium",
     srcs = ["tests/test_with_column.py"],
@@ -1333,20 +1347,6 @@ py_test(
     name = "test_limit_operator",
     size = "small",
     srcs = ["tests/test_limit_operator.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_block_ref_bundler",
-    size = "small",
-    srcs = ["tests/test_block_ref_bundler.py"],
     tags = [
         "exclusive",
         "team:data",

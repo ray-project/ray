@@ -1,7 +1,7 @@
 group: data tests
 depends_on:
   - forge
-  - oss-ci-base_ml-multipy
+  - oss-ci-base_ml-multipy(*)
   - ray-core-build(*)
   - ray-dashboard-build
 steps:
@@ -48,7 +48,6 @@ steps:
     wanda: ci/docker/datatfds.build.wanda.yaml
     env:
       PYTHON: "3.12"
-      REQUIREMENTS_FILE: "datatfds_py3.12.lock"
     tags: cibase
 
   - name: docgpubuild-py312
@@ -56,7 +55,7 @@ steps:
     wanda: ci/docker/docgpu.build.wanda.yaml
     env:
       PYTHON: "3.12"
-    depends_on: oss-ci-base_gpu-multipy
+    depends_on: oss-ci-base_gpu-multipy(*)
     tags: cibase
 
   # type check

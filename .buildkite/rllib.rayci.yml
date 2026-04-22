@@ -7,7 +7,7 @@ steps:
   # builds
   - name: rllibbuild
     wanda: ci/docker/rllib.build.wanda.yaml
-    depends_on: oss-ci-base_ml-multipy
+    depends_on: oss-ci-base_ml-multipy(*)
     env:
       PYTHON: "3.10"
       BASE_TYPE: "ml"
@@ -17,7 +17,7 @@ steps:
 
   - name: rllibgpubuild
     wanda: ci/docker/rllib.build.wanda.yaml
-    depends_on: oss-ci-base_gpu-multipy
+    depends_on: oss-ci-base_gpu-multipy(*)
     env:
       PYTHON: "3.10"
       BASE_TYPE: "gpu"

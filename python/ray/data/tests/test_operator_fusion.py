@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution.bundle_queue import EstimateSize
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -155,6 +156,11 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         ({"resources": {"custom1": 1}}, {"resources": {"custom2": 1}}),
         # Different scheduling strategies.
         ({"scheduling_strategy": "SPREAD"}, {"scheduling_strategy": "PACK"}),
+        # Label selectors targeting different ray.io/node-id.
+        (
+            {"label_selector": {ray._raylet.RAY_NODE_ID_KEY: "node_A"}},
+            {"label_selector": {ray._raylet.RAY_NODE_ID_KEY: "node_B"}},
+        ),
     ]
     for up_remote_args, down_remote_args in incompatible_remote_args_pairs:
         planner = create_planner()
@@ -281,7 +287,9 @@ def test_read_with_map_batches_fused_successfully(
     )
 
     # # Target min-rows requirement is not set
-    assert physical_op._block_ref_bundler._min_rows_per_bundle is None
+    strategy = physical_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert strategy._min_rows_per_bundle is None
 
 
 @pytest.mark.parametrize(
@@ -364,7 +372,9 @@ def test_map_batches_batch_size_fusion(
         )
 
     # Target min-rows requirement is set to max of upstream and downstream
-    assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
+    strategy = physical_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert strategy._min_rows_per_bundle == 5
     assert len(physical_op.input_dependencies) == 1
 
 
@@ -414,9 +424,9 @@ def test_map_batches_with_batch_size_specified_fusion(
     assert expected_plan_str == actual_plan_str
 
     # Target min-rows requirement is set to max of upstream and downstream
-    assert (
-        expected_min_rows_per_bundle == root_op._block_ref_bundler._min_rows_per_bundle
-    )
+    strategy = root_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert expected_min_rows_per_bundle == strategy._min_rows_per_bundle
 
 
 def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(

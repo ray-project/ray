@@ -1,5 +1,4 @@
 import os
-import tempfile
 from typing import Dict
 
 import numpy as np
@@ -158,21 +157,24 @@ class TestReadImages:
         try:
             root = "example://image-datasets/simple"
             ds = ray.data.read_images(root, override_num_blocks=1)
-            assert ds._plan.initial_num_blocks() == 1
+            assert ds._logical_plan.initial_num_blocks() == 1
             ds = ds.materialize()
             # Verify dynamic block splitting taking effect to generate more blocks.
-            assert ds._plan.initial_num_blocks() == 3
+            assert ds._logical_plan.initial_num_blocks() == 3
 
             # Test union of same datasets
             union_ds = ds.union(ds, ds, ds).materialize()
-            assert union_ds._plan.initial_num_blocks() == 12
+            assert union_ds._logical_plan.initial_num_blocks() == 12
         finally:
             ctx.target_max_block_size = target_max_block_size
 
-    def test_unidentified_image_error(ray_start_regular_shared):
-        with tempfile.NamedTemporaryFile(suffix=".png") as file:
-            with pytest.raises(ValueError):
-                ray.data.read_images(paths=file.name).materialize()
+    def test_unidentified_image_error(ray_start_regular_shared, tmp_path):
+        path = str(tmp_path / "invalid.png")
+        with open(path, "wb") as file:
+            file.write(b"spam")  # Invalid bytes for a PNG file
+
+        with pytest.raises(ValueError):
+            ray.data.read_images(paths=file.name).materialize()
 
 
 class TestWriteImages:

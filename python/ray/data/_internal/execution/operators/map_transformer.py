@@ -1,3 +1,4 @@
+import itertools
 import time
 from abc import ABC, abstractmethod
 from enum import Enum
@@ -8,15 +9,22 @@ from typing import (
     Iterable,
     Iterator,
     List,
+    Literal,
     Optional,
+    Tuple,
     TypeVar,
     Union,
 )
 
+from ray._common.utils import env_integer
 from ray.data._internal.block_batching.block_batching import batch_blocks
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.output_buffer import BlockOutputBuffer, OutputBlockSizeOption
 from ray.data.block import BatchFormat, Block, BlockAccessor, DataBatch
+
+_DEFAULT_BATCH_SIZE_BYTES: int = env_integer(
+    "RAY_DATA_DEFAULT_BATCH_SIZE_BYTES", 16 * 1024 * 1024  # 16 MiB
+)
 
 # Allowed input/output data types for a MapTransformFn.
 Row = Dict[str, Any]
@@ -307,6 +315,36 @@ class RowMapTransformFn(MapTransformFn):
         return f"RowMapTransformFn({self._row_fn})"
 
 
+def _peek_first_nonempty_block(
+    blocks: Iterable[Block],
+) -> Tuple[Optional[BlockAccessor], Iterable[Block]]:
+    """Advance the iterator past leading empty blocks to find the first non-empty block,
+    returning the corresponding accessor and a reconstructed iterator of all blocks.
+    We must reconstruct the iterator because we consume blocks as we advance through the iterator."""
+    blocks_iter = iter(blocks)
+    consumed = []
+    for block in blocks_iter:
+        consumed.append(block)
+        accessor = BlockAccessor.for_block(block)
+        if accessor.num_rows() > 0 and accessor.size_bytes() > 0:
+            return accessor, itertools.chain(consumed, blocks_iter)
+    return None, iter(consumed)
+
+
+def _compute_auto_batch_size(
+    blocks: Iterable[Block],
+    target_batch_size_bytes: int = _DEFAULT_BATCH_SIZE_BYTES,
+) -> Tuple[Optional[int], Iterable[Block]]:
+    """Peek at the first non-empty block to estimate the batch size to use for the
+    'auto' batch_size option."""
+    sample, blocks = _peek_first_nonempty_block(blocks)
+    if sample is None:
+        return None, blocks
+    bytes_per_row = sample.size_bytes() / sample.num_rows()
+    computed_batch_size = max(1, int(target_batch_size_bytes / bytes_per_row))
+    return computed_batch_size, blocks
+
+
 class BatchMapTransformFn(MapTransformFn):
     """A batch-to-batch MapTransformFn."""
 
@@ -315,10 +353,11 @@ class BatchMapTransformFn(MapTransformFn):
         batch_fn: MapTransformCallable[DataBatch, DataBatch],
         *,
         is_udf: bool = False,
-        batch_size: Optional[int] = None,
+        batch_size: Union[Optional[int], Literal["auto"]] = None,
         batch_format: Optional[BatchFormat] = None,
         zero_copy_batch: bool = True,
         output_block_size_option: Optional[OutputBlockSizeOption] = None,
+        target_batch_size_bytes: int = _DEFAULT_BATCH_SIZE_BYTES,
     ):
         super().__init__(
             input_type=MapTransformFnDataType.Batch,
@@ -329,18 +368,23 @@ class BatchMapTransformFn(MapTransformFn):
         self._batch_size = batch_size
         self._batch_format = batch_format
         self._zero_copy_batch = zero_copy_batch
-        self._ensure_copy = not zero_copy_batch and batch_size is not None
+        self._target_batch_size_bytes = target_batch_size_bytes
 
         self._batch_fn = batch_fn
 
     def _pre_process(self, blocks: Iterable[Block]) -> Iterable[MapTransformFnData]:
         # TODO make batch-udf zero-copy by default
-        ensure_copy = not self._zero_copy_batch and self._batch_size is not None
-
+        if self._batch_size == "auto":
+            batch_size, blocks = _compute_auto_batch_size(
+                blocks, target_batch_size_bytes=self._target_batch_size_bytes
+            )
+        else:
+            batch_size = self._batch_size
+        ensure_copy = not self._zero_copy_batch and batch_size is not None
         return batch_blocks(
             blocks=iter(blocks),
             stats=None,
-            batch_size=self._batch_size,
+            batch_size=batch_size,
             batch_format=self._batch_format,
             ensure_copy=ensure_copy,
         )

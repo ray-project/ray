@@ -93,6 +93,7 @@ class InvalidValuesTest(unittest.TestCase):
         converted_config = AxSearch.convert_search_space(config)
         # At least one nan, inf, -inf and float
         client = AxClient(random_seed=4321)
+
         client.create_experiment(
             parameters=converted_config,
             objectives={"_metric": ObjectiveProperties(minimize=False)},

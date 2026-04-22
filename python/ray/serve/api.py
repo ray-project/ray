@@ -49,10 +49,12 @@ from ray.serve.config import (
     gRPCOptions,
 )
 from ray.serve.context import (
+    DeploymentActorContext,
     ReplicaContext,
     _check_cached_client_alive,
     _get_deployment_actor,
     _get_global_client,
+    _get_internal_deployment_actor_context,
     _get_internal_replica_context,
     _set_global_client,
 )
@@ -200,6 +202,25 @@ def get_replica_context() -> ReplicaContext:
             "Ray Serve deployment."
         )
     return internal_replica_context
+
+
+@DeveloperAPI
+def get_deployment_actor_context() -> DeploymentActorContext:
+    """Returns deployment metadata from within a deployment actor at runtime.
+
+    Returns:
+        DeploymentActorContext for the current deployment actor.
+
+    Raises:
+        RayServeException: if not called from within a deployment actor.
+    """
+    internal_context = _get_internal_deployment_actor_context()
+    if internal_context is None:
+        raise RayServeException(
+            "`serve.get_deployment_actor_context()` may only be called from within "
+            "a Ray Serve deployment actor."
+        )
+    return internal_context
 
 
 @DeveloperAPI

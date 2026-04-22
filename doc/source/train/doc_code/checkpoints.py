@@ -530,6 +530,8 @@ def train_fn(config):
             checkpoint=checkpoint,
             checkpoint_upload_mode=train.CheckpointUploadMode.ASYNC,
             checkpoint_upload_fn=wait_async_save,
+            # As uploading into the experiment directory then don't delete the checkpoint after upload is complete
+            delete_local_checkpoint_after_upload=False,
         )
 
 trainer = TorchTrainer(

@@ -147,7 +147,7 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     const auto &node_id = entry.first;
     const auto &bundles_per_node = entry.second;
     for (const auto &bundle : bundles_per_node) {
-      lease_status_tracker->MarkPreparePhaseStarted(node_id, bundle);
+      lease_status_tracker->MarkPrepareRequestPending(node_id, bundle);
     }
 
     // TODO(sang): The callback might not be called at all if nodes are dead. We should
@@ -214,14 +214,16 @@ void GcsPlacementGroupScheduler::PrepareResources(
       bundles,
       [node_id, bundles, callback](const Status &status,
                                    const rpc::PrepareBundleResourcesReply &reply) {
-        auto result = reply.success() ? Status::OK()
-                                      : Status::IOError("Failed to reserve resource");
+        auto result = !status.ok()      ? status
+                      : reply.success() ? Status::OK()
+                                        : Status::IOError("Failed to reserve resource");
         if (result.ok()) {
           RAY_LOG(INFO) << "Finished leasing resource from " << node_id
                         << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
           RAY_LOG(INFO) << "Failed to lease resource from " << node_id
-                        << " for bundles: " << GetDebugStringForBundles(bundles);
+                        << " for bundles: " << GetDebugStringForBundles(bundles)
+                        << ". Status: " << result;
         }
         callback(result);
       });
@@ -246,7 +248,8 @@ void GcsPlacementGroupScheduler::CommitResources(
                         << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
           RAY_LOG(INFO) << "Failed to commit resource to " << node_id
-                        << " for bundles: " << GetDebugStringForBundles(bundles);
+                        << " for bundles: " << GetDebugStringForBundles(bundles)
+                        << ". Status: " << status;
         }
         RAY_CHECK(callback);
         callback(status);
@@ -864,7 +867,7 @@ std::shared_ptr<LeaseStatusTracker> LeaseStatusTracker::CreatePrepared(
   for (const auto &bundle : prepared_bundles) {
     const BundleID bundle_id = bundle->BundleId();
     const NodeID node_id = schedule_map[bundle_id];
-    tracker->MarkPreparePhaseStarted(node_id, bundle);
+    tracker->MarkPrepareRequestPending(node_id, bundle);
     tracker->MarkPrepareRequestReturned(node_id, bundle, Status::OK());
   }
 
@@ -873,7 +876,7 @@ std::shared_ptr<LeaseStatusTracker> LeaseStatusTracker::CreatePrepared(
   return tracker;
 }
 
-bool LeaseStatusTracker::MarkPreparePhaseStarted(
+bool LeaseStatusTracker::MarkPrepareRequestPending(
     const NodeID &node_id, const std::shared_ptr<const BundleSpecification> &bundle) {
   const auto &bundle_id = bundle->BundleId();
   return node_to_bundles_when_preparing_[node_id].emplace(bundle_id).second;

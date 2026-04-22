@@ -505,13 +505,15 @@ bleach==6.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   nbconvert
-boto3==1.29.7 ; python_full_version < '3.12' \
+boto3==1.29.7 \
     --hash=sha256:1eb4c548118b5fc5e018dee956fd33e6fb249cd1f2def85f1bba816aef4d9f3e \
     --hash=sha256:96e9890ebe7cd823b5f4976dd676e112c000c6528c28e20a2f274590589dd18b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/train-test-requirements.txt
+    #   -r python/requirements/ml/py313/tune-test-requirements.txt
     #   aim
-botocore==1.32.7 ; python_full_version < '3.12' \
+botocore==1.32.7 \
     --hash=sha256:58b33d02cafa23461c8a9d211b30e8cded992380a84de409379fd02811fa3e11 \
     --hash=sha256:c6795c731b04c8e3635588c44cfd1a4462fc5987859195522c96812cf3eceff9
     # via
@@ -1878,7 +1880,7 @@ jinja2==3.1.6 \
     #   nbconvert
     #   torch
     #   torch-geometric
-jmespath==1.0.1 ; python_full_version < '3.12' \
+jmespath==1.0.1 \
     --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
     --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
     # via
@@ -3178,6 +3180,7 @@ numexpr==2.14.1 \
     --hash=sha256:fdd886f4b7dbaf167633ee396478f0d0aa58ea2f9e7ccc3c6431019623e8d68f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/ml/py313/train-requirements.txt
 numpy==2.2.6 \
     --hash=sha256:038613e9fb8c72b0a41f025a7e4c3f0b7a1b5d768ece4796b674c8f3fe13efff \
@@ -4560,7 +4563,15 @@ pytest==7.4.4 \
     --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
+    #   pytest-asyncio
     #   pytest-remotedata
+pytest-asyncio==0.17.2 \
+    --hash=sha256:6d895b02432c028e6957d25fc936494e78c6305736e785d9fee408b1efbc7ff4 \
+    --hash=sha256:e0fe5dbea40516b661ef1bcfe0bd9461c2847c4ef4bb40012324f2454fb7d56d
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 pytest-remotedata==0.3.2 \
     --hash=sha256:3be58f09116f3ce80cff9e5076cda528a84ae36d21ca9645abf782e112c281bc \
     --hash=sha256:e20c58d4b7c359c4975dc3c3d3d67be0905180d2368be0be3ae09b15a136cfc0
@@ -5150,7 +5161,7 @@ s3torchconnectorclient==1.4.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   s3torchconnector
-s3transfer==0.8.0 ; python_full_version < '3.12' \
+s3transfer==0.8.0 \
     --hash=sha256:baa479dc2e63e5c2ed51611b4d46cdf0295e2070d8d0b86b22f335ee5b954986 \
     --hash=sha256:e8d6bd52ffd99841e3a57b34370a54841f12d3aab072af862cdcc50955288002
     # via
@@ -5695,6 +5706,7 @@ tf-keras==2.20.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   -r python/requirements/ml/py313/ml-requirements.txt
+    #   -r python/requirements/ml/py313/rllib-requirements.txt
 threadpoolctl==3.1.0 \
     --hash=sha256:8b99adda265feb6773280df41eece7b2e6561b772d21ffd52e372f999024907b \
     --hash=sha256:a335baacfaa4400ae1f0d8e3a58d6674d2f8828e3716bb2802c44955ad391380

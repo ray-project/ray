@@ -808,7 +808,7 @@ def test_streaming_exec_schedule_s(ray_start_regular_shared):
     for _ in ds.iter_batches():
         continue
 
-    ds_stats = ds._plan.stats()
+    ds_stats = ds._raw_stats()
     assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 

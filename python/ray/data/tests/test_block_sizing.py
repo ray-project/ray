@@ -120,7 +120,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     ds = shuffle_fn(ray.data.range(N), **kwargs).materialize()
     assert (
         num_blocks_expected
-        <= ds._plan.initial_num_blocks()
+        <= ds._logical_plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
 
@@ -153,7 +153,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         num_blocks_expected = int(num_blocks_expected * 2.2)
     assert (
         num_blocks_expected
-        <= ds._plan.initial_num_blocks()
+        <= ds._logical_plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
     num_intermediate_blocks = _estimate_intermediate_blocks(
@@ -173,7 +173,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     ds = shuffle_fn(ray.data.range(N), **kwargs).materialize()
     assert (
         num_blocks_expected
-        <= ds._plan.initial_num_blocks()
+        <= ds._logical_plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
     num_intermediate_blocks = _estimate_intermediate_blocks(
@@ -190,7 +190,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
         block_size_expected //= 2.2
     assert (
         num_blocks_expected
-        <= ds._plan.initial_num_blocks()
+        <= ds._logical_plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
     num_intermediate_blocks = _estimate_intermediate_blocks(
@@ -209,7 +209,7 @@ def test_shuffle(shutdown_only, restore_data_context, shuffle_op):
     ds = shuffle_fn(ray.data.range(N).map(lambda x: x), **kwargs).materialize()
     assert (
         num_blocks_expected
-        <= ds._plan.initial_num_blocks()
+        <= ds._logical_plan.initial_num_blocks()
         <= num_blocks_expected * 1.5
     )
 
@@ -237,7 +237,7 @@ def test_target_max_block_size_infinite_or_default_disables_splitting_globally(
     ctx.target_max_block_size = 1_000_000  # ~1MB
 
     ds_with_limit = ray.data.range(N, override_num_blocks=1).materialize()
-    blocks_with_limit = ds_with_limit._plan.initial_num_blocks()
+    blocks_with_limit = ds_with_limit._logical_plan.initial_num_blocks()
 
     # Now test with target_max_block_size = None (should not split)
     ctx.target_max_block_size = None  # Disable block size limit
@@ -245,7 +245,7 @@ def test_target_max_block_size_infinite_or_default_disables_splitting_globally(
     ds_unlimited = (
         ray.data.range(N, override_num_blocks=1).map(lambda x: x).materialize()
     )
-    blocks_unlimited = ds_unlimited._plan.initial_num_blocks()
+    blocks_unlimited = ds_unlimited._logical_plan.initial_num_blocks()
 
     # Verify that unlimited creates fewer blocks (no splitting)
     assert blocks_unlimited <= blocks_with_limit

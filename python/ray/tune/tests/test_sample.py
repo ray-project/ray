@@ -503,14 +503,14 @@ class SearchSpaceTest(unittest.TestCase):
             },
         ]
 
-        client1 = AxClient(random_seed=1234)
+        client1 = AxClient(random_seed=42)
         client1.create_experiment(
             parameters=converted_config,
             objectives={"a": ObjectiveProperties(minimize=False)},
         )
         searcher1 = AxSearch(ax_client=client1)
 
-        client2 = AxClient(random_seed=1234)
+        client2 = AxClient(random_seed=42)
         client2.create_experiment(
             parameters=ax_config,
             objectives={"a": ObjectiveProperties(minimize=False)},
@@ -541,9 +541,18 @@ class SearchSpaceTest(unittest.TestCase):
         self.assertTrue(8 <= config["b"] <= 9)
 
     def testSampleBoundsAx(self):
-        from ax.adapter.registry import Generators
-        from ax.generation_strategy.generation_node import GenerationStep
-        from ax.generation_strategy.generation_strategy import GenerationStrategy
+        try:
+            # ax 1.0+: ax.modelbridge was removed
+            from ax.adapter.registry import Generators as Models
+            from ax.generation_strategy.generation_node import GenerationStep
+            from ax.generation_strategy.generation_strategy import GenerationStrategy
+        except ImportError:
+            # ax 0.x
+            from ax import Models
+            from ax.modelbridge.generation_strategy import (
+                GenerationStep,
+                GenerationStrategy,
+            )
         from ax.service.ax_client import AxClient, ObjectiveProperties
 
         from ray.tune.search.ax import AxSearch
@@ -564,9 +573,20 @@ class SearchSpaceTest(unittest.TestCase):
         for k in ignore:
             config.pop(k)
 
-        generation_strategy = GenerationStrategy(
-            steps=[GenerationStep(generator=Generators.UNIFORM, num_trials=-1)]
-        )
+        # ax 1.0+ renamed 'model' to 'generator'; ax <0.2.0 used 'num_arms'
+        try:
+            generation_strategy = GenerationStrategy(
+                steps=[GenerationStep(generator=Models.UNIFORM, num_trials=-1)]
+            )
+        except TypeError:
+            try:
+                generation_strategy = GenerationStrategy(
+                    steps=[GenerationStep(model=Models.UNIFORM, num_trials=-1)]
+                )
+            except TypeError:
+                generation_strategy = GenerationStrategy(
+                    steps=[GenerationStep(model=Models.UNIFORM, num_arms=-1)]
+                )
 
         client1 = AxClient(
             enforce_sequential_optimization=False,

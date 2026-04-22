@@ -16,13 +16,13 @@ steps:
       PYTHON: "{{matrix}}"
       BASE_TYPE: "build"
       BUILD_VARIANT: "build"
-    depends_on: oss-ci-base_build-multipy
+    depends_on: oss-ci-base_build-multipy(*)
 
   - name: coregpubuild-multipy
     label: "wanda: coregpubuild-py{{matrix}}"
     wanda: ci/docker/core.build.wanda.yaml
     tags: cibase
-    depends_on: oss-ci-base_gpu-multipy
+    depends_on: oss-ci-base_gpu-multipy(*)
     env:
       PYTHON: "{{matrix}}"
       BASE_TYPE: "gpu"
@@ -35,7 +35,7 @@ steps:
     label: "wanda: coregpu-cu130-build-py{{matrix}}"
     wanda: ci/docker/core.build.wanda.yaml
     tags: cibase
-    depends_on: oss-ci-base_cu130-multipy
+    depends_on: oss-ci-base_cu130-multipy(*)
     env:
       PYTHON: "{{matrix}}"
       BASE_TYPE: "cu130"
@@ -47,7 +47,7 @@ steps:
   - name: minbuild-core
     label: "wanda: minbuild-core-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_test-multipy
+    depends_on: oss-ci-base_test-multipy(*)
     tags: cibase
     matrix:
       - "3.10"
@@ -444,7 +444,7 @@ steps:
       # cpp worker tests has one that tests cross-language with Java.
       - RAY_INSTALL_JAVA=1 ci/ci.sh build
       - ci/ci.sh test_cpp
-    depends_on: oss-ci-base_build-multipy
+    depends_on: oss-ci-base_build-multipy(*)
     job_env: oss-ci-base_build-py3.10
 
   - label: ":ray: core: java worker tests"

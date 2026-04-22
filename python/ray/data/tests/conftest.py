@@ -312,7 +312,14 @@ def disable_fallback_to_object_extension(request, restore_data_context):
     )
 
 
-@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+@pytest.fixture(
+    params=[
+        s
+        for s in ShuffleStrategy
+        if s != ShuffleStrategy.GPU_SHUFFLE
+        or os.environ.get("RAY_PYTEST_USE_GPU") == "1"
+    ]
+)
 def configure_shuffle_method(request):
     shuffle_strategy = request.param
 
@@ -320,19 +327,24 @@ def configure_shuffle_method(request):
 
     original_shuffle_strategy = ctx.shuffle_strategy
     original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
+    original_gpu_shuffle_num_actors = ctx.gpu_shuffle_num_actors
 
     ctx.shuffle_strategy = shuffle_strategy
 
     # NOTE: We override default parallelism for hash-based shuffling to
     #       avoid excessive partitioning of the data (to achieve desired
     #       parallelism
-    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+    if shuffle_strategy in [ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.GPU_SHUFFLE]:
         ctx.default_hash_shuffle_parallelism = 8
+
+    if shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
+        ctx.gpu_shuffle_num_actors = 1
 
     yield request.param
 
     ctx.shuffle_strategy = original_shuffle_strategy
     ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
+    ctx.gpu_shuffle_num_actors = original_gpu_shuffle_num_actors
 
 
 @pytest.fixture(params=[True, False])

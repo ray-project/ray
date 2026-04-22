@@ -4,6 +4,8 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
 if TYPE_CHECKING:
     import pyarrow as pa
 
+
+from ray.data._internal.execution.bundle_queue import RebundleQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -11,7 +13,6 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
-    BaseRefBundler,
     MapOperator,
     _map_task,
 )
@@ -31,7 +32,7 @@ class TaskPoolMapOperator(MapOperator):
         name: str = "TaskPoolMap",
         target_max_block_size_override: Optional[int] = None,
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[BaseRefBundler] = None,
+        ref_bundler: Optional[RebundleQueue] = None,
         max_concurrency: Optional[int] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
