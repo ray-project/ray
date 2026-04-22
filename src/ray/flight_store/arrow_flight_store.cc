@@ -138,30 +138,20 @@ std::string ArrowFlightStore::GetUri() const {
   return oss.str();
 }
 
-// Estimate the IPC stream size for a table without actually serializing.
-// Walks the schema + buffer sizes. Cheap — no data copies.
-static int64_t EstimateIPCStreamSize(const std::shared_ptr<arrow::Table> &table) {
-  int64_t size = 0;
-  // Schema message overhead (approximate).
-  size += 1024;
-  // For each column, sum the buffer sizes.
-  for (int i = 0; i < table->num_columns(); ++i) {
-    auto chunked = table->column(i);
-    for (int j = 0; j < chunked->num_chunks(); ++j) {
-      auto array_data = chunked->chunk(j)->data();
-      for (const auto &buf : array_data->buffers) {
-        if (buf) {
-          // IPC aligns buffers to 8 bytes.
-          size += (buf->size() + 7) & ~7;
-        }
-      }
-    }
+// Compute exact IPC stream size by writing to a MockOutputStream (counts bytes,
+// no allocation, no data copy — just runs the IPC framing logic).
+static int64_t ComputeIPCStreamSize(const std::shared_ptr<arrow::Table> &table) {
+  auto sink = std::make_shared<arrow::io::MockOutputStream>();
+  auto writer = arrow::ipc::MakeStreamWriter(sink, table->schema()).ValueOrDie();
+  arrow::TableBatchReader reader(*table);
+  std::shared_ptr<arrow::RecordBatch> batch;
+  while (true) {
+    ARROW_CHECK_OK(reader.ReadNext(&batch));
+    if (!batch) break;
+    ARROW_CHECK_OK(writer->WriteRecordBatch(*batch));
   }
-  // IPC record batch metadata + EOS marker overhead.
-  size += 256 * table->num_columns() + 64;
-  // Add 20% headroom for IPC framing, flatbuffer metadata, padding.
-  size = static_cast<int64_t>(size * 1.2);
-  return size;
+  ARROW_CHECK_OK(writer->Close());
+  return sink->GetExtentBytesWritten();
 }
 
 #ifdef __linux__
@@ -186,10 +176,10 @@ static arrow::Result<int64_t> SerializeTableToIPCBuffer(
 #endif  // __linux__
 
 void ArrowFlightStore::Put(const std::string &key, std::shared_ptr<arrow::Table> table) {
-  int64_t estimated_size = EstimateIPCStreamSize(table);
+  int64_t ipc_size = ComputeIPCStreamSize(table);
   std::lock_guard<std::mutex> lock(mu_);
   tables_[key] = std::move(table);
-  ipc_sizes_[key] = estimated_size;
+  ipc_sizes_[key] = ipc_size;
 }
 
 ObjectTransferInfo ArrowFlightStore::PutAndGetTransferInfo(
@@ -378,13 +368,27 @@ static std::string SerializeIPC(const std::shared_ptr<arrow::Table> &table) {
 
 void ArrowFlightStore::PutFromIPC(const std::string &key, const std::string &ipc_bytes) {
   auto table = DeserializeIPC(ipc_bytes);
-  Put(key, table);
+  std::lock_guard<std::mutex> lock(mu_);
+  tables_[key] = std::move(table);
+  ipc_sizes_[key] = static_cast<int64_t>(ipc_bytes.size());
 }
 
 ObjectTransferInfo ArrowFlightStore::PutFromIPCAndGetTransferInfo(
     const std::string &key, const std::string &ipc_bytes) {
   auto table = DeserializeIPC(ipc_bytes);
-  return PutAndGetTransferInfo(key, table);
+  // We already know the exact IPC size — it's the bytes we just received.
+  // Skip EstimateIPCStreamSize and store the known size directly.
+  {
+    std::lock_guard<std::mutex> lock(mu_);
+    tables_[key] = std::move(table);
+    ipc_sizes_[key] = static_cast<int64_t>(ipc_bytes.size());
+  }
+  ObjectTransferInfo info;
+  info.flight_uri = GetUri();
+  info.key = key;
+  info.pid = getpid();
+  info.ipc_size = static_cast<int64_t>(ipc_bytes.size());
+  return info;
 }
 
 std::string ArrowFlightStore::GetLocalAsIPC(const std::string &key) {
