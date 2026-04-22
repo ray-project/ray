@@ -642,57 +642,6 @@ void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
   buffer_pool_.FreeObjects(object_ids);
 }
 
-void ObjectManager::SpreadFreeObjectsRequest(
-    const std::vector<ObjectID> &object_ids,
-    const std::vector<
-        std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>
-        &rpc_clients) {
-  // This code path should be called from node manager.
-  rpc::FreeObjectsRequest free_objects_request;
-  for (const auto &e : object_ids) {
-    free_objects_request.add_object_ids(e.Binary());
-  }
-  for (const auto &entry : rpc_clients) {
-    // NOTE: The callback for FreeObjects is posted back onto the main_service_ since
-    // RetryFreeObjects accesses remote_object_manager_clients_ which is not thread safe.
-    entry.second->FreeObjects(
-        free_objects_request,
-        [this, node_id = entry.first, free_objects_request](
-            const Status &status, const rpc::FreeObjectsReply &reply) {
-          if (!status.ok()) {
-            RetryFreeObjects(node_id, 0, free_objects_request);
-          }
-        });
-  }
-}
-
-void ObjectManager::RetryFreeObjects(
-    const NodeID &node_id,
-    uint32_t attempt_number,
-    const rpc::FreeObjectsRequest &free_objects_request) {
-  if (!remote_object_manager_clients_.contains(node_id)) {
-    return;
-  }
-  auto delay_ms = ExponentialBackoff::GetBackoffMs(attempt_number, 1000);
-  execute_after(
-      *main_service_,
-      [this, node_id, attempt_number, free_objects_request] {
-        auto it = remote_object_manager_clients_.find(node_id);
-        if (it == remote_object_manager_clients_.end()) {
-          return;
-        }
-        it->second->FreeObjects(
-            free_objects_request,
-            [this, node_id, attempt_number, free_objects_request](
-                const Status &status, const rpc::FreeObjectsReply &reply) {
-              if (!status.ok()) {
-                RetryFreeObjects(node_id, attempt_number + 1, free_objects_request);
-              }
-            });
-      },
-      std::chrono::milliseconds(delay_ms));
-}
-
 std::shared_ptr<rpc::ObjectManagerClientInterface> ObjectManager::GetRpcClient(
     const NodeID &node_id) {
   auto it = remote_object_manager_clients_.find(node_id);
