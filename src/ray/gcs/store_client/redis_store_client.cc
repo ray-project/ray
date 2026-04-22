@@ -522,7 +522,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
                                      /*running_on_single_thread=*/true};
   RedisClientOptions options{host, port, username, password, use_ssl};
   Clock real_clock;
-  RedisContext context(io_service, clock);
+  RedisContext context(io_service, real_clock);
   RAY_CHECK(!options.ip.empty()) << "Redis IP address cannot be empty.";
   RAY_CHECK_OK(context.Connect(options.ip,
                                options.port,
