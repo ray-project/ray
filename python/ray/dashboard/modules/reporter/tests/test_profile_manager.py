@@ -7,7 +7,11 @@ from unittest.mock import patch
 import pytest
 
 import ray
-from ray.dashboard.modules.reporter.profile_manager import MemoryProfilingManager
+from ray.dashboard.modules.reporter.profile_manager import (
+    MEMRAY_MISSING_DEBUGGER_ERROR_MESSAGE,
+    MemoryProfilingManager,
+    _format_failed_profiler_command,
+)
 from ray.dashboard.tests.conftest import *  # noqa
 
 
@@ -29,6 +33,24 @@ def setup_memory_profiler():
         actor = Actor.remote()
 
         yield actor, memory_profiler
+
+
+def test_format_failed_profiler_command_memray_missing_debugger_message():
+    stderr = (
+        "Cannot find a supported lldb or gdb executable and "
+        "sys.remote_exec is not available."
+    )
+
+    message = _format_failed_profiler_command(
+        cmd=["memray", "attach", "123"],
+        profiler="memray",
+        stdout="",
+        stderr=stderr,
+    )
+
+    assert MEMRAY_MISSING_DEBUGGER_ERROR_MESSAGE.strip() in message
+    assert "Linux: `gdb`" in message
+    assert "macOS: `lldb`" in message
 
 
 @pytest.mark.asyncio

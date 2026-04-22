@@ -24,6 +24,25 @@ Alternatively, you can start Ray with passwordless sudo / root permissions.
 
 """
 
+MEMRAY_MISSING_DEBUGGER_ERROR_MESSAGE = """
+Dashboard memory profiling uses `memray attach`, which depends on a supported
+debugger on the node where the target process runs.
+Install one of the following and retry:
+  - Linux: `gdb`
+  - macOS: `lldb`
+
+If this runs in a container, also ensure process-attach permissions are enabled
+(for example, ptrace/SYS_PTRACE).
+"""
+
+
+def _memray_debugger_not_found(stderr_str: str) -> bool:
+    stderr_lower = stderr_str.lower()
+    return (
+        "cannot find a supported lldb or gdb executable" in stderr_lower
+        and "sys.remote_exec is not available" in stderr_lower
+    )
+
 
 def decode(string: Union[str, bytes]):
     if isinstance(string, bytes):
@@ -33,7 +52,7 @@ def decode(string: Union[str, bytes]):
 
 def _format_failed_profiler_command(cmd, profiler, stdout, stderr) -> str:
     stderr_str = decode(stderr)
-    extra_message = ""
+    extra_messages = []
 
     # If some sort of permission error returned, show a message about how
     # to set up permissions correctly.
@@ -43,9 +62,16 @@ def _format_failed_profiler_command(cmd, profiler, stdout, stderr) -> str:
             if sys.platform == "darwin"
             else LINUX_SET_CHOWN_CMD.format(profiler=profiler)
         )
-        extra_message = PROFILER_PERMISSIONS_ERROR_MESSAGE.format(
-            profiler=profiler, set_chown_command=set_chown_command
+        extra_messages.append(
+            PROFILER_PERMISSIONS_ERROR_MESSAGE.format(
+                profiler=profiler, set_chown_command=set_chown_command
+            )
         )
+
+    if profiler == "memray" and _memray_debugger_not_found(stderr_str):
+        extra_messages.append(MEMRAY_MISSING_DEBUGGER_ERROR_MESSAGE)
+
+    extra_message = "".join(extra_messages)
 
     return f"""Failed to execute `{cmd}`.
 {extra_message}
