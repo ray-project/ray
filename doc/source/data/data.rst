@@ -51,7 +51,7 @@ Here is an example of how to do perform a simple batch text classification task 
     ds = ds.map_batches(
         ClassificationModel,
         compute=ray.data.ActorPoolStrategy(size=2),
-        batch_size="auto",
+        batch_size=64,
         batch_format="pandas"
         # num_gpus=1  # this will set 1 GPU per worker
     )
