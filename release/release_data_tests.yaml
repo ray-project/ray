@@ -320,6 +320,7 @@
   cluster:
     byod:
       post_build_script: byod_install_mosaicml.sh
+      type: torch-cu130
     cluster_compute: dataset/multi_node_train_16_workers.yaml
 
   run:
@@ -376,6 +377,8 @@
 
     - __suffix__: s3_parquet_gpu
       cluster:
+        byod:
+          type: torch-cu130
         cluster_compute: dataset/fixed_size_xlarge_gpu_compute.yaml
       run:
         timeout: 4800
@@ -386,6 +389,8 @@
 
     - __suffix__: s3_url_image_gpu
       cluster:
+        byod:
+          type: torch-cu130
         cluster_compute: dataset/fixed_size_xlarge_gpu_compute.yaml
       run:
         timeout: 4800
@@ -396,6 +401,8 @@
 
     - __suffix__: s3_read_images_gpu
       cluster:
+        byod:
+          type: torch-cu130
         cluster_compute: dataset/fixed_size_xlarge_gpu_compute.yaml
       run:
         timeout: 4800
@@ -433,6 +440,8 @@
 - name: iter_torch_batches
   python: "3.13"
   cluster:
+    byod:
+      type: torch-cu130
     cluster_compute: fixed_size_gpu_head_compute.yaml
 
   run:
@@ -823,7 +832,7 @@
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         - RAYTEST_FAIL_ON_DEAD_NODES={{fail_on_dead_nodes}}
-      type: cu123
+      type: torch-cu130
       post_build_script: byod_install_text_embedding.sh
 
   run:

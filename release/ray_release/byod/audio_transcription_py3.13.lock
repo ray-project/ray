@@ -930,6 +930,18 @@ torchaudio==2.11.0+cu130 \
     --hash=sha256:f9b277a0d3b2ab4385778146b7e879716f36b6f2080f7190ec744e3383511791 \
     --hash=sha256:fa4de5984cc666557d4e5eea3c50735b1ccb39b2ae284efb14b721e642eef652
     # via -r release/nightly_tests/multimodal_inference_benchmarks/audio_transcription/requirements.in
+torchcodec==0.11.1+cu130 \
+    --hash=sha256:03ddbf9c4a751a0b8998abeede19cb863d564e52d35c7e54f7aacb81a52f84c6 \
+    --hash=sha256:0f44bdb2ad45f9f9b38dbd70607349d962f7ee284d36e1112b07345012d8bf9d \
+    --hash=sha256:1c8db4d39dfb2bf2cd1a98a8d79527064a99514378a6582b21e05d73be0b0313 \
+    --hash=sha256:2a7a191eddf2f46831e39c174932b54c779f3ed24801219969a3f9a8cfb53803 \
+    --hash=sha256:6381a755421c844325bed89c8188472382c44d3d3e002836e9901c76bf63c18c \
+    --hash=sha256:a50b48d83be2f8afda57eed277b64b3fecb65f5d37c711df493bcebe262b7e16 \
+    --hash=sha256:a85fb9d238c6b21db692173b47aac18337c557c9d1271b4d2c4285167e915fb8 \
+    --hash=sha256:c5b11904ffc2ebad0bc1213ee674b19c9604f3641566ac9f04142050aa19d181 \
+    --hash=sha256:d0771f2b96d408d9ce1a2050326e1c239e2245e8576aa8405ffcb192f57358cf \
+    --hash=sha256:dd0fb40845650509b209a6c44cf3e2d13bad2abc73365b0baedce8444e3821c6
+    # via -r release/nightly_tests/multimodal_inference_benchmarks/audio_transcription/requirements.in
 torchvision==0.26.0+cu130 \
     --hash=sha256:0f030a9bd8ada1a31b7111ea1589c1ecb5fa0884fee700a203e731b4cf378a98 \
     --hash=sha256:110659ff38cd1d2ca0ac6e6a0f2c842fcb5fe739dfe65ff7456a12b2c4dce775 \
