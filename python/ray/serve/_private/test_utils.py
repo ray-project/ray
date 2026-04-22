@@ -1120,19 +1120,40 @@ class Accumulator:
 
 @ray.remote(num_cpus=0)
 class FailedReplicaStore:
-    """Stores the first replica ID that failed, for constructor failure tests."""
+    """
+    Controls replica constructor failure behavior for gang scheduling tests.
+        - The first gang seen is allowed to run.
+        - The next gang has first replica flagged to fail.
+        - Retry gangs after the first failed gang have first replica flagged.
+    """
 
     def __init__(self):
-        self.failed_replica_id = None
+        self._good_gang_chosen = False
+        self._successful_gang_id = None
+        self._failed_gang_ids = set()
 
-    def set_if_first(self, replica_id: str) -> bool:
-        if self.failed_replica_id is None:
-            self.failed_replica_id = replica_id
+    def mark_first_failing_gang(self, gang_id: str) -> bool:
+        """Picks the good gang on the first call and flags the first replica of the next gang to fail."""
+        if not self._good_gang_chosen:
+            self._good_gang_chosen = True
+            self._successful_gang_id = gang_id
+            return False
+        if gang_id == self._successful_gang_id:
+            return False
+        if len(self._failed_gang_ids) == 0:
+            self._failed_gang_ids.add(gang_id)
             return True
         return False
 
-    def get(self):
-        return self.failed_replica_id
+    def mark_retry_failing_gang(self, gang_id: str) -> bool:
+        """Flags the first replica of each new retry gang.
+        This is called after `mark_first_failing_gang"""
+        if gang_id == self._successful_gang_id:
+            return False
+        if gang_id not in self._failed_gang_ids:
+            self._failed_gang_ids.add(gang_id)
+            return True
+        return False
 
 
 @ray.remote(num_cpus=0)

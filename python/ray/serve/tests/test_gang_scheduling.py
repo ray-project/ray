@@ -700,28 +700,38 @@ class TestGangConstructorFailure:
         )
         class GangPartialConstructorFailure:
             def __init__(self, store):
-                replica_id = serve.get_replica_context().replica_id.unique_id
-                is_first = ray.get(store.set_if_first.remote(replica_id))
-                if is_first:
+                gang_id = serve.get_replica_context().gang_context.gang_id
+                is_first_fail = ray.get(store.mark_first_failing_gang.remote(gang_id))
+                if is_first_fail:
                     raise RuntimeError("Consistently throwing on same replica.")
-                failed_id = ray.get(store.get.remote())
-                if replica_id == failed_id:
-                    raise RuntimeError("Consistently throwing on same replica.")
+                should_fail = ray.get(store.mark_retry_failing_gang.remote(gang_id))
+                if should_fail:
+                    raise RuntimeError("Keep failing the replica")
 
             async def __call__(self, request):
                 return "hi"
 
-        serve.run(GangPartialConstructorFailure.bind(failed_replica_store))
-
-        client = serve.context._get_global_client()
-        deployment_id = DeploymentID(name="GangPartialConstructorFailure")
-        deployment_dict = ray.get(client._controller._all_running_replicas.remote())
-        assert len(deployment_dict[deployment_id]) == 4
-        app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
-        assert app_status.status == "RUNNING"
-        assert (
-            app_status.deployments["GangPartialConstructorFailure"].status == "HEALTHY"
+        serve._run(
+            GangPartialConstructorFailure.bind(failed_replica_store),
+            _blocking=False,
         )
+
+        deployment_name = "GangPartialConstructorFailure"
+
+        def _one_gang_running_and_updating() -> bool:
+            app_status = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+            dep = app_status.deployments[deployment_name]
+            return (
+                dep.replica_states.get("RUNNING", 0) == 2 and dep.status == "UPDATING"
+            )
+
+        wait_for_condition(_one_gang_running_and_updating, timeout=30)
+
+        # Re-check after a few retry cycles to confirm the deployment stays
+        # stuck in UPDATING and doesn't transition to HEALTHY or DEPLOY_FAILED.
+        time.sleep(10)
+        assert _one_gang_running_and_updating()
+        assert serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "DEPLOYING"
 
     def test_transient_constructor_failure(self, ray_shutdown):
         """Validates gang deployment where the first constructor call fails then succeeds."""
@@ -737,9 +747,9 @@ class TestGangConstructorFailure:
         )
         class GangTransientConstructorFailure:
             def __init__(self, store):
-                replica_id = serve.get_replica_context().replica_id.unique_id
-                is_first = ray.get(store.set_if_first.remote(replica_id))
-                if is_first:
+                gang_id = serve.get_replica_context().gang_context.gang_id
+                is_first_fail = ray.get(store.mark_first_failing_gang.remote(gang_id))
+                if is_first_fail:
                     raise RuntimeError("Intentionally throw on first try.")
 
             async def __call__(self, request):
@@ -774,15 +784,16 @@ class TestGangFailureRecovery:
         )
         class StartupFailureDeployment:
             def __init__(self, failed_replica_store, recovery_signal):
-                replica_id = serve.get_replica_context().replica_id.unique_id
+                gang_id = serve.get_replica_context().gang_context.gang_id
                 is_first_failure = ray.get(
-                    failed_replica_store.set_if_first.remote(replica_id)
+                    failed_replica_store.mark_first_failing_gang.remote(gang_id)
                 )
                 if is_first_failure:
                     raise RuntimeError("Fail one startup to trigger gang cleanup.")
-
-                failed_replica_id = ray.get(failed_replica_store.get.remote())
-                if replica_id == failed_replica_id:
+                should_hold = ray.get(
+                    failed_replica_store.mark_retry_failing_gang.remote(gang_id)
+                )
+                if should_hold:
                     # Hold failed replica retry until the intermediate state is asserted.
                     ray.get(recovery_signal.wait.remote())
 
