@@ -2039,8 +2039,8 @@ class ReplicaStateContainer:
         replica.update_state(state)
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
-        if self._on_replica_state_change:
-            self._on_replica_state_change(replica.replica_id, old_state, state)
+        if self._on_replica_state_change and state != old_state:
+            self._on_replica_state_change(old_state, state)
 
     def get(
         self, states: Optional[List[ReplicaState]] = None
@@ -2728,7 +2728,9 @@ class DeploymentState:
         # threshold, the deployment is considered terminally failed.
         self._deployment_actor_retry_counter: int = 0
 
-        self._replica_state_cache: Dict[ReplicaID, ReplicaState] = {}
+        self._replica_state_cache: Dict[
+            ReplicaID, Tuple[ReplicaState, float]
+        ] = {}  # (state, last_reported_time)
         self._replicas: ReplicaStateContainer = ReplicaStateContainer(
             on_replica_state_change=self._on_replica_state_change
         )
@@ -2896,22 +2898,15 @@ class DeploymentState:
     )
 
     def _on_replica_state_change(
-        self, replica_id: ReplicaID, old_state: ReplicaState, new_state: ReplicaState
+        self, old_state: ReplicaState, new_state: ReplicaState
     ) -> None:
         """Called by ReplicaStateContainer.add() when a replica transitions."""
-        if self._replica_state_cache.get(replica_id) == new_state:
-            return
-        self._replica_state_cache[replica_id] = new_state
-
         broadcast_set_changed = (old_state in self._BROADCAST_STATES) != (
             new_state in self._BROADCAST_STATES
         )
         if broadcast_set_changed:
             self._broadcasted_replicas_set_changed = True
         self._in_transition = True
-        self.replica_state_gauge.set(
-            new_state.to_numeric(), tags={"replica": replica_id.unique_id}
-        )
 
     def should_autoscale(self) -> bool:
         """
@@ -4458,6 +4453,24 @@ class DeploymentState:
 
             # Reconfigure replicas that had their ranks reassigned
             self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
+
+        # Refresh replica_state_gauge for every tracked replica.
+        now = time.time()
+        for replica in self._replicas.get():
+            replica_id = replica.replica_id
+            state = replica.actor_details.state
+            cached = self._replica_state_cache.get(replica_id)
+            value_changed = cached is None or cached[0] != state
+            interval_elapsed = (
+                cached is None
+                or (now - cached[1]) >= RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
+            )
+            if not value_changed and not interval_elapsed:
+                continue
+            self._replica_state_cache[replica_id] = (state, now)
+            self.replica_state_gauge.set(
+                state.to_numeric(), tags={"replica": replica_id.unique_id}
+            )
 
     def _handle_deployment_actor_failed_health_check(
         self,
