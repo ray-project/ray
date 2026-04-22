@@ -30,10 +30,6 @@
 namespace ray {
 namespace gcs {
 
-/// Tag type for the dedicated IO context used by observability GCS pubsub
-/// (RAY_* channels).
-struct ObservabilityPubsub {};
-
 struct GcsServerIOContextPolicy {
   GcsServerIOContextPolicy() = delete;
 
@@ -46,7 +42,7 @@ struct GcsServerIOContextPolicy {
       return IndexOf("task_io_context");
     } else if constexpr (std::is_same_v<T, pubsub::GcsPublisher>) {
       return IndexOf("pubsub_io_context");
-    } else if constexpr (std::is_same_v<T, ObservabilityPubsub>) {
+    } else if constexpr (std::is_same_v<T, pubsub::ObservabilityPublisher>) {
       return IndexOf("observability_pubsub_io_context");
     } else if constexpr (std::is_same_v<T, syncer::RaySyncer>) {
       return IndexOf("ray_syncer_io_context");

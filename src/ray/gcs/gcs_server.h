@@ -265,7 +265,7 @@ class GcsServer {
   /// A publisher for publishing gcs messages (control-plane pubsub channels).
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
   /// Publisher for observability pubsub (logs, errors, dashboard resource JSON).
-  std::unique_ptr<pubsub::GcsPublisher> gcs_observability_publisher_;
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.

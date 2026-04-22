@@ -64,13 +64,13 @@ class PubSubHandlerTest : public ::testing::Test {
         /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
         /*publisher_id=*/NodeID::FromRandom());
 
-    gcs_observability_publisher_ =
-        std::make_unique<pubsub::GcsPublisher>(std::move(obs_inner));
+    observability_publisher_ =
+        std::make_unique<pubsub::ObservabilityPublisher>(std::move(obs_inner));
 
     pubsub_handler_ =
         std::make_unique<InternalPubSubHandler>(io_service_, *gcs_publisher_);
     observability_pubsub_handler_ = std::make_unique<ObservabilityPubSubHandler>(
-        io_service_, *gcs_observability_publisher_);
+        io_service_, *observability_publisher_);
   }
 
  protected:
@@ -82,7 +82,7 @@ class PubSubHandlerTest : public ::testing::Test {
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
   std::unique_ptr<FakePeriodicalRunner> fake_obs_periodical_runner_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
-  std::unique_ptr<pubsub::GcsPublisher> gcs_observability_publisher_;
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
 };
 
 TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchInvalidChannelType) {

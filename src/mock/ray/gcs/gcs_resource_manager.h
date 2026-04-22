@@ -28,9 +28,9 @@ namespace gcs {
 static instrumented_io_context __mock_io_context_;
 static ClusterResourceManager __mock_cluster_resource_manager_(__mock_io_context_);
 static observability::FakeRayEventRecorder __mock_ray_event_recorder_;
-static pubsub::GcsPublisher *__mock_gcs_observability_publisher() {
-  static auto holder =
-      std::make_unique<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
+static pubsub::ObservabilityPublisher *__mock_observability_publisher() {
+  static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(
+      std::make_unique<pubsub::FakePublisher>());
   return holder.get();
 }
 static GcsNodeManager __mock_gcs_node_manager_(nullptr,
@@ -40,7 +40,7 @@ static GcsNodeManager __mock_gcs_node_manager_(nullptr,
                                                ClusterID::Nil(),
                                                __mock_ray_event_recorder_,
                                                "",
-                                               __mock_gcs_observability_publisher());
+                                               __mock_observability_publisher());
 
 class MockGcsResourceManager : public GcsResourceManager {
  public:

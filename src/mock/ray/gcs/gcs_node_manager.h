@@ -34,11 +34,11 @@ class MockGcsNodeManager : public GcsNodeManager {
                        /*cluster_id=*/ClusterID::Nil(),
                        /*ray_event_recorder=*/fake_ray_event_recorder_,
                        /*session_name=*/"",
-                       /*gcs_observability_publisher=*/FakeObsPublisher()) {}
+                       /*observability_publisher=*/FakeObsPublisher()) {}
 
-  static pubsub::GcsPublisher *FakeObsPublisher() {
-    static auto holder =
-        std::make_unique<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
+  static pubsub::ObservabilityPublisher *FakeObsPublisher() {
+    static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     return holder.get();
   }
   MOCK_METHOD(void,

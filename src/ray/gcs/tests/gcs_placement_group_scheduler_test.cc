@@ -62,8 +62,8 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         std::make_unique<GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     gcs_publisher_ = std::make_shared<pubsub::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_observability_publisher_ =
-        std::make_shared<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
+    observability_publisher_ = std::make_shared<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     auto local_node_id = NodeID::FromRandom();
     cluster_resource_scheduler_ = std::make_shared<ClusterResourceScheduler>(
         io_service_,
@@ -82,7 +82,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
                                          ClusterID::Nil(),
                                          /*ray_event_recorder=*/fake_ray_event_recorder_,
                                          /*session_name=*/"",
-                                         gcs_observability_publisher_.get());
+                                         observability_publisher_.get());
     gcs_resource_manager_ = std::make_shared<GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler_->GetClusterResourceManager(),
@@ -318,7 +318,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
   std::vector<std::shared_ptr<GcsPlacementGroup>> failure_placement_groups_
       ABSL_GUARDED_BY(placement_group_requests_mutex_);
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
-  std::shared_ptr<pubsub::GcsPublisher> gcs_observability_publisher_;
+  std::shared_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::shared_ptr<GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> raylet_client_pool_;
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;

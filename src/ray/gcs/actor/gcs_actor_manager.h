@@ -98,7 +98,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   /// \param scheduler Used to schedule actor creation tasks.
   /// \param gcs_table_storage Used to flush actor data to storage.
   /// \param gcs_publisher Used to publish gcs message.
-  /// \param gcs_observability_publisher If non-null, used for PublishError.
+  /// \param observability_publisher If non-null, used for `PublishError`.
   GcsActorManager(
       std::unique_ptr<GcsActorSchedulerInterface> scheduler,
       GcsTableStorage *gcs_table_storage,
@@ -113,7 +113,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
       const std::string &session_name,
       ray::observability::MetricInterface &actor_by_state_gauge,
       ray::observability::MetricInterface &gcs_actor_by_state_gauge,
-      pubsub::GcsPublisher *gcs_observability_publisher);
+      pubsub::ObservabilityPublisher *observability_publisher);
 
   ~GcsActorManager() override;
 
@@ -483,7 +483,7 @@ class GcsActorManager : public rpc::ActorInfoGcsServiceHandler,
   instrumented_io_context &io_context_;
   /// A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
-  pubsub::GcsPublisher *gcs_observability_publisher_;
+  pubsub::ObservabilityPublisher *observability_publisher_;
   /// This is used to communicate with raylets where actors are located.
   rpc::RayletClientPool &raylet_client_pool_;
   /// This is used to communicate with actors and their owners.

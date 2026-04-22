@@ -40,9 +40,9 @@ GcsNodeManager::GcsNodeManager(
     const ClusterID &cluster_id,
     observability::RayEventRecorderInterface &ray_event_recorder,
     const std::string &session_name,
-    pubsub::GcsPublisher *gcs_observability_publisher)
+    pubsub::ObservabilityPublisher *observability_publisher)
     : gcs_publisher_(gcs_publisher),
-      gcs_observability_publisher_(gcs_observability_publisher),
+      observability_publisher_(observability_publisher),
       gcs_table_storage_(gcs_table_storage),
       io_context_(io_context),
       raylet_client_pool_(raylet_client_pool),
@@ -670,7 +670,7 @@ std::shared_ptr<const rpc::GcsNodeInfo> GcsNodeManager::RemoveNodeFromCache(
       RAY_LOG(WARNING) << error_message.str();
       auto error_data = CreateErrorTableData(
           type, error_message.str(), absl::FromUnixMillis(current_time_ms()));
-      gcs_observability_publisher_->PublishError(node_id.Hex(), std::move(error_data));
+      observability_publisher_->PublishError(node_id.Hex(), std::move(error_data));
     }
 
     // Notify all listeners.

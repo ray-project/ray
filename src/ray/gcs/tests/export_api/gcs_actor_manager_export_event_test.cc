@@ -155,8 +155,8 @@ class GcsActorManagerTest : public ::testing::Test {
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(publisher));
-    gcs_observability_publisher_ =
-        std::make_shared<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
+    observability_publisher_ = std::make_shared<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
@@ -183,7 +183,7 @@ class GcsActorManagerTest : public ::testing::Test {
         /*session_name=*/"",
         actor_by_state_gauge_,
         gcs_actor_by_state_gauge_,
-        gcs_observability_publisher_.get());
+        observability_publisher_.get());
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -275,7 +275,7 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
-  std::shared_ptr<pubsub::GcsPublisher> gcs_observability_publisher_;
+  std::shared_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   absl::Mutex mutex_;

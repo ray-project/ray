@@ -46,11 +46,11 @@ class MockGcsActorManager : public GcsActorManager {
             /*session_name=*/"",
             /*actor_by_state_gauge=*/fake_actor_by_state_gauge_,
             /*gcs_actor_by_state_gauge=*/fake_gcs_actor_by_state_gauge_,
-            /*gcs_observability_publisher=*/FakeObsPublisher()) {}
+            /*observability_publisher=*/FakeObsPublisher()) {}
 
-  static pubsub::GcsPublisher *FakeObsPublisher() {
-    static auto holder =
-        std::make_unique<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
+  static pubsub::ObservabilityPublisher *FakeObsPublisher() {
+    static auto holder = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     return holder.get();
   }
 

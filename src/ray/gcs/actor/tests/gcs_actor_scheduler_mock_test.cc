@@ -53,8 +53,8 @@ class GcsActorSchedulerMockTest : public Test {
     core_worker_client = std::make_shared<rpc::MockCoreWorkerClientInterface>();
     client_pool = std::make_unique<rpc::RayletClientPool>(
         [this](const rpc::Address &) { return raylet_client; });
-    fake_observability_publisher_ =
-        std::make_unique<pubsub::GcsPublisher>(std::make_unique<pubsub::FakePublisher>());
+    fake_observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     gcs_node_manager =
         std::make_unique<GcsNodeManager>(nullptr,
                                          nullptr,
@@ -99,7 +99,7 @@ class GcsActorSchedulerMockTest : public Test {
   instrumented_io_context io_context;
   std::shared_ptr<MockStoreClient> store_client;
   std::unique_ptr<GcsActorTable> actor_table;
-  std::unique_ptr<pubsub::GcsPublisher> fake_observability_publisher_;
+  std::unique_ptr<pubsub::ObservabilityPublisher> fake_observability_publisher_;
   std::unique_ptr<GcsNodeManager> gcs_node_manager;
   std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
