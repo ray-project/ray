@@ -20,10 +20,6 @@ if TYPE_CHECKING:
     )
 
 
-# Scheduling strategy can be inherited from prev operator if not specified.
-INHERITABLE_REMOTE_ARGS = ["scheduling_strategy"]
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -297,26 +293,8 @@ class ExecutionPlan:
         assert bundle is not None
         return bundle
 
-    @property
-    def has_started_execution(self) -> bool:
-        """Return ``True`` if this plan has been partially or fully executed."""
-        return self._has_started_execution
-
-    def clear_cache(self) -> None:
-        """Clear the cache kept in the plan to the beginning state."""
-        self._cache.clear()
-
-    def stats(self) -> DatasetStats:
-        """Return stats for this plan.
-
-        If the plan isn't executed, an empty stats object will be returned.
-        """
-        if not self._cache.get_stats():
-            return DatasetStats(metadata={}, parent=None)
-        return self._cache.get_stats()
-
     def initial_stats(self) -> DatasetStats:
-        if self.has_computed_output():
+        if self._cache.get_bundle(self._logical_plan.dag) is not None:
             return self._cache.get_stats()
         # For Datasets created from "read_xxx", `plan._in_stats` contains useless data.
         # For Datasets created from "from_xxx", we need to use `plan._in_stats` as
@@ -328,9 +306,3 @@ class ExecutionPlan:
             return DatasetStats(metadata={}, parent=None)
         else:
             return self._in_stats
-
-    def has_computed_output(self) -> bool:
-        """Whether this plan has a computed snapshot for the final operator, i.e. for
-        the output of this plan.
-        """
-        return self._cache.get_bundle(self._logical_plan.dag) is not None
