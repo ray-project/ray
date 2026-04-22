@@ -1,5 +1,6 @@
 import functools
 import logging
+import pickle
 import time
 import typing
 from typing import (
@@ -10,7 +11,6 @@ from typing import (
     Tuple,
     Union,
 )
-import pickle
 
 import ray
 import ray.exceptions
