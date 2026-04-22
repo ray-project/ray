@@ -111,10 +111,10 @@ TrainingFailedError.__module__ = "ray.train"
 if is_v2_enabled():
     __all__.extend(
         [
-            "LoggingConfig",
             "CheckpointUploadMode",
             "CheckpointConsistencyMode",
             "ControllerError",
+            "LoggingConfig",
             "ReportedCheckpoint",
             "ReportedCheckpointStatus",
             "UserCallback",
@@ -126,10 +126,10 @@ if is_v2_enabled():
         ]
     )
 
-    LoggingConfig.__module__ = "ray.train"
     CheckpointUploadMode.__module__ = "ray.train"
     CheckpointConsistencyMode.__module__ = "ray.train"
     ControllerError.__module__ = "ray.train"
+    LoggingConfig.__module__ = "ray.train"
     ReportedCheckpoint.__module__ = "ray.train"
     ReportedCheckpointStatus.__module__ = "ray.train"
     UserCallback.__module__ = "ray.train"

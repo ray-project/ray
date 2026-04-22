@@ -79,7 +79,7 @@ class TrainLogLevelFilter(logging.Filter):
         self._log_level = getattr(logging, log_level)
 
     def filter(self, record):
-        if record.name.startswith("ray.train"):
+        if record.name == "ray.train" or record.name.startswith("ray.train."):
             return record.levelno >= self._log_level
         return True
 
