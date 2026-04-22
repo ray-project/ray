@@ -2492,6 +2492,18 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_torch_learner_optimizer_restore",
+    size = "medium",
+    srcs = ["core/learner/torch/tests/test_torch_learner_optimizer_restore.py"],
+    tags = [
+        "core",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
