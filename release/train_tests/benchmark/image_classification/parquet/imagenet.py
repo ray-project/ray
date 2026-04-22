@@ -19,6 +19,17 @@ IMAGENET_PARQUET_SPLIT_S3_DIRS = {
     DatasetKey.TEST: f"{IMAGENET_PARQUET_SPLIT_S3_ROOT}/test",
 }
 
+# Much larger parquet dataset used to sustain Ray Data backpressure in the
+# slow-consumer ingest benchmarks.
+IMAGENET_PARQUET_SPLIT_1T_S3_ROOT = (
+    "s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet_split_1t"
+)
+IMAGENET_PARQUET_SPLIT_1T_S3_DIRS = {
+    DatasetKey.TRAIN: f"{IMAGENET_PARQUET_SPLIT_1T_S3_ROOT}/train",
+    DatasetKey.VALID: f"{IMAGENET_PARQUET_SPLIT_1T_S3_ROOT}/val",
+    DatasetKey.TEST: f"{IMAGENET_PARQUET_SPLIT_1T_S3_ROOT}/test",
+}
+
 
 def get_preprocess_map_fn(
     decode_image: bool = True, random_transforms: bool = True
