@@ -532,6 +532,69 @@ def test_reconstruction_generator_out_of_scope(
     assert_no_leak()
 
 
+@pytest.mark.skipif(
+    sys.platform != "linux", reason="MADV_DONTNEED only drops pages on Linux"
+)
+def test_streaming_generator_plasma_rss_bounded(shutdown_only):
+    """Verify that worker RSS doesn't grow linearly when yielding many large
+    plasma blocks in a streaming generator.
+
+    After each block is sealed in plasma, its pages should be released from
+    the worker's page table via madvise(MADV_DONTNEED). Without this fix,
+    a task yielding N blocks accumulates ~N * block_size of RSS. With the
+    fix, RSS stays bounded because sealed blocks' pages are reclaimed.
+    """
+    NUM_BLOCKS = 10
+    BLOCK_SIZE_BYTES = 50_000_000  # 50 MB each, well above plasma inlining threshold
+
+    ray.init(
+        num_cpus=1,
+        object_store_memory=1_000_000_000,  # 1 GB
+    )
+
+    @ray.remote
+    def streaming_gen():
+        import os
+
+        rss_measurements = []
+        for i in range(NUM_BLOCKS):
+            yield np.ones(BLOCK_SIZE_BYTES, dtype=np.int8) * (i % 128)
+            # Brief pause to allow async PinObjectIDs callback to fire,
+            # which triggers the second Release() -> madvise(MADV_DONTNEED).
+            time.sleep(0.2)
+            # Read current RSS from /proc/self/statm (column 1 = resident pages)
+            with open(f"/proc/{os.getpid()}/statm") as f:
+                rss_pages = int(f.read().split()[1])
+            rss_bytes = rss_pages * os.sysconf("SC_PAGE_SIZE")
+            rss_measurements.append(rss_bytes)
+        yield rss_measurements
+
+    gen = streaming_gen.remote()
+    block_refs = []
+    for ref in gen:
+        block_refs.append(ref)
+
+    # Last item is the RSS measurements list (small, inlined)
+    rss_values = ray.get(block_refs[-1])
+    assert len(rss_values) == NUM_BLOCKS
+
+    # Verify data integrity: first and last data blocks
+    assert np.all(ray.get(block_refs[0]) == 0)
+    assert np.all(ray.get(block_refs[NUM_BLOCKS - 1]) == ((NUM_BLOCKS - 1) % 128))
+
+    # Check RSS growth between first and last yield.
+    # Without the fix: growth ≈ (NUM_BLOCKS - 1) * BLOCK_SIZE_BYTES ≈ 450 MB
+    # With the fix: growth should be much less (bounded by 1-2 blocks of lag)
+    rss_growth = rss_values[-1] - rss_values[0]
+    max_allowed_growth = 3 * BLOCK_SIZE_BYTES  # 150 MB — generous for async timing
+    assert rss_growth < max_allowed_growth, (
+        f"Worker RSS grew by {rss_growth / 1e6:.0f} MB after yielding "
+        f"{NUM_BLOCKS} x {BLOCK_SIZE_BYTES / 1e6:.0f} MB blocks. "
+        f"Expected < {max_allowed_growth / 1e6:.0f} MB with madvise fix. "
+        f"RSS trace (MB): {[round(v / 1e6) for v in rss_values]}"
+    )
+
+
 if __name__ == "__main__":
 
     sys.exit(pytest.main(["-sv", __file__]))

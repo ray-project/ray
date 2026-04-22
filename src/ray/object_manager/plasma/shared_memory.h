@@ -36,6 +36,12 @@ class ClientMmapTableEntry {
 
   MEMFD_TYPE fd() const { return fd_; }
 
+  /// Release pages in the range [offset, offset+length) from this process's
+  /// page table via madvise(MADV_DONTNEED). Safe for MAP_SHARED mappings:
+  /// data stays in the tmpfs/shm backing store, only this process's RSS is
+  /// reduced. Pages fault back in transparently on re-access.
+  void MadviseRelease(ptrdiff_t offset, int64_t length);
+
  private:
   /// The associated file descriptor on the client.
   MEMFD_TYPE fd_;
