@@ -1,5 +1,4 @@
-"""Util class to install packages via uv.
-"""
+"""Util class to install packages via uv."""
 
 import asyncio
 import hashlib
@@ -112,8 +111,7 @@ class UvProcessor:
             python,
             "-m",
             "uv",
-            "self",
-            "version",
+            "--version",
         ]
 
         try:
