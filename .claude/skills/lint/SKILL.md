@@ -5,36 +5,39 @@ description: Run linting and formatting checks on Ray code
 
 # Lint Modified Files
 
-Run linting and formatting only on files you changed. Use `git diff --name-only` to
-get the list of modified files, then pass them directly to the linters.
-
-## Python
+Run pre-commit on the files you changed:
 
 ```bash
-ruff check --fix <changed .py files>
-ruff format <changed .py files>
+pre-commit run --files $(git diff --name-only HEAD)
 ```
 
-## C++
+`pre-commit run` without `--files` only operates on staged files, so pass the
+modified file list explicitly.
 
+If pre-commit is not installed:
 ```bash
-./ci/lint/check-format.sh --fix
+pip install -c python/requirements_compiled.txt pre-commit && pre-commit install
 ```
 
 ## Handling remaining errors
 
-After running `ruff check --fix`, review any remaining errors that could not be
-auto-fixed. These typically require code changes — for example, adding a missing
-import, resolving a name conflict, or restructuring logic.
+Pre-commit auto-fixes simple issues (formatting, long lines, unused imports).
+Review any remaining errors — these typically need code changes such as adding a
+missing import, resolving a name conflict, or restructuring logic. Fix them by
+editing the source code directly.
 
-Fix these by editing the source code directly. Use `# noqa` only for false positives
-that cannot be resolved by changing the code, and include the rule code and reason:
-`# noqa: E501 — URL cannot be split`.
+Use `# noqa` only for false positives that cannot be resolved by changing the code,
+and include the rule code and reason: `# noqa: E501 — URL cannot be split`.
 
-Entries in pyproject.toml `per-file-ignores` and `extend-exclude` are managed by the
-team. Use them as-is; avoid adding new exclusions.
+## Exclusions
+
+pyproject.toml lists files in `per-file-ignores` and `extend-exclude`. When the PR
+modifies a file that is on one of these lists, fix the lint issues in your changes
+and consider removing the file from the list. Leave exclusion entries for files
+outside the PR scope untouched.
 
 ## Reference
 
-- Config: pyproject.toml (`[tool.ruff]` section)
+- Hook config: .pre-commit-config.yaml
+- Ruff config: pyproject.toml (`[tool.ruff]` section)
 - Docs: doc/source/ray-contribute/development.rst ("Development tooling")

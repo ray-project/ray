@@ -18,6 +18,11 @@ Update this skill if any changes are detected in development.rst.
    - **Dashboard files changed** (python/ray/dashboard/client/) → Dashboard rebuild first
    - **First time / clean build** → Full source build
 
+**Running Python tests that exercise C++ changes:** When a Python test depends on
+C++ or Cython code (raylet, GCS, core_worker, etc.), run the C++/Cython rebuild
+below before running the test. Editable Python installs do not rebuild the compiled
+extensions, so stale binaries will run otherwise.
+
 ## Python-only rebuild
 
 For changes to Tune, RLlib, Autoscaler, and most Python files.
