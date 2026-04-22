@@ -301,9 +301,9 @@ NodeManager::NodeManager(
                                         "NodeManager.GCTaskFailureReason");
 
   if (RayConfig::instance().enable_plasma_move_semantics()) {
-    RAY_LOG(INFO) << "Plasma move semantics enabled.";
+    RAY_LOG(INFO) << "[karticam] Plasma move semantics enabled.";
     object_manager_.SetOnPushComplete([this](const ObjectID &object_id) {
-      RAY_LOG(INFO) << "Move semantic: releasing local copy of " << object_id
+      RAY_LOG(INFO) << "[karticam] Move semantic: releasing local copy of " << object_id
                     << " after push complete. Object store used before release: "
                     << object_manager_.GetUsedMemory() << " bytes ("
                     << object_manager_.GetUsedMemoryPercentage() * 100 << "%)";

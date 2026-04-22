@@ -1336,7 +1336,7 @@ class ReporterAgent(
                 f"used_pct={node_mem[2]:.1f}%"
             )
 
-        lines = [f"[mem-stats] ip={self._ip} {mem_line}"]
+        lines = [f"[karticam] [mem-stats] ip={self._ip} {mem_line}"]
         for component_name, component_stats in [
             ("raylet", [stats.get("raylet")] if stats.get("raylet") else []),
             ("agent", [stats.get("agent")] if stats.get("agent") else []),
@@ -1352,7 +1352,7 @@ class ReporterAgent(
                 if mem_full and hasattr(mem_full, "uss"):
                     uss_mb = mem_full.uss / 1e6
                 lines.append(
-                    f"[mem-stats]   {component_name} pid={s.get('pid')}: "
+                    f"[karticam] [mem-stats]   {component_name} pid={s.get('pid')}: "
                     f"rss={rss_mb:.1f}MB uss={uss_mb:.1f}MB shm={shm_mb:.1f}MB"
                 )
 
@@ -1368,7 +1368,7 @@ class ReporterAgent(
                 uss_mb = mem_full.uss / 1e6
             cmdline = " ".join(w.get("cmdline", [])[:3])
             lines.append(
-                f"[mem-stats]   worker pid={w.get('pid')}: "
+                f"[karticam] [mem-stats]   worker pid={w.get('pid')}: "
                 f"rss={rss_mb:.1f}MB uss={uss_mb:.1f}MB shm={shm_mb:.1f}MB "
                 f"cmd={cmdline}"
             )
