@@ -807,7 +807,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # happen when `preserve_order=True`).
         # Then we'll have no budget to pull blocks from the op.
         self._reserved_for_op_outputs: Dict[PhysicalOperator, float] = {}
-        # Total shared resources.
+        # Leftover resources after per-op reservations; shared among all eligible ops.
+        # Stored for observability (tests can inspect it); only consumed locally in
+        # update_budgets().
         self._total_shared = ExecutionResources.zero()
         # Total allocation per operator: _op_reserved[op] + the shared-pool portion
         # granted in update_budgets(). This is the final resource grant for the round.
@@ -816,24 +818,25 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         self._op_allocations: Dict[PhysicalOperator, ExecutionResources] = {}
         # Remaining memory budget for generating new task outputs, per operator.
         self._output_budgets: Dict[PhysicalOperator, float] = {}
-        # Whether each operator has reserved the minimum resources to run
-        # at least one task.
-        # This is used to avoid edge cases where the entire resource limits are not
-        # enough to run one task of each op.
-        # See `test_no_deadlock_on_small_cluster_resources` as an example.
-        self._reserved_min_resources: Dict[PhysicalOperator, bool] = {}
 
         self._idle_detector = self.IdleDetector()
 
-    def _update_reservation(self, limits: ExecutionResources):
+    def _update_reservation(self, limits: ExecutionResources) -> tuple:
+        """Compute per-op reservations from `limits`.
+
+        Args:
+            limits: The global resource limits available for allocation.
+
+        Returns:
+            (op_reserved, reserved_for_op_outputs, total_shared)
+        """
         eligible_ops = self._resource_manager.get_eligible_ops()
 
-        self._op_reserved.clear()
-        self._reserved_for_op_outputs.clear()
-        self._reserved_min_resources.clear()
+        op_reserved: Dict[PhysicalOperator, ExecutionResources] = {}
+        reserved_for_op_outputs: Dict[PhysicalOperator, float] = {}
 
         if len(eligible_ops) == 0:
-            return
+            return op_reserved, reserved_for_op_outputs, ExecutionResources.zero()
 
         remaining = limits.copy()
 
@@ -861,11 +864,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # and reserved_for_outputs. Note, we only consider CPU and GPU, but not
             # object_store_memory, because object_store_memory can be oversubscribed,
             # but CPU/GPU cannot.
-            if reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
+            if not reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
                 remaining, ignore_object_store_memory=True
             ):
-                self._reserved_min_resources[op] = True
-            else:
                 # If the remaining resources are not enough to reserve the minimum
                 # resources for this operator, we'll only reserve the minimum object
                 # store memory, but not the CPU and GPU resources.
@@ -873,7 +874,6 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 # NOTE: we prioritize upstream operators for minimum resource reservation.
                 # ops. It's fine that downstream ops don't get the minimum reservation,
                 # because they can wait for upstream ops to finish and release resources.
-                self._reserved_min_resources[op] = False
                 reserved_for_tasks = ExecutionResources(
                     0, 0, min_resource_usage.object_store_memory
                 )
@@ -887,14 +887,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                         " The job may hang forever unless the cluster scales up."
                     )
 
-            self._op_reserved[op] = reserved_for_tasks
-            self._reserved_for_op_outputs[op] = reserved_for_outputs.object_store_memory
+            op_reserved[op] = reserved_for_tasks
+            reserved_for_op_outputs[op] = reserved_for_outputs.object_store_memory
 
             op_total_reserved = reserved_for_tasks.add(reserved_for_outputs)
             remaining = remaining.subtract(op_total_reserved)
             remaining = remaining.max(ExecutionResources.zero())
 
-        self._total_shared = remaining
+        return op_reserved, reserved_for_op_outputs, remaining
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
         """Return whether the given operator can submit a new task based on budget."""
@@ -996,8 +996,15 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         *,
         limits: ExecutionResources,
     ):
-        # Compute per-op reservations and store leftover in self._total_shared.
-        self._update_reservation(limits)
+        # Compute per-op reservations. op_reserved and reserved_for_op_outputs are
+        # stored as instance state so that get_budget() and related methods can read
+        # them between update_budgets() calls. _total_shared is stored for observability
+        # (e.g. tests), but is otherwise only needed locally in this method.
+        (
+            self._op_reserved,
+            self._reserved_for_op_outputs,
+            self._total_shared,
+        ) = self._update_reservation(limits)
 
         op_budgets = {}
         self._op_allocations.clear()

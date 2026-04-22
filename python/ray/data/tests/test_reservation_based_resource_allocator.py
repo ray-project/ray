@@ -242,24 +242,32 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         assert isinstance(allocator, ReservationOpResourceAllocator)
 
-        # o2 uses 5 CPUs while o3 is idle. Fair CPU per op = reserved + total_shared/2
-        # = 2 + 2 = 4, so o2 is 1 CPU over its fair share on CPU only.
+        # o1 and o4 are topology infrastructure only; both have
+        # ``throttling_disabled=True`` so they are ineligible
+        # for allocation and don't affect thebudgets.
+        # o2 uses 5 CPUs while o3 is idle.
+        # _update_reservation: reserved=2 per op, _total_shared=4.
+        # First loop: o2 exceeds reserved by 3, so remaining_shared = 4 - 3 = 1.
+        # Second loop (downstream-first): o3 gets 0.5, o2 gets 0.5.
+        # allocation[o2] = reserved + op_shared = 2 + 0.5 = 2.5
+        # net = 2.5 - 5 = -2.5 (over-allocated, autoscaler can downscale)
         op_usages[o2] = ExecutionResources(cpu=5, gpu=0, object_store_memory=0)
         op_usages[o3] = ExecutionResources.zero()
 
         allocator.update_budgets(limits=global_limits)
 
         alloc2 = allocator.get_allocation(o2)
-        usage2 = resource_manager.get_op_usage(o2)
-        assert alloc2 is not None and usage2 is not None
-        net = alloc2.subtract(usage2)
-        assert net.cpu < 0, (alloc2, usage2, net)
+        assert alloc2 is not None
+        net = alloc2.subtract(resource_manager.get_op_usage(o2))
+        assert net.cpu == -2.5, (alloc2, net)
 
-        # At moderate usage (3 CPUs), still within allocation on CPU — net CPU > 0.
+        # At moderate usage (3 CPUs), still within allocation.
+        # o2 exceeds reserved by 1, remaining_shared = 3; each op gets 1.5 shared.
+        # allocation[o2] = 2 + 1.5 = 3.5; net = 3.5 - 3 = 0.5
         op_usages[o2] = ExecutionResources(cpu=3, gpu=0, object_store_memory=0)
         allocator.update_budgets(limits=global_limits)
         net = allocator.get_allocation(o2).subtract(resource_manager.get_op_usage(o2))
-        assert net.cpu > 0, net
+        assert net.cpu == 0.5, net
 
     def test_allocation_includes_leftover_shared_for_uncapped_op(
         self, restore_data_context
@@ -305,9 +313,13 @@ class TestReservationOpResourceAllocator:
         allocator = resource_manager._op_resource_allocator
         allocator.update_budgets(limits=global_limits)
 
-        # Leftover CPU should be reflected in both budget and allocation for uncapped o3.
-        assert allocator.get_allocation(o3).cpu == allocator.get_budget(o3).cpu
-        assert allocator.get_allocation(o3).cpu > allocator._op_reserved[o3].cpu
+        # _op_reserved[o2]=2 (capped), _op_reserved[o3]=4, _total_shared=10.
+        # Second loop: o3 gets 5 shared; o2 gets 5 but capped at max=2 → op_shared=0,
+        #   leaving remaining_shared=5.
+        # Leftover loop: o3 (uncapped) absorbs the remaining 5.
+        # allocation[o3] = 4 + 5 + 5 = 14; budget[o3] = 14 - min(4, 0) = 14.
+        assert allocator.get_allocation(o3).cpu == 14
+        assert allocator.get_budget(o3).cpu == 14
 
     def test_reserve_min_resource_requirements(self, restore_data_context):
         """Test that we'll reserve at least min_resource_requirements
