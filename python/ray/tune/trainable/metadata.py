@@ -4,7 +4,10 @@ from numbers import Number
 from typing import Optional, Tuple
 
 from ray.train._internal.checkpoint_manager import _CheckpointManager
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.tune.utils.serialization import (
+    TuneFunctionEncoder,
+    _loads_with_cloudpickle,
+)
 
 
 class _TrainingRunMetadata:
@@ -94,7 +97,7 @@ class _TrainingRunMetadata:
 
     @classmethod
     def from_json_state(cls, json_state: str) -> "_TrainingRunMetadata":
-        state = json.loads(json_state, cls=TuneFunctionDecoder)
+        state = _loads_with_cloudpickle(json_state)
 
         run_metadata = cls()
         run_metadata.__dict__.update(state)

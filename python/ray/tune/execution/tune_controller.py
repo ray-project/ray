@@ -54,7 +54,10 @@ from ray.tune.utils import flatten_dict, warn_if_slow
 from ray.tune.utils.log import Verbosity, _dedup_logs, has_verbosity
 from ray.tune.utils.object_cache import _ObjectCache
 from ray.tune.utils.resource_updater import _ResourceUpdater
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.tune.utils.serialization import (
+    TuneFunctionEncoder,
+    _loads_with_cloudpickle,
+)
 from ray.util.annotations import DeveloperAPI
 from ray.util.debug import log_once
 
@@ -443,7 +446,7 @@ class TuneController:
             f"{Path(newest_state_path).name}"
         )
         with self._storage.storage_filesystem.open_input_stream(newest_state_path) as f:
-            experiment_state = json.loads(f.readall(), cls=TuneFunctionDecoder)
+            experiment_state = _loads_with_cloudpickle(f.readall())
 
         self.__setstate__(experiment_state["runner_data"])
 

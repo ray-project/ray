@@ -46,7 +46,10 @@ from ray.tune.result import (
 )
 from ray.tune.trainable.metadata import _TrainingRunMetadata
 from ray.tune.utils import date_str, flatten_dict
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.tune.utils.serialization import (
+    TuneFunctionEncoder,
+    _loads_with_cloudpickle,
+)
 from ray.util import log_once
 from ray.util.annotations import Deprecated, DeveloperAPI
 
@@ -962,7 +965,7 @@ class Trial:
 
     @classmethod
     def from_json_state(cls, json_state: str, stub: bool = False) -> "Trial":
-        state = json.loads(json_state, cls=TuneFunctionDecoder)
+        state = _loads_with_cloudpickle(json_state)
 
         new_trial = Trial(
             state["trainable_name"],
