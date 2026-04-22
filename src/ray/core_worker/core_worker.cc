@@ -1964,7 +1964,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint,
-    const std::string &serialized_retry_exception_allowlist,
+    std::string_view serialized_retry_exception_allowlist,
     const std::string &call_site,
     const TaskID current_task_id) {
   SubscribeToNodeChanges();
@@ -2039,7 +2039,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
 Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
-                               const std::string &extension_data,
+                               std::string_view extension_data,
                                const std::string &call_site,
                                ActorID *return_actor_id) {
   SubscribeToNodeChanges();
@@ -2378,7 +2378,7 @@ Status CoreWorker::SubmitActorTask(
     const TaskOptions &task_options,
     int max_retries,
     bool retry_exceptions,
-    const std::string &serialized_retry_exception_allowlist,
+    std::string_view serialized_retry_exception_allowlist,
     const std::string &call_site,
     std::vector<rpc::ObjectReference> &task_returns,
     const TaskID current_task_id) {

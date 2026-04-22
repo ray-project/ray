@@ -50,7 +50,7 @@ struct CoreWorkerOptions {
       const std::vector<std::shared_ptr<RayObject>> &args,
       const std::vector<rpc::ObjectReference> &arg_refs,
       const std::string &debugger_breakpoint,
-      const std::string &serialized_retry_exception_allowlist,
+      std::string_view serialized_retry_exception_allowlist,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *returns,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_returns,
       std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,

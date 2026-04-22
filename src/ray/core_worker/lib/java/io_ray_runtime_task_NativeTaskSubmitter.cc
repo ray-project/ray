@@ -473,7 +473,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
       task_options,
       max_retries,
       /*retry_exceptions=*/false,
-      /*serialized_retry_exception_allowlist=*/"",
+      serialized_retry_exception_allowlist="",
       /*call_site=*/"",
       return_refs);
   if (!status.ok()) {
