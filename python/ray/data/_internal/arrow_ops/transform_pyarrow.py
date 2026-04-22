@@ -94,7 +94,7 @@ def _hash_partition(
             hashes = pd.util.hash_pandas_object(table.to_pandas(), index=False).values
             np.mod(hashes, num_partitions, out=hashes)
             partitions = hashes
-        except TypeError:
+        except (TypeError, ValueError):
             # Struct/nested columns become dicts in pandas, which are unhashable.
             # Fall back to row-by-row hashing on PyArrow scalars.
             partitions = np.zeros((table.num_rows,), dtype=np.int64)
