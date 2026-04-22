@@ -65,13 +65,18 @@ def main(args):
             right_on=("n_regionkey",),
         ).select_columns(["n_nationkey", "n_name"])
 
-        customer_nation = nation_region.join(
-            customer,
-            num_partitions=16,
-            join_type="inner",
-            on=("n_nationkey",),
-            right_on=("c_nationkey",),
-        ).select_columns(["c_custkey", "c_nationkey", "n_name"])
+        # TODO: manual rename n_nationkey to c_nationkey as workaround, the join planner or operator should be able to infer the correct join column to keep.
+        customer_nation = (
+            nation_region.join(
+                customer,
+                num_partitions=16,
+                join_type="inner",
+                on=("n_nationkey",),
+                right_on=("c_nationkey",),
+            )
+            .select_columns(["c_custkey", "n_nationkey", "n_name"])
+            .rename_columns({"n_nationkey": "c_nationkey"})
+        )
 
         orders_filtered = orders.filter(
             expr=((col("o_orderdate") >= date_start) & (col("o_orderdate") < date_end))
