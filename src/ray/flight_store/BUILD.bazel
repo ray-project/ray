@@ -23,9 +23,9 @@ cc_library(
         "arrow_flight_store_api.h",
     ],
     strip_include_prefix = "//src",
+    tags = ["manual"],
     visibility = ["//visibility:public"],
     deps = [
         "@pyarrow//:arrow",
     ],
-    tags = ["manual"],
 )
