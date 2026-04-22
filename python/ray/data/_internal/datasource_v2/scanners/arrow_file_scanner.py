@@ -165,7 +165,9 @@ class ArrowFileScanner(
         """Plan parallel work units, pruning files by partition predicate first.
 
         If a partition predicate is set, files whose partition values do not
-        satisfy the predicate are removed from the manifest before splitting.
+        satisfy the predicate are removed from the manifest. The pruned
+        manifest is then handed to ``FileScanner.plan``, which applies the
+        shuffle (if configured) before splitting.
 
         Args:
             manifest: FileManifest to partition.
