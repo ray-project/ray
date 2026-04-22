@@ -2036,11 +2036,10 @@ class ReplicaStateContainer:
         assert isinstance(state, ReplicaState), f"Type: {type(state)}"
         actor_details = getattr(replica, "actor_details", None)
         old_state = actor_details.state if actor_details is not None else None
-        is_new_replica = replica.replica_id not in self._replica_id_index
         replica.update_state(state)
         self._replicas[state].append(replica)
         self._replica_id_index[replica.replica_id] = replica
-        if self._on_replica_state_change and (state != old_state or is_new_replica):
+        if self._on_replica_state_change:
             self._on_replica_state_change(replica.replica_id, old_state, state)
 
     def get(
