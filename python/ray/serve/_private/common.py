@@ -197,14 +197,15 @@ class ReplicaState(str, Enum):
         1=STARTING, 2=UPDATING, 3=RECOVERING, 4=RUNNING,
         5=STOPPING, 6=PENDING_MIGRATION.
         """
-        return {
+        mapping = {
             ReplicaState.STARTING: 1,
             ReplicaState.UPDATING: 2,
             ReplicaState.RECOVERING: 3,
             ReplicaState.RUNNING: 4,
             ReplicaState.STOPPING: 5,
             ReplicaState.PENDING_MIGRATION: 6,
-        }[self]
+        }
+        return mapping.get(self, 0)
 
 
 class DeploymentStatus(str, Enum):

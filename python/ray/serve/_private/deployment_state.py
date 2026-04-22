@@ -4615,6 +4615,10 @@ class DeploymentState:
                 replica_id = replica.replica_id.unique_id
                 self._clear_health_gauge_cache(replica_id)
                 self._replica_state_cache.pop(replica.replica_id, None)
+                # Update the replica state gauge to 0 (UNKNOWN)
+                self.replica_state_gauge.set(
+                    0, tags={"replica": replica_id}
+                )
                 if self._rank_manager.has_replica_rank(replica_id):
                     # Only release rank if assigned. Replicas that failed allocation
                     # or never reached RUNNING state won't have ranks.
