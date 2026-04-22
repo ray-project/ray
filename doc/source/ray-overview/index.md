@@ -1,7 +1,7 @@
 (overview-overview)=
 # Overview
 
-Ray is an open-source unified framework for scaling AI and Python applications. It provides Pythonic abstractions that minimizes the complexity of distributed computing, allowing users to focus on their application rather than infrastructure. It provides the following:
+Ray is an open-source unified framework for scaling AI and Python applications. It provides Pythonic abstractions that minimize the complexity of distributed computing, allowing users to focus on their application rather than infrastructure. It provides the following:
 * A simple Python decorator for parallelizing and scaling functions and classes.
 * Scalable libraries for AI workloads such as data preprocessing, distributed training, hyperparameter tuning, reinforcement learning, and model serving.
 * Integrations and utilities for integrating and deploying a Ray cluster with existing tools and infrastructure such as Kubernetes, AWS, GCP, and Azure.
