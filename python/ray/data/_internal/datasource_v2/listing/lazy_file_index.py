@@ -49,10 +49,11 @@ class LazyFileIndex:
     Concurrency: only one active iteration per instance; a second
     ``list_files`` call while an iterator is live raises.
 
-    Pickle: the in-flight iterator is dropped; only the cache survives.
-    After unpickling, cached manifests replay first and the indexer is
-    re-invoked for the remainder, filtering paths already cached. Assumes
-    the filesystem listing is stable across pickle boundaries.
+    Pickle: the in-flight iterator is dropped; only cached manifests
+    survive. After unpickling, cached manifests replay first and the
+    indexer is re-invoked for the remainder; a dedup set built lazily
+    from the cached prefix filters paths already emitted by the driver.
+    Assumes the filesystem listing is stable across pickle boundaries.
     """
 
     def __init__(
@@ -138,27 +139,50 @@ class LazyFileIndex:
                 return
 
             if self._listing_iterator is None:
+                # On worker-side resumption after unpickle, build the dedup
+                # set once from the driver-listed prefix. The re-invoked
+                # indexer lists from scratch and would re-emit cached paths;
+                # we filter them out below. On the driver's initial listing
+                # the cache is empty and the set stays empty — the indexer
+                # yields each path at most once, so dedup is unnecessary.
+                # Cap memory at the driver prefix (bounded by
+                # ``planning_file_listing_budget``); worker-discovered paths
+                # are not added to the set.
+                if self._cached_manifests:
+                    self._cached_paths = set()
+                    for cached in self._cached_manifests:
+                        self._cached_paths.update(cached.paths.tolist())
                 self._listing_iterator = self._indexer.list_files(
-                    pa.array(self._paths),
+                    pa.array(self._paths, type=pa.string()),
                     filesystem=self._filesystem,
                     pruners=self._pruners,
                     preserve_order=self._preserve_order,
                 )
 
             for manifest in self._listing_iterator:
-                filtered = self._dedup_and_cache(manifest)
+                filtered = self._filter_and_cache(manifest)
                 if filtered is not None:
                     yield filtered
 
             self._fully_listed = True
             self._listing_iterator = None
-            # Dedup set is only consulted when re-listing; once fully cached
-            # it is no longer needed and can be large for big listings.
             self._cached_paths = set()
         finally:
             self._iterating = False
 
-    def _dedup_and_cache(self, manifest: FileManifest) -> Optional[FileManifest]:
+    def _filter_and_cache(self, manifest: FileManifest) -> Optional[FileManifest]:
+        """Filter a manifest against the dedup set and append to the cache.
+
+        The dedup set is populated only on worker-side resumption (see
+        ``_iter_manifests``); on the driver it stays empty and the manifest
+        passes through unchanged. Worker-discovered paths are not added to
+        the set — every path the indexer re-emits is compared against the
+        fixed driver-listed prefix, so the set never grows past that bound.
+        """
+        if not self._cached_paths:
+            self._cached_manifests.append(manifest)
+            return manifest
+
         paths = manifest.paths.tolist()
         sizes = manifest.file_sizes.tolist()
 
@@ -167,7 +191,6 @@ class LazyFileIndex:
         for path, size in zip(paths, sizes):
             if path in self._cached_paths:
                 continue
-            self._cached_paths.add(path)
             new_paths.append(path)
             new_sizes.append(size)
 
@@ -217,4 +240,7 @@ class LazyFileIndex:
         # runtime guard that doesn't carry meaning across processes.
         state["_listing_iterator"] = None
         state["_iterating"] = False
+        # Rebuilt lazily from ``_cached_manifests`` on worker resumption; no
+        # need to pay the pickle cost for a set we can reconstruct on demand.
+        state["_cached_paths"] = set()
         return state

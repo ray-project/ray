@@ -128,9 +128,19 @@ class TestLazyFileIndexStreaming:
         second = _collect_paths(idx.list_files())
         assert second == ["a", "b", "c"]
 
-    def test_dedup_set_freed_when_fully_listed(self):
+    def test_driver_listing_does_not_populate_dedup_set(self):
+        # On the driver's initial listing, the indexer yields each path at
+        # most once, so the dedup set is unnecessary and must stay empty.
+        # This bounds memory for very large listings (millions of files):
+        # ``_cached_paths`` only grows on worker-side resumption, capped by
+        # the driver-listed prefix.
         idx = _make_index([_manifest(["a", "b"]), _manifest(["c"])])
-        _collect_paths(idx.list_files())
+        it = iter(idx.list_files())
+        next(it)
+        assert idx._cached_paths == set()
+        # Drain the rest — dedup set must still be empty mid-stream.
+        for _ in it:
+            assert idx._cached_paths == set()
         assert idx.fully_listed is True
         assert idx._cached_paths == set()
 
@@ -196,6 +206,17 @@ class TestLazyFileIndexPickle:
         assert restored.fully_listed is True
         assert _collect_paths(restored.list_files()) == ["a", "b", "c"]
 
+    def test_pickle_drops_dedup_set(self):
+        # The dedup set is rebuilt lazily from _cached_manifests on the
+        # worker; it should not be carried through pickle.
+        idx = _make_index(
+            [_manifest(["a", "b"]), _manifest(["c", "d"]), _manifest(["e"])]
+        )
+        _ = idx.list_files(sample=2)
+
+        restored = pickle.loads(pickle.dumps(idx))
+        assert restored._cached_paths == set()
+
     def test_worker_resume_does_not_relist_cached_paths(self):
         # Driver samples partially, pickles to worker. On the worker, the
         # indexer iterator is re-created from scratch and would yield paths
@@ -220,6 +241,36 @@ class TestLazyFileIndexPickle:
         cached_indices = [full.index(p) for p in cached_paths]
         new_indices = [full.index(p) for p in set(full) - cached_paths]
         assert max(cached_indices) < min(new_indices)
+
+    def test_worker_dedup_set_bounded_by_driver_prefix(self):
+        # The dedup set must only contain the driver-listed prefix — paths
+        # the worker newly discovers must not be added. This bounds memory
+        # to the driver prefix, which is capped by
+        # ``planning_file_listing_budget``, rather than growing with the
+        # full dataset size.
+        manifests = [_manifest(["a", "b"]), _manifest(["c", "d"]), _manifest(["e"])]
+        idx = LazyFileIndex(_FakeIndexer(manifests), paths=[], filesystem=None)
+        _ = idx.list_files(sample=2)
+        driver_prefix = {p for m in idx._cached_manifests for p in m.paths.tolist()}
+
+        restored = pickle.loads(pickle.dumps(idx))
+        restored._indexer = _FakeIndexer(manifests)
+
+        # Drive iteration to completion.
+        _collect_paths(restored.list_files())
+
+        # After full listing the set is released, so capture it mid-stream
+        # instead: re-prime and inspect before the final manifest.
+        idx2 = LazyFileIndex(_FakeIndexer(manifests), paths=[], filesystem=None)
+        _ = idx2.list_files(sample=2)
+        restored2 = pickle.loads(pickle.dumps(idx2))
+        restored2._indexer = _FakeIndexer(manifests)
+        it = iter(restored2.list_files())
+        # Advance past the cached prefix; the next pull triggers the indexer.
+        for _ in range(len(idx2._cached_manifests)):
+            next(it)
+        next(it)
+        assert restored2._cached_paths == driver_prefix
 
 
 if __name__ == "__main__":
