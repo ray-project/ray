@@ -179,9 +179,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 execution_id=execution_id,
             )
 
-        if autoscaling_coordinator is None:
-            autoscaling_coordinator = DefaultAutoscalingCoordinator()
-
         self._resource_limits = resource_limits
         self._resource_utilization_calculator = resource_utilization_calculator
         # Threshold of cluster utilization to trigger scaling up.
@@ -198,7 +195,13 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         # resources into explicit autoscaler demand.
         self._last_non_empty_resource_request: List[ResourceDict] = []
         self._last_non_empty_request_time: Optional[float] = None
+        # Unique identifier for the cluster autoscaler as a requester for
+        # the autoscaling coordinator.
         self._requester_id = f"data-{execution_id}"
+        if autoscaling_coordinator is None:
+            autoscaling_coordinator = DefaultAutoscalingCoordinator(
+                requester_id=self._requester_id
+            )
         self._autoscaling_coordinator = autoscaling_coordinator
         self._get_node_counts = get_node_counts
         self._get_time = get_time
@@ -316,7 +319,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
         # Make autoscaler resource request.
         self._autoscaling_coordinator.request_resources(
-            requester_id=self._requester_id,
             resources=resource_request,
             expire_after_s=self.AUTOSCALING_REQUEST_EXPIRE_TIME_S,
             request_remaining=True,
@@ -334,7 +336,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
     def on_executor_shutdown(self):
         # Cancel the resource request when the executor is shutting down.
         try:
-            self._autoscaling_coordinator.cancel_request(self._requester_id)
+            self._autoscaling_coordinator.cancel_request()
         except Exception:
             msg = (
                 f"Failed to cancel resource request for {self._requester_id}."
@@ -345,9 +347,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
     def get_total_resources(self) -> ExecutionResources:
         """Get total resources available from the autoscaling coordinator."""
-        resources = self._autoscaling_coordinator.get_allocated_resources(
-            requester_id=self._requester_id
-        )
+        resources = self._autoscaling_coordinator.get_allocated_resources()
         total = ExecutionResources.zero()
         for res in resources:
             total = total.add(ExecutionResources.from_resource_dict(res))
