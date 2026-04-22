@@ -54,7 +54,6 @@ def main(args):
 
     print(f"Running GPU batch prediction with data from {data_url}")
 
-    PREPROCESS_BATCH_SIZE = "auto"
     # Largest batch that can fit on a T4.
     INFERENCE_BATCH_SIZE = 900
 
@@ -106,7 +105,7 @@ def main(args):
     else:
         compute = ActorPoolStrategy(min_size=1, max_size=10)
         num_gpus = 1
-    ds = ds.map_batches(preprocess, batch_size=PREPROCESS_BATCH_SIZE)
+    ds = ds.map_batches(preprocess, batch_size="auto")
     ds = ds.map_batches(
         Predictor,
         batch_size=INFERENCE_BATCH_SIZE,
