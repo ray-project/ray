@@ -434,5 +434,56 @@ def test_custom_image_build_and_test_init_cleans_stale_chunks(
     ), f"Stale chunk file {stale_path} was not cleaned up"
 
 
+@patch(
+    "ray_release.scripts.custom_image_build_and_test_init.subprocess.run",
+    return_value=None,
+)
+@patch.dict("os.environ", {"AUTOMATIC": "1"})
+@patch.dict("os.environ", {"BUILDKITE": "1"})
+@patch.dict("os.environ", {"RAYCI_BUILD_ID": "a1b2c3d4"})
+@patch("ray_release.test.Test.update_from_s3", return_value=None)
+@patch("ray_release.test.Test.is_jailed_with_open_issue", return_value=False)
+def test_custom_image_build_and_test_init_uploads_chunks(
+    mock_update_from_s3, mock_is_jailed_with_open_issue, mock_subprocess_run
+):
+    """--upload-to-buildkite shells out to buildkite-agent once per chunk."""
+    runner = CliRunner()
+    test_jobs_output_file = "test_jobs_upload.json"
+    result = runner.invoke(
+        main,
+        [
+            "--test-collection-file",
+            "release/ray_release/tests/sample_5_tests.yaml",
+            "--global-config",
+            "oss_config.yaml",
+            "--frequency",
+            "nightly",
+            "--run-jailed-tests",
+            "--run-unstable-tests",
+            "--test-filters",
+            "prefix:hello_world",
+            "--custom-build-jobs-output-file",
+            "custom_build_jobs.yaml",
+            "--test-jobs-output-file",
+            test_jobs_output_file,
+            "--upload-to-buildkite",
+        ],
+        catch_exceptions=False,
+    )
+    assert result.exit_code == 0
+    # Filter for pipeline uploads; settings loading also calls
+    # `buildkite-agent meta-data get ...` through the same patched subprocess.
+    upload_calls = [
+        c
+        for c in mock_subprocess_run.call_args_list
+        if c.args and c.args[0][:3] == ["buildkite-agent", "pipeline", "upload"]
+    ]
+    # 5 tests under default max (450) → exactly one chunk → one upload call.
+    assert len(upload_calls) == 1
+    cmd = upload_calls[0].args[0]
+    assert cmd[3].endswith("test_jobs_upload_0.json")
+    assert upload_calls[0].kwargs.get("check") is True
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
