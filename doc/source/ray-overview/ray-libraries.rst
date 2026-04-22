@@ -376,27 +376,6 @@ more information.
 
     .. grid-item-card::
 
-        .. figure:: ../images/prefect.png
-            :class: card-figure
-
-        .. div::
-
-            .. image:: https://img.shields.io/github/stars/PrefectHQ/prefect-ray?style=social
-                :target: https://github.com/PrefectHQ/prefect-ray
-
-            Prefect is an open source workflow orchestration platform in Python. It allows you to easily define, track and schedule workflows in Python. This integration makes it easy to run a Prefect workflow on a Ray cluster in a distributed way.
-
-        +++
-        .. button-link:: https://github.com/PrefectHQ/prefect-ray
-            :color: primary
-            :outline:
-            :expand:
-
-            Prefect Integration
-
-
-    .. grid-item-card::
-
         .. figure:: ../images/plugboard.png
             :class: card-figure
 
@@ -414,6 +393,27 @@ more information.
             :expand:
 
             Plugboard Integration
+
+
+    .. grid-item-card::
+
+        .. figure:: ../images/prefect.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/PrefectHQ/prefect-ray?style=social
+                :target: https://github.com/PrefectHQ/prefect-ray
+
+            Prefect is an open source workflow orchestration platform in Python. It allows you to easily define, track and schedule workflows in Python. This integration makes it easy to run a Prefect workflow on a Ray cluster in a distributed way.
+
+        +++
+        .. button-link:: https://github.com/PrefectHQ/prefect-ray
+            :color: primary
+            :outline:
+            :expand:
+
+            Prefect Integration
 
 
     .. grid-item-card::
