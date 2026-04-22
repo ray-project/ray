@@ -257,10 +257,24 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
             return target_num_actors
 
         elif req.delta < 0:
-            num_released = 0
-            target_num_actors = abs(req.delta)
+            # Core actor pools must never scale below 1 actor: cross-actor
+            # retry/reconstruction requires a peer to redirect failed tasks to, and the
+            # retry loop has no fallback once the pool is empty. Clamp
+            # the delta so current_size stays >= 1 even on force=True
+            # requests.
+            num_actors_to_remove = abs(req.delta)
+            max_removable = max(0, self.current_size() - 1)
+            if num_actors_to_remove > max_removable:
+                logger.warning(
+                    f"Clamping scale-down request (delta={req.delta}, "
+                    f"reason={req.reason}) to {-max_removable}: core actor "
+                    f"pools must retain at least 1 actor to serve retries "
+                    f"({self.get_actor_info()})"
+                )
+                num_actors_to_remove = max_removable
 
-            for _ in range(target_num_actors):
+            num_released = 0
+            for _ in range(num_actors_to_remove):
                 if self._remove_inactive_actor():
                     num_released += 1
 

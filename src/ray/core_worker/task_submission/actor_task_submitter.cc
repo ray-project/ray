@@ -30,34 +30,12 @@ namespace core {
 
 namespace {
 
-std::string PoolTaskDebugString(const TaskSpecification &task_spec) {
-  std::ostringstream stream;
-  stream << "task_id=" << task_spec.TaskId() << " actor_id=" << task_spec.ActorId()
-         << " attempt=" << task_spec.AttemptNumber();
-  if (task_spec.IsPoolTask()) {
-    const auto &msg = task_spec.GetMessage();
-    stream << " pool_id=" << ActorPoolID::FromBinary(msg.actor_pool_id());
-    if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
-      stream << " work_item_id=" << TaskID::FromBinary(msg.actor_pool_work_item_id());
-    }
-  }
-  stream << " class=" << task_spec.FunctionDescriptor()->ClassName()
-         << " call=" << task_spec.FunctionDescriptor()->CallString();
-  return stream.str();
-}
-
 void MaybeNotifyPoolTaskSubmitted(const PoolTaskSubmittedCallback &callback,
                                   const TaskSpecification &task_spec) {
   if (!callback || !task_spec.IsPoolTask()) {
     return;
   }
-  const auto &msg = task_spec.GetMessage();
-  TaskID work_item_id = TaskID::Nil();
-  if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
-    work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
-  }
-  RAY_LOG(INFO) << "ActorPoolDebug submit-notify " << PoolTaskDebugString(task_spec);
-  callback(task_spec.ActorId(), work_item_id);
+  callback(task_spec.ActorId(), task_spec.TaskId());
 }
 
 // Helper to notify ActorPoolManager when a pool task completes.
@@ -65,30 +43,17 @@ void MaybeNotifyPoolTaskComplete(const PoolTaskCompletionCallback &callback,
                                  const TaskSpecification &task_spec,
                                  const Status &status,
                                  const rpc::RayErrorInfo *error_info) {
-  if (!callback) {
+  if (!callback || !task_spec.IsPoolTask()) {
     return;
   }
-
-  // Check if this task belongs to an actor pool
-  if (!task_spec.IsPoolTask()) {
-    return;
-  }
-
-  const auto &msg = task_spec.GetMessage();
-  auto pool_id = ActorPoolID::FromBinary(msg.actor_pool_id());
-  TaskID work_item_id = TaskID::Nil();
-  if (msg.has_actor_pool_work_item_id() && !msg.actor_pool_work_item_id().empty()) {
-    work_item_id = TaskID::FromBinary(msg.actor_pool_work_item_id());
-  }
-
-  RAY_LOG(INFO) << "ActorPoolDebug complete-notify " << PoolTaskDebugString(task_spec)
-                << " status=" << status.ToString() << " error_type="
-                << (error_info == nullptr
-                        ? "OK"
-                        : rpc::ErrorType_Name(error_info->error_type()));
-
-  callback(
-      pool_id, work_item_id, task_spec.TaskId(), task_spec.ActorId(), status, error_info);
+  auto pool_id = ActorPoolID::FromBinary(task_spec.GetMessage().actor_pool_id());
+  // pool_task_id == task_spec.TaskId(); see MaybeNotifyPoolTaskSubmitted.
+  callback(pool_id,
+           task_spec.TaskId(),
+           task_spec.TaskId(),
+           task_spec.ActorId(),
+           status,
+           error_info);
 }
 
 }  // namespace
@@ -719,12 +684,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              const TaskSpecification &task_spec) {
   const auto task_id = task_spec.TaskId();
   const auto actor_id = task_spec.ActorId();
-  RAY_LOG(INFO) << "ActorPoolDebug push-reply " << PoolTaskDebugString(task_spec)
-                << " status=" << status.ToString()
-                << " retryable_error=" << reply.is_retryable_error()
-                << " cancelled_before_running=" << reply.was_cancelled_before_running()
-                << " application_error=" << reply.is_application_error();
-
   bool resubmit_generator = false;
   {
     absl::MutexLock lock(&mu_);
@@ -739,9 +698,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
     }
   }
   if (resubmit_generator) {
-    RAY_LOG(INFO) << "ActorPoolDebug generator-resubmit "
-                  << PoolTaskDebugString(task_spec)
-                  << " reason=queued_for_object_recovery";
     task_manager_.MarkGeneratorFailedAndResubmit(task_id);
     return;
   }
@@ -752,8 +708,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
 
   if ((status.ok() && reply.was_cancelled_before_running()) ||
       status.IsSchedulingCancelled()) {
-    RAY_LOG(INFO) << "ActorPoolDebug cancelled-before-execution "
-                  << PoolTaskDebugString(task_spec);
     HandleTaskCancelledBeforeExecution(status, reply, task_spec);
     // Notify pool of cancellation
     MaybeNotifyPoolTaskComplete(pool_task_completion_callback_,
@@ -761,8 +715,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                 Status::SchedulingCancelled("Task cancelled"),
                                 nullptr);
   } else if (status.ok() && !is_retryable_exception) {
-    RAY_LOG(INFO) << "ActorPoolDebug terminal-reply " << PoolTaskDebugString(task_spec)
-                  << " application_error=" << reply.is_application_error();
     // status.ok() means the worker completed the reply, either succeeded or with a
     // retryable failure (e.g. user exceptions). We complete only on non-retryable case.
 
@@ -844,10 +796,6 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
                                              &error_info,
                                              /*mark_task_object_failed*/ is_actor_dead,
                                              fail_immediately);
-    RAY_LOG(INFO) << "ActorPoolDebug fail-or-retry " << PoolTaskDebugString(task_spec)
-                  << " is_actor_dead=" << is_actor_dead << " will_retry=" << will_retry
-                  << " error_type=" << rpc::ErrorType_Name(error_info.error_type())
-                  << " error_message=" << error_info.error_message();
 
     // With max_retries=-1 (pool default), will_retry is always true for
     // actor death, so this branch is not taken. Kept for safety if

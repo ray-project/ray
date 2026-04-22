@@ -15,6 +15,7 @@
 #include "ray/core_worker/actor_pool_manager.h"
 
 #include <algorithm>
+#include <atomic>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -23,6 +24,7 @@
 
 #include "boost/asio/steady_timer.hpp"
 #include "ray/core_worker/actor_management/actor_manager.h"
+#include "ray/core_worker/context.h"
 #include "ray/core_worker/lease_policy.h"
 #include "ray/core_worker/task_manager_interface.h"
 #include "ray/util/logging.h"
@@ -30,37 +32,11 @@
 namespace ray {
 namespace core {
 
-namespace {
-
-std::string PoolStateDebugString(const ActorPoolID &pool_id,
-                                 const ActorPoolInfo &pool_info,
-                                 size_t backlog_size) {
-  int32_t total_in_flight = 0;
-  int32_t alive_actors = 0;
-  for (const auto &[actor_id, state] : pool_info.actor_states) {
-    total_in_flight += state.num_tasks_in_flight;
-    if (state.is_alive) {
-      alive_actors++;
-    }
-  }
-
-  std::ostringstream stream;
-  stream << "pool_id=" << pool_id << " alive_actors=" << alive_actors << "/"
-         << pool_info.actor_ids.size() << " total_in_flight=" << total_in_flight
-         << " backlog=" << backlog_size
-         << " total_submitted=" << pool_info.total_tasks_submitted
-         << " total_failed=" << pool_info.total_tasks_failed
-         << " total_retried=" << pool_info.total_tasks_retried;
-  return stream.str();
-}
-
-}  // namespace
+namespace {}  // namespace
 
 ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
-                                   ActorTaskSubmitterInterface &task_submitter,
                                    TaskManagerInterface &task_manager)
     : actor_manager_(actor_manager),
-      task_submitter_(task_submitter),
       task_manager_(task_manager),
       io_service_(nullptr),
       submit_actor_task_fn_(nullptr) {
@@ -68,17 +44,19 @@ ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
 }
 
 ActorPoolManager::ActorPoolManager(ActorManager &actor_manager,
-                                   ActorTaskSubmitterInterface &task_submitter,
                                    TaskManagerInterface &task_manager,
                                    instrumented_io_context &io_service,
                                    SubmitActorTaskCallback submit_actor_task_fn,
+                                   WorkerContext &worker_context,
+                                   const rpc::Address &rpc_address,
                                    LocalityDataProviderInterface *locality_data_provider)
     : actor_manager_(actor_manager),
-      task_submitter_(task_submitter),
       task_manager_(task_manager),
       io_service_(&io_service),
       submit_actor_task_fn_(std::move(submit_actor_task_fn)),
-      locality_data_provider_(locality_data_provider) {
+      locality_data_provider_(locality_data_provider),
+      worker_context_(&worker_context),
+      rpc_address_(rpc_address) {
   RAY_LOG(DEBUG) << "ActorPoolManager initialized (full mode with CoreWorker callbacks)";
 }
 
@@ -86,12 +64,14 @@ ActorPoolID ActorPoolManager::RegisterPool(const ActorPoolConfig &config,
                                            const std::vector<ActorID> &initial_actors) {
   absl::MutexLock lock(&mu_);
 
-  ActorPoolID pool_id = ActorPoolID::FromRandom();
+  ActorPoolID pool_id = worker_context_
+                            ? ActorPoolID::Of(worker_context_->GetCurrentJobID())
+                            : ActorPoolID::FromRandom();
 
   ActorPoolInfo pool_info;
   pool_info.config = config;
 
-  auto work_queue = std::make_unique<UnorderedPoolWorkQueue>();
+  auto task_queue = std::make_unique<FifoPoolTaskQueue>();
 
   for (const auto &actor_id : initial_actors) {
     pool_info.actor_ids.push_back(actor_id);
@@ -100,7 +80,7 @@ ActorPoolID ActorPoolManager::RegisterPool(const ActorPoolConfig &config,
   }
 
   pools_[pool_id] = std::move(pool_info);
-  work_queues_[pool_id] = std::move(work_queue);
+  task_queues_[pool_id] = std::move(task_queue);
 
   RAY_LOG(INFO) << "Registered actor pool " << pool_id << " with "
                 << initial_actors.size() << " actors";
@@ -121,8 +101,8 @@ void ActorPoolManager::UnregisterPool(const ActorPoolID &pool_id) {
     actor_to_pool_.erase(actor_id);
   }
 
-  work_queues_.erase(pool_id);
-  CleanupTrackedWorkItemsForPool(pool_id);
+  task_queues_.erase(pool_id);
+  CleanupTrackedPoolTasksForPool(pool_id);
   pools_.erase(it);
 
   RAY_LOG(INFO) << "Unregistered actor pool " << pool_id;
@@ -154,7 +134,7 @@ void ActorPoolManager::AddActorToPool(const ActorPoolID &pool_id,
 
   RAY_LOG(DEBUG) << "Added actor " << actor_id << " to pool " << pool_id;
 
-  DrainWorkQueue(pool_id);
+  DrainTaskQueue(pool_id);
 }
 
 void ActorPoolManager::RemoveActorFromPool(const ActorPoolID &pool_id,
@@ -192,47 +172,88 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitTaskToPool(
     return {};
   }
 
-  auto &work_queue = work_queues_[pool_id];
+  auto &task_queue = task_queues_[pool_id];
 
-  // Work item ID is an opaque unique key for retry tracking — it is NOT the
-  // actual TaskID used for submission (SubmitActorTaskForPool creates that).
-  // The nil JobID is fine because this ID never enters the task lineage.
-  TaskID work_item_id = TaskID::FromRandom(JobID());
-  PoolWorkItem work_item;
-  work_item.pool_id = pool_id;
-  work_item.work_item_id = work_item_id;
-  work_item.function = function;
-  work_item.args = std::move(args);
-  work_item.options = task_options;
-  work_item.attempt_number = 0;
-  work_item.enqueued_at_ms = current_time_ms();
+  // Generate pool-scoped TaskID before actor selection.
+  TaskID pool_task_id;
+  std::vector<rpc::ObjectReference> return_refs;
+  if (worker_context_) {
+    pool_task_id = TaskID::ForPoolTask(worker_context_->GetCurrentJobID(),
+                                       worker_context_->GetCurrentInternalTaskId(),
+                                       worker_context_->GetNextTaskIndex(),
+                                       pool_id);
 
-  // Precompute by-reference arg ObjectIDs for locality-aware scheduling.
-  // Stored once in the work item so DrainWorkQueue and RetryWorkItem
-  // can reuse them without re-serializing args.
-  for (const auto &arg : work_item.args) {
-    rpc::TaskArg arg_proto;
-    arg->ToProto(&arg_proto);
-    if (arg_proto.has_object_ref()) {
-      work_item.arg_ids.push_back(
-          ObjectID::FromBinary(arg_proto.object_ref().object_id()));
+    // Pre-register ObjectRefs with TaskManager so caller gets refs immediately.
+    // kStreamingGeneratorReturn (-2) indicates a streaming generator; -1 means
+    // dynamic returns.  Both require exactly one return ObjectRef.
+    bool is_streaming = (task_options.num_returns == kStreamingGeneratorReturn);
+    bool returns_dynamic = (task_options.num_returns == -1);
+    size_t num_returns = (is_streaming || returns_dynamic)
+                             ? 1
+                             : static_cast<size_t>(task_options.num_returns);
+    return_refs = task_manager_.RegisterPoolTaskReturnValues(rpc_address_,
+                                                             pool_task_id,
+                                                             num_returns,
+                                                             /*call_site=*/"actor_pool",
+                                                             is_streaming);
+  } else {
+    // Minimal mode (for tests): generate a pool-scoped ID without WorkerContext.
+    // Use a monotonic counter for uniqueness.
+    RAY_LOG(WARNING)
+        << "Generating pool-scoped TaskID for test mode, not to be used in production";
+    static std::atomic<size_t> test_counter{0};
+    pool_task_id =
+        TaskID::ForPoolTask(JobID::FromInt(0), TaskID::Nil(), test_counter++, pool_id);
+    // Build return refs without TaskManager registration.
+    size_t num_returns = (task_options.num_returns == kStreamingGeneratorReturn ||
+                          task_options.num_returns == -1)
+                             ? 1
+                             : static_cast<size_t>(task_options.num_returns);
+    for (size_t i = 0; i < num_returns; i++) {
+      rpc::ObjectReference ref;
+      ref.set_object_id(ObjectID::FromIndex(pool_task_id, i + 1).Binary());
+      return_refs.push_back(std::move(ref));
     }
   }
 
-  // Normal submissions still choose an alive actor even when every actor is at
-  // the preferred concurrency limit. ActorPool.submit() must return real
-  // ObjectRefs synchronously, so excess work is absorbed by the selected
-  // actor's submit queue rather than staying unscheduled in the pool backlog.
-  ActorID selected_actor = SelectActorFromPool(pool_id, work_item.arg_ids);
+  PoolTask pool_task;
+  pool_task.pool_id = pool_id;
+  pool_task.pool_task_id = pool_task_id;
+  pool_task.function = function;
+  pool_task.args = std::move(args);
+  pool_task.options = task_options;
+  pool_task.return_refs = return_refs;
+  pool_task.attempt_number = 0;
+  pool_task.enqueued_at_ms = current_time_ms();
 
-  if (selected_actor.IsNil()) {
-    RAY_LOG(DEBUG) << "No actors available in pool " << pool_id
-                   << ", enqueueing work item " << work_item_id;
-    work_queue->Push(std::move(work_item));
-    return {};
+  // Precompute by-reference arg ObjectIDs for locality-aware scheduling.
+  // Stored once in the pool task so DrainTaskQueue and RetryPoolTask
+  // can reuse them without re-serializing args.
+  for (const auto &arg : pool_task.args) {
+    auto obj_id = arg->GetObjectId();
+    if (!obj_id.IsNil()) {
+      pool_task.arg_ids.push_back(obj_id);
+    }
   }
 
-  return SubmitToActor(pool_id, selected_actor, std::move(work_item));
+  // Only dispatch to actors with available capacity. When all actors are at
+  // max_tasks_in_flight, the task queues at the pool level instead of
+  // overloading individual actors.
+  ActorID selected_actor = SelectActorFromPool(pool_id,
+                                               pool_task.arg_ids,
+                                               /*exclude_actor_id=*/ActorID::Nil(),
+                                               /*require_available_capacity=*/true);
+
+  if (selected_actor.IsNil()) {
+    RAY_LOG(DEBUG) << "No actors with free capacity in pool " << pool_id
+                   << ", enqueueing pool task " << pool_task_id;
+    task_queue->Push(std::move(pool_task));
+    // Return pool-scoped refs even when queued — caller can wait on them.
+    return return_refs;
+  }
+
+  SubmitToActor(pool_id, selected_actor, std::move(pool_task));
+  return return_refs;
 }
 
 std::vector<ActorID> ActorPoolManager::GetPoolActors(const ActorPoolID &pool_id) const {
@@ -255,18 +276,17 @@ PoolStats ActorPoolManager::GetPoolStats(const ActorPoolID &pool_id) const {
   }
 
   const auto &pool_info = pool_it->second;
-  auto wq_it = work_queues_.find(pool_id);
-  if (wq_it == work_queues_.end()) {
+  auto tq_it = task_queues_.find(pool_id);
+  if (tq_it == task_queues_.end()) {
     return PoolStats{};
   }
-  const auto &work_queue = wq_it->second;
+  const auto &task_queue = tq_it->second;
 
   PoolStats stats;
   stats.total_tasks_submitted = pool_info.total_tasks_submitted;
   stats.total_tasks_failed = pool_info.total_tasks_failed;
-  stats.total_tasks_retried = pool_info.total_tasks_retried;
   stats.num_actors = static_cast<int32_t>(pool_info.actor_ids.size());
-  stats.backlog_size = work_queue->Size();
+  stats.backlog_size = task_queue->Size();
 
   int32_t total_in_flight = 0;
   for (const auto &[actor_id, state] : pool_info.actor_states) {
@@ -296,19 +316,19 @@ int64_t ActorPoolManager::GetOccupiedTaskSlots(const ActorPoolID &pool_id) const
     total_in_flight += state.num_tasks_in_flight;
   }
 
-  auto wq_it = work_queues_.find(pool_id);
-  int64_t backlog = (wq_it != work_queues_.end()) ? wq_it->second->Size() : 0;
+  auto tq_it = task_queues_.find(pool_id);
+  int64_t backlog = (tq_it != task_queues_.end()) ? tq_it->second->Size() : 0;
 
-  // Count work items dispatched to ActorTaskSubmitter but not yet pushed to the
+  // Count pool tasks dispatched to ActorTaskSubmitter but not yet pushed to the
   // actor via gRPC (OnTaskSubmitted hasn't fired yet). Without this, tasks are
   // invisible between SubmitToActor and the async OnTaskSubmitted callback,
   // allowing the Python scheduling loop to over-submit.
   int64_t pending_submissions = 0;
-  auto pw_it = pool_to_work_items_.find(pool_id);
-  if (pw_it != pool_to_work_items_.end()) {
-    for (const auto &work_item_id : pw_it->second) {
-      auto wi_it = work_items_.find(work_item_id);
-      if (wi_it != work_items_.end() && !wi_it->second.pushed_to_actor) {
+  auto ptt_it = pool_to_tasks_.find(pool_id);
+  if (ptt_it != pool_to_tasks_.end()) {
+    for (const auto &pool_task_id : ptt_it->second) {
+      auto pt_it = pool_tasks_.find(pool_task_id);
+      if (pt_it != pool_tasks_.end() && !pt_it->second.pushed_to_actor) {
         pending_submissions++;
       }
     }
@@ -361,7 +381,7 @@ ActorID ActorPoolManager::SelectActorForTask(const ActorPoolID &pool_id,
 }
 
 void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
-                                          const TaskID &work_item_id,
+                                          const TaskID &pool_task_id,
                                           const TaskID &task_id,
                                           const ActorID &actor_id,
                                           const Status &status,
@@ -373,32 +393,26 @@ void ActorPoolManager::OnPoolTaskComplete(const ActorPoolID &pool_id,
     RAY_LOG(DEBUG) << "Pool " << pool_id << " no longer exists, ignoring task completion";
     return;
   }
-  auto wq_it = work_queues_.find(pool_id);
-  RAY_CHECK(wq_it != work_queues_.end());
-  RAY_LOG(DEBUG)
-      << "Pool task complete work_item_id=" << work_item_id << " task_id=" << task_id
-      << " actor_id=" << actor_id << " status=" << status.ToString() << " error_type="
-      << (error_info == nullptr ? "OK" : rpc::ErrorType_Name(error_info->error_type()))
-      << " " << PoolStateDebugString(pool_id, pool_it->second, wq_it->second->Size());
-
+  auto tq_it = task_queues_.find(pool_id);
+  RAY_CHECK(tq_it != task_queues_.end());
   if (status.ok()) {
     OnTaskSucceeded(pool_id, actor_id);
-    EraseTrackedWorkItem(work_item_id);
+    EraseTrackedPoolTask(pool_task_id);
   } else {
     if (error_info != nullptr) {
-      OnTaskFailed(pool_id, work_item_id, actor_id, *error_info);
+      OnTaskFailed(pool_id, pool_task_id, actor_id, *error_info);
     } else {
       rpc::RayErrorInfo generic_error;
       generic_error.set_error_type(rpc::ErrorType::ACTOR_DIED);
       generic_error.set_error_message("Task failed with unknown error: " +
                                       status.ToString());
-      OnTaskFailed(pool_id, work_item_id, actor_id, generic_error);
+      OnTaskFailed(pool_id, pool_task_id, actor_id, generic_error);
     }
   }
 }
 
 void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id,
-                                       const TaskID &work_item_id) {
+                                       const TaskID &pool_task_id) {
   absl::MutexLock lock(&mu_);
 
   auto pool_it = actor_to_pool_.find(actor_id);
@@ -418,21 +432,13 @@ void ActorPoolManager::OnTaskSubmitted(const ActorID &actor_id,
 
   state_it->second.num_tasks_in_flight++;
 
-  // Mark the work item as pushed so it is no longer counted as a pending
+  // Mark the pool task as pushed so it is no longer counted as a pending
   // submission in GetOccupiedTaskSlots.
-  if (!work_item_id.IsNil()) {
-    auto wi_it = work_items_.find(work_item_id);
-    if (wi_it != work_items_.end()) {
-      wi_it->second.pushed_to_actor = true;
+  if (!pool_task_id.IsNil()) {
+    auto pt_it = pool_tasks_.find(pool_task_id);
+    if (pt_it != pool_tasks_.end()) {
+      pt_it->second.pushed_to_actor = true;
     }
-  }
-
-  auto wq_it = work_queues_.find(pool_it->second);
-  if (wq_it != work_queues_.end()) {
-    RAY_LOG(DEBUG) << "Task submitted actor_id=" << actor_id
-                   << " work_item_id=" << work_item_id << " "
-                   << PoolStateDebugString(
-                          pool_it->second, info_it->second, wq_it->second->Size());
   }
 }
 
@@ -467,13 +473,7 @@ void ActorPoolManager::OnActorAlive(const ActorID &actor_id, const NodeID &node_
     actor_state.location = node_id;
   }
 
-  auto wq_it = work_queues_.find(pool_id);
-  if (wq_it != work_queues_.end()) {
-    RAY_LOG(DEBUG) << "Actor alive actor_id=" << actor_id << " node_id=" << node_id << " "
-                   << PoolStateDebugString(pool_id, pool_info, wq_it->second->Size());
-  }
-
-  DrainWorkQueue(pool_id);
+  DrainTaskQueue(pool_id);
 }
 
 void ActorPoolManager::OnActorDead(const ActorID &actor_id) {
@@ -497,13 +497,6 @@ void ActorPoolManager::OnActorDead(const ActorID &actor_id) {
 
   state_it->second.is_alive = false;
   state_it->second.num_tasks_in_flight = 0;
-
-  auto wq_it = work_queues_.find(pool_id);
-  if (wq_it != work_queues_.end()) {
-    RAY_LOG(DEBUG) << "Actor dead actor_id=" << actor_id << " "
-                   << PoolStateDebugString(
-                          pool_id, info_it->second, wq_it->second->Size());
-  }
 }
 
 ActorID ActorPoolManager::SelectActorFromPool(const ActorPoolID &pool_id,
@@ -624,7 +617,7 @@ absl::flat_hash_map<NodeID, uint64_t> ActorPoolManager::ComputeNodeLocalityMap(
 }
 
 std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
-    const ActorPoolID &pool_id, const ActorID &actor_id, PoolWorkItem work_item) {
+    const ActorPoolID &pool_id, const ActorID &actor_id, PoolTask pool_task) {
   auto pool_it = pools_.find(pool_id);
   if (pool_it == pools_.end()) {
     RAY_LOG(ERROR) << "Pool not found: " << pool_id;
@@ -635,28 +628,21 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
 
   pool_info.total_tasks_submitted++;
 
-  TaskID work_item_id = work_item.work_item_id;
-  int32_t attempt_number = work_item.attempt_number;
-
-  auto wq_it = work_queues_.find(pool_id);
-  RAY_CHECK(wq_it != work_queues_.end());
-  RAY_LOG(DEBUG) << "Submit to actor work_item_id=" << work_item_id
-                 << " actor_id=" << actor_id << " attempt=" << attempt_number << " "
-                 << PoolStateDebugString(pool_id, pool_info, wq_it->second->Size());
+  TaskID pool_task_id = pool_task.pool_task_id;
 
   if (!submit_actor_task_fn_) {
     RAY_LOG(WARNING) << "SubmitToActor called without submit callback (minimal mode)";
     pool_info.actor_states[actor_id].num_tasks_in_flight++;
-    TrackWorkItem(std::move(work_item));
+    TrackPoolTask(std::move(pool_task));
     return {};
   }
 
-  // Clone args before moving work_item into work_items_ (we need args for submission).
-  auto args_for_submit = CloneArgs(work_item.args);
-  RayFunction function = work_item.function;
-  TaskOptions options = work_item.options;
+  // Clone args before moving pool_task into pool_tasks_ (we need args for submission).
+  auto args_for_submit = CloneArgs(pool_task.args);
+  RayFunction function = pool_task.function;
+  TaskOptions options = pool_task.options;
 
-  TrackWorkItem(std::move(work_item));
+  TrackPoolTask(std::move(pool_task));
 
   // Completion is NOT handled via this callback — it flows through
   // ActorTaskSubmitter::HandlePushTaskReply() → SetPoolTaskCompletionCallback()
@@ -667,11 +653,11 @@ std::vector<rpc::ObjectReference> ActorPoolManager::SubmitToActor(
                                options,
                                nullptr,
                                pool_id,
-                               work_item_id);
+                               pool_task_id);
 }
 
 void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
-                                    const TaskID &work_item_id,
+                                    const TaskID &pool_task_id,
                                     const ActorID &failed_actor_id,
                                     const rpc::RayErrorInfo &error_info) {
   auto pool_it = pools_.find(pool_id);
@@ -705,50 +691,13 @@ void ActorPoolManager::OnTaskFailed(const ActorPoolID &pool_id,
   }
 
   pool_info.total_tasks_failed++;
-  auto wq_it = work_queues_.find(pool_id);
-  RAY_CHECK(wq_it != work_queues_.end());
 
-  bool should_retry = ShouldRetryTask(pool_info.config, error_info);
-  RAY_LOG(DEBUG) << "Task failed work_item_id=" << work_item_id
-                 << " actor_id=" << failed_actor_id << " should_retry=" << should_retry
-                 << " error_type=" << rpc::ErrorType_Name(error_info.error_type()) << " "
-                 << PoolStateDebugString(pool_id, pool_info, wq_it->second->Size());
+  RAY_LOG(INFO) << "Pool task " << pool_task_id << " failed terminally on actor "
+                << failed_actor_id << ". Error: " << error_info.error_message();
+  FailPoolTask(pool_task_id, error_info);
 
-  if (!should_retry) {
-    RAY_LOG(INFO) << "Work item " << work_item_id << " failed with non-retriable error, "
-                  << "not retrying. Error: " << error_info.error_message();
-    FailWorkItem(work_item_id, error_info);
-    return;
-  }
-
-  auto work_item = TakeTrackedWorkItem(work_item_id);
-  if (!work_item.has_value()) {
-    RAY_LOG(WARNING) << "Work item " << work_item_id << " not found for retry";
-    return;
-  }
-
-  work_item->attempt_number++;
-
-  if (pool_info.config.max_retry_attempts >= 0 &&
-      work_item->attempt_number > pool_info.config.max_retry_attempts) {
-    RAY_LOG(INFO) << "Work item " << work_item_id << " exceeded max retry attempts ("
-                  << pool_info.config.max_retry_attempts << "), failing permanently";
-    FailWorkItem(work_item_id, error_info);
-    return;
-  }
-
-  pool_info.total_tasks_retried++;
-
-  int64_t backoff_ms = CalculateBackoff(work_item->attempt_number,
-                                        pool_info.config.retry_backoff_ms,
-                                        pool_info.config.retry_backoff_multiplier,
-                                        pool_info.config.max_retry_backoff_ms);
-
-  RAY_LOG(INFO) << "Work item " << work_item_id << " failed on actor " << failed_actor_id
-                << ", retrying (attempt " << work_item->attempt_number << ") after "
-                << backoff_ms << "ms on different actor in pool " << pool_id;
-
-  ScheduleRetry(pool_id, std::move(*work_item), backoff_ms);
+  // A slot freed up on this actor (or the actor died) — drain queued tasks.
+  DrainTaskQueue(pool_id);
 }
 
 void ActorPoolManager::OnTaskSucceeded(const ActorPoolID &pool_id,
@@ -768,129 +717,15 @@ void ActorPoolManager::OnTaskSucceeded(const ActorPoolID &pool_id,
     actor_state.num_tasks_in_flight--;
     actor_state.consecutive_failures = 0;
   }
-  auto wq_it = work_queues_.find(pool_id);
-  if (wq_it != work_queues_.end()) {
-    RAY_LOG(DEBUG) << "Task succeeded actor_id=" << actor_id << " "
-                   << PoolStateDebugString(
-                          pool_id, pool_it->second, wq_it->second->Size());
-  }
 
-  DrainWorkQueue(pool_id);
+  DrainTaskQueue(pool_id);
 }
 
-void ActorPoolManager::ScheduleRetry(const ActorPoolID &pool_id,
-                                     PoolWorkItem work_item,
-                                     int64_t backoff_ms) {
-  if (backoff_ms <= 0) {
-    RetryWorkItem(pool_id, std::move(work_item));
-    return;
-  }
-
-  if (!io_service_) {
-    RAY_LOG(DEBUG) << "No io_service available, performing immediate retry for work item "
-                   << work_item.work_item_id;
-    RetryWorkItem(pool_id, std::move(work_item));
-    return;
-  }
-
-  RAY_LOG(DEBUG) << "Scheduling retry for work item " << work_item.work_item_id
-                 << " with backoff " << backoff_ms << "ms";
-
-  // shared_ptr so the timer outlives this scope until the callback fires.
-  auto timer = std::make_shared<boost::asio::steady_timer>(
-      *io_service_, std::chrono::milliseconds(backoff_ms));
-
-  // Captures `this` — safe because ActorPoolManager outlives CoreWorker's io_service.
-  timer->async_wait([this, pool_id, work_item = std::move(work_item), timer](
-                        const boost::system::error_code &ec) mutable {
-    if (ec) {
-      RAY_LOG(WARNING) << "Timer error during retry scheduling: " << ec.message();
-      return;
-    }
-    absl::MutexLock lock(&mu_);
-    RetryWorkItem(pool_id, std::move(work_item));
-  });
-}
-
-void ActorPoolManager::RetryWorkItem(const ActorPoolID &pool_id, PoolWorkItem work_item) {
-  auto pool_it = pools_.find(pool_id);
-  if (pool_it == pools_.end()) {
-    RAY_LOG(WARNING) << "Pool not found during retry: " << pool_id;
-    return;
-  }
-
-  auto &work_queue = work_queues_[pool_id];
-
-  ActorID selected_actor = SelectActorFromPool(pool_id, work_item.arg_ids);
-
-  if (selected_actor.IsNil()) {
-    RAY_LOG(DEBUG) << "No actors available for retry of work item "
-                   << work_item.work_item_id << ", re-enqueueing";
-    work_queue->Push(std::move(work_item));
-    return;
-  }
-
-  RAY_LOG(INFO) << "Retrying work item " << work_item.work_item_id << " on actor "
-                << selected_actor << " (attempt " << work_item.attempt_number << ")";
-
-  SubmitToActor(pool_id, selected_actor, std::move(work_item));
-}
-
-bool ActorPoolManager::ShouldRetryTask(const ActorPoolConfig &config,
-                                       const rpc::RayErrorInfo &error_info) const {
-  if (!config.retry_on_system_errors) {
-    return false;
-  }
-
-  switch (error_info.error_type()) {
-  case rpc::ErrorType::ACTOR_DIED:
-  case rpc::ErrorType::ACTOR_UNAVAILABLE:
-  case rpc::ErrorType::NODE_DIED:
-  case rpc::ErrorType::WORKER_DIED:
-    return true;
-
-  case rpc::ErrorType::TASK_CANCELLED:
-    return false;
-
-  case rpc::ErrorType::TASK_EXECUTION_EXCEPTION:
-  case rpc::ErrorType::RUNTIME_ENV_SETUP_FAILED:
-  case rpc::ErrorType::OUT_OF_MEMORY:
-    // Retrying OOM on a different actor is unlikely to help.
-    return false;
-
-  default:
-    RAY_LOG(WARNING) << "Unknown error type: " << error_info.error_type()
-                     << ", not retrying";
-    return false;
-  }
-}
-
-int64_t ActorPoolManager::CalculateBackoff(int32_t attempt_number,
-                                           int32_t base_backoff_ms,
-                                           float multiplier,
-                                           int32_t max_backoff_ms) const {
-  if (attempt_number <= 1) {
-    return base_backoff_ms;
-  }
-
-  // Exponential backoff: base * multiplier^(attempt-1)
-  int64_t backoff = base_backoff_ms;
-  for (int32_t i = 1; i < attempt_number; i++) {
-    backoff = static_cast<int64_t>(backoff * multiplier);
-    if (backoff > max_backoff_ms) {
-      backoff = max_backoff_ms;
-      break;
-    }
-  }
-
-  return std::min(backoff, static_cast<int64_t>(max_backoff_ms));
-}
-
-void ActorPoolManager::FailWorkItem(const TaskID &work_item_id,
+void ActorPoolManager::FailPoolTask(const TaskID &pool_task_id,
                                     const rpc::RayErrorInfo &error_info) {
-  EraseTrackedWorkItem(work_item_id);
+  EraseTrackedPoolTask(pool_task_id);
 
-  RAY_LOG(INFO) << "Work item " << work_item_id
+  RAY_LOG(INFO) << "Pool task " << pool_task_id
                 << " failed permanently. Error: " << error_info.error_message();
 
   // The actual task failure is surfaced by TaskManager via the reply callback.
@@ -943,92 +778,95 @@ std::vector<std::unique_ptr<TaskArg>> ActorPoolManager::CloneArgs(
   return cloned_args;
 }
 
-void ActorPoolManager::TrackWorkItem(PoolWorkItem work_item) {
-  RAY_CHECK(!work_item.pool_id.IsNil()) << "Tracked work item must belong to a pool";
+void ActorPoolManager::TrackPoolTask(PoolTask pool_task) {
+  RAY_CHECK(!pool_task.pool_id.IsNil()) << "Tracked pool task must belong to a pool";
 
-  const auto pool_id = work_item.pool_id;
-  const auto work_item_id = work_item.work_item_id;
-  pool_to_work_items_[pool_id].insert(work_item_id);
-  work_items_[work_item_id] = std::move(work_item);
+  const auto pool_id = pool_task.pool_id;
+  const auto pool_task_id = pool_task.pool_task_id;
+  pool_to_tasks_[pool_id].insert(pool_task_id);
+  pool_tasks_[pool_task_id] = std::move(pool_task);
 }
 
-void ActorPoolManager::EraseTrackedWorkItem(const TaskID &work_item_id) {
-  auto work_item_it = work_items_.find(work_item_id);
-  if (work_item_it == work_items_.end()) {
+void ActorPoolManager::EraseTrackedPoolTask(const TaskID &pool_task_id) {
+  auto pool_task_it = pool_tasks_.find(pool_task_id);
+  if (pool_task_it == pool_tasks_.end()) {
     return;
   }
 
-  const auto pool_id = work_item_it->second.pool_id;
-  work_items_.erase(work_item_it);
+  const auto pool_id = pool_task_it->second.pool_id;
+  pool_tasks_.erase(pool_task_it);
 
-  auto pool_it = pool_to_work_items_.find(pool_id);
-  if (pool_it == pool_to_work_items_.end()) {
+  auto pool_it = pool_to_tasks_.find(pool_id);
+  if (pool_it == pool_to_tasks_.end()) {
     return;
   }
 
-  pool_it->second.erase(work_item_id);
+  pool_it->second.erase(pool_task_id);
   if (pool_it->second.empty()) {
-    pool_to_work_items_.erase(pool_it);
+    pool_to_tasks_.erase(pool_it);
   }
 }
 
-std::optional<PoolWorkItem> ActorPoolManager::TakeTrackedWorkItem(
-    const TaskID &work_item_id) {
-  auto work_item_it = work_items_.find(work_item_id);
-  if (work_item_it == work_items_.end()) {
+std::optional<PoolTask> ActorPoolManager::TakeTrackedPoolTask(
+    const TaskID &pool_task_id) {
+  auto pool_task_it = pool_tasks_.find(pool_task_id);
+  if (pool_task_it == pool_tasks_.end()) {
     return std::nullopt;
   }
 
-  const auto pool_id = work_item_it->second.pool_id;
-  PoolWorkItem work_item = std::move(work_item_it->second);
-  work_items_.erase(work_item_it);
+  const auto pool_id = pool_task_it->second.pool_id;
+  PoolTask pool_task = std::move(pool_task_it->second);
+  pool_tasks_.erase(pool_task_it);
 
-  auto pool_it = pool_to_work_items_.find(pool_id);
-  if (pool_it != pool_to_work_items_.end()) {
-    pool_it->second.erase(work_item_id);
+  auto pool_it = pool_to_tasks_.find(pool_id);
+  if (pool_it != pool_to_tasks_.end()) {
+    pool_it->second.erase(pool_task_id);
     if (pool_it->second.empty()) {
-      pool_to_work_items_.erase(pool_it);
+      pool_to_tasks_.erase(pool_it);
     }
   }
 
-  return work_item;
+  return pool_task;
 }
 
-void ActorPoolManager::CleanupTrackedWorkItemsForPool(const ActorPoolID &pool_id) {
-  auto pool_it = pool_to_work_items_.find(pool_id);
-  if (pool_it == pool_to_work_items_.end()) {
+void ActorPoolManager::CleanupTrackedPoolTasksForPool(const ActorPoolID &pool_id) {
+  auto pool_it = pool_to_tasks_.find(pool_id);
+  if (pool_it == pool_to_tasks_.end()) {
     return;
   }
 
-  for (const auto &work_item_id : pool_it->second) {
-    work_items_.erase(work_item_id);
+  for (const auto &pool_task_id : pool_it->second) {
+    pool_tasks_.erase(pool_task_id);
   }
-  pool_to_work_items_.erase(pool_it);
+  pool_to_tasks_.erase(pool_it);
 }
 
-void ActorPoolManager::DrainWorkQueue(const ActorPoolID &pool_id) {
-  auto wq_it = work_queues_.find(pool_id);
-  if (wq_it == work_queues_.end()) {
+void ActorPoolManager::DrainTaskQueue(const ActorPoolID &pool_id) {
+  auto wq_it = task_queues_.find(pool_id);
+  if (wq_it == task_queues_.end()) {
     return;
   }
 
-  auto &work_queue = wq_it->second;
-  while (work_queue->HasWork()) {
-    auto work_item = work_queue->Pop();
-    if (!work_item.has_value()) {
+  auto &task_queue = wq_it->second;
+  while (task_queue->HasWork()) {
+    auto pool_task = task_queue->Pop();
+    if (!pool_task.has_value()) {
       break;
     }
 
-    ActorID actor = SelectActorFromPool(pool_id, work_item->arg_ids);
+    ActorID actor = SelectActorFromPool(pool_id,
+                                        pool_task->arg_ids,
+                                        /*exclude_actor_id=*/ActorID::Nil(),
+                                        /*require_available_capacity=*/true);
     if (actor.IsNil()) {
-      // No actors available — push the item back and stop draining.
-      work_queue->Push(std::move(*work_item));
+      // No actors with capacity — push the item back and stop draining.
+      task_queue->PushFront(std::move(*pool_task));
       break;
     }
 
-    RAY_LOG(DEBUG) << "Draining queued work item " << work_item->work_item_id
+    RAY_LOG(DEBUG) << "Draining queued pool task " << pool_task->pool_task_id
                    << " to actor " << actor << " in pool " << pool_id;
-    SubmitToActor(pool_id, actor, std::move(*work_item));
+    SubmitToActor(pool_id, actor, std::move(*pool_task));
   }
 }
 

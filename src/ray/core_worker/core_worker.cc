@@ -414,7 +414,6 @@ CoreWorker::CoreWorker(
   // 2. Delegating TaskSpec building to CoreWorker via submit callback
   actor_pool_manager_ = std::make_unique<ActorPoolManager>(
       *actor_manager_,
-      *actor_task_submitter_,
       *task_manager_,
       io_service_,
       [this](const ActorID &actor_id,
@@ -423,22 +422,24 @@ CoreWorker::CoreWorker(
              const TaskOptions &task_options,
              TaskCompletionCallback on_complete,
              const ActorPoolID &pool_id,
-             const TaskID &work_item_id) {
+             const TaskID &pool_task_id) {
         return this->SubmitActorTaskForPool(actor_id,
                                             function,
                                             std::move(args),
                                             task_options,
                                             std::move(on_complete),
                                             pool_id,
-                                            work_item_id);
+                                            pool_task_id);
       },
+      *worker_context_,
+      rpc_address_,
       dynamic_cast<LocalityDataProviderInterface *>(reference_counter_.get()));
 
   // Wire pool task completion callback from ActorTaskSubmitter to ActorPoolManager.
   // This enables cross-actor retry by notifying the pool when tasks complete.
   actor_task_submitter_->SetPoolTaskCompletionCallback(
       [this](const ActorPoolID &pool_id,
-             const TaskID &work_item_id,
+             const TaskID &pool_task_id,
              const TaskID &task_id,
              const ActorID &actor_id,
              const Status &status,
@@ -446,16 +447,16 @@ CoreWorker::CoreWorker(
         // Route completion to ActorPoolManager if the pool exists
         if (actor_pool_manager_->HasPool(pool_id)) {
           actor_pool_manager_->OnPoolTaskComplete(
-              pool_id, work_item_id, task_id, actor_id, status, error_info);
+              pool_id, pool_task_id, task_id, actor_id, status, error_info);
         }
       });
   actor_task_submitter_->SetPoolTaskSubmittedCallback(
-      [this](const ActorID &actor_id, const TaskID &work_item_id) {
-        actor_pool_manager_->OnTaskSubmitted(actor_id, work_item_id);
+      [this](const ActorID &actor_id, const TaskID &pool_task_id) {
+        actor_pool_manager_->OnTaskSubmitted(actor_id, pool_task_id);
       });
 
   // Wire actor state notifications from GCS to ActorPoolManager.
-  // When a pool actor restarts (ALIVE), this triggers DrainWorkQueue to
+  // When a pool actor restarts (ALIVE), this triggers DrainTaskQueue to
   // dispatch queued tasks. When it dies (RESTARTING/DEAD), the actor is
   // marked not alive so SelectActorFromPool skips it.
   actor_manager_->SetActorPoolStateCallback(
@@ -892,26 +893,9 @@ void CoreWorker::InternalHeartbeat() {
               pool_id,
               arg_ids,
               /*exclude_actor_id=*/failed_actor_id);
-          if (new_actor_id.IsNil()) {
-            RAY_LOG(INFO) << "Pool task retry waiting for actor: task_id="
-                          << spec.TaskId() << " pool_id=" << pool_id
-                          << " failed_actor_id=" << failed_actor_id
-                          << " arg_ids=" << arg_ids.size();
-            // No healthy actors — re-enqueue with a short delay.
-            absl::MutexLock lock(&mutex_);
-            task_to_retry.execution_time_ms =
-                current_time_ms() + RayConfig::instance().actor_pool_retry_delay_ms();
-            to_resubmit_.push(task_to_retry);
-            continue;
-          }
-          RAY_LOG(INFO) << "Pool task retry selected actor: task_id=" << spec.TaskId()
-                        << " pool_id=" << pool_id
-                        << " failed_actor_id=" << failed_actor_id
-                        << " new_actor_id=" << new_actor_id
-                        << " arg_ids=" << arg_ids.size();
+          RAY_CHECK(!new_actor_id.IsNil()) << "No healthy actors available in the pool";
           // Ensure the target actor is subscribed for state updates
           // (actors to which tasks have not yet been submitted will not be subscribed)
-          // so ConnectActor fires and the submitter learns its address.
           // This api is idempotent so multiple calls are safe.
           actor_manager_->SubscribeActorState(new_actor_id);
           // Redirect the task to the selected actor.
@@ -2833,7 +2817,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
     const TaskOptions &task_options,
     TaskCompletionCallback on_complete,
     const ActorPoolID &pool_id,
-    const TaskID &work_item_id) {
+    const TaskID &pool_task_id) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
 
   if (!actor_task_submitter_->CheckActorExists(actor_id)) {
@@ -2855,14 +2839,13 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
   // where to send it.  The method is idempotent.
   actor_manager_->SubscribeActorState(actor_id);
 
-  // Build TaskSpec
+  // Build TaskSpec using the pool-scoped TaskID. ObjectIDs derived from this
+  // TaskID (via ObjectID::FromIndex) are pool-scoped. The actor routing uses
+  // the actor_id in actor_task_spec.
+  // Note: we do NOT call GetNextTaskIndex() here because the pool_task_id was
+  // already generated with a task index in SubmitTaskToPool. Using 0 as the
+  // parent_task_counter avoids wasting a task index.
   TaskSpecBuilder builder;
-  const auto next_task_index = worker_context_->GetNextTaskIndex();
-  const TaskID actor_task_id =
-      TaskID::ForActorTask(worker_context_->GetCurrentJobID(),
-                           worker_context_->GetCurrentInternalTaskId(),
-                           next_task_index,
-                           actor_handle->GetActorID());
 
   const std::unordered_map<std::string, double> required_resources;
   const auto task_name = task_options.name.empty()
@@ -2873,10 +2856,10 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
 
   BuildCommonTaskSpec(builder,
                       actor_handle->CreationJobID(),
-                      actor_task_id,
+                      pool_task_id,  // Use pool-scoped TaskID
                       task_name,
                       worker_context_->GetCurrentTaskID(),
-                      next_task_index,
+                      /*parent_task_counter=*/0,
                       GetCallerId(),
                       rpc_address_,
                       function,
@@ -2915,7 +2898,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitActorTaskForPool(
   // and cross-actor retry routing.
   if (!pool_id.IsNil()) {
     task_spec.GetMutableMessage().set_actor_pool_id(pool_id.Binary());
-    task_spec.GetMutableMessage().set_actor_pool_work_item_id(work_item_id.Binary());
   }
 
   RAY_LOG(DEBUG) << "Submitting pool actor task " << task_spec.DebugString();

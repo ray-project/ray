@@ -30,6 +30,7 @@ class TaskID;
 class WorkerID;
 class UniqueID;
 class JobID;
+class ActorPoolID;
 
 /// TODO(qwang): These 2 helper functions should be removed
 /// once we separated the `WorkerID` from `UniqueID`.
@@ -216,9 +217,28 @@ class TaskID : public BaseID<TaskID> {
   /// \return The ID of the n-th execution of the task.
   static TaskID ForExecutionAttempt(const TaskID &task_id, uint64_t attempt_number);
 
+  /// Creates a TaskID for a pool task. ObjectIDs derived from this TaskID
+  /// are pool-scoped rather than actor-scoped.
+  ///
+  /// \param job_id The ID of the job to which this task belongs.
+  /// \param parent_task_id The ID of the parent task which submitted this task.
+  /// \param parent_task_counter A count of the number of tasks submitted by the
+  ///        parent task before this one.
+  /// \param pool_id The ID of the actor pool this task belongs to.
+  ///
+  /// \return The ID of the pool task.
+  static TaskID ForPoolTask(const JobID &job_id,
+                            const TaskID &parent_task_id,
+                            size_t parent_task_counter,
+                            const ActorPoolID &pool_id);
+
   ActorID ActorId() const;
 
   bool IsForActorCreationTask() const;
+
+  /// Returns true if this TaskID was created by ForPoolTask (the embedded
+  /// ActorID slot has the pool prefix byte 0xFF).
+  bool IsPoolTaskId() const;
 
   JobID JobId() const;
 
@@ -287,6 +307,10 @@ class ObjectID : public BaseID<ObjectID> {
   /// non-nil ActorID.
   static ActorID ToActorID(const ObjectID &object_id);
 
+  /// Extract the ActorPoolID from a pool-scoped ObjectID.
+  /// Only valid if the ObjectID's TaskID was created via ForPoolTask.
+  static ActorPoolID ToActorPoolID(const ObjectID &object_id);
+
   MSGPACK_DEFINE(id_);
 
  private:
@@ -328,16 +352,37 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
 typedef std::pair<PlacementGroupID, int64_t> BundleID;
 
 class ActorPoolID : public BaseID<ActorPoolID> {
+ private:
+  static constexpr size_t kUniqueBytesLength = 12;
+
  public:
-  static constexpr size_t kLength = kUniqueIDSize;
+  /// Reserved prefix byte to distinguish pool IDs from ActorIDs.
+  /// Normal ActorIDs use random/hashed bytes so 0xFF prefix is statistically
+  /// impossible and can be checked reliably. Public because TaskID::IsPoolTaskId
+  /// needs to check this prefix.
+  static constexpr uint8_t kPoolIdPrefix = 0xFF;
+
+  /// Same size as ActorID (12 unique + 4 JobID = 16 bytes) so it fits
+  /// directly in the ActorID slot within TaskID.
+  static constexpr size_t kLength = kUniqueBytesLength + JobID::kLength;
 
   static constexpr size_t Size() { return kLength; }
 
-  /// Creates a random `ActorPoolID`.
+  /// Creates a new `ActorPoolID` with a reserved 0xFF prefix byte.
   ///
-  /// \return A randomly generated `ActorPoolID`.
+  /// \param job_id The job this pool belongs to.
+  /// \return A new `ActorPoolID`.
+  static ActorPoolID Of(const JobID &job_id);
+
+  /// Creates a random `ActorPoolID` with 0xFF prefix. Retained for tests.
   /// Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static ActorPoolID FromRandom();
+
+  /// Returns true if this ID has the reserved pool prefix byte (0xFF).
+  bool IsPoolId() const;
+
+  /// Extract the JobID from this pool ID.
+  JobID JobId() const;
 
   ActorPoolID() : BaseID() {}
 

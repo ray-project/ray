@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/actor_pool_work_queue.h"
+#include "ray/core_worker/actor_pool_task_queue.h"
 
 #include <memory>
 #include <string>
@@ -25,10 +25,10 @@ namespace ray {
 namespace core {
 namespace {
 
-/// Helper to create a simple PoolWorkItem for testing.
-PoolWorkItem CreateTestWorkItem(int32_t attempt_number = 0) {
-  PoolWorkItem item;
-  item.work_item_id = TaskID::FromRandom(JobID());
+/// Helper to create a simple PoolTask for testing.
+PoolTask CreateTestPoolTask(int32_t attempt_number = 0) {
+  PoolTask item;
+  item.pool_task_id = TaskID::FromRandom(JobID());
   item.function = RayFunction();
   item.attempt_number = attempt_number;
   item.enqueued_at_ms = 12345;
@@ -37,8 +37,8 @@ PoolWorkItem CreateTestWorkItem(int32_t attempt_number = 0) {
 
 }  // namespace
 
-TEST(UnorderedPoolWorkQueueTest, BasicPushPop) {
-  UnorderedPoolWorkQueue queue;
+TEST(FifoPoolTaskQueueTest, BasicPushPop) {
+  FifoPoolTaskQueue queue;
 
   // Initially empty
   EXPECT_FALSE(queue.HasWork());
@@ -46,8 +46,8 @@ TEST(UnorderedPoolWorkQueueTest, BasicPushPop) {
   EXPECT_FALSE(queue.Pop().has_value());
 
   // Push one item
-  auto item1 = CreateTestWorkItem();
-  auto item1_id = item1.work_item_id;
+  auto item1 = CreateTestPoolTask();
+  auto item1_id = item1.pool_task_id;
   queue.Push(std::move(item1));
 
   EXPECT_TRUE(queue.HasWork());
@@ -56,7 +56,7 @@ TEST(UnorderedPoolWorkQueueTest, BasicPushPop) {
   // Pop the item
   auto popped = queue.Pop();
   ASSERT_TRUE(popped.has_value());
-  EXPECT_EQ(popped->work_item_id, item1_id);
+  EXPECT_EQ(popped->pool_task_id, item1_id);
 
   // Empty again
   EXPECT_FALSE(queue.HasWork());
@@ -64,14 +64,14 @@ TEST(UnorderedPoolWorkQueueTest, BasicPushPop) {
   EXPECT_FALSE(queue.Pop().has_value());
 }
 
-TEST(UnorderedPoolWorkQueueTest, FIFOOrdering) {
-  UnorderedPoolWorkQueue queue;
+TEST(FifoPoolTaskQueueTest, FIFOOrdering) {
+  FifoPoolTaskQueue queue;
 
   // Push multiple items
   std::vector<TaskID> task_ids;
   for (int i = 0; i < 5; i++) {
-    auto item = CreateTestWorkItem();
-    task_ids.push_back(item.work_item_id);
+    auto item = CreateTestPoolTask();
+    task_ids.push_back(item.pool_task_id);
     queue.Push(std::move(item));
   }
 
@@ -81,19 +81,19 @@ TEST(UnorderedPoolWorkQueueTest, FIFOOrdering) {
   for (int i = 0; i < 5; i++) {
     auto popped = queue.Pop();
     ASSERT_TRUE(popped.has_value());
-    EXPECT_EQ(popped->work_item_id, task_ids[i]);
+    EXPECT_EQ(popped->pool_task_id, task_ids[i]);
   }
 
   EXPECT_EQ(queue.Size(), 0);
   EXPECT_FALSE(queue.Pop().has_value());
 }
 
-TEST(UnorderedPoolWorkQueueTest, RetryWithIncrementedAttempt) {
-  UnorderedPoolWorkQueue queue;
+TEST(FifoPoolTaskQueueTest, RetryWithIncrementedAttempt) {
+  FifoPoolTaskQueue queue;
 
   // Push item with attempt_number = 0
-  auto item = CreateTestWorkItem(0);
-  auto item_id = item.work_item_id;
+  auto item = CreateTestPoolTask(0);
+  auto item_id = item.pool_task_id;
   queue.Push(std::move(item));
 
   // Pop and increment attempt number (simulating retry)
@@ -108,16 +108,16 @@ TEST(UnorderedPoolWorkQueueTest, RetryWithIncrementedAttempt) {
   // Pop again and verify attempt number increased
   auto retry_popped = queue.Pop();
   ASSERT_TRUE(retry_popped.has_value());
-  EXPECT_EQ(retry_popped->work_item_id, item_id);
+  EXPECT_EQ(retry_popped->pool_task_id, item_id);
   EXPECT_EQ(retry_popped->attempt_number, 1);
 }
 
-TEST(UnorderedPoolWorkQueueTest, Clear) {
-  UnorderedPoolWorkQueue queue;
+TEST(FifoPoolTaskQueueTest, Clear) {
+  FifoPoolTaskQueue queue;
 
   // Push multiple items
   for (int i = 0; i < 10; i++) {
-    queue.Push(CreateTestWorkItem());
+    queue.Push(CreateTestPoolTask());
   }
 
   EXPECT_EQ(queue.Size(), 10);
@@ -131,16 +131,16 @@ TEST(UnorderedPoolWorkQueueTest, Clear) {
   EXPECT_FALSE(queue.Pop().has_value());
 }
 
-TEST(UnorderedPoolWorkQueueTest, ManyItems) {
-  UnorderedPoolWorkQueue queue;
+TEST(FifoPoolTaskQueueTest, ManyItems) {
+  FifoPoolTaskQueue queue;
 
   const int num_items = 1000;
   std::vector<TaskID> task_ids;
 
   // Push many items
   for (int i = 0; i < num_items; i++) {
-    auto item = CreateTestWorkItem();
-    task_ids.push_back(item.work_item_id);
+    auto item = CreateTestPoolTask();
+    task_ids.push_back(item.pool_task_id);
     queue.Push(std::move(item));
   }
 
@@ -151,23 +151,23 @@ TEST(UnorderedPoolWorkQueueTest, ManyItems) {
     ASSERT_TRUE(queue.HasWork());
     auto popped = queue.Pop();
     ASSERT_TRUE(popped.has_value());
-    EXPECT_EQ(popped->work_item_id, task_ids[i]);
+    EXPECT_EQ(popped->pool_task_id, task_ids[i]);
   }
 
   EXPECT_EQ(queue.Size(), 0);
   EXPECT_FALSE(queue.HasWork());
 }
 
-TEST(UnorderedPoolWorkQueueTest, InterleavedPushPop) {
-  UnorderedPoolWorkQueue queue;
+TEST(FifoPoolTaskQueueTest, InterleavedPushPop) {
+  FifoPoolTaskQueue queue;
 
   // Interleave pushes and pops
-  auto item1 = CreateTestWorkItem();
-  auto id1 = item1.work_item_id;
+  auto item1 = CreateTestPoolTask();
+  auto id1 = item1.pool_task_id;
   queue.Push(std::move(item1));
 
-  auto item2 = CreateTestWorkItem();
-  auto id2 = item2.work_item_id;
+  auto item2 = CreateTestPoolTask();
+  auto id2 = item2.pool_task_id;
   queue.Push(std::move(item2));
 
   EXPECT_EQ(queue.Size(), 2);
@@ -175,23 +175,23 @@ TEST(UnorderedPoolWorkQueueTest, InterleavedPushPop) {
   // Pop first
   auto popped1 = queue.Pop();
   ASSERT_TRUE(popped1.has_value());
-  EXPECT_EQ(popped1->work_item_id, id1);
+  EXPECT_EQ(popped1->pool_task_id, id1);
   EXPECT_EQ(queue.Size(), 1);
 
   // Push another
-  auto item3 = CreateTestWorkItem();
-  auto id3 = item3.work_item_id;
+  auto item3 = CreateTestPoolTask();
+  auto id3 = item3.pool_task_id;
   queue.Push(std::move(item3));
   EXPECT_EQ(queue.Size(), 2);
 
   // Pop remaining two
   auto popped2 = queue.Pop();
   ASSERT_TRUE(popped2.has_value());
-  EXPECT_EQ(popped2->work_item_id, id2);
+  EXPECT_EQ(popped2->pool_task_id, id2);
 
   auto popped3 = queue.Pop();
   ASSERT_TRUE(popped3.has_value());
-  EXPECT_EQ(popped3->work_item_id, id3);
+  EXPECT_EQ(popped3->pool_task_id, id3);
 
   EXPECT_EQ(queue.Size(), 0);
 }

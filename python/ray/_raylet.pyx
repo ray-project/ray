@@ -4821,11 +4821,6 @@ cdef class CoreWorker:
 
     def register_actor_pool(
             self,
-            int32_t max_retry_attempts=3,
-            int32_t retry_backoff_ms=1000,
-            float retry_backoff_multiplier=2.0,
-            int32_t max_retry_backoff_ms=60000,
-            c_bool retry_on_system_errors=True,
             int32_t max_tasks_in_flight_per_actor=1,
             int32_t min_size=1,
             int32_t max_size=-1,
@@ -4833,11 +4828,7 @@ cdef class CoreWorker:
         """Register a new actor pool.
 
         Args:
-            max_retry_attempts: Maximum number of retry attempts for failed tasks.
-            retry_backoff_ms: Initial backoff in milliseconds between retries.
-            retry_backoff_multiplier: Multiplier for exponential backoff.
-            max_retry_backoff_ms: Maximum backoff in milliseconds.
-            retry_on_system_errors: Whether to retry on system errors.
+            max_tasks_in_flight_per_actor: Max concurrent tasks per actor.
             min_size: Minimum pool size for autoscaling.
             max_size: Maximum pool size (-1 for unbounded).
             initial_size: Initial pool size.
@@ -4850,11 +4841,6 @@ cdef class CoreWorker:
             c_vector[CActorID] c_empty_actors
             CActorPoolID c_pool_id
 
-        config.max_retry_attempts = max_retry_attempts
-        config.retry_backoff_ms = retry_backoff_ms
-        config.retry_backoff_multiplier = retry_backoff_multiplier
-        config.max_retry_backoff_ms = max_retry_backoff_ms
-        config.retry_on_system_errors = retry_on_system_errors
         config.max_tasks_in_flight_per_actor = max_tasks_in_flight_per_actor
         config.min_size = min_size
         config.max_size = max_size
@@ -4964,7 +4950,6 @@ cdef class CoreWorker:
         return {
             "total_tasks_submitted": c_stats.total_tasks_submitted,
             "total_tasks_failed": c_stats.total_tasks_failed,
-            "total_tasks_retried": c_stats.total_tasks_retried,
             "num_actors": c_stats.num_actors,
             "backlog_size": c_stats.backlog_size,
             "total_in_flight": c_stats.total_in_flight,

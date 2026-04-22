@@ -12,32 +12,32 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/core_worker/actor_pool_work_queue.h"
+#include "ray/core_worker/actor_pool_task_queue.h"
 
 #include <utility>
 
 namespace ray {
 namespace core {
 
-void UnorderedPoolWorkQueue::Push(PoolWorkItem item) {
-  queue_.push_back(std::move(item));
-}
+void FifoPoolTaskQueue::Push(PoolTask item) { queue_.push_back(std::move(item)); }
 
-std::optional<PoolWorkItem> UnorderedPoolWorkQueue::Pop() {
+void FifoPoolTaskQueue::PushFront(PoolTask item) { queue_.push_front(std::move(item)); }
+
+std::optional<PoolTask> FifoPoolTaskQueue::Pop() {
   if (queue_.empty()) {
     return std::nullopt;
   }
 
-  PoolWorkItem item = std::move(queue_.front());
+  PoolTask item = std::move(queue_.front());
   queue_.pop_front();
   return std::move(item);
 }
 
-bool UnorderedPoolWorkQueue::HasWork() const { return !queue_.empty(); }
+bool FifoPoolTaskQueue::HasWork() const { return !queue_.empty(); }
 
-size_t UnorderedPoolWorkQueue::Size() const { return queue_.size(); }
+size_t FifoPoolTaskQueue::Size() const { return queue_.size(); }
 
-void UnorderedPoolWorkQueue::Clear() { queue_.clear(); }
+void FifoPoolTaskQueue::Clear() { queue_.clear(); }
 
 }  // namespace core
 }  // namespace ray

@@ -124,7 +124,13 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CTaskID ForNormalTask(CJobID job_id, CTaskID parent_task_id,
                               int64_t parent_task_counter)
 
+        @staticmethod
+        CTaskID ForPoolTask(CJobID job_id, CTaskID parent_task_id,
+                            int64_t parent_task_counter, CActorPoolID pool_id)
+
         CActorID ActorId() const
+
+        c_bool IsPoolTaskId() const
 
         CJobID JobId() const
 
@@ -201,9 +207,16 @@ cdef extern from "ray/common/id.h" namespace "ray" nogil:
         CActorPoolID FromRandom()
 
         @staticmethod
+        CActorPoolID Of(CJobID job_id)
+
+        @staticmethod
         const CActorPoolID Nil()
 
         @staticmethod
         size_t Size()
+
+        c_bool IsPoolId() const
+
+        CJobID JobId() const
 
     ctypedef uint32_t ObjectIDIndexType

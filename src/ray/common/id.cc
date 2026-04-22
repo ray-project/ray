@@ -195,6 +195,27 @@ TaskID TaskID::ForNormalTask(const JobID &job_id,
   return TaskID::FromBinary(data);
 }
 
+TaskID TaskID::ForPoolTask(const JobID &job_id,
+                           const TaskID &parent_task_id,
+                           size_t parent_task_counter,
+                           const ActorPoolID &pool_id) {
+  // Same unique bytes generation as ForActorTask.
+  std::string data = GenerateUniqueBytes(
+      job_id, parent_task_id, parent_task_counter, 0, TaskID::kUniqueBytesLength);
+  // Embed the ActorPoolID directly in the ActorID slot (both are 16 bytes).
+  // The pool ID has a 0xFF prefix byte that distinguishes it from real ActorIDs.
+  static_assert(ActorPoolID::kLength == ActorID::kLength,
+                "ActorPoolID and ActorID must be the same size");
+  std::copy_n(pool_id.Data(), ActorPoolID::kLength, std::back_inserter(data));
+  return TaskID::FromBinary(data);
+}
+
+bool TaskID::IsPoolTaskId() const {
+  // The ActorID slot starts at offset kUniqueBytesLength.
+  // Check if byte[0] of that slot has the pool prefix.
+  return id_[kUniqueBytesLength] == ActorPoolID::kPoolIdPrefix;
+}
+
 TaskID TaskID::ForExecutionAttempt(const TaskID &task_id, uint64_t attempt_number) {
   std::string data_str;
   std::copy_n(task_id.Data(), TaskID::kLength, std::back_inserter(data_str));
@@ -273,6 +294,16 @@ ActorID ObjectID::ToActorID(const ObjectID &object_id) {
   return ActorID::FromBinary(actor_id);
 }
 
+ActorPoolID ObjectID::ToActorPoolID(const ObjectID &object_id) {
+  // ActorPoolID occupies the same slot as ActorID in the TaskID portion.
+  static_assert(ActorPoolID::kLength == ActorID::kLength,
+                "ActorPoolID and ActorID must be the same size");
+  auto beg = reinterpret_cast<const char *>(object_id.id_) + ObjectID::kLength -
+             ActorPoolID::kLength - ObjectID::kIndexBytesLength;
+  std::string pool_id(beg, beg + ActorPoolID::kLength);
+  return ActorPoolID::FromBinary(pool_id);
+}
+
 ObjectID ObjectID::GenerateObjectId(const std::string &task_id_binary,
                                     ObjectIDIndexType object_index) {
   RAY_CHECK(task_id_binary.size() == TaskID::Size());
@@ -309,10 +340,29 @@ JobID PlacementGroupID::JobId() const {
       reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
+ActorPoolID ActorPoolID::Of(const JobID &job_id) {
+  std::string data(kUniqueBytesLength, 0);
+  FillRandom(&data);
+  // Set the reserved prefix byte so pool IDs are distinguishable from ActorIDs.
+  data[0] = kPoolIdPrefix;
+  std::copy_n(job_id.Data(), JobID::kLength, std::back_inserter(data));
+  return ActorPoolID::FromBinary(data);
+}
+
 ActorPoolID ActorPoolID::FromRandom() {
   std::string data(kLength, 0);
   FillRandom(&data);
+  // Set the reserved prefix byte even for test-generated IDs.
+  data[0] = kPoolIdPrefix;
   return ActorPoolID::FromBinary(data);
+}
+
+bool ActorPoolID::IsPoolId() const { return id_[0] == kPoolIdPrefix; }
+
+JobID ActorPoolID::JobId() const {
+  RAY_CHECK(!IsNil());
+  return JobID::FromBinary(std::string(
+      reinterpret_cast<const char *>(this->Data() + kUniqueBytesLength), JobID::kLength));
 }
 
 LeaseID LeaseID::FromRandom() {

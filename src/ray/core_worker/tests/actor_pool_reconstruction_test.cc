@@ -88,8 +88,8 @@ class PoolReconstructionTest : public ::testing::Test {
     actor_manager_ = std::make_unique<ActorManager>(
         gcs_client_, *mock_task_submitter_, *reference_counter_);
 
-    pool_manager_ = std::make_unique<ActorPoolManager>(
-        *actor_manager_, *mock_task_submitter_, *mock_task_manager_);
+    pool_manager_ =
+        std::make_unique<ActorPoolManager>(*actor_manager_, *mock_task_manager_);
   }
 
   void TearDown() override {
@@ -103,10 +103,6 @@ class PoolReconstructionTest : public ::testing::Test {
 
   ActorPoolID CreatePool(const std::vector<ActorID> &actors) {
     ActorPoolConfig config;
-    config.max_retry_attempts = 3;
-    config.retry_backoff_ms = 100;
-    config.retry_on_system_errors = true;
-
     auto pool_id = pool_manager_->RegisterPool(config, actors);
     for (const auto &a : actors) {
       pool_manager_->AddActorToPool(pool_id, a, NodeID::FromRandom());

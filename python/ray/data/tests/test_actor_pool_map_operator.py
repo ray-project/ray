@@ -1666,6 +1666,62 @@ def test_core_actor_pool_release_pending_actors_cancels_ready_refs():
     assert adapter._pending_actors == {}
 
 
+def _make_adapter_with_actors(num_running: int, num_pending: int = 0):
+    adapter = CoreActorPoolAdapter.__new__(CoreActorPoolAdapter)
+    adapter._running_actors = {MagicMock(): MagicMock() for _ in range(num_running)}
+    adapter._pending_actors = {MagicMock(): MagicMock() for _ in range(num_pending)}
+    adapter._pool = MagicMock()
+    adapter._num_restarting_actors = 0
+    adapter._num_active_data_tasks = 0
+    adapter._last_upscaled_at = None
+    adapter._last_downscaling_debounce_warning_ts = None
+    return adapter
+
+
+def test_core_actor_pool_scale_down_keeps_at_least_one_actor():
+    """Scale-down requests must leave at least one actor in a core pool.
+
+    Cross-actor retry/reconstruction requires a peer actor to redirect to, so the adapter
+    clamps downscale deltas to keep current_size >= 1. This applies even
+    to force=True requests (from the autoscaler's has_completed / inputs-
+    consumed paths) — otherwise failed tasks have nowhere to retry.
+    """
+    adapter = _make_adapter_with_actors(num_running=2)
+
+    def fake_remove_inactive_actor():
+        if not adapter._running_actors:
+            return False
+        actor = next(iter(adapter._running_actors))
+        del adapter._running_actors[actor]
+        return True
+
+    with patch.object(
+        adapter, "_remove_inactive_actor", side_effect=fake_remove_inactive_actor
+    ) as mock_remove:
+        req = ActorPoolScalingRequest.downscale(
+            delta=-2, force=True, reason="consumed all inputs"
+        )
+        released = adapter.scale(req)
+
+    assert released == -1
+    assert mock_remove.call_count == 1
+    assert len(adapter._running_actors) == 1
+
+
+def test_core_actor_pool_scale_down_noop_when_already_at_floor():
+    """A downscale request issued against a 1-actor pool must be a no-op."""
+    adapter = _make_adapter_with_actors(num_running=1)
+
+    with patch.object(adapter, "_remove_inactive_actor") as mock_remove:
+        req = ActorPoolScalingRequest.downscale(
+            delta=-1, force=True, reason="consumed all inputs"
+        )
+        released = adapter.scale(req)
+
+    assert released == 0
+    mock_remove.assert_not_called()
+    assert len(adapter._running_actors) == 1
+
 if __name__ == "__main__":
     import sys
 

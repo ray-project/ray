@@ -170,6 +170,9 @@ cdef class TaskID(BaseID):
     def actor_id(self):
         return ActorID(self.data.ActorId().Binary())
 
+    def is_pool_task_id(self):
+        return self.data.IsPoolTaskId()
+
     def job_id(self):
         check_nil(self)
         return JobID(self.data.JobId().Binary())
@@ -447,6 +450,11 @@ cdef class ActorPoolID(BaseID):
         return <CActorPoolID>self.data
 
     @classmethod
+    def of(cls, job_id):
+        assert isinstance(job_id, JobID)
+        return cls(CActorPoolID.Of(CJobID.FromBinary(job_id.binary())).Binary())
+
+    @classmethod
     def from_random(cls):
         return cls(CActorPoolID.FromRandom().Binary())
 
@@ -471,6 +479,14 @@ cdef class ActorPoolID(BaseID):
 
     def is_nil(self):
         return self.data.IsNil()
+
+    def is_pool_id(self):
+        return self.data.IsPoolId()
+
+    @property
+    def job_id(self):
+        check_nil(self)
+        return JobID(self.data.JobId().Binary())
 
     cdef size_t hash(self):
         return self.data.Hash()

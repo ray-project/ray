@@ -266,6 +266,11 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   }
 
   // Add new owned objects for the return values of the task.
+  // For pool tasks whose refs were pre-registered via RegisterPoolTaskReturnValues,
+  // skip AddOwnedObject to avoid double-registration. We detect this by checking
+  // if the first return ObjectID already has a reference.
+  bool pool_task_refs_preregistered = spec.IsPoolTask() && spec.NumReturns() > 0 &&
+                                      reference_counter_.HasReference(spec.ReturnId(0));
   size_t num_returns = spec.NumReturns();
   std::vector<rpc::ObjectReference> returned_refs;
   returned_refs.reserve(num_returns);
@@ -274,7 +279,7 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   auto tensor_transport = spec.TensorTransport();
   for (size_t i = 0; i < num_returns; i++) {
     auto return_id = spec.ReturnId(i);
-    if (!spec.IsActorCreationTask()) {
+    if (!spec.IsActorCreationTask() && !pool_task_refs_preregistered) {
       LineageReconstructionEligibility lineage_eligibility;
       if (max_retries == 0) {
         lineage_eligibility = LineageReconstructionEligibility::INELIGIBLE_NO_RETRIES;
@@ -320,8 +325,9 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
   reference_counter_.UpdateSubmittedTaskReferences(return_ids, task_deps);
 
   // If it is a generator task, create an object ref stream.
+  // Skip for pool tasks — stream was already created in RegisterPoolTaskReturnValues.
   // The language frontend is responsible for calling DeleteObjectRefStream.
-  if (spec.IsStreamingGenerator()) {
+  if (spec.IsStreamingGenerator() && !pool_task_refs_preregistered) {
     const auto generator_id = spec.ReturnId(0);
     RAY_LOG(DEBUG) << "Create an object ref stream of an id " << generator_id;
     absl::MutexLock lock(&object_ref_stream_ops_mu_);
@@ -347,6 +353,53 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
       spec,
       rpc::TaskStatus::PENDING_ARGS_AVAIL,
       /* include_task_info */ true));
+
+  return returned_refs;
+}
+
+std::vector<rpc::ObjectReference> TaskManager::RegisterPoolTaskReturnValues(
+    const rpc::Address &caller_address,
+    const TaskID &pool_task_id,
+    size_t num_returns,
+    const std::string &call_site,
+    bool is_streaming_generator) {
+  RAY_LOG(DEBUG) << "Pre-registering " << num_returns << " return refs for pool task "
+                 << pool_task_id;
+
+  std::vector<rpc::ObjectReference> returned_refs;
+  returned_refs.reserve(num_returns);
+
+  for (size_t i = 0; i < num_returns; i++) {
+    auto return_id = ObjectID::FromIndex(pool_task_id, i + 1);
+    // Register as owned with lineage reconstruction eligible
+    reference_counter_.AddOwnedObject(return_id,
+                                      /*contained_ids=*/{},
+                                      caller_address,
+                                      call_site,
+                                      -1,
+                                      LineageReconstructionEligibility::ELIGIBLE,
+                                      /*add_local_ref=*/true,
+                                      /*pinned_at_node_id=*/std::optional<NodeID>(),
+                                      /*tensor_transport=*/std::nullopt);
+
+    rpc::ObjectReference ref;
+    ref.set_object_id(return_id.Binary());
+    ref.mutable_owner_address()->CopyFrom(caller_address);
+    ref.set_call_site(call_site);
+    returned_refs.push_back(std::move(ref));
+  }
+
+  // For streaming generators, create the ObjectRefStream.
+  if (is_streaming_generator && num_returns > 0) {
+    const auto generator_id = ObjectID::FromIndex(pool_task_id, 1);
+    RAY_LOG(DEBUG) << "Create object ref stream for pool task " << generator_id;
+    absl::MutexLock lock(&object_ref_stream_ops_mu_);
+    auto inserted =
+        object_ref_streams_.emplace(generator_id, ObjectRefStream(generator_id));
+    ref_stream_execution_signal_callbacks_.emplace(
+        generator_id, std::vector<ExecutionSignalCallback>());
+    RAY_CHECK(inserted.second);
+  }
 
   return returned_refs;
 }
@@ -392,8 +445,6 @@ std::optional<rpc::ErrorType> TaskManager::ResubmitTask(
   }
 
   if (should_queue_generator_resubmit) {
-    RAY_LOG(INFO) << "TaskManagerDebug queue-generator-resubmit task_id=" << task_id
-                  << " status=SUBMITTED_TO_WORKER";
     // Needs to be called outside of the lock to avoid deadlock.
     return queue_generator_resubmit_(spec)
                ? std::nullopt
@@ -498,8 +549,6 @@ void TaskManager::MarkGeneratorFailedAndResubmit(const TaskID &task_id) {
   // Note: Don't need to call UpdateReferencesForResubmit because CompletePendingTask or
   // FailPendingTask are not called when this is. Therefore, RemoveFinishedTaskReferences
   // never happened for this task.
-  RAY_LOG(INFO) << "TaskManagerDebug mark-generator-failed-and-resubmit task_id="
-                << task_id << " next_attempt=" << spec.AttemptNumber() + 1;
   async_retry_task_callback_(spec, /*delay_ms*/ 0);
 }
 
@@ -688,13 +737,6 @@ Status TaskManager::TryReadObjectRefStream(const ObjectID &generator_id,
          "created "
          "and not removed.";
   auto status = stream_it->second.TryReadNextItem(object_id_out);
-  RAY_LOG(INFO) << "TaskManagerDebug try-read-stream generator_id=" << generator_id
-                << " status=" << status.ToString()
-                << " eof_index=" << stream_it->second.EofIndex()
-                << " total_generated=" << stream_it->second.TotalNumObjectWritten()
-                << " total_consumed=" << stream_it->second.TotalNumObjectConsumed()
-                << " object_id="
-                << (status.ok() ? object_id_out->Hex() : std::string("N/A"));
 
   /// If you could read the next item, signal the executor to resume
   /// if necessary.
@@ -778,11 +820,6 @@ std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &gener
       << "PeekObjectRefStream API can be used only when the stream has been "
          "created and not removed.";
   const auto &result = stream_it->second.PeekNextItem();
-  RAY_LOG(INFO) << "TaskManagerDebug peek-stream generator_id=" << generator_id
-                << " object_id=" << result.first << " ready=" << result.second
-                << " eof_index=" << stream_it->second.EofIndex()
-                << " total_generated=" << stream_it->second.TotalNumObjectWritten()
-                << " total_consumed=" << stream_it->second.TotalNumObjectConsumed();
 
   // Temporarily own the ref since the corresponding reference is probably
   // not reported yet.
@@ -794,8 +831,6 @@ std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &gener
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto it = object_ref_streams_.find(generator_id);
-  RAY_LOG(INFO) << "TaskManagerDebug stream-exists generator_id=" << generator_id
-                << " exists=" << (it != object_ref_streams_.end());
   return it != object_ref_streams_.end();
 }
 
@@ -811,11 +846,6 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
   }
 
   stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
-  RAY_LOG(INFO) << "TaskManagerDebug mark-end-of-stream generator_id=" << generator_id
-                << " eof_index=" << end_of_stream_index
-                << " total_generated=" << stream_it->second.TotalNumObjectWritten()
-                << " total_consumed=" << stream_it->second.TotalNumObjectConsumed()
-                << " last_object_id=" << last_object_id;
   if (!last_object_id.IsNil()) {
     RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
                    << stream_it->second.EofIndex()
@@ -839,8 +869,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   int64_t item_index = request.item_index();
   int64_t attempt_number = request.attempt_number();
   // Every generated object has the same task id.
-  RAY_LOG(INFO) << "TaskManagerDebug report-generator-item generator_id=" << generator_id
-                << " item_index=" << item_index << " attempt_number=" << attempt_number;
   auto backpressure_threshold = -1;
 
   {
@@ -904,12 +932,6 @@ bool TaskManager::HandleReportGeneratorItemReturns(
   // Handle backpressure if needed.
   auto total_generated = stream_it->second.TotalNumObjectWritten();
   auto total_consumed = stream_it->second.TotalNumObjectConsumed();
-  RAY_LOG(INFO) << "TaskManagerDebug report-generator-item-state generator_id="
-                << generator_id << " item_index=" << item_index
-                << " total_generated=" << total_generated
-                << " total_consumed=" << total_consumed
-                << " backpressure_threshold=" << backpressure_threshold
-                << " num_objects_written=" << num_objects_written;
 
   if (stream_it->second.IsObjectConsumed(item_index)) {
     execution_signal_callback(Status::OK(), total_consumed);
@@ -1070,11 +1092,6 @@ void TaskManager::CompletePendingTask(const TaskID &task_id,
             reply.streaming_generator_return_ids_size();
         if (num_streaming_generator_returns > 0) {
           spec.SetNumStreamingGeneratorReturns(num_streaming_generator_returns);
-          RAY_LOG(INFO) << "TaskManagerDebug complete-streaming-generator task_id="
-                        << spec.TaskId() << " generator_id="
-                        << ObjectID::FromBinary(reply.return_objects(0).object_id())
-                        << " num_returns=" << num_streaming_generator_returns
-                        << " first_execution=" << first_execution;
           RAY_LOG(DEBUG) << "Completed streaming generator task " << spec.TaskId()
                          << " has " << spec.NumStreamingGeneratorReturns()
                          << " return objects.";

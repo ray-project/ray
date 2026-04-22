@@ -49,6 +49,11 @@ struct TaskFailureEntry {
 class TaskArg {
  public:
   virtual void ToProto(rpc::TaskArg *arg_proto) const = 0;
+
+  /// Return the ObjectID if this is a by-reference argument, or Nil otherwise.
+  /// Avoids the overhead of full proto serialization for reference extraction.
+  virtual ObjectID GetObjectId() const { return ObjectID::Nil(); }
+
   virtual ~TaskArg() = default;
 };
 
@@ -73,6 +78,8 @@ class TaskArgByReference : public TaskArg {
       ref->set_tensor_transport(*tensor_transport_);
     }
   }
+
+  ObjectID GetObjectId() const override { return id_; }
 
  private:
   /// Id of the argument if passed by reference, otherwise nullptr.

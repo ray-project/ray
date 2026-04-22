@@ -1229,8 +1229,8 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       std::vector<std::unique_ptr<TaskArg>> args,
       const TaskOptions &task_options,
       TaskCompletionCallback on_complete,
-      const ActorPoolID &pool_id = ActorPoolID::Nil(),
-      const TaskID &work_item_id = TaskID::Nil());
+      const ActorPoolID &pool_id,
+      const TaskID &pool_task_id);
 
  public:
   /// Get the expected return ids of the next task.
