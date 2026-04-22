@@ -210,7 +210,6 @@ pyx_library(
         "//src/ray/util:raii",
         "//src/ray/util:stream_redirection",
         "//src/ray/util:stream_redirection_options",
-        "@pyarrow//:arrow",
     ],
 )
 
