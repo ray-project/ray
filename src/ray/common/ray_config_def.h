@@ -371,7 +371,7 @@ RAY_CONFIG(int, object_manager_push_timeout_ms, 10000)
 
 /// Whether to enable move semantics for plasma objects. When enabled, the local
 /// copy of an object is freed after it has been successfully pushed to another node.
-RAY_CONFIG(bool, enable_plasma_move_semantics, false)
+RAY_CONFIG(bool, enable_plasma_move_semantics, true)
 
 /// Default chunk size for multi-chunk transfers to use in the object manager.
 /// In the object manager, no single thread is permitted to transfer more
