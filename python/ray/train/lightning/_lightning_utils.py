@@ -2,7 +2,6 @@ import logging
 import os
 import shutil
 import tempfile
-import uuid
 from pathlib import Path
 from typing import Any, Dict
 
@@ -255,6 +254,13 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         checkpoint_00000*/      Ray Train Checkpoint
         └─ checkpoint.ckpt      PyTorch Lightning Checkpoint
 
+    You can also provide the following arguments to the callback:
+
+    - checkpoint_upload_mode: The manner in which to upload the checkpoint.
+        See :ref:`Checkpoint upload modes <train-checkpoint-upload-modes>` for more details.
+    - validation: Whether to asynchronously validate the checkpoint.
+        See :ref:`Validating checkpoints asynchronously <train-validating-checkpoints>` for more details.
+
     For customized reporting and checkpointing logic, implement your own
     `lightning.pytorch.callbacks.Callback` following this user
     guide: :ref:`Saving and Loading Checkpoints <train-dl-saving-checkpoints>`.
@@ -278,17 +284,21 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         else:
             if checkpoint_upload_mode is not None:
                 raise ValueError(
-                    "checkpoint_upload_mode is not supported when using Ray Train V1"
+                    "`checkpoint_upload_mode` is only supported in Ray Train v2. "
+                    "To enable it, please set `RAY_TRAIN_V2_ENABLED=1`."
                 )
             if validation:
-                raise ValueError("validation is not supported when using Ray Train V1")
+                raise ValueError(
+                    "`validation` is only supported in Ray Train v2. "
+                    "To enable it, please set `RAY_TRAIN_V2_ENABLED=1`."
+                )
 
         job_id = ray.get_runtime_context().get_job_id()
         experiment_name = ray.train.get_context().get_experiment_name()
 
         self.tmpdir_prefix = Path(
             tempfile.gettempdir(),
-            f"lightning_checkpoints-job_id={job_id}-name={experiment_name}-uuid={uuid.uuid4().hex}",
+            f"lightning_checkpoints-job_id={job_id}-name={experiment_name}-world_rank={ray.train.get_context().get_world_rank()}",
         ).as_posix()
         if os.path.isdir(self.tmpdir_prefix):
             shutil.rmtree(self.tmpdir_prefix)
@@ -335,7 +345,9 @@ class RayTrainReportCallback(pl.callbacks.Callback):
         # handle cleanup instead.
         if is_v2_enabled() and self.checkpoint_upload_mode is not None:
             # Check here because CheckpointUploadMode is only imported when is_v2_enabled() is True
-            if self.checkpoint_upload_mode == CheckpointUploadMode.ASYNC:
+            if (
+                self.checkpoint_upload_mode.default_delete_local_checkpoint_after_upload()
+            ):
                 return
 
         shutil.rmtree(tmpdir)
