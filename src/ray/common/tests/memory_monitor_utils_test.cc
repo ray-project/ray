@@ -18,11 +18,16 @@
 #include <fstream>
 #include <memory>
 #include <string>
+#include <unordered_map>
 
 #include "gtest/gtest.h"
+#include "ray/common/cgroup2/cgroup_manager.h"
 #include "ray/common/cgroup2/cgroup_test_utils.h"
+#include "ray/common/cgroup2/fake_cgroup_driver.h"
+#include "ray/common/cgroup2/noop_cgroup_manager.h"
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor_test_fixture.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/process.h"
 
 namespace ray {
@@ -228,23 +233,80 @@ TEST_F(MemoryMonitorUtilsTest, TestCgroupNonexistentUsageFileReturnskNull) {
 }
 
 TEST_F(MemoryMonitorUtilsTest, TestGetMemoryThresholdTakeGreaterOfTheTwoValues) {
-  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(100, 0.5, 0), 100);
-  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(100, 0.5, 60), 50);
-
-  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(100, 1, 10), 100);
-  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(100, 1, 100), 100);
-
-  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(100, 0.1, 100), 10);
-  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(100, 0, 10), 90);
-  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(100, 0, 100), 0);
-
-  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(100, 0, MemoryMonitorInterface::kNull),
-            0);
+  NoopCgroupManager noop_cgroup_manager;
   ASSERT_EQ(
-      MemoryMonitorUtils::GetMemoryThreshold(100, 0.5, MemoryMonitorInterface::kNull),
+      MemoryMonitorUtils::GetMemoryThreshold(100, 0.5, 0, false, noop_cgroup_manager),
+      100);
+  ASSERT_EQ(
+      MemoryMonitorUtils::GetMemoryThreshold(100, 0.5, 60, false, noop_cgroup_manager),
       50);
-  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(100, 1, MemoryMonitorInterface::kNull),
+
+  ASSERT_EQ(
+      MemoryMonitorUtils::GetMemoryThreshold(100, 1, 10, false, noop_cgroup_manager),
+      100);
+  ASSERT_EQ(
+      MemoryMonitorUtils::GetMemoryThreshold(100, 1, 100, false, noop_cgroup_manager),
+      100);
+
+  ASSERT_EQ(
+      MemoryMonitorUtils::GetMemoryThreshold(100, 0.1, 100, false, noop_cgroup_manager),
+      10);
+  ASSERT_EQ(
+      MemoryMonitorUtils::GetMemoryThreshold(100, 0, 10, false, noop_cgroup_manager), 90);
+  ASSERT_EQ(
+      MemoryMonitorUtils::GetMemoryThreshold(100, 0, 100, false, noop_cgroup_manager), 0);
+
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                100, 0, MemoryMonitorInterface::kNull, false, noop_cgroup_manager),
+            0);
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                100, 0.5, MemoryMonitorInterface::kNull, false, noop_cgroup_manager),
+            50);
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                100, 1, MemoryMonitorInterface::kNull, false, noop_cgroup_manager),
             100);
+}
+
+TEST_F(
+    MemoryMonitorUtilsTest,
+    TestGetMemoryThresholdWithResourceIsolationUsesUpperBoundConstraintToComputeThreshold) {
+  // Create a fake cgroup directory using MockCgroupMemoryUsage.
+  std::string cgroup_dir = MockCgroupMemoryUsage(
+      /*total_bytes=*/16LL * 1024 * 1024 * 1024,
+      /*current_bytes=*/5LL * 1024 * 1024 * 1024,
+      /*inactive_file_bytes=*/100 * 1024 * 1024,
+      /*active_file_bytes=*/50 * 1024 * 1024);
+
+  // Create a CgroupManager backed by a fake cgroup driver on the mock cgroup directory.
+  std::shared_ptr<std::unordered_map<std::string, FakeCgroup>> cgroups =
+      std::make_shared<std::unordered_map<std::string, FakeCgroup>>();
+  cgroups->emplace(cgroup_dir, FakeCgroup{cgroup_dir, {5}, {}, {"cpu", "memory"}, {}});
+  std::unique_ptr<FakeCgroupDriver> driver = FakeCgroupDriver::Create(cgroups);
+
+  int64_t user_memory_max_bytes = 10LL * 1024 * 1024 * 1024;  // 10 GB
+  StatusOr<std::unique_ptr<CgroupManager>> result =
+      CgroupManager::Create(cgroup_dir,
+                            "node_id_123",
+                            /*system_reserved_cpu_weight=*/100,
+                            /*system_memory_bytes_min=*/1LL * 1024 * 1024 * 1024,
+                            /*system_memory_bytes_low=*/1LL * 1024 * 1024 * 1024,
+                            /*user_memory_high_bytes=*/user_memory_max_bytes,
+                            user_memory_max_bytes,
+                            std::move(driver));
+  std::unique_ptr<CgroupManager> cgroup_manager = std::move(result.value());
+
+  // Reaction buffer defaults to 5% of total memory. If
+  // kDefaultThresholdMonitorReactionBufferProportion is changed, this should be changed
+  // accordingly.
+  int64_t expected_threshold =
+      user_memory_max_bytes - static_cast<int64_t>(16LL * 1024 * 1024 * 1024 * 0.05);
+  ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
+                /*total_memory_bytes=*/16LL * 1024 * 1024 * 1024,
+                /*usage_threshold=*/0.5,
+                /*min_memory_free_bytes=*/MemoryMonitorInterface::kNull,
+                /*resource_isolation_enabled=*/true,
+                *cgroup_manager),
+            expected_threshold);
 }
 
 TEST_F(MemoryMonitorUtilsTest, TestGetPidsFromDirOnlyReturnsNumericFilenames) {

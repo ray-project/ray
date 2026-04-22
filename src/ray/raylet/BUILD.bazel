@@ -189,7 +189,7 @@ ray_cc_library(
     name = "worker_killing_policy_factory",
     srcs = select({
         "//bazel:is_linux": [
-            "worker_killing_policy_group_by_owner_factory.cc",
+            "worker_killing_policy_factory.cc",
         ],
         "//conditions:default": [
             "noop_worker_killing_policy_factory.cc",
@@ -201,9 +201,13 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":worker_killing_policy_interface",
+        "//src/ray/common:ray_config",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
     ] + select({
         "//bazel:is_linux": [
+            ":worker_killing_policy_by_time",
             ":worker_killing_policy_group_by_owner",
+            "//src/ray/common:memory_monitor_utils",
         ],
         "//conditions:default": [
             ":noop_worker_killing_policy",
