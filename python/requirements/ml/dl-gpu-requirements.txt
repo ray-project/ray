@@ -14,6 +14,9 @@ torch-scatter==2.1.2+pt27cu128
 torch-sparse==0.6.18+pt27cu128
 torch-cluster==1.6.3+pt27cu128
 torch-spline-conv==1.2.2+pt27cu128
+# Declared explicitly so GPU depsets resolve nccl from cu128 torch
+# transitively rather than being pinned by the CPU-built lock.
+nvidia-nccl-cu12; platform_system == 'Linux' and platform_machine != 'aarch64'
 
 cupy-cuda12x>=13.4.0; sys_platform != 'darwin'
 cudf-cu12>=24.12.0; sys_platform != 'darwin'
