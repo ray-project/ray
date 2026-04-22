@@ -186,7 +186,8 @@ cdef class EventRecorder:
 
             rec = <EventRecorder>_event_recorder_instance
             if rec._recorder.get() != NULL:
-                rec._recorder.get().Shutdown()
+                with nogil:
+                    rec._recorder.get().Shutdown()
             rec._recorder.reset()
             _event_recorder_instance = None
 

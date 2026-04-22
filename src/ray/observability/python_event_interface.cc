@@ -152,10 +152,10 @@ PythonEventRecorder::~PythonEventRecorder() { Shutdown(); }
 void PythonEventRecorder::Shutdown() {
   if (recorder_) {
     recorder_->StopExportingEvents();
-    recorder_.reset();
   }
-  event_aggregator_client_.reset();
-  client_call_manager_.reset();
+  // Stop and join io_thread before destroying recorder_, event_aggregator_client_,
+  // and client_call_manager_ so that no periodical-runner timer or in-flight gRPC
+  // callback on io_thread can touch their members during destruction.
   work_guard_.reset();
   if (io_context_) {
     io_context_->stop();
@@ -163,6 +163,9 @@ void PythonEventRecorder::Shutdown() {
   if (io_thread_ && io_thread_->joinable()) {
     io_thread_->join();
   }
+  recorder_.reset();
+  event_aggregator_client_.reset();
+  client_call_manager_.reset();
   io_thread_.reset();
   io_context_.reset();
 }
