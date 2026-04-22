@@ -138,14 +138,6 @@ class TrainLoopRunner:
         if ray.train.get_context().get_world_rank() == 0:
             logger.info(f"Training starting @ epoch={self._train_epoch_idx}")
 
-        # Reset before the dataloader wrapper starts incrementing. On checkpoint
-        # restore, _load_checkpoint restores _train_batch_idx, but the skip loop
-        # below re-drives the wrapper which double-counts against that value.
-        # The skip count is derived from _global_rows_processed_this_epoch, so
-        # zeroing here doesn't affect it — and max_train_batches / the
-        # _should_* step checks then see the correct per-epoch batch index.
-        self._train_batch_idx = 0
-
         train_dataloader = self.factory.get_train_dataloader()
         train_dataloader = self._wrap_dataloader(train_dataloader, train=True)
 
@@ -154,6 +146,12 @@ class TrainLoopRunner:
         if self._num_batches_to_skip:
             if ray.train.get_context().get_world_rank() == 0:
                 logger.info(f"Skipping {self._num_batches_to_skip} batches...")
+
+            # Zero before the skip loop drives the wrapper, which would
+            # otherwise double-count against the value restored from the
+            # checkpoint. After the skip, _train_batch_idx is rebuilt to
+            # _num_batches_to_skip — matching the restored value.
+            self._train_batch_idx = 0
 
             for _ in range(self._num_batches_to_skip):
                 with self._metrics["train/iter_skip_batch"].timer():
