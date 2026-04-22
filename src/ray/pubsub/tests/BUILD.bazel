@@ -7,7 +7,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/pubsub:publisher",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -20,7 +19,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/pubsub:subscriber",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -37,7 +35,6 @@ ray_cc_test(
         "//src/ray/util:network_util",
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -55,6 +52,5 @@ ray_cc_test(
         "//src/ray/rpc/authentication:authentication_token",
         "//src/ray/rpc/authentication:authentication_token_loader",
         "//src/ray/util:env",
-        "@com_google_googletest//:gtest_main",
     ],
 )
