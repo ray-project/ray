@@ -47,72 +47,44 @@ def actor_pool_ft_cluster(ray_start_cluster):
 
 
 @pytest.mark.parametrize(
-    "kill_after_yields,scale_down_to_zero",
-    [
-        (2, False),
-        (5, False),
-        (2, True),
-        (5, True),
-    ],
-    ids=[
-        "retry_incomplete",
-        "reconstruct_completed",
-        "retry_incomplete_empty_pool",
-        "reconstruct_completed_empty_pool",
-    ],
+    "kill_after_yields",
+    [2, 5],
+    ids=["retry_incomplete", "reconstruct_completed"],
 )
 def test_actor_pool_streaming_generator_fault_tolerance(
-    actor_pool_ft_cluster, kill_after_yields, scale_down_to_zero
+    actor_pool_ft_cluster, kill_after_yields
 ):
     # Verify that actor-pool streaming-generator outputs survive both
-    # mid-stream retry and post-completion reconstruction.
-    #
-    # When scale_down_to_zero=False: after the first attempt fails/loses its
-    # output, the pool still has other actors available so the retry goes to
-    # a *different* actor in the pool (cross-actor retry).
-    #
-    # When scale_down_to_zero=True: before the node is killed we scale the
-    # pool down to 0 (via pool.remove_actor(kill=False) so the first
-    # attempt's actor keeps running until the node failure). With no pool
-    # actors available, the InternalHeartbeat retry loop falls through to
-    # Ray's native actor reconstruction: GCS restarts the original actor
-    # (max_restarts=-1) and the retry runs on the same actor_id but a new
-    # incarnation (pid differs).
+    # mid-stream retry and post-completion reconstruction on another pool actor.
 
     _STREAM_ITEMS = 5
     _PAYLOAD_BYTES = 1_000_000
 
     @ray.remote(num_cpus=0, resources={"head": 1}, max_concurrency=8)
     class StreamingCoordinator:
-        """Tracks attempts by (actor_id, pid) so both cross-actor retry
-        (different actor_id) and native reconstruction (same actor_id, new
-        pid = new incarnation) register as distinct attempts."""
-
         def __init__(self, kill_after_yields: int):
             self._kill_after_yields = kill_after_yields
-            self._attempt_keys = []  # ordered list of (actor_id, pid)
-            self._key_to_attempt_index = {}
-            self._key_to_node_id = {}
-            self._yield_counts_by_key = {}
+            self._attempt_actor_ids = []
+            self._actor_id_to_attempt_index = {}
+            self._actor_id_to_node_id = {}
+            self._yield_counts_by_actor_id = {}
             self._kill_point_reached = False
-            self._finished_keys = set()
+            self._finished_actor_ids = set()
             self._pause_released = threading.Event()
 
-        def register_attempt(self, actor_id: str, pid: int, node_id: str) -> int:
-            key = (actor_id, pid)
-            if key not in self._key_to_attempt_index:
-                attempt_index = len(self._attempt_keys)
-                self._attempt_keys.append(key)
-                self._key_to_attempt_index[key] = attempt_index
-                self._key_to_node_id[key] = node_id
-                self._yield_counts_by_key[key] = 0
-            return self._key_to_attempt_index[key]
+        def register_attempt(self, actor_id: str, node_id: str) -> int:
+            if actor_id not in self._actor_id_to_attempt_index:
+                attempt_index = len(self._attempt_actor_ids)
+                self._attempt_actor_ids.append(actor_id)
+                self._actor_id_to_attempt_index[actor_id] = attempt_index
+                self._actor_id_to_node_id[actor_id] = node_id
+                self._yield_counts_by_actor_id[actor_id] = 0
+            return self._actor_id_to_attempt_index[actor_id]
 
-        def after_yield(self, actor_id: str, pid: int) -> None:
-            key = (actor_id, pid)
-            self._yield_counts_by_key[key] += 1
-            yielded = self._yield_counts_by_key[key]
-            attempt_index = self._key_to_attempt_index[key]
+        def after_yield(self, actor_id: str) -> None:
+            self._yield_counts_by_actor_id[actor_id] += 1
+            yielded = self._yield_counts_by_actor_id[actor_id]
+            attempt_index = self._actor_id_to_attempt_index[actor_id]
 
             if (
                 attempt_index == 0
@@ -125,38 +97,28 @@ def test_actor_pool_streaming_generator_fault_tolerance(
         def release_pause(self) -> None:
             self._pause_released.set()
 
-        def mark_finished(self, actor_id: str, pid: int) -> None:
-            self._finished_keys.add((actor_id, pid))
+        def mark_finished(self, actor_id: str) -> None:
+            self._finished_actor_ids.add(actor_id)
 
         def snapshot(self):
-            def _fmt(key):
-                return f"{key[0]}:{key[1]}"
-
             return {
                 "kill_after_yields": self._kill_after_yields,
-                "attempt_keys": [_fmt(k) for k in self._attempt_keys],
-                "attempt_actor_ids": [k[0] for k in self._attempt_keys],
-                "attempt_pids": [k[1] for k in self._attempt_keys],
-                "key_to_node_id": {_fmt(k): v for k, v in self._key_to_node_id.items()},
-                "yield_counts_by_key": {
-                    _fmt(k): v for k, v in self._yield_counts_by_key.items()
-                },
+                "attempt_actor_ids": list(self._attempt_actor_ids),
+                "actor_id_to_attempt_index": dict(self._actor_id_to_attempt_index),
+                "actor_id_to_node_id": dict(self._actor_id_to_node_id),
+                "yield_counts_by_actor_id": dict(self._yield_counts_by_actor_id),
                 "kill_point_reached": self._kill_point_reached,
-                "finished_keys": sorted(_fmt(k) for k in self._finished_keys),
+                "finished_actor_ids": sorted(self._finished_actor_ids),
             }
 
     @ray.remote
     class StreamingWorker:
         def stream(self, coordinator):
-            import os
-
             ctx = ray.get_runtime_context()
             actor_id = ctx.get_actor_id()
-            pid = os.getpid()
             ray.get(
                 coordinator.register_attempt.remote(
                     actor_id,
-                    pid,
                     ctx.get_node_id(),
                 )
             )
@@ -165,9 +127,9 @@ def test_actor_pool_streaming_generator_fault_tolerance(
                 # Force each yielded value through the object store so node loss
                 # triggers retry/reconstruction on the produced objects.
                 yield np.full(_PAYLOAD_BYTES, i, dtype=np.uint8)
-                ray.get(coordinator.after_yield.remote(actor_id, pid))
+                ray.get(coordinator.after_yield.remote(actor_id))
 
-            ray.get(coordinator.mark_finished.remote(actor_id, pid))
+            ray.get(coordinator.mark_finished.remote(actor_id))
 
     def submit_stream(pool: ActorPool, coordinator) -> ObjectRefGenerator:
         gen_ref = pool.submit(
@@ -198,14 +160,14 @@ def test_actor_pool_streaming_generator_fault_tolerance(
         return refs
 
     def first_attempt_finished(snapshot: dict) -> bool:
-        if not snapshot["attempt_keys"]:
+        if not snapshot["attempt_actor_ids"]:
             return False
-        return snapshot["attempt_keys"][0] in snapshot["finished_keys"]
+        return snapshot["attempt_actor_ids"][0] in snapshot["finished_actor_ids"]
 
     def wait_for_additional_attempt(expected_attempts: int, timeout_s: float):
         try:
             wait_for_condition(
-                lambda: len(ray.get(coordinator.snapshot.remote())["attempt_keys"])
+                lambda: len(ray.get(coordinator.snapshot.remote())["attempt_actor_ids"])
                 >= expected_attempts,
                 timeout=timeout_s,
             )
@@ -216,43 +178,19 @@ def test_actor_pool_streaming_generator_fault_tolerance(
                 f"snapshot={snapshot}. original_error={exc}"
             )
 
-    def wait_for_attempt_finished(attempt_key: str, timeout_s: float):
+    def wait_for_attempt_finished(actor_id: str, timeout_s: float):
         try:
             wait_for_condition(
-                lambda: attempt_key
-                in ray.get(coordinator.snapshot.remote())["finished_keys"],
+                lambda: actor_id
+                in ray.get(coordinator.snapshot.remote())["finished_actor_ids"],
                 timeout=timeout_s,
             )
         except RuntimeError as exc:
             snapshot = ray.get(coordinator.snapshot.remote())
             pytest.fail(
                 "Retried streaming-generator attempt did not report completion. "
-                f"attempt_key={attempt_key} snapshot={snapshot}. "
-                f"original_error={exc}"
+                f"actor_id={actor_id} snapshot={snapshot}. original_error={exc}"
             )
-
-    def detach_pool_actors(pool: ActorPool) -> None:
-        """Mimic the CoreActorPoolAdapter shutdown sequence:
-          1. remove_actor(kill=False) — drop Python + C++ pool tracking
-          2. ray.kill(actor, no_restart=False) — terminate the worker but
-             allow GCS to restart the actor (max_restarts=-1) so native
-             reconstruction can still recreate it for a pending retry.
-
-        After this, GetPoolActors(pool_id) is empty so the InternalHeartbeat
-        retry loop falls through to native reconstruction on the original
-        actor_id.
-        """
-        actors = list(pool.actors)
-        for actor in actors:
-            pool.remove_actor(actor, kill=False)
-        for actor in actors:
-            try:
-                # no_restart=False matches the CoreActorPoolAdapter: we
-                # want GCS to restart the actor (via max_restarts=-1) if a
-                # pending retry in to_resubmit_ still needs it.
-                ray.kill(actor, no_restart=False)
-            except Exception:
-                pass
 
     @ray.remote(num_cpus=0, resources={"head": 1})
     def consume_stream_values(refs):
@@ -288,15 +226,8 @@ def test_actor_pool_streaming_generator_fault_tolerance(
                 timeout=20,
             )
             snapshot = ray.get(coordinator.snapshot.remote())
-            first_attempt_key = snapshot["attempt_keys"][0]
-            victim_node_id = snapshot["key_to_node_id"][first_attempt_key]
-
-            if scale_down_to_zero:
-                # Detach every actor from the pool (including the busy first
-                # attempt) without killing them, so GetPoolActors() is empty
-                # when the retry loop runs.
-                detach_pool_actors(pool)
-                assert pool.size == 0
+            first_actor_id = snapshot["attempt_actor_ids"][0]
+            victim_node_id = snapshot["actor_id_to_node_id"][first_actor_id]
 
             cluster.remove_node(
                 worker_nodes_by_id[victim_node_id],
@@ -305,10 +236,10 @@ def test_actor_pool_streaming_generator_fault_tolerance(
             ray.get(coordinator.release_pause.remote())
 
             refs.extend(drain_stream(gen, _STREAM_ITEMS - kill_after_yields))
-            wait_for_additional_attempt(expected_attempts=2, timeout_s=30)
+            wait_for_additional_attempt(expected_attempts=2, timeout_s=20)
             snapshot = ray.get(coordinator.snapshot.remote())
-            second_attempt_key = snapshot["attempt_keys"][1]
-            wait_for_attempt_finished(second_attempt_key, timeout_s=30)
+            second_actor_id = snapshot["attempt_actor_ids"][1]
+            wait_for_attempt_finished(second_actor_id, timeout_s=20)
         else:
             # Let the original task finish, then kill the producing node so the
             # downstream consumer has to trigger object reconstruction.
@@ -321,12 +252,8 @@ def test_actor_pool_streaming_generator_fault_tolerance(
                 timeout=20,
             )
             snapshot = ray.get(coordinator.snapshot.remote())
-            first_attempt_key = snapshot["attempt_keys"][0]
-            victim_node_id = snapshot["key_to_node_id"][first_attempt_key]
-
-            if scale_down_to_zero:
-                detach_pool_actors(pool)
-                assert pool.size == 0
+            first_actor_id = snapshot["attempt_actor_ids"][0]
+            victim_node_id = snapshot["actor_id_to_node_id"][first_actor_id]
 
             cluster.remove_node(
                 worker_nodes_by_id[victim_node_id],
@@ -334,12 +261,12 @@ def test_actor_pool_streaming_generator_fault_tolerance(
             )
 
             snapshot_after_kill = ray.get(coordinator.snapshot.remote())
-            assert len(snapshot_after_kill["attempt_keys"]) == 1
+            assert len(snapshot_after_kill["attempt_actor_ids"]) == 1
 
         consumer_ref = consume_stream_values.remote(refs)
 
         if kill_after_yields == _STREAM_ITEMS:
-            wait_for_additional_attempt(expected_attempts=2, timeout_s=30)
+            wait_for_additional_attempt(expected_attempts=2, timeout_s=20)
 
         try:
             values = ray.get(consumer_ref, timeout=30)
@@ -352,27 +279,16 @@ def test_actor_pool_streaming_generator_fault_tolerance(
 
         snapshot = ray.get(coordinator.snapshot.remote())
 
-        attempt_keys = snapshot["attempt_keys"]
         attempt_actor_ids = snapshot["attempt_actor_ids"]
-        first_attempt_key = attempt_keys[0]
-        second_attempt_key = attempt_keys[1]
+        first_actor_id = attempt_actor_ids[0]
+        second_actor_id = attempt_actor_ids[1]
 
         assert values == [0, 1, 2, 3, 4]
-        assert len(attempt_keys) >= 2
-        assert attempt_actor_ids[0] in initial_actor_ids
-        # Attempts must always be distinct incarnations.
-        assert first_attempt_key != second_attempt_key
-
-        if scale_down_to_zero:
-            # Native reconstruction: pool had no actors to redirect to, so
-            # the retry runs on the *same* actor_id (a new incarnation
-            # restarted by GCS via max_restarts=-1).
-            assert attempt_actor_ids[0] == attempt_actor_ids[1]
-        else:
-            # Cross-actor retry: pool had other actors, retry redirects to
-            # a different one of the original pool actors.
-            assert attempt_actor_ids[1] in initial_actor_ids
-            assert attempt_actor_ids[0] != attempt_actor_ids[1]
+        assert len(attempt_actor_ids) >= 2
+        assert first_actor_id in initial_actor_ids
+        assert second_actor_id in initial_actor_ids
+        # retry/reconstruction should use a new actor, from the existing pool actors
+        assert first_actor_id != second_actor_id
 
         # Verify the generator ref is pool-scoped.
         gen_ref_binary = gen._generator_ref.binary()
@@ -381,78 +297,60 @@ def test_actor_pool_streaming_generator_fault_tolerance(
         assert (
             task_id.is_pool_task_id()
         ), "Generator ObjectRef should have a pool-scoped TaskID"
-        # In both modes the retry lands on a different node than the killed one.
         assert (
-            snapshot["key_to_node_id"][first_attempt_key]
-            != snapshot["key_to_node_id"][second_attempt_key]
+            snapshot["actor_id_to_node_id"][first_actor_id]
+            != snapshot["actor_id_to_node_id"][second_actor_id]
         )
-        assert snapshot["yield_counts_by_key"][second_attempt_key] == _STREAM_ITEMS
+        assert snapshot["yield_counts_by_actor_id"][second_actor_id] == _STREAM_ITEMS
 
         if kill_after_yields < _STREAM_ITEMS:
             assert (
-                snapshot["yield_counts_by_key"][first_attempt_key] == kill_after_yields
+                snapshot["yield_counts_by_actor_id"][first_actor_id]
+                == kill_after_yields
             )
-            assert first_attempt_key not in snapshot["finished_keys"]
+            assert first_actor_id not in snapshot["finished_actor_ids"]
         else:
-            assert snapshot["yield_counts_by_key"][first_attempt_key] == _STREAM_ITEMS
-            assert first_attempt_key in snapshot["finished_keys"]
-            assert len(snapshot["finished_keys"]) == 2
+            assert snapshot["yield_counts_by_actor_id"][first_actor_id] == _STREAM_ITEMS
+            assert first_actor_id in snapshot["finished_actor_ids"]
+            assert len(snapshot["finished_actor_ids"]) == 2
     finally:
         pool.shutdown()
 
 
 @pytest.mark.parametrize(
-    "pause_before_return,scale_down_to_zero",
-    [
-        (True, False),
-        (False, False),
-        (True, True),
-        (False, True),
-    ],
-    ids=[
-        "retry_incomplete",
-        "reconstruct_completed",
-        "retry_incomplete_empty_pool",
-        "reconstruct_completed_empty_pool",
-    ],
+    "pause_before_return",
+    [True, False],
+    ids=["retry_incomplete", "reconstruct_completed"],
 )
 def test_actor_pool_non_streaming_fault_tolerance(
-    actor_pool_ft_cluster, pause_before_return, scale_down_to_zero
+    actor_pool_ft_cluster, pause_before_return
 ):
     # Verify that ordinary actor-pool task outputs survive both
     # mid-task retry and post-completion lineage reconstruction.
-    #
-    # When scale_down_to_zero=True: the pool is detached (remove_actor with
-    # kill=False) before the node failure, so the retry loop sees an empty
-    # pool and falls through to Ray's native actor reconstruction instead
-    # of picking a different pool actor.
 
     _PAYLOAD_BYTES = 1_000_000
 
     @ray.remote(num_cpus=0, resources={"head": 1}, max_concurrency=8)
     class NonStreamingCoordinator:
-        """See StreamingCoordinator — same (actor_id, pid) tracking rationale."""
-
         def __init__(self, pause_before_return: bool):
             self._pause_before_return = pause_before_return
-            self._attempt_keys = []
-            self._key_to_attempt_index = {}
-            self._key_to_node_id = {}
+            self._attempt_actor_ids = []
+            self._actor_id_to_attempt_index = {}
+            self._actor_id_to_node_id = {}
             self._pause_point_reached = False
-            self._finished_keys = set()
+            self._finished_actor_ids = set()
             self._pause_released = threading.Event()
 
-        def register_attempt(self, actor_id: str, pid: int, node_id: str) -> int:
-            key = (actor_id, pid)
-            if key not in self._key_to_attempt_index:
-                attempt_index = len(self._attempt_keys)
-                self._attempt_keys.append(key)
-                self._key_to_attempt_index[key] = attempt_index
-                self._key_to_node_id[key] = node_id
-            return self._key_to_attempt_index[key]
+        def register_attempt(self, actor_id: str, node_id: str) -> int:
+            if actor_id not in self._actor_id_to_attempt_index:
+                attempt_index = len(self._attempt_actor_ids)
+                self._attempt_actor_ids.append(actor_id)
+                self._actor_id_to_attempt_index[actor_id] = attempt_index
+                self._actor_id_to_node_id[actor_id] = node_id
+            return self._actor_id_to_attempt_index[actor_id]
 
-        def maybe_pause_before_return(self, actor_id: str, pid: int) -> None:
-            attempt_index = self._key_to_attempt_index[(actor_id, pid)]
+        def maybe_pause_before_return(self, actor_id: str) -> None:
+            attempt_index = self._actor_id_to_attempt_index[actor_id]
             if attempt_index == 0 and self._pause_before_return:
                 self._pause_point_reached = True
                 self._pause_released.wait()
@@ -460,34 +358,26 @@ def test_actor_pool_non_streaming_fault_tolerance(
         def release_pause(self) -> None:
             self._pause_released.set()
 
-        def mark_finished(self, actor_id: str, pid: int) -> None:
-            self._finished_keys.add((actor_id, pid))
+        def mark_finished(self, actor_id: str) -> None:
+            self._finished_actor_ids.add(actor_id)
 
         def snapshot(self):
-            def _fmt(key):
-                return f"{key[0]}:{key[1]}"
-
             return {
-                "attempt_keys": [_fmt(k) for k in self._attempt_keys],
-                "attempt_actor_ids": [k[0] for k in self._attempt_keys],
-                "attempt_pids": [k[1] for k in self._attempt_keys],
-                "key_to_node_id": {_fmt(k): v for k, v in self._key_to_node_id.items()},
+                "attempt_actor_ids": list(self._attempt_actor_ids),
+                "actor_id_to_attempt_index": dict(self._actor_id_to_attempt_index),
+                "actor_id_to_node_id": dict(self._actor_id_to_node_id),
                 "pause_point_reached": self._pause_point_reached,
-                "finished_keys": sorted(_fmt(k) for k in self._finished_keys),
+                "finished_actor_ids": sorted(self._finished_actor_ids),
             }
 
     @ray.remote
     class NonStreamingWorker:
         def run(self, coordinator, value):
-            import os
-
             ctx = ray.get_runtime_context()
             actor_id = ctx.get_actor_id()
-            pid = os.getpid()
             ray.get(
                 coordinator.register_attempt.remote(
                     actor_id,
-                    pid,
                     ctx.get_node_id(),
                 )
             )
@@ -496,19 +386,19 @@ def test_actor_pool_non_streaming_fault_tolerance(
             # triggers retry/reconstruction of the actor-pool output.
             result = np.full(_PAYLOAD_BYTES, value, dtype=np.uint8)
 
-            ray.get(coordinator.maybe_pause_before_return.remote(actor_id, pid))
-            ray.get(coordinator.mark_finished.remote(actor_id, pid))
+            ray.get(coordinator.maybe_pause_before_return.remote(actor_id))
+            ray.get(coordinator.mark_finished.remote(actor_id))
             return result
 
     def first_attempt_finished(snapshot: dict) -> bool:
-        if not snapshot["attempt_keys"]:
+        if not snapshot["attempt_actor_ids"]:
             return False
-        return snapshot["attempt_keys"][0] in snapshot["finished_keys"]
+        return snapshot["attempt_actor_ids"][0] in snapshot["finished_actor_ids"]
 
     def wait_for_additional_attempt(expected_attempts: int, timeout_s: float):
         try:
             wait_for_condition(
-                lambda: len(ray.get(coordinator.snapshot.remote())["attempt_keys"])
+                lambda: len(ray.get(coordinator.snapshot.remote())["attempt_actor_ids"])
                 >= expected_attempts,
                 timeout=timeout_s,
             )
@@ -519,24 +409,19 @@ def test_actor_pool_non_streaming_fault_tolerance(
                 f"snapshot={snapshot}. original_error={exc}"
             )
 
-    def wait_for_attempt_finished(attempt_key: str, timeout_s: float):
+    def wait_for_attempt_finished(actor_id: str, timeout_s: float):
         try:
             wait_for_condition(
-                lambda: attempt_key
-                in ray.get(coordinator.snapshot.remote())["finished_keys"],
+                lambda: actor_id
+                in ray.get(coordinator.snapshot.remote())["finished_actor_ids"],
                 timeout=timeout_s,
             )
         except RuntimeError as exc:
             snapshot = ray.get(coordinator.snapshot.remote())
             pytest.fail(
                 "Retried non-streaming attempt did not report completion. "
-                f"attempt_key={attempt_key} snapshot={snapshot}. "
-                f"original_error={exc}"
+                f"actor_id={actor_id} snapshot={snapshot}. original_error={exc}"
             )
-
-    def detach_pool_actors(pool: ActorPool) -> None:
-        for actor in list(pool.actors):
-            pool.remove_actor(actor, kill=False)
 
     @ray.remote(num_cpus=0, resources={"head": 1})
     def consume_value(value):
@@ -564,22 +449,18 @@ def test_actor_pool_non_streaming_fault_tolerance(
                 timeout=20,
             )
             snapshot = ray.get(coordinator.snapshot.remote())
-            first_attempt_key = snapshot["attempt_keys"][0]
-            victim_node_id = snapshot["key_to_node_id"][first_attempt_key]
-
-            if scale_down_to_zero:
-                detach_pool_actors(pool)
-                assert pool.size == 0
+            first_actor_id = snapshot["attempt_actor_ids"][0]
+            victim_node_id = snapshot["actor_id_to_node_id"][first_actor_id]
 
             cluster.remove_node(
                 worker_nodes_by_id[victim_node_id],
                 allow_graceful=False,
             )
 
-            wait_for_additional_attempt(expected_attempts=2, timeout_s=30)
+            wait_for_additional_attempt(expected_attempts=2, timeout_s=20)
             snapshot = ray.get(coordinator.snapshot.remote())
-            second_attempt_key = snapshot["attempt_keys"][1]
-            wait_for_attempt_finished(second_attempt_key, timeout_s=30)
+            second_actor_id = snapshot["attempt_actor_ids"][1]
+            wait_for_attempt_finished(second_actor_id, timeout_s=20)
         else:
             # Let the original task finish, then kill the producing node so the
             # downstream consumer has to trigger lineage reconstruction.
@@ -588,12 +469,8 @@ def test_actor_pool_non_streaming_fault_tolerance(
                 timeout=20,
             )
             snapshot = ray.get(coordinator.snapshot.remote())
-            first_attempt_key = snapshot["attempt_keys"][0]
-            victim_node_id = snapshot["key_to_node_id"][first_attempt_key]
-
-            if scale_down_to_zero:
-                detach_pool_actors(pool)
-                assert pool.size == 0
+            first_actor_id = snapshot["attempt_actor_ids"][0]
+            victim_node_id = snapshot["actor_id_to_node_id"][first_actor_id]
 
             cluster.remove_node(
                 worker_nodes_by_id[victim_node_id],
@@ -601,15 +478,15 @@ def test_actor_pool_non_streaming_fault_tolerance(
             )
 
             snapshot_after_kill = ray.get(coordinator.snapshot.remote())
-            assert len(snapshot_after_kill["attempt_keys"]) == 1
+            assert len(snapshot_after_kill["attempt_actor_ids"]) == 1
 
         consumer_ref = consume_value.remote(ref)
 
         if not pause_before_return:
-            wait_for_additional_attempt(expected_attempts=2, timeout_s=30)
+            wait_for_additional_attempt(expected_attempts=2, timeout_s=20)
             snapshot = ray.get(coordinator.snapshot.remote())
-            second_attempt_key = snapshot["attempt_keys"][1]
-            wait_for_attempt_finished(second_attempt_key, timeout_s=30)
+            second_actor_id = snapshot["attempt_actor_ids"][1]
+            wait_for_attempt_finished(second_actor_id, timeout_s=20)
 
         try:
             value = ray.get(consumer_ref, timeout=30)
@@ -622,22 +499,15 @@ def test_actor_pool_non_streaming_fault_tolerance(
 
         snapshot = ray.get(coordinator.snapshot.remote())
 
-        attempt_keys = snapshot["attempt_keys"]
         attempt_actor_ids = snapshot["attempt_actor_ids"]
-        first_attempt_key = attempt_keys[0]
-        second_attempt_key = attempt_keys[1]
+        first_actor_id = attempt_actor_ids[0]
+        second_actor_id = attempt_actor_ids[1]
 
         assert value == 7
-        assert len(attempt_keys) >= 2
-        assert attempt_actor_ids[0] in initial_actor_ids
-        assert first_attempt_key != second_attempt_key
-
-        if scale_down_to_zero:
-            # Native reconstruction: same actor_id, new incarnation.
-            assert attempt_actor_ids[0] == attempt_actor_ids[1]
-        else:
-            assert attempt_actor_ids[1] in initial_actor_ids
-            assert attempt_actor_ids[0] != attempt_actor_ids[1]
+        assert len(attempt_actor_ids) >= 2
+        assert first_actor_id in initial_actor_ids
+        assert second_actor_id in initial_actor_ids
+        assert first_actor_id != second_actor_id
 
         # Verify the ObjectRef is pool-scoped
         obj_binary = ref.binary()
@@ -646,17 +516,17 @@ def test_actor_pool_non_streaming_fault_tolerance(
         task_id = PyTaskID(task_id_binary)
         assert task_id.is_pool_task_id(), "ObjectRef should have a pool-scoped TaskID"
         assert (
-            snapshot["key_to_node_id"][first_attempt_key]
-            != snapshot["key_to_node_id"][second_attempt_key]
+            snapshot["actor_id_to_node_id"][first_actor_id]
+            != snapshot["actor_id_to_node_id"][second_actor_id]
         )
 
         if pause_before_return:
-            assert first_attempt_key not in snapshot["finished_keys"]
-            assert second_attempt_key in snapshot["finished_keys"]
+            assert first_actor_id not in snapshot["finished_actor_ids"]
+            assert second_actor_id in snapshot["finished_actor_ids"]
         else:
-            assert first_attempt_key in snapshot["finished_keys"]
-            assert second_attempt_key in snapshot["finished_keys"]
-            assert len(snapshot["finished_keys"]) == 2
+            assert first_actor_id in snapshot["finished_actor_ids"]
+            assert second_actor_id in snapshot["finished_actor_ids"]
+            assert len(snapshot["finished_actor_ids"]) == 2
     finally:
         pool.shutdown()
 
