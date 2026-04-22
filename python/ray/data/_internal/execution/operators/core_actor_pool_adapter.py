@@ -254,7 +254,7 @@ class CoreActorPoolAdapter(AutoscalingActorPool):
                 self._pending_actors[ready_ref] = actor
 
             self._last_upscaled_at = time.time()
-            return num_actors_to_remove
+            return target_num_actors
 
         elif req.delta < 0:
             # Core actor pools must never scale below 1 actor: cross-actor

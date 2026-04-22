@@ -64,7 +64,9 @@ ActorPoolID ActorPoolManager::RegisterPool(const ActorPoolConfig &config,
                                            const std::vector<ActorID> &initial_actors) {
   absl::MutexLock lock(&mu_);
 
-  ActorPoolID pool_id = ActorPoolID::FromRandom();
+  ActorPoolID pool_id = worker_context_
+                            ? ActorPoolID::Of(worker_context_->GetCurrentJobID())
+                            : ActorPoolID::FromRandom();
 
   ActorPoolInfo pool_info;
   pool_info.config = config;
