@@ -145,7 +145,7 @@ void ActorHandle::SetActorTaskSpec(
     const ObjectID new_cursor,
     int max_retries,
     bool retry_exceptions,
-    const std::string &serialized_retry_exception_allowlist,
+    std::string_view serialized_retry_exception_allowlist,
     const std::string &concurrency_group_name,
     const std::optional<std::string> &tensor_transport) {
   absl::MutexLock guard(&mutex_);

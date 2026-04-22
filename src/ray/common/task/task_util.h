@@ -197,7 +197,7 @@ class TaskSpecBuilder {
   TaskSpecBuilder &SetNormalTaskSpec(
       int max_retries,
       bool retry_exceptions,
-      const std::string &serialized_retry_exception_allowlist,
+      std::string_view serialized_retry_exception_allowlist,
       const rpc::SchedulingStrategy &scheduling_strategy,
       const ActorID root_detached_actor_id) {
     message_->set_max_retries(max_retries);
@@ -305,7 +305,7 @@ class TaskSpecBuilder {
       const ObjectID &actor_creation_dummy_object_id,
       int max_retries,
       bool retry_exceptions,
-      const std::string &serialized_retry_exception_allowlist,
+      std::string_view serialized_retry_exception_allowlist,
       uint64_t concurrency_group_sequence_number,
       const std::optional<std::string> &tensor_transport) {
     message_->set_type(TaskType::ACTOR_TASK);

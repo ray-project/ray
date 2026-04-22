@@ -130,7 +130,7 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_bool retry_exceptions,
             const CSchedulingStrategy &scheduling_strategy,
             c_string debugger_breakpoint,
-            c_string serialized_retry_exception_allowlist,
+            c_string_view serialized_retry_exception_allowlist,
             c_string call_site,
             const CTaskID current_task_id)
         CRayStatus CreateActor(
