@@ -86,11 +86,21 @@ def _hash_partition(
         target_column = table.column(0)
         partitions = (target_column.to_numpy() % num_partitions).astype(np.int64)
     else:
+        # Use pandas' vectorized hash (xxhash-based) instead of a Python
+        # row-by-row loop.
         import pandas as pd
 
-        hashes = pd.util.hash_pandas_object(table.to_pandas(), index=False).values
-        np.mod(hashes, num_partitions, out=hashes)
-        partitions = hashes
+        try:
+            hashes = pd.util.hash_pandas_object(table.to_pandas(), index=False).values
+            np.mod(hashes, num_partitions, out=hashes)
+            partitions = hashes
+        except TypeError:
+            # Struct/nested columns become dicts in pandas, which are unhashable.
+            # Fall back to row-by-row hashing on PyArrow scalars.
+            partitions = np.zeros((table.num_rows,), dtype=np.int64)
+            for i in range(table.num_rows):
+                _tuple = tuple(c[i] for c in table.columns)
+                partitions[i] = hash(_tuple) % num_partitions
 
     return partitions
 
