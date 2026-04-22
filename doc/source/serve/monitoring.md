@@ -700,6 +700,7 @@ These lifecycle **histograms** use `deployment` and `application` labels only—
 
 | Metric | Type | Tags | Description |
 |--------|------|------|-------------|
+| `ray_serve_replica_state` | Gauge | `deployment`, `replica`, `application` | Current state of the replica as a numeric value: `1` = STARTING, `2` = UPDATING, `3` = RECOVERING, `4` = RUNNING, `5` = STOPPING, `6` = PENDING_MIGRATION. Use for state timeline visualization and debugging replica lifecycle transitions. |
 | `ray_serve_deployment_replica_healthy` | Gauge | `deployment`, `replica`, `application` | Health status of the replica: `1` = healthy, `0` = unhealthy. |
 | `ray_serve_deployment_replica_starts_total` | Counter | `deployment`, `replica`, `application` | Total number of times the replica has started (including restarts due to failure). |
 | `ray_serve_replica_startup_latency_ms` | Histogram | `deployment`, `application` | Total time from replica creation to ready state in milliseconds. Includes node provisioning (if needed on VM or Kubernetes), runtime environment bootstrap (pip install, Docker image pull, etc.), Ray actor scheduling, and actor constructor execution. Useful for debugging slow cold starts. |
