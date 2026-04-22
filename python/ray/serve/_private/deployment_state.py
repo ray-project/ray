@@ -5668,11 +5668,9 @@ class DeploymentStateManager:
                 if not self._app_deployment_mapping[deployment_id.app_name]:
                     del self._app_deployment_mapping[deployment_id.app_name]
 
-            # Publish is_available=False so routers fail fast instead of
-            # queuing requests on a deleted deployment. Do NOT evict the
-            # TARGETS key in the same sync tick: parked waiters don't run
-            # until update() returns, and the done-branch guard in
-            # listen_for_change would drop the tombstone.
+            # Tombstone TARGETS so routers fail fast on a deleted deployment.
+            # Don't evict in the same tick: the waiter wakes after update()
+            # returns and listen_for_change's guard would drop the payload.
             tombstone = DeploymentTargetInfo(is_available=False, running_replicas=[])
             self._long_poll_host.notify_changed(
                 {

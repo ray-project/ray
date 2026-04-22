@@ -619,17 +619,12 @@ class LongPollHost:
                 event.set()
 
     def remove_keys(self, keys: Iterable[KeyType]) -> None:
-        """Evict per-key state for the given keys.
+        """Evict per-key state and wake any parked listeners.
 
-        Pops from the four per-key maps and wakes any parked listeners
-        so their pending RPC returns promptly.
-
-        Callers that want parked listeners to receive a final meaningful
-        payload should publish it via ``notify_changed`` first, and must
-        NOT evict that key in the same synchronous call: the parked
-        coroutine cannot run until the call returns, and by then the
-        snapshot maps would be popped and the payload dropped by the
-        done-branch guard in ``listen_for_change``.
+        Do NOT evict a key in the same sync call as ``notify_changed``
+        on it — the waiter only runs after the call returns, by which
+        point ``listen_for_change``'s done-branch guard would drop the
+        payload.
         """
         affected_namespaces = set()
         for key in keys:
