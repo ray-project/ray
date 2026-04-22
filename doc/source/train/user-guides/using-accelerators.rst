@@ -1,6 +1,6 @@
 .. _train_scaling_config:
 
-Configuring Scale and accelerators
+Configuring Scale and Accelerators
 ==================================
 Increasing the scale of a Ray Train training run is simple and can be done in a few lines of code.
 The main interface for this is the :class:`~ray.train.ScalingConfig`,
