@@ -2729,6 +2729,7 @@ class DeploymentState:
         # threshold, the deployment is considered terminally failed.
         self._deployment_actor_retry_counter: int = 0
 
+        self._replica_state_cache: Dict[ReplicaID, ReplicaState] = {}
         self._replicas: ReplicaStateContainer = ReplicaStateContainer(
             on_replica_state_change=self._on_replica_state_change
         )
@@ -2899,6 +2900,10 @@ class DeploymentState:
         self, replica_id: ReplicaID, old_state: ReplicaState, new_state: ReplicaState
     ) -> None:
         """Called by ReplicaStateContainer.add() when a replica transitions."""
+        if self._replica_state_cache.get(replica_id) == new_state:
+            return
+        self._replica_state_cache[replica_id] = new_state
+
         broadcast_set_changed = (old_state in self._BROADCAST_STATES) != (
             new_state in self._BROADCAST_STATES
         )
@@ -4610,6 +4615,7 @@ class DeploymentState:
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
                 self._clear_health_gauge_cache(replica_id)
+                self._replica_state_cache.pop(replica.replica_id, None)
                 if self._rank_manager.has_replica_rank(replica_id):
                     # Only release rank if assigned. Replicas that failed allocation
                     # or never reached RUNNING state won't have ranks.
