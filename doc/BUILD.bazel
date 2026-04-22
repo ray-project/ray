@@ -681,7 +681,7 @@ doctest(
             "source/train/horovod.rst",
             # These tests run on GPU (see below).
             "source/train/user-guides/data-loading-preprocessing.rst",
-            "source/train/user-guides/using-gpus.rst",
+            "source/train/user-guides/using-accelerators.rst",
         ],
     ),
     tags = ["team:ml"],
@@ -691,7 +691,7 @@ doctest(
     name = "doctest[train-gpu]",
     files = [
         "source/train/user-guides/data-loading-preprocessing.rst",
-        "source/train/user-guides/using-gpus.rst",
+        "source/train/user-guides/using-accelerators.rst",
     ],
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],
