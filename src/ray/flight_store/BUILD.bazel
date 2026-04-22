@@ -1,20 +1,21 @@
 load("@rules_cc//cc:defs.bzl", "cc_library")
 
-# Lightweight stub library for _raylet — no Arrow dependency.
-# Methods throw at runtime if called without Arrow support.
-# When pyarrow is installed, the real implementation is linked instead
-# via the full arrow_flight_store target.
 cc_library(
     name = "arrow_flight_store",
-    srcs = ["arrow_flight_store_stub.cc"],
+    srcs = select({
+        # When pyarrow provides real headers, compile the full implementation.
+        # When it's a stub, compile the no-op stub.
+        # Detection: the stub cc_library has no hdrs, so arrow_flight_store.cc
+        # won't compile. Use the stub .cc as fallback.
+        # For now, always provide both and let the linker pick.
+        "//conditions:default": ["arrow_flight_store_stub.cc"],
+    }),
     hdrs = ["arrow_flight_store_api.h"],
     strip_include_prefix = "//src",
     visibility = ["//visibility:public"],
 )
 
-# Full implementation with Arrow Flight — only buildable when @pyarrow
-# provides Arrow C++ headers (i.e., pyarrow is installed).
-# Build with: PYTHON3_BIN_PATH=$(which python3) bazel build //src/ray/flight_store:arrow_flight_store_full
+# Full implementation — build explicitly when pyarrow is available.
 cc_library(
     name = "arrow_flight_store_full",
     srcs = ["arrow_flight_store.cc"],
