@@ -69,7 +69,7 @@ cdef inline void _ts_heap_push(_TsHeapNode* heap, int* size, _TsHeapNode node) n
     heap[size[0]] = node
     _ts_heap_sift_up(heap, size[0])
     size[0] += 1
-	
+
 cdef int _kway_merge_timeseries_nogil(double** timestamps_arrays, double** values_arrays,
                               int* series_lengths, int num_series,
                               int result_capacity,
@@ -308,3 +308,128 @@ def merge_instantaneous_total_cython(list replicas_timeseries):
             free(values_arrays)
         if series_lengths:
             free(series_lengths)
+
+cdef double _compute_time_weighted_average_nogil(double* timestamps, double* values, int n,
+                                                 double window_start, double window_end) noexcept nogil:
+    """
+    Fully nogil time-weighted average computation on C arrays.
+
+    Returns: Time-weighted average or NaN to indicate None (invalid result)
+    """
+    cdef:
+        int i
+        double total_weighted_value = 0.0
+        double total_duration = 0.0
+        double current_value = 0.0
+        double current_time
+        double timestamp, value, duration
+
+    if window_end <= window_start:
+        return nan("")
+
+    current_time = window_start
+
+    # Find value at window_start (LOCF)
+    for i in range(n):
+        timestamp = timestamps[i]
+
+        if timestamp <= window_start:
+            current_value = values[i]
+        else:
+            break
+
+    # Process segments
+    for i in range(n):
+        timestamp = timestamps[i]
+        value = values[i]
+
+        if timestamp <= window_start:
+            continue
+
+        if timestamp >= window_end:
+            break
+
+        # Add contribution of current segment
+        # Note: timestamp < window_end is guaranteed here due to the break above
+        duration = timestamp - current_time
+
+        if duration > 0:
+            total_weighted_value += current_value * duration
+            total_duration += duration
+
+        current_value = value
+        current_time = timestamp
+
+    # Add final segment
+    if current_time < window_end:
+        duration = window_end - current_time
+        total_weighted_value += current_value * duration
+        total_duration += duration
+
+    if total_duration > 0:
+        return total_weighted_value / total_duration
+
+    return nan("")
+
+
+def time_weighted_average_cython(list timeseries, double window_start,
+                                  double window_end, double last_window_s=1.0):
+    """
+    Cython-optimized time-weighted average calculation.
+
+    Assumptions:
+        - Input timeseries is sorted by timestamp in ascending order
+        - Values are treated as a step function (LOCF - Last Observation Carried Forward)
+
+    Args:
+        timeseries: List of objects with .timestamp and .value attributes
+        window_start: Start of window (negative infinity means use first timestamp)
+        window_end: End of window (negative infinity means use last timestamp + last_window_s)
+        last_window_s: Window size for last segment
+
+    Returns:
+        Time-weighted average or None (returned as None when result would be invalid)
+    """
+    if not timeseries:
+        return None
+
+    cdef:
+        int n = len(timeseries)
+        int i
+        double result
+        object point
+        double* timestamps = <double*>malloc(n * sizeof(double))
+        double* values = <double*>malloc(n * sizeof(double))
+
+    if not timestamps or not values:
+        if timestamps:
+            free(timestamps)
+        if values:
+            free(values)
+        raise MemoryError("Failed to allocate memory for time weighted average")
+
+    try:
+        # Extract data from Python objects into C arrays
+        for i in range(n):
+            point = timeseries[i]
+            timestamps[i] = point.timestamp
+            values[i] = point.value
+
+        # Handle window boundaries
+        # Use negative infinity as sentinel for None (any valid float including -1.0 works)
+        if isinf(window_start) and window_start < 0:
+            window_start = timestamps[0]
+
+        if isinf(window_end) and window_end < 0:
+            window_end = timestamps[n - 1] + last_window_s
+
+        # Compute with full nogil
+        with nogil:
+            result = _compute_time_weighted_average_nogil(timestamps, values, n,
+                                                          window_start, window_end)
+
+        return None if isnan(result) else result
+
+    finally:
+        free(timestamps)
+        free(values)
