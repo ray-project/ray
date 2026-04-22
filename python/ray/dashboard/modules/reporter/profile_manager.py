@@ -31,6 +31,10 @@ Install one of the following and retry:
   - Linux: `gdb`
   - macOS: `lldb`
 
+Install the debugger in the runtime image where Ray jobs/workers run (the
+repository that defines the Dockerfile for that image), not only on the
+developer machine.
+
 If this runs in a container, also ensure process-attach permissions are enabled
 (for example, ptrace/SYS_PTRACE).
 """

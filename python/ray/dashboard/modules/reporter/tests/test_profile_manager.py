@@ -51,6 +51,7 @@ def test_format_failed_profiler_command_memray_missing_debugger_message():
     assert MEMRAY_MISSING_DEBUGGER_ERROR_MESSAGE.strip() in message
     assert "Linux: `gdb`" in message
     assert "macOS: `lldb`" in message
+    assert "runtime image where Ray jobs/workers run" in message
 
 
 @pytest.mark.asyncio
