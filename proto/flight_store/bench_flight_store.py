@@ -31,6 +31,7 @@ import ray
 # Table generation
 # ---------------------------------------------------------------------------
 
+
 def make_table(size_mb):
     """Create an Arrow table of approximately size_mb megabytes."""
     n_rows = max(1, size_mb * 1024 * 1024 // 8)
@@ -40,6 +41,7 @@ def make_table(size_mb):
 # ---------------------------------------------------------------------------
 # Ray object store path (baseline)
 # ---------------------------------------------------------------------------
+
 
 @ray.remote
 def ray_produce(size_mb):
@@ -77,6 +79,7 @@ def ray_consume_node2(table):
 # ---------------------------------------------------------------------------
 # Benchmark harness
 # ---------------------------------------------------------------------------
+
 
 def bench_throughput(produce_fn, consume_fn, size_mb, n_iters, label):
     """Measure round-trip throughput: produce → transfer → consume."""
@@ -132,7 +135,9 @@ def run_ray_baseline(sizes_mb, n_iters):
         bench_throughput(ray_produce, ray_consume, size_mb, n_iters, "ray-object-store")
     print("  Latency:")
     for size_mb in sizes_mb:
-        bench_latency(ray_produce, ray_consume, size_mb, min(n_iters, 20), "ray-object-store")
+        bench_latency(
+            ray_produce, ray_consume, size_mb, min(n_iters, 20), "ray-object-store"
+        )
 
 
 def run_flight(sizes_mb, n_iters):
@@ -151,7 +156,9 @@ def run_flight(sizes_mb, n_iters):
         bench_throughput(ray_produce, ray_consume, size_mb, n_iters, "flight-store")
     print("  Latency:")
     for size_mb in sizes_mb:
-        bench_latency(ray_produce, ray_consume, size_mb, min(n_iters, 20), "flight-store")
+        bench_latency(
+            ray_produce, ray_consume, size_mb, min(n_iters, 20), "flight-store"
+        )
 
 
 def run_cross_node(sizes_mb, n_iters):

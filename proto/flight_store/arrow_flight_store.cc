@@ -332,8 +332,8 @@ arrow::Result<std::shared_ptr<arrow::Table>> ArrowFlightStore::Fetch(
   return table;
 }
 
-std::shared_ptr<arrow::Table> ArrowFlightStore::FetchOrThrow(
-    const std::string &uri, const std::string &key) {
+std::shared_ptr<arrow::Table> ArrowFlightStore::FetchOrThrow(const std::string &uri,
+                                                             const std::string &key) {
   auto result = Fetch(uri, key);
   if (!result.ok()) {
     throw std::runtime_error("Flight fetch failed: " + result.status().ToString());
@@ -376,8 +376,7 @@ static std::string SerializeIPC(const std::shared_ptr<arrow::Table> &table) {
   return std::string(reinterpret_cast<const char *>(buf->data()), buf->size());
 }
 
-void ArrowFlightStore::PutFromIPC(const std::string &key,
-                                   const std::string &ipc_bytes) {
+void ArrowFlightStore::PutFromIPC(const std::string &key, const std::string &ipc_bytes) {
   auto table = DeserializeIPC(ipc_bytes);
   Put(key, table);
 }
@@ -394,15 +393,14 @@ std::string ArrowFlightStore::GetLocalAsIPC(const std::string &key) {
   return SerializeIPC(table);
 }
 
-std::string ArrowFlightStore::FetchAsIPC(const std::string &uri,
-                                          const std::string &key) {
+std::string ArrowFlightStore::FetchAsIPC(const std::string &uri, const std::string &key) {
   auto table = FetchOrThrow(uri, key);
   return SerializeIPC(table);
 }
 
 std::string ArrowFlightStore::FetchViaVMAsIPC(const std::string &flight_uri,
-                                               const std::string &key,
-                                               int64_t ipc_size) {
+                                              const std::string &key,
+                                              int64_t ipc_size) {
   auto table = FetchViaVMOrThrow(flight_uri, key, ipc_size);
   return SerializeIPC(table);
 }
