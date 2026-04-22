@@ -77,11 +77,11 @@ rpc::events::RayEvent PythonRayEvent::Serialize() && {
     google::protobuf::Message *nested =
         event.GetReflection()->MutableMessage(&event, field);
     if (!nested->ParseFromString(serialized_event_data_)) {
-      RAY_LOG(ERROR) << "Failed to parse nested event data for field " << field->name();
+      RAY_LOG(FATAL) << "Failed to parse nested event data for field " << field->name();
       event.GetReflection()->ClearField(&event, field);
     }
   } else {
-    RAY_LOG(ERROR) << "Invalid nested event field number: " << nested_event_field_number_;
+    RAY_LOG(FATAL) << "Invalid nested event field number: " << nested_event_field_number_;
   }
 
   return event;
