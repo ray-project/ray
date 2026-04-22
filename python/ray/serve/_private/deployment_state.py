@@ -44,7 +44,6 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig, GangSchedulingConfig
 from ray.serve._private.constants import (
-    CONTROLLER_MAX_CONCURRENCY,
     DEFAULT_LATENCY_BUCKET_MS,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_PERIOD_S,
     DEPLOYMENT_ACTOR_HEALTH_CHECK_TIMEOUT_S,
@@ -234,9 +233,6 @@ class DeploymentActorWrapper:
             # Serve recreates deployment actors after failed health checks instead
             # of relying on Ray actor restarts.
             actor_options["max_restarts"] = 0
-            # Match controller's max_concurrency so deployment actors can handle
-            # concurrent calls (e.g. from multiple replicas) without blocking.
-            actor_options.setdefault("max_concurrency", CONTROLLER_MAX_CONCURRENCY)
             self._handle = actor_cls.options(
                 name=self._actor_name,
                 namespace=SERVE_NAMESPACE,
@@ -1709,6 +1705,7 @@ class DeploymentReplica:
             multiplexed_model_ids=self.multiplexed_model_ids,
             routing_stats=self.routing_stats,
             port=self._actor._internal_grpc_port,
+            backend_http_port=self._actor._http_port or None,
         )
 
     def record_multiplexed_model_ids(self, multiplexed_model_ids: List[str]):
@@ -3142,6 +3139,11 @@ class DeploymentState:
             else None
         )
 
+    @property
+    def _is_gang_deployment(self) -> bool:
+        """Returns True if this deployment uses gang scheduling."""
+        return self.get_gang_config() is not None
+
     def _get_target_replica_delta(self) -> int:
         """Calculate delta between target replicas and active replicas."""
         current_replicas = self._replicas.count(
@@ -3524,8 +3526,7 @@ class DeploymentState:
         reconfigure_changes = 0
 
         # Process gang-grouped replicas
-        gang_config = self.get_gang_config()
-        if gang_config is not None:
+        if self._is_gang_deployment:
             need_restart: List[DeploymentReplica] = []
             remaining: List[DeploymentReplica] = []
             for replica in replicas_to_update:
@@ -3673,8 +3674,8 @@ class DeploymentState:
 
         # For gang deployments, ensure rollout_size is at least a multiple of
         # gang_size so that we always stop and start complete gangs.
-        gang_config = self.get_gang_config()
-        if gang_config is not None:
+        if self._is_gang_deployment:
+            gang_config = self.get_gang_config()
             gs = gang_config.gang_size
             rollout_size = max(rollout_size, gs)
             rollout_size = math.ceil(rollout_size / gs) * gs
@@ -3737,11 +3738,10 @@ class DeploymentState:
 
         elif delta_replicas < 0:
             to_remove = -delta_replicas
-            gang_config = self.get_gang_config()
             gang_id_by_replica = None
             replicas_by_gang_id = None
 
-            if gang_config is not None:
+            if self._is_gang_deployment:
                 gang_id_by_replica = self._gang_id_by_replica
                 replicas_by_gang_id = self._replicas_by_gang_id
 
@@ -3752,7 +3752,9 @@ class DeploymentState:
                 num_to_stop=to_remove,
                 gang_id_by_replica=gang_id_by_replica,
                 replicas_by_gang_id=replicas_by_gang_id,
-                gang_size=gang_config.gang_size if gang_config else None,
+                gang_size=self.get_gang_config().gang_size
+                if self._is_gang_deployment
+                else None,
             )
 
         return upscale, downscale
@@ -3769,14 +3771,15 @@ class DeploymentState:
         if to_add <= 0 or self._terminally_failed():
             return upscale
 
-        gang_config = self.get_gang_config()
-        if gang_config is None:
+        if not self._is_gang_deployment:
             return self._add_upscale_replicas(to_add)
 
         gang_reservation_result = (
             gang_placement_groups.get(self._id) if gang_placement_groups else None
         )
-        return self._add_upscale_gang_replicas(gang_config, gang_reservation_result)
+        return self._add_upscale_gang_replicas(
+            self.get_gang_config(), gang_reservation_result
+        )
 
     def _add_upscale_replicas(self, to_add: int) -> List[ReplicaSchedulingRequest]:
         """Add replicas for deployments that adopt single-replica (non-gang) scheduling."""
@@ -4384,10 +4387,9 @@ class DeploymentState:
         # Under the RESTART_GANG policy, force-stop all members of any gang that has at
         # least one unhealthy replica. Replicas handled here are removed from the lists;
         # remaining replicas continue to respect FORCE_STOP_UNHEALTHY_REPLICAS.
-        gang_config = self.get_gang_config()
         if (
-            gang_config is not None
-            and gang_config.runtime_failure_policy
+            self._is_gang_deployment
+            and self.get_gang_config().runtime_failure_policy
             == GangRuntimeFailurePolicy.RESTART_GANG
         ):
             healthy_replicas, unhealthy_replicas = self._forcefully_stop_gang_replicas(
@@ -4763,8 +4765,6 @@ class DeploymentState:
         if not draining_nodes and not self._in_transition:
             return
 
-        gang_config = self.get_gang_config()
-
         # Move replicas back to RUNNING if they are no longer on a draining node.
         # If this causes the number of replicas to exceed the target state,
         # they will be scaled down because `scale_deployment_replicas` is called on
@@ -4773,7 +4773,7 @@ class DeploymentState:
             states=[ReplicaState.PENDING_MIGRATION]
         )
 
-        if gang_config is not None:
+        if self._is_gang_deployment:
             # For gangs, only move back to RUNNING if ALL members' nodes are no
             # longer draining.
             gangs = self._group_replicas_by_gang_id(pending_migration_replicas)
@@ -4808,7 +4808,7 @@ class DeploymentState:
             ]
         )
 
-        if gang_config is not None:
+        if self._is_gang_deployment:
             # For gangs, if ANY member is on a draining node the entire gang migrates.
             gangs_to_migrate: Set[str] = set()
             for replica in all_replicas:
@@ -4843,7 +4843,7 @@ class DeploymentState:
                 self._stop_replica(
                     replica,
                     # Always force-stop gang members to avoid leaving partial gangs.
-                    graceful_stop=gang_config is None,
+                    graceful_stop=not self._is_gang_deployment,
                 )
 
         num_running = self._replicas.count(states=[ReplicaState.RUNNING])
@@ -4854,7 +4854,7 @@ class DeploymentState:
 
         choose_pending_migration_to_stop_fn = (
             self._choose_pending_migration_gangs_to_stop
-            if gang_config is not None
+            if self._is_gang_deployment
             else self._choose_pending_migration_replicas_to_stop
         )
         replicas_to_stop, replicas_to_keep = choose_pending_migration_to_stop_fn(
@@ -5754,9 +5754,10 @@ class DeploymentStateManager:
         gang_requests: Dict[DeploymentID, GangPlacementGroupRequest] = {}
 
         for deployment_id, deployment_state in self._deployment_states.items():
-            gang_config = deployment_state.get_gang_config()
-            if gang_config is None:
+            if not deployment_state._is_gang_deployment:
                 continue
+
+            gang_config = deployment_state.get_gang_config()
 
             num_replicas_to_add = deployment_state._get_target_replica_delta()
             if num_replicas_to_add <= 0:
