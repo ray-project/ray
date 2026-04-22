@@ -863,7 +863,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
       bool retry_exceptions,
       const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint,
-      const std::string &serialized_retry_exception_allowlist = "",
+      std::string_view serialized_retry_exception_allowlist = "",
       const std::string &call_site = "",
       const TaskID current_task_id = TaskID::Nil());
 
@@ -956,7 +956,7 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
                          const TaskOptions &task_options,
                          int max_retries,
                          bool retry_exceptions,
-                         const std::string &serialized_retry_exception_allowlist,
+                         std::string_view serialized_retry_exception_allowlist,
                          const std::string &call_site,
                          std::vector<rpc::ObjectReference> &task_returns,
                          const TaskID current_task_id = TaskID::Nil());

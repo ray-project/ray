@@ -499,6 +499,16 @@ CoreWorker::CoreWorker(
       "CoreWorker.InternalHeartbeat");
 
   periodical_runner_->RunFnPeriodically(
+      [this] {
+        // Periodically report the backlog so that the local raylet can report the
+        // resources needed for tasks that haven't had their dependencies resolved yet to
+        // the GCS + Autoscaler.
+        normal_task_submitter_->ReportWorkerBacklog();
+      },
+      RayConfig::instance().report_worker_backlog_interval_ms(),
+      "CoreWorker.ReportWorkerBacklog");
+
+  periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
       RayConfig::instance().metrics_report_interval_ms() / 2,
       "CoreWorker.RecordMetrics");
@@ -818,15 +828,7 @@ void CoreWorker::InternalHeartbeat() {
   }
 
   // Check timeout tasks that are waiting for death info.
-  if (actor_task_submitter_ != nullptr) {
-    actor_task_submitter_->CheckTimeoutTasks();
-  }
-
-  // Periodically report the latest backlog so that
-  // local raylet will have the eventually consistent view of worker backlogs
-  // even in cases where backlog reports from normal_task_submitter
-  // are lost or reordered.
-  normal_task_submitter_->ReportWorkerBacklog();
+  actor_task_submitter_->CheckTimeoutTasks();
 
   // Check for unhandled exceptions to raise after a timeout on the driver.
   // Only do this for TTY, since shells like IPython sometimes save references
@@ -1962,7 +1964,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     bool retry_exceptions,
     const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint,
-    const std::string &serialized_retry_exception_allowlist,
+    std::string_view serialized_retry_exception_allowlist,
     const std::string &call_site,
     const TaskID current_task_id) {
   SubscribeToNodeChanges();
@@ -2376,7 +2378,7 @@ Status CoreWorker::SubmitActorTask(
     const TaskOptions &task_options,
     int max_retries,
     bool retry_exceptions,
-    const std::string &serialized_retry_exception_allowlist,
+    std::string_view serialized_retry_exception_allowlist,
     const std::string &call_site,
     std::vector<rpc::ObjectReference> &task_returns,
     const TaskID current_task_id) {
