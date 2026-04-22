@@ -1708,7 +1708,7 @@
         - RAYTEST_FAIL_ON_WORKER_OOM=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
-      type: torch-cpu
+      type: torch-cu130
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
   variations:
@@ -1867,7 +1867,7 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
-      type: torch-cpu
+      type: torch-cu130
     cluster_compute: compute_configs/heterogenous_fixed_size_gpu_4x4_aws.yaml
 
   variations:
@@ -1900,7 +1900,7 @@
         - RAYTEST_FAIL_ON_DEAD_NODES=1
 
       # 'type: gpu' means: use the 'ray-ml' image.
-      type: torch-cpu
+      type: torch-cu130
     cluster_compute: compute_configs/heterogenous_autoscaling_gpu_4x4_aws.yaml
 
   variations:
@@ -1928,7 +1928,7 @@
       runtime_env:
         # Fail the test if a worker OOMs
         - RAYTEST_FAIL_ON_WORKER_OOM=1
-      type: torch-cpu
+      type: torch-cu130
       post_build_script: byod_install_torchrec.sh
     cluster_compute: compute_configs/compute_gpu_8xA100_aws.yaml
 
@@ -1963,7 +1963,7 @@
 
   cluster:
     byod:
-      type: torch-cpu
+      type: torch-cu130
     cluster_compute: compute_configs/compute_gpu_4x4_cpu_4_aws.yaml
 
   run:
@@ -2019,7 +2019,7 @@
   team: ml
   cluster:
     byod:
-      type: torch-cpu
+      type: torch-cu130
     cluster_compute: compute_aws.yaml
   run:
     timeout: 10800
@@ -2078,7 +2078,7 @@
 
   cluster:
     byod:
-      type: torch-cpu
+      type: torch-cu130
       post_build_script: byod_pytorch_lightning_test.sh
     cluster_compute: compute_aws.yaml
 
@@ -2096,7 +2096,7 @@
 
   cluster:
     byod:
-      type: torch-cpu
+      type: torch-cu130
       post_build_script: byod_huggingface_transformers_test.sh
     cluster_compute: compute_aws.yaml
 
@@ -2114,7 +2114,7 @@
 
   cluster:
     byod:
-      type: torch-cpu
+      type: torch-cu130
     cluster_compute: compute_aws.yaml
 
   run:
