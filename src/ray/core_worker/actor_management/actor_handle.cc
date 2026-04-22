@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 
 namespace ray {
@@ -29,10 +30,10 @@ rpc::ActorHandle CreateInnerActorHandle(
     const ObjectID &initial_cursor,
     const Language actor_language,
     const FunctionDescriptor &actor_creation_task_function_descriptor,
-    const std::string &extension_data,
+    std::string_view extension_data,
     int64_t max_task_retries,
-    const std::string &name,
-    const std::string &ray_namespace,
+    std::string_view name,
+    std::string_view ray_namespace,
     int32_t max_pending_calls,
     bool allow_out_of_order_execution,
     bool enable_tensor_transport,
@@ -48,10 +49,10 @@ rpc::ActorHandle CreateInnerActorHandle(
   *inner.mutable_actor_creation_task_function_descriptor() =
       actor_creation_task_function_descriptor->GetMessage();
   inner.set_actor_cursor(initial_cursor.Binary());
-  inner.set_extension_data(extension_data);
+  inner.set_extension_data(extension_data.data(), extension_data.size());
   inner.set_max_task_retries(max_task_retries);
-  inner.set_name(name);
-  inner.set_ray_namespace(ray_namespace);
+  inner.set_name(name.data(), name.size());
+  inner.set_ray_namespace(ray_namespace.data(), ray_namespace.size());
   inner.set_max_pending_calls(max_pending_calls);
   inner.set_allow_out_of_order_execution(allow_out_of_order_execution);
   inner.set_enable_tensor_transport(enable_tensor_transport);
@@ -61,9 +62,9 @@ rpc::ActorHandle CreateInnerActorHandle(
   return inner;
 }
 
-rpc::ActorHandle CreateInnerActorHandleFromString(const std::string &serialized) {
+rpc::ActorHandle CreateInnerActorHandleFromString(std::string_view serialized) {
   rpc::ActorHandle inner;
-  inner.ParseFromString(serialized);
+  inner.ParseFromArray(serialized.data(), static_cast<int>(serialized.size()));
   return inner;
 }
 
@@ -104,10 +105,10 @@ ActorHandle::ActorHandle(
     const ObjectID &initial_cursor,
     const Language actor_language,
     const FunctionDescriptor &actor_creation_task_function_descriptor,
-    const std::string &extension_data,
+    std::string_view extension_data,
     int64_t max_task_retries,
-    const std::string &name,
-    const std::string &ray_namespace,
+    std::string_view name,
+    std::string_view ray_namespace,
     int32_t max_pending_calls,
     bool allow_out_of_order_execution,
     bool enable_tensor_transport,
@@ -132,7 +133,7 @@ ActorHandle::ActorHandle(
                                          labels,
                                          is_detached)) {}
 
-ActorHandle::ActorHandle(const std::string &serialized)
+ActorHandle::ActorHandle(std::string_view serialized)
     : ActorHandle(CreateInnerActorHandleFromString(serialized)) {}
 
 ActorHandle::ActorHandle(const rpc::ActorTableData &actor_table_data,

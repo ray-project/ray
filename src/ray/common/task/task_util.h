@@ -16,6 +16,7 @@
 
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -247,18 +248,18 @@ class TaskSpecBuilder {
   /// \return Reference to the builder object itself.
   TaskSpecBuilder &SetActorCreationTaskSpec(
       const ActorID &actor_id,
-      const std::string &serialized_actor_handle,
+      std::string_view serialized_actor_handle,
       const rpc::SchedulingStrategy &scheduling_strategy,
       int64_t max_restarts = 0,
       int64_t max_task_retries = 0,
       const std::vector<std::string> &dynamic_worker_options = {},
       int max_concurrency = 1,
       bool is_detached = false,
-      std::string name = "",
-      std::string ray_namespace = "",
+      std::string_view name = "",
+      std::string_view ray_namespace = "",
       bool is_asyncio = false,
       const std::vector<ConcurrencyGroup> &concurrency_groups = {},
-      const std::string &extension_data = "",
+      std::string_view extension_data = "",
       bool allow_out_of_order_execution = false,
       ActorID root_detached_actor_id = ActorID::Nil()) {
     message_->set_type(TaskType::ACTOR_CREATION_TASK);
@@ -271,11 +272,12 @@ class TaskSpecBuilder {
     }
     actor_creation_spec->set_max_concurrency(max_concurrency);
     actor_creation_spec->set_is_detached(is_detached);
-    actor_creation_spec->set_name(name);
-    actor_creation_spec->set_ray_namespace(ray_namespace);
+    actor_creation_spec->set_name(name.data(), name.size());
+    actor_creation_spec->set_ray_namespace(ray_namespace.data(), ray_namespace.size());
     actor_creation_spec->set_is_asyncio(is_asyncio);
-    actor_creation_spec->set_extension_data(extension_data);
-    actor_creation_spec->set_serialized_actor_handle(serialized_actor_handle);
+    actor_creation_spec->set_extension_data(extension_data.data(), extension_data.size());
+    actor_creation_spec->set_serialized_actor_handle(serialized_actor_handle.data(),
+                                                     serialized_actor_handle.size());
     for (const auto &concurrency_group : concurrency_groups) {
       rpc::ConcurrencyGroup *group = actor_creation_spec->add_concurrency_groups();
       group->set_name(concurrency_group.name_);
