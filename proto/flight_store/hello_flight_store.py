@@ -7,11 +7,13 @@ Tests three paths:
 """
 
 import os
+
 os.environ["RAY_USE_FLIGHT_STORE"] = "1"
 
-import ray
 import pyarrow as pa
-from ray._raylet import PyArrowFlightStore, get_flight_store
+
+import ray
+from ray._raylet import PyArrowFlightStore
 
 # --- Test 1: Local put/get ---
 print("=== Test 1: Local put/get ===")
@@ -36,10 +38,12 @@ ray.init(num_cpus=2)
 
 @ray.remote
 def make_table():
-    return pa.table({
-        "id": list(range(1000)),
-        "value": [float(i) * 0.1 for i in range(1000)],
-    })
+    return pa.table(
+        {
+            "id": list(range(1000)),
+            "value": [float(i) * 0.1 for i in range(1000)],
+        }
+    )
 
 
 @ray.remote
