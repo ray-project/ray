@@ -803,13 +803,16 @@ def parse_disconnect_disabled_header(headers: Dict[bytes, bytes]) -> bool:
 
 
 def get_http_response_status(
-    exc: BaseException, request_timeout_s: float, request_id: str
+    exc: BaseException, request_timeout_s: Optional[float], request_id: str
 ) -> ResponseStatus:
     if isinstance(exc, TimeoutError):
+        timeout_str = (
+            f"after {request_timeout_s}s" if request_timeout_s is not None else ""
+        )
         return ResponseStatus(
             code=408,
             is_error=True,
-            message=f"Request {request_id} timed out after {request_timeout_s}s.",
+            message=f"Request {request_id} timed out {timeout_str}.".strip(),
         )
 
     elif isinstance(exc, asyncio.CancelledError):
