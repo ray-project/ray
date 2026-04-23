@@ -13,7 +13,42 @@ from ray.data._internal.execution.streaming_executor import StreamingExecutor
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.optimizers import get_execution_plan
 from ray.data.context import DataContext
+from ray.data.tests.util import run_op_tasks_sync
 from ray.tests.conftest import *  # noqa
+
+
+def test_limit_estimated_num_output_bundles():
+    # Test limit operator estimation
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i, i] for i in range(100)])
+    )
+    op = LimitOperator(100, input_op, DataContext.get_current())
+
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        run_op_tasks_sync(op)
+        assert op._estimated_num_output_bundles == 50
+
+    op.all_inputs_done()
+
+    # 2 rows per bundle, 100 / 2 = 50 blocks output
+    assert op._estimated_num_output_bundles == 50
+
+    # Test limit operator estimation where: limit > # of rows
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i, i] for i in range(100)])
+    )
+    op = LimitOperator(300, input_op, DataContext.get_current())
+
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+        run_op_tasks_sync(op)
+        assert op._estimated_num_output_bundles == 100
+
+    op.all_inputs_done()
+
+    # all blocks are outputted
+    assert op._estimated_num_output_bundles == 100
 
 
 def test_limit_operator(ray_start_regular_shared):
