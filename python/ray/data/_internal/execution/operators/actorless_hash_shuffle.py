@@ -66,6 +66,7 @@ from ray.data.block import (
     to_stats,
 )
 from ray.data.context import DataContext
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.progress.base_progress import BaseProgressBar
@@ -87,32 +88,35 @@ def _shuffle_map(
     *blocks: Block,
     key_columns: List[str],
     num_partitions: int,
+    shard_group_size: int = 1,
     block_transformer: Optional[BlockTransformer] = None,
 ):
-    """Map stage: hash-partition one or more blocks and return shards.
+    """Map stage: hash-partition one or more blocks and return grouped shards.
 
     When pre-map merge is enabled, multiple input blocks are passed and
     concatenated before hash-partitioning, reducing the number of map tasks
     and thus the M×N intermediate object count.
 
-    Must be called with ``num_returns=num_partitions + 1``. Returns
-    ``num_partitions + 1`` objects:
+    Must be called with ``num_returns=num_groups + 1`` where
+    ``num_groups = ceil(num_partitions / shard_group_size)``.  Returns
+    ``num_groups + 1`` objects:
 
     - Index 0: ``(BlockMetadata, List[int], Dict)`` — input block metadata,
       list of non-empty partition IDs, and per-partition shard sizes.
-    - Index 1..N: the partition shard (``pa.Table``) or ``None`` for empty
-      partitions.
+    - Index 1..G: a dict ``{partition_id: pa.Table}`` for the partitions in
+      that group, or ``None`` if all partitions in the group are empty.
 
     Args:
         *blocks: One or more input blocks to shuffle. Multiple blocks are
             concatenated before partitioning (pre-map merge).
         key_columns: Columns used for hash-partitioning.
         num_partitions: Total number of output partitions (M).
+        shard_group_size: Number of partitions packed into each return object.
         block_transformer: Optional transform applied before partitioning.
 
     Returns:
-        A tuple of ``(BlockMetadata, List[int], Dict)`` and the partition
-        shards (``pa.Table``) or ``None`` for empty partitions.
+        A tuple of ``(BlockMetadata, List[int], Dict)`` and the grouped
+        shard dicts.
     """
     import time as _time
 
@@ -120,56 +124,82 @@ def _shuffle_map(
 
     t0 = _time.perf_counter()
 
-    # Concatenate multiple blocks when pre-map merge is active.
-    # Use pa.concat_tables for zero-copy: the result references the input
-    # blocks' buffers in shared memory instead of copying ~1 GB to heap.
-    if len(blocks) == 1:
-        block = blocks[0]
-    else:
-        block = pa.concat_tables(blocks)
+    num_groups = (num_partitions + shard_group_size - 1) // shard_group_size
 
-    if block_transformer is not None:
-        block = block_transformer(block)
+    # Compute total input metadata from all blocks.
+    total_rows = sum(b.num_rows for b in blocks)
+    total_bytes = sum(b.nbytes for b in blocks)
 
-    block = TableBlockAccessor.try_convert_block_type(block, block_type=BlockType.ARROW)
-
-    input_block_metadata = BlockAccessor.for_block(block).get_metadata(
-        block_exec_stats=stats.build(block_ser_time_s=0),
-    )
-
-    if block.num_rows == 0:
-        return (input_block_metadata, [], {}), *([None] * num_partitions)  # noqa: E501
-
-    assert isinstance(block, pa.Table), f"Expected pa.Table, got {type(block)}"
+    if total_rows == 0:
+        input_block_metadata = BlockAccessor.for_block(blocks[0]).get_metadata(
+            block_exec_stats=stats.build(block_ser_time_s=0),
+        )
+        return (input_block_metadata, [], {}), *([None] * num_groups)
 
     t1 = _time.perf_counter()
 
-    # Defragment chunked tables before hash-partitioning. Blocks from
-    # parquet reads or pre-map merge concatenation can have multiple chunks
-    # per column (e.g., 8 chunks from parquet row groups). The downstream
-    # table.take() calls (one per partition) are ~8x slower on chunked
-    # mmap'd data due to page faults.
-    if any(col.num_chunks > 1 for col in block.columns):
-        block = block.combine_chunks()
+    # Hash-partition each block individually to keep peak memory at ~2x one
+    # block instead of ~2x all blocks combined. Accumulate per-partition
+    # shards as lists of tables, then concatenate at the end.
+    partition_accumulators: Dict[int, List[pa.Table]] = {}
 
-    t2 = _time.perf_counter()
+    for block in blocks:
+        if block_transformer is not None:
+            block = block_transformer(block)
 
-    block_partitions = hash_partition(
-        block, hash_cols=key_columns, num_partitions=num_partitions
+        block = TableBlockAccessor.try_convert_block_type(
+            block, block_type=BlockType.ARROW
+        )
+
+        if block.num_rows == 0:
+            continue
+
+        assert isinstance(block, pa.Table), f"Expected pa.Table, got {type(block)}"
+
+        # Defragment chunked columns for faster hash-partitioning.
+        if any(col.num_chunks > 1 for col in block.columns):
+            block = block.combine_chunks()
+
+        block_partitions = hash_partition(
+            block, hash_cols=key_columns, num_partitions=num_partitions
+        )
+
+        for pid_key, shard in block_partitions.items():
+            if shard.num_rows > 0:
+                if pid_key not in partition_accumulators:
+                    partition_accumulators[pid_key] = []
+                partition_accumulators[pid_key].append(shard)
+
+        # Release references to allow GC of this block's intermediate data.
+        del block, block_partitions
+
+    # Build grouped output: concatenate accumulated shards per partition.
+    groups = [None] * num_groups
+    non_empty_pids = []
+    shard_sizes = {}
+    for pid_key, tables in partition_accumulators.items():
+        merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+        group_idx = pid_key // shard_group_size
+        if groups[group_idx] is None:
+            groups[group_idx] = {}
+        groups[group_idx][pid_key] = merged
+        non_empty_pids.append(pid_key)
+        shard_sizes[pid_key] = (merged.num_rows, merged.nbytes)
+
+    # Build input metadata with totals across all input blocks.
+    from dataclasses import replace as _dc_replace
+
+    input_block_metadata = BlockAccessor.for_block(blocks[0]).get_metadata(
+        block_exec_stats=stats.build(block_ser_time_s=0),
+    )
+    input_block_metadata = _dc_replace(
+        input_block_metadata,
+        num_rows=total_rows,
+        size_bytes=total_bytes,
     )
 
     t3 = _time.perf_counter()
-
-    shards = [None] * num_partitions
-    non_empty_pids = []
-    shard_sizes = {}
-    for pid_key, shard in block_partitions.items():
-        if shard.num_rows > 0:
-            shards[pid_key] = shard
-            non_empty_pids.append(pid_key)
-            shard_sizes[pid_key] = (shard.num_rows, shard.nbytes)
-
-    t4 = _time.perf_counter()
+    t4 = t3  # No separate build_shards step
 
     import os as _os
 
@@ -205,109 +235,114 @@ def _shuffle_map(
     anon = sm.get("Anonymous", 0)
 
     logger.info(
-        f"_shuffle_map memory: rows={block.num_rows}, "
-        f"prep={t1-t0:.3f}s, combine_chunks={t2-t1:.3f}s, "
-        f"hash_partition={t3-t2:.3f}s, build_shards={t4-t3:.3f}s, "
+        f"_shuffle_map memory: rows={total_rows}, blocks={len(blocks)}, "
+        f"prep={t1-t0:.3f}s, partition+merge={t3-t1:.3f}s, "
         f"total={t4-t0:.3f}s, "
         f"uss={uss:.0f}MB, rss={rss:.0f}MB, "
         f"shared={shared:.0f}MB, anon(heap)={anon:.0f}MB"
     )
 
-    return (input_block_metadata, non_empty_pids, shard_sizes), *shards
+    return (input_block_metadata, non_empty_pids, shard_sizes), *groups
 
 
 @ray.remote
 def _shuffle_reduce(
-    block_refs: List[ObjectRef],
+    group_refs: List[ObjectRef],
+    partition_ids: List[int],
     target_max_block_size: Optional[int] = None,
     should_sort: bool = False,
     key_columns: Optional[List[str]] = None,
 ) -> Generator[Union[Block, BlockMetadataWithSchema], None, None]:
-    """Reduce stage: concatenate all shards for a single partition.
+    """Reduce stage: concatenate shards for a group of partitions.
 
-    This is a streaming generator that yields ``(block, metadata)`` pairs,
-    compatible with :class:`DataOpTask`.
-
-    Block refs are resolved incrementally via ``ray.get()`` one at a time so
-    that only one input shard needs to be in memory at any moment.  Each shard
-    is freed immediately after concatenation, reducing peak object-store
-    pressure and avoiding unnecessary spilling.
+    Each group_ref resolves to a dict ``{partition_id: pa.Table}`` containing
+    shards from one mapper.  This reducer unpacks all ``partition_ids`` from
+    each group, concatenates per-partition, and yields output blocks.
 
     Args:
-        block_refs: Object references to the partition shards.
+        group_refs: Object references to grouped shard dicts from all mappers.
+        partition_ids: The partition IDs this reducer is responsible for.
         target_max_block_size: If set, output blocks are reshaped to this
             target size.
         should_sort: Whether to sort the output by ``key_columns``.
         key_columns: Columns to sort by (required when ``should_sort=True``).
     """
     start_time_s = time.perf_counter()
-    exec_stats_builder = BlockExecStats.builder()
 
-    if not block_refs:
+    if not group_refs or not partition_ids:
         return
 
-    # Concatenate shards incrementally – resolve one ref at a time to keep
-    # peak memory low and allow earlier object freeing.
-    builder = ArrowBlockBuilder()
-    for ref in block_refs:
-        block = ray.get(ref)
-        builder.add_block(block)
-        del block
-    result = builder.build()
+    # Accumulate shards per partition from all mapper groups.
+    partition_builders: Dict[int, ArrowBlockBuilder] = {
+        pid: ArrowBlockBuilder() for pid in partition_ids
+    }
 
-    if result.num_rows == 0:
-        return
+    for ref in group_refs:
+        group = ray.get(ref)
+        if group is not None:
+            for pid in partition_ids:
+                if pid in group:
+                    partition_builders[pid].add_block(group[pid])
+        del group
 
-    # Optionally sort.
-    if should_sort and key_columns and result.num_rows > 0:
-        result = result.sort_by([(k, "ascending") for k in key_columns])
+    # Yield each partition as a separate output block.
+    for pid in sorted(partition_ids):
+        exec_stats_builder = BlockExecStats.builder()
+        result = partition_builders[pid].build()
 
-    # Yield output blocks (optionally reshaped to target size).
-    if target_max_block_size is not None:
-        output_buffer = BlockOutputBuffer(
-            output_block_size_option=OutputBlockSizeOption(
-                target_max_block_size=target_max_block_size
+        if result.num_rows == 0:
+            continue
+
+        if should_sort and key_columns:
+            result = result.sort_by([(k, "ascending") for k in key_columns])
+
+        if target_max_block_size is not None:
+            output_buffer = BlockOutputBuffer(
+                output_block_size_option=OutputBlockSizeOption(
+                    target_max_block_size=target_max_block_size
+                )
             )
-        )
-        output_buffer.add_block(result)
-        output_buffer.finalize()
+            output_buffer.add_block(result)
+            output_buffer.finalize()
 
-        while output_buffer.has_next():
-            out_block = output_buffer.next()
+            while output_buffer.has_next():
+                out_block = output_buffer.next()
+                exec_stats_builder.finish()
+
+                gen_stats: StreamingGeneratorStats = yield out_block
+
+                exec_stats = exec_stats_builder.build(
+                    block_ser_time_s=(
+                        gen_stats.object_creation_dur_s if gen_stats else None
+                    ),
+                )
+                exec_stats_builder = BlockExecStats.builder()
+
+                yield BlockMetadataWithSchema.from_block(
+                    out_block,
+                    block_exec_stats=exec_stats,
+                    task_exec_stats=TaskExecWorkerStats(
+                        task_wall_time_s=time.perf_counter() - start_time_s,
+                    ),
+                )
+        else:
             exec_stats_builder.finish()
 
-            gen_stats: StreamingGeneratorStats = yield out_block
+            gen_stats: StreamingGeneratorStats = yield result
 
             exec_stats = exec_stats_builder.build(
                 block_ser_time_s=(
                     gen_stats.object_creation_dur_s if gen_stats else None
                 ),
             )
-            exec_stats_builder = BlockExecStats.builder()
 
             yield BlockMetadataWithSchema.from_block(
-                out_block,
+                result,
                 block_exec_stats=exec_stats,
                 task_exec_stats=TaskExecWorkerStats(
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
-    else:
-        exec_stats_builder.finish()
-
-        gen_stats: StreamingGeneratorStats = yield result
-
-        exec_stats = exec_stats_builder.build(
-            block_ser_time_s=(gen_stats.object_creation_dur_s if gen_stats else None),
-        )
-
-        yield BlockMetadataWithSchema.from_block(
-            result,
-            block_exec_stats=exec_stats,
-            task_exec_stats=TaskExecWorkerStats(
-                task_wall_time_s=time.perf_counter() - start_time_s,
-            ),
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -368,15 +403,27 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._num_partitions: int = target_num_partitions
         self._should_sort: bool = should_sort
 
+        # -- Shard grouping ---------------------------------------------------
+        # Cap at ~200 return objects per mapper to reduce object store pressure.
+        _MAX_RETURN_GROUPS = 200
+        self._shard_group_size: int = max(
+            1, (target_num_partitions + _MAX_RETURN_GROUPS - 1) // _MAX_RETURN_GROUPS
+        )
+        self._num_groups: int = (
+            target_num_partitions + self._shard_group_size - 1
+        ) // self._shard_group_size
+
         # -- Map task tracking ------------------------------------------------
         self._next_map_task_idx: int = 0
         self._map_tasks: Dict[int, MetadataOpTask] = {}
         self._map_resource_usage = ExecutionResources.zero()
 
-        # -- Per-partition shard buffers (driver bookkeeping) -----------------
+        # -- Per-partition stats (driver bookkeeping) -------------------------
         self._partition_row_counts: Dict[int, int] = defaultdict(int)
         self._partition_bytes: Dict[int, int] = defaultdict(int)
-        self._partition_buffers: Dict[int, List[ObjectRef]] = defaultdict(list)
+        # -- Per-group shard buffers ------------------------------------------
+        # group_idx → list of ObjectRefs to group dicts from each mapper
+        self._group_buffers: Dict[int, List[ObjectRef]] = defaultdict(list)
 
         # -- Compaction strategy -----------------------------------------------
         self._compaction_strategy: str = data_context.get_config(
@@ -407,13 +454,17 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 f"{self._pre_map_merge_num_partitions_threshold}"
             )
             self._compaction_strategy = "none"
-        self._merge_buffer_refs: List[ObjectRef] = []
-        self._merge_buffer_bytes: int = 0
-        self._merge_buffer_bundles: List[RefBundle] = []
+        # Per-node merge buffers: only co-located blocks are batched together
+        # to avoid cross-node object transfers that bloat raylet memory.
+        self._merge_buffer_refs_by_node: Dict[str, List[ObjectRef]] = defaultdict(list)
+        self._merge_buffer_bytes_by_node: Dict[str, int] = defaultdict(int)
+        self._merge_buffer_bundles_by_node: Dict[str, List[RefBundle]] = defaultdict(
+            list
+        )
 
         # -- Reduce task tracking ---------------------------------------------
         self._reduce_tasks: Dict[int, DataOpTask] = {}
-        self._pending_reduce_partition_ids: Set[int] = set(range(target_num_partitions))
+        self._pending_reduce_group_ids: Set[int] = set(range(self._num_groups))
 
         # -- Output queue -----------------------------------------------------
         self._output_queue: deque = deque()
@@ -447,16 +498,29 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._shuffle_metrics.on_input_received(input_bundle)
 
         if self._compaction_strategy == "pre_map_merge":
-            # Buffer blocks and flush when accumulated size reaches threshold.
+            # Determine the primary node for this bundle's blocks.
+            preferred_locs = input_bundle.get_preferred_object_locations()
+            if preferred_locs:
+                node_id = max(preferred_locs, key=preferred_locs.get)
+            else:
+                node_id = "unknown"
+
+            # Buffer blocks per-node so merged map tasks only use co-located
+            # blocks, avoiding cross-node transfers that bloat raylet memory.
             for block_ref, block_metadata in zip(
                 input_bundle.block_refs, input_bundle.metadata
             ):
-                self._merge_buffer_refs.append(block_ref)
-                self._merge_buffer_bytes += block_metadata.size_bytes or 0
-            self._merge_buffer_bundles.append(input_bundle)
+                self._merge_buffer_refs_by_node[node_id].append(block_ref)
+                self._merge_buffer_bytes_by_node[node_id] += (
+                    block_metadata.size_bytes or 0
+                )
+            self._merge_buffer_bundles_by_node[node_id].append(input_bundle)
 
-            if self._merge_buffer_bytes >= self._pre_map_merge_threshold:
-                self._flush_merge_buffer()
+            if (
+                self._merge_buffer_bytes_by_node[node_id]
+                >= self._pre_map_merge_threshold
+            ):
+                self._flush_merge_buffer(node_id)
         else:
             # Default: submit one map task per block immediately.
             for block_ref, block_metadata in zip(
@@ -466,32 +530,37 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
-        # Flush any remaining blocks in the pre-map merge buffer.
+        # Flush any remaining blocks in all per-node merge buffers.
         if self._compaction_strategy == "pre_map_merge":
-            self._flush_merge_buffer()
+            for node_id in list(self._merge_buffer_refs_by_node.keys()):
+                self._flush_merge_buffer(node_id)
 
-    def _flush_merge_buffer(self) -> None:
-        """Drain the pre-map merge buffer and submit a single merged map task."""
-        if not self._merge_buffer_refs:
+    def _flush_merge_buffer(self, node_id: str) -> None:
+        """Drain one node's merge buffer and submit a merged map task."""
+        block_refs = self._merge_buffer_refs_by_node.pop(node_id, [])
+        if not block_refs:
             return
-        block_refs = self._merge_buffer_refs
-        bundles = self._merge_buffer_bundles
-        estimated_bytes = self._merge_buffer_bytes
-        self._merge_buffer_refs = []
-        self._merge_buffer_bytes = 0
-        self._merge_buffer_bundles = []
+        bundles = self._merge_buffer_bundles_by_node.pop(node_id, [])
+        estimated_bytes = self._merge_buffer_bytes_by_node.pop(node_id, 0)
 
         logger.info(
             f"Pre-map merge: flushing {len(block_refs)} blocks "
-            f"({estimated_bytes / 1e6:.0f} MB) into one map task"
+            f"({estimated_bytes / 1e6:.0f} MB) into one map task "
+            f"(node={node_id[:8]})"
         )
-        self._submit_map_task(block_refs, bundles, estimated_bytes=estimated_bytes)
+        self._submit_map_task(
+            block_refs,
+            bundles,
+            estimated_bytes=estimated_bytes,
+            target_node_id=node_id if node_id != "unknown" else None,
+        )
 
     def _submit_map_task(
         self,
         block_refs: List[ObjectRef],
         input_bundles: List[RefBundle],
         estimated_bytes: int = 0,
+        target_node_id: Optional[str] = None,
     ) -> None:
         """Submit a map task for one or more input blocks.
 
@@ -501,6 +570,9 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 until the map task completes, then destroyed).
             estimated_bytes: Estimated total input size in bytes. Used to
                 request memory for merged map tasks to prevent OOM.
+            target_node_id: If set, schedule the task on this node using
+                NodeAffinitySchedulingStrategy(soft=True) to avoid cross-node
+                object transfers.
         """
         cur_task_idx = self._next_map_task_idx
         self._next_map_task_idx += 1
@@ -515,19 +587,25 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         if estimated_bytes > 0 and len(block_refs) > 1:
             shuffle_task_resources["memory"] = estimated_bytes * 2
 
+        if target_node_id is not None:
+            shuffle_task_resources[
+                "scheduling_strategy"
+            ] = NodeAffinitySchedulingStrategy(target_node_id, soft=True)
+
         map_refs = _shuffle_map.options(
             **shuffle_task_resources,
-            num_returns=self._num_partitions + 1,
+            num_returns=self._num_groups + 1,
             runtime_env=_SHUFFLE_MAP_RUNTIME_ENV,
         ).remote(
             *block_refs,
             key_columns=self._key_columns,
             num_partitions=self._num_partitions,
+            shard_group_size=self._shard_group_size,
         )
         metadata_ref = map_refs[0]
-        shard_refs = map_refs[1:]
+        group_refs = map_refs[1:]
 
-        def _on_map_done(task_idx: int, shard_refs: List[ObjectRef]):
+        def _on_map_done(task_idx: int, group_refs: List[ObjectRef]):
             task = self._map_tasks.pop(task_idx)
             self._map_resource_usage = self._map_resource_usage.subtract(
                 task.get_requested_resource_bundle()
@@ -537,16 +615,21 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 task.get_waitable(), timeout=60
             )
 
-            # Only add refs for non-empty partitions.
+            # Track which groups have data from this mapper.
+            non_empty_group_idxs = set()
             for pid in non_empty_pids:
-                self._partition_buffers[pid].append(shard_refs[pid])
+                group_idx = pid // self._shard_group_size
+                non_empty_group_idxs.add(group_idx)
                 rows, nbytes = shard_sizes.get(pid, (0, 0))
                 self._partition_row_counts[pid] += rows
                 self._partition_bytes[pid] += nbytes
 
-            # Drop local list so empty-partition refs (with no other
+            for group_idx in non_empty_group_idxs:
+                self._group_buffers[group_idx].append(group_refs[group_idx])
+
+            # Drop local list so empty-group refs (with no other
             # references) are reclaimed by Ray's reference counting.
-            del shard_refs
+            del group_refs
 
             # Free the input blocks now that the map task has consumed them.
             for bundle in input_bundles:
@@ -581,7 +664,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             task_index=cur_task_idx,
             object_ref=metadata_ref,
             task_done_callback=functools.partial(
-                _on_map_done, cur_task_idx, shard_refs
+                _on_map_done, cur_task_idx, group_refs
             ),
             task_resource_bundle=ExecutionResources.from_resource_dict(
                 shuffle_task_resources
@@ -643,7 +726,7 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         return self._is_map_done()
 
     def _is_all_reduce_submitted(self) -> bool:
-        return len(self._pending_reduce_partition_ids) == 0
+        return len(self._pending_reduce_group_ids) == 0
 
     def _estimate_partition_bytes(self, partition_id: int) -> int:
         """Return the actual in-memory size of a partition's shards."""
@@ -669,8 +752,9 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             f"partition_size: min={partition_bytes[0] / 1e6:.0f}MB, "
             f"median={partition_bytes[n // 2] / 1e6:.0f}MB, "
             f"max={partition_bytes[-1] / 1e6:.0f}MB, "
-            f"refs_per_partition: min={min(len(self._partition_buffers[pid]) for pid in counts)}, "
-            f"max={max(len(self._partition_buffers[pid]) for pid in counts)}"
+            f"groups={self._num_groups}, shard_group_size={self._shard_group_size}, "
+            f"refs_per_group: min={min(len(v) for v in self._group_buffers.values()) if self._group_buffers else 0}, "
+            f"max={max(len(v) for v in self._group_buffers.values()) if self._group_buffers else 0}"
         )
 
     def _try_reduce(self):
@@ -695,25 +779,30 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
         target_max_block_size = self._data_context.target_max_block_size
 
-        for partition_id in list(self._pending_reduce_partition_ids):
-            shard_refs = self._partition_buffers.get(partition_id, [])
+        for group_id in list(self._pending_reduce_group_ids):
+            group_refs = self._group_buffers.get(group_id, [])
 
-            # Skip empty partitions – no data to reduce.
-            if not shard_refs:
-                self._pending_reduce_partition_ids.discard(partition_id)
+            # Compute which partition IDs belong to this group.
+            group_start = group_id * self._shard_group_size
+            group_end = min(group_start + self._shard_group_size, self._num_partitions)
+            partition_ids = list(range(group_start, group_end))
+
+            # Skip empty groups – no data to reduce.
+            if not group_refs:
+                self._pending_reduce_group_ids.discard(group_id)
                 continue
 
-            def _on_bundle_ready(pid: int, bundle: RefBundle):
+            def _on_bundle_ready(gid: int, bundle: RefBundle):
                 self._output_queue.append(bundle)
                 self._reduce_metrics.on_output_queued(bundle)
                 self._reduce_metrics.on_task_output_generated(
-                    task_index=pid, output=bundle
+                    task_index=gid, output=bundle
                 )
                 _, num_outputs, num_rows = estimate_total_num_of_blocks(
-                    pid + 1,
+                    gid + 1,
                     self.upstream_op_num_outputs(),
                     self._reduce_metrics,
-                    total_num_tasks=self._num_partitions,
+                    total_num_tasks=self._num_groups,
                 )
                 self._estimated_num_output_bundles = num_outputs
                 self._estimated_output_num_rows = num_rows
@@ -725,26 +814,29 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                     )
 
             def _on_reduce_done(
-                pid: int,
+                gid: int,
                 exc: Optional[Exception],
                 task_exec_stats: Optional[TaskExecWorkerStats],
                 task_exec_driver_stats: Optional[TaskExecDriverStats],
             ):
-                if pid in self._reduce_tasks:
-                    self._reduce_tasks.pop(pid)
+                if gid in self._reduce_tasks:
+                    self._reduce_tasks.pop(gid)
                     self._reduce_metrics.on_task_finished(
-                        task_index=pid,
+                        task_index=gid,
                         exception=exc,
                         task_exec_stats=task_exec_stats,
                         task_exec_driver_stats=task_exec_driver_stats,
                     )
                     if exc:
                         logger.error(
-                            f"Reduce of partition {pid} failed: {exc}",
+                            f"Reduce of group {gid} failed: {exc}",
                             exc_info=exc,
                         )
 
-            estimated_bytes = self._estimate_partition_bytes(partition_id)
+            # Estimate memory for all partitions in this group.
+            estimated_bytes = sum(
+                self._estimate_partition_bytes(pid) for pid in partition_ids
+            )
             reduce_resources = {"num_cpus": 1}
             if estimated_bytes > 0:
                 reduce_resources["memory"] = estimated_bytes
@@ -753,17 +845,18 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 **reduce_resources,
                 num_returns="streaming",
             ).remote(
-                shard_refs,
+                group_refs,
+                partition_ids=partition_ids,
                 target_max_block_size=target_max_block_size,
                 should_sort=self._should_sort,
                 key_columns=self._key_columns if self._should_sort else None,
             )
 
             data_task = DataOpTask(
-                task_index=partition_id,
+                task_index=group_id,
                 streaming_gen=block_gen,
-                output_ready_callback=functools.partial(_on_bundle_ready, partition_id),
-                task_done_callback=functools.partial(_on_reduce_done, partition_id),
+                output_ready_callback=functools.partial(_on_bundle_ready, group_id),
+                task_done_callback=functools.partial(_on_reduce_done, group_id),
                 task_resource_bundle=ExecutionResources(
                     cpu=1,
                     memory=estimated_bytes,
@@ -772,19 +865,17 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 operator_name=self.name,
             )
 
-            self._reduce_tasks[partition_id] = data_task
-            self._pending_reduce_partition_ids.discard(partition_id)
+            self._reduce_tasks[group_id] = data_task
+            self._pending_reduce_group_ids.discard(group_id)
 
-            # Release driver-side refs to intermediate shards now that the
-            # reduce task has been submitted (it pins them via its args).
-            # This lets objects be freed as reduce tasks complete, instead of
-            # holding all shards until _do_shutdown.
-            self._partition_buffers.pop(partition_id, None)
+            # Release driver-side refs to intermediate group objects now that
+            # the reduce task has been submitted.
+            self._group_buffers.pop(group_id, None)
 
             # Update reduce metrics.
             empty_bundle = RefBundle([], schema=None, owns_blocks=False)
             self._reduce_metrics.on_task_submitted(
-                partition_id, empty_bundle, task_id=data_task.get_task_id()
+                group_id, empty_bundle, task_id=data_task.get_task_id()
             )
 
     # -- Completion -----------------------------------------------------------
@@ -821,10 +912,10 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         super()._do_shutdown(force)
         self._map_tasks.clear()
         self._reduce_tasks.clear()
-        self._partition_buffers.clear()
-        self._merge_buffer_refs.clear()
-        self._merge_buffer_bundles.clear()
-        self._merge_buffer_bytes = 0
+        self._group_buffers.clear()
+        self._merge_buffer_refs_by_node.clear()
+        self._merge_buffer_bundles_by_node.clear()
+        self._merge_buffer_bytes_by_node.clear()
 
     # -- Stats / metrics ------------------------------------------------------
 
@@ -855,14 +946,15 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
     def progress_str(self) -> str:
         maps_done = self._next_map_task_idx - len(self._map_tasks)
-        reduces_submitted = self._num_partitions - len(
-            self._pending_reduce_partition_ids
-        )
+        reduces_submitted = self._num_groups - len(self._pending_reduce_group_ids)
         reduces_done = reduces_submitted - len(self._reduce_tasks)
         parts = [f"map: {maps_done}/{self._next_map_task_idx}"]
-        if self._merge_buffer_refs:
-            parts.append(f"merge_buf: {len(self._merge_buffer_refs)}")
-        parts.append(f"reduce: {reduces_done}/{self._num_partitions}")
+        total_merge_buf = sum(
+            len(refs) for refs in self._merge_buffer_refs_by_node.values()
+        )
+        if total_merge_buf:
+            parts.append(f"merge_buf: {total_merge_buf}")
+        parts.append(f"reduce: {reduces_done}/{self._num_groups}")
         return ", ".join(parts)
 
     def get_sub_progress_bar_names(self) -> Optional[List[str]]:
