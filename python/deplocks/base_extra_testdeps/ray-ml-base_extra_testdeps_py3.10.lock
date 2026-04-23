@@ -901,7 +901,10 @@ contourpy==1.1.1 \
     --hash=sha256:f44d78b61740e4e8c71db1cf1fd56d9050a4747681c59ec1094750a658ceb970 \
     --hash=sha256:f6aec19457617ef468ff091669cca01fa7ea557b12b59a7908b9474bb9674cf0 \
     --hash=sha256:f9dc7f933975367251c1b34da882c4f0e0b2e24bb35dc906d2f598a40b72bfc7
-    # via matplotlib
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   matplotlib
 crc32c==2.3 \
     --hash=sha256:0369e637d13db5c06e45a34b069ff2ba292ac881e8a44a8658ccf3edaa9c392f \
     --hash=sha256:0c1f3e28b8aec8a0f7727337fafa31f0ace38e59e054c51fecb923535c6dc6e6 \
@@ -3408,7 +3411,10 @@ nest-asyncio==1.5.8 \
     #   nbclient
 networkx==3.2.1 \
     --hash=sha256:f18c69adc97877c42332c170849c96cefa91881c99a7cb3e95b7c659ebdc1ec2
-    # via torch
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
+    #   torch
 ninja==1.11.1.1 \
     --hash=sha256:18302d96a5467ea98b68e1cae1ae4b4fb2b2a56a82b955193c637557c7273dbd \
     --hash=sha256:185e0641bde601e53841525c4196278e9aaf4463758da6dd1e752c0a0f54136a \
@@ -5353,6 +5359,8 @@ scipy==1.11.4 \
     --hash=sha256:f313b39a7e94f296025e3cffc2c567618174c0b1dde173960cf23808f9fae4be \
     --hash=sha256:f3cd9e7b3c2c1ec26364856f9fbe78695fe631150f94cd1c22228456404cf1ec
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -c release/ray_release/byod/requirements_compiled.txt
     #   albumentations
     #   ray
     #   scikit-learn

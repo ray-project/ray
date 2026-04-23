@@ -20,10 +20,6 @@ torchmetrics==0.10.3
 # torchtext 0.18.0 has no cp313 wheels on PyPI; keep for 3.10–3.12 only.
 torchtext==0.18.0; python_version < "3.13"
 torchvision==0.22.0
-# xgboost pulls nvidia-nccl-cu12 transitively even in CPU context. Align the
-# pin with what cu128 torch requires so the compiled lock doesn't clash with
-# GPU depsets that consume it as a constraint.
-nvidia-nccl-cu12==2.26.2; platform_system == 'Linux' and platform_machine != 'aarch64'
 
 torch-scatter==2.1.2
 torch-sparse==0.6.18

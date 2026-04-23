@@ -1155,6 +1155,7 @@ contourpy==1.3.3 \
     --hash=sha256:fde6c716d51c04b1c25d0b90364d0be954624a0ee9d60e23e850e8d48353d07a
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/py313/test-requirements.txt
     #   bokeh
     #   matplotlib
 crc32c==2.3 \
@@ -4099,6 +4100,7 @@ networkx==3.6.1 \
     --hash=sha256:d47fbf302e7d9cbbb9e2555a0d267983d2aa476bac30e90dfbe5669bd57f3762
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/py313/test-requirements.txt
     #   cfn-lint
     #   hyperopt
     #   torch
@@ -7145,6 +7147,7 @@ scipy==1.17.1 \
     --hash=sha256:fcb310ddb270a06114bb64bbe53c94926b943f5b7f0842194d585c65eb4edd76
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/py313/test-requirements.txt
     #   ax-platform
     #   bayesian-optimization
     #   botorch

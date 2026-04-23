@@ -388,7 +388,7 @@ confluent-kafka==2.14.0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 contourpy==1.3.3 ; python_version >= "3.11"
     # via
-    #   -r python/requirements.txt
+    #   -r python/requirements/py313/test-requirements.txt
     #   bokeh
     #   matplotlib
 cramjam==2.11.0
@@ -1230,7 +1230,7 @@ netifaces==0.11.0
     #   raydp
 networkx==3.6.1 ; python_version >= "3.11"
     # via
-    #   -r python/requirements.txt
+    #   -r python/requirements/py313/test-requirements.txt
     #   cfn-lint
     #   hyperopt
     #   torch
@@ -2104,6 +2104,7 @@ scikit-learn==1.7.2
 scipy==1.17.1 ; python_version >= "3.11"
     # via
     #   -r python/requirements.txt
+    #   -r python/requirements/py313/test-requirements.txt
     #   ax-platform
     #   bayesian-optimization
     #   botorch
