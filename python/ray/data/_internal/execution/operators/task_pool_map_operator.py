@@ -4,22 +4,12 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 if TYPE_CHECKING:
     import pyarrow as pa
 
-<<<<<<< HEAD
-<<<<<<< HEAD
 from typing_extensions import override
 
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
     RebundleQueue,
 )
-=======
-
-from ray.data._internal.execution.bundle_queue import RebundleQueue
->>>>>>> 6db3b34b0eb422901b5d33dca62bc70fe88cad34
-=======
-
-from ray.data._internal.execution.bundle_queue import RebundleQueue
->>>>>>> 6db3b34b0eb422901b5d33dca62bc70fe88cad34
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
