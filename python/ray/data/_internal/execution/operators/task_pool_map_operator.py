@@ -113,7 +113,6 @@ class TaskPoolMapOperator(MapOperator):
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
-<<<<<<< HEAD
     @property
     @override
     def _input_queues(self) -> List["BaseBundleQueue"]:
@@ -124,8 +123,6 @@ class TaskPoolMapOperator(MapOperator):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
-=======
->>>>>>> 6db3b34b0eb422901b5d33dca62bc70fe88cad34
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)

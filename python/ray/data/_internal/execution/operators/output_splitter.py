@@ -101,7 +101,6 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
             f"{self._max_buffer_size=}"
         )
 
-<<<<<<< HEAD
     @property
     @override
     def _input_queues(self) -> List["BaseBundleQueue"]:
@@ -112,8 +111,6 @@ class OutputSplitter(InternalQueueOperatorMixin, PhysicalOperator):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
-=======
->>>>>>> 6db3b34b0eb422901b5d33dca62bc70fe88cad34
     def num_outputs_total(self) -> Optional[int]:
         # OutputSplitter does not change the number of blocks,
         # so we can return the number of blocks from the input op.
