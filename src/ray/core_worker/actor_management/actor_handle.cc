@@ -64,8 +64,7 @@ rpc::ActorHandle CreateInnerActorHandle(
 
 rpc::ActorHandle CreateInnerActorHandleFromString(std::string_view serialized) {
   rpc::ActorHandle inner;
-  RAY_CHECK(inner.ParseFromArray(serialized.data(),
-                                 static_cast<int>(serialized.size())));
+  RAY_CHECK(inner.ParseFromArray(serialized.data(),static_cast<int>(serialized.size())));
   return inner;
 }
 
