@@ -92,6 +92,7 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py310
+      - py313
 
   - name: ray_ml_base_extra_testdeps_cuda_${PYTHON_SHORT}
     operation: expand

@@ -1,7 +1,7 @@
 daft==0.6.2
-numpy==1.26.4
+numpy==2.2.6
 accelerate==1.10.1
 transformers==4.56.2
 sentence-transformers==5.1.1
-langchain==0.0.277
+langchain==0.3.28
 pymupdf==1.26.4
