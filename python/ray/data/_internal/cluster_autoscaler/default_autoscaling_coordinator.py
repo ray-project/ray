@@ -55,25 +55,28 @@ class OngoingRequest:
 
 
 class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
-    """Client-side proxy for the _AutoscalingCoordinatorActor.
+    """Non-blocking client-side proxy for the _AutoscalingCoordinatorActor.
 
-    All public methods (request_resources, cancel_request,
-    get_allocated_resources) are non-blocking. Not thread-safe; assumed to be
-    called from a single scheduling thread per instance.
+    Not thread-safe; all methods must be called from a single thread.
 
-    Single-tenant: every instance is owned by exactly one
-    DefaultClusterAutoscalerV2 and is called with a single, fixed requester_id
-    for its entire lifetime. Violating this is undefined behavior.
-    ``get_allocated_resources`` tracks a single in-flight ref and falls back
-    to the cached value on actor errors; ``request_resources`` and
-    ``cancel_request`` are truly fire-and-forget with no result observation.
+    Create one instance per requester. Multiple instances sharing the same
+    ``requester_id`` will have diverging caches and break the FIFO ordering
+    guarantee that ``request_resources`` and ``get_allocated_resources`` rely on.
     """
 
-    def __init__(self, requester_id: str):
+    def __init__(
+        self,
+        requester_id: str,
+        autoscaling_coordinator_actor=None,  # For testing only: injects an actor instead of using the shared named singleton.
+    ):
         self._requester_id = requester_id
         self._cached_allocated_resources: List[ResourceDict] = []
         # In-flight get_allocated_resources ref, or None if no request is pending.
         self._pending_allocated_resources: Optional[ray.ObjectRef] = None
+        if autoscaling_coordinator_actor is not None:
+            # Bypass the cached_property by injecting the actor directly.
+            # Used in tests to avoid the shared named actor.
+            self.__dict__["_autoscaling_coordinator"] = autoscaling_coordinator_actor
 
     @functools.cached_property
     def _autoscaling_coordinator(self):
@@ -89,8 +92,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     ) -> None:
         """Fire-and-forget: submit a resource request to the coordinator actor.
 
-        Returns immediately without observing the result or errors. Actor-side
-        errors (e.g. type mismatches) are not surfaced to the caller.
+        Actor-side errors are not surfaced to the caller.
         """
         self._autoscaling_coordinator.request_resources.remote(
             requester_id=self._requester_id,
@@ -103,27 +105,25 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
     def cancel_request(self) -> None:
         """Fire-and-forget: cancel a resource request on the coordinator actor.
 
-        Returns immediately without observing the result. Drops any in-flight
-        get_allocated_resources ref and zeroes the cached allocation so a
-        long-running process doesn't accumulate state across many executions.
+        Also clears client-side state (pending ref and cached allocation) so
+        a subsequent ``get_allocated_resources`` call returns a fresh result
+        rather than stale data from a prior pipeline run.
         """
         self._pending_allocated_resources = None
         self._cached_allocated_resources = []
         self._autoscaling_coordinator.cancel_request.remote(self._requester_id)
 
     def get_allocated_resources(self) -> List[ResourceDict]:
-        """Get the allocated resources for the requester without blocking.
+        """Return allocated resources without blocking.
 
-        Submits an async request to the autoscaling coordinator actor and
-        immediately returns the last cached value. The cache is updated whenever
-        a pending request completes.
+        Submits an async RPC and immediately returns the last cached result.
+        The cache is updated the next time the pending RPC completes.
 
-        Correctness relies on the actor processing requests in FIFO order: the
-        response reflects state after all previously submitted request_resources
-        calls from this driver.
+        Because the actor processes calls in FIFO order, the result always
+        reflects state after all previously submitted ``request_resources`` calls
+        to the same actor.
 
-        On actor errors, falls back to the last cached value and logs a warning;
-        never raises.
+        On actor errors, returns the cached value and logs a warning; never raises.
         """
         ref = self._pending_allocated_resources
         if ref is not None:
@@ -131,7 +131,7 @@ class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
             if ready:
                 self._pending_allocated_resources = None
                 try:
-                    self._cached_allocated_resources = ray.get(ref)
+                    self._cached_allocated_resources = ray.get(ref, timeout=0)
                 except ray.exceptions.RayError:
                     logger.warning(
                         f"Failed to get allocated resources for {self._requester_id};"
