@@ -65,6 +65,15 @@ def pytest_generate_tests(metafunc):
         )
     else:
         tests = _collect_new_sdk_tests()
+        if not tests:
+            raise RuntimeError(
+                "No tests with anyscale_sdk_2026=true found across "
+                f"{RELEASE_TEST_CONFIG_FILES}. Parametrizing on an empty "
+                "list would cause this validation gate to pass silently. "
+                "If the anyscale_sdk_2026 flag has been retired, update "
+                "this test to discover the right compute-config files via "
+                "the new mechanism — do not leave the gate empty."
+            )
         metafunc.parametrize(
             "target",
             [("test", t) for t in tests],
