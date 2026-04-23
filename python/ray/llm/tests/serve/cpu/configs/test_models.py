@@ -1,5 +1,4 @@
 import sys
-import tempfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -382,7 +381,8 @@ class TestUseCpuLogic:
 class TestApplyCheckpointInfo:
     """Test that apply_checkpoint_info normalises model paths for HF config loading."""
 
-    def _make_mock_hf_config(self):
+    @pytest.fixture
+    def mock_hf_config(self):
         hf_config = MagicMock()
         hf_config.architectures = ["Qwen2ForCausalLM"]
         del hf_config.vision_config
@@ -393,47 +393,42 @@ class TestApplyCheckpointInfo:
             model_loading_config=ModelLoadingConfig(model_id=model_id)
         )
 
+    @pytest.mark.parametrize(
+        "input_id,expected_id",
+        [
+            ("org/repo:Q5_K_M", "org/repo"),
+            ("org/plain-model", "org/plain-model"),
+        ],
+    )
     @patch("transformers.PretrainedConfig.from_pretrained")
-    def test_remote_gguf_strips_quantization_suffix(self, mock_from_pretrained):
-        """repo:quant format must have the quant suffix stripped before the HF call."""
-        mock_from_pretrained.return_value = self._make_mock_hf_config()
+    def test_model_id_normalisation(
+        self, mock_from_pretrained, mock_hf_config, input_id, expected_id
+    ):
+        mock_from_pretrained.return_value = mock_hf_config
         config = self._make_llm_config()
 
-        config.apply_checkpoint_info("org/repo:Q5_K_M")
+        config.apply_checkpoint_info(input_id)
 
         calls = [call.args[0] for call in mock_from_pretrained.call_args_list]
-        assert all(arg == "org/repo" for arg in calls), (
-            f"Expected bare repo ID, got {calls}"
+        assert all(arg == expected_id for arg in calls), (
+            f"Expected {expected_id!r}, got {calls}"
         )
 
     @patch("transformers.PretrainedConfig.from_pretrained")
-    def test_local_gguf_file_uses_parent_directory(self, mock_from_pretrained):
-        """Local .gguf file path must resolve to the parent dir which holds config.json."""
-        mock_from_pretrained.return_value = self._make_mock_hf_config()
+    def test_local_gguf_file_uses_parent_directory(
+        self, mock_from_pretrained, mock_hf_config, tmp_path
+    ):
+        mock_from_pretrained.return_value = mock_hf_config
         config = self._make_llm_config()
 
-        with tempfile.TemporaryDirectory() as tmpdir:
-            gguf_path = str(Path(tmpdir) / "model-Q5_K_M.gguf")
-            Path(gguf_path).touch()
+        gguf_path = str(tmp_path / "model-Q5_K_M.gguf")
+        Path(gguf_path).touch()
 
-            config.apply_checkpoint_info(gguf_path)
-
-            calls = [call.args[0] for call in mock_from_pretrained.call_args_list]
-            assert all(arg == tmpdir for arg in calls), (
-                f"Expected parent directory {tmpdir!r}, got {calls}"
-            )
-
-    @patch("transformers.PretrainedConfig.from_pretrained")
-    def test_plain_model_id_passes_through(self, mock_from_pretrained):
-        """A plain HF model ID without colon or .gguf suffix must not be modified."""
-        mock_from_pretrained.return_value = self._make_mock_hf_config()
-        config = self._make_llm_config()
-
-        config.apply_checkpoint_info("org/plain-model")
+        config.apply_checkpoint_info(gguf_path)
 
         calls = [call.args[0] for call in mock_from_pretrained.call_args_list]
-        assert all(arg == "org/plain-model" for arg in calls), (
-            f"Expected unchanged model ID, got {calls}"
+        assert all(arg == str(tmp_path) for arg in calls), (
+            f"Expected parent directory {str(tmp_path)!r}, got {calls}"
         )
 
 
