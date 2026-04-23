@@ -372,6 +372,20 @@ class TestAcceleratorConfigLogic:
         engine_config = llm_config.get_engine_config()
         assert engine_config.accelerator_type == "L4"
 
+    def test_llm_config_accelerator_type_hardware_mismatch(self):
+        """Test that passing a GPU accelerator_type with a TPU config raises an error."""
+        import pydantic
+
+        with pytest.raises(
+            pydantic.ValidationError,
+            match="Hardware mismatch",
+        ):
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
+                accelerator_type="L4",
+                accelerator_config={"kind": "tpu", "topology": "4x4"},
+            )
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

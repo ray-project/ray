@@ -520,11 +520,27 @@ class LLMConfig(BaseModelExtended):
     @model_validator(mode="after")
     def _validate_accelerator_type_with_hardware_mode(self):
         """Validate that accelerator_type is not set for CPU-only configurations."""
-        if self.accelerator_type and isinstance(self.accelerator_config, CPUConfig):
+        if not self.accelerator_type:
+            return self
+
+        if isinstance(self.accelerator_config, CPUConfig):
             raise ValueError(
                 f"accelerator_type='{self.accelerator_type}' cannot be used with "
                 "CPU-only configurations. Either remove accelerator_type, or provide an accelerator_config."
             )
+
+        # Determine what hardware kind the string implies to check for kind mismatch
+        accel_str = getattr(self.accelerator_type, "value", str(self.accelerator_type))
+        expected_kind = "tpu" if accel_str in TPU_ACCELERATOR_VALUES else "gpu"
+
+        if self.accelerator_config.kind != expected_kind:
+            raise ValueError(
+                f"Hardware mismatch: accelerator_type='{self.accelerator_type}' requires a "
+                f"{expected_kind.upper()} backend, but the configuration resolved to a "
+                f"{self.accelerator_config.kind.upper()} backend. Please ensure your "
+                f"bundles and accelerator_type align."
+            )
+
         return self
 
     def multiplex_config(self) -> ServeMultiplexConfig:
