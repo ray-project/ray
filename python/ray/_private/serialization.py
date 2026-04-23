@@ -422,7 +422,7 @@ class SerializationContext:
         import msgpack
 
         info = msgpack.unpackb(data.to_pybytes(), raw=False)
-        from ray._raylet import get_flight_store
+        from ray._private.flight_object_store import get_flight_store
 
         store = get_flight_store()
         flight_uri = info["flight_uri"]

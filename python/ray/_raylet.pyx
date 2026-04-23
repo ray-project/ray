@@ -180,8 +180,8 @@ from ray.includes.global_state_accessor cimport (
 )
 
 from ray.includes.flight_store cimport (
-    CArrowFlightStore,
-    CObjectTransferInfo,
+    ReadFromRemoteProcess,
+    WriteToRemoteProcess,
 )
 
 cimport cpython
@@ -277,7 +277,7 @@ if _os.environ.get("RAY_USE_FLIGHT_STORE", "0") == "1":
     try:
         import pyarrow as _pa
         _pyarrow_Table = _pa.Table
-        from ray._raylet import get_flight_store
+        from ray._private.flight_object_store import get_flight_store
         _flight_store_instance = get_flight_store()
         _flight_store_enabled = True
         logger.info("Flight store enabled: %s", _flight_store_instance.get_uri())
