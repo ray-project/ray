@@ -182,6 +182,7 @@ from ray.includes.global_state_accessor cimport (
 from ray.includes.flight_store cimport (
     ReadFromRemoteProcess,
     WriteToRemoteProcess,
+    ScatterWriteToRemoteProcess,
 )
 
 cimport cpython

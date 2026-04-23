@@ -427,8 +427,9 @@ class SerializationContext:
         store = get_flight_store()
         flight_uri = info["flight_uri"]
         key = info["key"]
-        # Same-node: use process_vm_writev (producer writes into our buffer).
-        # One small DoAction RPC to trigger the write, bulk data via VM.
+        copy_mode = info.get("copy_mode", "eager")
+
+        # Same-node: use process_vm_readv/writev.
         my_node_id = ray.get_runtime_context().get_node_id()
         producer_node_id = info.get("node_id", b"")
         if isinstance(producer_node_id, bytes):
@@ -438,13 +439,20 @@ class SerializationContext:
             and info.get("ipc_size", 0) > 0
             and sys.platform == "linux"
         ):
-            return store.fetch_via_vm(
-                info["pid"],
-                info["ipc_address"],
-                info["ipc_size"],
-                flight_uri=flight_uri,
-                key=key,
-            )
+            if copy_mode == "lazy":
+                # Lazy: consumer allocates buffer, producer scatter-writes.
+                return store.fetch_via_vm_lazy(
+                    flight_uri, key, info["ipc_size"]
+                )
+            else:
+                # Eager: consumer reads from producer's pre-serialized buffer.
+                return store.fetch_via_vm_eager(
+                    info["pid"],
+                    info["ipc_address"],
+                    info["ipc_size"],
+                    flight_uri=flight_uri,
+                    key=key,
+                )
         return store.fetch(flight_uri, key)
 
     def _deserialize_object(

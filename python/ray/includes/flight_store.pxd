@@ -17,3 +17,9 @@ cdef extern from "ray/flight_store/vm_transfer.h" \
                                   const void *local_buf,
                                   uintptr_t remote_addr,
                                   size_t size)
+    ssize_t ScatterWriteToRemoteProcess(pid_t remote_pid,
+                                         const uintptr_t *local_addrs,
+                                         const size_t *local_sizes,
+                                         size_t num_bufs,
+                                         uintptr_t remote_addr,
+                                         size_t remote_size)

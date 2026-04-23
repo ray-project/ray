@@ -95,14 +95,41 @@ def vm_write(int remote_pid, unsigned long remote_addr, bytes data):
     return nwritten
 
 
-def vm_write_into_buffer(int remote_pid, unsigned long remote_addr,
-                         long long size, bytes data):
-    """Write IPC bytes into a pre-allocated buffer in a remote process.
+def vm_scatter_write(int remote_pid, unsigned long remote_addr,
+                     long long remote_size, list local_buffers):
+    """Scatter-gather write: write multiple local buffers into a contiguous
+    remote buffer in a single process_vm_writev syscall.
 
-    The remote process must have allocated `size` bytes at `remote_addr`
-    and be waiting for the write to complete.
+    `local_buffers` is a list of (address: int, size: int) tuples.
     """
-    if len(data) > size:
-        raise ValueError(
-            f"Data size {len(data)} exceeds buffer size {size}")
-    return vm_write(remote_pid, remote_addr, data)
+    cdef size_t num_bufs = len(local_buffers)
+    cdef pid_t c_pid = <pid_t>remote_pid
+    cdef uintptr_t c_remote_addr = <uintptr_t>remote_addr
+    cdef size_t c_remote_size = <size_t>remote_size
+
+    # Build C arrays from the Python list.
+    cdef uintptr_t *addrs = <uintptr_t *>malloc(num_bufs * sizeof(uintptr_t))
+    cdef size_t *sizes = <size_t *>malloc(num_bufs * sizeof(size_t))
+    if addrs == NULL or sizes == NULL:
+        free(addrs)
+        free(sizes)
+        raise MemoryError("Failed to allocate iovec arrays")
+
+    cdef ssize_t nwritten
+    try:
+        for i in range(num_bufs):
+            addr, sz = local_buffers[i]
+            addrs[i] = <uintptr_t>addr
+            sizes[i] = <size_t>sz
+        with nogil:
+            nwritten = ScatterWriteToRemoteProcess(
+                c_pid, addrs, sizes, num_bufs, c_remote_addr, c_remote_size)
+        if nwritten < 0:
+            raise OSError(
+                errno,
+                f"process_vm_writev scatter failed (pid={remote_pid}, "
+                f"remote_addr=0x{remote_addr:x}, num_bufs={num_bufs})")
+        return nwritten
+    finally:
+        free(addrs)
+        free(sizes)
