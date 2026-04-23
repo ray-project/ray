@@ -223,7 +223,10 @@ if setup_spec.type == SetupType.RAY:
     pyarrow_deps = [
         "pyarrow >= 9.0.0",
     ]
-    pydantic_dep = "pydantic>=2.5.0,<3"
+    pydantic_deps = [
+        "pydantic>=2.5.0,<3; python_version < '3.14'",
+        "pydantic>=2.13.0,<3; python_version >= '3.14'",
+    ]
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -254,7 +257,7 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
             "opentelemetry-proto",
-            pydantic_dep,
+            *pydantic_deps,
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
@@ -272,7 +275,7 @@ if setup_spec.type == SetupType.RAY:
         "tune": [
             "pandas",
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
-            pydantic_dep,
+            *pydantic_deps,
             "tensorboardX>=1.9",
             "requests",
             *pyarrow_deps,
@@ -323,7 +326,9 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
-    setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
+    setup_spec.extras["train"] = setup_spec.extras["tune"] + [
+        dep for dep in pydantic_deps if dep not in setup_spec.extras["tune"]
+    ]
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
