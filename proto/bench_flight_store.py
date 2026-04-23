@@ -86,9 +86,7 @@ def main():
     flight = os.environ.get("RAY_USE_FLIGHT_STORE", "0") == "1"
     mode = "Flight store" if flight else "Ray object store (plasma)"
 
-    env_vars = {
-        k: os.environ[k] for k in _PROPAGATED_ENV_VARS if k in os.environ
-    }
+    env_vars = {k: os.environ[k] for k in _PROPAGATED_ENV_VARS if k in os.environ}
     ray.init(runtime_env={"env_vars": env_vars} if env_vars else None)
     print(f"Mode: {mode}")
     print(

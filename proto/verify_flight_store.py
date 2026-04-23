@@ -22,10 +22,10 @@ import pyarrow as pa
 
 import ray
 
-
 # ---------------------------------------------------------------------------
 # Test cases — diverse schemas and sizes.
 # ---------------------------------------------------------------------------
+
 
 def case_empty():
     return pa.table({"x": pa.array([], type=pa.int64())})
@@ -60,25 +60,29 @@ def case_many_columns():
 
 
 def case_strings():
-    return pa.table({
-        "id": pa.array(range(10_000), type=pa.int64()),
-        "name": pa.array([f"user_{i}" for i in range(10_000)]),
-    })
+    return pa.table(
+        {
+            "id": pa.array(range(10_000), type=pa.int64()),
+            "name": pa.array([f"user_{i}" for i in range(10_000)]),
+        }
+    )
 
 
 def case_nulls():
-    return pa.table({
-        "a": pa.array([1, None, 3, None, 5], type=pa.int64()),
-        "b": pa.array(["x", None, None, "y", "z"]),
-    })
+    return pa.table(
+        {
+            "a": pa.array([1, None, 3, None, 5], type=pa.int64()),
+            "b": pa.array(["x", None, None, "y", "z"]),
+        }
+    )
 
 
 def case_nested_list():
-    return pa.table({
-        "tags": pa.array(
-            [["a", "b"], [], ["c"], ["d", "e", "f"], None] * 100
-        ),
-    })
+    return pa.table(
+        {
+            "tags": pa.array([["a", "b"], [], ["c"], ["d", "e", "f"], None] * 100),
+        }
+    )
 
 
 def case_dictionary():
@@ -110,6 +114,7 @@ CASES = [
 # ---------------------------------------------------------------------------
 # Ray actors.
 # ---------------------------------------------------------------------------
+
 
 @ray.remote(num_cpus=1)
 class Producer:
@@ -166,6 +171,7 @@ def _compare(actual, expected):
 # Checks.
 # ---------------------------------------------------------------------------
 
+
 def check(name, result):
     if result["equal"]:
         print(f"  PASS  {name}")
@@ -175,8 +181,10 @@ def check(name, result):
         print(f"         schema expected: {result['schema_expected']}")
         print(f"         schema actual:   {result['schema_actual']}")
     if result["num_rows_actual"] != result["num_rows_expected"]:
-        print(f"         num_rows expected={result['num_rows_expected']} "
-              f"actual={result['num_rows_actual']}")
+        print(
+            f"         num_rows expected={result['num_rows_expected']} "
+            f"actual={result['num_rows_actual']}"
+        )
     return False
 
 
@@ -190,9 +198,7 @@ def run_suite():
     print(f"Mode: {mode_label}  (copy_mode={copy_mode})")
     print()
 
-    env_vars = {
-        k: os.environ[k] for k in _PROPAGATED_ENV_VARS if k in os.environ
-    }
+    env_vars = {k: os.environ[k] for k in _PROPAGATED_ENV_VARS if k in os.environ}
     ray.init(runtime_env={"env_vars": env_vars} if env_vars else None)
 
     producer = Producer.remote()

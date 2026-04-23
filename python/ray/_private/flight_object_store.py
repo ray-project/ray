@@ -21,6 +21,7 @@ import pyarrow.ipc as ipc
 
 _COPY_MODE = os.environ.get("ARROW_IPC_COPY_MODE", "eager")
 
+
 class _RecordingSink:
     """A sink that records write addresses and sizes for scatter write.
 
@@ -134,9 +135,7 @@ class _FlightServer(flight.FlightServerBase):
         # in a single process_vm_writev syscall.
         from ray._raylet import vm_scatter_write
 
-        vm_scatter_write(
-            consumer_pid, consumer_addr, buf_size, sink.scatter_list
-        )
+        vm_scatter_write(consumer_pid, consumer_addr, buf_size, sink.scatter_list)
 
         # Clean up the table after writing.
         self._store.delete(key)
@@ -188,8 +187,10 @@ class FlightObjectStore:
         """Store a table and return transfer info dict."""
         if not self._logged_mode:
             import logging
+
             logging.getLogger(__name__).info(
-                f"Flight store copy mode: {self._copy_mode}")
+                f"Flight store copy mode: {self._copy_mode}"
+            )
             self._logged_mode = True
         if self._copy_mode == "lazy":
             return self._put_lazy(key, table)
