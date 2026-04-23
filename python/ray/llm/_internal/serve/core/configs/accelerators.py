@@ -1,17 +1,18 @@
-import copy
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Any, Dict, List, Optional, Union
+from typing import Dict, List, Literal, Optional, Union
+
+from pydantic import BaseModel, Field
+from typing_extensions import Annotated
 
 import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.tpu import get_tpu_version_from_type, slice_placement_group
 
-AcceleratorType = Enum("AcceleratorType", vars(accelerators))
-
 logger = get_logger(__name__)
 
+AcceleratorType = Enum("AcceleratorType", vars(accelerators))
 
 # Set of TPU string values from Ray's known accelerators.
 TPU_ACCELERATOR_VALUES = {
@@ -21,149 +22,136 @@ TPU_ACCELERATOR_VALUES = {
 }
 
 
-def _compute_use_gpu(
-    use_cpu: Optional[bool],
-    placement_group_config: Optional[Dict[str, Any]],
-    accelerator_type: Optional[Union[str, AcceleratorType]] = None,
-) -> bool:
-    """Returns True if the configuration resolves to GPU usage.
-
-    Priority order:
-    1. Explicit use_cpu flag
-    2. placement_group_config GPU bundles
-    3. Default to True if not explicitly CPU or TPU.
-    """
-    # If explicitly requesting CPU, it's not GPU.
-    if isinstance(use_cpu, bool) and use_cpu:
-        return False
-
-    # Check placement_group_config for explicit GPU specification
-    if placement_group_config:
-        bundle_per_worker = placement_group_config.get("bundle_per_worker")
-        if bundle_per_worker:
-            return bundle_per_worker.get("GPU", 0) > 0
-
-        bundles = placement_group_config.get("bundles")
-        if bundles is not None:
-            return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
-
-    # If the user explicitly requested a TPU, it's not a GPU.
-    if accelerator_type:
-        accel_str = getattr(accelerator_type, "value", str(accelerator_type))
-        if accel_str in TPU_ACCELERATOR_VALUES:
-            return False
-
-    # All remaining accelerator types are GPU-capable.
-    return True
+class AcceleratorConfig(BaseModel):
+    kind: str
 
 
-def _compute_use_tpu(
-    use_cpu: Optional[bool],
-    placement_group_config: Optional[Dict[str, Any]],
-    accelerator_type: Optional[Union[str, AcceleratorType]] = None,
-) -> bool:
-    """Returns True if the configuration resolves to TPU usage."""
-    if isinstance(use_cpu, bool) and use_cpu:
-        return False
+class CPUConfig(AcceleratorConfig):
+    kind: Literal["cpu"] = "cpu"
 
-    if placement_group_config:
-        bundle_per_worker = placement_group_config.get("bundle_per_worker")
-        if bundle_per_worker:
-            return bundle_per_worker.get("TPU", 0) > 0
 
-        bundles = placement_group_config.get("bundles")
-        if bundles is not None:
-            return any(bundle.get("TPU", 0) > 0 for bundle in bundles)
+class GPUConfig(AcceleratorConfig):
+    kind: Literal["gpu"] = "gpu"
 
-    if not accelerator_type:
-        return False
 
-    accel_str = getattr(accelerator_type, "value", str(accelerator_type))
-    return accel_str in TPU_ACCELERATOR_VALUES
+class TPUConfig(AcceleratorConfig):
+    kind: Literal["tpu"] = "tpu"
+    topology: Optional[str] = None
+
+
+AnyAcceleratorConfig = Annotated[
+    Union[CPUConfig, GPUConfig, TPUConfig],
+    Field(discriminator="kind"),
+]
 
 
 class AcceleratorBackend(ABC):
-    """Abstract base class for hardware-specific configuration strategies."""
-
-    def __init__(self, config: Any):
-        self.config = config
-
     @abstractmethod
-    def get_placement_bundles(self) -> List[Dict[str, float]]:
-        """Generates the default placement group bundles for the hardware."""
+    def default_bundles(
+        self,
+        *,
+        num_devices: int,
+        ray_accelerator_type: Optional[str] = None,
+    ) -> List[Dict[str, float]]:
         pass
 
     @abstractmethod
-    def create_placement_group(self, name: str) -> PlacementGroup:
-        """Creates the appropriate Ray placement group."""
+    def create_placement_group(
+        self,
+        *,
+        bundles: List[Dict[str, float]],
+        strategy: str,
+        name: str,
+        accelerator_type_str: Optional[str] = None,
+    ) -> PlacementGroup:
         pass
+
+    def shutdown(self) -> None:
+        """Release any resources owned by this backend. Idempotent."""
+        return
 
 
 class CPUAccelerator(AcceleratorBackend):
-    def get_placement_bundles(self) -> List[Dict[str, float]]:
-        bundle = {"CPU": 1}
-        return [copy.deepcopy(bundle) for _ in range(self.config.num_devices)]
+    # stateless — no __init__
+    def default_bundles(
+        self, *, num_devices: int, ray_accelerator_type: Optional[str] = None
+    ):
+        return [{"CPU": 1} for _ in range(num_devices)]
 
-    def create_placement_group(self, name: str) -> PlacementGroup:
-        return placement_group(
-            bundles=self.config.placement_bundles,
-            strategy=self.config.placement_strategy,
-            name=name,
-        )
+    def create_placement_group(
+        self,
+        *,
+        bundles: List[Dict[str, float]],
+        strategy: str,
+        name: str,
+        accelerator_type_str: Optional[str] = None,
+    ):
+        return placement_group(bundles=bundles, strategy=strategy, name=name)
 
 
 class GPUAccelerator(AcceleratorBackend):
-    def get_placement_bundles(self) -> List[Dict[str, float]]:
+    # stateless — no __init__
+    def default_bundles(
+        self, *, num_devices: int, ray_accelerator_type: Optional[str] = None
+    ):
         bundle = {"GPU": 1}
-        if self.config.accelerator_type:
-            bundle[self.config.ray_accelerator_type()] = 0.001
-        return [copy.deepcopy(bundle) for _ in range(self.config.num_devices)]
+        if ray_accelerator_type:
+            bundle[ray_accelerator_type] = 0.001
+        return [bundle.copy() for _ in range(num_devices)]
 
-    def create_placement_group(self, name: str) -> PlacementGroup:
-        return placement_group(
-            bundles=self.config.placement_bundles,
-            strategy=self.config.placement_strategy,
-            name=name,
-        )
+    def create_placement_group(
+        self,
+        *,
+        bundles: List[Dict[str, float]],
+        strategy: str,
+        name: str,
+        accelerator_type_str: Optional[str] = None,
+    ):
+        return placement_group(bundles=bundles, strategy=strategy, name=name)
 
 
 class TPUAccelerator(AcceleratorBackend):
-    def get_placement_bundles(self) -> List[Dict[str, float]]:
-        bundle = {"TPU": 1}
-        if self.config.accelerator_type:
-            bundle[self.config.ray_accelerator_type()] = 0.001
-        return [copy.deepcopy(bundle) for _ in range(self.config.num_devices)]
+    def __init__(self, config: TPUConfig):
+        self._config = config
+        self._slice_pg_wrapper = None
 
-    def create_placement_group(self, name: str) -> PlacementGroup:
-        if not self.config.topology:
-            return placement_group(
-                bundles=self.config.placement_bundles,
-                strategy=self.config.placement_strategy,
-                name=name,
+    def default_bundles(
+        self, *, num_devices: int, ray_accelerator_type: Optional[str] = None
+    ):
+        bundle = {"TPU": 1}
+        if ray_accelerator_type:
+            bundle[ray_accelerator_type] = 0.001
+        return [bundle.copy() for _ in range(num_devices)]
+
+    def create_placement_group(
+        self,
+        *,
+        bundles: List[Dict[str, float]],
+        strategy: str,
+        name: str,
+        accelerator_type_str: Optional[str] = None,
+    ) -> PlacementGroup:
+
+        if not self._config.topology:
+            return placement_group(bundles=bundles, strategy=strategy, name=name)
+
+        if not accelerator_type_str:
+            raise ValueError(
+                "accelerator_type must be provided for TPU slice provisioning."
             )
 
-        accel_str = (
-            self.config.accelerator_type.value
-            if hasattr(self.config.accelerator_type, "value")
-            else str(self.config.accelerator_type)
-        )
-        version = get_tpu_version_from_type(accel_str)
-        topology = self.config.topology
+        version = get_tpu_version_from_type(accelerator_type_str)
 
-        logger.info(
-            f"Provisioning TPU Slice Placement Group: {version} with topology {topology}"
-        )
-
-        placement_bundles = self.config.placement_bundles
-        if placement_bundles:
-            # Filter for bundles that specify TPU
-            tpu_bundles = [b for b in placement_bundles if b.get("TPU", 0) > 0]
+        if bundles:
+            # Filter for bundles that actually specify TPU resources
+            tpu_bundles = [b for b in bundles if b.get("TPU", 0) > 0]
 
             if not tpu_bundles:
                 worker_bundle = {"TPU": 1}
             else:
                 worker_bundle = tpu_bundles[0]
 
+                # Ensure all TPU bundles are homogeneous
                 if any(b != worker_bundle for b in tpu_bundles):
                     raise ValueError(
                         "Heterogeneous TPU bundles are not supported when `topology` is set. "
@@ -171,14 +159,24 @@ class TPUAccelerator(AcceleratorBackend):
                         "Please use `bundle_per_worker` in `placement_group_config` to define uniform worker resources."
                     )
         else:
+            # Default to 1 TPU per bundle.
             worker_bundle = {"TPU": 1}
 
-        slice_pg_wrapper = slice_placement_group(
-            topology=topology,
+        self._slice_pg_wrapper = slice_placement_group(
+            topology=self._config.topology,
             accelerator_version=version,
             resources_per_bundle=worker_bundle,
-            strategy=self.config.placement_strategy,
+            strategy=strategy,
             name=name,
         )
-        self.config._tpu_slice_pg_wrapper = slice_pg_wrapper
-        return slice_pg_wrapper.placement_group
+        return self._slice_pg_wrapper.placement_group
+
+    def shutdown(self):
+        if self._slice_pg_wrapper is not None:
+            try:
+                logger.info("Shutting down TPU slice PG for server replica.")
+                self._slice_pg_wrapper.shutdown()
+            except Exception as e:
+                logger.warning(f"Failed to shut down TPU slice PG: {e}")
+            finally:
+                self._slice_pg_wrapper = None

@@ -4,8 +4,10 @@ import pytest
 
 import ray
 from ray.llm._internal.serve.core.configs.accelerators import (
+    CPUAccelerator,
+    GPUAccelerator,
     TPUAccelerator,
-    _compute_use_gpu,
+    TPUConfig,
 )
 from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
@@ -61,7 +63,7 @@ def test_tpu_slice_placement_group_creation_default_resources(ray_tpu_cluster):
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
-        topology="4x4",
+        accelerator_config={"kind": "tpu", "topology": "4x4"},
         llm_engine="vLLM",
     )
 
@@ -79,10 +81,12 @@ def test_tpu_slice_placement_group_creation_default_resources(ray_tpu_cluster):
         assert "TPU" in bundle
         assert bundle["TPU"] == 1
 
-    if engine_config._tpu_slice_pg_wrapper:
-        engine_config._tpu_slice_pg_wrapper.shutdown()
-    else:
+    # Let the backend tear down its own resources if it has any
+    engine_config.accelerator.shutdown()
+    try:
         ray.util.remove_placement_group(pg)
+    except Exception:
+        pass  # Already cleaned up by the wrapper
 
 
 def test_tpu_slice_placement_group_creation_host_resources(ray_tpu_cluster):
@@ -93,7 +97,7 @@ def test_tpu_slice_placement_group_creation_host_resources(ray_tpu_cluster):
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
-        topology="4x4",
+        accelerator_config={"kind": "tpu", "topology": "4x4"},
         placement_group_config={
             "strategy": "STRICT_SPREAD",
             "bundles": [{"TPU": 4}],
@@ -114,10 +118,12 @@ def test_tpu_slice_placement_group_creation_host_resources(ray_tpu_cluster):
         assert "TPU" in bundle
         assert bundle["TPU"] == 4
 
-    if engine_config._tpu_slice_pg_wrapper:
-        engine_config._tpu_slice_pg_wrapper.shutdown()
-    else:
+    # Let the backend tear down its own resources if it has any
+    engine_config.accelerator.shutdown()
+    try:
         ray.util.remove_placement_group(pg)
+    except Exception:
+        pass  # Already cleaned up by the wrapper
 
 
 def test_single_tpu_fallback(ray_tpu_cluster):
@@ -140,10 +146,12 @@ def test_single_tpu_fallback(ray_tpu_cluster):
     assert len(pg_table["bundles"]) == 1
     assert pg_table["strategy"] == "PACK"
 
-    if engine_config._tpu_slice_pg_wrapper:
-        engine_config._tpu_slice_pg_wrapper.shutdown()
-    else:
+    # Let the backend tear down its own resources if it has any
+    engine_config.accelerator.shutdown()
+    try:
         ray.util.remove_placement_group(pg)
+    except Exception:
+        pass  # Already cleaned up by the wrapper
 
 
 def test_tpu_slice_placement_group_creation_bundle_per_worker(ray_tpu_cluster):
@@ -154,7 +162,7 @@ def test_tpu_slice_placement_group_creation_bundle_per_worker(ray_tpu_cluster):
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
-        topology="4x4",
+        accelerator_config={"kind": "tpu", "topology": "4x4"},
         placement_group_config={
             "bundle_per_worker": {"TPU": 1},
         },
@@ -166,8 +174,8 @@ def test_tpu_slice_placement_group_creation_bundle_per_worker(ray_tpu_cluster):
 
     engine_config = llm_config.get_engine_config()
 
-    # Validate use_tpu property with bundle_per_worker
-    assert engine_config.use_tpu is True
+    # Validate the accelerator backend was correctly inferred
+    assert isinstance(engine_config.accelerator, TPUAccelerator)
 
     bundles = engine_config.placement_bundles
     assert len(bundles) == 2
@@ -177,53 +185,41 @@ def test_tpu_slice_placement_group_creation_bundle_per_worker(ray_tpu_cluster):
         assert bundle["accelerator_type:TPU-V6E"] == 0.001
 
 
-def test_compute_use_gpu_with_tpu_and_use_cpu_false():
+def test_accelerator_inference_logic():
     """
-    Verifies that _compute_use_gpu returns False for TPU configurations
-    even when use_cpu=False is explicitly set.
+    Verifies that VLLMEngineConfig correctly infers the accelerator backend
+    when no explicit accelerator_config is provided.
     """
+    # TPU string correctly infers TPUAccelerator
+    cfg1 = VLLMEngineConfig(model_id="test", accelerator_type="TPU-V6E")
+    assert isinstance(cfg1.accelerator, TPUAccelerator)
 
-    # Validate use_gpu property with use_cpu=False and TPU accelerator
-    assert (
-        _compute_use_gpu(
-            use_cpu=False, placement_group_config=None, accelerator_type="TPU-V6E"
-        )
-        is False
-    )
+    # GPU string (like A10G) falls back to GPUAccelerator
+    cfg2 = VLLMEngineConfig(model_id="test", accelerator_type="A10G")
+    assert isinstance(cfg2.accelerator, GPUAccelerator)
 
-    # Validate use_gpu property with use_cpu=None and TPU accelerator
-    assert (
-        _compute_use_gpu(
-            use_cpu=None, placement_group_config=None, accelerator_type="TPU-V6E"
-        )
-        is False
-    )
+    # No accelerator hints falls back to GPU by default
+    cfg3 = VLLMEngineConfig(model_id="test")
+    assert isinstance(cfg3.accelerator, GPUAccelerator)
 
-    # Validate use_gpu property with use_cpu=False and GPU accelerator (True by default)
-    assert (
-        _compute_use_gpu(
-            use_cpu=False, placement_group_config=None, accelerator_type="A10G"
-        )
-        is True
-    )
+    # Explicit CPU config correctly yields CPUAccelerator
+    cfg4 = VLLMEngineConfig(model_id="test", accelerator_config={"kind": "cpu"})
+    assert isinstance(cfg4.accelerator, CPUAccelerator)
 
 
 def test_tpu_slice_placement_group_creation_heterogeneous_tpu_bundles_fail():
     """
     Verifies that a ValueError is raised when heterogeneous TPU bundles are provided.
     """
+    accelerator = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
 
-    config = VLLMEngineConfig(
-        model_id="test-tpu-model",
-        accelerator_type="TPU-V6E",
-        topology="4x4",
-        placement_group_config={
-            "bundles": [{"TPU": 4}, {"TPU": 2}],
-        },
-    )
-    accelerator = TPUAccelerator(config)
     with pytest.raises(ValueError, match="Heterogeneous TPU bundles are not supported"):
-        accelerator.create_placement_group(name="test-pg")
+        accelerator.create_placement_group(
+            bundles=[{"TPU": 4}, {"TPU": 2}],
+            strategy="PACK",
+            name="test-pg",
+            accelerator_type_str="TPU-V6E",
+        )
 
 
 def test_tpu_slice_placement_group_creation_cpu_driver_homogeneous_tpu_bundles_pass(
@@ -233,23 +229,23 @@ def test_tpu_slice_placement_group_creation_cpu_driver_homogeneous_tpu_bundles_p
     Verifies that CPU-only driver bundles are ignored and do not trigger an error
     if subsequent TPU bundles are homogeneous.
     """
+    accelerator = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
 
-    config = VLLMEngineConfig(
-        model_id="test-tpu-model",
-        accelerator_type="TPU-V6E",
-        topology="4x4",
-        placement_group_config={
-            "bundles": [{"CPU": 2}, {"TPU": 4}, {"TPU": 4}],
-        },
+    pg = accelerator.create_placement_group(
+        bundles=[{"CPU": 2}, {"TPU": 4}, {"TPU": 4}],
+        strategy="PACK",
+        name="test-pg",
+        accelerator_type_str="TPU-V6E",
     )
-    accelerator = TPUAccelerator(config)
-
-    pg = accelerator.create_placement_group(name="test-pg")
 
     # Verify valid PG creation
     assert isinstance(pg, PlacementGroup)
 
-    ray.util.remove_placement_group(pg)
+    accelerator.shutdown()
+    try:
+        ray.util.remove_placement_group(pg)
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

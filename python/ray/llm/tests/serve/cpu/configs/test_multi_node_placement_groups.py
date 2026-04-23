@@ -409,8 +409,8 @@ def test_bundle_per_worker_non_fractional_gpu_no_env_var():
 class TestAcceleratorTypeValidation:
     """Test accelerator_type validation with CPU-only configurations."""
 
-    def test_vllm_engine_config_accelerator_type_with_use_cpu_raises_error(self):
-        """VLLMEngineConfig raises error with accelerator_type and use_cpu=True."""
+    def test_vllm_engine_config_accelerator_type_with_cpu_config_raises_error(self):
+        """VLLMEngineConfig raises error with accelerator_type and CPU config."""
         with pytest.raises(
             ValueError,
             match="accelerator_type='L4' cannot be used with CPU-only configurations",
@@ -418,7 +418,7 @@ class TestAcceleratorTypeValidation:
             VLLMEngineConfig(
                 model_id="test_model",
                 accelerator_type="L4",
-                use_cpu=True,
+                accelerator_config={"kind": "cpu"},
             )
 
     def test_vllm_engine_config_accelerator_type_with_cpu_only_bundles_raises_error(
@@ -457,16 +457,14 @@ class TestAcceleratorTypeValidation:
             placement_group_config={"bundles": [{"GPU": 1, "CPU": 4}]},
         )
         assert config.accelerator_type == "L4"
-        assert config.use_gpu is True
 
     def test_vllm_engine_config_accelerator_type_default_uses_gpu(self):
-        """Test that VLLMEngineConfig with accelerator_type and no use_cpu defaults to GPU."""
+        """Test that VLLMEngineConfig with accelerator_type defaults to GPU."""
         config = VLLMEngineConfig(
             model_id="test_model",
             accelerator_type="L4",
         )
         assert config.accelerator_type == "L4"
-        assert config.use_gpu is True
 
     def test_llm_config_accelerator_type_validation_propagates_to_engine_config(self):
         """Test that LLMConfig's validation catches the error before VLLMEngineConfig."""
@@ -479,7 +477,7 @@ class TestAcceleratorTypeValidation:
                     model_id="test_model",
                 ),
                 accelerator_type="L4",
-                use_cpu=True,
+                accelerator_config={"kind": "cpu"},
             )
         assert (
             "accelerator_type='L4' cannot be used with CPU-only configurations"

@@ -17,11 +17,13 @@ from ray.llm._internal.serve.constants import (
 from ray.llm._internal.serve.core.configs.accelerators import (
     TPU_ACCELERATOR_VALUES,
     AcceleratorBackend,
+    AnyAcceleratorConfig,
     CPUAccelerator,
+    CPUConfig,
     GPUAccelerator,
+    GPUConfig,
     TPUAccelerator,
-    _compute_use_gpu,
-    _compute_use_tpu,
+    TPUConfig,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     AcceleratorType,
@@ -63,17 +65,11 @@ class VLLMEngineConfig(BaseModelExtended):
         None,
         description="The type of accelerator to use. This is used to determine the placement group strategy.",
     )
-    topology: Optional[str] = Field(
+    accelerator_config: Optional[AnyAcceleratorConfig] = Field(
         default=None,
         description=(
-            "The physical topology of the TPU slice. "
-            "Required when deploying on multi-host TPU configurations."
-        ),
-    )
-    use_cpu: Optional[bool] = Field(
-        default=None,
-        description=(
-            "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
+            "Hardware-specific configuration parameters for the chosen accelerator. "
+            "The expected schema is dynamically typed based on the 'kind' discriminator."
         ),
     )
 
@@ -97,17 +93,13 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @model_validator(mode="after")
     def _validate_accelerator_type_with_hardware_mode(self):
-        """Validate that accelerator_type is not set when use_gpu or use_tpu resolve to False.
+        """Validate that accelerator_type is not set for CPU-only configurations."""
+        is_cpu_backend = isinstance(self.accelerator_config, CPUConfig)
 
-        This catches the case where accelerator_type is silently ignored because
-        the configuration resolves to CPU-only mode (via use_cpu=True or
-        placement_group_config with no GPUs).
-        """
-        if self.accelerator_type and not (self.use_gpu or self.use_tpu):
+        if self.accelerator_type and is_cpu_backend:
             raise ValueError(
                 f"accelerator_type='{self.accelerator_type}' cannot be used with "
-                "CPU-only configurations. Either remove accelerator_type, set "
-                "use_cpu=False, or ensure placement_group_config bundles include GPUs or TPUs."
+                "CPU-only configurations. Either remove accelerator_type, or provide a GPU/TPU accelerator_config."
             )
         return self
 
@@ -115,41 +107,53 @@ class VLLMEngineConfig(BaseModelExtended):
     engine_kwargs: Dict[str, Any] = {}
     frontend_kwargs: Dict[str, Any] = {}
 
-    _tpu_slice_pg_wrapper: Any = PrivateAttr(default=None)
-    _accelerator_backend: AcceleratorBackend = PrivateAttr(default=None)
+    _accelerator: AcceleratorBackend = PrivateAttr(default=None)
 
     @model_validator(mode="after")
-    def _resolve_accelerator_backend(self):
-        """Validates topology requirements and sets up the accelerator backend."""
-        requested_topology = self.topology
-        if requested_topology:
-            if not self.accelerator_type:
-                raise ValueError(
-                    "`accelerator_type` must be specified when `topology` is set "
-                    "so Ray Serve can correctly provision the multi-host slice."
-                )
-            if isinstance(self.use_cpu, bool) and self.use_cpu:
-                raise ValueError("Cannot specify a `topology` when `use_cpu=True`.")
+    def _build_accelerator(self):
+        """Builds the backend. Infers the hardware if accelerator_config is missing."""
+        cfg = self.accelerator_config
 
-            accel_str = getattr(self.accelerator_type, "value", self.accelerator_type)
-            if accel_str not in TPU_ACCELERATOR_VALUES:
-                raise ValueError(
-                    f"Multi-host `topology` is currently only supported for TPU deployments. "
-                    f"Received accelerator_type: '{accel_str}'"
-                )
+        # Check for explicitly typed config
+        if isinstance(cfg, TPUConfig):
+            self._accelerator = TPUAccelerator(cfg)
+            return self
+        elif isinstance(cfg, GPUConfig):
+            self._accelerator = GPUAccelerator()
+            return self
+        elif isinstance(cfg, CPUConfig):
+            self._accelerator = CPUAccelerator()
+            return self
 
-        if isinstance(self.use_cpu, bool) and self.use_cpu:
-            self._accelerator_backend = CPUAccelerator(self)
-        elif self.use_tpu:
-            self._accelerator_backend = TPUAccelerator(self)
-        elif self.use_gpu:
-            self._accelerator_backend = GPUAccelerator(self)
-        else:
-            # Implicit CPU configurations (via placement_group_config) and custom
-            # non-GPU/TPU accelerators rely on the CPU backend to pass bundles natively.
-            self._accelerator_backend = CPUAccelerator(self)
+        # Infer hardware from config when kind is not specified
+        if self.placement_group_config:
+            bundle_per_worker = self.placement_group_config.get("bundle_per_worker", {})
+            bundles = self.placement_group_config.get("bundles", [])
+            if bundle_per_worker.get("TPU", 0) > 0 or any(
+                b.get("TPU", 0) > 0 for b in bundles
+            ):
+                self._accelerator = TPUAccelerator(TPUConfig(kind="tpu"))
+                return self
+            if bundle_per_worker.get("GPU", 0) > 0 or any(
+                b.get("GPU", 0) > 0 for b in bundles
+            ):
+                self._accelerator = GPUAccelerator()
+                return self
 
+        if self.accelerator_type:
+            accel_str = getattr(
+                self.accelerator_type, "value", str(self.accelerator_type)
+            )
+            if accel_str in TPU_ACCELERATOR_VALUES:
+                self._accelerator = TPUAccelerator(TPUConfig(kind="tpu"))
+                return self
+
+        self._accelerator = GPUAccelerator()
         return self
+
+    @property
+    def accelerator(self) -> AcceleratorBackend:
+        return self._accelerator
 
     @property
     def actual_hf_model_id(self) -> str:
@@ -174,11 +178,11 @@ class VLLMEngineConfig(BaseModelExtended):
         engine_kwargs["model"] = self.actual_hf_model_id
         engine_kwargs["served_model_name"] = [self.model_id]
 
-        # Handle distributed_executor_backend based on GPU/TPU/CPU mode
-        if self.use_tpu or self.use_gpu:
-            executor_backend = EXECUTOR_BACKEND_RAY
-        else:
+        # Handle distributed_executor_backend based on backend type
+        if isinstance(self.accelerator, CPUAccelerator):
             executor_backend = EXECUTOR_BACKEND_MP
+        else:
+            executor_backend = EXECUTOR_BACKEND_RAY
 
         if (
             "distributed_executor_backend" in engine_kwargs
@@ -254,8 +258,7 @@ class VLLMEngineConfig(BaseModelExtended):
             hf_model_id=hf_model_id,
             mirror_config=mirror_config,
             accelerator_type=llm_config.accelerator_type,
-            use_cpu=llm_config.use_cpu,
-            topology=llm_config.topology,
+            accelerator_config=llm_config.accelerator_config,
             engine_kwargs=engine_kwargs,
             frontend_kwargs=frontend_kwargs,
             runtime_env=llm_config.runtime_env,
@@ -312,28 +315,17 @@ class VLLMEngineConfig(BaseModelExtended):
                 bundles.append(bundle)
             return bundles
 
-        # Default bundles: generated based on accelerator backend.
-        return self._accelerator_backend.get_placement_bundles()
-
-    @property
-    def use_gpu(self) -> bool:
-        """Returns True if vLLM is configured to use GPU resources."""
-        return _compute_use_gpu(
-            self.use_cpu, self.placement_group_config, self.accelerator_type
-        )
-
-    @property
-    def use_tpu(self) -> bool:
-        """Returns True if vLLM is configured to use TPU resources."""
-        return _compute_use_tpu(
-            self.use_cpu, self.placement_group_config, self.accelerator_type
+        # Default bundles based on the accelerator backend.
+        ray_accel_type = self.ray_accelerator_type() if self.accelerator_type else None
+        return self.accelerator.default_bundles(
+            num_devices=self.num_devices, ray_accelerator_type=ray_accel_type
         )
 
     def get_or_create_pg(self) -> PlacementGroup:
-        """Gets or a creates a placement group.
+        """Gets or creates a placement group.
 
         If we are already in a placement group, return the existing placement group.
-        Else, create a new placement group based on the scaling config.
+        Else, delegate PG creation to the accelerator backend.
         """
         dp_rank = self.engine_kwargs.get("data_parallel_rank", None)
         pg = get_current_placement_group()
@@ -352,8 +344,18 @@ class VLLMEngineConfig(BaseModelExtended):
                 )
             name = "" if dp_rank is None else f"dp_{dp_rank}"
 
-            # Delegate the placement group creation to the active hardware backend.
-            pg = self._accelerator_backend.create_placement_group(name)
+            # Delegate the placement group creation to the accelerator backend.
+            accel_str = (
+                getattr(self.accelerator_type, "value", self.accelerator_type)
+                if self.accelerator_type
+                else None
+            )
+            pg = self.accelerator.create_placement_group(
+                bundles=self.placement_bundles,
+                strategy=self.placement_strategy,
+                name=name,
+                accelerator_type_str=accel_str,
+            )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")
 

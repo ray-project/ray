@@ -293,40 +293,38 @@ class TestFieldValidators:
         assert "Invalid lora_config" in str(exc_info.value)
 
 
-class TestUseCpuLogic:
-    """Test the use_cpu logic and its interaction with accelerator_type."""
+class TestAcceleratorConfigLogic:
+    """Test the accelerator_config logic and its interaction with accelerator_type."""
 
-    def test_use_cpu_field_basic(self):
-        """Test that use_cpu field works with basic values."""
-        # Test use_cpu=True
+    def test_accelerator_config_field_basic(self):
+        """Test that accelerator_config field works with basic values."""
+        # Test CPU config
         llm_config_cpu = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            use_cpu=True,
+            accelerator_config={"kind": "cpu"},
         )
-        assert llm_config_cpu.use_cpu is True
-        assert llm_config_cpu.use_gpu is False
+        assert llm_config_cpu.accelerator_config.kind == "cpu"
         engine_config = llm_config_cpu.get_engine_config()
-        assert engine_config.use_gpu is False
+        assert engine_config.accelerator_config.kind == "cpu"
 
-        # Test use_cpu=False
+        # Test GPU config
         llm_config_gpu = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
-            use_cpu=False,
+            accelerator_config={"kind": "gpu"},
         )
-        assert llm_config_gpu.use_cpu is False
-        assert llm_config_gpu.use_gpu is True
+        assert llm_config_gpu.accelerator_config.kind == "gpu"
         engine_config_gpu = llm_config_gpu.get_engine_config()
-        assert engine_config_gpu.use_gpu is True
+        assert engine_config_gpu.accelerator_config.kind == "gpu"
 
-    def test_accelerator_type_with_use_cpu_raises_error(self):
-        """Test that accelerator_type with use_cpu=True raises a validation error."""
+    def test_accelerator_type_with_cpu_config_raises_error(self):
+        """Test that accelerator_type with CPU config raises a validation error."""
         with pytest.raises(
             pydantic.ValidationError,
             match="accelerator_type='L4' cannot be used with CPU-only configurations",
         ):
             LLMConfig(
                 model_loading_config=ModelLoadingConfig(model_id="test_model"),
-                use_cpu=True,
+                accelerator_config={"kind": "cpu"},
                 accelerator_type="L4",
             )
 
@@ -362,19 +360,17 @@ class TestUseCpuLogic:
             placement_group_config={"bundles": [{"GPU": 1, "CPU": 4}]},
         )
         assert llm_config.accelerator_type == "L4"
-        engine_config = llm_config.get_engine_config()
-        assert engine_config.use_gpu is True
 
-    def test_accelerator_type_with_use_cpu_false_succeeds(self):
-        """Test that accelerator_type with use_cpu=False succeeds."""
+    def test_accelerator_type_with_gpu_config_succeeds(self):
+        """Test that accelerator_type with GPU config succeeds."""
         llm_config = LLMConfig(
             model_loading_config=ModelLoadingConfig(model_id="test_model"),
             accelerator_type="L4",
-            use_cpu=False,
+            accelerator_config={"kind": "gpu"},
         )
         assert llm_config.accelerator_type == "L4"
         engine_config = llm_config.get_engine_config()
-        assert engine_config.use_gpu is True
+        assert engine_config.accelerator_type == "L4"
 
 
 if __name__ == "__main__":

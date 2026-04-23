@@ -739,22 +739,11 @@ class LLMServer(LLMServerProtocol):
         return deployment_options
 
     def __del__(self):
-        """Cleanup logic to ensure engine config and PGs are cleaned up during garbage collection."""
-        if hasattr(self, "_llm_config") and self._llm_config:
-            try:
-                engine_config = self._llm_config._engine_config
+        """Cleanup logic to ensure PGs are cleaned up during garbage collection."""
+        cfg = getattr(self, "_llm_config", None)
+        eng = getattr(cfg, "_engine_config", None) if cfg else None
+        acc = getattr(eng, "accelerator", None) if eng else None
 
-                if engine_config is not None:
-                    tpu_pg = getattr(engine_config, "_tpu_slice_pg_wrapper", None)
-                    if tpu_pg is not None:
-                        logger.info(
-                            "Shutting down slice placement group for server replica."
-                        )
-                        # We explicitly shutdown the SlicePlacementGroup to avoid leaking GCS resources
-                        # when the server replica scales down. The shutdown() method is idempotent.
-                        tpu_pg.shutdown()
-
-            except Exception as e:
-                logger.warning(
-                    f"Failed to clean up slice placement group during LLMServer teardown: {e}"
-                )
+        # If specified, call the accelerator backend's shutdown method.
+        if acc is not None:
+            acc.shutdown()

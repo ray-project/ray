@@ -37,8 +37,8 @@ from ray.llm._internal.serve.constants import (
 )
 from ray.llm._internal.serve.core.configs.accelerators import (
     AcceleratorType,
-    _compute_use_gpu,
-    _compute_use_tpu,
+    AnyAcceleratorConfig,
+    CPUConfig,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
@@ -47,7 +47,6 @@ from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve._private.config import DeploymentConfig, handle_num_replicas_auto
 
 transformers = try_import("transformers")
-
 
 # TODO(ryanaoleary@): Remove this alias once all downstream files are migrated
 # to use AcceleratorType.
@@ -176,18 +175,11 @@ class LLMConfig(BaseModelExtended):
         description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in AcceleratorType])}",
     )
 
-    topology: Optional[str] = Field(
+    accelerator_config: Optional[AnyAcceleratorConfig] = Field(
         default=None,
         description=(
-            "The physical topology of the slice (e.g. '4x4', '2x2x4'). "
-            "Required when deploying on multi-host TPU configurations."
-        ),
-    )
-
-    use_cpu: Optional[bool] = Field(
-        default=None,
-        description=(
-            "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
+            "Hardware-specific configuration parameters for the chosen accelerator. "
+            "The expected schema is dynamically typed based on the 'kind' discriminator."
         ),
     )
 
@@ -383,20 +375,6 @@ class LLMConfig(BaseModelExtended):
     def max_request_context_length(self) -> Optional[int]:
         return self.engine_kwargs.get("max_model_len")
 
-    @property
-    def use_gpu(self) -> bool:
-        """Returns True if configured to use GPU resources."""
-        return _compute_use_gpu(
-            self.use_cpu, self.placement_group_config, self.accelerator_type
-        )
-
-    @property
-    def use_tpu(self) -> bool:
-        """Returns True if configured to use TPU resources."""
-        return _compute_use_tpu(
-            self.use_cpu, self.placement_group_config, self.accelerator_type
-        )
-
     @field_validator("accelerator_type")
     def validate_accelerator_type(cls, value: Optional[str]):
         if value is None:
@@ -497,17 +475,13 @@ class LLMConfig(BaseModelExtended):
 
     @model_validator(mode="after")
     def _validate_accelerator_type_with_hardware_mode(self):
-        """Validate that accelerator_type is not set when use_gpu or use_tpu resolve to False.
+        """Validate that accelerator_type is not set for CPU-only configurations."""
+        is_cpu_backend = isinstance(self.accelerator_config, CPUConfig)
 
-        This catches the case where accelerator_type would be silently ignored because
-        the configuration resolves to CPU-only mode (via use_cpu=True or
-        placement_group_config with no GPUs or TPUs).
-        """
-        if self.accelerator_type and not (self.use_gpu or self.use_tpu):
+        if self.accelerator_type and is_cpu_backend:
             raise ValueError(
                 f"accelerator_type='{self.accelerator_type}' cannot be used with "
-                "CPU-only configurations. Either remove accelerator_type, set "
-                "use_cpu=False, or ensure placement_group_config bundles include GPUs or TPUs."
+                "CPU-only configurations. Either remove accelerator_type, or provide a GPU/TPU accelerator_config."
             )
         return self
 
