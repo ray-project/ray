@@ -1,7 +1,8 @@
 """Benchmark: latency of Arrow table transfer through Ray.
 
 One actor produces tables, one actor consumes (takes table as input,
-returns it as output). Measures per-iteration latency.
+returns num_rows). Measures single-hop transfer latency without pulling
+the table back to the driver.
 
 If RAY_USE_FLIGHT_STORE=1 is set, tables go through the Flight store.
 Otherwise they go through Ray's normal object store (plasma).
@@ -15,42 +16,65 @@ import pyarrow as pa
 
 import ray
 
-SIZES_MB = [1, 10, 50, 200]
+SIZES_MB = [1, 10, 100]
 N_ITERS = 20
-NUM_CPUS = 4
+CONCURRENCY = 4
+N_ACTORS = 4
+
+# Env vars the workers need to see (so RAY_USE_FLIGHT_STORE / ARROW_IPC_COPY_MODE
+# set on the driver propagate to actor processes).
+_PROPAGATED_ENV_VARS = ("RAY_USE_FLIGHT_STORE", "ARROW_IPC_COPY_MODE")
 
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=1, max_concurrency=CONCURRENCY)
 class Producer:
     def make_table(self, size_mb):
         n_rows = max(1, size_mb * 1024 * 1024 // 8)
         return pa.table({"data": np.random.randn(n_rows)})
 
 
-@ray.remote(num_cpus=1)
+@ray.remote(num_cpus=1, max_concurrency=CONCURRENCY)
 class Consumer:
     def process(self, table):
         assert isinstance(table, pa.Table), f"Expected pa.Table, got {type(table)}"
         return table
 
 
-def bench(producer, consumer, size_mb, n_iters):
+TASKS_PER_ITER = N_ACTORS * CONCURRENCY
+
+
+def _submit_round(producers, consumers, size_mb):
+    """Submit CONCURRENCY tasks on each of N_ACTORS producer/consumer pairs."""
+    consume_refs = []
+    for producer, consumer in zip(producers, consumers):
+        for _ in range(CONCURRENCY):
+            ref = producer.make_table.remote(size_mb)
+            consume_refs.append(consumer.process.remote(ref))
+    return consume_refs
+
+
+def bench(producers, consumers, size_mb, n_iters):
     # Warmup.
-    ref = producer.make_table.remote(size_mb)
-    ray.get(consumer.process.remote(ref))
+    ray.wait(
+        _submit_round(producers, consumers, size_mb),
+        num_returns=TASKS_PER_ITER,
+        fetch_local=False,
+    )
 
     latencies = []
     for _ in range(n_iters):
         t0 = time.perf_counter()
-        ref = producer.make_table.remote(size_mb)
-        result = ray.get(consumer.process.remote(ref))
-        assert isinstance(result, pa.Table)
+        ray.wait(
+            _submit_round(producers, consumers, size_mb),
+            num_returns=TASKS_PER_ITER,
+            fetch_local=False,
+        )
         latencies.append(time.perf_counter() - t0)
 
     avg_ms = sum(latencies) / len(latencies) * 1000
     p50_ms = sorted(latencies)[len(latencies) // 2] * 1000
     p99_ms = sorted(latencies)[int(len(latencies) * 0.99)] * 1000
-    throughput_mbs = size_mb / (avg_ms / 1000)
+    throughput_mbs = size_mb * TASKS_PER_ITER / (avg_ms / 1000)
     print(
         f"  {size_mb:4d} MB  "
         f"avg={avg_ms:7.1f}ms  p50={p50_ms:7.1f}ms  p99={p99_ms:7.1f}ms  "
@@ -62,16 +86,23 @@ def main():
     flight = os.environ.get("RAY_USE_FLIGHT_STORE", "0") == "1"
     mode = "Flight store" if flight else "Ray object store (plasma)"
 
-    ray.init(num_cpus=NUM_CPUS)
+    env_vars = {
+        k: os.environ[k] for k in _PROPAGATED_ENV_VARS if k in os.environ
+    }
+    ray.init(runtime_env={"env_vars": env_vars} if env_vars else None)
     print(f"Mode: {mode}")
-    print(f"Sizes: {SIZES_MB} MB, {N_ITERS} iterations each")
+    print(
+        f"Sizes: {SIZES_MB} MB, {N_ITERS} iterations each, "
+        f"{N_ACTORS} actors x {CONCURRENCY} concurrent tasks "
+        f"= {TASKS_PER_ITER} in flight"
+    )
     print()
 
-    producer = Producer.remote()
-    consumer = Consumer.remote()
+    producers = [Producer.remote() for _ in range(N_ACTORS)]
+    consumers = [Consumer.remote() for _ in range(N_ACTORS)]
 
     for size_mb in SIZES_MB:
-        bench(producer, consumer, size_mb, N_ITERS)
+        bench(producers, consumers, size_mb, N_ITERS)
 
     ray.shutdown()
 

@@ -21,51 +21,48 @@ import pyarrow.ipc as ipc
 
 _COPY_MODE = os.environ.get("ARROW_IPC_COPY_MODE", "eager")
 
+class _RecordingSink:
+    """A sink that records write addresses and sizes for scatter write.
 
-class _RecordingSink(pa.NativeFile):
-    """A sink that records write addresses and sizes without copying.
-
-    Used in lazy mode: the IPC writer calls write() with pointers to
-    Arrow column buffers and metadata. We record those pointers and
-    flush them all in a single process_vm_writev scatter call.
-
-    IMPORTANT: The buffers passed to write() must remain valid until
-    flush() is called. Arrow's IPC writer holds references to column
-    buffers during write_table(), and metadata buffers are valid for
-    the duration of each WriteRecordBatch call. We flush immediately
-    after each write() to avoid holding stale pointers.
+    Used in lazy mode with pa.PythonFile wrapper. The IPC writer passes
+    pa.Buffer for large column data (zero-copy pointer capture) and bytes
+    for small metadata (copied to keep alive). After serialization, the
+    scatter_list can be passed to process_vm_writev in a single syscall.
     """
 
     def __init__(self):
-        self._chunks = []  # list of (address, size) for Arrow buffers
-        self._copied_chunks = []  # small metadata chunks we had to copy
+        self._chunks = []  # list of (address, size)
+        self._refs = []  # prevent GC of buffers
         self._offset = 0
 
     def write(self, data):
-        """Record a write. For large buffers (column data), record the pointer.
-        For small buffers (metadata), copy to keep alive.
-        """
         if isinstance(data, pa.Buffer):
-            size = data.size
-            self._chunks.append((data.address, size))
-            self._offset += size
-            # Keep a reference to prevent GC.
-            self._copied_chunks.append(data)
+            # Column data — capture pointer directly, no copy.
+            self._chunks.append((data.address, data.size))
+            self._refs.append(data)
+            self._offset += data.size
+            return data.size
         else:
-            # bytes or memoryview — copy to keep alive.
-            b = bytes(data)
+            # Small metadata — copy to keep alive.
+            b = bytes(data) if not isinstance(data, bytes) else data
             buf = pa.py_buffer(b)
             self._chunks.append((buf.address, len(b)))
+            self._refs.append(buf)
             self._offset += len(b)
-            self._copied_chunks.append(buf)
-        return len(data) if not isinstance(data, pa.Buffer) else data.size
+            return len(b)
 
     def tell(self):
         return self._offset
 
+    def writable(self):
+        return True
+
     @property
-    def total_size(self):
-        return self._offset
+    def closed(self):
+        return False
+
+    def flush(self):
+        pass
 
     @property
     def scatter_list(self):
@@ -99,6 +96,11 @@ class _FlightServer(flight.FlightServerBase):
     def _handle_scatter_write(self, action):
         """Lazy mode: consumer requests producer to serialize and scatter-write.
 
+        Uses a recording sink that captures pointers to Arrow column buffers
+        (zero copy for data) and copies only small metadata chunks.
+        Then scatter-writes all chunks into the consumer's buffer in one
+        process_vm_writev syscall.
+
         Body format: key_len(4) + key + pid(4) + address(8) + size(8)
         """
         import struct
@@ -119,10 +121,12 @@ class _FlightServer(flight.FlightServerBase):
         if table is None:
             raise flight.FlightError(f"Object not found: {key}")
 
-        # Serialize IPC through a recording sink (no copy — just records
-        # pointers to Arrow column buffers and metadata).
+        # Serialize IPC through a recording sink wrapped in PythonFile.
+        # Column data buffers are captured by pointer (no copy).
+        # Small metadata chunks are copied to keep alive.
         sink = _RecordingSink()
-        writer = ipc.new_stream(sink, table.schema)
+        pf = pa.PythonFile(sink, mode="w")
+        writer = ipc.new_stream(pf, table.schema)
         writer.write_table(table)
         writer.close()
 
@@ -130,7 +134,9 @@ class _FlightServer(flight.FlightServerBase):
         # in a single process_vm_writev syscall.
         from ray._raylet import vm_scatter_write
 
-        vm_scatter_write(consumer_pid, consumer_addr, buf_size, sink.scatter_list)
+        vm_scatter_write(
+            consumer_pid, consumer_addr, buf_size, sink.scatter_list
+        )
 
         # Clean up the table after writing.
         self._store.delete(key)
@@ -152,6 +158,7 @@ class FlightObjectStore:
         self._uri = None
         self._clients = {}
         self._copy_mode = _COPY_MODE
+        self._logged_mode = False
 
     def start_server(self):
         """Start the Flight server on a random port."""
@@ -179,6 +186,11 @@ class FlightObjectStore:
 
     def put_and_get_transfer_info(self, key, table):
         """Store a table and return transfer info dict."""
+        if not self._logged_mode:
+            import logging
+            logging.getLogger(__name__).info(
+                f"Flight store copy mode: {self._copy_mode}")
+            self._logged_mode = True
         if self._copy_mode == "lazy":
             return self._put_lazy(key, table)
         return self._put_eager(key, table)
