@@ -171,11 +171,46 @@ def _shuffle_map(
 
     t4 = _time.perf_counter()
 
+    import os as _os
+
+    def _mem_breakdown():
+        pid = _os.getpid()
+        info = {}
+        try:
+            with open(f"/proc/{pid}/smaps_rollup") as f:
+                for line in f:
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        try:
+                            info[parts[0].rstrip(":")] = int(parts[1]) / 1024
+                        except ValueError:
+                            continue
+        except Exception:
+            pass
+        if not info:
+            try:
+                with open(f"/proc/{pid}/statm") as f:
+                    info["Rss"] = (
+                        int(f.read().split()[1]) * _os.sysconf("SC_PAGE_SIZE") / 1e6
+                    )
+            except Exception:
+                info["Rss"] = -1
+        return info
+
+    sm = _mem_breakdown()
+    # USS = Private_Clean + Private_Dirty (pages unique to this process)
+    uss = sm.get("Private_Clean", 0) + sm.get("Private_Dirty", 0)
+    rss = sm.get("Rss", -1)
+    shared = sm.get("Shared_Clean", 0) + sm.get("Shared_Dirty", 0)
+    anon = sm.get("Anonymous", 0)
+
     logger.info(
-        f"_shuffle_map profiling: rows={block.num_rows}, "
+        f"_shuffle_map memory: rows={block.num_rows}, "
         f"prep={t1-t0:.3f}s, combine_chunks={t2-t1:.3f}s, "
         f"hash_partition={t3-t2:.3f}s, build_shards={t4-t3:.3f}s, "
-        f"total={t4-t0:.3f}s"
+        f"total={t4-t0:.3f}s, "
+        f"uss={uss:.0f}MB, rss={rss:.0f}MB, "
+        f"shared={shared:.0f}MB, anon(heap)={anon:.0f}MB"
     )
 
     return (input_block_metadata, non_empty_pids, shard_sizes), *shards
