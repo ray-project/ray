@@ -23,5 +23,8 @@ worker_nodes:
       # 4096 max replicas
       max_nodes: 220
       market_type: ON_DEMAND
+      # New SDK's `resources` is a full override, so include `CPU: 8`
+      # explicitly alongside the custom `proxy` resource.
       resources:
+        CPU: 8
         proxy: 1

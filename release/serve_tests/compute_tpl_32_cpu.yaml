@@ -17,5 +17,9 @@ worker_nodes:
       min_nodes: 32
       max_nodes: 32
       market_type: ON_DEMAND
+      # New SDK's `resources` is a full override (not a merge with natural
+      # instance resources), so include `CPU: 32` explicitly alongside the
+      # custom `worker` resource.
       resources:
+        CPU: 32
         worker: 1
