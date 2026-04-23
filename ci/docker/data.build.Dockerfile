@@ -25,7 +25,7 @@ if [[ "$IMAGE_TYPE" == "pyarrow-nightly" ]]; then
     --pre \
     --prefer-binary \
     --extra-index-url https://pypi.fury.io/arrow-nightlies/ \
-    --upgrade-package pyarrow
+    --upgrade-package pyarrow \
     pyarrow
 fi
 
