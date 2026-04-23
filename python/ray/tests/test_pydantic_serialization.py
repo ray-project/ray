@@ -9,12 +9,11 @@ from fastapi import FastAPI
 from packaging import version
 
 from pydantic import BaseModel, ValidationError
+import ray
+from ray.tests.pydantic_module import User, app, closure, user
 
 BASE_MODELS = [BaseModel]
 BASE_MODEL_AND_ERRORS = [(BaseModel, ValidationError)]
-
-import ray
-from ray.tests.pydantic_module import User, app, closure, user
 
 
 @pytest.fixture(scope="session")

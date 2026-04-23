@@ -7,10 +7,10 @@ from typing import Optional
 
 import aiohttp
 from aiohttp.web import Request, Response
+from pydantic import ValidationError
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
-from pydantic import ValidationError
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
