@@ -12,7 +12,7 @@ from ray.serve._private.common import GANG_PG_NAME_PREFIX, DeploymentID, Replica
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import (
     Accumulator,
-    FailedReplicaStore,
+    FailedGangReplicaStore,
     check_apps_running,
     check_num_replicas_eq,
 )
@@ -691,7 +691,7 @@ class TestGangConstructorFailure:
         ray.init(num_cpus=1)
         serve.start()
 
-        failed_replica_store = FailedReplicaStore.remote()
+        failed_replica_store = FailedGangReplicaStore.remote()
 
         @serve.deployment(
             num_replicas=4,
@@ -738,7 +738,7 @@ class TestGangConstructorFailure:
         ray.init(num_cpus=1)
         serve.start()
 
-        failed_replica_store = FailedReplicaStore.remote()
+        failed_replica_store = FailedGangReplicaStore.remote()
 
         @serve.deployment(
             num_replicas=4,
@@ -774,7 +774,7 @@ class TestGangFailureRecovery:
         """Startup failure stops both replicas in the affected gang."""
         ray.init(num_cpus=1)
         serve.start()
-        failed_replica_store = FailedReplicaStore.remote()
+        failed_replica_store = FailedGangReplicaStore.remote()
         recovery_signal = SignalActor.remote()
 
         @serve.deployment(

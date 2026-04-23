@@ -1120,6 +1120,30 @@ class Accumulator:
 
 @ray.remote(num_cpus=0)
 class FailedReplicaStore:
+    """Controls replica constructor failure behavior for constructor failure tests.
+
+    Behavior is determined by ``fail_first``:
+      - ``fail_first=True``  (transient): first caller fails, rest succeed.
+      - ``fail_first=False`` (partial):   first caller succeeds, rest fail.
+
+    All decisions are made in a single atomic actor call to avoid races
+    between concurrent replicas.
+    """
+
+    def __init__(self, fail_first: bool = False):
+        self._fail_first = fail_first
+        self._first_caller = False
+
+    def should_fail(self) -> bool:
+        """Returns whether this replica should raise in its constructor."""
+        if not self._first_caller:
+            self._first_caller = True
+            return self._fail_first
+        return not self._fail_first
+
+
+@ray.remote(num_cpus=0)
+class FailedGangReplicaStore:
     """
     Controls replica constructor failure behavior for gang scheduling tests.
         - The first gang seen is allowed to run.

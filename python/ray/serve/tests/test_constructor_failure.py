@@ -1,9 +1,11 @@
 import sys
+import time
 
 import pytest
 
 import ray
 from ray import serve
+from ray._common.test_utils import wait_for_condition
 from ray.serve._private.common import DeploymentID
 from ray.serve._private.test_utils import FailedReplicaStore
 
@@ -54,36 +56,37 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
     @serve.deployment(num_replicas=2)
     class PartialConstructorFailureDeployment:
         def __init__(self, store):
-            replica_id = serve.get_replica_context().replica_id.unique_id
-            is_first = ray.get(store.set_if_first.remote(replica_id))
-            if is_first:
-                raise RuntimeError("Consistently throwing on same replica.")
-            failed_id = ray.get(store.get.remote())
-            if replica_id == failed_id:
+            if ray.get(store.should_fail.remote()):
                 raise RuntimeError("Consistently throwing on same replica.")
 
         async def serve(self, request):
             return "hi"
 
-    serve.run(PartialConstructorFailureDeployment.bind(failed_store))
+    serve._run(PartialConstructorFailureDeployment.bind(failed_store), _blocking=False)
 
-    # Assert 2 replicas are running in deployment deployment after partially
-    # successful deploy call
-    deployment_dict = ray.get(serve_instance._controller._all_running_replicas.remote())
     deployment_id = DeploymentID(name="PartialConstructorFailureDeployment")
-    assert len(deployment_dict[deployment_id]) == 2
+
+    def _one_replica_running() -> bool:
+        deployment_dict = ray.get(
+            serve_instance._controller._all_running_replicas.remote()
+        )
+        return len(deployment_dict.get(deployment_id, [])) == 1
+
+    wait_for_condition(_one_replica_running, timeout=30)
+    # Re-check after a few retry cycles to confirm only 1 replica stays running.
+    time.sleep(10)
+    assert _one_replica_running()
 
 
 def test_deploy_with_transient_constructor_failure(serve_instance):
     # Test failed to deploy with total of 2 replicas,
     # but first constructor call fails.
-    failed_store = FailedReplicaStore.remote()
+    failed_store = FailedReplicaStore.remote(fail_first=True)
 
     @serve.deployment(num_replicas=2)
     class TransientConstructorFailureDeployment:
         def __init__(self, store):
-            is_first = ray.get(store.set_if_first.remote("ONE"))
-            if is_first:
+            if ray.get(store.should_fail.remote()):
                 raise RuntimeError("Intentionally throw on first try.")
 
         async def serve(self, request):
