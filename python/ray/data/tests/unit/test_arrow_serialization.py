@@ -140,8 +140,7 @@ def test_copy_offsets_buffer_if_needed(arr_type, expected_offset_type):
 
 
 @pytest.mark.skipif(
-    parse_version(pa.__version__)
-    < parse_version("10.0.0"),  # pyrefly: ignore[bad-argument-type]
+    parse_version(str(pa.__version__)) < parse_version("10.0.0"),
     reason="FixedShapeTensorArray is not supported in PyArrow < 10.0.0",
 )
 def test_fixed_shape_tensor_array_serialization():
