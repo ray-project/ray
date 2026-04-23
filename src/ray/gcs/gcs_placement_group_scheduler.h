@@ -357,11 +357,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
           &group_to_bundles,
       const std::vector<SchedulePgRequest> &prepared_pgs) override;
 
-  /// Add resources changed listener.
-  void AddResourcesChangedListener(std::function<void()> listener);
-
-  void HandleWaitingRemovedBundles();
-
  protected:
   /// Send bundles PREPARE requests to a node. The PREPARE requests will lock resources
   /// on a node until COMMIT or CANCEL requests are sent to a node.
@@ -444,16 +439,6 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   void DestroyPlacementGroupCommittedBundleResources(
       const PlacementGroupID &placement_group_id);
 
-  /// Acquire the bundle resources from the cluster resources.
-  void AcquireBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
-
-  /// Commit the bundle resources to the cluster resources.
-  void CommitBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
-
-  /// Return the bundle resources to the cluster resources.
-  /// It will remove bundle resources AND also add original resources back.
-  void ReturnBundleResources(const std::shared_ptr<BundleLocations> &bundle_locations);
-
   /// Create scheduling context.
   std::unique_ptr<BundleSchedulingContext> CreateSchedulingContext(
       const PlacementGroupID &placement_group_id);
@@ -462,23 +447,12 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
                                             rpc::PlacementStrategy strategy);
 
-  /// Try to release bundle resource to cluster resource manager.
-  ///
-  /// \param bundle The node to which the bundle is scheduled and the bundle's
-  /// specification.
-  /// \return True if the bundle is successfully released. False otherwise.
-  bool TryReleasingBundleResources(
-      const std::pair<NodeID, std::shared_ptr<const BundleSpecification>> &bundle);
-
   /// Help function to check if the resource_name has the pattern
   /// {original_resource_name}_group_{placement_group_id}, which means
   /// wildcard resource.
   bool IsPlacementGroupWildcardResource(const std::string &resource_name);
 
   instrumented_io_context &io_context_;
-
-  /// A timer that ticks every cancel resource failure milliseconds.
-  boost::asio::deadline_timer return_timer_;
 
   /// Used to update placement group information upon creation, deletion, etc.
   gcs::GcsTableStorage &gcs_table_storage_;
@@ -502,17 +476,8 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
   /// The nodes which are releasing unused bundles.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_bundles_;
 
-  /// The resources changed listeners.
-  std::vector<std::function<void()>> resources_changed_listeners_;
-
-  /// The bundles that waiting to be destroyed and release resources.
-  std::list<std::pair<NodeID, std::shared_ptr<const BundleSpecification>>>
-      waiting_removed_bundles_;
-
   friend class GcsPlacementGroupSchedulerTest;
   FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
-  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestWaitingRemovedBundles);
-  FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestBundlesRemovedWhenNodeDead);
 };
 
 }  // namespace gcs
