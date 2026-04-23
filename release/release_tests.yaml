@@ -1360,6 +1360,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: rte_small.yaml
 
   run:
@@ -1389,6 +1390,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: rte_minimal.yaml
 
   run:
@@ -1442,6 +1444,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1470,6 +1473,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1505,6 +1509,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
@@ -1546,6 +1551,7 @@
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    anyscale_sdk_2026: true
 
   run:
     timeout: 14400
@@ -1578,6 +1584,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1614,6 +1621,7 @@
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    anyscale_sdk_2026: true
 
   run:
     timeout: 7200
@@ -1687,6 +1695,7 @@
   team: serve
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: compute_tpl_gpu_node.yaml
