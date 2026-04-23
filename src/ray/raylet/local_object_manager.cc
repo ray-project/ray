@@ -113,6 +113,20 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool loca
   RAY_LOG(INFO) << "[karticam] ReleaseFreedObject called for objectId: " << object_id
                 << " local_only=" << local_only;
 
+  // TODO(karticam): CHECK THESE EDGE CASES:
+  // consider driver handling producer and consumer.
+  // say push completes, and move semantic calls ReleaseFreedObject. now producer
+  // is executing ReleaseFreedObject. but while its doing so, the consumer function
+  // using the object finishes and the driver also makes ref go out of scope, which
+  // means that ref_count goes to 0 => which triggers pub-sub callback and
+  // releaseFreedObject is called again. This might RACE??? Since
+  // its highly possible that both calls to ReleaseFreedObject are posted on the same
+  // thread and are serial, this might be fine. CHECK IF THIS IS HAPPENING. Also, even
+  // if this is the case, the order of execution might be reversed. Say the consumer
+  // execution finishes before move semantics callback is triggered, then the ref count
+  // call of ReleaseFreedObject will be called before move semantic triggered
+  // ReleaseFreedObject. CHECK if that's fine!!!
+
   // [karticam] If this is the owner's eviction (local_only=false) for an object
   // that was previously released locally via move semantics (local_only=true),
   // we still need to broadcast FreeObjectsRequest to other nodes so they can
