@@ -74,7 +74,9 @@ from ray.data._internal.logical.operators import (
     FromItems,
     FromNumpy,
     FromPandas,
+    ListFiles,
     Read,
+    ReadFiles,
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -136,6 +138,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+INT32_MAX = 2**31 - 1
 
 
 @DeveloperAPI
@@ -385,6 +388,143 @@ def range_tensor(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
+
+
+def _read_datasource_v2(
+    datasource,
+    *,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    compute: Optional[ComputeStrategy] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+) -> Dataset:
+    """Internal entry point for ``DataSourceV2`` reads.
+
+    Wires a ``ListFiles → ReadFiles`` logical chain:
+
+    - :class:`ListFiles` owns listing (via the datasource's ``FileIndexer``),
+      optional global shuffle (``FileShuffleConfig``), and size-balanced
+      bucketing (``RoundRobinPartitioner``). Its physical planner
+      parallelizes listing across path shards and emits manifest blocks.
+    - :class:`ReadFiles` consumes the manifest blocks and reads each bucket
+      via ``scanner.create_reader().read(manifest)``.
+
+    Schema inference happens once on the driver by sampling the first
+    file — no caching layer needed.
+    """
+    import time
+
+    from ray.data._internal.datasource_v2.listing.file_pruners import (
+        FileExtensionPruner,
+        FilePruner,
+        PartitionPruner,
+    )
+    from ray.data._internal.datasource_v2.listing.listing_utils import (
+        sample_first_file,
+    )
+    from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
+        RoundRobinPartitioner,
+    )
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+    ctx = DataContext.get_current()
+
+    if ray_remote_args is None:
+        ray_remote_args = {}
+
+    if "scheduling_strategy" not in ray_remote_args and (
+        "label_selector" not in ray_remote_args
+    ):
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+
+    ray_remote_args = merge_resources_to_ray_remote_args(
+        num_cpus,
+        num_gpus,
+        memory,
+        ray_remote_args,
+    )
+
+    pruners: List[FilePruner] = [FileExtensionPruner(datasource.file_extensions)]
+    if partition_filter is not None:
+        pruners.append(PartitionPruner(partition_filter))
+
+    indexer = datasource._get_file_indexer()
+
+    # Sample one file for schema inference. Listed again (cheaply) during
+    # execution inside the ListFiles op — no caching layer needed.
+    sample = sample_first_file(
+        indexer, datasource.paths, datasource.filesystem, pruners
+    )
+    schema = datasource.infer_schema(sample)
+    scanner = datasource.create_scanner(schema=schema, filesystem=datasource.filesystem)
+
+    # Size-balanced bucketing for the listing output. The partitioner is
+    # captured in a pickled closure and runs inside worker tasks, so its
+    # estimator must be I/O-free and pickle-safe — use the datasource's
+    # canonical estimator (``ParquetInMemorySizeEstimator`` is a fixed
+    # encoding-ratio multiplier). ``num_buckets`` is a hint;
+    # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
+    # first, so the actual bucket count scales with total data size.
+    # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
+    # back to sentinel bounds so the partitioner just rolls every file
+    # into a single bucket.
+    import sys
+
+    min_bucket_size = ctx.target_min_block_size or 0
+    max_bucket_size = (
+        ctx.target_max_block_size
+        if ctx.target_max_block_size is not None
+        else sys.maxsize
+    )
+    partitioner = RoundRobinPartitioner(
+        in_memory_size_estimator=datasource.get_size_estimator(),
+        min_bucket_size=min_bucket_size,
+        max_bucket_size=max_bucket_size,
+        num_buckets=max(1, parallelism if parallelism > 0 else 1),
+    )
+
+    # NOTE: We're using shuffle config factory to fix the seed at the planning
+    #       time, rather than at the composition time (for backward-compatibility)
+    shuffle = getattr(datasource, "shuffle", None)
+
+    def _shuffle_config_factory() -> Optional[FileShuffleConfig]:
+        return (
+            FileShuffleConfig(seed=time.time_ns() % INT32_MAX)
+            if shuffle == "files"
+            else shuffle
+        )
+
+    list_files_op = ListFiles(
+        paths=list(datasource.paths),
+        file_indexer=indexer,
+        filesystem=datasource.filesystem,
+        source_paths=list(datasource.paths),
+        file_partitioner=partitioner,
+        file_extensions=datasource.file_extensions,
+        partition_filter=partition_filter,
+        shuffle_config_factory=_shuffle_config_factory,
+    )
+
+    compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
+
+    read_op = ReadFiles(
+        input_op=list_files_op,
+        datasource=datasource,
+        scanner=scanner,
+        schema=schema,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        compute=compute_strategy,
+    )
+
+    stats = DatasetStats(metadata={"Read": []}, parent=None)
+    execution_plan = ExecutionPlan(stats, DataContext.get_current().copy())
+    logical_plan = LogicalPlan(read_op, execution_plan._context)
+    return Dataset(plan=execution_plan, logical_plan=logical_plan)
 
 
 @PublicAPI
@@ -1109,6 +1249,57 @@ def read_parquet(
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
     schema = arrow_parquet_args.pop("schema", None)
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
+        if _block_udf is not None:
+            raise NotImplementedError(
+                "`_block_udf` is deprecated and not supported on the DataSourceV2 path."
+            )
+        if tensor_column_schema is not None:
+            raise NotImplementedError(
+                "`tensor_column_schema` is not yet supported on the DataSourceV2 path."
+            )
+        if dataset_kwargs:
+            raise NotImplementedError(
+                "`dataset_kwargs` is not yet supported on the DataSourceV2 path."
+            )
+        if columns is not None:
+            # TODO(datasource-v2): remove `columns=` from `read_parquet` once
+            # the projection-pushdown rule dispatches to `ReadFiles`. Callers
+            # should use `ray.data.read_parquet(path).select_columns([...])`
+            # — semantically equivalent on V1, and on V2 the pushdown rule
+            # will fold the projection into the scanner once it lands.
+            raise NotImplementedError(
+                "`columns=` on `read_parquet` is deprecated on the DataSourceV2 "
+                "path. Use `ray.data.read_parquet(path).select_columns([...])` "
+                "instead."
+            )
+
+        from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+            ParquetDatasourceV2,
+        )
+
+        datasource_v2 = ParquetDatasourceV2(
+            paths,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            include_paths=include_paths,
+            shuffle=shuffle,
+            arrow_parquet_args=arrow_parquet_args,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+        )
+
     datasource = ParquetDatasource(
         paths,
         columns=columns,

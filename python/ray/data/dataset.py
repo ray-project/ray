@@ -7475,7 +7475,18 @@ class Schema:
     @property
     def names(self) -> List[str]:
         """Lists the columns of this Dataset."""
-        return list(self.base_schema.names)
+        from ray.data._internal.arrow_block import (
+            _BATCH_SIZE_PRESERVING_STUB_COL_NAME,
+        )
+
+        # ``__bsp_stub`` is a physical placeholder the read path injects
+        # into zero-column blocks so ``pa.concat_tables`` doesn't collapse
+        # the row count. It's not part of the user-visible schema.
+        return [
+            name
+            for name in self.base_schema.names
+            if name != _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+        ]
 
     @property
     def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:

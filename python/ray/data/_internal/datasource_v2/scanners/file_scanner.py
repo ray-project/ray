@@ -47,9 +47,9 @@ class FileScanner(Scanner[FileManifest]):
     ) -> List[FileManifest]:
         """Shuffle (if configured) and split a manifest into parallel work units.
 
-        When file listing is adaptive (``LazyFileIndex``), only the files
-        known at plan time participate in the shuffle; files streamed in at
-        execution time are not reordered.
+        Kept for tests and non-V2 callers. The ``ListFiles → ReadFiles``
+        pipeline bypasses this method — shuffling and bucketing move to
+        the transform chain in ``plan_list_files_op``.
 
         Args:
             manifest: FileManifest to partition.

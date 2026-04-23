@@ -62,8 +62,18 @@ class ArrowFileScanner(
         return set(self.partitioning.field_names or [])
 
     def read_schema(self) -> pa.Schema:
-        """Return schema after column pruning."""
-        if not self.columns:
+        """Return the logical schema after column pruning.
+
+        ``columns is None`` → no projection applied, return the full schema.
+        ``columns = ()`` → empty projection (``ds.select_columns([])``),
+        return an empty schema.
+
+        The physical read may still inject a stub column (see
+        ``_BATCH_SIZE_PRESERVING_STUB_COL_NAME``) so that row counts
+        survive a zero-column scan; that stub is an execution-layer detail
+        and is deliberately not reflected in this logical schema.
+        """
+        if self.columns is None:
             return self.schema
         fields = []
         for name in self.columns:
