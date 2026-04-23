@@ -70,24 +70,6 @@ def _configure_system():
         import ctypes
         from ctypes import CDLL
 
-        # Pre-load Arrow shared libraries from PyArrow so _raylet.so can
-        # find them (needed for the Arrow Flight store integration).
-        try:
-            import pyarrow
-
-            for _lib_dir in pyarrow.get_library_dirs():
-                for _lib_name in os.listdir(_lib_dir):
-                    if _lib_name.startswith("libarrow") and (
-                        _lib_name.endswith(".dylib") or ".so" in _lib_name
-                    ):
-                        _lib_path = os.path.join(_lib_dir, _lib_name)
-                        try:
-                            CDLL(_lib_path, ctypes.RTLD_GLOBAL)
-                        except OSError:
-                            pass
-        except ImportError:
-            pass
-
         CDLL(so_path, ctypes.RTLD_GLOBAL)
 
 
