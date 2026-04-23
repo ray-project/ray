@@ -171,10 +171,12 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
 
         from ray.data._internal.util import unify_schemas_with_validation
 
+        # Empty sample — typically means the user pointed ``read_parquet``
+        # at an empty directory. Return an empty schema so the rest of
+        # the plan stays valid; downstream ops produce zero blocks and
+        # the executor runs through without error (matches V1).
         if len(sample) == 0:
-            raise ValueError(
-                "ParquetDatasourceV2.infer_schema received an empty FileManifest"
-            )
+            return pa.schema([])
 
         sample_paths = sample.paths.tolist()
         # Parquet footer reads against high-latency object stores

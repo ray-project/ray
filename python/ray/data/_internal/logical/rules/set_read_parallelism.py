@@ -124,8 +124,9 @@ class SetReadParallelismRule(Rule):
         sample via ``_read_datasource_v2``; we use it plus
         ``ParquetInMemorySizeEstimator`` to produce an upper-bound
         in-memory size, then let ``_autodetect_parallelism`` pick a block
-        count. ``scanner.plan()`` rebalances at execution time, so this is
-        a planning-time approximation.
+        count. The ``ListFiles`` op's configured ``FilePartitioner``
+        rebalances at execution time, so this is only a planning-time
+        approximation.
         """
         ctx = DataContext.get_current()
         mem_size = logical_op.estimate_in_memory_size()

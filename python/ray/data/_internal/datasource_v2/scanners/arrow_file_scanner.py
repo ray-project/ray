@@ -15,7 +15,6 @@ from ray.data._internal.datasource_v2.logical_optimizers import (
     SupportsPartitionPruning,
 )
 from ray.data._internal.datasource_v2.scanners.file_scanner import FileScanner
-from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.data.expressions import Expr
 from ray.util.annotations import DeveloperAPI
@@ -166,45 +165,18 @@ class ArrowFileScanner(
         return replace(self, partition_predicate=combined)
 
     @override
-    def plan(
-        self,
-        manifest: FileManifest,
-        parallelism: int,
-        data_context: Optional["DataContext"] = None,
-    ) -> List[FileManifest]:
-        """Plan parallel work units, pruning files by partition predicate first.
+    def prune_manifest(self, manifest: FileManifest) -> FileManifest:
+        """Filter manifest to only files matching ``self.partition_predicate``.
 
-        If a partition predicate is set, files whose partition values do not
-        satisfy the predicate are removed from the manifest. The pruned
-        manifest is then handed to ``FileScanner.plan``, which applies the
-        shuffle (if configured) before splitting.
-
-        Args:
-            manifest: FileManifest to partition.
-            parallelism: Target number of parallel tasks.
-            data_context: Optional data context.
-
-        Returns:
-            List of FileManifest objects for parallel execution.
+        Called by :func:`plan_read_files_op.do_read` for every incoming
+        manifest block. No-op when either the predicate or the
+        partitioning spec is absent. Uses
+        :class:`PathPartitionParser` to parse partition values from
+        each file path and evaluate the predicate.
         """
-        if self.partition_predicate is not None and self.partitioning is not None:
-            manifest = self._prune_manifest(manifest)
-        return super().plan(manifest, parallelism, data_context)
+        if self.partition_predicate is None or self.partitioning is None:
+            return manifest
 
-    def _prune_manifest(self, manifest: FileManifest) -> FileManifest:
-        """Filter manifest to only files matching the partition predicate.
-
-        Uses :class:`PathPartitionParser` to parse partition values from each
-        file path and evaluate the partition predicate against them.
-
-        Args:
-            manifest: The full file manifest.
-
-        Returns:
-            A new FileManifest containing only matching files.
-        """
-        assert self.partitioning is not None
-        assert self.partition_predicate is not None
         parser = PathPartitionParser(self.partitioning)
         keep_indices = []
 

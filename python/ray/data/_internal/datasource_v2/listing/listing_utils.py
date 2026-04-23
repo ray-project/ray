@@ -128,6 +128,12 @@ def sample_files(
     promote it). No caching — the returned manifest is discarded after
     schema inference, and the ``ListFiles`` op lists the same paths
     again on workers at execution time.
+
+    Returns an empty :class:`FileManifest` when no files are found
+    (e.g. the user pointed at an empty directory). Callers that need
+    a schema in that case — such as
+    :meth:`ParquetDatasourceV2.infer_schema` — are expected to
+    fall back to an empty ``pa.schema``.
     """
     assert max_files >= 1
     paths_column = pa.array(paths, type=pa.string())
@@ -151,5 +157,5 @@ def sample_files(
         if collected_rows >= max_files:
             break
     if not collected:
-        raise ValueError(f"sample_files: no files found under {paths!r}")
+        return FileManifest.construct_manifest(paths=[], sizes=[])
     return FileManifest.concat(collected)

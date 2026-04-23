@@ -20,6 +20,7 @@ import logging
 from typing import Dict, Iterable, List, Optional
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.scanners.file_scanner import FileScanner
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -71,8 +72,16 @@ def plan_read_files_op(
 
     def do_read(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
         reader = scanner.create_reader()
+        # File-level predicate pruning (partition predicates pushed down
+        # onto the scanner) runs per incoming manifest block. Only
+        # ``FileScanner`` subclasses expose ``prune_manifest``; the base
+        # implementation is an identity no-op, and ``ArrowFileScanner``
+        # overrides it to evaluate ``partition_predicate``.
+        is_file_scanner = isinstance(scanner, FileScanner)
         for block in blocks:
             manifest = FileManifest(block)
+            if is_file_scanner:
+                manifest = scanner.prune_manifest(manifest)
             if len(manifest) == 0:
                 continue
             for table in reader.read(manifest):

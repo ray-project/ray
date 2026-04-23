@@ -82,10 +82,14 @@ def test_read_parquet_v2_columns_raises(tmp_path, restore_ctx):
         ray.data.read_parquet(str(tmp_path), columns=["a"])
 
 
-def test_read_parquet_v2_empty_dir_raises(tmp_path, restore_ctx):
+def test_read_parquet_v2_empty_dir_returns_empty_schema(tmp_path, restore_ctx):
+    # V1 returns a zero-row ``Dataset`` for an empty input directory
+    # (used e.g. by the ``ExecutionCallback`` tests). V2 matches that
+    # behavior: ``sample_files`` yields an empty manifest and
+    # ``infer_schema`` falls back to ``pa.schema([])``.
     restore_ctx.use_datasource_v2 = True
-    with pytest.raises(ValueError, match="no files found"):
-        ray.data.read_parquet(str(tmp_path))
+    ds = ray.data.read_parquet(str(tmp_path))
+    assert ds.schema() is None or ds.schema().names == []
 
 
 if __name__ == "__main__":

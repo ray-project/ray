@@ -4,11 +4,11 @@ These tests exercise schema inference, scanner/estimator creation, and
 include-paths schema augmentation against a local tmpdir — they do not
 spin up Ray.
 """
+
 import os
 
 import pyarrow as pa
 import pyarrow.parquet as pq
-import pytest
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
@@ -70,11 +70,11 @@ def test_infer_schema_with_include_paths(tmp_path):
     assert schema.field("path").type == pa.string()
 
 
-def test_infer_schema_raises_on_empty_manifest(tmp_path):
+def test_infer_schema_returns_empty_schema_on_empty_manifest(tmp_path):
     datasource = ParquetDatasourceV2([str(tmp_path)])
     empty = FileManifest.construct_manifest([], [])
-    with pytest.raises(ValueError, match="empty FileManifest"):
-        datasource.infer_schema(empty)
+    schema = datasource.infer_schema(empty)
+    assert schema.names == []
 
 
 def test_create_scanner_returns_parquet_scanner(tmp_path):

@@ -4,6 +4,7 @@ from typing import Iterator, List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
+from packaging.version import parse as parse_version
 from pyarrow import compute as pc
 from pyarrow.fs import FileSystem, LocalFileSystem
 
@@ -11,6 +12,7 @@ from ray.data._internal.arrow_block import _BATCH_SIZE_PRESERVING_STUB_COL_NAME
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.readers.base_reader import Reader
 from ray.data._internal.util import iterate_with_retry
+from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import Partitioning, PathPartitionParser
 from ray.util.annotations import DeveloperAPI
@@ -18,6 +20,22 @@ from ray.util.annotations import DeveloperAPI
 # https://arrow.apache.org/docs/python/generated/pyarrow.dataset.Scanner.html#pyarrow.dataset.Scanner.from_batches
 # Default is specified by PyArrow.
 _ARROW_DEFAULT_BATCH_SIZE = 131_072
+
+# Small fixed readahead keeps driver memory bounded when scanning
+# uncompressed batches (jumbo tensor columns can run to multi-GB per
+# batch, and pyarrow's default 16-batch readahead would retain all of
+# them).
+_ARROW_SCANNER_BATCH_READAHEAD = 1
+
+# ``pyarrow.dataset.Scanner.from_fragment`` (used by
+# ``Fragment.scanner``) only accepts ``batch_readahead`` in pyarrow
+# 12.0+; older wheels in CI reject the kwarg even though
+# ``Dataset.scanner`` has always taken it.
+_MIN_PYARROW_FRAGMENT_BATCH_READAHEAD = parse_version("12.0.0")
+_SUPPORTS_FRAGMENT_BATCH_READAHEAD = (
+    get_pyarrow_version() is not None
+    and get_pyarrow_version() >= _MIN_PYARROW_FRAGMENT_BATCH_READAHEAD
+)
 
 
 class FileFormat(str, Enum):
@@ -191,12 +209,15 @@ class FileReader(Reader[FileManifest]):
             ]
             columns_to_synthesize = set(self._columns) - on_disk_column_names
 
-        scanner_kwargs = dict(
-            columns=columns_to_read_from_file,
-            filter=self._predicate,
-            batch_size=self._resolve_batch_size(dataset),
-            batch_readahead=1,
-        )
+        scanner_kwargs = {
+            "columns": columns_to_read_from_file,
+            "filter": self._predicate,
+            "batch_size": self._resolve_batch_size(dataset),
+        }
+        # Pyarrow < 12 rejects ``batch_readahead`` on ``Fragment.scanner``,
+        # so only forward it when the installed pyarrow knows the kwarg.
+        if _SUPPORTS_FRAGMENT_BATCH_READAHEAD:
+            scanner_kwargs["batch_readahead"] = _ARROW_SCANNER_BATCH_READAHEAD
         scanner_kwargs.update(self._arrow_scanner_kwargs())
 
         ctx = DataContext.get_current()
