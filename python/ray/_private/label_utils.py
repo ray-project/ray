@@ -155,10 +155,14 @@ def validate_label_selector(label_selector: Optional[Dict[str, str]]) -> Optiona
         return None
 
     for key, value in label_selector.items():
+        if not isinstance(key, str):
+            return "Label selector keys must be strings."
         possible_error_message = validate_label_key(key)
         if possible_error_message:
             return possible_error_message
         if value is not None:
+            if not isinstance(value, str):
+                return "Label selector values must be strings."
             possible_error_message = validate_label_selector_value(value)
             if possible_error_message:
                 return possible_error_message
@@ -199,7 +203,9 @@ def validate_fallback_strategy(
     if fallback_strategy is None:
         return None
 
-    # Supported options for `fallback_strategy` scheduling.
+    if not isinstance(fallback_strategy, list):
+        return "fallback_strategy must be a list"
+
     supported_options = {"label_selector"}
 
     for strategy in fallback_strategy:
@@ -209,7 +215,6 @@ def validate_fallback_strategy(
         if not strategy:
             return "Empty dictionary found in `fallback_strategy`."
 
-        # Validate `fallback_strategy` only contains supported options.
         for option in strategy:
             if option not in supported_options:
                 return (
@@ -217,14 +222,79 @@ def validate_fallback_strategy(
                     f"Only {list(supported_options)} is currently supported."
                 )
 
-        # Validate the 'label_selector' dictionary.
-        label_selector = strategy.get("label_selector")
-        if label_selector:
-            if not isinstance(label_selector, dict):
-                return 'The value of "label_selector" must be a dictionary.'
-
-            error_message = validate_label_selector(label_selector)
+        actor_label_selector = strategy.get("label_selector")
+        if actor_label_selector is not None:
+            if not isinstance(actor_label_selector, dict):
+                return "The value of 'label_selector' must be a dictionary."
+            error_message = validate_label_selector(actor_label_selector)
             if error_message:
                 return error_message
+
+    return None
+
+
+def validate_placement_group_fallback_strategy(
+    fallback_strategy: Optional[List[Dict[str, Any]]]
+) -> Optional[str]:
+    if fallback_strategy is None:
+        return None
+
+    if not isinstance(fallback_strategy, list):
+        return "fallback_strategy must be a list"
+
+    supported_options = {"bundle_label_selector", "bundles"}
+
+    for strategy in fallback_strategy:
+        if not isinstance(strategy, dict):
+            return "Each element in fallback_strategy must be a dictionary."
+
+        if not strategy:
+            return "Empty dictionary found in `fallback_strategy`."
+
+        for option in strategy:
+            if option not in supported_options:
+                return (
+                    f"Unsupported option found: '{option}'. "
+                    f"Only {list(supported_options)} is currently supported."
+                )
+
+        label_selectors = strategy.get("bundle_label_selector")
+        if label_selectors is not None:
+            if not isinstance(label_selectors, list):
+                return 'The value of "bundle_label_selector" must be a list.'
+
+            for label_selector in label_selectors:
+                if not isinstance(label_selector, dict):
+                    return "Each label selector in bundle_label_selector must be a dictionary."
+
+                error_message = validate_label_selector(label_selector)
+                if error_message:
+                    return error_message
+
+        if "bundles" not in strategy:
+            return 'Each fallback strategy option must contain a "bundles" list.'
+
+        bundles_override = strategy.get("bundles")
+
+        if not isinstance(bundles_override, list):
+            return 'The value of "bundles" must be a list.'
+
+        if len(bundles_override) == 0:
+            return 'The value of "bundles" must be a non-empty list.'
+
+        for bundle in bundles_override:
+            if not isinstance(bundle, dict):
+                return 'Each bundle in "bundles" fallback must be a dictionary.'
+            for k, v in bundle.items():
+                if not isinstance(k, str):
+                    return "Bundle resource keys must be strings."
+                if not isinstance(v, (int, float)):
+                    return "Bundle resource values must be numbers."
+            if not bundle or all(val == 0 for val in bundle.values()):
+                return "Fallback bundles cannot be empty or have all zero resources."
+
+        if label_selectors is not None:
+            if len(label_selectors) != len(bundles_override):
+                return "The length of bundle_label_selector must equal the length of bundles."
 
     return None

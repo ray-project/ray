@@ -70,6 +70,7 @@ py_test_module_list(
         "test_node_label_scheduling_strategy.py",
         "test_object_spilling_2.py",
         "test_placement_group.py",
+        "test_placement_group_fallback.py",
         "test_ray_event_export_task_events.py",
         "test_ray_get.py",
         "test_reference_counting_2.py",

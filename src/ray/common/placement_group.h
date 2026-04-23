@@ -69,6 +69,11 @@ class PlacementGroupSpecification : public MessageWrapper<rpc::PlacementGroupSpe
   std::vector<BundleSpecification> bundles_;
 };
 
+struct PlacementGroupSchedulingOption {
+  std::vector<std::unordered_map<std::string, double>> bundles;
+  std::vector<std::unordered_map<std::string, std::string>> bundle_label_selector;
+};
+
 class PlacementGroupSpecBuilder {
  public:
   PlacementGroupSpecBuilder() : message_(std::make_shared<rpc::PlacementGroupSpec>()) {}
@@ -88,7 +93,8 @@ class PlacementGroupSpecBuilder {
       const ActorID &creator_actor_id,
       bool is_creator_detached_actor,
       const std::vector<std::unordered_map<std::string, std::string>>
-          &bundle_label_selector = {}) {
+          &bundle_label_selector = {},
+      const std::vector<PlacementGroupSchedulingOption> &fallback_strategy = {}) {
     message_->set_placement_group_id(placement_group_id.Binary());
     message_->set_name(name);
     message_->set_strategy(strategy);
@@ -129,6 +135,35 @@ class PlacementGroupSpecBuilder {
         }
       }
     }
+
+    if (!fallback_strategy.empty()) {
+      for (const auto &option : fallback_strategy) {
+        auto *message_option = message_->add_fallback_strategy();
+
+        // Set bundles for scheduling option (primary and fallbacks).
+        for (size_t i = 0; i < option.bundles.size(); i++) {
+          const auto &resources = option.bundles[i];
+          auto *message_bundle = message_option->add_bundles();
+          auto *mutable_bundle_id = message_bundle->mutable_bundle_id();
+          mutable_bundle_id->set_bundle_index(i);
+          mutable_bundle_id->set_placement_group_id(placement_group_id.Binary());
+          auto *mutable_unit_resources = message_bundle->mutable_unit_resources();
+          for (const auto &pair : resources) {
+            if (pair.second > 0) {
+              mutable_unit_resources->insert({pair.first, pair.second});
+            }
+          }
+
+          if (option.bundle_label_selector.size() > i) {
+            auto *mutable_label_selector = message_bundle->mutable_label_selector();
+            for (const auto &pair : option.bundle_label_selector[i]) {
+              (*mutable_label_selector)[pair.first] = pair.second;
+            }
+          }
+        }
+      }
+    }
+
     return *this;
   }
 

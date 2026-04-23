@@ -98,6 +98,7 @@ from ray.includes.common cimport (
     CPlacementStrategy,
     CSchedulingStrategy,
     CPlacementGroupSchedulingStrategy,
+    CPlacementGroupSchedulingOption,
     CNodeAffinitySchedulingStrategy,
     CNodeLabelSchedulingStrategy,
     CLabelMatchExpressions,
@@ -660,6 +661,55 @@ cdef int prepare_fallback_strategy(
         fallback_strategy_vector.push_back(
              CFallbackOption(c_label_selector)
         )
+
+    return 0
+
+cdef int prepare_placement_group_scheduling_options(
+        list fallback_strategy,
+        c_vector[CPlacementGroupSchedulingOption] *scheduling_options_vector) except -1:
+
+    cdef list label_selectors_list
+    cdef unordered_map[c_string, double] c_bundle
+    cdef unordered_map[c_string, c_string] c_label_selector
+
+    if fallback_strategy is None:
+        return 0
+
+    for strategy_dict in fallback_strategy:
+        if not isinstance(strategy_dict, dict):
+            raise ValueError(
+                "Fallback strategy must be a list of dicts, "
+                f"but got list containing {type(strategy_dict)}")
+
+        bundles_list = strategy_dict.get("bundles")
+        label_selectors_list = strategy_dict.get("bundle_label_selector")
+
+        # Clear option for next iteration
+        c_option = CPlacementGroupSchedulingOption()
+
+        if bundles_list is not None:
+            if not isinstance(bundles_list, list):
+                raise ValueError("Invalid fallback strategy element: invalid 'bundles'.")
+            for bundle_dict in bundles_list:
+                if not isinstance(bundle_dict, dict):
+                    raise ValueError("Each bundle must be a dictionary.")
+                c_bundle.clear()
+                for k, v in bundle_dict.items():
+                    c_bundle[k] = v
+                c_option.bundles.push_back(c_bundle)
+
+        if label_selectors_list is not None:
+            if not isinstance(label_selectors_list, list):
+                raise ValueError("Invalid fallback strategy element: invalid 'bundle_label_selector'.")
+            for label_selector_dict in label_selectors_list:
+                if not isinstance(label_selector_dict, dict):
+                    raise ValueError("Each label selector must be a dictionary.")
+                c_label_selector.clear()
+                for k, v in label_selector_dict.items():
+                    c_label_selector[k] = v
+                c_option.bundle_label_selector.push_back(c_label_selector)
+
+        scheduling_options_vector.push_back(c_option)
 
     return 0
 
@@ -3697,11 +3747,13 @@ cdef class CoreWorker:
                             c_string strategy,
                             c_bool is_detached,
                             soft_target_node_id,
-                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector):
+                            c_vector[unordered_map[c_string, c_string]] bundle_label_selector,
+                            fallback_strategy):
         cdef:
             CPlacementGroupID c_placement_group_id
             CPlacementStrategy c_strategy
             CNodeID c_soft_target_node_id = CNodeID.Nil()
+            c_vector[CPlacementGroupSchedulingOption] c_fallback_strategy
 
         if strategy == b"PACK":
             c_strategy = PLACEMENT_STRATEGY_PACK
@@ -3718,6 +3770,9 @@ cdef class CoreWorker:
         if soft_target_node_id is not None:
             c_soft_target_node_id = CNodeID.FromHex(soft_target_node_id)
 
+        if fallback_strategy is not None:
+             prepare_placement_group_scheduling_options(fallback_strategy, &c_fallback_strategy)
+
         with nogil:
             check_status(
                         CCoreWorkerProcess.GetCoreWorker().
@@ -3728,7 +3783,8 @@ cdef class CoreWorker:
                                 bundles,
                                 is_detached,
                                 c_soft_target_node_id,
-                                bundle_label_selector),
+                                bundle_label_selector,
+                                c_fallback_strategy),
                             &c_placement_group_id))
 
         return PlacementGroupID(c_placement_group_id.Binary())

@@ -15,6 +15,7 @@
 
 #include <list>
 #include <memory>
+#include <optional>
 #include <string>
 #include <utility>
 #include <vector>
@@ -459,8 +460,10 @@ class GcsPlacementGroupScheduler : public GcsPlacementGroupSchedulerInterface {
       const PlacementGroupID &placement_group_id);
 
   /// Create scheduling options.
-  SchedulingOptions CreateSchedulingOptions(const GcsPlacementGroup &placement_group,
-                                            rpc::PlacementStrategy strategy);
+  SchedulingOptions CreateSchedulingOptions(
+      const GcsPlacementGroup &placement_group,
+      rpc::PlacementStrategy strategy,
+      const std::vector<const ResourceRequest *> &active_requests);
 
   /// Try to release bundle resource to cluster resource manager.
   ///

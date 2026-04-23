@@ -345,21 +345,61 @@ class GlobalState:
 
         stats = placement_group_info.stats
         assert placement_group_info is not None
+
+        scheduling_options = []
+        for option_proto in placement_group_info.scheduling_options:
+            bundles_list = []
+            label_selectors_list = []
+            for bundle in option_proto.bundles:
+                bundle_dict = message_to_dict(bundle)
+                bundles_list.append(bundle_dict.get("unitResources", {}))
+                label_selectors_list.append(bundle_dict.get("labelSelector", {}))
+
+            option_dict = {
+                "bundles": bundles_list,
+                "bundle_label_selector": label_selectors_list,
+            }
+            scheduling_options.append(option_dict)
+
+        active_index = (
+            placement_group_info.active_scheduling_option_index
+            if placement_group_info.HasField("active_scheduling_option_index")
+            else -1
+        )
+        bundles_dict = {}
+        bundles_to_node_id = {}
+
+        if active_index >= 0 and len(scheduling_options) > active_index:
+            active_option_proto = placement_group_info.scheduling_options[active_index]
+            if active_option_proto.bundles:
+                bundles_dict = {
+                    i: message_to_dict(bundle).get("unitResources", {})
+                    for i, bundle in enumerate(active_option_proto.bundles)
+                }
+
+        if not bundles_dict:
+            bundles_dict = {
+                bundle.bundle_id.bundle_index: message_to_dict(bundle).get(
+                    "unitResources", {}
+                )
+                for bundle in placement_group_info.bundles
+            }
+
+        # Node IDs are always definitively tracked by the backend on the main `bundles` list.
+        bundles_to_node_id = {
+            bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
+            if getattr(bundle, "node_id", None)
+            else ""
+            for bundle in placement_group_info.bundles
+        }
+
         return {
             "placement_group_id": binary_to_hex(
                 placement_group_info.placement_group_id
             ),
             "name": placement_group_info.name,
-            "bundles": {
-                # The value here is needs to be dictionarified
-                # otherwise, the payload becomes unserializable.
-                bundle.bundle_id.bundle_index: message_to_dict(bundle)["unitResources"]
-                for bundle in placement_group_info.bundles
-            },
-            "bundles_to_node_id": {
-                bundle.bundle_id.bundle_index: binary_to_hex(bundle.node_id)
-                for bundle in placement_group_info.bundles
-            },
+            "bundles": bundles_dict,
+            "bundles_to_node_id": bundles_to_node_id,
             "strategy": get_strategy(placement_group_info.strategy),
             "state": get_state(placement_group_info.state),
             "stats": {
@@ -373,6 +413,8 @@ class GlobalState:
                     stats.scheduling_state
                 ].name,
             },
+            "scheduling_options": scheduling_options,
+            "active_scheduling_option_index": active_index,
         }
 
     def _nanoseconds_to_microseconds(self, time_in_nanoseconds):

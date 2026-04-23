@@ -183,5 +183,106 @@ def test_fallback_with_feasible_primary_selector(cluster_with_labeled_nodes):
     assert ray.get(label_selector_actor.get_node_id.remote(), timeout=5) == gpu_node
 
 
+def test_placement_group_fallback_strategy(cluster_with_labeled_nodes):
+    node_1, _, _ = cluster_with_labeled_nodes
+
+    # Define an unsatisfiable label selector for placement group.
+    infeasible_label_selector = {"ray.io/accelerator-type": "does-not-exist"}
+
+    # Create a fallback strategy with multiple accelerator options.
+    accelerator_fallbacks = [
+        {
+            "bundles": [{"CPU": 1.0}],
+            "bundle_label_selector": [{"ray.io/accelerator-type": "A100"}],
+        },
+        {
+            "bundles": [{"CPU": 1.0}],
+            "bundle_label_selector": [{"ray.io/accelerator-type": "TPU"}],
+        },
+    ]
+
+    from ray.util.placement_group import placement_group
+
+    # Attempt to schedule the placement group. The scheduler should fail to find a node with the
+    # primary `label_selector` and fall back to the first available option, 'A100'.
+    pg = placement_group(
+        bundles=[{"CPU": 1.0}],
+        strategy="PACK",
+        bundle_label_selector=[infeasible_label_selector],
+        fallback_strategy=accelerator_fallbacks,
+    )
+
+    ray.get(pg.ready(), timeout=5)
+
+    # Now verify where it was placed.
+    # We can create an actor on this PG and see where it lands.
+    actor = MyActor.options(
+        placement_group=pg,
+    ).remote()
+
+    assert ray.get(actor.get_node_id.remote(), timeout=5) == node_1
+
+
+def test_placement_group_fallback_strategy_multiple_options_success(
+    cluster_with_labeled_nodes,
+):
+    _, node_2, _ = cluster_with_labeled_nodes
+
+    infeasible_label_selector = {"ray.io/accelerator-type": "H100"}
+
+    accelerator_fallbacks = [
+        {
+            "bundles": [{"CPU": 1.0}],
+            "bundle_label_selector": [{"ray.io/accelerator-type": "does-not-exist"}],
+        },
+        {
+            "bundles": [{"CPU": 1.0}],
+            "bundle_label_selector": [{"ray.io/accelerator-type": "B200"}],
+        },
+    ]
+
+    from ray.util.placement_group import placement_group
+
+    pg = placement_group(
+        bundles=[{"CPU": 1.0}],
+        strategy="PACK",
+        bundle_label_selector=[infeasible_label_selector],
+        fallback_strategy=accelerator_fallbacks,
+    )
+
+    ray.get(pg.ready(), timeout=5)
+
+    actor = MyActor.options(
+        placement_group=pg,
+    ).remote()
+
+    assert ray.get(actor.get_node_id.remote(), timeout=5) == node_2
+
+
+def test_placement_group_fallback_strategy_validation():
+    from ray.util.placement_group import placement_group
+
+    # Invalid fallback_strategy type (dict instead of list)
+    with pytest.raises(ValueError, match="fallback_strategy must be a list"):
+        placement_group(
+            bundles=[{"CPU": 1.0}],
+            strategy="PACK",
+            fallback_strategy={
+                "bundles": [{"CPU": 1.0}],
+                "bundle_label_selector": [{"type": "A100"}],
+            },
+        )
+
+    # Invalid fallback_strategy option type (string instead of dict)
+    with pytest.raises(
+        ValueError, match="Each element in fallback_strategy must be a dictionary"
+    ):
+        placement_group(
+            bundles=[{"CPU": 1.0}],
+            strategy="PACK",
+            fallback_strategy=["A100"],
+        )
+
+
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-sv", __file__]))
+    sys.exit(pytest.main(["-sv", "-vv", __file__]))

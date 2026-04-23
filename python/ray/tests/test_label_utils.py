@@ -248,6 +248,14 @@ def test_validate_label_value(value, should_raise, expected_message):
             {"valid-key": "a" * 64},
             "Invalid label selector value",
         ),  # Invalid label value syntax
+        (
+            {123: "valid-value"},
+            "Label selector keys must be strings",
+        ),  # Non-string key
+        (
+            {"valid-key": 456},
+            "Label selector values must be strings",
+        ),  # Non-string value
     ],
 )
 def test_validate_label_selector(label_selector, expected_error):
@@ -362,6 +370,35 @@ def test_validate_node_labels():
 def test_validate_fallback_strategy(fallback_strategy, expected_error):
     """Tests the validation logic for the fallback_strategy remote option."""
     result = validate_fallback_strategy(fallback_strategy)
+    if expected_error:
+        assert expected_error in result
+    else:
+        assert result is None
+
+
+@pytest.mark.parametrize(
+    "fallback_strategy, expected_error",
+    [
+        (
+            [{"bundles": None}],
+            'The value of "bundles" must be a list.',
+        ),
+        (
+            [{"bundles": [{}]}],
+            "Fallback bundles cannot be empty or have all zero resources.",
+        ),
+        (
+            [{"bundles": [{"CPU": 0.0}]}],
+            "Fallback bundles cannot be empty or have all zero resources.",
+        ),
+        ([{"bundles": [{"CPU": 1.0}]}], None),
+    ],
+    ids=["none-bundle", "empty-bundle", "zero-bundle", "valid-bundle"],
+)
+def test_validate_placement_group_fallback_strategy(fallback_strategy, expected_error):
+    from ray._private.label_utils import validate_placement_group_fallback_strategy
+
+    result = validate_placement_group_fallback_strategy(fallback_strategy)
     if expected_error:
         assert expected_error in result
     else:

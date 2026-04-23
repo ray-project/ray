@@ -222,7 +222,12 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
     auto *bundle_selector = gang_resource_req->add_bundle_selectors();
 
     // Copy the PG's bundles to the request.
-    for (auto &&bundle : std::move(*pg_data.mutable_bundles())) {
+    const auto &bundles_to_use = (pg_state == rpc::PlacementGroupTableData::PENDING &&
+                                  pg_data.scheduling_options().size() > 0)
+                                     ? pg_data.scheduling_options()[0].bundles()
+                                     : pg_data.bundles();
+
+    for (const auto &bundle : bundles_to_use) {
       if (!NodeID::FromBinary(bundle.node_id()).IsNil()) {
         // We will be skipping **placed** bundle (which has node id associated with it).
         // This is to avoid double counting the bundles that are already placed when

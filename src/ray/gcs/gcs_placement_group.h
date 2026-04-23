@@ -76,6 +76,14 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_soft_target_node_id(
         placement_group_spec.soft_target_node_id());
     placement_group_table_data_.set_ray_namespace(ray_namespace);
+    // Index 0: primary strategy.
+    auto *primary_option = placement_group_table_data_.add_scheduling_options();
+    *primary_option->mutable_bundles() = placement_group_spec.bundles();
+
+    // Index 1..N: fallback strategies.
+    for (const auto &fb : placement_group_spec.fallback_strategy()) {
+      *placement_group_table_data_.add_scheduling_options() = fb;
+    }
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
     ComputeLabelDomainKey();
@@ -155,6 +163,9 @@ class GcsPlacementGroup {
 
   const rpc::PlacementGroupStats &GetStats() const;
 
+  const google::protobuf::RepeatedPtrField<rpc::PlacementGroupSchedulingOption>
+      &GetPlacementGroupSchedulingOptions() const;
+
   rpc::PlacementGroupStats *GetMutableStats();
 
   /// Get the node label key used for label-domain-aware scheduling (e.g.
@@ -171,6 +182,10 @@ class GcsPlacementGroup {
   /// Clear all label domain assignments (used when all bundles for label-domain PGs are
   /// unplaced).
   void ClearLabelDomainAssignments();
+
+  int32_t GetActiveSchedulingOptionIndex() const;
+
+  void UpdateActiveSchedulingOptionIndex(int32_t index);
 
  private:
   // XXX.

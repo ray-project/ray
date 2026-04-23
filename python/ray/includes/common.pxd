@@ -288,6 +288,13 @@ cdef extern from "ray/common/scheduling/label_selector.h" namespace "ray":
         CLabelSelector() nogil except +
         void AddConstraint(const c_string& key, const c_string& value) nogil except +
 
+cdef extern from "ray/common/placement_group.h" namespace "ray":
+    cdef cppclass CPlacementGroupSchedulingOption "ray::PlacementGroupSchedulingOption":
+        c_vector[unordered_map[c_string, double]] bundles
+        c_vector[unordered_map[c_string, c_string]] bundle_label_selector
+
+        CPlacementGroupSchedulingOption() nogil except +
+
 cdef extern from "ray/common/scheduling/fallback_strategy.h" namespace "ray":
     cdef cppclass CFallbackOption "ray::FallbackOption":
         CLabelSelector label_selector
@@ -432,6 +439,7 @@ cdef extern from "ray/core_worker/common.h" nogil:
             c_bool is_detached,
             CNodeID soft_target_node_id,
             const c_vector[unordered_map[c_string, c_string]] &bundle_label_selector,
+            const c_vector[CPlacementGroupSchedulingOption] &placement_group_scheduling_options,
         )
 
     cdef cppclass CObjectLocation "ray::core::ObjectLocation":
