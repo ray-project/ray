@@ -69,7 +69,7 @@ except ImportError:
         raise ImportError(
             "Neither vLLM nor SGLang is installed. At least one is required "
             "for Ray Serve LLM protocol models. Install with: "
-            "`pip install ray[llm]` or `pip install sglang[all]`"
+            "`pip install ray[llm]` or `pip install sglang[all, ray]`"
         )
 
     def _unsupported_model(name: str, feature: str = ""):

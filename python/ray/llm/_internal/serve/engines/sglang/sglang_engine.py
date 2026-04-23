@@ -38,9 +38,6 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     TokenizeResponse,
 )
 from ray.llm._internal.serve.core.protocol import RawRequestInfo
-from ray.llm._internal.serve.core.server.llm_server import (
-    _merge_replica_actor_and_child_actor_bundles,
-)
 
 
 class SGLangServer:
@@ -50,11 +47,12 @@ class SGLangServer:
         self.engine_kwargs = llm_config.engine_kwargs
 
         try:
-            import sglang
+            from sglang.srt.ray.engine import RayEngine as Engine
         except ImportError as e:
             raise ImportError(
-                "SGLang is not installed or failed to import. Please run "
-                "`pip install sglang[all]` to install required dependencies."
+                "SGLang with Ray backend is not installed or failed to import. "
+                "Please run `pip install sglang[all, ray]` to install required "
+                "dependencies."
             ) from e
 
         # TODO(issue-61108): remove this once sglang#18752 is merged and included
@@ -68,7 +66,7 @@ class SGLangServer:
         try:
             # Override signal.signal with our no-op function
             signal.signal = noop_signal_handler
-            self.engine = sglang.Engine(**self.engine_kwargs)
+            self.engine = Engine(**self.engine_kwargs)
         finally:
             signal.signal = original_signal_func
 
@@ -587,25 +585,27 @@ class SGLangServer:
             )
 
         if "placement_group_bundles" not in pg_config:
-            child_bundles = [{"GPU": 1} for _ in range(num_devices)]
-
+            # RayEngine spawns all tp/pp SchedulerActors onto a single bundle
+            # per node (it indexes the PG with `bundle_for_node[node_idx]` and
+            # reuses that same bundle_idx for every rank on that node). Default
+            # to one bundle with all local GPUs; multi-node deployments must
+            # provide an explicit placement_group_config with one bundle per
+            # node (each containing that node's share of GPUs).
             replica_bundle = {
                 "CPU": ray_actor_options.get("num_cpus", 1),
+                "GPU": num_devices,
             }
 
             if ray_actor_options.get("num_gpus"):
-                replica_bundle["GPU"] = ray_actor_options["num_gpus"]
+                replica_bundle["GPU"] += ray_actor_options["num_gpus"]
 
             replica_bundle.update(ray_actor_options.get("resources", {}))
 
             if "memory" in ray_actor_options:
                 replica_bundle["memory"] = ray_actor_options["memory"]
 
-            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
-                child_actor_bundles=child_bundles,
-                replica_actor_bundle=replica_bundle,
-            )
-            pg_strategy = "PACK"
+            pg_bundles = [replica_bundle]
+            pg_strategy = "STRICT_PACK"
         else:
             pg_bundles = pg_config.get("placement_group_bundles")
             pg_strategy = pg_config.get("placement_group_strategy", "PACK")

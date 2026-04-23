@@ -4,7 +4,7 @@
 
 set -exo pipefail
 pip3 uninstall -y vllm
-pip3 install "sglang[all,ray]==0.5.10rc0"
+pip3 install "sglang[all,ray] @ git+https://github.com/sgl-project/sglang.git@c0172aef6eabca1eb1a8ac9b359f57cd7a0490e8#subdirectory=python"
 # Reinstall opentelemetry-proto to regenerate _pb2.py files compatible with
 # the protobuf version that sglang pulls in (protobuf 4.x+ removed old-style
 # descriptor creation, causing Ray dashboard to crash on startup).
