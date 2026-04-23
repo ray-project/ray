@@ -20,6 +20,8 @@
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "ray/common/ray_config.h"
 
 namespace ray {
@@ -144,23 +146,21 @@ bool PullManager::ActivateNextBundlePullRequest(
 
     // Quota check.
     if (respect_quota && num_active_bundles_ >= 1 && remote_bytes > RemainingQuota()) {
-      RAY_LOG(DEBUG) << "Bundle would exceed quota: "
-                     << "num_active_bytes(" << num_active_bytes_
-                     << ") + "
-                        "remote_bytes("
-                     << remote_bytes
-                     << ") - "
-                        "pinned_objects_size("
-                     << pinned_objects_size_
-                     << ") > "
-                        "num_bytes_available("
-                     << num_bytes_available_ << ")";
+      RAY_LOG(DEBUG) << absl::StrFormat(
+          "Bundle would exceed quota: num_active_bytes(%d) + remote_bytes(%d) - "
+          "pinned_objects_size(%d) > num_bytes_available(%d)",
+          num_active_bytes_,
+          remote_bytes,
+          pinned_objects_size_,
+          num_bytes_available_);
       return false;
     }
 
-    RAY_LOG(DEBUG) << "Activating request " << next_request_id
-                   << " num active bytes: " << num_active_bytes_
-                   << " num bytes available: " << num_bytes_available_;
+    RAY_LOG(DEBUG) << absl::StrFormat(
+        "Activating request %d num active bytes: %d num bytes available: %d",
+        next_request_id,
+        num_active_bytes_,
+        num_bytes_available_);
     num_active_bytes_ += newly_active_bytes;
     for (const auto &obj_id : next_request.objects_) {
       const bool needs_pull = active_object_pull_requests_.count(obj_id) == 0;
@@ -219,9 +219,12 @@ void PullManager::DeactivateUntilMarginAvailable(
       return;
     }
     const uint64_t request_id = *(bundles.active_requests.rbegin());
-    RAY_LOG(DEBUG) << "Deactivating " << debug_name << " " << request_id
-                   << " num active bytes: " << num_active_bytes_
-                   << " num bytes available: " << num_bytes_available_;
+    RAY_LOG(DEBUG) << absl::StrFormat(
+        "Deactivating %s %d num active bytes: %d num bytes available: %d",
+        debug_name,
+        request_id,
+        num_active_bytes_,
+        num_bytes_available_);
     DeactivateBundlePullRequest(bundles, request_id, object_ids_to_cancel);
   }
 }
@@ -435,8 +438,10 @@ void PullManager::OnLocationChange(const ObjectID &object_id,
     }
 
     UpdatePullsBasedOnAvailableMemory(num_bytes_available_);
-    RAY_LOG(DEBUG) << "Updated location of " << object_id << ", num active bytes is now "
-                   << num_active_bytes_;
+    RAY_LOG(DEBUG) << absl::StrFormat(
+        "Updated location of %s, num active bytes is now %d",
+        object_id.Hex(),
+        num_active_bytes_);
   }
 
   RAY_LOG(DEBUG) << object_id << " OnLocationChange " << spilled_url << " num clients "
@@ -758,42 +763,59 @@ void PullManager::RecordMetrics() const {
 
 std::string PullManager::DebugString() const {
   absl::MutexLock lock(&active_objects_mu_);
-  std::stringstream result;
-  result << "PullManager:";
-  result << "\n- num bytes available for pulled objects: " << num_bytes_available_;
-  result << "\n- num active bytes (all): " << num_active_bytes_;
-  result << "\n- num active bytes / pinned: " << pinned_objects_size_;
-  result << "\n- get request bundles: " << get_request_bundles_.DebugString();
-  result << "\n- wait request bundles: " << wait_request_bundles_.DebugString();
-  result << "\n- task request bundles: " << task_argument_bundles_.DebugString();
-  result << "\n- first get request bundle: " << BundleInfo(get_request_bundles_);
-  result << "\n- first wait request bundle: " << BundleInfo(wait_request_bundles_);
-  result << "\n- first task request bundle: " << BundleInfo(task_argument_bundles_);
-  result << "\n- num objects queued: " << object_pull_requests_.size();
-  result << "\n- num objects actively pulled (all): "
-         << active_object_pull_requests_.size();
-  result << "\n- num objects actively pulled / pinned: " << pinned_objects_.size();
-  result << "\n- num active bundles: " << num_active_bundles_;
-  result << "\n- num pull retries: " << num_retries_total_;
-  result << "\n- max timeout seconds: " << max_timeout_;
+  std::string result = absl::StrFormat(
+      "PullManager:"
+      "\n- num bytes available for pulled objects: %d"
+      "\n- num active bytes (all): %d"
+      "\n- num active bytes / pinned: %d"
+      "\n- get request bundles: %s"
+      "\n- wait request bundles: %s"
+      "\n- task request bundles: %s"
+      "\n- first get request bundle: %s"
+      "\n- first wait request bundle: %s"
+      "\n- first task request bundle: %s"
+      "\n- num objects queued: %d"
+      "\n- num objects actively pulled (all): %d"
+      "\n- num objects actively pulled / pinned: %d"
+      "\n- num active bundles: %d"
+      "\n- num pull retries: %d"
+      "\n- max timeout seconds: %d",
+      num_bytes_available_,
+      num_active_bytes_,
+      pinned_objects_size_,
+      get_request_bundles_.DebugString(),
+      wait_request_bundles_.DebugString(),
+      task_argument_bundles_.DebugString(),
+      BundleInfo(get_request_bundles_),
+      BundleInfo(wait_request_bundles_),
+      BundleInfo(task_argument_bundles_),
+      object_pull_requests_.size(),
+      active_object_pull_requests_.size(),
+      pinned_objects_.size(),
+      num_active_bundles_,
+      num_retries_total_,
+      max_timeout_);
   auto it = object_pull_requests_.find(max_timeout_object_id_);
   if (it != object_pull_requests_.end()) {
-    result << "\n- max timeout object id: " << max_timeout_object_id_;
-    result << "\n- max timeout object: " << it->second.DebugString();
+    absl::StrAppendFormat(&result,
+                          "\n- max timeout object id: %s"
+                          "\n- max timeout object: %s",
+                          max_timeout_object_id_.Hex(),
+                          it->second.DebugString());
   } else {
-    result << "\n- max timeout request is already processed. No entry.";
+    absl::StrAppend(&result, "\n- max timeout request is already processed. No entry.");
   }
   // Guard this more expensive debug message under event stats.
   if (RayConfig::instance().event_stats()) {
     for (const auto &entry : active_object_pull_requests_) {
       auto obj_id = entry.first;
       if (!pinned_objects_.contains(obj_id)) {
-        result << "\n- example obj id pending pull: " << obj_id.Hex();
+        absl::StrAppend(&result, "\n- example obj id pending pull: ", obj_id.Hex());
         break;
       }
     }
   }
-  return result.str();
+  return result;
 }
 
 void PullManager::SetOutOfDisk(const ObjectID &object_id) {
