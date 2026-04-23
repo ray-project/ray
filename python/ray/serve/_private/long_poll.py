@@ -252,15 +252,25 @@ class LongPollClient:
         if not updates:  # no updates, no callbacks to run, just poll again
             self._schedule_to_event_loop(self._poll_next)
 
-        # Record latency metrics for received updates
+        # Record latency metrics for received updates.
+        # Skip observations that exceed twice the maximum long poll timeout —
+        # these are catch-up updates received by a client that was offline or
+        # missed several polling cycles, and including them would distort the
+        # metric (e.g. a 10-minute spike just because a new replica connected).
+        max_valid_latency_ms = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S[1] * 2 * 1000
         receive_time = time.time()
         for key, update in updates.items():
-            # Record end-to-end latency from controller to client
             latency_ms = (receive_time - update.notify_timestamp) * 1000
-            self.long_poll_latency_histogram.observe(
-                latency_ms,
-                tags={"namespace": _get_metric_namespace_tag(key)},
-            )
+            if latency_ms <= max_valid_latency_ms:
+                self.long_poll_latency_histogram.observe(
+                    latency_ms,
+                    tags={"namespace": _get_metric_namespace_tag(key)},
+                )
+            else:
+                logger.debug(
+                    f"Skipping long poll latency observation of {latency_ms:.0f}ms "
+                    f"for key {key} (exceeds threshold {max_valid_latency_ms:.0f}ms)."
+                )
 
             self.snapshot_ids[key] = update.snapshot_id
             callback = self.key_listeners[key]
