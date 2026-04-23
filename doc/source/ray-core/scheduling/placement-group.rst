@@ -822,8 +822,44 @@ observability tools:
 
 - **Dashboard**: The placement group table shows a ``Label Domain`` column, which displays the
   selected label key and domain for the placement group (for example, ``ray.io/gpu-domain: rack-1``).
-- **State API**: Using ``ray list placement-groups --detail`` you can also retrieve the label key 
-  and domain assignment for the placement group using a cli command.
+- **State API**: ``ray list placement-groups --detail`` returns the selected label key and the
+  domain assignment for each placement group.
+
+The following ``ray list placement-groups --detail`` output shows the two label-locality
+fields, ``label_domain_key`` and ``label_domain_assignments``, populated for a placement
+group that requests ``ray.io/accelerator-type: GB200``:
+
+.. code-block:: yaml
+
+  - placement_group_id: 237f47c3235ac1a96ad423c3f74501000000
+    name: gpu-domain-pg
+    state: CREATED
+    bundles:
+    - bundle_id:
+        placement_group_id: 237f47c3235ac1a96ad423c3f74501000000
+        bundle_index: 0
+      unit_resources:
+        CPU: 1.0
+      node_id: 0fd7eecf6335633ba39ab66f5a26b18eeb35c70c15a9563a29ee2bce
+      label_selector:
+        ray.io/accelerator-type: GB200
+    - bundle_id:
+        placement_group_id: 237f47c3235ac1a96ad423c3f74501000000
+        bundle_index: 1
+      unit_resources:
+        CPU: 1.0
+      node_id: 0fd7eecf6335633ba39ab66f5a26b18eeb35c70c15a9563a29ee2bce
+      label_selector:
+        ray.io/accelerator-type: GB200
+    is_detached: false
+    stats: ...
+    label_domain_key: ray.io/gpu-domain
+    label_domain_assignments:
+      ray.io/gpu-domain: rack-2
+
+For placement groups that don't use label-locality scheduling, ``label_domain_key`` is
+an empty string and ``label_domain_assignments`` is an empty map. Both fields appear only
+when you pass ``--detail``.
 
 API Reference
 -------------
