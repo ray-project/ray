@@ -42,14 +42,15 @@ class IOContextMonitor {
   ///   the deadline. Tagged by "Name".
   /// @param healthy_deadline If a probe has been outstanding longer than this, the
   ///   io_context is considered unhealthy.
-  /// @param clock Clock to use for time. Must outlive the monitor.
+  /// @param clock Clock to use for time. Defaults to a real clock. Inject a
+  ///   FakeClock in tests for deterministic behavior.
   IOContextMonitor(
       std::string component_name,
       std::vector<std::pair<std::string, instrumented_io_context *>> io_contexts,
       observability::MetricInterface &lag_gauge,
       observability::MetricInterface &deadline_exceeded_counter,
       absl::Duration healthy_deadline,
-      ClockInterface &clock);
+      std::shared_ptr<ClockInterface> clock = std::make_shared<Clock>());
 
   /// Run one probe cycle: check previous probes, emit metrics/logs, post new probes.
   /// Returns true iff all registered io_contexts are healthy.
@@ -57,11 +58,14 @@ class IOContextMonitor {
 
  private:
   struct ProbeState {
-    ProbeState(std::string name, instrumented_io_context &io_context)
-        : name(std::move(name)), io_context(io_context) {}
+    ProbeState(std::string name,
+               instrumented_io_context &io_context,
+               std::shared_ptr<ClockInterface> clock)
+        : name(std::move(name)), io_context(io_context), clock(std::move(clock)) {}
 
     const std::string name;
     instrumented_io_context &io_context;
+    const std::shared_ptr<ClockInterface> clock;
 
     // Mutex protecting fields written by the probe callback (on the io_context
     // thread) and read by the monitor in ProcessProbe.
@@ -84,7 +88,7 @@ class IOContextMonitor {
 
   const std::string component_name_;
   const absl::Duration healthy_deadline_;
-  ClockInterface &clock_;
+  const std::shared_ptr<ClockInterface> clock_;
   observability::MetricInterface &lag_gauge_;
   observability::MetricInterface &deadline_exceeded_counter_;
   std::vector<std::shared_ptr<ProbeState>> probe_states_;

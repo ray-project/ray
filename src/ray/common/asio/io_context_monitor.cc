@@ -30,14 +30,15 @@ IOContextMonitor::IOContextMonitor(
     observability::MetricInterface &lag_gauge,
     observability::MetricInterface &deadline_exceeded_counter,
     absl::Duration healthy_deadline,
-    ClockInterface &clock)
+    std::shared_ptr<ClockInterface> clock)
     : component_name_(std::move(component_name)),
       healthy_deadline_(healthy_deadline),
-      clock_(clock),
+      clock_(std::move(clock)),
       lag_gauge_(lag_gauge),
       deadline_exceeded_counter_(deadline_exceeded_counter) {
   for (auto &[name, io_context] : io_contexts) {
-    probe_states_.push_back(std::make_shared<ProbeState>(std::move(name), *io_context));
+    probe_states_.push_back(
+        std::make_shared<ProbeState>(std::move(name), *io_context, clock_));
   }
 }
 
@@ -61,7 +62,7 @@ bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
 }
 
 bool IOContextMonitor::OnProbePending(const std::shared_ptr<ProbeState> &probe) {
-  absl::Time now = clock_.Now();
+  absl::Time now = clock_->Now();
   if (now - probe->probe_post_time >= healthy_deadline_ &&
       !probe->deadline_exceeded_recorded) {
     RAY_LOG(WARNING) << "[" << component_name_ << "] io_context '" << probe->name
@@ -78,7 +79,7 @@ bool IOContextMonitor::OnProbePending(const std::shared_ptr<ProbeState> &probe) 
 }
 
 bool IOContextMonitor::OnProbeCompleted(const std::shared_ptr<ProbeState> &probe) {
-  absl::Time now = clock_.Now();
+  absl::Time now = clock_->Now();
 
   // Record lag from the previous probe.
   if (probe->probe_post_time != absl::InfinitePast()) {
@@ -102,7 +103,7 @@ bool IOContextMonitor::OnProbeCompleted(const std::shared_ptr<ProbeState> &probe
   probe->io_context.post(
       [probe]() {
         absl::MutexLock lock(&probe->mu);
-        probe->probe_complete_time = absl::Now();
+        probe->probe_complete_time = probe->clock->Now();
         probe->last_probe_completed = true;
       },
       "io_context_monitor_probe");
