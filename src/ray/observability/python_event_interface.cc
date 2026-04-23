@@ -102,7 +102,6 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
     int nested_event_field_number,
     const std::string &event_id,
     int64_t timestamp_ns) {
-
   RAY_CHECK(rpc::events::RayEvent::SourceType_IsValid(source_type))
       << "Invalid SourceType enum value: " << source_type;
   RAY_CHECK(rpc::events::RayEvent::EventType_IsValid(event_type))
