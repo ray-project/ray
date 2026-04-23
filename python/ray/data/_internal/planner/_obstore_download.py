@@ -633,11 +633,23 @@ async def _download_uris_with_obstore(
         indicate failed downloads.
     """
     if fs_kwargs is None:
-        # Best-effort re-extraction for direct callers (e.g. tests). Session-
-        # backed fsspec may fail here because we're already in an event loop;
-        # the sync planner path avoids this by pre-extracting upfront.
+        # Direct-caller path (tests, internal helpers). Session-backed fsspec
+        # may fail here because we may already be inside an event loop; the
+        # planner path avoids this by pre-extracting upfront and passing
+        # ``fs_kwargs``. Re-extract best-effort, but fail closed if the
+        # filesystem is non-None and extraction signals "not extractable" —
+        # silently handing obstore the ambient credential chain is exactly
+        # the bug the new routing was designed to prevent.
         extracted = _extract_credentials_from_filesystem(filesystem)
-        fs_kwargs = extracted if extracted is not None else {}
+        if extracted is None:
+            raise RuntimeError(
+                "_download_uris_with_obstore was called with a filesystem whose "
+                f"credentials cannot be statically extracted ({type(filesystem).__name__}). "
+                "Pass ``fs_kwargs`` explicitly, or route through "
+                "``_plan_obstore_routing`` / ``download_bytes_async`` so "
+                "non-extractable filesystems take the threaded PyArrow path."
+            )
+        fs_kwargs = extracted
 
     range_threshold = RAY_DATA_OBSTORE_RANGE_THRESHOLD
     range_chunk_size = RAY_DATA_OBSTORE_RANGE_CHUNK_SIZE

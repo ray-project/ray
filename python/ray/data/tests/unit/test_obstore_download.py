@@ -550,6 +550,25 @@ class TestPlanObstoreRouting:
         with pytest.raises(RuntimeError, match="cannot be statically extracted"):
             AsyncPartitionActor(["uri"], ctx, filesystem=bad_fs)
 
+    def test_download_uris_with_obstore_fails_closed_on_unextractable_fs(self):
+        # Direct-caller guard: _download_uris_with_obstore with a filesystem
+        # whose credentials can't be extracted must raise rather than coerce
+        # to {} and hand obstore the ambient credential chain. Preserves the
+        # fail-closed contract for any internal/test caller that bypasses
+        # _plan_obstore_routing.
+        pytest.importorskip("obstore")
+
+        bad_fs = pafs.LocalFileSystem()  # unrecognized → extraction returns None
+
+        with pytest.raises(RuntimeError, match="cannot be statically extracted"):
+            asyncio.run(
+                _download_uris_with_obstore(
+                    ["file:///tmp/does-not-matter.bin"],
+                    "uri",
+                    filesystem=bad_fs,
+                )
+            )
+
     def test_routing_extractable_fsspec_s3_uses_obstore(self):
         from pyarrow.fs import FSSpecHandler, PyFileSystem
 
