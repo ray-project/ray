@@ -47,6 +47,12 @@ depsets:
       - pylance
       - pandas
       - modin
+      # datasets==2.14.4 (pyarrow-v9) caps dill<0.3.8, but the py313 lock pins
+      # dill==0.4.1 via pymoo, and multiprocess==0.70.19 via datasets/evaluate
+      # requires dill>=0.4.1. Relax both so the v9 expand can downgrade the
+      # datasets→multiprocess→dill trio together.
+      - dill
+      - multiprocess
     output: python/deplocks/ci/relaxed_data-ci_depset_py${PYTHON_VERSION}.lock
     build_arg_sets:
       - py310

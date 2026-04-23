@@ -728,10 +728,11 @@ greenlet==3.4.0
     # via sqlalchemy
 groovy==0.1.2
     # via gradio
-grpcio==1.80.0
+grpcio==1.76.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/py313/test-requirements.txt
     #   google-api-core
     #   google-cloud-bigquery-storage
     #   grpcio-status
@@ -739,10 +740,14 @@ grpcio==1.80.0
     #   opentelemetry-exporter-otlp-proto-grpc
     #   tensorboard
     #   tensorflow
-grpcio-status==1.80.0
-    # via google-api-core
-grpcio-tools==1.80.0
-    # via -r python/requirements/cloud-requirements.txt
+grpcio-status==1.76.0
+    # via
+    #   -r python/requirements/py313/test-requirements.txt
+    #   google-api-core
+grpcio-tools==1.76.0
+    # via
+    #   -r python/requirements/cloud-requirements.txt
+    #   -r python/requirements/py313/test-requirements.txt
 gsutil==5.27
     # via -r python/requirements/docker/ray-docker-requirements.txt
 gunicorn==25.3.0
@@ -1017,9 +1022,11 @@ kubernetes==24.2.0
     # via -r python/requirements/py313/test-requirements.txt
 labmaze==1.0.6
     # via dm-control
-lance-namespace==0.7.0
-    # via pylance
-lance-namespace-urllib3-client==0.7.0
+lance-namespace==0.6.1
+    # via
+    #   -r python/requirements/ml/py313/data-requirements.txt
+    #   pylance
+lance-namespace-urllib3-client==0.6.1
     # via lance-namespace
 lazy-object-proxy==1.12.0
     # via openapi-spec-validator
