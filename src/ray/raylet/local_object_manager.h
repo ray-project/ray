@@ -323,6 +323,11 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// than the config's free_objects_period, whichever occurs first.
   absl::flat_hash_set<ObjectID> objects_pending_deletion_;
 
+  /// [karticam] Objects that were released locally via move semantics
+  /// (local_only=true) but still need to be broadcast to other nodes
+  /// when the owner's eviction message arrives.
+  absl::flat_hash_set<ObjectID> moved_out_pending_broadcast_;
+
   /// The total size of the objects that are currently being
   /// spilled from this node, in bytes.
   size_t num_bytes_pending_spill_ = 0;

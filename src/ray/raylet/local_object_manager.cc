@@ -112,11 +112,24 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool loca
   // Only free the object if it is not already freed.
   RAY_LOG(INFO) << "[karticam] ReleaseFreedObject called for objectId: " << object_id
                 << " local_only=" << local_only;
+
+  // [karticam] If this is the owner's eviction (local_only=false) for an object
+  // that was previously released locally via move semantics (local_only=true),
+  // we still need to broadcast FreeObjectsRequest to other nodes so they can
+  // clean up their copies (e.g. the consumer's plasma).
+  if (!local_only && moved_out_pending_broadcast_.erase(object_id) > 0) {
+    RAY_LOG(INFO) << "[karticam] Broadcasting delayed FreeObjectsRequest for "
+                  << object_id << " (was released locally via move semantics)";
+    on_objects_freed_({object_id}, /*local_only=*/false);
+    return;
+  }
+
   auto it = local_objects_.find(object_id);
   if (it == local_objects_.end() || it->second.is_freed_) {
     RAY_LOG(INFO) << "[karticam] ReleaseFreedObject early return since cond1 = "
                   << (it == local_objects_.end()) << " and "
-                  << "cond2 = " << (it->second.is_freed_);
+                  << "cond2 = "
+                  << (it != local_objects_.end() ? it->second.is_freed_ : false);
     return;
   }
   // Mark the object as freed. NOTE(swang): We have to mark this instead of
@@ -142,6 +155,12 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool loca
     // up the local_objects_ entry once the spilled copy has been
     // freed.
     spilled_object_pending_delete_.push(object_id);
+  }
+
+  // [karticam] For move-semantics releases, remember to broadcast later when
+  // the owner's eviction message arrives (so the consumer's plasma gets cleaned up).
+  if (local_only) {
+    moved_out_pending_broadcast_.insert(object_id);
   }
 
   // Try to evict all copies of the object from the cluster.
