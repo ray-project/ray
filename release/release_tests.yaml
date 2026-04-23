@@ -4132,7 +4132,7 @@
     anyscale_sdk_2026: true
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4194,7 +4194,7 @@
     anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
   run:
     timeout: 3600
@@ -4214,7 +4214,7 @@
     anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
   run:
     timeout: 3600
@@ -4234,7 +4234,7 @@
     anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4255,7 +4255,7 @@
     anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4276,7 +4276,7 @@
     anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
@@ -4382,7 +4382,7 @@
     anyscale_sdk_2026: true
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
-    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    cloud: serve_release_tests_cloud
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
 
   run:
