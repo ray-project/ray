@@ -101,9 +101,11 @@ bool ClusterResourceManager::UpdateNode(
   // Last update time to the local node resources view.
   local_view.last_resource_update_time = absl::Now();
 
-  local_view.is_draining = resource_view_sync_message.is_draining();
-  local_view.draining_deadline_timestamp_ms =
-      resource_view_sync_message.draining_deadline_timestamp_ms();
+  if (!local_view.is_draining) {
+    local_view.is_draining = resource_view_sync_message.is_draining();
+    local_view.draining_deadline_timestamp_ms =
+        resource_view_sync_message.draining_deadline_timestamp_ms();
+  }
 
   AddOrUpdateNode(node_id, local_view);
   received_node_resources_[node_id] = std::move(local_view);
@@ -113,6 +115,26 @@ bool ClusterResourceManager::UpdateNode(
 bool ClusterResourceManager::RemoveNode(scheduling::NodeID node_id) {
   received_node_resources_.erase(node_id);
   return nodes_.erase(node_id) != 0;
+}
+
+bool ClusterResourceManager::SetNodeDraining(const scheduling::NodeID &node_id,
+                                             bool is_draining,
+                                             int64_t draining_deadline_timestamp_ms) {
+  auto it = nodes_.find(node_id);
+  if (it == nodes_.end()) {
+    return false;
+  }
+
+  auto *local_view = it->second.GetMutableLocalView();
+  local_view->is_draining = is_draining;
+  local_view->draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
+  auto rnr_it = received_node_resources_.find(node_id);
+  if (rnr_it != received_node_resources_.end()) {
+    rnr_it->second.is_draining = is_draining;
+    rnr_it->second.draining_deadline_timestamp_ms = draining_deadline_timestamp_ms;
+  }
+
+  return true;
 }
 
 bool ClusterResourceManager::GetNodeResources(scheduling::NodeID node_id,
@@ -250,29 +272,6 @@ bool ClusterResourceManager::AddNodeAvailableResources(scheduling::NodeID node_i
   return true;
 }
 
-bool ClusterResourceManager::UpdateNodeNormalTaskResources(
-    scheduling::NodeID node_id, const rpc::ResourcesData &resource_data) {
-  auto iter = nodes_.find(node_id);
-  if (iter != nodes_.end()) {
-    auto node_resources = iter->second.GetMutableLocalView();
-    if (resource_data.resources_normal_task_changed() &&
-        resource_data.resources_normal_task_timestamp() >
-            node_resources->latest_resources_normal_task_timestamp) {
-      auto normal_task_resources =
-          ResourceSet(MapFromProtobuf(resource_data.resources_normal_task()));
-      auto &local_normal_task_resources = node_resources->normal_task_resources;
-      if (normal_task_resources != local_normal_task_resources) {
-        local_normal_task_resources = normal_task_resources;
-        node_resources->latest_resources_normal_task_timestamp =
-            resource_data.resources_normal_task_timestamp();
-        return true;
-      }
-    }
-  }
-
-  return false;
-}
-
 std::string ClusterResourceManager::DebugString(
     std::optional<size_t> max_num_nodes_to_include) const {
   std::stringstream buffer;
@@ -303,6 +302,18 @@ void ClusterResourceManager::SetNodeLabels(
     it = nodes_.emplace(node_id, node_resources).first;
   }
   it->second.GetMutableLocalView()->labels = std::move(labels);
+}
+
+const absl::flat_hash_map<std::string, std::string>
+    &ClusterResourceManager::GetNodeLabels(scheduling::NodeID node_id) const {
+  const auto &node = map_find_or_die(nodes_, node_id);
+  return node.GetLocalView().labels;
+}
+
+FixedPoint ClusterResourceManager::GetNodeTotalResources(
+    scheduling::NodeID node_id, scheduling::ResourceID resource_id) const {
+  const auto &node = map_find_or_die(nodes_, node_id);
+  return node.GetLocalView().total.Get(resource_id);
 }
 
 void ClusterResourceManager::RecordMetrics() const {

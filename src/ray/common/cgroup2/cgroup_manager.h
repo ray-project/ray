@@ -45,7 +45,10 @@ class CgroupManager : public CgroupManagerInterface {
     @param system_reserved_cpu_weight a value between [1,10000] to assign to the cgroup
     for system processes. The cgroup for all other processes (including workers) gets
     10000 - system_reserved_cpu_weight.
-    @param system_reserved_memory_bytes used to reserve memory for the system cgroup.
+    @param system_memory_bytes_min the memory.min constraint to set for the system cgroup.
+    @param system_memory_bytes_low the memory.low constraint to set for the system cgroup.
+    @param user_memory_high_bytes the memory.high constraint to set for the user cgroup.
+    @param user_memory_max_bytes the memory.max constraint to set for the user cgroup.
     @param cgroup_driver used to perform cgroup operations.
 
     @return Status::OK with an instance of CgroupManager if everything succeeds.
@@ -59,7 +62,10 @@ class CgroupManager : public CgroupManagerInterface {
       std::string base_cgroup,
       const std::string &node_id,
       const int64_t system_reserved_cpu_weight,
-      const int64_t system_reserved_memory_bytes,
+      const int64_t system_memory_bytes_min,
+      const int64_t system_memory_bytes_low,
+      const int64_t user_memory_high_bytes,
+      const int64_t user_memory_max_bytes,
       std::unique_ptr<CgroupDriverInterface> cgroup_driver);
 
   // Uncopyable type.
@@ -108,6 +114,35 @@ class CgroupManager : public CgroupManagerInterface {
   Status AddProcessToSystemCgroup(const std::string &pid) override;
 
   /**
+    @return the path to the user cgroup.
+  */
+  std::string GetUserCgroupPath() const override;
+
+  /**
+    Gets the constraint value within the system cgroup for a given constraint name.
+
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint cannot be fetched.
+    @return Status::InvalidArgument if the constraint does not exist.
+  */
+  StatusOr<std::string> GetSystemCgroupConstraintValue(
+      const std::string &constraint_name) const override;
+
+  /**
+    Gets the constraint value within the user cgroup for a given constraint name.
+
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint cannot be fetched.
+    @return Status::InvalidArgument if the constraint does not exist.
+  */
+  StatusOr<std::string> GetUserCgroupConstraintValue(
+      const std::string &constraint_name) const override;
+
+  /**
     Performs cleanup in reverse order from the Initialize function:
       1. remove resource constraints to the system, and user cgroups.
       2. disable controllers on the base, system, and user cgroups respectively.
@@ -152,7 +187,10 @@ class CgroupManager : public CgroupManagerInterface {
     @param system_reserved_cpu_weight a value between [1,10000] to assign to the cgroup
     for system processes. The cgroup for all other processes (including workers) gets
     10000 - system_reserved_cpu_weight.
-    @param system_reserved_memory_bytes used to reserve memory for the system cgroup.
+    @param system_memory_bytes_min the memory.min constraint to set for the system cgroup.
+    @param system_memory_bytes_low the memory.low constraint to set for the system cgroup.
+    @param user_memory_high_bytes the memory.high constraint to set for the user cgroup.
+    @param user_memory_max_bytes the memory.max constraint to set for the user cgroup.
 
     @return Status::OK if no errors encountered.
     @return Status::NotFound if base_cgroup does not exist.
@@ -166,7 +204,10 @@ class CgroupManager : public CgroupManagerInterface {
 
   */
   Status Initialize(const int64_t system_reserved_cpu_weight,
-                    const int64_t system_reserved_memory_bytes);
+                    const int64_t system_memory_bytes_min,
+                    const int64_t system_memory_bytes_low,
+                    const int64_t user_memory_high_bytes,
+                    const int64_t user_memory_max_bytes);
 
   // The Register* methods register a callback that will execute in the destructor
   // in FILO order. All callbacks required the cgroup_driver_ to be available to

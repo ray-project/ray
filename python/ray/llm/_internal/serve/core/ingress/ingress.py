@@ -1,4 +1,5 @@
 import asyncio
+import copy
 import json
 import sys
 from contextlib import asynccontextmanager
@@ -41,6 +42,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     CompletionRequest,
     CompletionResponse,
     CompletionStreamResponse,
+    DetokenizeRequest,
+    DetokenizeResponse,
     EmbeddingRequest,
     EmbeddingResponse,
     ErrorResponse,
@@ -54,6 +57,8 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     OpenAIHTTPException,
     ScoreRequest,
     ScoreResponse,
+    TokenizeCompletionRequest,
+    TokenizeResponse,
     TranscriptionRequest,
     TranscriptionResponse,
     TranscriptionStreamResponse,
@@ -93,6 +98,23 @@ DEFAULT_INGRESS_OPTIONS = {
     },
 }
 
+
+def _get_min_replicas_from_llm_config(config: LLMConfig) -> Optional[int]:
+    autoscaling_config = config.deployment_config.get("autoscaling_config")
+    if autoscaling_config is None:
+        return None
+    if isinstance(autoscaling_config, dict):
+        return autoscaling_config.get("min_replicas")
+    return getattr(autoscaling_config, "min_replicas", None)
+
+
+def _all_models_scale_to_zero(llm_configs: Optional[List[LLMConfig]]) -> bool:
+    """Check if all models are configured with min_replicas == 0."""
+    if not llm_configs:
+        return False
+    return all(_get_min_replicas_from_llm_config(config) == 0 for config in llm_configs)
+
+
 # These methods correspond to functions defined in the LLMEngine class in python/ray/llm/_internal/serve/deployments/llm/llm_engine.py
 class CallMethod(Enum):
     CHAT = "chat"
@@ -115,17 +137,30 @@ def _sanitize_chat_completion_request(
     This addresses a known Pydantic bug where tool_calls fields become ValidatorIterator
     objects that cannot be pickled for Ray remote calls.
 
-    References:
-    - vLLM PR that introduces the workaround: https://github.com/vllm-project/vllm/pull/9951
+    Workaround logic adapted from vLLM (credits: @gcalmettes):
+    - vLLM PR: https://github.com/vllm-project/vllm/pull/9951
     - Pydantic Issue: https://github.com/pydantic/pydantic/issues/9467
     - Related Issue: https://github.com/pydantic/pydantic/issues/9541
     - Official Workaround: https://github.com/pydantic/pydantic/issues/9467#issuecomment-2442097291
 
     TODO(seiji): Remove when we update to Pydantic v2.11+ with the fix.
     """
-    from vllm.tokenizers.mistral import maybe_serialize_tool_calls
+    for i, message in enumerate(request.messages):
+        # SGLang messages are Pydantic BaseModels (no .get()); convert to dicts
+        # so the same logic works for both vLLM (TypedDict) and SGLang.
+        if not isinstance(message, dict):
+            request.messages[i] = message = message.model_dump()
 
-    maybe_serialize_tool_calls(request)
+        if message.get("role") == "assistant":
+            tool_calls_val = message.get("tool_calls")
+            if tool_calls_val is not None:
+                try:
+                    request.messages[i]["tool_calls"] = list(tool_calls_val)
+                except (TypeError, ValueError) as e:
+                    raise ValueError(
+                        "Validating messages' `tool_calls` raised an error. "
+                        "Please ensure `tool_calls` are iterable of tool calls."
+                    ) from e
 
     return request
 
@@ -148,6 +183,8 @@ DEFAULT_ENDPOINTS = {
         "/v1/audio/transcriptions",
     ),
     "score": lambda app: app.post("/v1/score"),
+    "tokenize": lambda app: app.post("/tokenize"),
+    "detokenize": lambda app: app.post("/detokenize"),
 }
 
 
@@ -309,13 +346,18 @@ async def _openai_json_wrapper(
 
     Yields:
         String chunks in OpenAI SSE format: "data: {json}\n\n", with a final
-        "data: [DONE]\n\n" to indicate completion.
+        "data: [DONE]\n\n" to indicate completion. If the upstream generator
+        already yields a "data: [DONE]" sentinel, it is not duplicated.
     """
+    done_sent = False
     async for response in generator:
         packet = _apply_openai_json_format(response)
+        if packet.strip().endswith("data: [DONE]"):
+            done_sent = True
         yield packet
 
-    yield "data: [DONE]\n\n"
+    if not done_sent:
+        yield "data: [DONE]\n\n"
 
 
 @asynccontextmanager
@@ -681,12 +723,74 @@ class OpenAiIngress(DeploymentProtocol):
             result = await results.__anext__()
             if isinstance(result, ErrorResponse):
                 raise OpenAIHTTPException(
-                    message=result.message,
-                    status_code=result.code,
-                    type=result.type,
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
                 )
 
             if isinstance(result, ScoreResponse):
+                return JSONResponse(content=result.model_dump())
+
+    async def tokenize(
+        self, body: TokenizeCompletionRequest, request: Request
+    ) -> Response:
+        """Tokenize text into token IDs.
+
+        This endpoint tokenizes the provided text prompt and returns the token IDs,
+        counts, and optionally token strings.
+
+        Note: This is a vLLM specific endpoint.
+
+        Args:
+            body: The tokenize request containing the text to tokenize.
+            request: The raw FastAPI request object.
+
+        Returns:
+            A response object with token IDs and metadata.
+        """
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(
+                body=body, call_method="tokenize", raw_request=request
+            )
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
+                )
+
+            if isinstance(result, TokenizeResponse):
+                return JSONResponse(content=result.model_dump())
+
+    async def detokenize(self, body: DetokenizeRequest, request: Request) -> Response:
+        """Convert token IDs back to text.
+
+        This endpoint detokenizes the provided token IDs and returns the
+        corresponding text.
+
+        Note: This is a vLLM specific endpoint.
+
+        Args:
+            body: The detokenize request containing the token IDs.
+            request: The raw FastAPI request object.
+
+        Returns:
+            A response object with the detokenized text.
+        """
+        async with router_request_timeout(DEFAULT_LLM_ROUTER_HTTP_TIMEOUT):
+            results = self._get_response(
+                body=body, call_method="detokenize", raw_request=request
+            )
+            result = await results.__anext__()
+            if isinstance(result, ErrorResponse):
+                raise OpenAIHTTPException(
+                    message=result.error.message,
+                    status_code=result.error.code,
+                    type=result.error.type,
+                )
+
+            if isinstance(result, DetokenizeResponse):
                 return JSONResponse(content=result.model_dump())
 
     @classmethod
@@ -695,10 +799,17 @@ class OpenAiIngress(DeploymentProtocol):
     ) -> Dict[str, Any]:
         """Get the deployment options for the ingress deployment.
 
+        If all models are configured with min_replicas=0 (scale-to-zero),
+        the ingress will also be configured with min_replicas=0 so that
+        the worker node/GPU instance can be fully released when idle.
+
         Args:
             llm_configs: The LLM configs to infer the number of ingress replicas from.
 
         Returns:
             A dictionary containing the deployment options for the ingress deployment.
         """
-        return DEFAULT_INGRESS_OPTIONS
+        options = copy.deepcopy(DEFAULT_INGRESS_OPTIONS)
+        if _all_models_scale_to_zero(llm_configs):
+            options.setdefault("autoscaling_config", {})["min_replicas"] = 0
+        return options

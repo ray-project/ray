@@ -8,6 +8,7 @@ from ray_release.buildkite.concurrency import get_concurrency_group
 from ray_release.config import (
     DEFAULT_ANYSCALE_PROJECT,
     DEFAULT_CLOUD_ID,
+    DEFAULT_CLOUD_NAME,
     as_smoke_test,
     get_test_project_id,
 )
@@ -32,6 +33,7 @@ DOCKER_PLUGIN_KEY = "docker#v5.8.0"
 _DEFAULT_STEP_TEMPLATE: Dict[str, Any] = {
     "env": {
         "ANYSCALE_CLOUD_ID": str(DEFAULT_CLOUD_ID),
+        "ANYSCALE_CLOUD_NAME": str(DEFAULT_CLOUD_NAME),
         "ANYSCALE_PROJECT": str(DEFAULT_ANYSCALE_PROJECT),
         "RELEASE_AWS_BUCKET": str(RELEASE_AWS_BUCKET),
         "RELEASE_AWS_LOCATION": "dev",
@@ -77,6 +79,7 @@ def get_step_for_test_group(
     global_config: Optional[str] = None,
     is_concurrency_limit: bool = True,
     block_step_key: Optional[str] = None,
+    gpu_map: Optional[Dict[str, str]] = None,
 ):
     steps = []
     for group in sorted(grouped_tests):
@@ -96,6 +99,7 @@ def get_step_for_test_group(
                     priority_val=priority,
                     global_config=global_config,
                     block_step_key=block_step_key,
+                    gpu_map=gpu_map,
                 )
 
                 if not is_concurrency_limit:
@@ -120,6 +124,7 @@ def get_step(
     priority_val: int = 0,
     global_config: Optional[str] = None,
     block_step_key: Optional[str] = None,
+    gpu_map: Optional[Dict[str, str]] = None,
 ):
     env = env or {}
     step = copy.deepcopy(_DEFAULT_STEP_TEMPLATE)
@@ -127,8 +132,6 @@ def get_step(
     cmd = [
         "./release/run_release_test.sh",
         shlex.quote(test["name"]),
-        "--log-streaming-limit",
-        "100",
     ]
 
     for file in test_collection_file or []:
@@ -182,16 +185,10 @@ def get_step(
     if test.get("run", {}).get("type") == "client":
         step["agents"]["queue"] = str(RELEASE_QUEUE_CLIENT)
 
-    # If a test is not stable, allow to soft fail
-    stable = test.get("stable", True)
     clone_test = copy.deepcopy(test)  # avoid modifying the original test
     clone_test.update_from_s3()
     jailed = clone_test.get_state() == TestState.JAILED
     full_label = ""
-    if not stable:
-        step["soft_fail"] = True
-    if not stable:
-        full_label += "[unstable]"
     if jailed:
         full_label += "[jailed]"
 
@@ -207,7 +204,7 @@ def get_step(
     if test.require_custom_byod_image():
         step["depends_on"] = generate_custom_build_step_key(image)
     else:
-        step["depends_on"] = get_prerequisite_step(image, base_image)
+        step["depends_on"] = get_prerequisite_step(image, base_image, gpu_map)
 
     if block_step_key:
         if not step["depends_on"]:

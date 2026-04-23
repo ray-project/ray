@@ -630,7 +630,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   - Example: ``{"stop-on-exit": "true", "t": "cuda,cublas,cudnn", "ftrace": ""}``
 
 - ``image_uri`` (dict): Require a given Docker image. The worker process runs in a container with this image.
-  - Example: ``{"image_uri": "anyscale/ray:2.31.0-py39-cpu"}``
+  - Example: ``{"image_uri": "anyscale/ray:2.53.0-py310-cpu"}``
 
   Note: ``image_uri`` is experimental. If you have some requirements or run into any problems, raise issues in `github <https://github.com/ray-project/ray/issues>`__.
 

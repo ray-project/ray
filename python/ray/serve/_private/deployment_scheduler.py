@@ -1,6 +1,6 @@
 import copy
 import logging
-import sys
+import uuid
 import warnings
 from abc import ABC, abstractmethod
 from collections import defaultdict
@@ -10,10 +10,14 @@ from functools import total_ordering
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
 import ray
+from ray._raylet import node_labels_match_selector
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
     CreatePlacementGroupRequest,
     DeploymentID,
+    GangPlacementGroupRequest,
+    GangReservationResult,
     ReplicaID,
 )
 from ray.serve._private.config import ReplicaConfig
@@ -23,6 +27,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
     SERVE_LOGGER_NAME,
 )
+from ray.util.placement_group import PlacementGroup
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
     NodeAffinitySchedulingStrategy,
@@ -41,26 +46,23 @@ class SpreadDeploymentSchedulingPolicy:
 
 @total_ordering
 class Resources(dict):
+    """Base for per-node availability vs replica demand resource maps.
+
+    Do not instantiate directly; use ``AvailableNodeResources`` or
+    ``RequestedResources``.
+    """
+
     # Custom resource priority from environment variable
     CUSTOM_PRIORITY: List[str] = RAY_SERVE_HIGH_PRIORITY_CUSTOM_RESOURCES
     EPSILON = 1e-9
 
-    def get(self, key: str):
-        val = super().get(key)
-        if val is not None:
-            return val
-
-        # Implicit resources by default have 1 total
-        if key.startswith(ray._raylet.IMPLICIT_RESOURCE_PREFIX):
-            return 1
-
-        # Otherwise by default there is 0 of this resource
-        return 0
-
-    def can_fit(self, other):
-        keys = set(self.keys()) | set(other.keys())
-        # We add a small epsilon to avoid floating point precision issues.
-        return all(self.get(k) + self.EPSILON >= other.get(k) for k in keys)
+    def __new__(cls, *args, **kwargs):
+        if cls is Resources:
+            raise TypeError(
+                "Resources cannot be instantiated directly; use "
+                "AvailableNodeResources or RequestedResources."
+            )
+        return super().__new__(cls)
 
     def __eq__(self, other):
         keys = set(self.keys()) | set(other.keys())
@@ -76,12 +78,17 @@ class Resources(dict):
             else:
                 kwargs[key] = self.get(key) + other.get(key)
 
-        return Resources(kwargs)
+        return type(self)(kwargs)
 
     def __sub__(self, other):
         keys = set(self.keys()) | set(other.keys())
         kwargs = {key: self.get(key) - other.get(key) for key in keys}
-        return Resources(kwargs)
+        return type(self)(kwargs)
+
+    def can_fit(self, other):
+        keys = set(self.keys()) | set(other.keys())
+        # We add a small epsilon to avoid floating point precision issues.
+        return all(self.get(k) + self.EPSILON >= other.get(k) for k in keys)
 
     def __lt__(self, other):
         """Determines priority when sorting a list of SoftResources.
@@ -127,6 +134,40 @@ class Resources(dict):
         return False
 
 
+class AvailableNodeResources(Resources):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def get(self, key: str):
+        val = super().get(key)
+        if val is not None:
+            return val
+
+        # Implicit resources by default have 1 total
+        # NOTE(zcin): Implicit resources are automatically and
+        # artificially injected into each node and are used to limit how
+        # many replicas of the same deployment can run on a single node.
+        # This is used to enforce `max_replicas_per_node`.
+        if key.startswith(ray._raylet.IMPLICIT_RESOURCE_PREFIX):
+            return 1
+
+        # Otherwise by default there is 0 of this resource
+        return 0
+
+
+class RequestedResources(Resources):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+    def get(self, key: str):
+        # We DON'T inject implicit resources for required resources.
+        val = super().get(key)
+        if val is not None:
+            return val
+
+        return 0
+
+
 class ReplicaSchedulingRequestStatus(str, Enum):
     """The status of a replica scheduling request."""
 
@@ -155,10 +196,18 @@ class ReplicaSchedulingRequest:
     # These are optional: by default replicas do not have a placement group.
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
     placement_group_strategy: Optional[str] = None
+    placement_group_bundle_label_selector: Optional[List[Dict[str, str]]] = None
+    placement_group_fallback_strategy: Optional[List[Dict[str, Any]]] = None
     max_replicas_per_node: Optional[int] = None
+    # Gang scheduling fields -- if set, replica should be scheduled on
+    # the reserved gang placement group at the specified bundle index.
+    gang_placement_group: Optional[PlacementGroup] = None
+    # Bundle index inside gang_placement_group where this replica actor is scheduled.
+    # Example: If each replica uses 2 bundles, ranks 0 and 1 use indices 0 and 2 respectively.
+    gang_pg_index: Optional[int] = None
 
     @property
-    def required_resources(self) -> Resources:
+    def requested_resources(self) -> RequestedResources:
         """The resources required to schedule this replica on a node.
 
         If this replica uses a strict pack placement group, the
@@ -171,16 +220,19 @@ class ReplicaSchedulingRequest:
             and self.placement_group_strategy == "STRICT_PACK"
         ):
             return sum(
-                [Resources(bundle) for bundle in self.placement_group_bundles],
-                Resources(),
+                [RequestedResources(bundle) for bundle in self.placement_group_bundles],
+                RequestedResources(),
             )
         else:
-            required = Resources(self.actor_resources)
+            required = RequestedResources(self.actor_resources)
 
             # Using implicit resource (resources that every node
             # implicitly has and total is 1)
             # to limit the number of replicas on a single node.
-            if self.max_replicas_per_node is not None:
+            if (
+                self.max_replicas_per_node is not None
+                and self.max_replicas_per_node > 0
+            ):
                 deployment_id = self.replica_id.deployment_id
                 implicit_resource = (
                     f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}"
@@ -195,25 +247,31 @@ class ReplicaSchedulingRequest:
 class DeploymentDownscaleRequest:
     """Request to stop a certain number of replicas.
 
-    The scheduler is responsible for
-    choosing the replicas to stop.
+    The scheduler is responsible for choosing the replicas to stop.
     """
 
     deployment_id: DeploymentID
     num_to_stop: int
+
+    # The scheduler uses these to select complete gangs to stop.
+    gang_id_by_replica: Optional[Dict[ReplicaID, str]] = None
+    replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None
+    gang_size: Optional[int] = None
 
 
 @dataclass
 class DeploymentSchedulingInfo:
     deployment_id: DeploymentID
     scheduling_policy: Any
-    actor_resources: Optional[Resources] = None
-    placement_group_bundles: Optional[List[Resources]] = None
+    actor_resources: Optional[RequestedResources] = None
+    label_selector: Optional[Dict[str, str]] = None
+    placement_group_bundles: Optional[List[RequestedResources]] = None
+    bundle_label_selector: Optional[List[Dict[str, str]]] = None
     placement_group_strategy: Optional[str] = None
     max_replicas_per_node: Optional[int] = None
 
     @property
-    def required_resources(self) -> Resources:
+    def required_resources(self) -> RequestedResources:
         """The resources required to schedule a replica of this deployment on a node.
 
         If this replicas uses a strict pack placement group, the
@@ -225,14 +283,20 @@ class DeploymentSchedulingInfo:
             self.placement_group_bundles is not None
             and self.placement_group_strategy == "STRICT_PACK"
         ):
-            return sum(self.placement_group_bundles, Resources())
+            return sum(self.placement_group_bundles, RequestedResources())
         else:
-            required = self.actor_resources
+            if self.actor_resources is None:
+                required = RequestedResources()
+            else:
+                required = RequestedResources(self.actor_resources)
 
             # Using implicit resource (resources that every node
             # implicitly has and total is 1)
             # to limit the number of replicas on a single node.
-            if self.max_replicas_per_node:
+            if (
+                self.max_replicas_per_node is not None
+                and self.max_replicas_per_node > 0
+            ):
                 implicit_resource = (
                     f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}"
                     f"{self.deployment_id.app_name}:{self.deployment_id.name}"
@@ -265,7 +329,7 @@ class LaunchingReplicaInfo:
 
 
 def _flatten(
-    deployment_to_replicas: Dict[DeploymentID, Dict[ReplicaID, Any]]
+    deployment_to_replicas: Dict[DeploymentID, Dict[ReplicaID, Any]],
 ) -> Dict[ReplicaID, Any]:
     """Flattens a dict of {deployment_id: {replica_id: val}} to {replica_id: val}."""
 
@@ -336,11 +400,16 @@ class DeploymentScheduler(ABC):
         assert deployment_id in self._deployments
 
         info = self._deployments[deployment_id]
-        info.actor_resources = Resources(replica_config.resource_dict)
+        info.actor_resources = RequestedResources(replica_config.resource_dict)
+        info.label_selector = replica_config.ray_actor_options.get("label_selector")
+        info.bundle_label_selector = (
+            replica_config.placement_group_bundle_label_selector
+        )
         info.max_replicas_per_node = replica_config.max_replicas_per_node
         if replica_config.placement_group_bundles:
             info.placement_group_bundles = [
-                Resources(bundle) for bundle in replica_config.placement_group_bundles
+                RequestedResources(bundle)
+                for bundle in replica_config.placement_group_bundles
             ]
         if replica_config.placement_group_strategy:
             info.placement_group_strategy = replica_config.placement_group_strategy
@@ -414,7 +483,7 @@ class DeploymentScheduler(ABC):
 
         return res
 
-    def _get_available_resources_per_node(self) -> Dict[str, Resources]:
+    def _get_available_resources_per_node(self) -> Dict[str, AvailableNodeResources]:
         """Gets current available resources per node.
 
         This returns a conservative view of the available resources
@@ -440,12 +509,15 @@ class DeploymentScheduler(ABC):
         )
         total_resources = self._cluster_node_info_cache.get_total_resources_per_node()
 
-        gcs_info = {node_id: Resources(r) for node_id, r in available_resources.items()}
+        gcs_info = {
+            node_id: AvailableNodeResources(r)
+            for node_id, r in available_resources.items()
+        }
 
         # Manually calculate available resources per node by subtracting
         # launching and running replicas from total resources
         total_minus_replicas = {
-            node_id: Resources(resources)
+            node_id: AvailableNodeResources(resources)
             for node_id, resources in total_resources.items()
         }
         for deployment_id, replicas in self._launching_replicas.items():
@@ -465,9 +537,9 @@ class DeploymentScheduler(ABC):
 
                 total_minus_replicas[node_id] -= deployment.required_resources
 
-        def custom_min(a: Resources, b: Resources):
+        def custom_min(a: AvailableNodeResources, b: AvailableNodeResources):
             keys = set(a.keys()) | set(b.keys())
-            res = Resources()
+            res = AvailableNodeResources()
             for key in keys:
                 res[key] = min(a.get(key), b.get(key))
             return res
@@ -475,14 +547,16 @@ class DeploymentScheduler(ABC):
         # Filter by active node ids (alive but not draining)
         return {
             node_id: custom_min(
-                gcs_info.get(node_id, Resources()),
-                total_minus_replicas.get(node_id, Resources()),
+                gcs_info.get(node_id, AvailableNodeResources()),
+                total_minus_replicas.get(node_id, AvailableNodeResources()),
             )
             for node_id in self._cluster_node_info_cache.get_active_node_ids()
         }
 
     def _best_fit_node(
-        self, required_resources: Resources, available_resources: Dict[str, Resources]
+        self,
+        required_resources: RequestedResources,
+        available_resources: Dict[str, AvailableNodeResources],
     ) -> Optional[str]:
         """Chooses a node using best fit strategy.
 
@@ -530,18 +604,20 @@ class DeploymentScheduler(ABC):
         default_scheduling_strategy: str,
         target_node_id: Optional[str] = None,
         target_labels: Optional[LabelMatchExpressionsT] = None,
-    ):
+    ) -> bool:
         """Schedule a replica from a scheduling request.
 
         The following special scheduling strategies will be used, in
         order of highest to lowest priority.
-        1. If a replica requires placement groups, we will choose to use
+        1. If a replica requires gang scheduling, we will use a reserved
+           gang placement group.
+        2. If a replica requires placement groups, we will choose to use
            a `PlacementGroupSchedulingStrategy`. This can also take a
            target node into consideration (soft target), if provided.
            However it cannot take into account target labels.
-        2. If a `target_node_id` is provided, we will choose to use a
+        3. If a `target_node_id` is provided, we will choose to use a
            `NodeAffinitySchedulingStrategy`.
-        3. If `target_labels` is provided, we will choose to use a
+        4. If `target_labels` is provided, we will choose to use a
            `NodeLabelSchedulingStrategy`.
 
         Args:
@@ -552,6 +628,9 @@ class DeploymentScheduler(ABC):
                 target node.
             target_labels: Attempt to schedule this replica onto nodes
                 with these target labels.
+
+        Returns:
+            True if the replica was successfully scheduled, False otherwise.
         """
 
         replica_id = scheduling_request.replica_id
@@ -559,7 +638,19 @@ class DeploymentScheduler(ABC):
         placement_group = None
 
         scheduling_strategy = default_scheduling_strategy
-        if scheduling_request.placement_group_bundles is not None:
+
+        if scheduling_request.gang_placement_group is not None:
+            # Gang scheduling -- use the reserved gang placement group
+            placement_group = scheduling_request.gang_placement_group
+            scheduling_strategy = PlacementGroupSchedulingStrategy(
+                placement_group=placement_group,
+                placement_group_bundle_index=scheduling_request.gang_pg_index,
+                placement_group_capture_child_tasks=True,
+            )
+            # TODO (jeffreywang): Add support for target labels and node affinity
+            target_labels = None
+            target_node_id = None
+        elif scheduling_request.placement_group_bundles is not None:
             placement_group_strategy = (
                 scheduling_request.placement_group_strategy
                 if scheduling_request.placement_group_strategy
@@ -572,6 +663,7 @@ class DeploymentScheduler(ABC):
                         strategy=placement_group_strategy,
                         target_node_id=target_node_id,
                         name=scheduling_request.actor_options["name"],
+                        bundle_label_selector=scheduling_request.placement_group_bundle_label_selector,
                     )
                 )
             except Exception:
@@ -584,7 +676,7 @@ class DeploymentScheduler(ABC):
                 scheduling_request.status = (
                     ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
                 )
-                return
+                return False
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=pg,
                 placement_group_capture_child_tasks=True,
@@ -602,7 +694,10 @@ class DeploymentScheduler(ABC):
             target_node_id = None
 
         actor_options = copy.deepcopy(scheduling_request.actor_options)
-        if scheduling_request.max_replicas_per_node is not None:
+        if (
+            scheduling_request.max_replicas_per_node is not None
+            and scheduling_request.max_replicas_per_node > 0
+        ):
             if "resources" not in actor_options:
                 actor_options["resources"] = {}
             # Using implicit resource (resources that every node
@@ -625,7 +720,7 @@ class DeploymentScheduler(ABC):
             scheduling_request.status = (
                 ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
             )
-            return
+            return False
 
         del self._pending_replicas[deployment_id][replica_id]
         self._on_replica_launching(
@@ -637,6 +732,7 @@ class DeploymentScheduler(ABC):
 
         scheduling_request.status = ReplicaSchedulingRequestStatus.SUCCEEDED
         scheduling_request.on_scheduled(actor_handle, placement_group=placement_group)
+        return True
 
     @abstractmethod
     def get_node_to_compact(
@@ -644,6 +740,167 @@ class DeploymentScheduler(ABC):
     ) -> Optional[Tuple[str, float]]:
         """Returns a node ID to be compacted and a compaction deadlne."""
         raise NotImplementedError
+
+    def schedule_gang_placement_groups(
+        self,
+        gang_requests: Dict[DeploymentID, GangPlacementGroupRequest],
+    ) -> Dict[DeploymentID, GangReservationResult]:
+        """Reserve gang placement groups for gang scheduling.
+
+        Creates gang placement groups before replicas are created, allowing
+        the scheduler to verify resource feasibility upfront.
+
+        Args:
+            gang_requests: A dictionary of deployment ID to gang placement group request.
+
+        Returns:
+            A dictionary of deployment ID to gang reservation result.
+        """
+        return {
+            deployment_id: self._prepare_gangs_for_deployment(deployment_id, request)
+            for deployment_id, request in gang_requests.items()
+        }
+
+    def _prepare_gangs_for_deployment(
+        self,
+        deployment_id: DeploymentID,
+        request: GangPlacementGroupRequest,
+    ) -> GangReservationResult:
+        """Create gang placement groups for a single deployment.
+
+        Example:
+        - Case 1: Per-replica bundles are defined
+        gang_size=2, replica_placement_group_bundles=[{"GPU":1,"CPU":1},{"CPU":1}]
+
+        Requested gang placement group:
+        [{"GPU":1,"CPU":1}, {"CPU":1}, {"GPU":1,"CPU":1}, {"CPU":1}]
+         ^^^^^^^ replica 0 ^^^^^^^^^^  ^^^^^^^^ replica 1 ^^^^^^^^^
+        Replica 0 actor → bundle index 0, replica 1 actor → bundle index 2.
+        Remaining bundles (1, 3) are used by child tasks/actors.
+
+        - Case 2: Per-replica bundles are not defined
+        gang_size=2, replica_resource_dict={"CPU":2,"GPU":1}
+
+        Requested gang placement group:
+        [{"CPU":2,"GPU":1}, {"CPU":2,"GPU":1}]
+         ^^^ replica 0 ^^^  ^^^ replica 1 ^^^
+        Replica 0 actor → bundle index 0, replica 1 actor → bundle index 1.
+
+        Args:
+            deployment_id: The deployment to create gangs for.
+            request: Contains gang config and number of replicas to add.
+
+        Returns:
+            GangReservationResult with all created gang PGs.
+        """
+        gang_size = request.gang_size
+
+        if request.num_replicas_to_add % gang_size != 0:
+            logger.error(
+                f"num_replicas_to_add {request.num_replicas_to_add} "
+                f"is not divisible by gang_size {gang_size}."
+            )
+            return GangReservationResult(
+                success=False,
+                error_message=(
+                    f"num_replicas_to_add {request.num_replicas_to_add} "
+                    f"is not divisible by gang_size {gang_size}."
+                ),
+            )
+        num_gangs = request.num_replicas_to_add // gang_size
+
+        per_replica_bundles = request.replica_placement_group_bundles
+        has_pg_bundles = (
+            per_replica_bundles is not None and len(per_replica_bundles) > 0
+        )
+
+        # Flatten per-replica bundles to form a placement group to atomically reserve resources
+        # required for each gang
+        gang_pgs: List[PlacementGroup] = []
+        gang_ids: List[str] = []
+        gang_pg_names: List[str] = []
+        for gang_index in range(num_gangs):
+            if has_pg_bundles:
+                bundles = [
+                    bundle.copy()
+                    for _ in range(gang_size)
+                    for bundle in per_replica_bundles
+                ]
+                label_selector = (
+                    [
+                        selector.copy()
+                        for _ in range(gang_size)
+                        for selector in request.replica_pg_bundle_label_selector
+                    ]
+                    if request.replica_pg_bundle_label_selector is not None
+                    else None
+                )
+                fallback_strategy = (
+                    [
+                        strategy.copy()
+                        for _ in range(gang_size)
+                        for strategy in request.replica_pg_fallback_strategy
+                    ]
+                    if request.replica_pg_fallback_strategy is not None
+                    else None
+                )
+            else:
+                bundles = [
+                    request.replica_resource_dict.copy() for _ in range(gang_size)
+                ]
+                label_selector = None
+                fallback_strategy = None
+
+            gang_id = uuid.uuid4().hex[:8]
+            pg_name = (
+                f"{GANG_PG_NAME_PREFIX}{deployment_id.app_name}"
+                f"_{deployment_id.name}"
+                f"_{gang_index}_{gang_id}"
+            )
+
+            try:
+                pg = self._create_placement_group_fn(
+                    CreatePlacementGroupRequest(
+                        bundles=bundles,
+                        strategy=request.gang_placement_strategy,
+                        target_node_id=None,
+                        name=pg_name,
+                        bundle_label_selector=label_selector,
+                        fallback_strategy=fallback_strategy,
+                    )
+                )
+                gang_pgs.append(pg)
+                gang_ids.append(gang_id)
+                gang_pg_names.append(pg_name)
+            except Exception:
+                # Follow the same pattern as single-replica PG creation failure:
+                # log and skip this gang so the controller can make progress with
+                # the other gangs. The missing replicas will be retried on the next
+                # reconciliation loop.
+                logger.exception(
+                    f"Failed to create gang placement group "
+                    f"{gang_index} for {deployment_id}."
+                )
+                continue
+
+        if not gang_pgs:
+            return GangReservationResult(
+                success=False,
+                error_message=(
+                    f"Failed to create any gang placement groups for {deployment_id}."
+                ),
+            )
+
+        logger.info(
+            f"Created {len(gang_pgs)} of {num_gangs} gang PG(s) for "
+            f"{deployment_id}. Actors will wait for resource allocation."
+        )
+        return GangReservationResult(
+            success=True,
+            gang_pgs=gang_pgs,
+            gang_ids=gang_ids,
+            gang_pg_names=gang_pg_names,
+        )
 
 
 class DefaultDeploymentScheduler(DeploymentScheduler):
@@ -661,16 +918,14 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
         Returns:
             The IDs of replicas to stop for each deployment.
         """
+        # Update pending replicas from upscales.
         for upscale in upscales.values():
             for scheduling_request in upscale:
                 replica_id = scheduling_request.replica_id
                 deployment_id = replica_id.deployment_id
                 self._pending_replicas[deployment_id][replica_id] = scheduling_request
 
-        non_strict_pack_pgs_exist = any(
-            d.is_non_strict_pack_pg() for d in self._deployments.values()
-        )
-        # Schedule replicas using compact strategy.
+        # Check for deprecated environment variable usage
         if RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY:
             warnings.warn(
                 "The environment variable 'RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY' "
@@ -679,76 +934,238 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 DeprecationWarning,
                 stacklevel=2,
             )
-        if RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist:
-            # Flatten dict of deployment replicas into all replicas,
-            # then sort by decreasing resource size
-            all_scheduling_requests = sorted(
-                _flatten(self._pending_replicas).values(),
-                key=lambda r: r.required_resources,
-                reverse=True,
-            )
 
-            # Schedule each replica
-            for scheduling_request in all_scheduling_requests:
-                target_node = self._find_best_available_node(
-                    scheduling_request.required_resources,
-                    self._get_available_resources_per_node(),
-                )
+        # Determine scheduling strategy
+        non_strict_pack_pgs_exist = any(
+            d.is_non_strict_pack_pg() for d in self._deployments.values()
+        )
+        use_pack_strategy = (
+            RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY and not non_strict_pack_pgs_exist
+        )
 
-                self._schedule_replica(
-                    scheduling_request,
-                    default_scheduling_strategy="DEFAULT",
-                    target_node_id=target_node,
-                )
-
+        if use_pack_strategy:
+            # This branch is only reached if each deployment either:
+            # 1. Use STRICT_PACK placement group strategy, or
+            # 2. Do not use placement groups at all.
+            # This ensures Serve's best-fit node selection is respected by Ray Core
+            # (since _soft_target_node_id only works with STRICT_PACK).
+            self._schedule_with_pack_strategy()
         else:
-            for pending_replicas in self._pending_replicas.values():
-                if not pending_replicas:
-                    continue
+            self._schedule_with_spread_strategy()
 
-                for scheduling_request in list(pending_replicas.values()):
-                    self._schedule_replica(
-                        scheduling_request=scheduling_request,
-                        default_scheduling_strategy="SPREAD",
-                    )
-
+        # Handle downscales
         deployment_to_replicas_to_stop = {}
         for downscale in downscales.values():
             deployment_to_replicas_to_stop[
                 downscale.deployment_id
             ] = self._get_replicas_to_stop(
-                downscale.deployment_id, downscale.num_to_stop
+                downscale.deployment_id,
+                downscale.num_to_stop,
+                gang_id_by_replica=downscale.gang_id_by_replica,
+                replicas_by_gang_id=downscale.replicas_by_gang_id,
+                gang_size=downscale.gang_size,
             )
 
         return deployment_to_replicas_to_stop
 
-    def _get_replicas_to_stop(
-        self, deployment_id: DeploymentID, max_num_to_stop: int
-    ) -> Set[ReplicaID]:
-        """Prioritize replicas running on a node with fewest replicas of
-            all deployments.
+    def _schedule_with_pack_strategy(self):
+        """Tries to schedule pending replicas using PACK strategy."""
+        # Flatten dict of deployment replicas into all replicas,
+        # then sort by decreasing resource size
+        all_scheduling_requests = sorted(
+            _flatten(self._pending_replicas).values(),
+            key=lambda r: r.requested_resources,
+            reverse=True,
+        )
 
-        This algorithm helps to scale down more intelligently because it can
-        relinquish nodes faster. Note that this algorithm doesn't consider
-        other non-serve actors on the same node. See more at
-        https://github.com/ray-project/ray/issues/20599.
+        # Fetch node labels for active nodes.
+        active_nodes = self._cluster_node_info_cache.get_active_node_ids()
+        all_node_labels = {
+            node_id: self._cluster_node_info_cache.get_node_labels(node_id)
+            for node_id in active_nodes
+        }
+
+        # Compute available resources once upfront and update incrementally
+        # as replicas are scheduled.
+        # Complexity is O(launching + running + nodes + requests * nodes).
+        available_resources_per_node = self._get_available_resources_per_node()
+
+        # Seed with running replicas; updated incrementally as replicas are
+        # scheduled so that newly occupied nodes are treated as non-idle.
+        node_to_assigned_replicas = self._get_node_to_running_replicas()
+
+        for scheduling_request in all_scheduling_requests:
+            target_node = self._pack_schedule_replica(
+                scheduling_request,
+                all_node_labels,
+                available_resources_per_node,
+                node_to_assigned_replicas,
+            )
+            # Incrementally update available resources for the target node.
+            # This is slightly conservative compared to recomputing from
+            # scratch (since we subtract from the min of GCS and calculated
+            # resources rather than only from the calculated side), but
+            # _get_available_resources_per_node is already best-effort.
+            if target_node and target_node in available_resources_per_node:
+                available_resources_per_node[target_node] = (
+                    available_resources_per_node[target_node]
+                    - scheduling_request.requested_resources
+                )
+
+            # Mark the node as non-idle so subsequent replicas prefer it.
+            if target_node and target_node not in node_to_assigned_replicas:
+                node_to_assigned_replicas[target_node] = set()
+                node_to_assigned_replicas[target_node].add(
+                    scheduling_request.replica_id
+                )
+
+    def _schedule_with_spread_strategy(self):
+        """Tries to schedule pending replicas using the SPREAD strategy."""
+        for pending_replicas in self._pending_replicas.values():
+            if not pending_replicas:
+                continue
+
+            for scheduling_request in list(pending_replicas.values()):
+                self._schedule_replica(
+                    scheduling_request=scheduling_request,
+                    default_scheduling_strategy="SPREAD",
+                )
+
+    def _pack_schedule_replica(
+        self,
+        scheduling_request: ReplicaSchedulingRequest,
+        all_node_labels: Dict[str, Dict[str, str]],
+        available_resources_per_node: Dict[str, AvailableNodeResources],
+        node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
+    ) -> Optional[str]:
+        """Attempts to schedule a single request on the best available node.
+
+        Args:
+            scheduling_request: The replica scheduling request.
+            all_node_labels: Labels for all active nodes.
+            available_resources_per_node: Pre-computed available resources
+                per node.
+            node_to_assigned_replicas: Mapping of node IDs to replica IDs
+                (both running and newly scheduled in this batch).
+
+        Returns:
+            The target node ID if scheduling succeeded, None otherwise.
         """
-        replicas_to_stop = set()
+
+        placement_candidates = self._build_pack_placement_candidates(scheduling_request)
+
+        target_node = None
+        for required_resources, required_labels in placement_candidates:
+            target_node = self._find_best_fit_node_for_pack(
+                required_resources,
+                available_resources_per_node,
+                node_to_assigned_replicas,
+                required_labels_list=required_labels,
+                node_labels=all_node_labels,
+            )
+            if target_node:
+                break
+
+        succeeded = self._schedule_replica(
+            scheduling_request,
+            default_scheduling_strategy="DEFAULT",
+            target_node_id=target_node,
+        )
+
+        return target_node if succeeded else None
+
+    def _build_pack_placement_candidates(
+        self, scheduling_request: ReplicaSchedulingRequest
+    ) -> List[Tuple[RequestedResources, List[Dict[str, str]]]]:
+        """Returns a list of (resources, labels) tuples to attempt for scheduling."""
+
+        # Collect a list of required resources and labels to try to schedule to
+        # support replica compaction when fallback strategies are provided.
+        placement_candidates = []
+        primary_labels = []
+        primary_bundles = scheduling_request.placement_group_bundles
+
+        if primary_bundles:
+            # PG: Use PG bundle_label_selector
+            if scheduling_request.placement_group_bundle_label_selector:
+                pg_strategy = scheduling_request.placement_group_strategy or None
+                if pg_strategy == "STRICT_PACK":
+                    # All bundle_label_selectors must be satisfied on same node.
+                    primary_labels = (
+                        scheduling_request.placement_group_bundle_label_selector
+                    )
+                else:
+                    # TODO(ryanaoleary@): Support PACK strategy with bundle label selectors.
+                    raise NotImplementedError(
+                        "Placement Group strategy 'PACK' with bundle_label_selector "
+                        "is not yet supported in the Serve scheduler."
+                    )
+        else:
+            # Actor: Use Actor label selector
+            if "label_selector" in scheduling_request.actor_options:
+                primary_labels = [
+                    scheduling_request.actor_options["label_selector"] or {}
+                ]
+
+        # If PG is defined on scheduling request, then `requested_resources` represents the sum across all bundles.
+        placement_candidates.append(
+            (scheduling_request.requested_resources, primary_labels)
+        )
+
+        if scheduling_request.placement_group_fallback_strategy:
+            # TODO(ryanaoleary@): Add support for placement group fallback_strategy when it's added to options.
+            raise NotImplementedError(
+                "Placement Group fallback strategies are not yet supported in the Serve scheduler."
+            )
+
+        elif scheduling_request.actor_options.get("fallback_strategy"):
+            # Fallback strategy provided for Ray Actor.
+            for fallback in scheduling_request.actor_options["fallback_strategy"]:
+                fallback_labels = [fallback.get("label_selector", {}) or {}]
+                placement_candidates.append(
+                    (scheduling_request.requested_resources, fallback_labels)
+                )
+
+        return placement_candidates
+
+    def _get_replicas_to_stop(
+        self,
+        deployment_id: DeploymentID,
+        max_num_to_stop: int,
+        gang_id_by_replica: Optional[Dict[ReplicaID, str]] = None,
+        replicas_by_gang_id: Optional[Dict[str, Set[ReplicaID]]] = None,
+        gang_size: Optional[int] = None,
+    ) -> Set[ReplicaID]:
+        """Select which replicas to stop for a downscale request in the following priority:
+        1. Prioritize replicas that are not in the RUNNING state.
+        2. Prioritize replicas not on the head node because we can't relinquish the head node.
+        3. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
+        4. Prioritize replicas on nodes with fewest total replicas so we can relinquish them.
+        5. Prioritize newer replicas over older replicas.
+        Note that this algorithm doesn't consider other non-serve actors on the same node.
+        See more at https://github.com/ray-project/ray/issues/20599.
+
+        For gang deployments, the same priority order is applied, but entire
+        gangs are selected atomically instead of individual replicas.
+        """
+        replicas_priority: List[ReplicaID] = []
 
         # Replicas not in running state don't have node id.
         # We will prioritize those first.
-        pending_launching_recovering_replicas = set().union(
-            self._pending_replicas[deployment_id].keys(),
-            self._launching_replicas[deployment_id].keys(),
-            self._recovering_replicas[deployment_id],
+        replicas_priority.extend(
+            set().union(
+                self._pending_replicas[deployment_id].keys(),
+                self._launching_replicas[deployment_id].keys(),
+                self._recovering_replicas[deployment_id],
+            )
         )
-        for (
-            pending_launching_recovering_replica
-        ) in pending_launching_recovering_replicas:
-            replicas_to_stop.add(pending_launching_recovering_replica)
-            if len(replicas_to_stop) == max_num_to_stop:
-                return replicas_to_stop
-
+        labels_to_check: List[Dict[str, str]] = []
+        if label_selector := self._deployments[deployment_id].label_selector:
+            labels_to_check.append(label_selector)
+        elif bundle_label_selector := self._deployments[
+            deployment_id
+        ].bundle_label_selector:
+            labels_to_check.extend(bundle_label_selector)
         node_to_running_replicas_of_all_deployments = (
             self._get_node_to_running_replicas()
         )
@@ -765,53 +1182,111 @@ class DefaultDeploymentScheduler(DeploymentScheduler):
                 replica_id
             )
 
-        # Replicas on the head node has the lowest priority for downscaling
-        # since we cannot relinquish the head node.
-        def key(node_and_num_running_replicas_of_all_deployments):
-            return (
-                len(node_and_num_running_replicas_of_all_deployments[1])
-                if node_and_num_running_replicas_of_all_deployments[0]
-                != self._head_node_id
-                else sys.maxsize
+        # Prioritize based on following priority:
+        # 1. Prioritize replicas not on the head node because we can't relinquish the head node.
+        # 2. Prioritize replicas on fallback nodes that don't match the label or bundle label selector.
+        # 3. Prioritize replicas on nodes with fewer total replicas so we can relinquish them.
+        def scale_down_priority(
+            node_and_replicas: Tuple[str, Set[ReplicaID]],
+        ) -> Tuple[int, int, int]:
+            node_id, all_replicas = node_and_replicas
+            node_labels = self._cluster_node_info_cache.get_node_labels(node_id)
+            match_labels = not labels_to_check or any(
+                node_labels_match_selector(node_labels, labels)
+                for labels in labels_to_check
             )
+            is_head_node = node_id == self._head_node_id
+            return int(is_head_node), int(match_labels), len(all_replicas)
 
         for node_id, _ in sorted(
-            node_to_running_replicas_of_all_deployments.items(), key=key
+            node_to_running_replicas_of_all_deployments.items(), key=scale_down_priority
         ):
             if node_id not in ordered_running_replicas_of_target_deployment:
                 continue
 
             # Newest-first list for this node.
             for replica_id in ordered_running_replicas_of_target_deployment[node_id]:
+                replicas_priority.append(replica_id)
+
+        if gang_id_by_replica is not None:
+            # Gang scheduling is enabled: select entire gangs to stop atomically
+            replicas_to_stop: Set[ReplicaID] = set()
+            selected_gangs: Set[str] = set()
+            for replica_id in replicas_priority:
+                gang_id = gang_id_by_replica.get(replica_id)
+                if gang_id is None or gang_id in selected_gangs:
+                    continue
+                if len(replicas_to_stop) + gang_size > max_num_to_stop:
+                    break
+                selected_gangs.add(gang_id)
+                replicas_to_stop.update(replicas_by_gang_id[gang_id])
+        else:
+            # Single-replica scheduling: select individual replicas to stop
+            replicas_to_stop: Set[ReplicaID] = set()
+            for replica_id in replicas_priority:
                 replicas_to_stop.add(replica_id)
                 if len(replicas_to_stop) == max_num_to_stop:
-                    return replicas_to_stop
+                    break
 
         return replicas_to_stop
 
-    def _find_best_available_node(
+    def _filter_nodes_by_label_selector(
         self,
-        required_resources: Resources,
-        available_resources_per_node: Dict[str, Resources],
+        available_nodes: Dict[str, AvailableNodeResources],
+        required_labels: Dict[str, str],
+        node_labels: Dict[str, Dict[str, str]],
+    ) -> Dict[str, AvailableNodeResources]:
+        """Filters available nodes based on label selector constraints."""
+        return {
+            node_id: resources
+            for node_id, resources in available_nodes.items()
+            if node_labels_match_selector(node_labels.get(node_id, {}), required_labels)
+        }
+
+    def _find_best_fit_node_for_pack(
+        self,
+        required_resources: RequestedResources,
+        available_resources_per_node: Dict[str, AvailableNodeResources],
+        node_to_assigned_replicas: Dict[str, Set[ReplicaID]],
+        required_labels_list: Optional[List[Dict[str, str]]] = None,
+        node_labels: Optional[Dict[str, Dict[str, str]]] = None,
     ) -> Optional[str]:
         """Chooses best available node to schedule the required resources.
 
         If there are available nodes, returns the node ID of the best
         available node, minimizing fragmentation. Prefers non-idle nodes
         over idle nodes.
+
+        Args:
+            required_resources: Requested resources needed for this replica.
+            available_resources_per_node: Available resources per node.
+            node_to_assigned_replicas: Mapping of node IDs to replica IDs
+                (both running and newly scheduled in this batch).
+            required_labels_list: Label selectors to filter nodes.
+            node_labels: Labels for each node.
+
+        Returns:
+            The target node ID if scheduling succeeded, None otherwise.
         """
 
-        node_to_running_replicas = self._get_node_to_running_replicas()
+        # Filter feasible nodes by provided label selectors if provided.
+        if required_labels_list and node_labels:
+            for required_labels in required_labels_list:
+                available_resources_per_node = self._filter_nodes_by_label_selector(
+                    available_resources_per_node, required_labels, node_labels
+                )
+                if not available_resources_per_node:
+                    return None
 
         non_idle_nodes = {
             node_id: res
             for node_id, res in available_resources_per_node.items()
-            if len(node_to_running_replicas.get(node_id, set())) > 0
+            if len(node_to_assigned_replicas.get(node_id, set())) > 0
         }
         idle_nodes = {
             node_id: res
             for node_id, res in available_resources_per_node.items()
-            if len(node_to_running_replicas.get(node_id, set())) == 0
+            if len(node_to_assigned_replicas.get(node_id, set())) == 0
         }
 
         # 1. Prefer non-idle nodes

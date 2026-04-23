@@ -1,5 +1,5 @@
 import os
-from typing import Dict
+from typing import Dict, Optional
 
 from ray._common.constants import RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR
 from ray._private.ray_constants import env_bool, env_set_by_user
@@ -41,16 +41,22 @@ DEFAULT_WORKER_HEALTH_CHECK_TIMEOUT_S: float = 10 * 60
 
 # Timeout in seconds for the worker group to start.
 WORKER_GROUP_START_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_WORKER_GROUP_START_TIMEOUT_S"
-DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 30.0
+DEFAULT_WORKER_GROUP_START_TIMEOUT_S: float = 60.0
 
 # Time in seconds for collective operations before raising a timeout error.
 COLLECTIVE_TIMEOUT_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_TIMEOUT_S"
 # NOTE: Default to no timeout to avoid introducing more timeouts for users to configure.
 # For example, users can already configure timeouts in torch distributed.
-DEFAULT_COLLECTIVE_TIMEOUT_S: float = -1
+DEFAULT_COLLECTIVE_TIMEOUT_S: Optional[float] = None
 # Interval in seconds to log a warning when waiting for a collective operation to complete.
 COLLECTIVE_WARN_INTERVAL_S_ENV_VAR = "RAY_TRAIN_COLLECTIVE_WARN_INTERVAL_S"
 DEFAULT_COLLECTIVE_WARN_INTERVAL_S: float = 60
+
+# Interval in seconds to log a warning when waiting for a checkpoint upload fn operation to complete.
+CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR = (
+    "RAY_TRAIN_CHECKPOINT_UPLOAD_WARN_INTERVAL_S"
+)
+DEFAULT_CHECKPOINT_UPLOAD_WARN_INTERVAL_S: float = 60
 
 # Environment variable to enable the print function patching.
 ENABLE_PRINT_PATCH_ENV_VAR = "RAY_TRAIN_ENABLE_PRINT_PATCH"
@@ -78,18 +84,22 @@ STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR = (
     "RAY_TRAIN_STATE_ACTOR_RECONCILIATION_INTERVAL_S"
 )
 DEFAULT_STATE_ACTOR_RECONCILIATION_INTERVAL_S: float = 30.0
-# TODO: `ray.util.state.api.get_actor` takes 10-50ms but we cannot pick lower than 2s
-# due to https://github.com/ray-project/ray/issues/54153. Lower this after fix.
-GET_ACTOR_TIMEOUT_S: int = 2
-# GET_ACTOR_TIMEOUT_S_ENV_VAR * CONTROLLERS_TO_POLL_PER_ITERATION_ENV_VAR should be
-# way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR.
-CONTROLLERS_TO_POLL_PER_ITERATION: int = 5
+# TODO: `ray.util.state.api.get_actor` typically takes 10-50ms but can take longer
+# when there is high load on the cluster.
+GET_ACTOR_TIMEOUT_S: int = 10
+# GET_ACTOR_TIMEOUT_S * CONTROLLERS_TO_POLL_PER_ITERATION should be
+# way less than STATE_ACTOR_RECONCILIATION_INTERVAL_S to give the state actor
+# time to update live train run state.
+CONTROLLERS_TO_POLL_PER_ITERATION: int = 1
 
 # Environment variable for Train execution callbacks
 RAY_TRAIN_CALLBACKS_ENV_VAR = "RAY_TRAIN_CALLBACKS"
 
 # Ray Train does not warn by default when using blocking ray.get inside async actor.
 DEFAULT_RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_VALUE = "0"
+
+# torchft lighthouse address
+TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR = "TORCHFT_LIGHTHOUSE"
 
 # Environment variables to propagate from the driver to the controller,
 # and then from the controller to the workers.
@@ -100,12 +110,14 @@ ENV_VARS_TO_PROPAGATE = {
     WORKER_GROUP_START_TIMEOUT_S_ENV_VAR,
     COLLECTIVE_TIMEOUT_S_ENV_VAR,
     COLLECTIVE_WARN_INTERVAL_S_ENV_VAR,
+    CHECKPOINT_UPLOAD_WARN_INTERVAL_S_ENV_VAR,
     ENABLE_PRINT_PATCH_ENV_VAR,
     ENABLE_CONTROLLER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_WORKER_STRUCTURED_LOGGING_ENV_VAR,
     ENABLE_STATE_ACTOR_RECONCILIATION_ENV_VAR,
     STATE_ACTOR_RECONCILIATION_INTERVAL_S_ENV_VAR,
     RAY_WARN_BLOCKING_GET_INSIDE_ASYNC_ENV_VAR,
+    TORCHFT_LIGHTHOUSE_ADDR_ENV_VAR,
 }
 
 

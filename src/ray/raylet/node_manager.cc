@@ -31,6 +31,7 @@
 #include <vector>
 
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_replace.h"
 #include "absl/time/clock.h"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -40,7 +41,9 @@
 #include "ray/common/flatbuf_utils.h"
 #include "ray/common/grpc_util.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_factory.h"
+#include "ray/common/memory_monitor_interface.h"
+#include "ray/common/memory_monitor_utils.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/status.h"
@@ -48,8 +51,9 @@
 #include "ray/core_worker_rpc_client/core_worker_client_pool.h"
 #include "ray/flatbuffers/node_manager_generated.h"
 #include "ray/raylet/local_object_manager_interface.h"
+#include "ray/raylet/throttler.h"
 #include "ray/raylet/worker.h"
-#include "ray/raylet/worker_killing_policy_group_by_owner.h"
+#include "ray/raylet/worker_killing_policy_factory.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
@@ -57,6 +61,8 @@
 #include "ray/util/event.h"
 #include "ray/util/network_util.h"
 #include "ray/util/port_persistence.h"
+#include "ray/util/process.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/string_utils.h"
 #include "ray/util/time.h"
 
@@ -184,7 +190,9 @@ NodeManager::NodeManager(
     PlacementGroupResourceManager &placement_group_resource_manager,
     boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
     local_stream_socket socket,
-    ray::observability::MetricInterface &memory_manager_worker_eviction_total_count)
+    ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
+    ray::observability::MetricInterface
+        &node_manager_unexpected_worker_failure_total_count)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -226,19 +234,19 @@ NodeManager::NodeManager(
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       memory_manager_worker_eviction_total_count_(
           memory_manager_worker_eviction_total_count),
+      node_manager_unexpected_worker_failure_total_count_(
+          node_manager_unexpected_worker_failure_total_count),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       local_lease_manager_(local_lease_manager),
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
-      worker_killing_policy_(std::make_shared<GroupByOwnerIdWorkerKillingPolicy>()),
-      memory_monitor_(std::make_unique<MemoryMonitor>(
-          io_service,
-          RayConfig::instance().memory_usage_threshold(),
-          RayConfig::instance().min_memory_free_bytes(),
-          RayConfig::instance().memory_monitor_refresh_ms(),
-          CreateMemoryUsageRefreshCallback())),
+      worker_killing_policy_(WorkerKillingPolicyFactory::Create(
+          config.enable_resource_isolation, *cgroup_manager)),
+      memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
+                                                   config.enable_resource_isolation,
+                                                   *cgroup_manager)),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
       shutting_down_(shutting_down),
@@ -438,7 +446,7 @@ void NodeManager::RegisterGcs() {
           std::stringstream debug_msg;
           debug_msg << DebugString() << "\n\n";
           RAY_LOG(INFO) << PrependToEachLine(debug_msg.str(), "[state-dump] ");
-          ReportWorkerOOMKillStats();
+          ReportWorkerOomKillStats();
         },
         event_stats_print_interval_ms,
         "NodeManager.deadline_timer.print_event_loop_stats");
@@ -1267,7 +1275,7 @@ Status NodeManager::RegisterForNewDriver(
     const JobID &job_id,
     const ray::protocol::RegisterClientRequest *message,
     std::function<void(Status, int)> send_reply_callback) {
-  worker->SetProcess(Process::FromPid(pid));
+  worker->SetProcess(std::make_unique<Process>(pid));
   rpc::JobConfig job_config;
   job_config.ParseFromString(message->serialized_job_config()->str());
   return worker_pool_.RegisterDriver(worker, job_config, send_reply_callback);
@@ -1492,6 +1500,24 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         auto error_data = gcs::CreateErrorTableData(
             type, error_message_str, absl::FromUnixMillis(current_time_ms()), job_id);
         gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
+
+        const RayLease &ray_lease = worker->GetGrantedLease();
+        if (worker->GetActorId().IsNil()) {
+          node_manager_unexpected_worker_failure_total_count_.Record(
+              1,
+              {{"Type", "Raylet.UnexpectedTaskFailure.Total"},
+               {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+        } else {
+          node_manager_unexpected_worker_failure_total_count_.Record(
+              1,
+              {{"Type", "Raylet.UnexpectedActorFailure.Total"},
+               {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+        }
+      }
+    } else if (lease_id.IsNil() && actor_id.IsNil() && !worker->IsDead()) {
+      if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+        node_manager_unexpected_worker_failure_total_count_.Record(
+            1, {{"Type", "Raylet.UnexpectedIdleWorkerFailure.Total"}, {"Name", ""}});
       }
     }
 
@@ -1555,6 +1581,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
           << " died. Address: " << BuildAddress(worker->IpAddress(), worker->Port())
           << ", Pid: " << worker->GetProcess().GetId()
           << ", JobId: " << worker->GetAssignedJobId();
+
+      node_manager_unexpected_worker_failure_total_count_.Record(
+          1, {{"Type", "Raylet.UnexpectedDriverFailure.Total"}, {"Name", ""}});
     }
   }
 
@@ -1758,22 +1787,12 @@ void NodeManager::HandleReportWorkerBacklog(
     WorkerPoolInterface &worker_pool,
     LocalLeaseManagerInterface &local_lease_manager) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  if (worker_pool.GetRegisteredWorker(worker_id) == nullptr &&
-      worker_pool.GetRegisteredDriver(worker_id) == nullptr) {
-    // The worker is already disconnected.
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    return;
+  if (worker_pool.GetRegisteredDriver(worker_id) != nullptr ||
+      worker_pool.GetRegisteredWorker(worker_id) != nullptr) {
+    // Worker is still alive according to the raylet.
+    local_lease_manager.SetWorkerBacklog(std::move(request));
   }
 
-  local_lease_manager.ClearWorkerBacklog(worker_id);
-  std::unordered_set<SchedulingClass> seen;
-  for (const auto &backlog_report : request.backlog_reports()) {
-    const LeaseSpecification lease_spec(backlog_report.lease_spec());
-    const SchedulingClass scheduling_class = lease_spec.GetSchedulingClass();
-    RAY_CHECK(seen.find(scheduling_class) == seen.end());
-    local_lease_manager.SetWorkerBacklog(
-        scheduling_class, worker_id, backlog_report.backlog_size());
-  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -1821,31 +1840,11 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
   }
 
   auto send_reply_callback_wrapper =
-      [this, is_actor_creation_task, actor_id, reply, send_reply_callback](
+      [this, is_actor_creation_task, reply, send_reply_callback](
           Status status, std::function<void()> success, std::function<void()> failure) {
         if (reply->rejected() && is_actor_creation_task) {
           auto resources_data = reply->mutable_resources_data();
           resources_data->set_node_id(self_node_id_.Binary());
-          // If resources are not enough due to normal tasks' preemption
-          // for GCS based actor scheduling, return
-          // with normal task resource usages so GCS can fast update
-          // its resource view of this raylet.
-          if (RayConfig::instance().gcs_actor_scheduling_enabled()) {
-            auto normal_task_resources = local_lease_manager_.CalcNormalTaskResources();
-            RAY_LOG(DEBUG).WithField(actor_id)
-                << "Reject leasing as the raylet has no enough resources. "
-                   "normal_task_resources = "
-                << normal_task_resources.DebugString() << ", local_resource_view = "
-                << cluster_resource_scheduler_.GetClusterResourceManager()
-                       .GetNodeResourceViewString(
-                           scheduling::NodeID(self_node_id_.Binary()));
-            resources_data->set_resources_normal_task_changed(true);
-            auto resource_map = normal_task_resources.GetResourceMap();
-            resources_data->mutable_resources_normal_task()->insert(resource_map.begin(),
-                                                                    resource_map.end());
-            resources_data->set_resources_normal_task_timestamp(
-                absl::GetCurrentTimeNanos());
-          }
         }
         send_reply_callback(status, std::move(success), std::move(failure));
       };
@@ -2140,8 +2139,10 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
 void NodeManager::HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                           rpc::IsLocalWorkerDeadReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  reply->set_is_dead(worker_pool_.GetRegisteredWorker(
-                         WorkerID::FromBinary(request.worker_id())) == nullptr);
+  const auto worker_id = WorkerID::FromBinary(request.worker_id());
+  const bool registered = worker_pool_.GetRegisteredWorker(worker_id) != nullptr ||
+                          worker_pool_.GetRegisteredDriver(worker_id) != nullptr;
+  reply->set_is_dead(!registered);
   send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
 }
 
@@ -3049,192 +3050,254 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
   return std::make_optional(std::move(msg));
 }
 
-// Picks the worker with the latest submitted task and kills the process
-// if the memory usage is above the threshold. Allows one in-flight
-// process kill at a time as killing a process could sometimes take
-// seconds.
-// TODO(clarng): potentially kill more aggressively by measuring the
-// memory usage of each process and kill enough processes to put it
-// below the memory threshold.
-MemoryUsageRefreshCallback NodeManager::CreateMemoryUsageRefreshCallback() {
-  return [this](bool is_usage_above_threshold,
-                MemorySnapshot system_memory,
-                float usage_threshold) {
-    if (high_memory_eviction_target_ != nullptr) {
-      if (!high_memory_eviction_target_->GetProcess().IsAlive()) {
-        RAY_LOG(INFO)
-                .WithField(high_memory_eviction_target_->WorkerId())
-                .WithField(high_memory_eviction_target_->GetGrantedLeaseId())
-            << "Worker evicted and process killed to reclaim memory. "
-            << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId();
-        high_memory_eviction_target_ = nullptr;
-      }
-    }
-    if (is_usage_above_threshold) {
-      if (high_memory_eviction_target_ != nullptr) {
-        RAY_LOG_EVERY_MS(INFO, 1000)
-                .WithField(high_memory_eviction_target_->GetGrantedLeaseId())
-                .WithField(high_memory_eviction_target_->WorkerId())
-            << "Memory usage above threshold. "
-            << "Still waiting for worker eviction to free up memory. "
-            << "worker pid: " << high_memory_eviction_target_->GetProcess().GetId();
-      } else {
-        system_memory.process_used_bytes = MemoryMonitor::GetProcessMemoryUsage();
-        auto workers = worker_pool_.GetAllRegisteredWorkers();
-        if (workers.empty()) {
-          RAY_LOG_EVERY_MS(WARNING, 5000)
-              << "Memory usage above threshold but no workers are available for "
-                 "killing."
-              << "This could be due to worker memory leak and"
-              << "idle worker are occupying most of the memory.";
-          return;
-        }
-        auto worker_to_kill_and_should_retry =
-            worker_killing_policy_->SelectWorkerToKill(workers, system_memory);
-        auto worker_to_kill = worker_to_kill_and_should_retry.first;
-        bool should_retry = worker_to_kill_and_should_retry.second;
-        if (worker_to_kill == nullptr) {
-          RAY_LOG_EVERY_MS(WARNING, 5000) << "Worker killer did not select a worker to "
-                                             "kill even though memory usage is high.";
-        } else {
-          high_memory_eviction_target_ = worker_to_kill;
+// Picks the workers and kills the process if the memory usage is above the threshold.
+KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
+  return [this](SystemMemorySnapshot system_memory_snapshot) {
+    io_service_.post(
+        [this, system_memory = std::move(system_memory_snapshot)]() {
+          ProcessesMemorySnapshot process_memory_snapshot =
+              MemoryMonitorUtils::TakePerProcessMemorySnapshot();
+          std::vector<std::shared_ptr<WorkerInterface>> workers =
+              worker_pool_.GetAllRegisteredWorkers(/* filter_dead_workers */ true,
+                                                   /* filter_io_workers */ true);
+          if (workers.empty()) {
+            RAY_LOG_EVERY_MS(WARNING, 5000)
+                << "Memory usage above threshold but no workers are available for "
+                   "killing."
+                << "This could be due to worker memory leak and"
+                << "idle worker are occupying most of the memory.";
+            memory_monitor_->Enable();
+            return;
+          }
+          std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+              workers_to_kill_and_should_retry =
+                  worker_killing_policy_->SelectWorkersToKill(
+                      workers, process_memory_snapshot, system_memory);
+          if (workers_to_kill_and_should_retry.empty()) {
+            memory_monitor_->Enable();
+            return;
+          }
 
-          /// TODO: (clarng) expose these strings in the frontend python error as well.
-          std::string oom_kill_details = this->CreateOomKillMessageDetails(
-              worker_to_kill, this->self_node_id_, system_memory, usage_threshold);
+          // Compute the memory usage threshold
+          int64_t total_memory_bytes = system_memory.total_bytes;
+          int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
+              total_memory_bytes,
+              RayConfig::instance().memory_usage_threshold(),
+              RayConfig::instance().min_memory_free_bytes(),
+              initial_config_.enable_resource_isolation,
+              *cgroup_manager_);
+          float computed_threshold_fraction =
+              static_cast<float>(computed_threshold_bytes) /
+              static_cast<float>(total_memory_bytes);
+
+          std::string oom_kill_details = CreateOomKillMessageDetails(
+              workers_to_kill_and_should_retry,
+              self_node_id_,
+              system_memory,
+              store_client_->GetMemoryUsage().value_or("Not available"),
+              process_memory_snapshot,
+              computed_threshold_fraction);
           std::string oom_kill_suggestions =
-              this->CreateOomKillMessageSuggestions(worker_to_kill, should_retry);
+              CreateOomKillMessageSuggestions(workers_to_kill_and_should_retry);
 
-          RAY_LOG(INFO)
-              << "Killing worker with task "
-              << worker_to_kill->GetGrantedLease().GetLeaseSpecification().DebugString()
-              << "\n\n"
-              << oom_kill_details << "\n\n"
-              << oom_kill_suggestions;
+          RAY_LOG(INFO) << absl::StrFormat(
+              "Killing %d worker(s), kill details: %s, suggestions: %s",
+              workers_to_kill_and_should_retry.size(),
+              oom_kill_details,
+              oom_kill_suggestions);
 
-          std::stringstream worker_exit_message_ss;
-          worker_exit_message_ss
-              << "Task was killed due to the node running low on memory.\n"
-              << oom_kill_details << "\n"
-              << oom_kill_suggestions;
-          std::string worker_exit_message = worker_exit_message_ss.str();
+          std::string worker_exit_message = absl::StrFormat(
+              "%d worker(s) were killed due to the node running low on memory. %s, %s",
+              workers_to_kill_and_should_retry.size(),
+              oom_kill_details,
+              oom_kill_suggestions);
 
-          // Rerpot the event to the dashboard.
+          // Report the event to the dashboard.
           RAY_EVENT_EVERY_MS(ERROR, "Out of Memory", 10 * 1000) << worker_exit_message;
 
-          // Mark the worker as failure and raise an exception from a caller.
-          rpc::RayErrorInfo worker_failure_reason;
-          worker_failure_reason.set_error_message(worker_exit_message);
-          worker_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
-          SetWorkerFailureReason(
-              worker_to_kill->GetGrantedLeaseId(), worker_failure_reason, should_retry);
+          for (const auto &[worker_to_kill, should_retry] :
+               workers_to_kill_and_should_retry) {
+            // Mark the worker as failure and raise an exception from a caller.
+            rpc::RayErrorInfo worker_failure_reason;
+            worker_failure_reason.set_error_message(worker_exit_message);
+            worker_failure_reason.set_error_type(rpc::ErrorType::OUT_OF_MEMORY);
 
-          /// since we print the process memory in the message. Destroy should be called
-          /// as soon as possible to free up memory.
-          DestroyWorker(high_memory_eviction_target_,
-                        rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
-                        worker_exit_message,
-                        true /* force */);
+            if (!worker_to_kill->GetGrantedLeaseId().IsNil()) {
+              SetWorkerFailureReason(worker_to_kill->GetGrantedLeaseId(),
+                                     worker_failure_reason,
+                                     should_retry);
+            }
 
-          if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
-            // TODO(sang): Add the job entrypoint to the name.
-            memory_manager_worker_eviction_total_count_.Record(
-                1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
-          } else if (worker_to_kill->GetActorId().IsNil()) {
-            const auto &ray_lease = worker_to_kill->GetGrantedLease();
-            memory_manager_worker_eviction_total_count_.Record(
-                1,
-                {{"Type", "MemoryManager.TaskEviction.Total"},
-                 {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
-          } else {
-            const auto &ray_lease = worker_to_kill->GetGrantedLease();
-            memory_manager_worker_eviction_total_count_.Record(
-                1,
-                {{"Type", "MemoryManager.ActorEviction.Total"},
-                 {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+            DestroyWorker(worker_to_kill,
+                          rpc::WorkerExitType::NODE_OUT_OF_MEMORY,
+                          worker_exit_message,
+                          true /* force */);
+
+            if (worker_to_kill->GetWorkerType() == rpc::WorkerType::DRIVER) {
+              // TODO(sang): Add the job entrypoint to the name.
+              memory_manager_worker_eviction_total_count_.Record(
+                  1, {{"Type", "MemoryManager.DriverEviction.Total"}, {"Name", ""}});
+            } else if (worker_to_kill->GetGrantedLeaseId().IsNil()) {
+              memory_manager_worker_eviction_total_count_.Record(
+                  1, {{"Type", "MemoryManager.IdleWorkerEviction.Total"}, {"Name", ""}});
+            } else if (worker_to_kill->GetActorId().IsNil()) {
+              const RayLease &ray_lease = worker_to_kill->GetGrantedLease();
+              memory_manager_worker_eviction_total_count_.Record(
+                  1,
+                  {{"Type", "MemoryManager.TaskEviction.Total"},
+                   {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+            } else {
+              const RayLease &ray_lease = worker_to_kill->GetGrantedLease();
+              memory_manager_worker_eviction_total_count_.Record(
+                  1,
+                  {{"Type", "MemoryManager.ActorEviction.Total"},
+                   {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+            }
           }
-        }
-      }
-    }
+          memory_monitor_->Enable();
+        },
+        "NodeManager.KillWorkersCallback");
   };
 }
 
 std::string NodeManager::CreateOomKillMessageDetails(
-    const std::shared_ptr<WorkerInterface> &worker,
+    const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> &workers_to_kill,
     const NodeID &node_id,
-    const MemorySnapshot &system_memory,
+    const SystemMemorySnapshot &system_memory_snapshot,
+    const std::string &object_store_memory_usage,
+    const ProcessesMemorySnapshot &process_memory_snapshot,
     float usage_threshold) const {
-  float usage_fraction =
-      static_cast<float>(system_memory.used_bytes) / system_memory.total_bytes;
-  std::string used_bytes_gb = absl::StrFormat(
-      "%.2f", static_cast<float>(system_memory.used_bytes) / 1024 / 1024 / 1024);
-  std::string total_bytes_gb = absl::StrFormat(
-      "%.2f", static_cast<float>(system_memory.total_bytes) / 1024 / 1024 / 1024);
-  std::stringstream oom_kill_details_ss;
-
-  auto pid = worker->GetProcess().GetId();
-  int64_t used_bytes = 0;
-  const auto pid_entry = system_memory.process_used_bytes.find(pid);
-  if (pid_entry != system_memory.process_used_bytes.end()) {
-    used_bytes = pid_entry->second;
-  } else {
+  if (workers_to_kill.empty()) {
     return "";
-    RAY_LOG_EVERY_MS(INFO, 60000)
-        << "Can't find memory usage for PID, reporting zero. PID: " << pid;
   }
-  std::string process_used_bytes_gb =
-      absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
 
-  oom_kill_details_ss
-      << "Memory on the node (IP: " << worker->IpAddress() << ", ID: " << node_id
-      << ") where the lease (" << worker->GetLeaseIdAsDebugString()
-      << ", name=" << worker->GetGrantedLease().GetLeaseSpecification().GetTaskName()
-      << ", pid=" << worker->GetProcess().GetId()
-      << ", memory used=" << process_used_bytes_gb << "GB) was running was "
-      << used_bytes_gb << "GB / " << total_bytes_gb << "GB (" << usage_fraction
-      << "), which exceeds the memory usage threshold of " << usage_threshold
-      << ". Ray killed this worker (ID: " << worker->WorkerId()
-      << ") because it was the most recently scheduled task; to see more "
-         "information about memory usage on this node, use `ray logs raylet.out "
-         "-ip "
-      << worker->IpAddress() << "`. To see the logs of the worker, use `ray logs worker-"
-      << worker->WorkerId() << "*out -ip " << worker->IpAddress()
-      << ". Top 10 memory users:\n"
-      << MemoryMonitor::TopNMemoryDebugString(10, system_memory);
-  return oom_kill_details_ss.str();
+  float usage_fraction = static_cast<float>(system_memory_snapshot.used_bytes) /
+                         system_memory_snapshot.total_bytes;
+  std::string used_bytes_gb = absl::StrFormat(
+      "%.2f", static_cast<float>(system_memory_snapshot.used_bytes) / 1024 / 1024 / 1024);
+  std::string total_bytes_gb = absl::StrFormat(
+      "%.2f",
+      static_cast<float>(system_memory_snapshot.total_bytes) / 1024 / 1024 / 1024);
+
+  const auto &first_worker = workers_to_kill.front().first;
+  std::string node_ip = first_worker->IpAddress();
+
+  std::vector<std::string> worker_details;
+  for (const auto &[worker, should_retry] : workers_to_kill) {
+    pid_t pid = worker->GetProcess().GetId();
+    int64_t used_bytes =
+        MemoryMonitorUtils::GetProcessUsedMemoryBytes(process_memory_snapshot, pid);
+    std::string process_used_bytes_gb =
+        absl::StrFormat("%.2f", static_cast<float>(used_bytes) / 1024 / 1024 / 1024);
+
+    std::string worker_type_str = "";
+    std::string lease_str = "";
+    if (worker->GetGrantedLeaseId().IsNil()) {
+      worker_type_str = "(Worker with no lease granted: ";
+    } else {
+      if (worker->GetActorId().IsNil()) {
+        worker_type_str = "(Task: ";
+      } else {
+        worker_type_str = absl::StrFormat("(Actor(%s): ", worker->GetActorId().Hex());
+      }
+      lease_str =
+          absl::StrFormat("job ID=%s, lease ID=%s, task name=%s, required resources=%s, ",
+                          worker->GetGrantedLease().GetLeaseSpecification().JobId().Hex(),
+                          worker->GetGrantedLeaseId().Hex(),
+                          worker->GetGrantedLease().GetLeaseSpecification().GetTaskName(),
+                          worker->GetGrantedLease()
+                              .GetLeaseSpecification()
+                              .GetRequiredResources()
+                              .DebugString());
+    }
+    std::string worker_detail = absl::StrFormat(
+        "%s"
+        "%s"
+        "pid=%d, actual memory used=%sGB, worker ID=%s)",
+        worker_type_str,
+        lease_str,
+        pid,
+        process_used_bytes_gb,
+        worker->WorkerId().Hex());
+
+    worker_details.emplace_back(worker_detail);
+  }
+
+  return absl::StrFormat(
+      "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f), "
+      "which exceeds the memory usage threshold of %f; "
+      "Object store memory usage: [%s]; "
+      "Ray killed %d worker(s) based on the killing policy: "
+      "[%s]; "
+      "To see more information about memory usage on this node, "
+      "use `ray logs raylet.out -ip %s`; "
+      "Top 10 memory users: %s",
+      node_ip,
+      node_id.Hex(),
+      used_bytes_gb,
+      total_bytes_gb,
+      usage_fraction,
+      usage_threshold,
+      absl::StrReplaceAll(object_store_memory_usage, {{"\n", "; "}}),
+      workers_to_kill.size(),
+      absl::StrJoin(worker_details, "; "),
+      node_ip,
+      MemoryMonitorUtils::TopNMemoryDebugString(10, process_memory_snapshot));
 }
 
 std::string NodeManager::CreateOomKillMessageSuggestions(
-    const std::shared_ptr<WorkerInterface> &worker, bool should_retry) const {
+    const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> &workers_to_kill)
+    const {
   std::stringstream not_retriable_recommendation_ss;
-  if (worker && !worker->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
-    not_retriable_recommendation_ss << "Set ";
-    if (worker->GetGrantedLease().GetLeaseSpecification().IsNormalTask()) {
-      not_retriable_recommendation_ss << "max_retries";
-    } else {
-      not_retriable_recommendation_ss << "max_restarts and max_task_retries";
+  bool has_non_retriable_task = false;
+  bool has_non_retriable_actor = false;
+
+  for (const auto &[worker, should_retry] : workers_to_kill) {
+    if (worker->GetGrantedLeaseId().IsNil()) {
+      // Workers with no lease granted doesn't count as non-retriable tasks or actors.
+      continue;
     }
+    if (!worker->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
+      if (worker->GetGrantedLease().GetLeaseSpecification().IsNormalTask()) {
+        has_non_retriable_task = true;
+      } else {
+        has_non_retriable_actor = true;
+      }
+    }
+  }
+
+  if (has_non_retriable_task || has_non_retriable_actor) {
+    not_retriable_recommendation_ss << "Set ";
+    std::vector<std::string> not_retriable_recommendations;
+    if (has_non_retriable_task) {
+      not_retriable_recommendations.push_back("max_retries");
+    }
+    if (has_non_retriable_actor) {
+      not_retriable_recommendations.push_back("max_restarts and max_task_retries");
+    }
+    not_retriable_recommendation_ss << absl::StrJoin(not_retriable_recommendations, ", ");
     not_retriable_recommendation_ss
         << " to enable retry when the task crashes due to OOM. ";
   }
-  std::stringstream deadlock_recommendation;
-  if (!should_retry) {
-    deadlock_recommendation
-        << "The node has insufficient memory to execute this workload. ";
-  }
-  std::stringstream oom_kill_suggestions_ss;
-  oom_kill_suggestions_ss
-      << "Refer to the documentation on how to address the out of memory issue: "
-         "https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. "
-         "Consider provisioning more memory on this node or reducing task "
-         "parallelism by requesting more CPUs per task. "
-      << not_retriable_recommendation_ss.str()
-      << "To adjust the kill "
-         "threshold, set the environment variable "
-         "`RAY_memory_usage_threshold` when starting Ray. To disable "
-         "worker killing, set the environment variable "
-         "`RAY_memory_monitor_refresh_ms` to zero.";
-  return oom_kill_suggestions_ss.str();
+
+  return absl::StrFormat(
+      "Refer to the documentation on how to address the out of memory issue: "
+      "https://docs.ray.io/en/latest/ray-core/scheduling/ray-oom-prevention.html. "
+      "Consider provisioning more memory on this node or reducing task "
+      "parallelism by requesting more CPUs per task. %s"
+      "To adjust the kill "
+      "threshold, set the environment variable "
+      "`RAY_memory_usage_threshold` when starting Ray. "
+      "To disable worker killing, set the environment variable "
+      "`RAY_memory_monitor_refresh_ms` to zero. "
+      "Since 2.56, Ray updated the oom killing policy to enabling killing "
+      "multiple workers and selecting workers based on the time since "
+      "the task start executing. To revert to the legacy policy of "
+      "determining worker to oom kill based on owner group size or only "
+      "selecting a single worker to kill at a time, set the environment "
+      "variable `RAY_worker_killing_policy_by_group` to true before "
+      "starting Ray.",
+      not_retriable_recommendation_ss.str());
 }
 
 void NodeManager::SetWorkerFailureReason(const LeaseID &lease_id,
@@ -3264,7 +3327,7 @@ void NodeManager::GCWorkerFailureReason() {
   }
 }
 
-void NodeManager::ReportWorkerOOMKillStats() {
+void NodeManager::ReportWorkerOomKillStats() {
   if (number_workers_killed_by_oom_ > 0) {
     RAY_LOG(ERROR) << number_workers_killed_by_oom_
                    << " Workers (tasks / actors) killed due to memory pressure (OOM), "

@@ -2,11 +2,14 @@ import json
 import logging
 import os
 import re
+import time
 import uuid
 from contextlib import contextmanager
 from typing import Any, Dict, List, Optional, Union
 
-import time
+import requests
+from openai import OpenAI
+
 import anyscale
 import boto3
 import ray
@@ -16,6 +19,7 @@ from anyscale.compute_config.models import ComputeConfig
 from anyscale.service.models import ServiceState
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.utils import get_random_string
+
 
 logger = logging.getLogger(__file__)
 logging.basicConfig(level=logging.INFO)
@@ -165,14 +169,11 @@ def start_service(
         logger.info(f"Service '{service_name}' terminated successfully.")
 
 
-def get_current_compute_config_name() -> str:
-    """Get the name of the current compute config."""
-    cluster_id = os.environ["ANYSCALE_CLUSTER_ID"]
-    sdk = anyscale.AnyscaleSDK()
-    cluster = sdk.get_cluster(cluster_id)
-    return anyscale.compute_config.get(
-        name="", _id=cluster.result.cluster_compute_id
-    ).name
+def get_current_compute_config():
+    """Get the compute config of the current job."""
+    job_id = os.environ["ANYSCALE_JOB_ID"]
+    job_status = anyscale.job.status(id=job_id)
+    return job_status.config.compute_config
 
 
 def get_applications(serve_config_file: str) -> List[Any]:
@@ -234,3 +235,38 @@ def get_vllm_s3_storage_path() -> str:
     storage_path = f"s3://{S3_BUCKET}/{S3_PREFIX}/vllm-perf-results-{unique_id}.jsonl"
 
     return storage_path
+
+
+def create_openai_client(server_url: str) -> OpenAI:
+    return OpenAI(base_url=f"{server_url}/v1", api_key="fake-key")
+
+
+def wait_for_server_ready(
+    url: str,
+    model_id: str,
+    timeout: int = 300,
+    retry_interval: int = 2,
+) -> None:
+    """Poll the server until it's ready or timeout is reached."""
+    start_time = time.time()
+    while time.time() - start_time < timeout:
+        try:
+            resp = requests.post(
+                f"{url}/v1/completions",
+                json={
+                    "model": model_id,
+                    "prompt": "test",
+                    "max_tokens": 5,
+                    "temperature": 0,
+                },
+                timeout=10,
+            )
+            if resp.status_code == 200:
+                print(f"Server at {url} is ready to handle requests!")
+                return
+        except Exception:
+            pass
+
+        print(f"Waiting for server at {url} to be ready...")
+        time.sleep(retry_interval)
+    raise TimeoutError(f"Server at {url} not ready within {timeout}s")

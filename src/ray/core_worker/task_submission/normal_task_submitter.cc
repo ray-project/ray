@@ -26,6 +26,7 @@
 #include "ray/common/lease/lease_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/core_worker/task_submission/task_submission_util.h"
+#include "ray/util/process_utils.h"
 #include "ray/util/time.h"
 
 namespace ray {
@@ -232,43 +233,33 @@ void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &schedul
 
 void NormalTaskSubmitter::ReportWorkerBacklog() {
   absl::MutexLock lock(&mu_);
-  ReportWorkerBacklogInternal();
-}
-
-void NormalTaskSubmitter::ReportWorkerBacklogInternal() {
-  absl::flat_hash_map<SchedulingClass, std::pair<LeaseSpecification, int64_t>> backlogs;
-  for (auto &scheduling_key_and_entry : scheduling_key_entries_) {
-    const SchedulingClass scheduling_class = std::get<0>(scheduling_key_and_entry.first);
-    if (backlogs.find(scheduling_class) == backlogs.end()) {
-      backlogs[scheduling_class].first = scheduling_key_and_entry.second.lease_spec;
-      backlogs[scheduling_class].second = 0;
-    }
+  absl::flat_hash_map<SchedulingClass, std::pair<rpc::LeaseSpec, int64_t>> backlogs;
+  for (const auto &[scheduling_key, scheduling_key_entry] : scheduling_key_entries_) {
     // We report backlog size per scheduling class not per scheduling key
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
-    backlogs[scheduling_class].second += scheduling_key_and_entry.second.BacklogSize();
-    scheduling_key_and_entry.second.last_reported_backlog_size =
-        scheduling_key_and_entry.second.BacklogSize();
+    const auto scheduling_class = std::get<0>(scheduling_key);
+    auto [it, inserted] = backlogs.try_emplace(
+        scheduling_class, scheduling_key_entry.lease_spec.GetMessage(), 0);
+    int64_t &backlog_size = it->second.second;
+    backlog_size += scheduling_key_entry.BacklogSize();
   }
 
-  std::vector<rpc::WorkerBacklogReport> backlog_reports;
-  for (const auto &backlog : backlogs) {
-    rpc::WorkerBacklogReport backlog_report;
-    backlog_report.mutable_lease_spec()->CopyFrom(backlog.second.first.GetMessage());
-    backlog_report.set_backlog_size(backlog.second.second);
-    backlog_reports.emplace_back(backlog_report);
+  rpc::ReportWorkerBacklogRequest request;
+  request.set_worker_id(worker_id_.Binary());
+  for (auto &[scheduling_class, spec_and_size] : backlogs) {
+    auto &[lease_spec, backlog_size] = spec_and_size;
+    if (backlog_size > 0) {
+      auto *report = request.add_backlog_reports();
+      *report->mutable_lease_spec() = std::move(lease_spec);
+      report->set_backlog_size(backlog_size);
+    }
   }
-  local_raylet_client_->ReportWorkerBacklog(worker_id_, backlog_reports);
-}
-
-void NormalTaskSubmitter::ReportWorkerBacklogIfNeeded(
-    const SchedulingKey &scheduling_key) {
-  const auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-
-  if (scheduling_key_entry.last_reported_backlog_size !=
-      scheduling_key_entry.BacklogSize()) {
-    ReportWorkerBacklogInternal();
+  bool has_backlog = !request.backlog_reports().empty();
+  if (has_backlog || last_backlog_report_nonempty_) {
+    local_raylet_client_->ReportWorkerBacklog(request);
   }
+  last_backlog_report_nonempty_ = has_backlog;
 }
 
 void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduling_key,
@@ -280,6 +271,15 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   if (scheduling_key_entry.pending_lease_requests.size() >=
       kMaxPendingLeaseRequestsPerSchedulingCategory) {
+    size_t backlog_size = scheduling_key_entry.BacklogSize();
+    RAY_LOG_EVERY_MS(WARNING, 10000)
+        << "Task submission is being throttled: pending lease requests ("
+        << scheduling_key_entry.pending_lease_requests.size() << ") reached limit ("
+        << kMaxPendingLeaseRequestsPerSchedulingCategory << "), with " << backlog_size
+        << " tasks waiting for lease requests. "
+        << "This especially affects workloads submitting many tasks of the same type "
+           "to a cluster with few nodes but many cores per node. "
+        << "Consider increasing RAY_max_pending_lease_requests_per_scheduling_category.";
     RAY_LOG(DEBUG) << "Exceeding the pending request limit "
                    << kMaxPendingLeaseRequestsPerSchedulingCategory;
     return;
@@ -359,7 +359,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                       rpc::RequestWorkerLeaseReply::
                           SCHEDULING_CANCELLED_PLACEMENT_GROUP_REMOVED ||
                   reply.failure_type() ==
-                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE) {
+                      rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE ||
+                  reply.failure_type() ==
+                      rpc::RequestWorkerLeaseReply::
+                          SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED) {
                 // We need to actively fail all of the pending tasks in the queue when the
                 // placement group was removed or the runtime env failed to be set up.
                 // Such an operation is straightforward for the scenario of placement
@@ -377,6 +380,10 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
                            rpc::RequestWorkerLeaseReply::
                                SCHEDULING_CANCELLED_UNSCHEDULABLE) {
                   error_type = rpc::ErrorType::TASK_UNSCHEDULABLE_ERROR;
+                } else if (reply.failure_type() ==
+                           rpc::RequestWorkerLeaseReply::
+                               SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED) {
+                  error_type = rpc::ErrorType::WORKER_STARTUP_FAILED;
                 } else {
                   error_type = rpc::ErrorType::TASK_PLACEMENT_GROUP_REMOVED;
                 }
@@ -486,7 +493,6 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
       task_queue.size(),
       is_selected_based_on_locality);
   scheduling_key_entry.pending_lease_requests.emplace(lease_id, *raylet_address);
-  ReportWorkerBacklogIfNeeded(scheduling_key);
 
   // Lease more workers if there are still pending tasks and
   // and we haven't hit the max_pending_lease_requests yet.

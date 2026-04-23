@@ -26,7 +26,7 @@ from benchmark.common import read_from_s3, get_llm_config
 from benchmark.firehose_utils import FirehoseRecord, RecordName
 from test_utils import (
     start_service,
-    get_current_compute_config_name,
+    get_current_compute_config,
     get_applications,
     get_hf_token_env_var,
     setup_client_env_vars,
@@ -94,7 +94,7 @@ def main(
         image_uri = f"anyscale/image/{cluster_env}:1"
 
     applications = get_applications(serve_config_file)
-    compute_config = get_current_compute_config_name()
+    compute_config = get_current_compute_config()
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
 
     if run_vllm_profiler:

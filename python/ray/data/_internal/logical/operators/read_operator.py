@@ -1,6 +1,6 @@
-import copy
 import functools
 import math
+from dataclasses import InitVar, dataclass, field, replace
 from typing import Any, Dict, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy
@@ -18,7 +18,12 @@ from ray.data.context import DataContext
 from ray.data.datasource.datasource import Datasource, Reader
 from ray.data.expressions import Expr
 
+__all__ = [
+    "Read",
+]
 
+
+@dataclass(frozen=True, repr=False, eq=False)
 class Read(
     AbstractMap,
     SourceOperator,
@@ -27,44 +32,48 @@ class Read(
 ):
     """Logical operator for read."""
 
-    # TODO: make this a frozen dataclass. https://github.com/ray-project/ray/issues/55747
-    def __init__(
-        self,
-        datasource: Datasource,
-        datasource_or_legacy_reader: Union[Datasource, Reader],
-        parallelism: int,
-        num_outputs: Optional[int] = None,
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-        compute: Optional[ComputeStrategy] = None,
-    ):
-        super().__init__(
-            name=f"Read{datasource.get_name()}",
-            input_op=None,
-            can_modify_num_rows=True,
-            num_outputs=num_outputs,
-            ray_remote_args=ray_remote_args,
-            compute=compute,
-        )
-        self._datasource = datasource
-        self._datasource_or_legacy_reader = datasource_or_legacy_reader
-        self._parallelism = parallelism
-        self._detected_parallelism = None
+    datasource: Datasource
+    datasource_or_legacy_reader: Union[Datasource, Reader]
+    parallelism: int
+    num_outputs: InitVar[Optional[int]] = None
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    compute: Optional[ComputeStrategy] = None
+    detected_parallelism: Optional[int] = None
+    can_modify_num_rows: bool = field(init=False, default=True)
+    min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
+    ray_remote_args_fn: None = field(init=False, default=None)
+    per_block_limit: Optional[int] = None
+    _name: str = field(init=False, repr=False)
+    _input_dependencies: list = field(init=False, repr=False, default_factory=list)
+    _num_outputs: Optional[int] = field(init=False, repr=False)
+
+    def __post_init__(self, num_outputs: Optional[int]):
+        if self.compute is None:
+            from ray.data._internal.compute import TaskPoolStrategy
+
+            object.__setattr__(self, "compute", TaskPoolStrategy())
+        if self.ray_remote_args is None:
+            object.__setattr__(self, "ray_remote_args", {})
+        object.__setattr__(self, "_name", f"Read{self.datasource.get_name()}")
+        object.__setattr__(self, "_input_dependencies", [])
+        object.__setattr__(self, "_num_outputs", num_outputs)
 
     def output_data(self):
         return None
 
-    def set_detected_parallelism(self, parallelism: int):
+    def set_detected_parallelism(self, parallelism: int) -> "Read":
         """
         Set the true parallelism that should be used during execution. This
         should be specified by the user or detected by the optimizer.
         """
-        self._detected_parallelism = parallelism
+        object.__setattr__(self, "detected_parallelism", parallelism)
+        return self
 
     def get_detected_parallelism(self) -> int:
         """
         Get the true parallelism that should be used during execution.
         """
-        return self._detected_parallelism
+        return self.detected_parallelism
 
     def estimated_num_outputs(self) -> Optional[int]:
         return self._num_outputs or self._estimate_num_outputs()
@@ -82,6 +91,10 @@ class Read(
 
     def _estimate_num_outputs(self) -> Optional[int]:
         metadata = self._cached_output_metadata.metadata
+
+        # Handle edge-case of empty dataset
+        if metadata.size_bytes == 0:
+            return 0
 
         target_max_block_size = DataContext.get_current().target_max_block_size
 
@@ -104,16 +117,21 @@ class Read(
     @functools.cached_property
     def _cached_output_metadata(self) -> "BlockMetadataWithSchema":
         # Legacy datasources might not implement `get_read_tasks`.
-        if self._datasource.should_create_reader:
+        if self.datasource.should_create_reader:
             empty_meta = BlockMetadata(None, None, None, None)
-            return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
+            return BlockMetadataWithSchema.from_metadata(empty_meta, schema=None)
 
         # HACK: Try to get a single read task to get the metadata.
-        read_tasks = self._datasource.get_read_tasks(1)
+        read_tasks = self.datasource.get_read_tasks(1)
         if len(read_tasks) == 0:
             # If there are no read tasks, the dataset is probably empty.
-            empty_meta = BlockMetadata(None, None, None, None)
-            return BlockMetadataWithSchema(metadata=empty_meta, schema=None)
+            empty_meta = BlockMetadata(
+                num_rows=0,
+                size_bytes=0,
+                input_files=None,
+                exec_stats=None,
+            )
+            return BlockMetadataWithSchema.from_metadata(empty_meta, schema=None)
 
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
         metadata = [read_task.metadata for read_task in read_tasks]
@@ -122,8 +140,8 @@ class Read(
             num_rows = sum(meta.num_rows for meta in metadata)
             original_num_rows = num_rows
             # Apply per-block limit if set
-            if self._per_block_limit is not None:
-                num_rows = min(num_rows, self._per_block_limit)
+            if self.per_block_limit is not None:
+                num_rows = min(num_rows, self.per_block_limit)
         else:
             num_rows = None
             original_num_rows = None
@@ -132,7 +150,7 @@ class Read(
             size_bytes = sum(meta.size_bytes for meta in metadata)
             # Pro-rate the byte size if we applied a row limit
             if (
-                self._per_block_limit is not None
+                self.per_block_limit is not None
                 and original_num_rows is not None
                 and original_num_rows > 0
             ):
@@ -159,40 +177,41 @@ class Read(
         schema = None
         if schemas:
             schema = unify_schemas_with_validation(schemas)
-        return BlockMetadataWithSchema(metadata=meta, schema=schema)
+        return BlockMetadataWithSchema.from_metadata(meta, schema=schema)
 
     def supports_projection_pushdown(self) -> bool:
-        return self._datasource.supports_projection_pushdown()
+        return self.datasource.supports_projection_pushdown()
 
     def get_projection_map(self) -> Optional[Dict[str, str]]:
-        return self._datasource.get_projection_map()
+        return self.datasource.get_projection_map()
 
     def apply_projection(
         self,
         projection_map: Optional[Dict[str, str]],
     ) -> "Read":
-        clone = copy.copy(self)
-
-        projected_datasource = self._datasource.apply_projection(projection_map)
-        clone._datasource = projected_datasource
-        clone._datasource_or_legacy_reader = projected_datasource
-
-        return clone
+        projected_datasource = self.datasource.apply_projection(projection_map)
+        return replace(
+            self,
+            datasource=projected_datasource,
+            datasource_or_legacy_reader=projected_datasource,
+            num_outputs=self._num_outputs,
+        )
 
     def get_column_renames(self) -> Optional[Dict[str, str]]:
-        return self._datasource.get_column_renames()
+        return self.datasource.get_column_renames()
 
     def supports_predicate_pushdown(self) -> bool:
-        return self._datasource.supports_predicate_pushdown()
+        return self.datasource.supports_predicate_pushdown()
 
     def get_current_predicate(self) -> Optional[Expr]:
-        return self._datasource.get_current_predicate()
+        return self.datasource.get_current_predicate()
 
     def apply_predicate(self, predicate_expr: Expr) -> "Read":
-        predicated_datasource = self._datasource.apply_predicate(predicate_expr)
+        predicated_datasource = self.datasource.apply_predicate(predicate_expr)
 
-        clone = copy.copy(self)
-        clone._datasource = predicated_datasource
-        clone._datasource_or_legacy_reader = predicated_datasource
-
-        return clone
+        return replace(
+            self,
+            datasource=predicated_datasource,
+            datasource_or_legacy_reader=predicated_datasource,
+            num_outputs=self._num_outputs,
+        )

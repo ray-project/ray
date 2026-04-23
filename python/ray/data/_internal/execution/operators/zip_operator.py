@@ -1,12 +1,13 @@
 import collections
 import itertools
+from dataclasses import replace
 from typing import TYPE_CHECKING, List, Optional, Tuple
 
 from typing_extensions import override
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
-from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
+from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -96,7 +97,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         assert not self.has_completed()
         assert 0 <= input_index <= len(self._input_dependencies), input_index
         self._input_buffers[input_index].add(refs)
-        self._metrics.on_input_queued(refs)
+        self._metrics.on_input_queued(refs, input_index=input_index)
 
     def all_inputs_done(self) -> None:
         assert len(self._output_buffer) == 0, len(self._output_buffer)
@@ -105,17 +106,17 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
         while self._input_buffers[0].has_next():
             refs = self._input_buffers[0].get_next()
             self._output_buffer.add(refs)
-            self._metrics.on_input_dequeued(refs)
+            self._metrics.on_input_dequeued(refs, input_index=0)
 
         # Process each additional input buffer
-        for input_buffer in self._input_buffers[1:]:
+        for idx, input_buffer in enumerate(self._input_buffers[1:], start=1):
             output_buffer, self._stats = self._zip(self._output_buffer, input_buffer)
             self._output_buffer = FIFOBundleQueue(bundles=output_buffer)
 
             # Clear the input buffer AFTER using it in _zip
             while input_buffer.has_next():
                 refs = input_buffer.get_next()
-                self._metrics.on_input_dequeued(refs)
+                self._metrics.on_input_dequeued(refs, input_index=idx)
 
         # Mark outputs as ready
         for ref in self._output_buffer:
@@ -133,6 +134,10 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
 
     def get_stats(self) -> StatsDict:
         return self._stats
+
+    def throttling_disabled(self) -> bool:
+        # TODO revert once zip becomes streaming
+        return True
 
     def _zip(
         self,
@@ -277,8 +282,7 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
                 # Need to fetch number of rows or size in bytes, so just fetch both.
                 num_rows, size_bytes = ray.get(get_num_rows_and_bytes.remote(block))
                 # Cache on the block metadata.
-                metadata.num_rows = num_rows
-                metadata.size_bytes = size_bytes
+                metadata = replace(metadata, num_rows=num_rows, size_bytes=size_bytes)
             block_rows.append(metadata.num_rows)
             block_bytes.append(metadata.size_bytes)
         return block_rows, block_bytes
@@ -303,7 +307,9 @@ def _zip_one_block(
     result = BlockAccessor.for_block(block).zip(other_block)
     from ray.data.block import BlockMetadataWithSchema
 
-    return result, BlockMetadataWithSchema.from_block(result, stats=stats.build())
+    return result, BlockMetadataWithSchema.from_block(
+        result, block_exec_stats=stats.build()
+    )
 
 
 def _get_num_rows_and_bytes(block: Block) -> Tuple[int, int]:

@@ -9,10 +9,13 @@ import pytest
 import ray
 import ray._private.gcs_utils as gcs_utils
 import ray.experimental.internal_kv as internal_kv
-from ray._common.test_utils import SignalActor, wait_for_condition
-from ray._private.test_utils import (
+from ray._common.test_utils import (
     MetricSamplePattern,
     PrometheusTimeseries,
+    SignalActor,
+    wait_for_condition,
+)
+from ray._private.test_utils import (
     get_metric_check_condition,
     make_global_state_accessor,
 )
@@ -263,14 +266,12 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
 
     assert worker_node_id == ray.get(
         get_node_id.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                worker_node_id, soft=False
-            )
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: worker_node_id}
         ).remote()
     )
     assert head_node_id == ray.get(
         get_node_id.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=False)
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: head_node_id}
         ).remote()
     )
 
@@ -295,9 +296,9 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
     with pytest.raises(ray.exceptions.TaskUnschedulableError):
         ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    ray.NodeID.from_random().hex(), soft=False
-                )
+                label_selector={
+                    ray._raylet.RAY_NODE_ID_KEY: ray.NodeID.from_random().hex()
+                }
             ).remote()
         )
 
@@ -305,9 +306,7 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
     with pytest.raises(ray.exceptions.TaskUnschedulableError):
         ray.get(
             get_node_id.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    head_node_id, soft=False
-                ),
+                label_selector={ray._raylet.RAY_NODE_ID_KEY: head_node_id},
                 resources={"not_exist": 1},
             ).remote()
         )
@@ -346,23 +345,23 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
             return ray.get_runtime_context().get_node_id()
 
     actor = Actor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(worker_node_id, soft=False)
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: worker_node_id}
     ).remote()
     assert worker_node_id == ray.get(actor.get_node_id.remote())
 
     actor = Actor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=False)
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: head_node_id}
     ).remote()
     assert head_node_id == ray.get(actor.get_node_id.remote())
 
     actor = Actor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(worker_node_id, soft=False),
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: worker_node_id},
         num_cpus=0,
     ).remote()
     assert worker_node_id == ray.get(actor.get_node_id.remote())
 
     actor = Actor.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(head_node_id, soft=False),
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: head_node_id},
         num_cpus=0,
     ).remote()
     assert head_node_id == ray.get(actor.get_node_id.remote())
@@ -395,18 +394,14 @@ def test_node_affinity_scheduling_strategy(monkeypatch, ray_start_cluster):
     # Fail when the node doesn't exist.
     with pytest.raises(ray.exceptions.ActorUnschedulableError):
         actor = Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                ray.NodeID.from_random().hex(), soft=False
-            )
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: ray.NodeID.from_random().hex()}
         ).remote()
         ray.get(actor.get_node_id.remote())
 
     # Fail when the node is infeasible.
     with pytest.raises(ray.exceptions.ActorUnschedulableError):
         actor = Actor.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                worker_node_id, soft=False
-            ),
+            label_selector={ray._raylet.RAY_NODE_ID_KEY: worker_node_id},
             resources={"not_exist": 1},
         ).remote()
         ray.get(actor.get_node_id.remote())
@@ -434,10 +429,7 @@ def test_node_affinity_scheduling_strategy_soft_spill_on_unavailable(ray_start_c
     # Submit a first task that has affinity to the worker node.
     # It should be placed on the worker node and occupy the resources.
     worker_node_ref = get_node_id.options(
-        scheduling_strategy=NodeAffinitySchedulingStrategy(
-            worker_node.node_id,
-            soft=False,
-        ),
+        label_selector={ray._raylet.RAY_NODE_ID_KEY: worker_node.node_id},
     ).remote()
 
     wait_for_condition(lambda: ray.get(signal.cur_num_waiters.remote()) == 1)
@@ -589,11 +581,9 @@ def test_demand_report_for_node_affinity_scheduling_strategy(
     tasks.append(f.remote(10000))
     # This is not reported since there is feasible node.
     tasks.append(
-        f.options(
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                worker_node_id, soft=False
-            )
-        ).remote(0)
+        f.options(label_selector={ray._raylet.RAY_NODE_ID_KEY: worker_node_id}).remote(
+            0
+        )
     )
     # This is reported since there is no feasible node and soft is True.
     tasks.append(
@@ -794,9 +784,9 @@ def test_workload_placement_metrics(ray_start_regular):
                 partial_label_match={"WorkloadType": "Actor"},
             ),
             MetricSamplePattern(
-                name="ray_scheduler_placement_time_ms_bucket",
+                name="ray_tasks",
                 value=1.0,
-                partial_label_match={"WorkloadType": "Task"},
+                partial_label_match={"State": "FINISHED", "Name": "task"},
             ),
             MetricSamplePattern(
                 name="ray_scheduler_placement_time_ms_bucket",
@@ -806,7 +796,7 @@ def test_workload_placement_metrics(ray_start_regular):
         ],
         timeseries,
     )
-    wait_for_condition(placement_metric_condition, timeout=60)
+    wait_for_condition(placement_metric_condition, timeout=30)
 
 
 def test_negative_resource_availability(shutdown_only):

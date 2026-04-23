@@ -87,7 +87,7 @@ class InstanceReconcileConfig:
     )
     # The timeout for waiting for a ALLOCATED instance to be RAY_RUNNING.
     allocate_status_timeout_s: int = env_integer(
-        "RAY_AUTOSCALER_RECONCILE_ALLOCATE_STATUS_TIMEOUT_S", 300
+        "RAY_AUTOSCALER_RECONCILE_ALLOCATE_STATUS_TIMEOUT_S", 60 * 60
     )
     # The timeout for waiting for a RAY_INSTALLING instance to be RAY_RUNNING.
     ray_install_status_timeout_s: int = env_integer(
@@ -541,7 +541,9 @@ class ReadOnlyProviderConfigReader(IConfigReader):
 
         if available_node_types:
             self._configs["available_node_types"].update(available_node_types)
-            self._configs["max_workers"] = len(available_node_types)
+            self._configs["max_workers"] = sum(
+                v["max_workers"] for v in available_node_types.values()
+            )
             assert head_node_type, "Head node type should be found."
             self._configs["head_node_type"] = head_node_type
 

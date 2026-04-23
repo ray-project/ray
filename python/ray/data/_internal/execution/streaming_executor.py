@@ -1,11 +1,9 @@
 import logging
-import math
 import threading
 import time
 import typing
 from typing import Dict, List, Optional, Tuple
 
-from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray.data._internal.actor_autoscaler import (
     create_actor_autoscaler,
 )
@@ -16,9 +14,8 @@ from ray.data._internal.execution.backpressure_policy import (
     get_backpressure_policies,
 )
 from ray.data._internal.execution.dataset_state import DatasetState
-from ray.data._internal.execution.execution_callback import get_execution_callbacks
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
-    ExecutionResources,
     Executor,
     OutputIterator,
     PhysicalOperator,
@@ -35,6 +32,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     OpState,
     Topology,
     build_streaming_topology,
+    format_op_state_summary,
     process_completed_tasks,
     select_operator_to_run,
     update_operator_states,
@@ -44,9 +42,15 @@ from ray.data._internal.logging import (
     register_dataset_logger,
     unregister_dataset_logger,
 )
-from ray.data._internal.metadata_exporter import Topology as TopologyMetadata
-from ray.data._internal.progress.rich_progress import RichExecutionProgressManager
-from ray.data._internal.progress.tqdm_progress import TqdmExecutionProgressManager
+from ray.data._internal.metadata_exporter import (
+    Topology as TopologyMetadata,
+    sanitize_for_struct,
+)
+from ray.data._internal.operator_schema_exporter import (
+    OperatorSchema,
+    get_operator_schema_exporter,
+)
+from ray.data._internal.progress import get_progress_manager
 from ray.data._internal.stats import DatasetStats, Timer, _StatsManager
 from ray.data.context import OK_PREFIX, WARN_PREFIX, DataContext
 from ray.util.debug import log_once
@@ -54,16 +58,16 @@ from ray.util.metrics import Gauge
 
 if typing.TYPE_CHECKING:
     from ray.data._internal.progress.base_progress import BaseExecutionProgressManager
+    from ray.data.block import Schema
 
 logger = logging.getLogger(__name__)
 
-# Force a progress update after this many events processed. Avoids the
-# progress seeming to stall for very large scale workloads.
-PROGRESS_BAR_UPDATE_INTERVAL = 50
-PROGRESS_MANAGER_UPDATE_INTERVAL = 20
-
 # Interval for logging execution progress updates and operator metrics.
 DEBUG_LOG_INTERVAL_SECONDS = 5
+
+# Maximum string/sequence length for DataContext logging. Set high to avoid truncation
+# while still protecting against pathological cases.
+DATA_CONTEXT_LOG_TRUNCATE_LENGTH = 10000
 
 # Visible for testing.
 _num_shutdown = 0
@@ -90,6 +94,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
         self._progress_manager: Optional["BaseExecutionProgressManager"] = None
+        self._callbacks: List["ExecutionCallback"] = []
 
         # The executor can be shutdown while still running.
         self._shutdown_lock = threading.RLock()
@@ -102,6 +107,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._topology: Optional[Topology] = None
         self._output_node: Optional[Tuple[PhysicalOperator, OpState]] = None
         self._backpressure_policies: List[BackpressurePolicy] = []
+        self._op_schema: Dict[PhysicalOperator, Schema] = {}
 
         self._dataset_id = dataset_id
         # Stores if an operator is completed,
@@ -121,54 +127,32 @@ class StreamingExecutor(Executor, threading.Thread):
         # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
-        self._initialize_metrics_gauges()
-
-        Executor.__init__(self, self._data_context.execution_options)
-        thread_name = f"StreamingExecutor-{self._dataset_id}"
-        threading.Thread.__init__(self, daemon=True, name=thread_name)
-
-    def _initialize_metrics_gauges(self) -> None:
-        """Initialize all Prometheus-style metrics gauges for monitoring execution."""
         self._sched_loop_duration_s = Gauge(
             "data_sched_loop_duration_s",
             description="Duration of the scheduling loop in seconds",
             tag_keys=("dataset",),
         )
 
-        self._cpu_budget_gauge: Gauge = Gauge(
-            "data_cpu_budget",
-            "Budget (CPU) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._gpu_budget_gauge: Gauge = Gauge(
-            "data_gpu_budget",
-            "Budget (GPU) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._memory_budget_gauge: Gauge = Gauge(
-            "data_memory_budget",
-            "Budget (Memory) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._osm_budget_gauge: Gauge = Gauge(
-            "data_object_store_memory_budget",
-            "Budget (Object Store Memory) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._max_bytes_to_read_gauge: Gauge = Gauge(
-            "data_max_bytes_to_read",
-            description="Maximum bytes to read from streaming generator buffer.",
-            tag_keys=("dataset", "operator"),
-        )
+        Executor.__init__(self, self._data_context.execution_options)
+        thread_name = f"StreamingExecutor-{self._dataset_id}"
+        threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
-        self, dag: PhysicalOperator, initial_stats: Optional[DatasetStats] = None
+        self,
+        dag: PhysicalOperator,
+        initial_stats: Optional[DatasetStats] = None,
+        callbacks: Optional[List] = None,
     ) -> OutputIterator:
         """Executes the DAG using a streaming execution strategy.
 
         We take an event-loop approach to scheduling. We block on the next scheduling
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
+
+        if callbacks is not None:
+            self._callbacks = callbacks
+        else:
+            self._callbacks = []
 
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
@@ -184,7 +168,17 @@ class StreamingExecutor(Executor, threading.Thread):
                     f"Execution plan of Dataset {self._dataset_id}: {dag.dag_str}"
                 )
 
-            logger.debug("Execution config: %s", self._options)
+            # Log the full DataContext for traceability
+            if logger.isEnabledFor(logging.DEBUG) and log_once(
+                f"ray_data_log_context_{self._dataset_id}"
+            ):
+                logger.debug(
+                    f"Data Context for dataset {self._dataset_id}:\n%s",
+                    sanitize_for_struct(
+                        self._data_context,
+                        truncate_length=DATA_CONTEXT_LOG_TRUNCATE_LENGTH,
+                    ),
+                )
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology = build_streaming_topology(dag, self._options)
@@ -196,17 +190,14 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context,
         )
 
-        # Setup progress bars
-        if self._use_rich_progress():
-            self._progress_manager = RichExecutionProgressManager(
-                self._dataset_id, self._topology
-            )
-            self._progress_manager.start()
-        else:
-            self._progress_manager = TqdmExecutionProgressManager(
-                self._dataset_id, self._topology
-            )
-            self._progress_manager.start()
+        # Setup progress manager
+        self._progress_manager = get_progress_manager(
+            self._data_context,
+            self._dataset_id,
+            self._topology,
+            self._options.verbose_progress,
+        )
+        self._progress_manager.start()
 
         self._backpressure_policies = get_backpressure_policies(
             self._data_context, self._topology, self._resource_manager
@@ -214,6 +205,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._cluster_autoscaler = create_cluster_autoscaler(
             self._topology,
             self._resource_manager,
+            self._data_context,
             execution_id=self._dataset_id,
         )
         self._actor_autoscaler = create_actor_autoscaler(
@@ -235,7 +227,7 @@ class StreamingExecutor(Executor, threading.Thread):
             TopologyMetadata.create_topology_metadata(dag, op_to_id),
             self._data_context,
         )
-        for callback in get_execution_callbacks(self._data_context):
+        for callback in self._callbacks:
             callback.before_execution_starts(self)
 
         self.start()
@@ -306,6 +298,8 @@ class StreamingExecutor(Executor, threading.Thread):
             for op in self._topology.keys():
                 op.shutdown(timer, force=force)
 
+            self._clear_topology_queues_post_shutdown(force, exception)
+
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
             total = round(timer.get(), 3)
@@ -315,10 +309,10 @@ class StreamingExecutor(Executor, threading.Thread):
             )
 
             if exception is None:
-                for callback in get_execution_callbacks(self._data_context):
+                for callback in self._callbacks:
                     callback.after_execution_succeeds(self)
             else:
-                for callback in get_execution_callbacks(self._data_context):
+                for callback in self._callbacks:
                     callback.after_execution_fails(self, exception)
 
             self._cluster_autoscaler.on_executor_shutdown()
@@ -335,6 +329,26 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context.set_dataset_logger_id(
                 unregister_dataset_logger(self._dataset_id)
             )
+
+    def _clear_topology_queues_post_shutdown(
+        self, force: bool, exception: Optional[Exception] = None
+    ) -> None:
+        """Drain topology queues after operator shutdown (releases block refs)."""
+        for op, state in self._topology.items():
+            if isinstance(op, InternalQueueOperatorMixin):
+                op.clear_internal_input_queue()
+                op.clear_internal_output_queue()
+            # Input queues alias upstream output queues; clears the DAG except the sink.
+            for inqueue in state.input_queues:
+                inqueue.clear()
+
+        output_op, _ = self._output_node
+        # Clear sink output unless cooperative multi-split success (splits may still read).
+        is_live_multi_split_sink = (
+            output_op.num_output_splits() > 1 and not force and exception is None
+        )
+        if not is_live_multi_split_sink:
+            self._topology[output_op].output_queue.clear()
 
     def run(self):
         """Run the control loop in a helper thread.
@@ -358,7 +372,7 @@ class StreamingExecutor(Executor, threading.Thread):
                         sched_loop_duration
                     )
 
-                for callback in get_execution_callbacks(self._data_context):
+                for callback in self._callbacks:
                     callback.on_execution_step(self)
                 if not continue_sched or self._shutdown:
                     break
@@ -374,48 +388,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._sched_loop_duration_s.set(
             sched_loop_duration, tags={"dataset": self._dataset_id}
         )
-        for i, op in enumerate(self._topology):
-            tags = {
-                "dataset": self._dataset_id,
-                "operator": self._get_operator_id(op, i),
-            }
-            self._update_budget_metrics(op, tags)
-            self._update_max_bytes_to_read_metric(op, tags)
-
-    def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
-        budget = self._resource_manager.get_budget(op)
-        if budget is None:
-            cpu_budget = 0
-            gpu_budget = 0
-            memory_budget = 0
-            object_store_memory_budget = 0
-        else:
-            # Convert inf to -1 to represent unlimited budget in metrics
-            cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
-            gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
-            memory_budget = -1 if math.isinf(budget.memory) else budget.memory
-            object_store_memory_budget = (
-                -1
-                if math.isinf(budget.object_store_memory)
-                else budget.object_store_memory
-            )
-
-        self._cpu_budget_gauge.set(cpu_budget, tags=tags)
-        self._gpu_budget_gauge.set(gpu_budget, tags=tags)
-        self._memory_budget_gauge.set(memory_budget, tags=tags)
-        self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
-
-    def _update_max_bytes_to_read_metric(
-        self, op: PhysicalOperator, tags: Dict[str, str]
-    ):
-        if self._resource_manager.op_resource_allocator_enabled():
-            resource_allocator = self._resource_manager.op_resource_allocator
-            output_budget_bytes = resource_allocator.get_output_budget(op)
-            if output_budget_bytes is not None:
-                if math.isinf(output_budget_bytes):
-                    # Convert inf to -1 to represent unlimited bytes to read
-                    output_budget_bytes = -1
-                self._max_bytes_to_read_gauge.set(output_budget_bytes, tags)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -496,7 +468,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._resource_manager.update_usages()
 
             i += 1
-            if i % PROGRESS_MANAGER_UPDATE_INTERVAL == 0:
+            if i % self._progress_manager.TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS == 0:
                 self._refresh_progress_manager(topology)
 
         # Trigger autoscaling
@@ -512,12 +484,20 @@ class StreamingExecutor(Executor, threading.Thread):
             _debug_dump_topology(topology, self._resource_manager)
             self._last_debug_log_time = time.time()
 
-        # Log metrics of newly completed operators.
         for op, state in topology.items():
-            if op.has_completed() and not self._has_op_completed[op]:
-                metrics_dict = op._metrics.as_dict(skip_internal_metrics=True)
-                metrics_table = _format_metrics_table(metrics_dict)
-                log_str = f"Operator {op} completed. Operator Metrics:\n{metrics_table}"
+            # Export operator schema if it's updated
+            if state._schema is not None and self._op_schema.get(op) != state._schema:
+                self._op_schema[op] = state._schema
+                self._export_operator_schema(op)
+
+            # Log metrics of newly completed operators.
+            if not op.has_completed():
+                op.refresh_state()
+            elif not self._has_op_completed[op]:
+                log_str = (
+                    f"Operator {op} completed. "
+                    f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"
+                )
                 logger.debug(log_str)
                 self._has_op_completed[op] = True
                 self._validate_operator_queues_empty(op, state)
@@ -539,6 +519,22 @@ class StreamingExecutor(Executor, threading.Thread):
         """Returns whether the user thread is blocked on topology execution."""
         _, state = self._output_node
         return len(state.output_queue) == 0
+
+    def _export_operator_schema(self, op: PhysicalOperator) -> None:
+        schema = self._op_schema.get(op)
+        operator_schema_exporter = get_operator_schema_exporter()
+        if (
+            operator_schema_exporter is not None
+            and hasattr(schema, "names")
+            and hasattr(schema, "types")
+        ):
+            names = [str(n) for n in schema.names]
+            types = [str(t) for t in schema.types]
+            operator_schema = OperatorSchema(
+                operator_uuid=op.id,
+                schema_fields=dict(zip(names, types)),
+            )
+            operator_schema_exporter.export_operator_schema(operator_schema)
 
     def _validate_operator_queues_empty(
         self, op: PhysicalOperator, state: OpState
@@ -652,72 +648,6 @@ class StreamingExecutor(Executor, threading.Thread):
             )
             self._metrics_last_updated = now
 
-    def _use_rich_progress(self):
-        rich_enabled = self._data_context.enable_rich_progress_bars
-        use_ray_tqdm = self._data_context.use_ray_tqdm
-
-        if not rich_enabled or use_ray_tqdm:
-            if log_once("ray_data_rich_progress_disabled"):
-                logger.info(
-                    "[dataset]: A new progress UI is available. To enable, "
-                    "set `ray.data.DataContext.get_current()."
-                    "enable_rich_progress_bars = True` and `ray.data."
-                    "DataContext.get_current().use_ray_tqdm = False`."
-                )
-            return False
-        return True
-
-
-def _validate_dag(dag: PhysicalOperator, limits: ExecutionResources) -> None:
-    """Raises an exception on invalid DAGs.
-
-    It checks if the sum of min actor pool sizes are larger than the resource
-    limit, as well as other unsupported resource configurations.
-
-    This should be called prior to creating the topology from the DAG.
-
-    Args:
-        dag: The DAG to validate.
-        limits: The limits to validate against.
-    """
-
-    seen = set()
-
-    def walk(op):
-        seen.add(op)
-        for parent in op.input_dependencies:
-            if parent not in seen:
-                yield from walk(parent)
-        yield op
-
-    base_usage = ExecutionResources(cpu=1)
-    for op in walk(dag):
-        min_resource_usage, _ = op.min_max_resource_requirements()
-        base_usage = base_usage.add(min_resource_usage)
-
-    if not base_usage.satisfies_limit(limits):
-        error_message = (
-            "The current cluster doesn't have the required resources to execute your "
-            "Dataset pipeline:\n"
-        )
-        if base_usage.cpu > limits.cpu:
-            error_message += (
-                f"- Your application needs {base_usage.cpu} CPU(s), but your cluster "
-                f"only has {limits.cpu}.\n"
-            )
-        if base_usage.gpu > limits.gpu:
-            error_message += (
-                f"- Your application needs {base_usage.gpu} GPU(s), but your cluster "
-                f"only has {limits.gpu}.\n"
-            )
-        if base_usage.object_store_memory > limits.object_store_memory:
-            error_message += (
-                f"- Your application needs {base_usage.object_store_memory}B object "
-                f"store memory, but your cluster only has "
-                f"{limits.object_store_memory}B.\n"
-            )
-        raise ValueError(error_message.strip())
-
 
 def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) -> None:
     """Log current execution state for the topology for debugging.
@@ -728,145 +658,11 @@ def _debug_dump_topology(topology: Topology, resource_manager: ResourceManager) 
     """
     logger.debug("Execution Progress:")
     for i, (op, state) in enumerate(topology.items()):
+        summary_str = format_op_state_summary(state, resource_manager, verbose=True)
         logger.debug(
-            f"{i}: {state.summary_str(resource_manager, verbose=True)}, "
+            f"{i}: {op.name} - {summary_str}, "
             f"Blocks Outputted: {state.num_completed_tasks}/{op.num_outputs_total()}"
         )
-
-
-def _format_metrics_table(metrics_dict: dict) -> str:
-    """Format metrics dict as a pivot table, organized by category."""
-    if not metrics_dict:
-        return "(no metrics)"
-
-    # Define metric categories and their patterns
-    categories = [
-        (
-            "Inputs",
-            [
-                "num_inputs_received",
-                "num_row_inputs_received",
-                "bytes_inputs_received",
-                "num_task_inputs_processed",
-                "bytes_task_inputs_processed",
-                "bytes_inputs_of_submitted_tasks",
-                "rows_inputs_of_submitted_tasks",
-            ],
-        ),
-        (
-            "Outputs",
-            [
-                "num_outputs_taken",
-                "bytes_outputs_taken",
-                "row_outputs_taken",
-                "block_outputs_taken",
-                "num_task_outputs_generated",
-                "bytes_task_outputs_generated",
-                "rows_task_outputs_generated",
-                "num_outputs_of_finished_tasks",
-                "bytes_outputs_of_finished_tasks",
-                "rows_outputs_of_finished_tasks",
-            ],
-        ),
-        (
-            "Tasks",
-            [
-                "num_tasks_submitted",
-                "num_tasks_running",
-                "num_tasks_have_outputs",
-                "num_tasks_finished",
-                "num_tasks_failed",
-            ],
-        ),
-        (
-            "Timing",
-            [
-                "block_generation_time",
-                "task_submission_backpressure_time",
-                "task_output_backpressure_time",
-                "task_completion_time_total_s",
-                "task_completion_time",
-                "block_completion_time",
-                "task_completion_time_excl_backpressure_s",
-            ],
-        ),
-        (
-            "Block Stats",
-            ["num_output_blocks_per_task_s", "block_size_bytes", "block_size_rows"],
-        ),
-        (
-            "Object Store",
-            [
-                "obj_store_mem_internal_inqueue",
-                "obj_store_mem_internal_outqueue",
-                "obj_store_mem_pending_task_inputs",
-                "obj_store_mem_internal_inqueue_blocks",
-                "obj_store_mem_internal_outqueue_blocks",
-                "obj_store_mem_freed",
-                "obj_store_mem_spilled",
-                "obj_store_mem_used",
-                "num_external_inqueue_blocks",
-                "num_external_inqueue_bytes",
-                "num_external_outqueue_blocks",
-                "num_external_outqueue_bytes",
-            ],
-        ),
-        ("Actors", ["num_alive_actors", "num_restarting_actors", "num_pending_actors"]),
-        ("Resources", ["cpu_usage", "gpu_usage"]),
-        (
-            "Averages",
-            [
-                "average_num_outputs_per_task",
-                "average_num_inputs_per_task",
-                "average_total_task_completion_time_s",
-                "average_task_completion_excl_backpressure_time_s",
-                "average_bytes_per_output",
-                "average_bytes_inputs_per_task",
-                "average_rows_inputs_per_task",
-                "average_bytes_outputs_per_task",
-                "average_rows_outputs_per_task",
-                "average_max_uss_per_task",
-            ],
-        ),
-    ]
-
-    # Build categorized dict, sorting metrics alphabetically within each category
-    categorized = {}
-    categorized_keys = set()
-    for category, keys in categories:
-        category_metrics = {}
-        for key in keys:
-            if key in metrics_dict:
-                category_metrics[key] = metrics_dict[key]
-                categorized_keys.add(key)
-        if category_metrics:
-            # Sort metrics alphabetically within each category
-            categorized[category] = dict(sorted(category_metrics.items()))
-
-    # Add uncategorized metrics under "Other" (also sorted)
-    other_metrics = {k: v for k, v in metrics_dict.items() if k not in categorized_keys}
-    if other_metrics:
-        categorized["Other"] = dict(sorted(other_metrics.items()))
-
-    # Sort categories alphabetically, keeping "Other" at the end
-    sorted_categories = sorted(categorized.keys(), key=lambda c: (c == "Other", c))
-
-    # Build table data
-    table_data = []
-    for category in sorted_categories:
-        cat_metrics = categorized[category]
-        first_in_cat = True
-        for k, v in cat_metrics.items():
-            cat_display = category if first_in_cat else ""
-            # Convert None to string "None" since tabulate renders None as empty
-            table_data.append([cat_display, k, v if v is not None else "None"])
-            first_in_cat = False
-
-    return tabulate(
-        table_data,
-        headers=["category", "metric", "value"],
-        tablefmt="plain",
-    )
 
 
 def _log_op_metrics(topology: Topology) -> None:
@@ -878,7 +674,7 @@ def _log_op_metrics(topology: Topology) -> None:
     log_str = "Operator Metrics:\n"
     for op in topology:
         metrics_dict = op.metrics.as_dict(skip_internal_metrics=True)
-        log_str += f"{op.name}:\n{_format_metrics_table(metrics_dict)}\n"
+        log_str += f"{op.name}: {metrics_dict}\n"
     logger.debug(log_str)
 
 

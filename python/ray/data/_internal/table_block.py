@@ -14,9 +14,7 @@ from typing import (
     Union,
 )
 
-import numpy as np
-
-from ray._private.ray_constants import env_integer
+from ray._common.utils import env_integer
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.size_estimator import SizeEstimator
 from ray.data._internal.util import (
@@ -35,7 +33,6 @@ from ray.data.block import (
     KeyType,
     U,
 )
-from ray.data.constants import TENSOR_COLUMN_NAME
 from ray.data.context import DEFAULT_TARGET_MAX_BLOCK_SIZE
 
 if TYPE_CHECKING:
@@ -73,11 +70,9 @@ class TableBlockBuilder(BlockBuilder):
         self._num_compactions = 0
         self._block_type = block_type
 
-    def add(self, item: Union[dict, Mapping, np.ndarray]) -> None:
+    def add(self, item: Union[dict, Mapping]) -> None:
         if hasattr(item, "as_pydict"):
             item = item.as_pydict()
-        elif isinstance(item, np.ndarray):
-            item = {TENSOR_COLUMN_NAME: item}
         if not isinstance(item, collections.abc.Mapping):
             raise ValueError(
                 "Returned elements of an TableBlock must be of type `dict`, "
@@ -148,6 +143,9 @@ class TableBlockBuilder(BlockBuilder):
     def num_rows(self) -> int:
         return self._num_rows
 
+    def num_blocks(self) -> int:
+        return len(self._tables)
+
     def get_estimated_memory_usage(self) -> int:
         if self._num_rows == 0:
             return 0
@@ -176,16 +174,26 @@ class TableBlockAccessor(BlockAccessor):
     def _munge_conflict(name, count):
         return f"{name}_{count + 1}"
 
-    @staticmethod
-    def _build_tensor_row(row: Mapping, row_idx: int) -> np.ndarray:
-        raise NotImplementedError
-
     def to_default(self) -> Block:
         # Always promote Arrow blocks to pandas for consistency, since
         # we lazily convert pandas->Arrow internally for efficiency.
         default = self.to_pandas()
 
         return default
+
+    def to_cudf(self) -> Any:
+        """Convert this block to a cudf.DataFrame (requires cudf to be installed)."""
+        from ray.data.util.data_batch_conversion import _lazy_import_cudf
+
+        cudf = _lazy_import_cudf()
+        if cudf is None:
+            raise ValueError(
+                "Attempted to convert data to cuDF DataFrame but cuDF "
+                "is not installed. Please do `pip install cudf-cu12` to "
+                "install cuDF (GPU required)."
+            )
+
+        return cudf.DataFrame.from_arrow(self.to_arrow())
 
     def column_names(self) -> List[str]:
         raise NotImplementedError
@@ -317,25 +325,7 @@ class TableBlockAccessor(BlockAccessor):
                 yield tuple(), self.to_block()
                 return
 
-            start = end = 0
-            iter = self.iter_rows(public_row_format=False)
-            next_row = None
-            while True:
-                try:
-                    if next_row is None:
-                        next_row = next(iter)
-                    next_keys = next_row[keys]
-                    while keys_equal(next_row[keys], next_keys):
-                        end += 1
-                        try:
-                            next_row = next(iter)
-                        except StopIteration:
-                            next_row = None
-                            break
-                    yield next_keys, self.slice(start, end)
-                    start = end
-                except StopIteration:
-                    break
+            yield from self._iter_groups_sorted(sort_key)
 
         builder = self.builder()
         for group_keys, group_view in iter_groups():
@@ -472,7 +462,8 @@ class TableBlockAccessor(BlockAccessor):
                     else:
                         for i in range(len(aggs)):
                             accumulators[i] = aggs[i].merge(
-                                accumulators[i], r[resolved_agg_names[i]]
+                                accumulators[i],
+                                r[resolved_agg_names[i]],
                             )
                 # Build the row.
                 row = {}
@@ -493,7 +484,9 @@ class TableBlockAccessor(BlockAccessor):
                 break
 
         ret = builder.build()
-        return ret, BlockMetadataWithSchema.from_block(ret, stats=stats.build())
+        return ret, BlockMetadataWithSchema.from_block(
+            ret, block_exec_stats=stats.build()
+        )
 
     def _find_partitions_sorted(
         self,

@@ -17,6 +17,9 @@
 #include <string>
 #include <utility>
 
+#include "absl/strings/str_format.h"
+#include "ray/common/id.h"
+
 namespace ray {
 namespace gcs {
 
@@ -32,6 +35,25 @@ void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
     gcs_publisher_.GetPublisher().Publish(std::move(msg));
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
+void InternalPubSubHandler::HandleReportJobError(
+    rpc::ReportJobErrorRequest request,
+    rpc::ReportJobErrorReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto &job_id_binary = request.job_error().job_id();
+  if (job_id_binary.size() != JobID::Size()) {
+    send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                            "Invalid job_id: expected length %zu bytes, got %zu",
+                            JobID::Size(),
+                            job_id_binary.size())),
+                        nullptr,
+                        nullptr);
+    return;
+  }
+  const auto job_id = JobID::FromBinary(job_id_binary);
+  gcs_publisher_.PublishError(job_id.Hex(), std::move(*request.mutable_job_error()));
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 // Needs to use rpc::GcsSubscriberPollRequest and rpc::GcsSubscriberPollReply here,
@@ -71,26 +93,43 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     iter = sender_to_subscribers_.insert({sender_id, {}}).first;
   }
 
+  Status status = Status::OK();
   for (const auto &command : request.commands()) {
+    if (!command.has_unsubscribe_message() && !command.has_subscribe_message()) {
+      send_reply_callback(Status::InvalidArgument(absl::StrFormat(
+                              "Unexpected pubsub command has been received: %s."
+                              "Expected either unsubscribe or subscribe message",
+                              command.DebugString())),
+                          nullptr,
+                          nullptr);
+      return;
+    }
+
     if (command.has_unsubscribe_message()) {
       gcs_publisher_.GetPublisher().UnregisterSubscription(
           command.channel_type(),
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
       iter->second.erase(subscriber_id);
-    } else if (command.has_subscribe_message()) {
-      gcs_publisher_.GetPublisher().RegisterSubscription(
-          command.channel_type(),
-          subscriber_id,
-          command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
+    } else {  // subscribe_message case
+      StatusSet<StatusT::InvalidArgument> result =
+          gcs_publisher_.GetPublisher().RegisterSubscription(
+              command.channel_type(),
+              subscriber_id,
+              command.key_id().empty() ? std::nullopt
+                                       : std::make_optional(command.key_id()));
+      if (result.has_error()) {
+        send_reply_callback(
+            Status::InvalidArgument(
+                std::get<StatusT::InvalidArgument>(result.error()).message()),
+            nullptr,
+            nullptr);
+        return;
+      }
       iter->second.insert(subscriber_id);
-    } else {
-      RAY_LOG(FATAL) << "Invalid command has received, "
-                     << static_cast<int>(command.command_message_one_of_case())
-                     << ". If you see this message, please file an issue to Ray Github.";
     }
   }
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback(status, nullptr, nullptr);
 }
 
 void InternalPubSubHandler::AsyncRemoveSubscriberFrom(const std::string &sender_id) {

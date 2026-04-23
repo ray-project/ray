@@ -17,8 +17,6 @@ if TYPE_CHECKING:
 class RebundlingStrategy(abc.ABC):
     """Base class for strategies describing how to rebundle queues."""
 
-    pass
-
     @abc.abstractmethod
     def can_build_ready_bundle(self, num_pending_rows: int) -> bool:
         """Signifies whether we can build a ready bundle. A ready bundle is a bundle
@@ -33,7 +31,7 @@ class RebundlingStrategy(abc.ABC):
 
         Args:
             total_pending_rows: The number of rows in a batch of pending bundles that will be merged to form
-                a ready bundle, excluding the last_pending_bundle.
+                a ready bundle, including the last_pending_bundle.
             last_pending_bundle: The last pending bundles in that batch ^. The term *last* means the bundle that caused
                 `can_build_ready_bundle(num_pending_rows)` to be `True` for the first time.
 
@@ -62,10 +60,10 @@ class EstimateSize(RebundlingStrategy):
         self._min_rows_per_bundle: Optional[int] = min_rows_per_bundle
 
     @override
-    def can_build_ready_bundle(self, total_pending_rows: int) -> bool:
-        return total_pending_rows > 0 and (
+    def can_build_ready_bundle(self, num_pending_rows: int) -> bool:
+        return num_pending_rows > 0 and (
             self._min_rows_per_bundle is None
-            or total_pending_rows >= self._min_rows_per_bundle
+            or num_pending_rows >= self._min_rows_per_bundle
         )
 
     @override
@@ -143,22 +141,22 @@ class RebundleQueue(BaseBundleQueue):
         self._consumed_bundles_list: Deque[List[RefBundle]] = deque()
         self._total_pending_rows: int = 0
 
-    def _merge_bundles(self, pending_to_ready_bundles: Deque[RefBundle]):
+    def _merge_bundles(self):
+        """Combine *ALL* pending_bundles into a single, ready bundle."""
         from ray.data._internal.execution.interfaces import RefBundle
 
-        assert len(pending_to_ready_bundles) == len(self._pending_bundles)
-
-        merged_bundle = RefBundle.merge_ref_bundles(pending_to_ready_bundles)
+        merged_bundle = RefBundle.merge_ref_bundles(self._pending_bundles)
+        # Update the metrics
         self._ready_bundles.append(merged_bundle)
-        self._on_enqueue(merged_bundle)
+        self._on_enqueue_bundle(merged_bundle)
 
         # Clear the pending queue since all bundles have been processed
         for bundle in self._pending_bundles:
-            self._on_dequeue(bundle)
+            self._on_dequeue_bundle(bundle)
         self._pending_bundles.clear()
         self._total_pending_rows = 0
 
-    def _try_build_ready_bundle(self, flush_remaining: bool = False) -> bool:
+    def _try_build_ready_bundle(self, flush_remaining: bool) -> int:
         """Attempts to build a ready bundle from a list of pending bundles by:
 
         - Checking the threshold to build a ready bundle defined by `RebundlingStrategy`
@@ -167,11 +165,11 @@ class RebundleQueue(BaseBundleQueue):
         Returns `True` if ready bundle built, otherwise `False`
         """
 
+        ready_bundles_built: int = 0
         if self._pending_bundles and self._strategy.can_build_ready_bundle(
             self._total_pending_rows
         ):
-            pending_to_ready_bundles = list(self._pending_bundles)
-            last_pending_bundle = pending_to_ready_bundles.pop()
+            last_pending_bundle = self._pending_bundles.pop()
 
             # We now know `pending_bundle` is the bundle that enabled us to
             # build a ready bundle. Therefore, we may need to slice the bundle.
@@ -184,36 +182,62 @@ class RebundleQueue(BaseBundleQueue):
                 "This is a bug in the Ray Data code."
             )
             remaining_bundle: Optional[RefBundle] = None
-            if rows_needed < last_pending_bundle.num_rows():
+            last_num_rows = last_pending_bundle.num_rows() or 0
+            if rows_needed < last_num_rows:
                 sliced_bundle, remaining_bundle = last_pending_bundle.slice(rows_needed)
-                pending_to_ready_bundles.append(sliced_bundle)
+                # The original bundle was enqueued in add(). We need to dequeue it
+                # and enqueue the sliced portion, since _merge_bundles will dequeue
+                # sliced_bundle (which has different metrics than the original).
+                self._on_dequeue_bundle(last_pending_bundle)
+                self._on_enqueue_bundle(sliced_bundle)
+                self._pending_bundles.append(sliced_bundle)
             else:
-                assert rows_needed == last_pending_bundle.num_rows()
-                pending_to_ready_bundles.append(last_pending_bundle)
+                assert rows_needed == last_num_rows
+                self._pending_bundles.append(last_pending_bundle)
 
-            self._merge_bundles(pending_to_ready_bundles)
+            self._merge_bundles()
+            ready_bundles_built += 1
 
             if remaining_bundle is not None:
+                # Add back remaining sliced bundle that was not included to build
+                # a ready bundle.
                 self._pending_bundles.appendleft(remaining_bundle)
                 self._total_pending_rows += remaining_bundle.num_rows() or 0
-                self._on_enqueue(remaining_bundle)
+                self._on_enqueue_bundle(remaining_bundle)
 
-            return True
-
-        # If we're flushing and have leftover bundles, convert them to a ready bundle
+        # If we're flushing and have leftover bundles, convert them to a ready bundle.
+        # Note: add() eagerly calls _try_build_ready_bundle after every insertion, so
+        # pending rows are always below the threshold when finalize() is called. This
+        # means at most one ready bundle is built per call (only the flush path fires).
         if flush_remaining and self._pending_bundles:
-            self._merge_bundles(self._pending_bundles)
-            return True
+            self._merge_bundles()
+            ready_bundles_built += 1
 
-        return False
+        return ready_bundles_built
 
     @override
     def add(self, bundle: RefBundle, **kwargs: Any):
-        self._total_pending_rows += bundle.num_rows() or 0
+        from ray.data._internal.execution.interfaces import RefBundle
+
+        num_rows = bundle.num_rows() or 0
+        if num_rows == 0:
+            if self._pending_bundles:
+                last = self._pending_bundles.pop()
+                self._on_dequeue_bundle(last)
+                merged = RefBundle.merge_ref_bundles([last, bundle])
+                self._pending_bundles.append(merged)
+                self._on_enqueue_bundle(merged)
+            else:
+                self._pending_bundles.append(bundle)
+                self._on_enqueue_bundle(bundle)
+            return
+        self._total_pending_rows += num_rows
         self._pending_bundles.append(bundle)
-        self._on_enqueue(bundle)
+        self._on_enqueue_bundle(bundle)
         self._curr_consumed_bundles.append(bundle)
-        if self._try_build_ready_bundle():
+        ready_bundles_built = self._try_build_ready_bundle(flush_remaining=False)
+        if ready_bundles_built > 0:
+            assert ready_bundles_built == 1
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
             self._curr_consumed_bundles = []
 
@@ -226,13 +250,15 @@ class RebundleQueue(BaseBundleQueue):
         if not self.has_next():
             raise ValueError("You can't pop from empty queue")
         ready_bundle = self._ready_bundles.popleft()
+        # discard the original bundle
+        self._consumed_bundles_list.popleft()
         return ready_bundle
 
     def get_next_with_original(self) -> Tuple[RefBundle, List[RefBundle]]:
         if not self.has_next():
             raise ValueError("You can't pop from empty queue")
         ready_bundle = self._ready_bundles.popleft()
-        self._on_dequeue(ready_bundle)
+        self._on_dequeue_bundle(ready_bundle)
         consumed_bundle = self._consumed_bundles_list.popleft()
         return ready_bundle, consumed_bundle
 
@@ -245,7 +271,8 @@ class RebundleQueue(BaseBundleQueue):
     @override
     def finalize(self, **kwargs: Any):
         if len(self._pending_bundles) > 0:
-            assert self._try_build_ready_bundle(flush_remaining=True)
+            ready_bundles_built = self._try_build_ready_bundle(flush_remaining=True)
+            assert ready_bundles_built == 1
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
             self._curr_consumed_bundles = []
 

@@ -27,7 +27,6 @@
 				"python": {
 					"type": "string",
 					"enum": [
-						"3.9",
 						"3.10",
 						"3.11",
 						"3.12",
@@ -87,18 +86,20 @@
 				"cloud_id": {
 					"type": "string"
 				},
-				"project_id": {
+				"cloud": {
 					"type": "string"
 				},
-				"cloud_name": {
+				"project_id": {
 					"type": "string"
 				},
 				"byod": {
 					"$ref": "#/definitions/Byod"
+				},
+				"anyscale_sdk_2026": {
+					"type": "boolean"
 				}
 			},
 			"required": [
-				"byod",
 				"cluster_compute"
 			],
 			"title": "Cluster"
@@ -115,9 +116,6 @@
 				},
 				"python_depset": {
 					"type": "string"
-				},
-				"pip": {
-					"type": "array"
 				},
 				"runtime_env": {
 					"type": "array"

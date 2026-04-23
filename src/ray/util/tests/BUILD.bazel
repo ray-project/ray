@@ -1,6 +1,16 @@
 load("//bazel:ray.bzl", "ray_cc_test")
 
 ray_cc_test(
+    name = "clock_test",
+    size = "small",
+    srcs = ["clock_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:clock",
+    ],
+)
+
+ray_cc_test(
     name = "file_persistence_test",
     size = "small",
     srcs = ["file_persistence_test.cc"],
@@ -8,7 +18,6 @@ ray_cc_test(
     visibility = ["//visibility:private"],
     deps = [
         "//src/ray/util:file_persistence",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -18,7 +27,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:array",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -29,7 +37,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:thread_checker",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -43,7 +50,6 @@ ray_cc_test(
         "//src/ray/util:container_util",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -54,7 +60,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:counter_map",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -73,7 +78,6 @@ ray_cc_test(
         "//src/ray/util:event",
         "//src/ray/util:path_utils",
         "@boost//:range",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -84,7 +88,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:exponential_backoff",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -97,7 +100,6 @@ ray_cc_test(
         "//src/ray/util:filesystem",
         "//src/ray/util:path_utils",
         "//src/ray/util:string_utils",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -114,6 +116,9 @@ ray_cc_test(
         "no_ubsan",
         "team:core",
     ],
+    # Uses gtest_main (not ray_gtest_main) because this test manages its
+    # own logging setup and checks stderr output directly.
+    use_ray_gtest_main = False,
     deps = [
         "//src/ray/common:status",
         "//src/ray/util:env",
@@ -135,7 +140,6 @@ ray_cc_test(
     deps = [
         "//src/ray/util:logging",
         "//src/ray/util:sequencer",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -148,19 +152,6 @@ ray_cc_test(
         "//src/ray/util:logging",
         "//src/ray/util:path_utils",
         "//src/ray/util:raii",
-        "@com_google_googletest//:gtest_main",
-    ],
-)
-
-ray_cc_test(
-    name = "throttler_test",
-    size = "small",
-    srcs = ["throttler_test.cc"],
-    tags = ["team:core"],
-    deps = [
-        "//src/ray/util:throttler",
-        "@com_google_absl//absl/time",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -171,8 +162,8 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:process",
+        "//src/ray/util:process_utils",
         "@boost//:process",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -183,7 +174,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:network_util",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -195,7 +185,6 @@ ray_cc_test(
     deps = [
         "//src/ray/protobuf:gcs_cc_proto",
         "@boost//:range",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -206,7 +195,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:size_literals",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -217,7 +205,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:shared_lru",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -228,7 +215,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:scoped_env_setter",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -245,7 +231,6 @@ ray_cc_test(
         "//src/ray/util:scoped_env_setter",
         "//src/ray/util:temporary_directory",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -267,7 +252,6 @@ ray_cc_test(
         "//src/ray/util:filesystem",
         "//src/ray/util:stream_redirection",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -278,7 +262,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:cmd_line_utils",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -290,7 +273,6 @@ ray_cc_test(
     deps = [
         "//src/ray/util:compat",
         "//src/ray/util:spdlog_fd_sink",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -307,7 +289,6 @@ ray_cc_test(
         "//src/ray/util:spdlog_newliner_sink",
         "//src/ray/util:temporary_directory",
         "@com_google_absl//absl/strings:str_format",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -318,7 +299,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:temporary_directory",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -330,7 +310,6 @@ ray_cc_test(
     deps = [
         "//src/ray/util:compat",
         "//src/ray/util:filesystem",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -343,7 +322,6 @@ ray_cc_test(
     ],
     deps = [
         "//src/ray/util:process",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -359,7 +337,6 @@ ray_cc_test(
         "//src/ray/util:scoped_dup2_wrapper",
         "//src/ray/util:temporary_directory",
         "@boost//:iostreams",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -370,7 +347,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/util:concurrent_flat_map",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -381,7 +357,6 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/common:file_system_monitor",
-        "@com_google_googletest//:gtest_main",
     ],
 )
 
@@ -393,6 +368,5 @@ ray_cc_test(
     deps = [
         "//src/ray/common:status_or",
         "//src/ray/util:string_utils",
-        "@com_google_googletest//:gtest_main",
     ],
 )

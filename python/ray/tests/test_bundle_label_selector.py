@@ -5,6 +5,7 @@ import pytest
 
 import ray
 from ray._private.test_utils import placement_group_assert_no_leak
+from ray.util.placement_group import placement_group, placement_group_table
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
@@ -17,20 +18,18 @@ def test_bundle_label_selector_with_repeated_labels(ray_start_cluster):
     bundles = [{"CPU": 1}, {"CPU": 1}]
     label_selector = [{"ray.io/accelerator-type": "TPU"}] * 2
 
-    placement_group = ray.util.placement_group(
+    pg = placement_group(
         name="repeated_labels_pg",
         bundles=bundles,
         bundle_label_selector=label_selector,
     )
-    ray.get(placement_group.ready())
+    ray.get(pg.ready())
 
-    bundles_to_node_id = ray.util.placement_group_table()[placement_group.id.hex()][
-        "bundles_to_node_id"
-    ]
+    bundles_to_node_id = placement_group_table()[pg.id.hex()]["bundles_to_node_id"]
     assert bundles_to_node_id[0] == node.node_id
     assert bundles_to_node_id[1] == node.node_id
 
-    placement_group_assert_no_leak([placement_group])
+    placement_group_assert_no_leak([pg])
 
 
 def test_unschedulable_bundle_label_selector(ray_start_cluster):
@@ -43,18 +42,16 @@ def test_unschedulable_bundle_label_selector(ray_start_cluster):
     bundles = [{"CPU": 1}, {"CPU": 1}]
     label_selector = [{"ray.io/accelerator-type": "A100"}] * 2
 
-    placement_group = ray.util.placement_group(
+    pg = placement_group(
         name="unschedulable_labels_pg",
         bundles=bundles,
         bundle_label_selector=label_selector,
     )
 
     with pytest.raises(ray.exceptions.GetTimeoutError):
-        ray.get(placement_group.ready(), timeout=3)
+        ray.get(pg.ready(), timeout=3)
 
-    state = ray.util.placement_group_table()[placement_group.id.hex()]["stats"][
-        "scheduling_state"
-    ]
+    state = placement_group_table()[pg.id.hex()]["stats"]["scheduling_state"]
     assert state == "NO_RESOURCES"
 
 
@@ -89,7 +86,7 @@ def test_bundle_label_selectors_match_bundle_resources(ray_start_cluster):
         {"CPU": 1, "resource-2": 1},
     ]
 
-    pg = ray.util.placement_group(
+    pg = placement_group(
         name="label_selectors_match_resources",
         bundles=bundles,
         bundle_label_selector=bundle_label_selectors,
@@ -129,6 +126,257 @@ def test_bundle_label_selectors_match_bundle_resources(ray_start_cluster):
 
         # Check CPU was assigned
         assert "CPU" in assigned and assigned["CPU"] == 1.0
+
+
+def test_strict_pack_bundle_label_selector(ray_start_cluster):
+    """
+    Verifies that placement groups with STRICT_PACK strategy respect bundle_label_selector.
+
+    If the PG is ready, it should schedule all bundles to the same node which satisfies the
+    label constraints. If the `bundle_label_selector` is unsatisfiable on a single node,
+    the PG should remain pending.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4, labels={"region": "us-east"})
+    cluster.add_node(num_cpus=4, labels={"region": "us-west"})
+    ray.init(address=cluster.address)
+
+    # Success case - both label selectors can be satisfied on a single node.
+    success_pg = placement_group(
+        bundles=[{"CPU": 1}, {"CPU": 1}],
+        strategy="STRICT_PACK",
+        bundle_label_selector=[{"region": "us-east"}, {"region": "us-east"}],
+    )
+    ray.get(success_pg.ready(), timeout=5)
+
+    table = placement_group_table(success_pg)
+    assert table["state"] == "CREATED"
+
+    # Failure case - conflicting label selectors match two distinct nodes.
+    fail_pg = placement_group(
+        bundles=[{"CPU": 1}, {"CPU": 1}],
+        strategy="STRICT_PACK",
+        bundle_label_selector=[{"region": "us-east"}, {"region": "us-west"}],
+    )
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(fail_pg.ready(), timeout=5)
+
+    pg_info = placement_group_table(fail_pg)
+    assert pg_info["state"] == "PENDING"
+
+    ray.util.remove_placement_group(success_pg)
+    ray.util.remove_placement_group(fail_pg)
+
+
+def test_strict_spread_bundle_label_selector(ray_start_cluster):
+    """
+    Verifies that placement groups with STRICT_SPREAD strategy respect bundle_label_selector.
+
+    If the PG is ready, it should schedule all bundles to different which each satisfy their
+    respective label constraints. If the `bundle_label_selector` is unsatisfiable on len(bundles)
+    unique nodes, the PG should remain pending.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4, labels={"type": "A"})
+    cluster.add_node(num_cpus=4, labels={"type": "A"})
+    cluster.add_node(num_cpus=4, labels={"type": "B"})
+    ray.init(address=cluster.address)
+
+    # Success case - label selectors can be satisfied on different nodes.
+    success_pg = placement_group(
+        bundles=[{"CPU": 1}, {"CPU": 1}],
+        strategy="STRICT_SPREAD",
+        bundle_label_selector=[{"type": "A"}, {"type": "A"}],
+    )
+    ray.get(success_pg.ready(), timeout=5)
+    assert placement_group_table(success_pg)["state"] == "CREATED"
+
+    # Failure case - conflicting label selectors only satisfied by one node.
+    fail_pg = placement_group(
+        bundles=[{"CPU": 1}, {"CPU": 1}],
+        strategy="STRICT_SPREAD",
+        bundle_label_selector=[{"type": "B"}, {"type": "B"}],
+    )
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(fail_pg.ready(), timeout=5)
+
+    pg_info = placement_group_table(fail_pg)
+    assert pg_info["state"] == "PENDING"
+
+    ray.util.remove_placement_group(success_pg)
+    ray.util.remove_placement_group(fail_pg)
+
+
+def test_pack_strategy_bundle_label_selector(ray_start_cluster):
+    """
+    Verifies that PACK strategy respects bundle_label_selector.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4, labels={"type": "A"})
+    cluster.add_node(num_cpus=4, labels={"type": "B"})
+    ray.init(address=cluster.address)
+
+    # Success case - label selectors satisfied on one node.
+    success_pg_1 = placement_group(
+        bundles=[{"CPU": 1}, {"CPU": 1}],
+        strategy="PACK",
+        bundle_label_selector=[{"type": "A"}, {"type": "A"}],
+    )
+    ray.get(success_pg_1.ready(), timeout=5)
+    assert placement_group_table(success_pg_1)["state"] == "CREATED"
+
+    # Success case (best effort) - label selectors satisfied on different nodes.
+    success_pg_2 = placement_group(
+        bundles=[{"CPU": 1}, {"CPU": 1}],
+        strategy="PACK",
+        bundle_label_selector=[{"type": "A"}, {"type": "B"}],
+    )
+    ray.get(success_pg_2.ready(), timeout=5)
+    assert placement_group_table(success_pg_2)["state"] == "CREATED"
+
+    # Failure case - label selectors unsatisfiable by any node.
+    fail_pg = placement_group(
+        bundles=[{"CPU": 1}, {"CPU": 1}],
+        strategy="PACK",
+        bundle_label_selector=[{"type": "A"}, {"type": "C"}],
+    )
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(fail_pg.ready(), timeout=3)
+
+    pg_info = placement_group_table(fail_pg)
+    assert pg_info["state"] == "PENDING"
+
+    ray.util.remove_placement_group(success_pg_1)
+    ray.util.remove_placement_group(success_pg_2)
+    ray.util.remove_placement_group(fail_pg)
+
+
+def test_spread_strategy_bundle_label_selector(ray_start_cluster):
+    """
+    Verifies that SPREAD strategy respects bundle_label_selector.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=4, labels={"type": "A"})
+    cluster.add_node(num_cpus=4, labels={"type": "B"})
+    ray.init(address=cluster.address)
+
+    # Success case - label selectors satisfied and SPREAD across nodes.
+    success_pg_spread = placement_group(
+        bundles=[{"CPU": 1}, {"CPU": 1}],
+        strategy="SPREAD",
+        bundle_label_selector=[{"type": "A"}, {"type": "B"}],
+    )
+    ray.get(success_pg_spread.ready(), timeout=5)
+    assert placement_group_table(success_pg_spread)["state"] == "CREATED"
+
+    # Success case - label selectors satisfied but forced to use same node.
+    success_pg_packed = placement_group(
+        bundles=[{"CPU": 1}, {"CPU": 1}],
+        strategy="SPREAD",
+        bundle_label_selector=[{"type": "A"}, {"type": "A"}],
+    )
+    ray.get(success_pg_packed.ready(), timeout=5)
+    assert placement_group_table(success_pg_packed)["state"] == "CREATED"
+
+    # Failure case - label selectors unsatisfiable by any node.
+    fail_pg = placement_group(
+        bundles=[{"CPU": 1}], strategy="SPREAD", bundle_label_selector=[{"type": "C"}]
+    )
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(fail_pg.ready(), timeout=3)
+
+    pg_info = placement_group_table(fail_pg)
+    assert pg_info["state"] == "PENDING"
+
+    ray.util.remove_placement_group(success_pg_spread)
+    ray.util.remove_placement_group(success_pg_packed)
+    ray.util.remove_placement_group(fail_pg)
+
+
+def test_gpu_domain_scheduling_reschedule_on_node_failure(ray_start_cluster):
+    """
+    Spins up 6 nodes in a single GPU domain (rack-1). Schedules 4 bundles,
+    then kills 2 nodes containing bundles. Verifies that the PG reschedules
+    the bundles onto remaining nodes that share the same GPU domain.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    rack_labels = {
+        "ray.io/gpu-domain": "rack-1",
+        "ray.io/accelerator-type": "GB300",
+    }
+
+    rack_nodes = []
+    for _ in range(6):
+        rack_nodes.append(cluster.add_node(num_cpus=1, labels=rack_labels))
+    for _ in range(2):
+        cluster.add_node(num_cpus=1)
+
+    bundles = [{"CPU": 1}] * 4
+    label_selector = [{"ray.io/accelerator-type": "GB300"}] * 4
+
+    pg = placement_group(
+        bundles=bundles,
+        bundle_label_selector=label_selector,
+    )
+    ray.get(pg.ready(), timeout=30)
+    assert placement_group_table(pg)["state"] == "CREATED"
+
+    cluster.remove_node(rack_nodes[0])
+    cluster.remove_node(rack_nodes[1])
+
+    ray.get(pg.ready(), timeout=30)
+    assert placement_group_table(pg)["state"] == "CREATED"
+
+    # Verify that the rescheduled bundles are on nodes with the rack-1 gpu-domain label.
+    node_id_to_labels = {node["NodeID"]: node.get("Labels", {}) for node in ray.nodes()}
+    for node_id in placement_group_table(pg)["bundles_to_node_id"].values():
+        labels = node_id_to_labels[node_id]
+        assert labels.get("ray.io/gpu-domain") == "rack-1"
+
+
+def test_gpu_domain_scheduling_infeasible_after_node_kill(ray_start_cluster):
+    """
+    Spins up 2 nodes in a single GPU domain (rack-1). Schedules 2 bundles,
+    then kills one node containing a bundle. The surviving node already contains a bundle so
+    the orphaned bundle can't be rescheduled on it, and is left infeasible.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init(address=cluster.address)
+
+    rack_labels = {
+        "ray.io/gpu-domain": "rack-1",
+        "ray.io/accelerator-type": "GB300",
+    }
+
+    cluster.add_node(num_cpus=1, labels=rack_labels)
+    node_b = cluster.add_node(num_cpus=1, labels=rack_labels)
+    cluster.add_node(num_cpus=1)
+
+    bundles = [{"CPU": 1}] * 2
+    label_selector = [{"ray.io/accelerator-type": "GB300"}] * 2
+
+    pg = placement_group(
+        bundles=bundles,
+        bundle_label_selector=label_selector,
+    )
+    ray.get(pg.ready(), timeout=10)
+    assert placement_group_table(pg)["state"] == "CREATED"
+
+    cluster.remove_node(node_b)
+
+    with pytest.raises(ray.exceptions.GetTimeoutError):
+        ray.get(pg.ready(), timeout=5)
+
+    state = placement_group_table(pg)["state"]
+    assert state == "RESCHEDULING", f"Expected RESCHEDULING, got {state}"
 
 
 if __name__ == "__main__":

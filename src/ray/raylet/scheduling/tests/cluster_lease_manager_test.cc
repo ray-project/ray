@@ -33,9 +33,10 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_utils.h"
 #include "ray/observability/fake_metric.h"
-#include "ray/raylet/local_lease_manager.h"
+#include "ray/raylet/scheduling/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/util/clock.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 // clang-format on
 
@@ -258,7 +259,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
     double num_cpus,
     double num_gpus,
     gcs::GcsClient &gcs_client,
-    ray::observability::MetricInterface &resource_usage_gauge) {
+    ray::observability::MetricInterface &resource_usage_gauge,
+    ray::ClockInterface &clock) {
   absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
@@ -272,7 +274,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       [&gcs_client](scheduling::NodeID node_id) {
         return gcs_client.Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
       },
-      resource_usage_gauge);
+      resource_usage_gauge,
+      clock);
 
   return scheduler;
 }
@@ -388,7 +391,8 @@ class ClusterLeaseManagerTest : public ::testing::Test {
                                              num_cpus_at_head,
                                              num_gpus_at_head,
                                              *gcs_client_,
-                                             fake_resource_usage_gauge_)),
+                                             fake_resource_usage_gauge_,
+                                             clock_)),
         lease_dependency_manager_(missing_objects_),
         local_lease_manager_(std::make_unique<LocalLeaseManager>(
             id_,
@@ -517,6 +521,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   NodeID id_;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
+  ray::Clock clock_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
@@ -1888,8 +1893,14 @@ TEST_F(ClusterLeaseManagerTest, BacklogReportTest) {
         false,
         std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
     worker_ids.push_back(WorkerID::FromRandom());
-    local_lease_manager_->SetWorkerBacklog(
-        lease.GetLeaseSpecification().GetSchedulingClass(), worker_ids.back(), 10 - i);
+    {
+      rpc::ReportWorkerBacklogRequest backlog_request;
+      backlog_request.set_worker_id(worker_ids.back().Binary());
+      auto *report = backlog_request.add_backlog_reports();
+      report->mutable_lease_spec()->CopyFrom(lease.GetLeaseSpecification().GetMessage());
+      report->set_backlog_size(10 - i);
+      local_lease_manager_->SetWorkerBacklog(backlog_request);
+    }
     pool_.TriggerCallbacks();
     // Don't add the first lease to `to_cancel`.
     if (i != 0) {
@@ -3368,11 +3379,6 @@ TEST_F(ClusterLeaseManagerTestWithoutCPUsAtHead, OneCpuInfeasibleLease) {
     }
     ASSERT_TRUE(one_cpu_found);
   }
-}
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 
 }  // namespace raylet

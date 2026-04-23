@@ -29,9 +29,15 @@ class ImageClassificationConfig(TaskConfig):
     class ImageFormat(enum.Enum):
         JPEG = "jpeg"
         PARQUET = "parquet"
+        S3_URL = "s3_url"
 
     image_classification_local_dataset: bool = False
     image_classification_data_format: ImageFormat = ImageFormat.PARQUET
+    # When True and data_format=PARQUET, read from the larger
+    # IMAGENET_PARQUET_SPLIT_1T_S3_ROOT dataset instead of the default
+    # parquet_split root. Used by the slow-consumer benchmarks to sustain
+    # backpressure.
+    image_classification_use_1t_dataset: bool = False
 
 
 class RecsysConfig(TaskConfig):
@@ -62,6 +68,9 @@ class TorchConfig(DataLoaderConfig):
 class BenchmarkConfig(BaseModel):
     # ScalingConfig
     num_workers: int = 1
+    # Elastic scaling range. If both are set > 0, use (min_workers, max_workers).
+    min_workers: int = 0
+    max_workers: int = 0
     # Run CPU training where train workers request a `MOCK_GPU` resource instead.
     mock_gpu: bool = False
 
@@ -82,6 +91,15 @@ class BenchmarkConfig(BaseModel):
     # Training
     num_epochs: int = 1
     skip_train_step: bool = False
+    # Simulates a slow training consumer by sleeping for this many seconds
+    # after each training step. Used to benchmark dataloader behavior under
+    # consumer back-pressure. 0 disables the sleep.
+    train_step_sleep_s: float = 0.0
+    # Maximum number of training batches per worker per epoch. When reached,
+    # the epoch ends early regardless of dataset size. -1 disables the cap.
+    # Used with slow-consumer benchmarks to bound wall-clock without
+    # truncating the data source.
+    max_train_batches: int = -1
 
     # Checkpointing
     checkpoint_every_n_steps: int = -1
@@ -100,14 +118,19 @@ def _is_pydantic_model(field_type) -> bool:
     return isinstance(field_type, type) and issubclass(field_type, BaseModel)
 
 
+def _str_to_bool(value: str) -> bool:
+    """Convert a string to a boolean value."""
+    if value.lower() == "true":
+        return True
+    elif value.lower() == "false":
+        return False
+    raise argparse.ArgumentTypeError(f"'True' or 'False' expected, got '{value}'")
+
+
 def _add_field_to_parser(parser: argparse.ArgumentParser, field: str, field_info):
     field_type = field_info.annotation
     if field_type is bool:
-        parser.add_argument(
-            f"--{field}",
-            action="store_true",
-            help=f"Enable {field} (default: {field_info.default})",
-        )
+        parser.add_argument(f"--{field}", type=_str_to_bool, default=field_info.default)
     else:
         parser.add_argument(f"--{field}", type=field_type, default=field_info.default)
 
@@ -151,3 +174,8 @@ def cli_to_config(benchmark_config_cls=BenchmarkConfig) -> BenchmarkConfig:
         nested_configs[nested_field] = nested_config_cls(**vars(args))
 
     return benchmark_config_cls(**vars(top_level_args), **nested_configs)
+
+
+if __name__ == "__main__":
+    config = cli_to_config()
+    print(config)

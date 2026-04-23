@@ -1,10 +1,17 @@
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Callable, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
     LogicalOperatorSupportsPredicatePassThrough,
     PredicatePassThroughBehavior,
 )
+
+__all__ = [
+    "NAry",
+    "Union",
+    "Zip",
+]
 
 
 class NAry(LogicalOperator):
@@ -19,21 +26,55 @@ class NAry(LogicalOperator):
         Args:
             input_ops: The input operators.
         """
-        super().__init__(self.__class__.__name__, list(input_ops), num_outputs)
+        super().__init__(
+            input_dependencies=list(input_ops),
+            num_outputs=num_outputs,
+        )
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class Zip(NAry):
     """Logical operator for zip."""
+
+    _name: str = field(init=False, repr=False)
+    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __init__(
         self,
         *input_ops: LogicalOperator,
     ):
-        super().__init__(*input_ops)
+        for input_op in input_ops:
+            assert isinstance(input_op, LogicalOperator), input_op
+        object.__setattr__(self, "_name", self.__class__.__name__)
+        object.__setattr__(self, "_input_dependencies", list(input_ops))
+        object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_inputs = [
+            input_op._apply_transform(transform) for input_op in self.input_dependencies
+        ]
+        target: LogicalOperator
+        if all(
+            transformed_input is input_op
+            for transformed_input, input_op in zip(
+                transformed_inputs, self.input_dependencies
+            )
+        ):
+            target = self
+        else:
+            target = Zip(*transformed_inputs)
+        return transform(target)
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
-        for input in self._input_dependencies:
+        for input in self.input_dependencies:
             num_outputs = input.estimated_num_outputs()
             if num_outputs is None:
                 return None
@@ -41,18 +82,45 @@ class Zip(NAry):
         return total_num_outputs
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for union."""
+
+    _name: str = field(init=False, repr=False)
+    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
     def __init__(
         self,
         *input_ops: LogicalOperator,
     ):
-        super().__init__(*input_ops)
+        for input_op in input_ops:
+            assert isinstance(input_op, LogicalOperator), input_op
+        object.__setattr__(self, "_name", self.__class__.__name__)
+        object.__setattr__(self, "_input_dependencies", list(input_ops))
+        object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_inputs = [
+            input_op._apply_transform(transform) for input_op in self.input_dependencies
+        ]
+        target: LogicalOperator
+        if all(
+            transformed_input is input_op
+            for transformed_input, input_op in zip(
+                transformed_inputs, self.input_dependencies
+            )
+        ):
+            target = self
+        else:
+            target = Union(*transformed_inputs)
+        return transform(target)
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
-        for input in self._input_dependencies:
+        for input in self.input_dependencies:
             num_outputs = input.estimated_num_outputs()
             if num_outputs is None:
                 return None

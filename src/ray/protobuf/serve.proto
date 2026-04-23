@@ -29,6 +29,9 @@ message AutoscalingPolicy {
 
   // The cloudpickled policy definition.
   bytes _serialized_policy_def = 2;
+
+  // Keyword arguments for class-based policies (cloudpickled dict).
+  bytes policy_kwargs = 3;
 }
 
 // Configuration options for Serve's replica autoscaler.
@@ -123,8 +126,67 @@ message RequestRouterConfig {
 
   // kwargs which Ray Serve passes to the router class' initialize_state method.
   bytes request_router_kwargs = 5;
+
+  // Initial backoff time (in seconds) before retrying to route a request.
+  double initial_backoff_s = 6;
+
+  // Multiplier applied to the backoff time after each retry.
+  double backoff_multiplier = 7;
+
+  // Maximum backoff time (in seconds) between retries.
+  double max_backoff_s = 8;
 }
 //[End] ROUTING CONFIG
+
+//[Begin] GANG SCHEDULING CONFIG
+// Placement strategy for replicas within a gang.
+enum GangPlacementStrategy {
+  PACK = 0;
+  SPREAD = 1;
+}
+
+// Policy for handling runtime failures of replicas in a gang.
+enum GangRuntimeFailurePolicy {
+  RESTART_GANG = 0;
+  RESTART_REPLICA = 1;
+}
+
+// Configuration for gang scheduling of deployment replicas.
+message GangSchedulingConfig {
+  // Number of replicas per gang. num_replicas must be a multiple of gang_size.
+  int32 gang_size = 1;
+
+  // Placement strategy for replicas within a gang.
+  GangPlacementStrategy gang_placement_strategy = 2;
+
+  // What to do when a replica fails after gang is running.
+  GangRuntimeFailurePolicy runtime_failure_policy = 3;
+}
+//[End] GANG SCHEDULING CONFIG
+
+// Configuration for a deployment-scoped actor.
+message DeploymentActorConfig {
+  // Cloudpickled actor class (serialized by value so it can be
+  // deserialized without the original module being importable).
+  bytes _serialized_actor_class = 1;
+
+  // Cloudpickled init args.
+  bytes serialized_init_args = 2;
+
+  // Cloudpickled init kwargs.
+  bytes serialized_init_kwargs = 3;
+
+  // Cloudpickled actor options.
+  bytes serialized_actor_options = 4;
+
+  // Unique name for this actor within the deployment.
+  string name = 5;
+
+  // Human-readable import path for the actor class
+  // (e.g. "my_module:MyActorClass"). Used for display and
+  // as a fallback when _serialized_actor_class is unavailable.
+  string actor_class_name = 6;
+}
 
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
@@ -175,6 +237,12 @@ message DeploymentConfig {
 
   // The maximum number of retries in case the deployment constructor results in failure
   int32 max_constructor_retry_count = 20;
+
+  // Gang scheduling configuration for atomic replica scheduling.
+  GangSchedulingConfig gang_scheduling_config = 21;
+
+  // Deployment-scoped actors managed by the controller.
+  repeated DeploymentActorConfig deployment_actors = 22;
 }
 
 // Deployment language.
@@ -244,6 +312,8 @@ message DeploymentVersion {
   string placement_group_bundles = 4;
   string placement_group_strategy = 5;
   int32 max_replicas_per_node = 6;
+  string placement_group_bundle_label_selector = 7;
+  string placement_group_fallback_strategy = 8;
 }
 
 message ReplicaConfig {
@@ -255,6 +325,8 @@ message ReplicaConfig {
   string placement_group_bundles = 6;
   string placement_group_strategy = 7;
   int32 max_replicas_per_node = 8;
+  string placement_group_bundle_label_selector = 9;
+  string placement_group_fallback_strategy = 10;
 }
 
 enum TargetCapacityDirection {
@@ -308,6 +380,7 @@ enum DeploymentStatusTrigger {
   DEPLOYMENT_STATUS_TRIGGER_HEALTH_CHECK_FAILED = 7;
   DEPLOYMENT_STATUS_TRIGGER_INTERNAL_ERROR = 8;
   DEPLOYMENT_STATUS_TRIGGER_DELETING = 9;
+  DEPLOYMENT_STATUS_TRIGGER_DEPLOYMENT_ACTOR_FAILED = 10;
 }
 
 message DeploymentStatusInfo {
@@ -396,6 +469,8 @@ service UserDefinedService {
   rpc Method1(UserDefinedMessage) returns (UserDefinedResponse);
   rpc Method2(UserDefinedMessage2) returns (UserDefinedResponse2);
   rpc Streaming(UserDefinedMessage) returns (stream UserDefinedResponse);
+  rpc ClientStreaming(stream UserDefinedMessage) returns (UserDefinedResponse);
+  rpc BidiStreaming(stream UserDefinedMessage) returns (stream UserDefinedResponse);
 }
 
 service FruitService {
@@ -433,4 +508,22 @@ message DeploymentArgs {
 
 message ApplicationArgs {
   bool external_scaler_enabled = 1;
+}
+
+message ASGIRequest {
+  bytes pickled_request_metadata = 1;
+  bytes request_args = 2;
+  bytes request_kwargs = 3;
+}
+
+message ASGIResponse {
+  bytes serialized_message = 1;
+  bool is_error = 2;
+}
+
+service ASGIService {
+  rpc HandleRequest(ASGIRequest) returns (ASGIResponse);
+  rpc HandleRequestStreaming(ASGIRequest) returns (stream ASGIResponse);
+  rpc HandleRequestWithRejection(ASGIRequest) returns (ASGIResponse);
+  rpc HandleRequestWithRejectionStreaming(ASGIRequest) returns (stream ASGIResponse);
 }

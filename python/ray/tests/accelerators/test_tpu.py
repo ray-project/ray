@@ -60,6 +60,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gke", "v5p-8", "TPU-V5P"),
         ("gke", "v5litepod-8", "TPU-V5LITEPOD"),
         ("gke", "v6e-8", "TPU-V6E"),
+        ("gke", "tpu7x-16", "TPU-V7X"),
     ],
 )
 @patch("requests.get")
@@ -232,32 +233,95 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
 @pytest.mark.parametrize(
     "test_config",
     [
-        (0, {"TPU-v4-16-head": 1, "my-tpu": 1}),
-        (1, {"my-tpu": 1}),
+        (0, "v4-16", {"TPU-v4-16-head": 1, "my-tpu": 1}),
+        (1, "v4-16", {"my-tpu": 1}),
+        (0, "tpu7x-16", {"TPU-v7x-16-head": 1, "my-tpu": 1}),
     ],
 )
 def test_tpu_pod_detect_and_configure_worker(test_config):
-    worker_id, expected_value = test_config
+    worker_id, pod_type, expected_value = test_config
     final_resources = {}
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_name",
         return_value="my-tpu",
     ):
         with patch(
-            "ray._private.accelerators.tpu.TPUAcceleratorManager."
-            "get_current_node_tpu_pod_type",
-            return_value="v4-16",
+            "ray._private.accelerators.tpu.TPUAcceleratorManager.get_current_node_tpu_worker_id",
+            return_value=worker_id,
         ):
-            with patch(
-                "ray._private.accelerators.tpu.TPUAcceleratorManager"
-                ".get_current_node_tpu_worker_id",
-                return_value=worker_id,
-            ):
+            with patch.dict(os.environ, {"TPU_ACCELERATOR_TYPE": pod_type}):
                 final_resources = (
                     TPUAcceleratorManager.get_current_node_additional_resources()
                 )
 
     assert final_resources == expected_value
+
+
+@pytest.mark.parametrize(
+    "accelerator_type, expected",
+    [
+        ("v2-8", True),
+        ("v3-32", True),
+        ("v4-8", True),
+        ("v5p-8", True),
+        ("v5litepod-8", True),
+        ("v6e-8", True),
+        ("tpu7x-16", True),
+        ("v7x-16", True),
+        ("v-8", False),
+        ("8", False),
+        ("tpu-8", False),
+        ("v2", False),
+        ("v2-", False),
+        ("random-string", False),
+    ],
+)
+def test_is_valid_tpu_accelerator_type(accelerator_type, expected):
+    assert (
+        TPUAcceleratorManager.is_valid_tpu_accelerator_type(accelerator_type)
+        == expected
+    )
+
+
+def test_get_total_chips_from_accelerator_type():
+    assert tpu.get_total_chips_from_accelerator_type("v6e-16") == 16
+    assert tpu.get_total_chips_from_accelerator_type("v6e-8") == 8
+    assert (
+        tpu.get_total_chips_from_accelerator_type("v7x-16") == 8
+    )  # v7x has 2 cores per chip
+    assert (
+        tpu.get_total_chips_from_accelerator_type("v4-8") == 4
+    )  # v4 has 2 cores per chip
+
+    # Test invalid cases
+    with pytest.raises(ValueError, match="Accelerator type must include size"):
+        tpu.get_total_chips_from_accelerator_type("v6e")
+
+    with pytest.raises(ValueError, match="Invalid accelerator type"):
+        tpu.get_total_chips_from_accelerator_type("invalid-8")
+
+
+def test_get_num_tpu_visible_chips_per_host():
+    # v6e multi-host (4 chips per VM)
+    assert tpu.get_num_tpu_visible_chips_per_host("v6e-16") == 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v6e-32") == 4
+
+    # v6e single-host/sub-host (exact chip count)
+    assert tpu.get_num_tpu_visible_chips_per_host("v6e-8") == 8
+    assert tpu.get_num_tpu_visible_chips_per_host("v6e-4") == 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v6e-1") == 1
+
+    # v5litepod multi-host defaults to 4, single-host is 8 chips
+    assert tpu.get_num_tpu_visible_chips_per_host("v5litepod-16") == 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v5litepod-8") == 8
+
+    # v5litepod sub-host
+    assert tpu.get_num_tpu_visible_chips_per_host("v5litepod-4") == 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v5litepod-1") == 1
+
+    # Other TPU generations default to 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v4-8") == 4
+    assert tpu.get_num_tpu_visible_chips_per_host("v5p-8") == 4
 
 
 if __name__ == "__main__":

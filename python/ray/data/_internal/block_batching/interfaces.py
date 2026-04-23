@@ -50,10 +50,6 @@ class BlockPrefetcher(metaclass=abc.ABCMeta):
         """Prefetch the provided blocks to this node."""
         pass
 
-    def num_prefetched_blocks(self) -> int:
-        """Return the number of blocks currently scheduled for prefetching."""
-        return 0
-
     def stop(self):
         """Stop prefetching and release resources."""
         pass

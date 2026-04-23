@@ -4,12 +4,17 @@ from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 if TYPE_CHECKING:
     import pyarrow as pa
 
+<<<<<<< HEAD
 from typing_extensions import override
 
 from ray.data._internal.execution.bundle_queue import (
     BaseBundleQueue,
     RebundleQueue,
 )
+=======
+
+from ray.data._internal.execution.bundle_queue import RebundleQueue
+>>>>>>> 6db3b34b0eb422901b5d33dca62bc70fe88cad34
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -90,6 +95,7 @@ class TaskPoolMapOperator(MapOperator):
             raise ValueError(f"max_concurrency have to be > 0 (got {max_concurrency})")
 
         self._max_concurrency = max_concurrency
+        self._current_logical_usage = ExecutionResources.zero()
 
         # NOTE: Unlike static Ray remote args, dynamic arguments extracted from the
         #       blocks themselves are going to be passed inside `fn.options(...)`
@@ -112,7 +118,7 @@ class TaskPoolMapOperator(MapOperator):
     def _output_queues(self) -> List["BaseBundleQueue"]:
         return [self._output_queue]
 
-    def _add_bundled_input(self, bundle: RefBundle):
+    def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
         # Submit the task as a normal Ray task.
@@ -124,6 +130,7 @@ class TaskPoolMapOperator(MapOperator):
 
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
+        logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
 
         if (
             "_generator_backpressure_num_objects" not in dynamic_ray_remote_args
@@ -136,37 +143,35 @@ class TaskPoolMapOperator(MapOperator):
                 2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
             )
 
-        data_context = self.data_context
-
         gen = self._map_task.options(**dynamic_ray_remote_args).remote(
             self._map_transformer_ref,
-            data_context,
+            self._data_context_ref,
             ctx,
             *bundle.block_refs,
             slices=bundle.slices,
             **self.get_map_task_kwargs(),
         )
-        self._submit_data_task(gen, bundle)
+
+        self._current_logical_usage = self._current_logical_usage.add(logical_usage)
+
+        def task_done_callback():
+            self._current_logical_usage = self._current_logical_usage.subtract(
+                logical_usage
+            )
+
+        self._submit_data_task(gen, bundle, task_done_callback=task_done_callback)
 
     def progress_str(self) -> str:
         return ""
 
-    def current_processor_usage(self) -> ExecutionResources:
-        num_active_workers = self.num_active_tasks()
-        return ExecutionResources(
-            cpu=self._ray_remote_args.get("num_cpus", 0) * num_active_workers,
-            gpu=self._ray_remote_args.get("num_gpus", 0) * num_active_workers,
-        )
+    def current_logical_usage(self) -> ExecutionResources:
+        return self._current_logical_usage
 
-    def pending_processor_usage(self) -> ExecutionResources:
+    def pending_logical_usage(self) -> ExecutionResources:
         return ExecutionResources()
 
     def incremental_resource_usage(self) -> ExecutionResources:
-        return self.per_task_resource_allocation().copy(
-            object_store_memory=(
-                self._metrics.obj_store_mem_max_pending_output_per_task or 0
-            ),
-        )
+        return self.per_task_resource_allocation()
 
     def per_task_resource_allocation(self) -> ExecutionResources:
         return ExecutionResources(

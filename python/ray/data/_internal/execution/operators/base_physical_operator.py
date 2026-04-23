@@ -2,9 +2,7 @@ import abc
 import typing
 from typing import List, Optional
 
-from typing_extensions import override
-
-from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
+from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
     PhysicalOperator,
@@ -171,7 +169,7 @@ class AllToAllOperator(
         assert not self.has_completed()
         assert input_index == 0, input_index
         self._input_buffer.add(refs)
-        self._metrics.on_input_queued(refs)
+        self._metrics.on_input_queued(refs, input_index=0)
 
     def all_inputs_done(self) -> None:
         ctx = TaskContext(
@@ -185,9 +183,9 @@ class AllToAllOperator(
         output_buffer, self._stats = self._bulk_fn(self._input_buffer.to_list(), ctx)
         self._output_buffer = FIFOBundleQueue(output_buffer)
 
-        while self._input_buffer:
-            refs = self._input_buffer.get_last()
-            self._metrics.on_input_dequeued(refs)
+        while self._input_buffer.has_next():
+            refs = self._input_buffer.get_next()
+            self._metrics.on_input_dequeued(refs, input_index=0)
 
         for ref in self._output_buffer:
             self._metrics.on_output_queued(ref)
@@ -223,6 +221,10 @@ class AllToAllOperator(
         self._sub_progress_bar_dict[name] = pg
 
     def supports_fusion(self):
+        return True
+
+    def throttling_disabled(self) -> bool:
+        # Disable resource allocation and throttling for the operator
         return True
 
 
