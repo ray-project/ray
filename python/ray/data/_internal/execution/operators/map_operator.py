@@ -759,6 +759,13 @@ def _map_task(
 
         blocks_iter = _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
 
+        # NOTE: We avoid the cost of deduping schemas in the task because
+        # each yielded block should have the same schema, since each one
+        # is a slice of the UDF's single output block, and we know that
+        # slicing preserves the schema (so all yielded blocks will have
+        # the same schema)
+        yielded_schema: bool = False
+
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in map_transformer.apply_transform(blocks_iter, ctx):
                 block_meta = BlockAccessor.for_block(block).get_metadata()
@@ -792,8 +799,7 @@ def _map_task(
                             task_wall_time_s=task_dur_s
                         ),
                     ),
-                    # TODO only pass schema w/ the first block
-                    schema=block_schema,
+                    schema=block_schema if not yielded_schema else None,
                 )
 
                 sm = _mem_breakdown()
@@ -813,6 +819,7 @@ def _map_task(
                 )
 
                 # Reset trackers
+                yielded_schema = True
                 blk_exec_stats_builder = BlockExecStats.builder()
                 profiler.reset()
 
