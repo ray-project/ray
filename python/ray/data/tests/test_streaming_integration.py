@@ -664,7 +664,8 @@ def test_no_output_pileup_with_paused_consumer(
     ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
         object_store_memory=125_000
     )
-    ctx.downstream_capacity_backpressure_ratio = 1
+    # Disable downstream capacity backpressure to isolate the test to the resource budget limit.
+    ctx.downstream_capacity_backpressure_ratio = None
 
     # Few large input blocks — each task streams many small output blocks.
     ds = ray.data.range(1_000_000, override_num_blocks=5).map_batches(lambda x: x)
