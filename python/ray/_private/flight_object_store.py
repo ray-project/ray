@@ -80,28 +80,34 @@ class FlightObjectStore:
     def put_and_get_transfer_info(self, key, table):
         """Store a table and return transfer info dict.
 
-        Also pre-serializes to IPC and caches the buffer address
-        for same-node process_vm_readv transfers.
+        Serializes to IPC into an Arrow buffer (single copy, no Python bytes).
+        The buffer's address is exposed for same-node process_vm_readv.
         """
-        # Serialize to IPC bytes.
-        sink = pa.BufferOutputStream()
-        writer = ipc.new_stream(sink, table.schema)
-        writer.write_table(table)
-        writer.close()
-        ipc_buf = sink.getvalue()
-        ipc_bytes = ipc_buf.to_pybytes()
+        # Step 1: Compute exact IPC size without copying.
+        mock_sink = pa.MockOutputStream()
+        mock_writer = ipc.new_stream(mock_sink, table.schema)
+        mock_writer.write_table(table)
+        mock_writer.close()
+        ipc_size = mock_sink.size()
+
+        # Step 2: Serialize into an Arrow buffer (single copy).
+        buf = pa.allocate_buffer(ipc_size)
+        stream = pa.FixedSizeBufferWriter(buf)
+        real_writer = ipc.new_stream(stream, table.schema)
+        real_writer.write_table(table)
+        real_writer.close()
 
         with self._lock:
             self._tables[key] = table
-            # Cache IPC bytes and their buffer address for VM read.
-            self._ipc_cache[key] = ipc_bytes
+            # Keep Arrow buffer alive — its address is used by process_vm_readv.
+            self._ipc_cache[key] = buf
 
         return {
             "flight_uri": self._uri,
             "key": key,
             "pid": os.getpid(),
-            "ipc_address": _get_bytes_address(ipc_bytes),
-            "ipc_size": len(ipc_bytes),
+            "ipc_address": buf.address,
+            "ipc_size": ipc_size,
         }
 
     def get_local(self, key):
@@ -169,14 +175,6 @@ def _get_local_ip():
         return ip
     except Exception:
         return "127.0.0.1"
-
-
-def _get_bytes_address(b):
-    """Get the memory address of a Python bytes object's data buffer."""
-    import ctypes
-
-    buf = ctypes.c_char_p(b)
-    return ctypes.cast(buf, ctypes.c_void_p).value
 
 
 # ---------------------------------------------------------------------------
