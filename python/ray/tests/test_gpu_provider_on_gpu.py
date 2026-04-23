@@ -10,6 +10,21 @@ from ray.dashboard.modules.reporter.gpu_providers import (
 )
 
 
+def _host_pid() -> int:
+    # NVML reports host-namespace PIDs. When running inside a PID-namespaced
+    # container (e.g. CI), os.getpid() returns the container PID and will not
+    # match anything NVML reports. /proc/self/status exposes the full NSpid
+    # chain; the first entry is the outermost (host) namespace.
+    try:
+        with open("/proc/self/status") as f:
+            for line in f:
+                if line.startswith("NSpid:"):
+                    return int(line.split()[1])
+    except OSError:
+        pass
+    return os.getpid()
+
+
 def test_per_process_gpu_memory_usage_and_total_gpu_memory_usage():
     """
     Allocate a large tensor on GPU, then verify the provider reports process
@@ -29,7 +44,7 @@ def test_per_process_gpu_memory_usage_and_total_gpu_memory_usage():
         assert len(result) > 0
 
         # Find the process and the gpu that corresponds to where the tensor was allocated
-        pid = os.getpid()
+        pid = _host_pid()
         process_info = None
         gpu_info = None
         for single_gpu_info in result:
