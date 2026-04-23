@@ -260,9 +260,11 @@ class VLLMEngineConfig(BaseModelExtended):
     @property
     def placement_bundles(self) -> List[Dict[str, float]]:
         if self.placement_group_config:
-            # Check if bundle_per_worker is specified inside placement_group_config
-            bundle_per_worker = self.placement_group_config.get("bundle_per_worker")
-            if bundle_per_worker:
+            # Check if bundle_per_worker key is specified inside placement_group_config
+            if "bundle_per_worker" in self.placement_group_config:
+                bundle_per_worker = self.placement_group_config.get(
+                    "bundle_per_worker", {}
+                )
                 # Expand bundle_per_worker to num_devices bundles
                 bundles = []
                 for _ in range(self.num_devices):
@@ -274,7 +276,7 @@ class VLLMEngineConfig(BaseModelExtended):
 
             # Otherwise use explicit bundles list
             bundles = []
-            for bundle_dict in self.placement_group_config["bundles"]:
+            for bundle_dict in self.placement_group_config.get("bundles", []):
                 bundle = bundle_dict.copy()
                 if self.accelerator_type:
                     # Use setdefault to add accelerator hint WITHOUT overriding explicit user values
