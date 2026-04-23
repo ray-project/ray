@@ -260,21 +260,22 @@ Status CoreWorkerPlasmaStoreProvider::Get(
 
   bool got_exception = false;
   int64_t num_total_objects = static_cast<int64_t>(object_ids.size());
-  for (int64_t i = 0; i < num_total_objects; i++) {
-    remaining_object_id_to_idx[object_ids[i]] = i;
-  }
 
   // TODO(57923): Need to understand if batching is necessary. If it's necessary,
   // then the reason needs to be documented.
-  //
-  // Map objects already in the local object store into the worker's address
-  // space directly, and collect the ones that aren't.
   for (int64_t start = 0; start < num_total_objects; start += fetch_batch_size_) {
     int64_t end = std::min(start + fetch_batch_size_, num_total_objects);
-    std::vector<ObjectID> batch_ids(object_ids.begin() + start, object_ids.begin() + end);
-    // GetObjectsFromPlasmaStore erases any id it successfully retrieves from
-    // remaining_object_id_to_idx, so ids that remain in the map after this
-    // call are not in the local object store and need to ask raylet to pull.
+    std::vector<ObjectID> batch_ids;
+    batch_ids.reserve(end - start);
+    for (int64_t i = start; i < end; i++) {
+      remaining_object_id_to_idx[object_ids[i]] = i;
+      batch_ids.push_back(object_ids[i]);
+    }
+
+    // Map objects already in the local object store into the worker's address space
+    // directly. GetObjectsFromPlasmaStore erases any id it successfully retrieves from
+    // remaining_object_id_to_idx, so ids that remain in the map after this call are
+    // not in the local object store and need to ask raylet to pull.
     RAY_RETURN_NOT_OK(GetObjectsFromPlasmaStore(remaining_object_id_to_idx,
                                                 batch_ids,
                                                 /*timeout_ms=*/0,
