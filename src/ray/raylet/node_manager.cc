@@ -3053,13 +3053,11 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 }
 
 bool NodeManager::MarkKillWorkerInProgress() {
-  {
-    absl::MutexLock lock(&worker_killing_in_progress_mutex_);
-    if (worker_killing_in_progress_) {
-      return false;
-    }
-    worker_killing_in_progress_ = true;
+  absl::MutexLock lock(&worker_killing_in_progress_mutex_);
+  if (worker_killing_in_progress_) {
+    return false;
   }
+  worker_killing_in_progress_ = true;
   for (auto &monitor : memory_monitors_) {
     monitor->Disable();
   }
@@ -3067,10 +3065,8 @@ bool NodeManager::MarkKillWorkerInProgress() {
 }
 
 void NodeManager::ReleaseKillWorkerInProgress() {
-  {
-    absl::MutexLock lock(&worker_killing_in_progress_mutex_);
-    worker_killing_in_progress_ = false;
-  }
+  absl::MutexLock lock(&worker_killing_in_progress_mutex_);
+  worker_killing_in_progress_ = false;
   for (auto &monitor : memory_monitors_) {
     monitor->Enable();
   }
