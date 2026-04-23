@@ -277,6 +277,7 @@ py_test_module_list(
         "test_cli_2.py",
         "test_cli_3.py",
         "test_cli_4.py",
+        "test_consistent_hash_router.py",
     ],
     tags = [
         "exclusive",

@@ -5,6 +5,7 @@ fastapi
 gradio
 grpcio
 httpx
+mmh3
 numpy
 packaging
 pandas
