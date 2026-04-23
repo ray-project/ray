@@ -94,13 +94,13 @@ def decoder(batch):
 def run_pipeline():
     ds = ray.data.read_parquet(INPUT_PATH)
     ds = ds.map(resample)
-    ds = ds.map_batches(whisper_preprocess)
+    ds = ds.map_batches(whisper_preprocess, batch_size="auto")
     ds = ds.map_batches(
         Transcriber,
         batch_size=BATCH_SIZE,
         num_gpus=1,
     )
-    ds = ds.map_batches(decoder)
+    ds = ds.map_batches(decoder, batch_size="auto")
     ds.write_parquet(OUTPUT_PATH)
 
 
