@@ -857,31 +857,24 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         assert self.num_envs == self.config.num_envs_per_env_runner
         # self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
         # self.num_envs = 1
-        # If required, check the created MultiAgentEnv instances.
+        # If required, check the created MultiAgentEnv instances. Any failure
+        # here propagates out of `make_env()`: the remote dispatch layer
+        # (`FaultAwareApply.apply()`) catches it, terminates the actor, and Ray
+        # Core rebuilds a fresh one.
         if not self.config.disable_env_checking:
-            try:
-                for env in self.env.envs:
-                    check_multiagent_environments(env.unwrapped)
-            except Exception as e:
-                logger.exception(e.args[0])
+            for env in self.env.envs:
+                check_multiagent_environments(env.unwrapped)
         # If not required, still check the type (must be `VectorMultiAgentEnv``).
         else:
-            try:
-                assert isinstance(self.env, VectorMultiAgentEnv)
-                assert isinstance(self.env.envs[0].unwrapped, MultiAgentEnv)
-            except AssertionError:
-                logger.exception(
-                    "When using the `MultiAgentEnvRunner`, the environment must "
-                    f"inherit from `ray.rllib.env.vector.vector_multi_agent_env."
-                    f"VectorMultiAgentEnv` (but yours is {self.env}) and the individual"
-                    " envs must inherit from `MultiAgentEnv` (but yours is "
-                    f"{self.env.envs[0].unwrapped})!"
-                )
-            except TypeError:
-                logger.exception(
-                    "When using the `MultiAgentEnvRunner`, the env must "
-                    "have a subscriptable `self.envs` attribute!"
-                )
+            assert isinstance(self.env, VectorMultiAgentEnv), (
+                "When using the `MultiAgentEnvRunner`, the environment must inherit "
+                f"from `VectorMultiAgentEnv` (but yours is {self.env})."
+            )
+            assert isinstance(self.env.envs[0].unwrapped, MultiAgentEnv), (
+                "When using the `MultiAgentEnvRunner`, the individual envs must "
+                f"inherit from `MultiAgentEnv` (but yours is "
+                f"{self.env.envs[0].unwrapped})."
+            )
 
         # Set the flag to reset all envs upon the next `sample()` call.
         self._needs_initial_reset = True
