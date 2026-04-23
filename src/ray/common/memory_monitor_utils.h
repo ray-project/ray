@@ -21,6 +21,7 @@
 #include <tuple>
 #include <vector>
 
+#include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/util/compat.h"
 
@@ -69,11 +70,18 @@ class MemoryMonitorUtils {
    * @param usage_threshold A value in [0-1] to indicate the max usage.
    * @param min_memory_free_bytes The min amount of free space to maintain before it is
    *        exceeding the threshold.
+   * @param resource_isolation_enabled Whether resource isolation is enabled. Used
+   *        to determine if the threshold should be calculated based on the cgroup
+   * constraints.
+   * @param cgroup_manager The cgroup manager to fetch the upper bound memory constraints
+   * from.
    * @return The memory threshold.
    */
   static int64_t GetMemoryThreshold(int64_t total_memory_bytes,
                                     float usage_threshold,
-                                    int64_t min_memory_free_bytes);
+                                    int64_t min_memory_free_bytes,
+                                    bool resource_isolation_enabled,
+                                    const CgroupManagerInterface &cgroup_manager);
 
   /**
    * @brief Gets the used memory for a process from the process memory snapshot.
@@ -221,6 +229,8 @@ class MemoryMonitorUtils {
   static constexpr char kCgroupsV2MemoryStatActiveFileKey[] = "active_file";
   static constexpr char kProcDirectory[] = "/proc";
   static constexpr char kCommandlinePath[] = "cmdline";
+
+  static constexpr double kDefaultThresholdMonitorReactionBufferProportion = 0.05;
 };
 
 }  // namespace ray
