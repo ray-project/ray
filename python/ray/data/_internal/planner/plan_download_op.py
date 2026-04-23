@@ -210,9 +210,7 @@ def download_bytes_threaded(
                 if probe_uri is None:
                     continue
                 try:
-                    paths, candidate_fs = _resolve_paths_and_filesystem(
-                        probe_uri, None
-                    )
+                    paths, candidate_fs = _resolve_paths_and_filesystem(probe_uri, None)
                 except Exception as e:
                     logger.debug(f"Could not infer filesystem from '{probe_uri}': {e}")
                     continue
