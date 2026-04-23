@@ -45,7 +45,7 @@ RAY_CONFIG(bool, ENABLE_K8S_TOKEN_AUTH, false)
 /// -1 means the feature is disabled. In this case, stats are available
 /// in the associated process's log file.
 /// NOTE: This requires event_stats=1.
-RAY_CONFIG(int64_t, event_stats_print_interval_ms, 500)
+RAY_CONFIG(int64_t, event_stats_print_interval_ms, 2000)
 
 /// In theory, this is used to detect Ray cookie mismatches.
 /// This magic number (hex for "RAY") is used instead of zero, rationale is

@@ -307,7 +307,7 @@ NodeManager::NodeManager(
                     << " after push complete. Object store used before release: "
                     << object_manager_.GetUsedMemory() << " bytes ("
                     << object_manager_.GetUsedMemoryPercentage() * 100 << "%)";
-      local_object_manager_.ReleaseFreedObject(object_id);
+      object_manager_.FreeObjects({object_id}, /*local_only=*/true);
     });
   }
 }
