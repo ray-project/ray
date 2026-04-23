@@ -3,24 +3,30 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_ml-py3.10
 FROM $DOCKER_IMAGE_BASE_BUILD
 
-ARG ARROW_VERSION=23.*
-ARG ARROW_MONGO_VERSION=
 ARG RAY_CI_JAVA_BUILD=
+ARG IMAGE_TYPE=base
+ARG PYTHON=3.10
+ARG PYTHON_DEPSET=python/deplocks/ci/data-$IMAGE_TYPE-ci_depset_py$PYTHON.lock
+
+COPY $PYTHON_DEPSET /home/ray/python_depset.lock
 
 SHELL ["/bin/bash", "-ice"]
-
-COPY . .
 
 RUN <<EOF
 #!/bin/bash
 
 set -ex
 
-DATA_PROCESSING_TESTING=1 ARROW_VERSION=$ARROW_VERSION \
-  ARROW_MONGO_VERSION=$ARROW_MONGO_VERSION ./ci/env/install-dependencies.sh
-if [[ -n "$ARROW_MONGO_VERSION" ]]; then
-  # Older versions of Arrow Mongo require an older version of NumPy.
-  pip install numpy==1.23.5
+uv pip install -r /home/ray/python_depset.lock --no-deps --system --index-strategy unsafe-best-match
+
+if [[ "$IMAGE_TYPE" == "pyarrow-nightly" ]]; then
+  uv pip install \
+    --system \
+    --pre \
+    --prefer-binary \
+    --extra-index-url https://pypi.fury.io/arrow-nightlies/ \
+    --upgrade-package pyarrow
+    pyarrow
 fi
 
 curl -fsSL https://pgp.mongodb.com/server-8.0.asc | \

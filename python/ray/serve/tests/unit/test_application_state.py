@@ -1,3 +1,4 @@
+import math
 import sys
 import time
 from typing import Dict, List, Optional, Tuple
@@ -2974,6 +2975,24 @@ def partial_app_level_policy(contexts):
     return decisions, {}
 
 
+def partial_decisions_app_level_policy(contexts):
+    """
+    The decison for deployment "d1" is skipped but state
+    for each deployment is always provided
+    """
+    decisions = {}
+    new_state = {}
+    for deployment_id, ctx in contexts.items():
+        prev_counter = 0
+        if ctx.policy_state:
+            prev_counter = ctx.policy_state.get("counter", 0)
+        if deployment_id.name != "d1":
+            decisions[deployment_id] = 3
+        # Pass the state regardless
+        new_state[deployment_id] = {"counter": prev_counter + 1}
+    return decisions, new_state
+
+
 class TestApplicationLevelAutoscaling:
     """Test application-level autoscaling policy registration, execution, and lifecycle."""
 
@@ -3736,17 +3755,93 @@ class TestApplicationLevelAutoscaling:
         with pytest.raises(AssertionError, match="must be a dictionary"):
             app_autoscaling_state._validate_policy_state(invalid_value_state)
 
-    def test_app_level_autoscaling_with_decorator_applies_delays(
+    def test_policy_state_persitence_for_skipped_deployments(
         self, mocked_application_state_manager
     ):
-        """Test that apply_app_level_autoscaling_config applies delay logic for an app-level policy."""
+        """
+        Test that when an app-level policy returns decisions for only a subset of deployments, the skipped deployment's user state is
+        still maintained across multiple calls
+        """
 
         (
             app_state_manager,
             deployment_state_manager,
             _,
         ) = mocked_application_state_manager
-        # Create deployments for the policy
+
+        # Create app config with two deployments and override to use the stateful policy.
+        deployments = [
+            DeploymentSchema(
+                name="d1",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                },
+            ),
+            DeploymentSchema(
+                name="d2",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                },
+            ),
+        ]
+        app_config = self._create_app_config(deployments=deployments)
+        app_config.autoscaling_policy = {
+            "policy_function": "ray.serve.tests.unit.test_application_state:partial_decisions_app_level_policy"
+        }
+
+        # Deploy app and register deployments with autoscaling manager.
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Create replicas so autoscaling runs.
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        d2_replicas = [
+            ReplicaID(unique_id=f"d2_replica_{i}", deployment_id=d2_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+        asm.update_running_replica_ids(d2_id, d2_replicas)
+
+        for i in range(3):
+            deployment_state_manager._scaling_decisions.clear()
+            app_state_manager.update()
+            # The scaling decisions will not contain d1
+            assert d1_id not in deployment_state_manager._scaling_decisions
+            assert deployment_state_manager._scaling_decisions[d2_id] == 3
+            # State still exists and increments correctly according to the policy for each deployment
+            app_autoscaling_state = asm._app_autoscaling_states["test_app"]
+            for _, state in app_autoscaling_state._policy_state.items():
+                assert state.get("counter") == i + 1
+
+    def test_app_level_autoscaling_with_decorator_applies_delays(
+        self, mocked_application_state_manager
+    ):
+        """Delay logic uses wall-clock time in _apply_delay_logic, not iteration count.
+
+        Autoscale() runs in a tight test loop, so real time between calls is ~0.
+        We patch ``ray.serve.autoscaling_policy.time`` so each policy evaluation
+        advances a fake clock by CONTROL_LOOP_INTERVAL_S (matching controller cadence).
+
+        Wait counts use math.ceil(delay / interval): int() undercounts when
+        float division yields 5.999... for 0.6/0.1, and wall-clock needs enough
+        ticks that elapsed >= delay_s. Fake times use tick/ticks_per_second (not
+        tick * interval) so timestamp subtraction stays exact in IEEE 754.
+        """
+
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
         deployments = [
             DeploymentSchema(
                 name="d1",
@@ -3762,25 +3857,22 @@ class TestApplicationLevelAutoscaling:
             )
         ]
 
-        # Create app config but override to use the decorated app-level policy.
         app_config = self._create_app_config(deployments=deployments)
         app_config.autoscaling_policy = {
             "policy_function": "ray.serve.tests.unit.test_application_state:app_level_policy_with_decorator"
         }
 
-        # Deploy app and register deployments with autoscaling manager.
         _ = self._deploy_app_with_mocks(app_state_manager, app_config)
         asm = self._register_deployments(app_state_manager, app_config)
 
         d1_id = DeploymentID(name="d1", app_name="test_app")
 
-        # Get the delay values from the deployment config
         upscale_delay_s = deployments[0].autoscaling_config["upscale_delay_s"]
-        wait_periods_upscale = int(upscale_delay_s / CONTROL_LOOP_INTERVAL_S)
         downscale_delay_s = deployments[0].autoscaling_config["downscale_delay_s"]
-        wait_periods_downscale = int(downscale_delay_s / CONTROL_LOOP_INTERVAL_S)
+        ticks_per_second = round(1.0 / CONTROL_LOOP_INTERVAL_S)
+        wait_ticks_before_upscale = math.ceil(upscale_delay_s * ticks_per_second)
+        wait_ticks_before_downscale = math.ceil(downscale_delay_s * ticks_per_second)
 
-        # Create replicas so autoscaling runs.
         d1_replicas = [
             ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
         ]
@@ -3788,29 +3880,33 @@ class TestApplicationLevelAutoscaling:
 
         app_state = app_state_manager._application_states["test_app"]
 
-        for _ in range(wait_periods_upscale):
+        fake_tick = [0]
+
+        def _advance_time():
+            t = fake_tick[0] / ticks_per_second
+            fake_tick[0] += 1
+            return t
+
+        with patch("ray.serve.autoscaling_policy.time") as mock_time:
+            mock_time.time = _advance_time
+
+            for _ in range(wait_ticks_before_upscale):
+                app_state.autoscale()
+                assert deployment_state_manager._scaling_decisions[d1_id] == 1
+
             app_state.autoscale()
-            current_replicas = deployment_state_manager._scaling_decisions[d1_id]
-            assert current_replicas == 1
+            assert deployment_state_manager._scaling_decisions[d1_id] == 5
 
-        app_state.autoscale()
-        # Count the number of replicas are 5 now
-        assert d1_id in deployment_state_manager._scaling_decisions
-        assert deployment_state_manager._scaling_decisions[d1_id] == 5
+            deployment_state_manager.deployment_infos[
+                d1_id
+            ].deployment_config.num_replicas = 5
 
-        # Set the number of replicas to 5 so the policy can scale down to 1
-        deployment_state_manager.deployment_infos[
-            d1_id
-        ].deployment_config.num_replicas = 5
+            for _ in range(wait_ticks_before_downscale):
+                app_state.autoscale()
+                assert deployment_state_manager._scaling_decisions[d1_id] == 5
 
-        # Scale down to 1
-        for _ in range(wait_periods_downscale):
             app_state.autoscale()
-            current_replicas = deployment_state_manager._scaling_decisions[d1_id]
-            assert current_replicas == 5
-        app_state.autoscale()
-        assert d1_id in deployment_state_manager._scaling_decisions
-        assert deployment_state_manager._scaling_decisions[d1_id] == 1
+            assert deployment_state_manager._scaling_decisions[d1_id] == 1
 
 
 def test_get_external_scaler_enabled(mocked_application_state_manager):

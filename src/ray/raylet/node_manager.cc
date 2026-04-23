@@ -190,7 +190,9 @@ NodeManager::NodeManager(
     PlacementGroupResourceManager &placement_group_resource_manager,
     boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
     local_stream_socket socket,
-    ray::observability::MetricInterface &memory_manager_worker_eviction_total_count)
+    ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
+    ray::observability::MetricInterface
+        &node_manager_unexpected_worker_failure_total_count)
     : self_node_id_(self_node_id),
       self_node_name_(std::move(self_node_name)),
       io_service_(io_service),
@@ -232,14 +234,19 @@ NodeManager::NodeManager(
       global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       memory_manager_worker_eviction_total_count_(
           memory_manager_worker_eviction_total_count),
+      node_manager_unexpected_worker_failure_total_count_(
+          node_manager_unexpected_worker_failure_total_count),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       local_lease_manager_(local_lease_manager),
       cluster_lease_manager_(cluster_lease_manager),
       record_metrics_period_ms_(config.record_metrics_period_ms),
       placement_group_resource_manager_(placement_group_resource_manager),
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
-      worker_killing_policy_(WorkerKillingPolicyFactory::Create()),
-      memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback())),
+      worker_killing_policy_(WorkerKillingPolicyFactory::Create(
+          config.enable_resource_isolation, *cgroup_manager)),
+      memory_monitor_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
+                                                   config.enable_resource_isolation,
+                                                   *cgroup_manager)),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
       shutting_down_(shutting_down),
@@ -1493,6 +1500,24 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         auto error_data = gcs::CreateErrorTableData(
             type, error_message_str, absl::FromUnixMillis(current_time_ms()), job_id);
         gcs_client_.Errors().AsyncReportJobError(std::move(error_data));
+
+        const RayLease &ray_lease = worker->GetGrantedLease();
+        if (worker->GetActorId().IsNil()) {
+          node_manager_unexpected_worker_failure_total_count_.Record(
+              1,
+              {{"Type", "Raylet.UnexpectedTaskFailure.Total"},
+               {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+        } else {
+          node_manager_unexpected_worker_failure_total_count_.Record(
+              1,
+              {{"Type", "Raylet.UnexpectedActorFailure.Total"},
+               {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
+        }
+      }
+    } else if (lease_id.IsNil() && actor_id.IsNil() && !worker->IsDead()) {
+      if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+        node_manager_unexpected_worker_failure_total_count_.Record(
+            1, {{"Type", "Raylet.UnexpectedIdleWorkerFailure.Total"}, {"Name", ""}});
       }
     }
 
@@ -1556,6 +1581,9 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
           << " died. Address: " << BuildAddress(worker->IpAddress(), worker->Port())
           << ", Pid: " << worker->GetProcess().GetId()
           << ", JobId: " << worker->GetAssignedJobId();
+
+      node_manager_unexpected_worker_failure_total_count_.Record(
+          1, {{"Type", "Raylet.UnexpectedDriverFailure.Total"}, {"Name", ""}});
     }
   }
 
@@ -1759,22 +1787,12 @@ void NodeManager::HandleReportWorkerBacklog(
     WorkerPoolInterface &worker_pool,
     LocalLeaseManagerInterface &local_lease_manager) {
   const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
-  if (worker_pool.GetRegisteredWorker(worker_id) == nullptr &&
-      worker_pool.GetRegisteredDriver(worker_id) == nullptr) {
-    // The worker is already disconnected.
-    send_reply_callback(Status::OK(), nullptr, nullptr);
-    return;
+  if (worker_pool.GetRegisteredDriver(worker_id) != nullptr ||
+      worker_pool.GetRegisteredWorker(worker_id) != nullptr) {
+    // Worker is still alive according to the raylet.
+    local_lease_manager.SetWorkerBacklog(std::move(request));
   }
 
-  local_lease_manager.ClearWorkerBacklog(worker_id);
-  std::unordered_set<SchedulingClass> seen;
-  for (const auto &backlog_report : request.backlog_reports()) {
-    const LeaseSpecification lease_spec(backlog_report.lease_spec());
-    const SchedulingClass scheduling_class = lease_spec.GetSchedulingClass();
-    RAY_CHECK(seen.find(scheduling_class) == seen.end());
-    local_lease_manager.SetWorkerBacklog(
-        scheduling_class, worker_id, backlog_report.backlog_size());
-  }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
@@ -2121,8 +2139,10 @@ void NodeManager::HandleReturnWorkerLease(rpc::ReturnWorkerLeaseRequest request,
 void NodeManager::HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                           rpc::IsLocalWorkerDeadReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
-  reply->set_is_dead(worker_pool_.GetRegisteredWorker(
-                         WorkerID::FromBinary(request.worker_id())) == nullptr);
+  const auto worker_id = WorkerID::FromBinary(request.worker_id());
+  const bool registered = worker_pool_.GetRegisteredWorker(worker_id) != nullptr ||
+                          worker_pool_.GetRegisteredDriver(worker_id) != nullptr;
+  reply->set_is_dead(!registered);
   send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
 }
 
@@ -3032,9 +3052,9 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 
 // Picks the workers and kills the process if the memory usage is above the threshold.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
-  return [this](const SystemMemorySnapshot &system_memory_snapshot) {
+  return [this](SystemMemorySnapshot system_memory_snapshot) {
     io_service_.post(
-        [this, system_memory = system_memory_snapshot]() {
+        [this, system_memory = std::move(system_memory_snapshot)]() {
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           std::vector<std::shared_ptr<WorkerInterface>> workers =
@@ -3063,7 +3083,9 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
               total_memory_bytes,
               RayConfig::instance().memory_usage_threshold(),
-              RayConfig::instance().min_memory_free_bytes());
+              RayConfig::instance().min_memory_free_bytes(),
+              initial_config_.enable_resource_isolation,
+              *cgroup_manager_);
           float computed_threshold_fraction =
               static_cast<float>(computed_threshold_bytes) /
               static_cast<float>(total_memory_bytes);
@@ -3265,9 +3287,16 @@ std::string NodeManager::CreateOomKillMessageSuggestions(
       "parallelism by requesting more CPUs per task. %s"
       "To adjust the kill "
       "threshold, set the environment variable "
-      "`RAY_memory_usage_threshold` when starting Ray. To disable "
-      "worker killing, set the environment variable "
-      "`RAY_memory_monitor_refresh_ms` to zero.",
+      "`RAY_memory_usage_threshold` when starting Ray. "
+      "To disable worker killing, set the environment variable "
+      "`RAY_memory_monitor_refresh_ms` to zero. "
+      "Since 2.56, Ray updated the oom killing policy to enabling killing "
+      "multiple workers and selecting workers based on the time since "
+      "the task start executing. To revert to the legacy policy of "
+      "determining worker to oom kill based on owner group size or only "
+      "selecting a single worker to kill at a time, set the environment "
+      "variable `RAY_worker_killing_policy_by_group` to true before "
+      "starting Ray.",
       not_retriable_recommendation_ss.str());
 }
 
