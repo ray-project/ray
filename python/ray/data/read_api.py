@@ -460,7 +460,17 @@ def _read_datasource_v2(
         indexer, datasource.paths, datasource.filesystem, pruners
     )
     schema = datasource.infer_schema(sample)
-    scanner = datasource.create_scanner(schema=schema, filesystem=datasource.filesystem)
+    # Resolve any path-discovered partitioning field names from the sample
+    # and pass the result through to the scanner. Keeping the discovery
+    # here (rather than mutating ``datasource._partitioning`` inside
+    # ``infer_schema``) leaves the datasource instance immutable across
+    # reads.
+    resolved_partitioning = datasource.resolve_partitioning(sample)
+    scanner = datasource.create_scanner(
+        schema=schema,
+        filesystem=datasource.filesystem,
+        partitioning=resolved_partitioning,
+    )
 
     # Size-balanced bucketing for the listing output. The partitioner is
     # captured in a pickled closure and runs inside worker tasks, so its

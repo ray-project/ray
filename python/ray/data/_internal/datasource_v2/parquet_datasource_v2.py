@@ -6,11 +6,13 @@ Wires the V2 listing (`NonSamplingFileIndexer`, driven by the upstream
 Constructed from `read_api.read_parquet` when
 `DataContext.use_datasource_v2` is set.
 """
+
 from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any, List, Optional
 
 import pyarrow as pa
+from typing_extensions import override
 
 from ray.data._internal.datasource.parquet_datasource import (
     ParquetDatasource,
@@ -114,6 +116,34 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
     def get_size_estimator(self) -> ParquetInMemorySizeEstimator:
         return ParquetInMemorySizeEstimator()
 
+    @override
+    def resolve_partitioning(self, sample: FileManifest) -> Optional[Partitioning]:
+        """Return ``self._partitioning`` with path-discovered field names.
+
+        Hive partitioning ships with ``field_names=None`` by default and
+        discovers keys from the file path at plan time. Directory
+        partitioning already carries ``field_names`` at construction and
+        needs no discovery. Returns a fresh ``Partitioning`` rather than
+        mutating ``self`` so schema inference stays side-effect-free.
+        """
+        if self._partitioning is None or len(sample) == 0:
+            return self._partitioning
+        if self._partitioning.field_names:
+            return self._partitioning
+
+        first_path = sample.paths.tolist()[0]
+        parser = PathPartitionParser(self._partitioning)
+        partition_kv = parser(first_path)
+        if not partition_kv:
+            return self._partitioning
+        return Partitioning(
+            style=self._partitioning.style,
+            base_dir=self._partitioning.base_dir,
+            field_names=list(partition_kv.keys()),
+            field_types=self._partitioning.field_types,
+            filesystem=self._partitioning.filesystem,
+        )
+
     def infer_schema(self, sample: FileManifest) -> pa.Schema:
         """Read Parquet footers from the sample manifest; unify and augment.
 
@@ -121,6 +151,11 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         ``unify_schemas_with_validation`` so a first file with all-null
         columns doesn't lock in ``null`` types that can't be cast to the
         actual types in later files.
+
+        Pure: does not mutate ``self``. Partitioning field-name discovery
+        is delegated to :meth:`resolve_partitioning` so the discovered
+        ``Partitioning`` can flow through ``_read_datasource_v2`` into
+        :meth:`create_scanner` without side effects.
         """
         from concurrent.futures import ThreadPoolExecutor
 
@@ -150,36 +185,22 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             )
         schema = unify_schemas_with_validation(per_file_schemas) or per_file_schemas[0]
 
-        first_path = sample_paths[0]
-        if self._partitioning is not None:
-            parser = PathPartitionParser(self._partitioning)
+        resolved_partitioning = self.resolve_partitioning(sample)
+        if resolved_partitioning is not None:
+            first_path = sample_paths[0]
+            parser = PathPartitionParser(resolved_partitioning)
             partition_kv = parser(first_path)
             # For hive partitioning the parser discovers key names from the
             # path itself; for directory partitioning it uses ``field_names``.
             # In both cases ``partition_kv`` is the authoritative list of
             # partition columns for the first sample file.
             partition_pa_schema = _partition_field_types_to_pa_schema(
-                list(partition_kv.keys()), self._partitioning.field_types or {}
+                list(partition_kv.keys()), resolved_partitioning.field_types or {}
             )
             for field_name in partition_kv.keys():
                 if schema.get_field_index(field_name) == -1:
                     pa_type = partition_pa_schema.field(field_name).type
                     schema = schema.append(pa.field(field_name, pa_type))
-
-            # Persist the discovered keys on ``self._partitioning`` so the
-            # scanner (via ``SupportsPartitionPruning.partition_columns``)
-            # can report them — required for the predicate-pushdown rule
-            # to decide which predicates are partition-only vs data-only.
-            # Hive partitioning ships with ``field_names=None`` by default
-            # and relies on path discovery; this writes the result back.
-            if partition_kv and not self._partitioning.field_names:
-                self._partitioning = Partitioning(
-                    style=self._partitioning.style,
-                    base_dir=self._partitioning.base_dir,
-                    field_names=list(partition_kv.keys()),
-                    field_types=self._partitioning.field_types,
-                    filesystem=self._partitioning.filesystem,
-                )
 
         if self._include_paths and schema.get_field_index("path") == -1:
             schema = schema.append(pa.field("path", pa.string()))
@@ -198,10 +219,15 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # honored at scan time (V2 does not yet dispatch Ray-level
         # predicate pushdown rules).
         predicate = self._arrow_parquet_args.get("filter")
+        # Callers (``_read_datasource_v2``) supply the sample-resolved
+        # ``Partitioning`` via ``options["partitioning"]`` so the
+        # datasource itself stays immutable — fall back to the
+        # constructor-provided one for direct users of this API.
+        partitioning = options.get("partitioning", self._partitioning)
         return ParquetScanner(
             schema=schema,
             filesystem=filesystem or self._filesystem,
-            partitioning=self._partitioning,
+            partitioning=partitioning,
             include_paths=self._include_paths,
             shuffle=self._shuffle,
             ignore_prefixes=options.get("ignore_prefixes"),

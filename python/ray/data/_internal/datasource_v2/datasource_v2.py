@@ -161,3 +161,19 @@ class DataSourceV2(ABC, Generic[InputSplit]):
             Configured Scanner instance.
         """
         ...
+
+    def resolve_partitioning(self, sample: InputSplit) -> Optional[Any]:
+        """Return a partitioning descriptor derived from ``sample``.
+
+        File-based partitioned datasources override this to populate
+        path-discovered field names (e.g. hive ``Partitioning`` ships
+        with ``field_names=None`` and needs to read a sample path to
+        learn the keys). Keeping the discovery on a dedicated method
+        lets :func:`ray.data.read_api._read_datasource_v2` thread the
+        resolved partitioning into :meth:`create_scanner` without
+        ``infer_schema`` or the datasource instance having to mutate
+        state.
+
+        Default implementation returns ``None``.
+        """
+        return None
