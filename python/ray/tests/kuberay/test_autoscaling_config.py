@@ -375,6 +375,50 @@ def _get_tpu_group_without_topology_node_selector() -> dict[str, Any]:
     return tpu_group
 
 
+def _get_tpu_group_with_v7x_node_selectors() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    tpu_group = cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["template"]["spec"]["nodeSelector"][GKE_TPU_TOPOLOGY_LABEL] = "2x2x2"
+    tpu_group["template"]["spec"]["nodeSelector"][GKE_TPU_ACCELERATOR_LABEL] = "tpu7x"
+    return tpu_group
+
+
+def _get_ray_cr_with_tpu_v7x() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][2] = _get_tpu_group_with_v7x_node_selectors()
+    return cr
+
+
+def _get_autoscaling_config_with_v7x() -> dict[str, Any]:
+    config = _get_basic_autoscaling_config()
+    config["available_node_types"]["tpu-group"]["resources"]["TPU-v7x-16-head"] = 1
+    config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    return config
+
+
+def _get_tpu_group_with_v5litepod_node_selectors() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    tpu_group = cr["spec"]["workerGroupSpecs"][2]
+    tpu_group["template"]["spec"]["nodeSelector"][GKE_TPU_TOPOLOGY_LABEL] = "2x4"
+    tpu_group["template"]["spec"]["nodeSelector"][
+        GKE_TPU_ACCELERATOR_LABEL
+    ] = "tpu-v5-lite-podslice"
+    return tpu_group
+
+
+def _get_ray_cr_with_tpu_v5litepod() -> dict[str, Any]:
+    cr = get_basic_ray_cr()
+    cr["spec"]["workerGroupSpecs"][2] = _get_tpu_group_with_v5litepod_node_selectors()
+    return cr
+
+
+def _get_autoscaling_config_with_v5litepod() -> dict[str, Any]:
+    config = _get_basic_autoscaling_config()
+    config["available_node_types"]["tpu-group"]["resources"]["TPU-v5litepod-8-head"] = 1
+    config["available_node_types"]["tpu-group"]["resources"].pop("TPU-v4-16-head", None)
+    return config
+
+
 @pytest.mark.parametrize(
     "input,output",
     [
@@ -491,6 +535,22 @@ TEST_DATA = (
             None,
             None,
             id="invalid-top-level-labels",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_v7x(),
+            _get_autoscaling_config_with_v7x(),
+            None,
+            None,
+            None,
+            id="tpu-v7x",
+        ),
+        pytest.param(
+            _get_ray_cr_with_tpu_v5litepod(),
+            _get_autoscaling_config_with_v5litepod(),
+            None,
+            None,
+            None,
+            id="tpu-v5litepod",
         ),
     ]
 )
@@ -619,13 +679,13 @@ TPU_TYPES_DATA = (
         pytest.param(
             "tpu-v5-lite-device",
             "2x2",
-            "v5e-4",
+            "v5litepod-4",
             id="tpu-v5e-device-test",
         ),
         pytest.param(
             "tpu-v5-lite-podslice",
             "2x4",
-            "v5e-8",
+            "v5litepod-8",
             id="tpu-v5e-podslice-test",
         ),
         pytest.param(
@@ -639,6 +699,12 @@ TPU_TYPES_DATA = (
             "16x16",
             "v6e-256",
             id="tpu-v6e-test",
+        ),
+        pytest.param(
+            "tpu7x",
+            "2x2x2",
+            "v7x-16",
+            id="tpu-v7x-test",
         ),
     ]
 )
@@ -808,6 +874,32 @@ RAY_RESOURCES_TEST_DATA = (
                 "TPU": 4,
             },
             id="tpu-group-no-topology-node-selector",
+        ),
+        pytest.param(
+            _get_tpu_group_with_v7x_node_selectors(),
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+                "TPU": 4,
+                "TPU-v7x-16-head": 1,
+            },
+            id="tpu-group-v7x",
+        ),
+        pytest.param(
+            _get_tpu_group_with_v5litepod_node_selectors(),
+            False,
+            {
+                "CPU": 1,
+                "memory": 536870912,
+                "Custom2": 5,
+                "Custom3": 1,
+                "TPU": 4,
+                "TPU-v5litepod-8-head": 1,
+            },
+            id="tpu-group-v5litepod",
         ),
     ]
 )
