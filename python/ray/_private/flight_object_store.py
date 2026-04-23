@@ -27,6 +27,13 @@ class _FlightServer(flight.FlightServerBase):
             raise flight.FlightError(f"Object not found: {key}")
         return flight.RecordBatchStream(table)
 
+    def do_action(self, context, action):
+        if action.type == "delete":
+            key = action.body.to_pybytes().decode("utf-8")
+            self._store.delete(key)
+            return []
+        raise flight.FlightError(f"Unknown action: {action.type}")
+
 
 class FlightObjectStore:
     """Arrow Flight-based object store.
@@ -118,16 +125,25 @@ class FlightObjectStore:
         reader = client.do_get(ticket)
         return reader.read_all()
 
-    def fetch_via_vm(self, pid, ipc_address, ipc_size):
+    def fetch_via_vm(self, pid, ipc_address, ipc_size, flight_uri=None, key=None):
         """Fetch via process_vm_readv (same-node, Linux only).
 
-        Reads the pre-serialized IPC bytes directly from the producer's heap.
+        Single copy: process_vm_readv reads directly into an Arrow buffer,
+        then ipc.open_stream reads from that buffer without copying.
         """
-        from ray._raylet import vm_read
+        from ray._raylet import vm_read_into_arrow_buffer
 
-        ipc_bytes = vm_read(pid, ipc_address, ipc_size)
-        reader = ipc.open_stream(ipc_bytes)
-        return reader.read_all()
+        arrow_buf = vm_read_into_arrow_buffer(pid, ipc_address, ipc_size)
+        table = ipc.open_stream(arrow_buf).read_all()
+        # Notify producer to clean up.
+        if flight_uri and key:
+            try:
+                client = self._get_client(flight_uri)
+                action = flight.Action("delete", key.encode("utf-8"))
+                list(client.do_action(action))
+            except Exception:
+                pass  # Best-effort cleanup.
+        return table
 
     def delete(self, key):
         with self._lock:

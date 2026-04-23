@@ -42,6 +42,39 @@ def vm_read(int remote_pid, unsigned long remote_addr, long long size):
         free(buf)
 
 
+def vm_read_into_arrow_buffer(int remote_pid, unsigned long remote_addr,
+                              long long size):
+    """Read from a remote process directly into a PyArrow buffer (Linux only).
+
+    Returns a pyarrow.Buffer. Single copy: process_vm_readv writes directly
+    into the Arrow-allocated memory. The returned buffer can be passed to
+    ipc.open_stream() without any additional copy.
+    """
+    import pyarrow as _pa
+
+    # Allocate a mutable Arrow buffer.
+    arrow_buf = _pa.allocate_buffer(size, resizable=False)
+    cdef size_t c_size = <size_t>size
+    cdef pid_t c_pid = <pid_t>remote_pid
+    cdef uintptr_t c_addr = <uintptr_t>remote_addr
+    # Get the raw pointer from the Arrow buffer.
+    cdef uintptr_t buf_addr = arrow_buf.address
+    cdef ssize_t nread
+    with nogil:
+        nread = ReadFromRemoteProcess(
+            c_pid, <void *>buf_addr, c_addr, c_size)
+    if nread < 0:
+        raise OSError(
+            errno,
+            f"process_vm_readv failed (pid={remote_pid}, "
+            f"addr=0x{remote_addr:x}, size={size})")
+    if nread != <ssize_t>c_size:
+        raise OSError(
+            0,
+            f"process_vm_readv partial read: {nread} of {size} bytes")
+    return arrow_buf
+
+
 def vm_write(int remote_pid, unsigned long remote_addr, bytes data):
     """Write bytes to a remote process via process_vm_writev (Linux only).
 

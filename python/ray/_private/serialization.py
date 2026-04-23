@@ -438,9 +438,11 @@ class SerializationContext:
             and info.get("ipc_size", 0) > 0
             and sys.platform == "linux"
         ):
-            return store.fetch_via_vm(flight_uri, key, info["ipc_size"])
-        else:
-            return store.fetch(flight_uri, key)
+            return store.fetch_via_vm(
+                info["pid"], info["ipc_address"], info["ipc_size"],
+                flight_uri=flight_uri, key=key,
+            )
+        return store.fetch(flight_uri, key)
 
     def _deserialize_object(
         self,
