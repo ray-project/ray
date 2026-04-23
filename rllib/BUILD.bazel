@@ -1912,6 +1912,17 @@ py_test(
 )
 
 py_test(
+    name = "algorithms/tests/test_get_main_process_bundle",
+    size = "small",
+    srcs = ["algorithms/tests/test_get_main_process_bundle.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "algorithms/tests/test_dependency_tf",
     size = "small",
     srcs = ["algorithms/tests/test_dependency_tf.py"],

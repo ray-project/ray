@@ -3358,6 +3358,7 @@ class Algorithm(Checkpointable, Trainable):
                     if not config.enable_rl_module_and_learner
                     else 0
                 ),
+                **config.custom_resources_for_main_process,
             }
 
         env_runner_bundles = _get_env_runner_bundles(config)
