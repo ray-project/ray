@@ -30,11 +30,11 @@
 namespace ray {
 namespace pubsub {
 
-// Mock implementation of ObservabilityPubSubGcsService for testing authentication
-class MockObservabilityPubSubGcsService final
-    : public rpc::ObservabilityPubSubGcsService::Service {
+// Mock implementation of ObservabilityPubSubService for testing authentication
+class MockObservabilityPubSubService final
+    : public rpc::ObservabilityPubSubService::Service {
  public:
-  explicit MockObservabilityPubSubGcsService(bool should_accept_requests)
+  explicit MockObservabilityPubSubService(bool should_accept_requests)
       : should_accept_requests_(should_accept_requests) {}
 
   grpc::Status GcsSubscriberCommandBatch(
@@ -106,7 +106,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
   // Start a GCS server with optional authentication token
   void StartServer(const std::string &server_token, bool should_accept_requests = true) {
     auto mock_service =
-        std::make_unique<MockObservabilityPubSubGcsService>(should_accept_requests);
+        std::make_unique<MockObservabilityPubSubService>(should_accept_requests);
     mock_service_ptr_ = mock_service.get();
 
     std::shared_ptr<rpc::AuthenticationToken> auth_token;
@@ -155,7 +155,7 @@ class PythonGcsSubscriberAuthTest : public ::testing::Test {
   }
 
   std::unique_ptr<rpc::GrpcServer> server_;
-  MockObservabilityPubSubGcsService *mock_service_ptr_ = nullptr;
+  MockObservabilityPubSubService *mock_service_ptr_ = nullptr;
   int server_port_ = 0;
 };
 

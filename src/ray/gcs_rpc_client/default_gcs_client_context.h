@@ -40,7 +40,7 @@ class DefaultGcsClientContext : public GcsClientContext {
   /**
    Get the GCS observability pubsub RPC client.
   */
-  rpc::ObservabilityPubSubGcsRpcClient &GetObservabilityPubSubGcsRpcClient() override;
+  rpc::ObservabilityPubSubRpcClient &GetObservabilityPubSubRpcClient() override;
 
   /**
    Check if the RPC client has been initialized
@@ -52,8 +52,8 @@ class DefaultGcsClientContext : public GcsClientContext {
   */
   void SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) override;
 
-  void SetObservabilityPubSubGcsRpcClient(
-      std::shared_ptr<rpc::ObservabilityPubSubGcsRpcClient> client) override;
+  void SetObservabilityPubSubRpcClient(
+      std::shared_ptr<rpc::ObservabilityPubSubRpcClient> client) override;
 
   /**
    Set the GCS subscriber for pubsub operations.
@@ -64,7 +64,7 @@ class DefaultGcsClientContext : public GcsClientContext {
 
  private:
   std::shared_ptr<rpc::GcsRpcClient> client_ = nullptr;
-  std::shared_ptr<rpc::ObservabilityPubSubGcsRpcClient> observability_pubsub_client_ =
+  std::shared_ptr<rpc::ObservabilityPubSubRpcClient> observability_pubsub_client_ =
       nullptr;
   std::unique_ptr<pubsub::GcsSubscriber> subscriber_ = nullptr;
 };

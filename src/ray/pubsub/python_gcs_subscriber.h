@@ -69,7 +69,7 @@ class RAY_EXPORT PythonGcsSubscriber {
   mutable absl::Mutex mu_;
 
   std::shared_ptr<grpc::Channel> channel_;
-  std::unique_ptr<rpc::ObservabilityPubSubGcsService::Stub> observability_pubsub_stub_;
+  std::unique_ptr<rpc::ObservabilityPubSubService::Stub> observability_pubsub_stub_;
 
   const rpc::ChannelType channel_type_;
   const std::string subscriber_id_;

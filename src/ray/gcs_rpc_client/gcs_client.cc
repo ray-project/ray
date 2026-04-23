@@ -133,7 +133,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     auto gcs_rpc_client = std::make_shared<rpc::GcsRpcClient>(
         options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
     auto observability_pubsub_client =
-        std::make_shared<rpc::ObservabilityPubSubGcsRpcClient>(
+        std::make_shared<rpc::ObservabilityPubSubRpcClient>(
             options_.gcs_address_, options_.gcs_port_, *client_call_manager_);
 
     rpc::Address gcs_address;
@@ -162,7 +162,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
     client_context_->SetGcsSubscriber(
         std::make_unique<pubsub::GcsSubscriber>(gcs_address, std::move(subscriber)));
     client_context_->SetGcsRpcClient(gcs_rpc_client);
-    client_context_->SetObservabilityPubSubGcsRpcClient(
+    client_context_->SetObservabilityPubSubRpcClient(
         std::move(observability_pubsub_client));
   }
 

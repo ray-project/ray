@@ -25,8 +25,8 @@ pubsub::GcsSubscriber &DefaultGcsClientContext::GetGcsSubscriber() {
 
 rpc::GcsRpcClient &DefaultGcsClientContext::GetGcsRpcClient() { return *client_; }
 
-rpc::ObservabilityPubSubGcsRpcClient &
-DefaultGcsClientContext::GetObservabilityPubSubGcsRpcClient() {
+rpc::ObservabilityPubSubRpcClient &
+DefaultGcsClientContext::GetObservabilityPubSubRpcClient() {
   return *observability_pubsub_client_;
 }
 
@@ -36,8 +36,8 @@ void DefaultGcsClientContext::SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient>
   client_ = client;
 }
 
-void DefaultGcsClientContext::SetObservabilityPubSubGcsRpcClient(
-    std::shared_ptr<rpc::ObservabilityPubSubGcsRpcClient> client) {
+void DefaultGcsClientContext::SetObservabilityPubSubRpcClient(
+    std::shared_ptr<rpc::ObservabilityPubSubRpcClient> client) {
   observability_pubsub_client_ = std::move(client);
 }
 void DefaultGcsClientContext::SetGcsSubscriber(

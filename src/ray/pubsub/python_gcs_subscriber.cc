@@ -39,7 +39,7 @@ PythonGcsSubscriber::PythonGcsSubscriber(const std::string &gcs_address,
                                          std::string subscriber_id,
                                          std::string worker_id)
     : channel_(rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port)),
-      observability_pubsub_stub_(rpc::ObservabilityPubSubGcsService::NewStub(channel_)),
+      observability_pubsub_stub_(rpc::ObservabilityPubSubService::NewStub(channel_)),
       channel_type_(channel_type),
       subscriber_id_(std::move(subscriber_id)),
       worker_id_(std::move(worker_id)) {}

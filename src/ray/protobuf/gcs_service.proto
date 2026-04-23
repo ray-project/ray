@@ -719,7 +719,7 @@ service InternalPubSubGcsService {
 /// Observability pubsub (logs, errors, node resource usage JSON for the dashboard).
 /// Same RPC and message names as `InternalPubSubGcsService`, plus `ReportJobError`, on a
 /// separate gRPC service and a dedicated `observability_pubsub_io_context` in GcsServer.
-service ObservabilityPubSubGcsService {
+service ObservabilityPubSubService {
   rpc GcsPublish(GcsPublishRequest) returns (GcsPublishReply);
   rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);
   rpc GcsSubscriberPoll(GcsSubscriberPollRequest) returns (GcsSubscriberPollReply);

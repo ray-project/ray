@@ -152,7 +152,7 @@ class PubSubGcsServiceHandlerBase {
 
 class InternalPubSubGcsServiceHandler : public PubSubGcsServiceHandlerBase {};
 
-class ObservabilityPubSubGcsServiceHandler : public PubSubGcsServiceHandlerBase {
+class ObservabilityPubSubServiceHandler : public PubSubGcsServiceHandlerBase {
  public:
   virtual void HandleReportJobError(ReportJobErrorRequest request,
                                     ReportJobErrorReply *reply,

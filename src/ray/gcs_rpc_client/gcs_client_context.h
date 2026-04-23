@@ -22,7 +22,7 @@ class GcsSubscriber;
 
 namespace rpc {
 class GcsRpcClient;
-class ObservabilityPubSubGcsRpcClient;
+class ObservabilityPubSubRpcClient;
 }  // namespace rpc
 
 namespace gcs {
@@ -50,7 +50,7 @@ class GcsClientContext {
   /**
    Get the GCS observability pubsub RPC client (separate channel from `GetGcsRpcClient`).
   */
-  virtual rpc::ObservabilityPubSubGcsRpcClient &GetObservabilityPubSubGcsRpcClient() = 0;
+  virtual rpc::ObservabilityPubSubRpcClient &GetObservabilityPubSubRpcClient() = 0;
 
   /**
    Check if the RPC client has been initialized
@@ -65,8 +65,8 @@ class GcsClientContext {
   /**
    Set the observability pubsub RPC client.
   */
-  virtual void SetObservabilityPubSubGcsRpcClient(
-      std::shared_ptr<rpc::ObservabilityPubSubGcsRpcClient> client) = 0;
+  virtual void SetObservabilityPubSubRpcClient(
+      std::shared_ptr<rpc::ObservabilityPubSubRpcClient> client) = 0;
   /**
    Set the GCS subscriber for pubsub operations.
   */

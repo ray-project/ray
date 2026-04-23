@@ -40,9 +40,9 @@ class TestGcsRpcClient {
 };
 
 // Mock observability pubsub client for tests that never call it.
-class TestObservabilityPubSubGcsRpcClient {
+class TestObservabilityPubSubRpcClient {
  public:
-  TestObservabilityPubSubGcsRpcClient() = default;
+  TestObservabilityPubSubRpcClient() = default;
 };
 
 // Mock GcsSubscriber - empty class for testing
@@ -58,7 +58,7 @@ class FakeGcsClientContext : public GcsClientContext {
                        std::unique_ptr<TestGcsSubscriber> subscriber)
       : rpc_client_(std::move(rpc_client)),
         subscriber_(std::move(subscriber)),
-        observability_client_(std::make_shared<TestObservabilityPubSubGcsRpcClient>()) {}
+        observability_client_(std::make_shared<TestObservabilityPubSubRpcClient>()) {}
 
   pubsub::GcsSubscriber &GetGcsSubscriber() override {
     // Cast our mock to the expected type
@@ -70,8 +70,8 @@ class FakeGcsClientContext : public GcsClientContext {
     return *reinterpret_cast<rpc::GcsRpcClient *>(rpc_client_.get());
   }
 
-  rpc::ObservabilityPubSubGcsRpcClient &GetObservabilityPubSubGcsRpcClient() override {
-    return *reinterpret_cast<rpc::ObservabilityPubSubGcsRpcClient *>(
+  rpc::ObservabilityPubSubRpcClient &GetObservabilityPubSubRpcClient() override {
+    return *reinterpret_cast<rpc::ObservabilityPubSubRpcClient *>(
         observability_client_.get());
   }
 
@@ -81,15 +81,15 @@ class FakeGcsClientContext : public GcsClientContext {
 
   void SetGcsRpcClient(std::shared_ptr<rpc::GcsRpcClient> client) override {}
 
-  void SetObservabilityPubSubGcsRpcClient(
-      std::shared_ptr<rpc::ObservabilityPubSubGcsRpcClient> client) override {}
+  void SetObservabilityPubSubRpcClient(
+      std::shared_ptr<rpc::ObservabilityPubSubRpcClient> client) override {}
 
   void SetGcsSubscriber(std::unique_ptr<pubsub::GcsSubscriber> subscriber) override {}
 
  private:
   std::shared_ptr<TestGcsRpcClient> rpc_client_;
   std::unique_ptr<TestGcsSubscriber> subscriber_;
-  std::shared_ptr<TestObservabilityPubSubGcsRpcClient> observability_client_;
+  std::shared_ptr<TestObservabilityPubSubRpcClient> observability_client_;
 };
 
 // Test NodeInfoAccessor implementation

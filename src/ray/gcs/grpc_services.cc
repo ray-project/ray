@@ -94,12 +94,12 @@ void ObservabilityPubSubGrpcService::InitServerCallFactories(
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token) {
   RPC_SERVICE_HANDLER(
-      ObservabilityPubSubGcsService, GcsPublish, max_active_rpcs_per_handler_);
+      ObservabilityPubSubService, GcsPublish, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
-      ObservabilityPubSubGcsService, ReportJobError, max_active_rpcs_per_handler_);
+      ObservabilityPubSubService, ReportJobError, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
-      ObservabilityPubSubGcsService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
-  RPC_SERVICE_HANDLER(ObservabilityPubSubGcsService,
+      ObservabilityPubSubService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
+  RPC_SERVICE_HANDLER(ObservabilityPubSubService,
                       GcsSubscriberCommandBatch,
                       max_active_rpcs_per_handler_);
 }

@@ -621,13 +621,13 @@ class GcsRpcClient {
   FRIEND_TEST(GcsClientReconnectionTest, ReconnectionBackoff);
 };
 
-/// Standalone gRPC client for `ObservabilityPubSubGcsService`: its own channel and
+/// Standalone gRPC client for `ObservabilityPubSubService`: its own channel and
 /// `RetryableGrpcClient`, independent from `GcsRpcClient`.
-class ObservabilityPubSubGcsRpcClient {
+class ObservabilityPubSubRpcClient {
  public:
-  ObservabilityPubSubGcsRpcClient(const std::string &gcs_address,
-                                  int gcs_port,
-                                  ClientCallManager &client_call_manager) {
+  ObservabilityPubSubRpcClient(const std::string &gcs_address,
+                               int gcs_port,
+                               ClientCallManager &client_call_manager) {
     channel_ = GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
     auto deadline =
         std::chrono::system_clock::now() +
@@ -639,7 +639,7 @@ class ObservabilityPubSubGcsRpcClient {
                        << " seconds.";
     }
     observability_pubsub_grpc_client_ =
-        std::make_shared<GrpcClient<ObservabilityPubSubGcsService>>(
+        std::make_shared<GrpcClient<ObservabilityPubSubService>>(
             channel_, client_call_manager, gcs_address);
     retryable_grpc_client_ = RetryableGrpcClient::Create(
         channel_,
@@ -655,19 +655,16 @@ class ObservabilityPubSubGcsRpcClient {
         ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s(),
         /*server_unavailable_timeout_callback=*/
         []() {
-          RAY_LOG(ERROR) << "Failed to connect to the observability pubsub within "
-                         << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
-                         << " seconds. "
-                         << "It may have been killed. It's either terminated by "
-                            "`ray stop` or "
-                         << "is killed unexpectedly. If it is killed unexpectedly, "
-                         << "see the log file gcs_server.out. "
-                         << "https://docs.ray.io/en/master/ray-observability/user-guides/"
-                            "configure-logging.html#logging-directory-structure. "
-                         << "The program will terminate.";
-          std::_Exit(EXIT_FAILURE);
+          RAY_LOG(WARNING)
+              << "Observability pubsub is still unreachable after "
+              << ::RayConfig::instance().gcs_rpc_server_reconnect_timeout_s()
+              << " seconds (this check repeats with backoff). "
+              << "If GCS was stopped intentionally, ignore this. Otherwise see "
+                 "gcs_server.out: "
+              << "https://docs.ray.io/en/master/ray-observability/user-guides/"
+                 "configure-logging.html#logging-directory-structure";
         },
-        /*server_name=*/"GCS_ObservabilityPubSub");
+        /*server_name=*/"ObservabilityPubSub");
   }
 
   template <typename Service,
@@ -704,19 +701,19 @@ class ObservabilityPubSubGcsRpcClient {
         timeout_ms);
   }
 
-  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubGcsService,
+  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubService,
                              GcsPublish,
                              observability_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubGcsService,
+  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubService,
                              ReportJobError,
                              observability_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubGcsService,
+  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubService,
                              GcsSubscriberPoll,
                              observability_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubGcsService,
+  VOID_GCS_RPC_CLIENT_METHOD(ObservabilityPubSubService,
                              GcsSubscriberCommandBatch,
                              observability_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
@@ -724,7 +721,7 @@ class ObservabilityPubSubGcsRpcClient {
  private:
   std::shared_ptr<grpc::Channel> channel_;
   std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
-  std::shared_ptr<GrpcClient<ObservabilityPubSubGcsService>>
+  std::shared_ptr<GrpcClient<ObservabilityPubSubService>>
       observability_pubsub_grpc_client_;
 };
 

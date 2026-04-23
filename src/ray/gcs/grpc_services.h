@@ -138,7 +138,7 @@ class InternalPubSubGrpcService : public GrpcService {
 class ObservabilityPubSubGrpcService : public GrpcService {
  public:
   ObservabilityPubSubGrpcService(instrumented_io_context &io_service,
-                                 ObservabilityPubSubGcsServiceHandler &handler,
+                                 ObservabilityPubSubServiceHandler &handler,
                                  int64_t max_active_rpcs_per_handler)
       : GrpcService(io_service),
         service_handler_(handler),
@@ -154,8 +154,8 @@ class ObservabilityPubSubGrpcService : public GrpcService {
       std::shared_ptr<const AuthenticationToken> auth_token) override;
 
  private:
-  ObservabilityPubSubGcsService::AsyncService service_;
-  ObservabilityPubSubGcsServiceHandler &service_handler_;
+  ObservabilityPubSubService::AsyncService service_;
+  ObservabilityPubSubServiceHandler &service_handler_;
   int64_t max_active_rpcs_per_handler_;
 };
 

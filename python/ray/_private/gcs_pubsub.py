@@ -104,7 +104,7 @@ class _AioSubscriber(_SubscriberBase):
         else:
             assert channel is not None, "One of address and channel must be specified"
         if pubsub_channel_type in _OBSERVABILITY_PUBSUB_CHANNELS:
-            self._stub = gcs_service_pb2_grpc.ObservabilityPubSubGcsServiceStub(channel)
+            self._stub = gcs_service_pb2_grpc.ObservabilityPubSubServiceStub(channel)
         else:
             self._stub = gcs_service_pb2_grpc.InternalPubSubGcsServiceStub(channel)
 

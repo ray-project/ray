@@ -89,10 +89,10 @@ class InternalPubSubHandler : public PubSubHandlerBase,
   }
 };
 
-/// Observability pubsub (`ObservabilityPubSubGcsService`): same publish/subscriber
+/// Observability pubsub (`ObservabilityPubSubService`): same publish/subscriber
 /// behavior as internal pubsub, plus `ReportJobError`, on an `ObservabilityPublisher`.
 class ObservabilityPubSubHandler : public PubSubHandlerBase,
-                                   public rpc::ObservabilityPubSubGcsServiceHandler {
+                                   public rpc::ObservabilityPubSubServiceHandler {
  public:
   ObservabilityPubSubHandler(instrumented_io_context &io_service,
                              pubsub::ObservabilityPublisher &observability_publisher);
