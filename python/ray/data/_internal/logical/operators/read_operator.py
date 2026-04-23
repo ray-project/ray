@@ -12,6 +12,7 @@ from ray.data._internal.logical.interfaces import (
 )
 from ray.data._internal.logical.operators.map_operator import AbstractMap
 from ray.data.block import (
+    Block,
     BlockMetadata,
     BlockMetadataWithSchema,
 )
@@ -261,6 +262,12 @@ class ReadFiles(
     # renamed. The scanner only knows original names; renames are applied
     # in ``plan_read_files_op`` after each block is read.
     column_renames: Optional[Dict[str, str]] = None
+    # Optional post-read block transform. Used by ``read_parquet``'s
+    # ``_block_udf`` and ``tensor_column_schema`` (the latter is folded
+    # into a ``_block_udf`` by ``_resolve_parquet_args`` before it gets
+    # here). Applied in ``plan_read_files_op.do_read`` after each
+    # table is read and before column renames.
+    block_udf: Optional[Callable[[Block], Block]] = None
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     ray_remote_args_fn: None = field(init=False, default=None)
@@ -304,6 +311,18 @@ class ReadFiles(
         # ``select_columns([])``); the stored ``self.schema`` is the
         # unprojected one and only used for construction.
         schema = self.scanner.read_schema()
+        # When a ``block_udf`` is attached (e.g. ``read_parquet`` was
+        # called with ``tensor_column_schema`` or ``_block_udf``), probe
+        # its effect on the schema so downstream consumers see the
+        # post-transform column types. Mirrors V1 ``ParquetDatasource``'s
+        # dummy-table trick. Falls back to the scanner schema if the
+        # probe fails — the UDF may require a non-empty input.
+        if self.block_udf is not None:
+            try:
+                transformed = self.block_udf(schema.empty_table()).schema
+                schema = transformed.with_metadata(schema.metadata)
+            except Exception:
+                pass
         if self.column_renames:
             import pyarrow as pa
 

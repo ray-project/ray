@@ -74,14 +74,6 @@ def test_read_parquet_v2_include_paths(tmp_path, restore_ctx):
     assert "path" in schema.names
 
 
-def test_read_parquet_v2_block_udf_raises(tmp_path, restore_ctx):
-    _write(tmp_path / "data.parquet", pa.table({"a": [1]}))
-
-    restore_ctx.use_datasource_v2 = True
-    with pytest.raises(NotImplementedError, match="_block_udf"):
-        ray.data.read_parquet(str(tmp_path), _block_udf=lambda b: b)
-
-
 def test_read_parquet_v2_columns_raises(tmp_path, restore_ctx):
     _write(tmp_path / "data.parquet", pa.table({"a": [1], "b": [2]}))
 
