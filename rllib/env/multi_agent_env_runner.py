@@ -853,10 +853,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         assert self.num_envs == self.config.num_envs_per_env_runner
         # self.env: MultiAgentEnv = gym.make("rllib-multi-agent-env-v0")
         # self.num_envs = 1
-        # If required, check the created MultiAgentEnv instances. Any failure
-        # here propagates out of `make_env()`: the remote dispatch layer
-        # (`FaultAwareApply.apply()`) catches it, terminates the actor, and Ray
-        # Core rebuilds a fresh one.
+        # If required, check the created MultiAgentEnv instances.
         if not self.config.disable_env_checking:
             for env in self.env.envs:
                 check_multiagent_environments(env.unwrapped)
