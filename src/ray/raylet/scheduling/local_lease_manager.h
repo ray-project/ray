@@ -160,9 +160,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   bool ReturnCpuResourcesToUnblockedWorker(
       std::shared_ptr<WorkerInterface> worker) override;
 
-  void SetWorkerBacklog(SchedulingClass scheduling_class,
-                        const WorkerID &worker_id,
-                        int64_t backlog_size) override;
+  void SetWorkerBacklog(rpc::ReportWorkerBacklogRequest request) override;
 
   void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
