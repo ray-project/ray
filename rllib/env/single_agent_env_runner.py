@@ -227,6 +227,11 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     * self.num_envs
                 )
 
+            # If a prior connector crash left `_cached_to_module` as None, force
+            # a reset so we don't hit the assert in `_sample()`.
+            if self._cached_to_module is None:
+                force_reset = True
+
             # Sample n timesteps.
             if num_timesteps is not None:
                 assert num_timesteps >= 0

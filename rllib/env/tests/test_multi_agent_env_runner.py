@@ -3,6 +3,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env_runner import MultiAgentEnvRunner
+from ray.rllib.env.tests.test_single_agent_env_runner import _RaiseOnNthCallConnector
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import (
     EPISODE_AGENT_RETURN_MEAN,
@@ -131,6 +132,29 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
         )
 
         return config
+
+    def test_recovers_from_env_to_module_connector_crash(self):
+        """A crashing env-to-module connector must not crash-loop subsequent
+        `sample()` calls."""
+        config = self._build_config()
+        env_runner = MultiAgentEnvRunner(config=config)
+
+        # Raise on the 2nd call: first succeeds inside `_reset_envs_and_episodes`,
+        # second fires at the end of the first `_sample()` loop iteration.
+        faulty = _RaiseOnNthCallConnector(raise_on_call=2)
+        env_runner._env_to_module.prepend(faulty)
+
+        with self.assertRaisesRegex(
+            RuntimeError, "Simulated env-to-module connector crash."
+        ):
+            env_runner.sample(num_timesteps=10)
+        self.assertIsNone(env_runner._cached_to_module)
+        self.assertEqual(faulty.num_calls, 2)
+
+        # After the crash, the env-to-module connector should be reset and the next sample call should succeed.
+        episodes = env_runner.sample(num_timesteps=10)
+        self.assertGreaterEqual(sum(len(e) for e in episodes), 10)
+        self.assertIsNotNone(env_runner._cached_to_module)
 
     def test_module_metrics_returns_equal_sum_of_agent_returns(self):
         """Check if module metrics returns equals sum of returns of agents assigned to that module.
