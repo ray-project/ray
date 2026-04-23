@@ -738,7 +738,8 @@ Ray reschedules Actors and tasks that use the bundle (reserved resources) based 
 
   Label locality scheduling is an **alpha** feature. It's actively being iterated on and
   the API surface may change. It only supports GB200 or GB300 accelerator types with
-  STRICT_PACK at the domain level.
+  STRICT_PACK at the domain level. We plan to relax these constraints in the future 
+  and support more scheduling strategies at the domain level and abitrary label domains.
 
 Why label locality?
 ~~~~~~~~~~~~~~~~~~~
@@ -808,7 +809,8 @@ fault tolerance:
 
 - **Partial failure** (some nodes in the domain die): Ray reschedules the lost bundles onto
   surviving nodes **within the same domain**. Actors and tasks on the remaining bundles continue
-  running.
+  running. If the domain does not have enough resources to reschedule the bundle, the remaining 
+  bundles are left infeasible and queued until resources become available in the same domain.
 - **Total failure** (all nodes in the domain die): Ray clears the domain assignment and
   reschedules the entire placement group onto a different domain.
 
