@@ -124,7 +124,11 @@ ray_cc_test(
         "//src/ray/common:id",
         "//src/ray/common:memory_monitor_test_fixture",
         "//src/ray/common:memory_monitor_utils",
+        "//src/ray/common:ray_config",
+        "//src/ray/common/cgroup2:cgroup_manager",
         "//src/ray/common/cgroup2:cgroup_test_utils",
+        "//src/ray/common/cgroup2:fake_cgroup_driver",
+        "//src/ray/common/cgroup2:noop_cgroup_manager",
         "//src/ray/util:process",
         "@boost//:filesystem",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -147,7 +151,9 @@ ray_cc_test(
     deps = [
         "//src/ray/common:memory_monitor_interface",
         "//src/ray/common:memory_monitor_test_fixture",
+        "//src/ray/common:memory_monitor_utils",
         "//src/ray/common:threshold_memory_monitor",
+        "//src/ray/common/cgroup2:noop_cgroup_manager",
         "@boost//:thread",
     ],
 )
