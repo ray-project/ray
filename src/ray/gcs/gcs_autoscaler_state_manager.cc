@@ -269,8 +269,7 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
       // If the PG already has a domain assignment (rescheduling case),
       // add a label selector to constrain to that specific domain.
       const auto &assignments = pg_data.label_domain_assignments();
-      auto it = assignments.find(label_domain_key);
-      if (it != assignments.end()) {
+      if (auto it = assignments.find(label_domain_key); it != assignments.end()) {
         auto *label_constraint =
             locality_req->mutable_label_selector()->add_label_constraints();
         label_constraint->set_label_key(label_domain_key);
