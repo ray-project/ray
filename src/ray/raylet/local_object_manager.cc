@@ -110,8 +110,13 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool local_only) {
   // Only free the object if it is not already freed.
+  RAY_LOG(INFO) << "[karticam] ReleaseFreedObject called for objectId: " << object_id
+                << " local_only=" << local_only;
   auto it = local_objects_.find(object_id);
   if (it == local_objects_.end() || it->second.is_freed_) {
+    RAY_LOG(INFO) << "[karticam] ReleaseFreedObject early return since cond1 = "
+                  << (it == local_objects_.end()) << " and "
+                  << "cond2 = " << (it->second.is_freed_);
     return;
   }
   // Mark the object as freed. NOTE(swang): We have to mark this instead of
