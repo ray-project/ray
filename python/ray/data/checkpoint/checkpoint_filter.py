@@ -226,7 +226,7 @@ class CheckpointManager(abc.ABC):
                     allow_not_found=True,
                 )
             )
-        except Exception:
+        except OSError:
             entries = []
         if not any(f.type == FileType.File for f in entries):
             return None, 0

@@ -484,7 +484,7 @@ def _read_datasource_v2(
         in_memory_size_estimator=datasource.get_size_estimator(),
         min_bucket_size=min_bucket_size,
         max_bucket_size=max_bucket_size,
-        num_buckets=max(1, parallelism if parallelism > 0 else 1),
+        num_buckets=ctx.read_op_min_num_blocks,
     )
 
     # NOTE: We're using shuffle config factory to fix the seed at the planning

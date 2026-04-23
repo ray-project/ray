@@ -122,6 +122,8 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         columns doesn't lock in ``null`` types that can't be cast to the
         actual types in later files.
         """
+        from concurrent.futures import ThreadPoolExecutor
+
         import pyarrow.parquet as pq
 
         from ray.data._internal.util import unify_schemas_with_validation
@@ -132,9 +134,20 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             )
 
         sample_paths = sample.paths.tolist()
-        per_file_schemas = [
-            pq.read_schema(p, filesystem=self._filesystem) for p in sample_paths
-        ]
+        # Parquet footer reads against high-latency object stores
+        # (S3, GCS) are ~50-100 ms each. Reading the sample's footers in
+        # parallel keeps driver-side schema inference bounded by the
+        # slowest single read rather than the sum. Order is preserved
+        # because ``unify_schemas_with_validation`` treats the first
+        # schema as the type-promotion base.
+        filesystem = self._filesystem
+        with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
+            per_file_schemas = list(
+                executor.map(
+                    lambda p: pq.read_schema(p, filesystem=filesystem),
+                    sample_paths,
+                )
+            )
         schema = unify_schemas_with_validation(per_file_schemas) or per_file_schemas[0]
 
         first_path = sample_paths[0]
