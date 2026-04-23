@@ -4,8 +4,11 @@ import time
 from dataclasses import replace
 from typing import Any, Collection, Dict, List, Optional, Tuple
 
+from typing_extensions import override
+
 from ray._common.utils import env_float
 from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
     FIFOBundleQueue,
     HashLinkedQueue,
 )
