@@ -6,7 +6,6 @@ Uses PyArrow Flight for the server/client and Ray's C++ vm_transfer
 
 import os
 import threading
-import uuid
 
 import pyarrow as pa
 import pyarrow.flight as flight
@@ -61,9 +60,7 @@ class FlightObjectStore:
         self._port = self._server.port
         ip = _get_local_ip()
         self._uri = f"grpc://{ip}:{self._port}"
-        self._server_thread = threading.Thread(
-            target=self._server.serve, daemon=True
-        )
+        self._server_thread = threading.Thread(target=self._server.serve, daemon=True)
         self._server_thread.start()
         return self._port
 

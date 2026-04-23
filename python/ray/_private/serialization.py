@@ -439,8 +439,11 @@ class SerializationContext:
             and sys.platform == "linux"
         ):
             return store.fetch_via_vm(
-                info["pid"], info["ipc_address"], info["ipc_size"],
-                flight_uri=flight_uri, key=key,
+                info["pid"],
+                info["ipc_address"],
+                info["ipc_size"],
+                flight_uri=flight_uri,
+                key=key,
             )
         return store.fetch(flight_uri, key)
 
