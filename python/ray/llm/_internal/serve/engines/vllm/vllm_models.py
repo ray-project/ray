@@ -18,8 +18,8 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     AcceleratorBackend,
     AnyAcceleratorConfig,
     CPUAccelerator,
+    CPUConfig,
     GPUAccelerator,
-    GPUConfig,
     TPUAccelerator,
     TPUConfig,
 )
@@ -100,10 +100,12 @@ class VLLMEngineConfig(BaseModelExtended):
         cfg = self.accelerator_config
         if isinstance(cfg, TPUConfig):
             self._accelerator = TPUAccelerator(cfg)
-        elif isinstance(cfg, GPUConfig):
-            self._accelerator = GPUAccelerator()
-        else:  # CPUConfig or None
+        elif isinstance(cfg, CPUConfig):
             self._accelerator = CPUAccelerator()
+        else:
+            # Default to GPUAccelerator if GPUConfig or when config is None.
+            self._accelerator = GPUAccelerator()
+
         return self
 
     @model_validator(mode="after")
