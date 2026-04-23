@@ -5,6 +5,7 @@ import pydantic
 import pytest
 
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
+from ray.llm._internal.serve.core.configs.accelerators import TPUAccelerator
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
@@ -374,8 +375,6 @@ class TestAcceleratorConfigLogic:
 
     def test_llm_config_accelerator_type_hardware_mismatch(self):
         """Test that passing a GPU accelerator_type with a TPU config raises an error."""
-        import pydantic
-
         with pytest.raises(
             pydantic.ValidationError,
             match="Hardware mismatch",
@@ -385,6 +384,19 @@ class TestAcceleratorConfigLogic:
                 accelerator_type="L4",
                 accelerator_config={"kind": "tpu", "topology": "4x4"},
             )
+
+    def test_engine_config_infers_tpu_from_accelerator_type_string(self):
+        """Test that the engine config infers a TPU backend directly from the accelerator_type string."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test_model"),
+            accelerator_type="TPU-V6E",
+        )
+
+        # Validate engine correctly inferred the TPU backend
+        engine_config = llm_config.get_engine_config()
+
+        assert isinstance(engine_config.accelerator, TPUAccelerator)
+        assert engine_config.accelerator_type == "TPU-V6E"
 
 
 if __name__ == "__main__":
