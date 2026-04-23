@@ -770,7 +770,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /**
    * @brief Marks kill worker in progress and disables all monitors to
    * prevent more than one in-flight kill worker operation.
-   * @return True if the kill worker operation is not previously in progress.
+   * @return True if we successfully marked the kill worker in progress.
+   *         False if the kill worker operation is already in progress.
    */
   bool MarkKillWorkerInProgress();
 

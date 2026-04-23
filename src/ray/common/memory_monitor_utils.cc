@@ -326,13 +326,16 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
           cgroup_manager.GetUserCgroupConstraintValue("memory.high");
     }
     RAY_CHECK(user_slice_upper_bound_bytes_or.ok()) << absl::StrFormat(
-        "Failed to get user cgroup memory limit when setting up memory monitor: %s",
+        "Failed to get user cgroup memory limit from user cgroup %s "
+        "when setting up memory monitor: %s. "
+        "Does the cgroup path exist and/or matches the resource isolation hierarchy?",
+        cgroup_manager.GetUserCgroupPath(),
         user_slice_upper_bound_bytes_or.ToString());
     std::string user_slice_upper_bound_bytes_str =
         std::string(absl::StripAsciiWhitespace(user_slice_upper_bound_bytes_or.value()));
     RAY_CHECK(!user_slice_upper_bound_bytes_str.empty()) << absl::StrFormat(
         "Failed to get upper bound memory constraints from user cgroup %s. "
-        "Please check that the cgroup path for resource isolation is correct.",
+        "Does the cgroup path exist and/or matches the resource isolation hierarchy?",
         cgroup_manager.GetUserCgroupPath());
 
     if (!user_slice_upper_bound_bytes_str.empty() &&
