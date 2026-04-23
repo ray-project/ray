@@ -421,30 +421,30 @@ class TestAcceleratorTypeValidation:
                 accelerator_config={"kind": "cpu"},
             )
 
-    def test_vllm_engine_config_accelerator_type_with_cpu_only_bundles_raises_error(
-        self,
-    ):
-        """VLLMEngineConfig raises error with accelerator_type and CPU-only bundles."""
+    def test_llm_config_accelerator_type_with_cpu_only_bundles_raises_error(self):
+        """LLMConfig raises error with accelerator_type and CPU-only bundles."""
+        import pydantic
+
         with pytest.raises(
-            ValueError,
+            pydantic.ValidationError,
             match="accelerator_type='L4' cannot be used with CPU-only configurations",
         ):
-            VLLMEngineConfig(
-                model_id="test_model",
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
                 accelerator_type="L4",
                 placement_group_config={"bundles": [{"CPU": 4}]},
             )
 
-    def test_vllm_engine_config_accelerator_type_with_empty_bundles_raises_error(
-        self,
-    ):
-        """VLLMEngineConfig raises error with accelerator_type and empty bundles."""
+    def test_llm_config_accelerator_type_with_empty_bundles_raises_error(self):
+        """LLMConfig raises error with accelerator_type and empty bundles."""
+        import pydantic
+
         with pytest.raises(
-            ValueError,
+            pydantic.ValidationError,
             match="accelerator_type='L4' cannot be used with CPU-only configurations",
         ):
-            VLLMEngineConfig(
-                model_id="test_model",
+            LLMConfig(
+                model_loading_config={"model_id": "test_model"},
                 accelerator_type="L4",
                 placement_group_config={"bundles": []},
             )
@@ -465,24 +465,6 @@ class TestAcceleratorTypeValidation:
             accelerator_type="L4",
         )
         assert config.accelerator_type == "L4"
-
-    def test_llm_config_accelerator_type_validation_propagates_to_engine_config(self):
-        """Test that LLMConfig's validation catches the error before VLLMEngineConfig."""
-        # This should raise at LLMConfig level, not at VLLMEngineConfig level
-        import pydantic
-
-        with pytest.raises(pydantic.ValidationError) as exc_info:
-            LLMConfig(
-                model_loading_config=ModelLoadingConfig(
-                    model_id="test_model",
-                ),
-                accelerator_type="L4",
-                accelerator_config={"kind": "cpu"},
-            )
-        assert (
-            "accelerator_type='L4' cannot be used with CPU-only configurations"
-            in str(exc_info.value)
-        )
 
 
 if __name__ == "__main__":

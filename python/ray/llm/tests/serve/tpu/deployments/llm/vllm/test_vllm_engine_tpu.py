@@ -5,11 +5,12 @@ import pytest
 import ray
 from ray.llm._internal.serve.core.configs.accelerators import (
     CPUAccelerator,
+    CPUConfig,
     GPUAccelerator,
+    GPUConfig,
     TPUAccelerator,
     TPUConfig,
 )
-from ray.llm._internal.serve.engines.vllm.vllm_models import VLLMEngineConfig
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.tests.conftest import _ray_start_cluster
 from ray.util.placement_group import PlacementGroup, placement_group_table
@@ -187,24 +188,41 @@ def test_tpu_slice_placement_group_creation_bundle_per_worker(ray_tpu_cluster):
 
 def test_accelerator_inference_logic():
     """
-    Verifies that VLLMEngineConfig correctly infers the accelerator backend
-    when no explicit accelerator_config is provided.
+    Verifies that LLMConfig correctly infers the accelerator config
+    when no explicit accelerator_config is provided, and passes it
+    correctly to the engine.
     """
-    # TPU string correctly infers TPUAccelerator
-    cfg1 = VLLMEngineConfig(model_id="test", accelerator_type="TPU-V6E")
-    assert isinstance(cfg1.accelerator, TPUAccelerator)
+    # TPU string correctly infers TPUConfig and TPUAccelerator
+    cfg1 = LLMConfig(
+        model_loading_config={"model_id": "test"},
+        accelerator_type="TPU-V6E",
+        llm_engine="vLLM",
+    )
+    assert isinstance(cfg1.accelerator_config, TPUConfig)
+    assert isinstance(cfg1.get_engine_config().accelerator, TPUAccelerator)
 
-    # GPU string (like A10G) falls back to GPUAccelerator
-    cfg2 = VLLMEngineConfig(model_id="test", accelerator_type="A10G")
-    assert isinstance(cfg2.accelerator, GPUAccelerator)
+    # GPU string falls back to GPUConfig and GPUAccelerator
+    cfg2 = LLMConfig(
+        model_loading_config={"model_id": "test"},
+        accelerator_type="A10G",
+        llm_engine="vLLM",
+    )
+    assert isinstance(cfg2.accelerator_config, GPUConfig)
+    assert isinstance(cfg2.get_engine_config().accelerator, GPUAccelerator)
 
     # No accelerator hints falls back to GPU by default
-    cfg3 = VLLMEngineConfig(model_id="test")
-    assert isinstance(cfg3.accelerator, GPUAccelerator)
+    cfg3 = LLMConfig(model_loading_config={"model_id": "test"}, llm_engine="vLLM")
+    assert isinstance(cfg3.accelerator_config, GPUConfig)
+    assert isinstance(cfg3.get_engine_config().accelerator, GPUAccelerator)
 
     # Explicit CPU config correctly yields CPUAccelerator
-    cfg4 = VLLMEngineConfig(model_id="test", accelerator_config={"kind": "cpu"})
-    assert isinstance(cfg4.accelerator, CPUAccelerator)
+    cfg4 = LLMConfig(
+        model_loading_config={"model_id": "test"},
+        accelerator_config={"kind": "cpu"},
+        llm_engine="vLLM",
+    )
+    assert isinstance(cfg4.accelerator_config, CPUConfig)
+    assert isinstance(cfg4.get_engine_config().accelerator, CPUAccelerator)
 
 
 def test_tpu_slice_placement_group_creation_heterogeneous_tpu_bundles_fail():

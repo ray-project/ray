@@ -15,11 +15,9 @@ from ray.llm._internal.serve.constants import (
     ENV_VARS_TO_PROPAGATE,
 )
 from ray.llm._internal.serve.core.configs.accelerators import (
-    TPU_ACCELERATOR_VALUES,
     AcceleratorBackend,
     AnyAcceleratorConfig,
     CPUAccelerator,
-    CPUConfig,
     GPUAccelerator,
     GPUConfig,
     TPUAccelerator,
@@ -91,18 +89,6 @@ class VLLMEngineConfig(BaseModelExtended):
         validated = PlacementGroupConfig(**value)
         return validated.model_dump(exclude_unset=True)
 
-    @model_validator(mode="after")
-    def _validate_accelerator_type_with_hardware_mode(self):
-        """Validate that accelerator_type is not set for CPU-only configurations."""
-        is_cpu_backend = isinstance(self.accelerator_config, CPUConfig)
-
-        if self.accelerator_type and is_cpu_backend:
-            raise ValueError(
-                f"accelerator_type='{self.accelerator_type}' cannot be used with "
-                "CPU-only configurations. Either remove accelerator_type, or provide a GPU/TPU accelerator_config."
-            )
-        return self
-
     runtime_env: Optional[Dict[str, Any]] = None
     engine_kwargs: Dict[str, Any] = {}
     frontend_kwargs: Dict[str, Any] = {}
@@ -111,44 +97,23 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @model_validator(mode="after")
     def _build_accelerator(self):
-        """Builds the backend. Infers the hardware if accelerator_config is missing."""
         cfg = self.accelerator_config
-
-        # Check for explicitly typed config
         if isinstance(cfg, TPUConfig):
             self._accelerator = TPUAccelerator(cfg)
-            return self
         elif isinstance(cfg, GPUConfig):
             self._accelerator = GPUAccelerator()
-            return self
-        elif isinstance(cfg, CPUConfig):
+        else:  # CPUConfig or None
             self._accelerator = CPUAccelerator()
-            return self
+        return self
 
-        # Infer hardware from config when kind is not specified
-        if self.placement_group_config:
-            bundle_per_worker = self.placement_group_config.get("bundle_per_worker", {})
-            bundles = self.placement_group_config.get("bundles", [])
-            if bundle_per_worker.get("TPU", 0) > 0 or any(
-                b.get("TPU", 0) > 0 for b in bundles
-            ):
-                self._accelerator = TPUAccelerator(TPUConfig(kind="tpu"))
-                return self
-            if bundle_per_worker.get("GPU", 0) > 0 or any(
-                b.get("GPU", 0) > 0 for b in bundles
-            ):
-                self._accelerator = GPUAccelerator()
-                return self
-
-        if self.accelerator_type:
-            accel_str = getattr(
-                self.accelerator_type, "value", str(self.accelerator_type)
+    @model_validator(mode="after")
+    def _validate_accelerator_type_with_hardware_mode(self):
+        """Validate that accelerator_type is not set for CPU-only configurations."""
+        if self.accelerator_type and isinstance(self.accelerator, CPUAccelerator):
+            raise ValueError(
+                f"accelerator_type='{self.accelerator_type}' cannot be used with "
+                "CPU-only configurations. You must provide a GPU or TPU accelerator_config."
             )
-            if accel_str in TPU_ACCELERATOR_VALUES:
-                self._accelerator = TPUAccelerator(TPUConfig(kind="tpu"))
-                return self
-
-        self._accelerator = GPUAccelerator()
         return self
 
     @property
@@ -344,12 +309,12 @@ class VLLMEngineConfig(BaseModelExtended):
                 )
             name = "" if dp_rank is None else f"dp_{dp_rank}"
 
-            # Delegate the placement group creation to the accelerator backend.
             accel_str = (
                 getattr(self.accelerator_type, "value", self.accelerator_type)
                 if self.accelerator_type
                 else None
             )
+
             pg = self.accelerator.create_placement_group(
                 bundles=self.placement_bundles,
                 strategy=self.placement_strategy,

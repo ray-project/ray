@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Union
 
 from pydantic import BaseModel, Field
 from typing_extensions import Annotated
@@ -66,6 +66,16 @@ class AcceleratorBackend(ABC):
     ) -> PlacementGroup:
         pass
 
+    @property
+    def requires_remote_initialization(self) -> bool:
+        """Boolean indicating whether this backend needs a remote Ray task to query hardware during init."""
+        return True
+
+    @abstractmethod
+    def get_remote_options(self, accelerator_type_str: str = None) -> Dict[str, Any]:
+        """Returns the hardware-specific kwargs for ray.remote().options()."""
+        pass
+
     def shutdown(self) -> None:
         """Release any resources owned by this backend. Idempotent."""
         return
@@ -88,6 +98,13 @@ class CPUAccelerator(AcceleratorBackend):
     ):
         return placement_group(bundles=bundles, strategy=strategy, name=name)
 
+    @property
+    def requires_remote_initialization(self) -> bool:
+        return False
+
+    def get_remote_options(self, accelerator_type_str: str = None):
+        return {}
+
 
 class GPUAccelerator(AcceleratorBackend):
     # stateless — no __init__
@@ -108,6 +125,12 @@ class GPUAccelerator(AcceleratorBackend):
         accelerator_type_str: Optional[str] = None,
     ):
         return placement_group(bundles=bundles, strategy=strategy, name=name)
+
+    def get_remote_options(self, accelerator_type_str: str = None):
+        options = {"num_gpus": 0.001}
+        if accelerator_type_str:
+            options["accelerator_type"] = accelerator_type_str
+        return options
 
 
 class TPUAccelerator(AcceleratorBackend):
@@ -170,6 +193,14 @@ class TPUAccelerator(AcceleratorBackend):
             name=name,
         )
         return self._slice_pg_wrapper.placement_group
+
+    def get_remote_options(self, accelerator_type_str: str = None):
+        # TPUs use custom resource strings rather than a native kwarg
+        options: Dict[str, Any] = {"resources": {"TPU": 0.001}}
+
+        if accelerator_type_str:
+            options["accelerator_type"] = accelerator_type_str
+        return options
 
     def shutdown(self):
         if self._slice_pg_wrapper is not None:

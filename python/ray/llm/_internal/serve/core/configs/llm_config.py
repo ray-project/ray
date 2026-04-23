@@ -36,9 +36,12 @@ from ray.llm._internal.serve.constants import (
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
 from ray.llm._internal.serve.core.configs.accelerators import (
+    TPU_ACCELERATOR_VALUES,
     AcceleratorType,
     AnyAcceleratorConfig,
     CPUConfig,
+    GPUConfig,
+    TPUConfig,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
@@ -474,14 +477,53 @@ class LLMConfig(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
+    def _resolve_accelerator_config(self):
+        """Infers and populates accelerator_config if omitted by the user."""
+        if self.accelerator_config is not None:
+            return self
+
+        # Infer hardware from placement_group_config
+        if self.placement_group_config:
+            bundle_per_worker = self.placement_group_config.get("bundle_per_worker", {})
+            bundles = self.placement_group_config.get("bundles", [])
+            all_bundles = [bundle_per_worker] + bundles
+
+            has_tpu = any(b.get("TPU", 0) > 0 for b in all_bundles)
+            has_gpu = any(b.get("GPU", 0) > 0 for b in all_bundles)
+
+            if has_tpu:
+                self.accelerator_config = TPUConfig(kind="tpu")
+                return self
+            if has_gpu:
+                self.accelerator_config = GPUConfig(kind="gpu")
+                return self
+
+            self.accelerator_config = CPUConfig(kind="cpu")
+            return self
+
+        # Infer hardware from accelerator_type string
+        if self.accelerator_type:
+            accel_str = getattr(
+                self.accelerator_type, "value", str(self.accelerator_type)
+            )
+            if accel_str in TPU_ACCELERATOR_VALUES:
+                self.accelerator_config = TPUConfig(kind="tpu")
+                return self
+
+            self.accelerator_config = GPUConfig(kind="gpu")
+            return self
+
+        # Default to GPUConfig if not otherwise specified
+        self.accelerator_config = GPUConfig(kind="gpu")
+        return self
+
+    @model_validator(mode="after")
     def _validate_accelerator_type_with_hardware_mode(self):
         """Validate that accelerator_type is not set for CPU-only configurations."""
-        is_cpu_backend = isinstance(self.accelerator_config, CPUConfig)
-
-        if self.accelerator_type and is_cpu_backend:
+        if self.accelerator_type and isinstance(self.accelerator_config, CPUConfig):
             raise ValueError(
                 f"accelerator_type='{self.accelerator_type}' cannot be used with "
-                "CPU-only configurations. Either remove accelerator_type, or provide a GPU/TPU accelerator_config."
+                "CPU-only configurations. Either remove accelerator_type, or provide an accelerator_config."
             )
         return self
 
