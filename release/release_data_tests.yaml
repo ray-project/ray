@@ -76,6 +76,9 @@
 
 - name: read_tfrecords
   python: "3.13"
+  cluster:
+    byod:
+      post_build_script: byod_tensorflow.sh
   run:
     timeout: 3600
     script: >
@@ -430,6 +433,9 @@
 
 - name: to_tf
   python: "3.13"
+  cluster:
+    byod:
+      post_build_script: byod_tensorflow.sh
   run:
     timeout: 2400
     script: >
