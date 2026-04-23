@@ -59,6 +59,7 @@
   cluster:
     cluster_compute: document_embedding/compute.yaml
     byod:
+      type: torch-cu130
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
       python_depset: document_embedding_py3.13.lock
 
