@@ -339,23 +339,6 @@ def test_python_object_leak(shutdown_only):
             self.gc_garbage_len = 0
 
         def get_gc_garbage_len(self):
-            # Debug instrumentation for the py3.13 compile-refresh bisect:
-            # classify gc.garbage so failure logs show which cycle family
-            # (attrs / wrapt / frame+traceback / closure cell / …) is leaking.
-            by_type = {}
-            for obj in gc.garbage:
-                name = type(obj).__name__
-                by_type[name] = by_type.get(name, 0) + 1
-            print(
-                f"GC_GARBAGE_SUMMARY total={len(gc.garbage)} by_type={by_type}",
-                flush=True,
-            )
-            for i, obj in enumerate(gc.garbage[:8]):
-                try:
-                    r = repr(obj)[:300]
-                except Exception as e:
-                    r = f"<repr-failed: {e}>"
-                print(f"GC_GARBAGE[{i}] {type(obj)!r} {r}", flush=True)
             return self.gc_garbage_len
 
         async def gen(self, fail=False):
@@ -387,23 +370,6 @@ def test_python_object_leak(shutdown_only):
             self.gc_garbage_len = 0
 
         def get_gc_garbage_len(self):
-            # Debug instrumentation for the py3.13 compile-refresh bisect:
-            # classify gc.garbage so failure logs show which cycle family
-            # (attrs / wrapt / frame+traceback / closure cell / …) is leaking.
-            by_type = {}
-            for obj in gc.garbage:
-                name = type(obj).__name__
-                by_type[name] = by_type.get(name, 0) + 1
-            print(
-                f"GC_GARBAGE_SUMMARY total={len(gc.garbage)} by_type={by_type}",
-                flush=True,
-            )
-            for i, obj in enumerate(gc.garbage[:8]):
-                try:
-                    r = repr(obj)[:300]
-                except Exception as e:
-                    r = f"<repr-failed: {e}>"
-                print(f"GC_GARBAGE[{i}] {type(obj)!r} {r}", flush=True)
             return self.gc_garbage_len
 
         def f(self, fail=False):
