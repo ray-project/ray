@@ -182,7 +182,7 @@ class ZarrV2Datasource(Datasource):
                 for size, chunk in zip(shape, chunk_shape)
             )
             
-            grid_shape[array] = {"meta": meta, "grid_shape": grid_shape}
+            grid_shape_dict[array] = {"meta": meta, "grid_shape": grid_shape}
         return grid_shape_dict
         
 
