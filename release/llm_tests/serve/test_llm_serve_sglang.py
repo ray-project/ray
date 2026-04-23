@@ -253,7 +253,8 @@ def test_sglang_serve_e2e_multi_gpu():
     """Verify SGLang multi-GPU deployment works with tp_size=2.
 
     Requires a node with at least 2 GPUs. Confirms that:
-    - Placement group bundles are correctly constructed as [{"GPU": 1, "CPU": 1}, {"GPU": 1}]
+    - Placement group bundles pack all GPUs into a single node-sized bundle
+      ([{"GPU": 2, "CPU": 1}]) — RayEngine requires one bundle per node.
     - The model loads and serves inference correctly across both GPUs.
     """
     llm_config = LLMConfig(
@@ -282,7 +283,7 @@ def test_sglang_serve_e2e_multi_gpu():
         wait_for_condition(_app_is_running, timeout=300)
 
         deployment_options = SGLangServer.get_deployment_options(llm_config)
-        expected_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1}]
+        expected_bundles = [{"GPU": 2, "CPU": 1}]
         assert deployment_options["placement_group_bundles"] == expected_bundles, (
             f"Expected placement group bundles {expected_bundles}, "
             f"got {deployment_options['placement_group_bundles']}"
@@ -313,8 +314,9 @@ def test_sglang_serve_e2e_pipeline_parallel():
     """Verify SGLang multi-GPU deployment works with tp_size=2, pp_size=2.
 
     Requires a node with at least 4 GPUs. Confirms that:
-    - Placement group bundles are correctly constructed as
-      [{"GPU": 1, "CPU": 1}, {"GPU": 1}, {"GPU": 1}, {"GPU": 1}]
+    - Placement group bundles pack all GPUs into a single node-sized bundle
+      ([{"GPU": 4, "CPU": 1}]) — RayEngine assigns every tp/pp rank on a node
+      to the same bundle, so the bundle must hold all GPUs for that node.
     - The model loads and serves inference correctly across all 4 GPUs.
     """
     llm_config = LLMConfig(
@@ -343,10 +345,9 @@ def test_sglang_serve_e2e_pipeline_parallel():
     try:
         wait_for_condition(_app_is_running, timeout=300)
 
-        # tp_size=2, pp_size=2 → num_devices=4 → 4 GPU bundles
-        # first bundle merges replica actor CPU with first GPU worker
+        # tp_size=2, pp_size=2 → num_devices=4 → one bundle with all 4 GPUs
         deployment_options = SGLangServer.get_deployment_options(llm_config)
-        expected_bundles = [{"GPU": 1, "CPU": 1}, {"GPU": 1}, {"GPU": 1}, {"GPU": 1}]
+        expected_bundles = [{"GPU": 4, "CPU": 1}]
         assert deployment_options["placement_group_bundles"] == expected_bundles, (
             f"Expected placement group bundles {expected_bundles}, "
             f"got {deployment_options['placement_group_bundles']}"
