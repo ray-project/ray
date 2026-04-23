@@ -87,10 +87,10 @@ def test_tag_storage_type(storage_path_filesystem_expected, mock_record, monkeyp
 
     storage_path, storage_filesystem, expected = storage_path_filesystem_expected
 
-    if Version(pyarrow.__version__) < Version("9.0.0") and storage_path.startswith(
+    if Version(pyarrow.__version__) < Version("15.0.0") and storage_path.startswith(
         "gs://"
     ):
-        pytest.skip("GCS support requires pyarrow >= 9.0.0")
+        pytest.skip("GCS support requires pyarrow >= 15.0.0")
 
     storage = StorageContext(
         storage_path=storage_path,
