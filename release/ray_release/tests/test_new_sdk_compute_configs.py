@@ -35,7 +35,11 @@ def _extract_compute_config_file_arg(argv):
         arg = argv[i]
         if arg.startswith(f"{_COMPUTE_CONFIG_FILE_FLAG}="):
             override = arg.split("=", 1)[1]
-        elif arg == _COMPUTE_CONFIG_FILE_FLAG and i + 1 < len(argv):
+        elif (
+            arg == _COMPUTE_CONFIG_FILE_FLAG
+            and i + 1 < len(argv)
+            and not argv[i + 1].startswith("-")
+        ):
             override = argv[i + 1]
             i += 1
         else:
