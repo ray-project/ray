@@ -956,6 +956,17 @@ void NodeManager::NodeRemoved(const NodeID &node_id) {
     // worker.
     RAY_LOG(INFO).WithField(worker->WorkerId()).WithField(owner_node_id)
         << "Killing leased worker because its owner's node died.";
+    // Record the failure reason so that the owner (if still alive) sees a proper
+    // error message via GetWorkerFailureCause, and fails the task immediately
+    // without a phantom retry attempt.
+    if (!worker->GetGrantedLeaseId().IsNil()) {
+      rpc::RayErrorInfo failure_reason;
+      failure_reason.set_error_type(rpc::ErrorType::WORKER_DIED);
+      failure_reason.set_error_message("Worker killed because its owner's node died.");
+      SetWorkerFailureReason(worker->GetGrantedLeaseId(),
+                             failure_reason,
+                             /*should_retry=*/false);
+    }
     DestroyWorker(worker,
                   rpc::WorkerExitType::SYSTEM_ERROR,
                   "Worker killed because its owner's node died.");
@@ -1007,6 +1018,17 @@ void NodeManager::HandleUnexpectedWorkerFailure(const WorkerID &worker_id) {
             .WithField(worker->WorkerId())
             .WithField("owner_worker_id", owner_worker_id)
         << "Killing leased worker because its owner died.";
+    // Record the failure reason so that the owner (if still alive) sees a proper
+    // error message via GetWorkerFailureCause, and fails the task immediately
+    // without a phantom retry attempt.
+    if (!worker->GetGrantedLeaseId().IsNil()) {
+      rpc::RayErrorInfo failure_reason;
+      failure_reason.set_error_type(rpc::ErrorType::WORKER_DIED);
+      failure_reason.set_error_message("Worker killed because its owner died.");
+      SetWorkerFailureReason(worker->GetGrantedLeaseId(),
+                             failure_reason,
+                             /*should_retry=*/false);
+    }
     DestroyWorker(worker,
                   rpc::WorkerExitType::SYSTEM_ERROR,
                   "Worker killed because its owner died.");
