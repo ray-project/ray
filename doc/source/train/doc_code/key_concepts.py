@@ -108,7 +108,7 @@ print(f"Results location (fs, path) = ({result_filesystem}, {result_path})")
 from ray.train import Result
 
 restored_result = Result.from_path(result_path)
-print("Restored loss", result.metrics["loss"])
+print("Restored loss", restored_result.metrics["loss"])
 # __result_restore_end__
 
 
