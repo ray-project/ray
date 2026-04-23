@@ -649,7 +649,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     "Tried closing the existing env, but failed with error: "
                     f"{e.args[0]}"
                 )
-        self.env = None
 
         env_config = self.config.env_config
         if not isinstance(env_config, EnvContext):

@@ -799,7 +799,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     "Tried closing the existing env (multi-agent), but failed with "
                     f"error: {e.args[0]}"
                 )
-        self.env = None
+            del self.env
 
         env_ctx = self.config.env_config
         if not isinstance(env_ctx, EnvContext):
