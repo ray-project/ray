@@ -18,6 +18,23 @@ from ray.util.tpu import get_tpu_coordinator_env_vars, get_tpu_worker_resources
 
 logger = logging.getLogger(__name__)
 
+# JAX multi-slice (megascale) coordination env vars whose values are
+# authoritatively computed by the controller for the current worker group.
+# These must always be overwritten on each worker (even when the underlying
+# TPU node provider has already set them in the pod environment), because
+# stale values from a previous worker group configuration -- e.g. after a
+# slice was preempted and replaced -- would otherwise cause libtpu's
+# megascale topology coordinator to wait for slices that no longer exist
+# and hang TPU initialization.
+_JAX_MULTISLICE_OVERRIDE_KEYS = frozenset(
+    {
+        "MEGASCALE_COORDINATOR_ADDRESS",
+        "MEGASCALE_PORT",
+        "MEGASCALE_NUM_SLICES",
+        "MEGASCALE_SLICE_ID",
+    }
+)
+
 
 @PublicAPI(stability="alpha")
 @dataclass
@@ -64,8 +81,10 @@ def _setup_jax_distributed_environment(
         use_gpu: Whether to configure for GPU. If True and JAX_PLATFORMS is not
             already set, it will be set to "cuda".
         resources_per_worker: The resources per worker.
-        jax_env_vars: The JAX coordinator env vars to inject for multi-slice. These
-            values do not override existing values if specified.
+        jax_env_vars: The JAX coordinator env vars to inject for multi-slice.
+            Multi-slice coordination keys (``MEGASCALE_*``) always overwrite
+            any pre-existing value in the environment; all other keys are
+            only set if they are not already present.
     """
     # Get JAX_PLATFORMS from environment if already set
     jax_platforms = os.environ.get("JAX_PLATFORMS", "").lower()
@@ -76,8 +95,12 @@ def _setup_jax_distributed_environment(
 
     if jax_env_vars:
         for k, v in jax_env_vars.items():
-            # Respect configured JAX env vars if set.
-            if k not in os.environ:
+            # For multi-slice coordination keys, always override -- the
+            # controller's freshly computed value is the source of truth and
+            # may differ from what the TPU node provider baked into the pod
+            # environment (e.g. after a slice replacement following preemption).
+            # For all other keys, respect any pre-existing value.
+            if k in _JAX_MULTISLICE_OVERRIDE_KEYS or k not in os.environ:
                 os.environ[k] = v
 
     if not jax_platforms and use_gpu:

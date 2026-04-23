@@ -340,6 +340,78 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     assert list({r["MEGASCALE_SLICE_ID"] for r in slice_b_reports}) == ["1"]
 
 
+def test_tpu_multi_slice_overrides_stale_megascale_env(ray_tpu_multi_host, tmp_path):
+    """
+    Tests that JaxTrainer overrides stale MEGASCALE_* env vars that may have
+    been baked into worker pods by the TPU node provider.
+
+    This simulates the multi-slice fault tolerance scenario where one slice was
+    preempted and the replacement pods were provisioned by the TPU node
+    provider with env vars reflecting a different slice id / total slice count
+    than the worker group Ray Train is currently scheduling. Without an
+    override, libtpu's megascale topology coordinator would wait for slices
+    that no longer exist and hang TPU initialization.
+    """
+    actor_name = "test_tpu_multi_slice_overrides_stale_megascale_env"
+    verify_actor = VerificationActor.options(name=actor_name).remote()
+
+    trainer = JaxTrainer(
+        train_loop_per_worker=train_func,
+        scaling_config=ScalingConfig(
+            use_tpu=True,
+            accelerator_type="TPU-V4",
+            topology="2x2x2",
+            num_workers=4,
+        ),
+        run_config=RunConfig(
+            storage_path=str(tmp_path),
+            callbacks=[CustomMetricsCallback(actor_name)],
+            worker_runtime_env={
+                "env_vars": {
+                    "JAX_PLATFORMS": "cpu",
+                    # Inject stale megascale values, as the TPU node provider
+                    # would on a freshly-provisioned replacement slice.
+                    "MEGASCALE_COORDINATOR_ADDRESS": "stale-coordinator:9999",
+                    "MEGASCALE_PORT": "9999",
+                    "MEGASCALE_NUM_SLICES": "3",
+                    "MEGASCALE_SLICE_ID": "2",
+                }
+            },
+        ),
+    )
+    result = trainer.fit()
+    assert result.error is None
+
+    reports = ray.get(verify_actor.get_reports.remote())
+    assert (
+        len(reports) == 4
+    ), f"Expected 4 workers to report metrics, got {len(reports)}"
+
+    # All workers should see the controller-computed coordinator address (the
+    # IP of worker 0), NOT the stale "stale-coordinator:9999" value.
+    worker_0_report = next(r for r in reports if r["worker_id"] == 0)
+    expected_coordinator_ip = worker_0_report["node_ip"]
+
+    for r in reports:
+        assert r["MEGASCALE_COORDINATOR_ADDRESS"] == expected_coordinator_ip, (
+            "Expected MEGASCALE_COORDINATOR_ADDRESS to be overridden by Ray "
+            f"Train, but worker {r['worker_id']} still has stale value "
+            f"{r['MEGASCALE_COORDINATOR_ADDRESS']}"
+        )
+        assert r["MEGASCALE_NUM_SLICES"] == "2", (
+            "Expected MEGASCALE_NUM_SLICES to be overridden to the actual "
+            f"slice count (2), but worker {r['worker_id']} still has stale "
+            f"value {r['MEGASCALE_NUM_SLICES']}"
+        )
+
+    # Validate MEGASCALE_SLICE_ID was overridden per slice (0 / 1) rather than
+    # the stale "2" the provider injected on every worker.
+    slice_a_reports = [r for r in reports if r["slice_name"] == "slice-A"]
+    slice_b_reports = [r for r in reports if r["slice_name"] == "slice-B"]
+    assert list({r["MEGASCALE_SLICE_ID"] for r in slice_a_reports}) == ["0"]
+    assert list({r["MEGASCALE_SLICE_ID"] for r in slice_b_reports}) == ["1"]
+
+
 def test_multi_slice_manual_resources(ray_tpu_multi_host, tmp_path):
     """
     Tests execution of TPU workers across multiple multi-host slices when
