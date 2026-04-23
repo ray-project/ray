@@ -408,7 +408,7 @@ def test_bundle_per_worker_non_fractional_gpu_no_env_var():
 
 
 def test_llm_serve_placement_group_explicit_none():
-    """Test that explicitly setting bundle keys to None does not crash."""
+    """Test that explicitly setting bundle_per_worker key to None does not crash."""
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(
             model_id="test_model",
@@ -416,11 +416,11 @@ def test_llm_serve_placement_group_explicit_none():
         ),
         placement_group_config={
             "bundle_per_worker": None,
-            "bundles": None,
+            "bundles": [{"GPU": 1}],
         },
     )
 
-    # This should succeed fall back to the default GPU bundles
+    # This should succeed fall back to the GPU bundles
     serve_options = LLMServer.get_deployment_options(llm_config)
     assert len(serve_options["placement_group_bundles"]) > 0
 

@@ -484,8 +484,10 @@ class LLMConfig(BaseModelExtended):
 
         # Infer hardware from placement_group_config
         if self.placement_group_config:
-            bundle_per_worker = self.placement_group_config.get("bundle_per_worker", {})
-            bundles = self.placement_group_config.get("bundles", [])
+            bundle_per_worker = (
+                self.placement_group_config.get("bundle_per_worker") or {}
+            )
+            bundles = self.placement_group_config.get("bundles") or []
             all_bundles = [bundle_per_worker] + bundles
 
             has_tpu = any(b.get("TPU", 0) > 0 for b in all_bundles)
