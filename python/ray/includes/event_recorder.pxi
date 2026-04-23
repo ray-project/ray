@@ -126,7 +126,7 @@ cdef class EventRecorder:
         int aggregator_port,
         str node_ip,
         str node_id_hex,
-        int max_buffer_size,
+        size_t max_buffer_size,
         str metric_source = "python",
     ):
         """Initialize the per-process event recorder.

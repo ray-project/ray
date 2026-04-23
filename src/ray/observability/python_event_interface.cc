@@ -27,22 +27,22 @@ namespace observability {
 PythonRayEvent::PythonRayEvent(rpc::events::RayEvent::SourceType source_type,
                                rpc::events::RayEvent::EventType event_type,
                                rpc::events::RayEvent::Severity severity,
-                               std::string entity_id,
-                               std::string message,
-                               std::string session_name,
-                               std::string serialized_event_data,
+                               const std::string &entity_id,
+                               const std::string &message,
+                               const std::string &session_name,
+                               const std::string &serialized_event_data,
                                int nested_event_field_number,
-                               std::string event_id,
+                               const std::string &event_id,
                                int64_t timestamp_ns)
     : source_type_(source_type),
       event_type_(event_type),
       severity_(severity),
-      entity_id_(std::move(entity_id)),
-      message_(std::move(message)),
-      session_name_(std::move(session_name)),
-      serialized_event_data_(std::move(serialized_event_data)),
+      entity_id_(entity_id),
+      message_(message),
+      session_name_(session_name),
+      serialized_event_data_(serialized_event_data),
       nested_event_field_number_(nested_event_field_number),
-      event_id_(std::move(event_id)),
+      event_id_(event_id),
       event_timestamp_(timestamp_ns == 0 ? absl::Now()
                                          : absl::FromUnixNanos(timestamp_ns)) {}
 
@@ -102,6 +102,14 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
     int nested_event_field_number,
     const std::string &event_id,
     int64_t timestamp_ns) {
+
+  RAY_CHECK(rpc::events::RayEvent::SourceType_IsValid(source_type))
+      << "Invalid SourceType enum value: " << source_type;
+  RAY_CHECK(rpc::events::RayEvent::EventType_IsValid(event_type))
+      << "Invalid EventType enum value: " << event_type;
+  RAY_CHECK(rpc::events::RayEvent::Severity_IsValid(severity))
+      << "Invalid Severity enum value: " << severity;
+
   return std::make_unique<PythonRayEvent>(
       static_cast<rpc::events::RayEvent::SourceType>(source_type),
       static_cast<rpc::events::RayEvent::EventType>(event_type),
@@ -138,12 +146,15 @@ PythonEventRecorder::PythonEventRecorder(int aggregator_port,
       std::make_unique<rpc::EventAggregatorClientImpl>(*client_call_manager_);
   event_aggregator_client_->Connect(aggregator_port);
 
+  NodeID node_id = NodeID::FromHex(node_id_hex);
+  RAY_CHECK(!node_id.IsNil()) << "Invalid node ID: " << node_id_hex;
+
   recorder_ = std::make_unique<RayEventRecorder>(*event_aggregator_client_,
                                                  *io_context_,
                                                  max_buffer_size,
                                                  metric_source_str_,
                                                  dropped_events_counter_,
-                                                 NodeID::FromHex(node_id_hex));
+                                                 node_id);
   recorder_->StartExportingEvents();
 }
 

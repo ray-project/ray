@@ -60,12 +60,12 @@ class PythonRayEvent : public RayEventInterface {
   PythonRayEvent(rpc::events::RayEvent::SourceType source_type,
                  rpc::events::RayEvent::EventType event_type,
                  rpc::events::RayEvent::Severity severity,
-                 std::string entity_id,
-                 std::string message,
-                 std::string session_name,
-                 std::string serialized_event_data,
+                 const std::string &entity_id,
+                 const std::string &message,
+                 const std::string &session_name,
+                 const std::string &serialized_event_data,
                  int nested_event_field_number,
-                 std::string event_id = "",
+                 const std::string &event_id = "",
                  int64_t timestamp_ns = 0);
 
   std::string GetEntityId() const override;
