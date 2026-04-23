@@ -115,7 +115,7 @@ class MockVLLMEngine(LLMEngine):
         This mimics vLLM's behavior: halts generation while keeping weights in GPU.
 
         Args:
-            **kwargs: Engine-specific options (wait_for_inflight_requests, clear_cache).
+            **kwargs: Engine-specific options (mode, clear_cache).
         """
         if not self.started:
             raise RuntimeError("Engine not started")
