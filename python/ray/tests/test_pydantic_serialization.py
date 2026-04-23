@@ -8,26 +8,10 @@ import pytest
 from fastapi import FastAPI
 from packaging import version
 
-try:
-    # Testing with Pydantic 2
-    from pydantic import BaseModel as BaseModelV2, ValidationError as ValidationErrorV2
-    from pydantic.v1 import (
-        BaseModel as BaseModelV1,
-        ValidationError as ValidationErrorV1,
-    )
+from pydantic import BaseModel, ValidationError
 
-    BASE_MODELS = [BaseModelV1, BaseModelV2]
-    BASE_MODEL_AND_ERRORS = [
-        (BaseModelV1, ValidationErrorV1),
-        (BaseModelV2, ValidationErrorV2),
-    ]
-except ImportError:
-    # Testing with Pydantic 1
-    from pydantic import BaseModel as BaseModelV1, ValidationError as ValidationErrorV1
-
-    BaseModelV2 = None
-    BASE_MODELS = [BaseModelV1]
-    BASE_MODEL_AND_ERRORS = [(BaseModelV1, ValidationErrorV1)]
+BASE_MODELS = [BaseModel]
+BASE_MODEL_AND_ERRORS = [(BaseModel, ValidationError)]
 
 import ray
 from ray.tests.pydantic_module import User, app, closure, user
@@ -176,7 +160,7 @@ def test_serialize_app_imported_closure(start_ray, BaseModel: Type):
 
 
 # TODO: Serializing a Serve dataclass doesn't work in Pydantic 1.10 – 2.0.
-@pytest.mark.parametrize("BaseModel", [BaseModelV2] if BaseModelV2 else [])
+@pytest.mark.parametrize("BaseModel", BASE_MODELS)
 def test_serialize_serve_dataclass(start_ray, BaseModel: Type):
     @dataclass
     class BackendMetadata:
@@ -246,18 +230,13 @@ def test_validation_error(
         with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
             ray.get(func.remote())
 
-    if BaseModel == BaseModelV1:
-        # Pydantic v1 validation errors can be subclassed.
-        assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
-        assert isinstance(exc_info.value, ValidationError)
-    else:
-        # Pydantic v2 validation errors are final, can't be subclassed.
-        assert (
-            "This exception is raised as RayTaskError only. You can use "
-            "`ray_task_error.cause` to access the user exception."
-        ) in caplog.text
-        assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
-        assert isinstance(exc_info.value.cause, ValidationError)
+    # Pydantic v2 validation errors are final, can't be subclassed.
+    assert (
+        "This exception is raised as RayTaskError only. You can use "
+        "`ray_task_error.cause` to access the user exception."
+    ) in caplog.text
+    assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
+    assert isinstance(exc_info.value.cause, ValidationError)
 
     caplog.clear()
 

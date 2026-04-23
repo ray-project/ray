@@ -1,5 +1,4 @@
 # ruff: noqa
-from typing import Optional
 import packaging.version
 
 # Pydantic is a dependency of `ray["default"]` but not the minimal installation,
@@ -11,13 +10,6 @@ try:
 except ImportError:
     pydantic = None
     PYDANTIC_INSTALLED = False
-
-
-PYDANTIC_MAJOR_VERSION: Optional[int] = (
-    packaging.version.parse(pydantic.__version__).major
-    if PYDANTIC_INSTALLED and hasattr(pydantic, "__version__")
-    else None
-)
 
 
 if not PYDANTIC_INSTALLED:
@@ -35,13 +27,15 @@ if not PYDANTIC_INSTALLED:
     root_validator = None
     validator = None
     is_subclass_of_base_model = lambda obj: False
-# In pydantic <1.9.0, __version__ attribute is missing, issue ref:
-# https://github.com/pydantic/pydantic/issues/2572, so we need to check
-# the existence prior to comparison.
 elif not hasattr(pydantic, "__version__") or packaging.version.parse(
     pydantic.__version__
 ) < packaging.version.parse("2.0"):
-    IS_PYDANTIC_2 = False
+    raise ImportError(
+        "Pydantic v1 is no longer supported in Ray. "
+        "Please upgrade to `pydantic>=2`."
+    )
+else:
+    IS_PYDANTIC_2 = True
     from pydantic import (
         BaseModel,
         Extra,
@@ -60,39 +54,13 @@ elif not hasattr(pydantic, "__version__") or packaging.version.parse(
     def is_subclass_of_base_model(obj):
         return issubclass(obj, BaseModel)
 
-else:
-    IS_PYDANTIC_2 = True
-    from pydantic.v1 import (
-        BaseModel,
-        Extra,
-        Field,
-        NonNegativeFloat,
-        NonNegativeInt,
-        PositiveFloat,
-        PositiveInt,
-        PrivateAttr,
-        StrictInt,
-        ValidationError,
-        root_validator,
-        validator,
-    )
-
-    def is_subclass_of_base_model(obj):
-        from pydantic import BaseModel as BaseModelV2
-        from pydantic.v1 import BaseModel as BaseModelV1
-
-        return issubclass(obj, BaseModelV1) or issubclass(obj, BaseModelV2)
-
 
 def register_pydantic_serializers(serialization_context):
     if not PYDANTIC_INSTALLED:
         return
 
-    if IS_PYDANTIC_2:
-        # TODO(edoakes): compare against the version that has the fixes.
-        from pydantic.v1.fields import ModelField
-    else:
-        from pydantic.fields import ModelField
+    # FastAPI still uses Pydantic's v1 ModelField compatibility type internally.
+    from pydantic.v1.fields import ModelField
 
     # Pydantic's Cython validators are not serializable.
     # https://github.com/cloudpipe/cloudpickle/issues/408
