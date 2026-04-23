@@ -8,10 +8,9 @@
 token-auth
 ```
 
-```{admonition} Note
-:class: note 
+::::{note}
 For the latest Ray security alerts, see the [Security Advisories](https://github.com/ray-project/ray/security/advisories) page on GitHub.
-```
+::::
 
 Ray is an easy-to-use framework to run arbitrary code across one or more nodes in a Ray Cluster. Ray provides fault-tolerance, optimized scheduling, task orchestration, and auto-scaling to run a given workload.
 
