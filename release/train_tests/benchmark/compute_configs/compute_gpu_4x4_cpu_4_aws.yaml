@@ -9,8 +9,12 @@ worker_nodes:
       min_nodes: 4
       max_nodes: 4
       market_type: ON_DEMAND
+      # New SDK's `resources` is a full override (not a merge), so we must
+      # include `GPU: 4` explicitly to preserve the g4dn.12xlarge's natural
+      # GPU count. CPU: 0 keeps this group reserved for GPU workloads only.
       resources:
         CPU: 0
+        GPU: 4
     - name: worker_node_cpu
       instance_type: m5.4xlarge
       min_nodes: 4

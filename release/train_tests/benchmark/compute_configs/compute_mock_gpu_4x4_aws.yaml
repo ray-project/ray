@@ -8,5 +8,9 @@ worker_nodes:
       min_nodes: 4
       max_nodes: 4
       market_type: ON_DEMAND
+      # New SDK's `resources` is a full override (not a merge), so we must
+      # include `CPU: 48` explicitly to preserve the m5.12xlarge's natural
+      # vCPU count alongside the custom MOCK_GPU resource.
       resources:
+        CPU: 48
         MOCK_GPU: 4
