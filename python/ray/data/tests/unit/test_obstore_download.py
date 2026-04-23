@@ -699,9 +699,7 @@ class TestThreadedDownloadPreResolve:
             with patch.object(
                 pdo, "_resolve_paths_and_filesystem", side_effect=_fake_resolve
             ):
-                results = list(
-                    download_bytes_threaded(table, ["uri"], ["bytes"], ctx)
-                )
+                results = list(download_bytes_threaded(table, ["uri"], ["bytes"], ctx))
         finally:
             os.unlink(real_path)
 
