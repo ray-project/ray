@@ -888,9 +888,10 @@ int main(int argc, char *argv[]) {
         RayConfig::instance().is_external_storage_type_fs(),
         /*max_fused_object_count*/ RayConfig::instance().max_fused_object_count(),
         /*on_objects_freed*/
-        [&](const std::vector<ray::ObjectID> &object_ids) {
-          object_manager->FreeObjects(object_ids,
-                                      /*local_only=*/false);
+        [&](const std::vector<ray::ObjectID> &object_ids, bool local_only) {
+          RAY_LOG(INFO) << "[karticam] on_objects_freed called with " << object_ids.size()
+                        << " objects, local_only=" << local_only;
+          object_manager->FreeObjects(object_ids, local_only);
         },
         /*is_plasma_object_spillable*/
         [&](const ray::ObjectID &object_id) {

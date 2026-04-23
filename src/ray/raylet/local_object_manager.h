@@ -57,7 +57,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
       int max_io_workers,
       bool is_external_storage_type_fs,
       int64_t max_fused_object_count,
-      std::function<void(const std::vector<ObjectID> &)> on_objects_freed,
+      std::function<void(const std::vector<ObjectID> &, bool)> on_objects_freed,
       std::function<bool(const ray::ObjectID &)> is_plasma_object_spillable,
       pubsub::SubscriberInterface *core_worker_subscriber,
       IObjectDirectory *object_directory,
@@ -161,7 +161,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
 
   /// Clear any freed objects. This will trigger the callback for freed
   /// objects.
-  void FlushFreeObjects() override;
+  void FlushFreeObjects(bool local_only = false) override;
 
   /// Returns true if the object has been marked for deletion through the
   /// eviction notification.
@@ -211,7 +211,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   std::string DebugString() const override;
 
   /// Release an object that has been freed by its owner (or by move semantics).
-  void ReleaseFreedObject(const ObjectID &object_id) override;
+  void ReleaseFreedObject(const ObjectID &object_id, bool local_only = false) override;
 
  private:
   struct LocalObjectInfo {
@@ -286,7 +286,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   rpc::CoreWorkerClientPool &owner_client_pool_;
 
   /// A callback to call when an object has been freed.
-  std::function<void(const std::vector<ObjectID> &)> on_objects_freed_;
+  std::function<void(const std::vector<ObjectID> &, bool)> on_objects_freed_;
 
   /// Hashmap from local objects that we are waiting to free to metadata about
   /// the object including their owner address.

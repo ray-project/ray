@@ -675,6 +675,12 @@ void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
+  RAY_LOG(INFO) << "[karticam] ObjectManager::FreeObjects called for "
+                << object_ids.size() << " objects, local_only=" << local_only
+                << " used_memory_before=" << used_memory_;
+  for (const auto &obj_id : object_ids) {
+    RAY_LOG(INFO) << "[karticam] ObjectManager::FreeObjects -> " << obj_id;
+  }
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
     std::vector<std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>

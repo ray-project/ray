@@ -48,7 +48,7 @@ class LocalObjectManagerInterface {
                                          const std::string &,
                                          std::function<void(const ray::Status &)>) = 0;
 
-  virtual void FlushFreeObjects() = 0;
+  virtual void FlushFreeObjects(bool local_only = false) = 0;
 
   virtual bool ObjectPendingDeletion(const ObjectID &) = 0;
 
@@ -69,7 +69,9 @@ class LocalObjectManagerInterface {
   virtual std::string DebugString() const = 0;
 
   /// Release an object (e.g., after move semantics push completion).
-  virtual void ReleaseFreedObject(const ObjectID &) = 0;
+  /// If local_only is true, only frees locally without broadcasting
+  /// FreeObjectsRequest to other nodes (used by move semantics).
+  virtual void ReleaseFreedObject(const ObjectID &, bool local_only = false) = 0;
 };
 
 };  // namespace raylet

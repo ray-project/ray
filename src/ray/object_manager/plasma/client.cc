@@ -637,10 +637,15 @@ Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
     if (objects_in_use_.count(object_id) == 0) {
       not_in_use_ids.push_back(object_id);
     } else {
+      RAY_LOG(INFO) << "[karticam] PlasmaClient::Delete deferring " << object_id
+                    << " (object is in_use by this client; added to deletion_cache)";
       deletion_cache_.emplace(object_id);
     }
   }
   if (not_in_use_ids.size() > 0) {
+    RAY_LOG(INFO) << "[karticam] PlasmaClient::Delete sending delete request to "
+                     "plasma store for "
+                  << not_in_use_ids.size() << " objects";
     RAY_RETURN_NOT_OK(SendDeleteRequest(store_conn_, not_in_use_ids));
     std::vector<uint8_t> buffer;
     RAY_RETURN_NOT_OK(
@@ -649,6 +654,10 @@ Status PlasmaClient::Delete(const std::vector<ObjectID> &object_ids) {
     std::vector<PlasmaError> error_codes;
     not_in_use_ids.clear();
     ReadDeleteReply(buffer.data(), buffer.size(), &not_in_use_ids, &error_codes);
+    for (size_t i = 0; i < not_in_use_ids.size(); i++) {
+      RAY_LOG(INFO) << "[karticam] PlasmaClient::Delete reply for " << not_in_use_ids[i]
+                    << " error=" << static_cast<int>(error_codes[i]);
+    }
   }
   return Status::OK();
 }
