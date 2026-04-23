@@ -110,7 +110,6 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   RAY_CHECK(scheduling_key_entry.active_workers.emplace(worker_address).second);
-  RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 }
 
 void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
@@ -194,7 +193,11 @@ void NormalTaskSubmitter::OnWorkerIdle(
 }
 
 void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key) {
-  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  auto iter = scheduling_key_entries_.find(scheduling_key);
+  if (iter == scheduling_key_entries_.end()) {
+    return;
+  }
+  auto &scheduling_key_entry = iter->second;
   auto &task_queue = scheduling_key_entry.task_queue;
   if (!task_queue.empty()) {
     // There are still pending tasks so let the worker lease request succeed.
@@ -239,12 +242,13 @@ void NormalTaskSubmitter::ReportWorkerBacklog() {
     // We report backlog size per scheduling class not per scheduling key
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
-    RAY_CHECK(scheduling_key_entry.lease_spec.has_value());
-    const auto scheduling_class = std::get<0>(scheduling_key);
-    auto [it, inserted] = backlogs.try_emplace(
-        scheduling_class, scheduling_key_entry.lease_spec->GetMessage(), 0);
-    int64_t &backlog_size = it->second.second;
-    backlog_size += scheduling_key_entry.BacklogSize();
+    if (scheduling_key_entry.lease_spec.has_value()) {
+      const auto scheduling_class = std::get<0>(scheduling_key);
+      auto [it, inserted] = backlogs.try_emplace(
+          scheduling_class, scheduling_key_entry.lease_spec->GetMessage(), 0);
+      int64_t &backlog_size = it->second.second;
+      backlog_size += scheduling_key_entry.BacklogSize();
+    }
   }
 
   rpc::ReportWorkerBacklogRequest request;
