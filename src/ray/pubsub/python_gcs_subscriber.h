@@ -36,7 +36,22 @@ class ClientContext;
 namespace ray {
 namespace pubsub {
 
-// This client is only supposed to be used from Cython / Python
+/// \return true if \p channel_type is one of the GCS pubsub channels served by
+/// `ObservabilityPubSubService` (error info, logs, node resource usage). This
+/// must match `python/ray/_private/gcs_pubsub.py` (`_OBSERVABILITY_PUBSUB_CHANNELS`).
+inline bool IsObservabilityPubSubChannel(rpc::ChannelType channel_type) {
+  switch (channel_type) {
+  case rpc::ChannelType::RAY_ERROR_INFO_CHANNEL:
+  case rpc::ChannelType::RAY_LOG_CHANNEL:
+  case rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL:
+    return true;
+  default:
+    return false;
+  }
+}
+
+// GCS pubsub client for Cython / Python. Only supports channel types handled by
+// `ObservabilityPubSubService`; see `IsObservabilityPubSubChannel`.
 class RAY_EXPORT PythonGcsSubscriber {
  public:
   PythonGcsSubscriber(const std::string &gcs_address,

@@ -23,6 +23,7 @@
 
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace pubsub {
@@ -42,7 +43,13 @@ PythonGcsSubscriber::PythonGcsSubscriber(const std::string &gcs_address,
       observability_pubsub_stub_(rpc::ObservabilityPubSubService::NewStub(channel_)),
       channel_type_(channel_type),
       subscriber_id_(std::move(subscriber_id)),
-      worker_id_(std::move(worker_id)) {}
+      worker_id_(std::move(worker_id)) {
+  RAY_CHECK(IsObservabilityPubSubChannel(channel_type_))
+      << "PythonGcsSubscriber only supports GCS pubsub channels on "
+         "ObservabilityPubSubService (RAY_ERROR_INFO_CHANNEL, RAY_LOG_CHANNEL, "
+         "RAY_NODE_RESOURCE_USAGE_CHANNEL), got channel_type="
+      << static_cast<int>(channel_type_);
+}
 
 Status PythonGcsSubscriber::Subscribe() {
   absl::MutexLock lock(&mu_);

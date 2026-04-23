@@ -343,5 +343,23 @@ TEST_F(PythonGcsSubscriberAuthTest, MultipleSubscribersMatchingTokens) {
   ASSERT_TRUE(subscriber2->Close().ok());
 }
 
+TEST(PythonGcsObservabilityChannel, IsObservabilityPubSubChannel) {
+  using rpc::ChannelType;
+  EXPECT_TRUE(IsObservabilityPubSubChannel(ChannelType::RAY_ERROR_INFO_CHANNEL));
+  EXPECT_TRUE(IsObservabilityPubSubChannel(ChannelType::RAY_LOG_CHANNEL));
+  EXPECT_TRUE(IsObservabilityPubSubChannel(ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL));
+  EXPECT_FALSE(IsObservabilityPubSubChannel(ChannelType::GCS_ACTOR_CHANNEL));
+  EXPECT_FALSE(IsObservabilityPubSubChannel(ChannelType::GCS_NODE_INFO_CHANNEL));
+}
+
+TEST(PythonGcsObservabilityChannel, ConstructorDiesOnNonObservabilityChannel) {
+  EXPECT_DEATH((void)PythonGcsSubscriber("127.0.0.1",
+                                         0,
+                                         rpc::ChannelType::GCS_ACTOR_CHANNEL,
+                                         "subscriber-id",
+                                         "worker-id"),
+               ".*");
+}
+
 }  // namespace pubsub
 }  // namespace ray
