@@ -140,11 +140,12 @@ def test_copy_offsets_buffer_if_needed(arr_type, expected_offset_type):
 
 
 @pytest.mark.skipif(
-    parse_version(pa.__version__) < parse_version("10.0.0"),
+    parse_version(pa.__version__)
+    < parse_version("10.0.0"),  # pyrefly: ignore[bad-argument-type]
     reason="FixedShapeTensorArray is not supported in PyArrow < 10.0.0",
 )
 def test_fixed_shape_tensor_array_serialization():
-    a = pa.FixedShapeTensorArray.from_numpy_ndarray(
+    a = pa.FixedShapeTensorArray.from_numpy_ndarray(  # pyrefly: ignore[missing-attribute]
         np.arange(4 * 2 * 3).reshape(4, 2, 3)
     )
     payload = PicklableArrayPayload.from_array(a)
