@@ -426,6 +426,13 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_budget(op)
 
+    def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return the allocation of the given operator, or None if the operator
+        doesn't have a designated allocation."""
+        if self._op_resource_allocator is None:
+            return None
+        return self._op_resource_allocator.get_allocation(op)
+
     def is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
         return (
@@ -468,8 +475,10 @@ class ResourceManager:
             else:
                 yield from self.get_downstream_eligible_ops(next_op)
 
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
-        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
+        if self._op_resource_allocator is not None:
+            return self._op_resource_allocator.max_task_output_bytes_to_read(op)
+        return None
 
     def _get_completed_ops_usage(self) -> ExecutionResources:
         """
