@@ -13,7 +13,7 @@ from ray.data._internal.datasource_v2.listing.file_indexer import (
     NonSamplingFileIndexer,
 )
 from ray.data._internal.datasource_v2.listing.listing_utils import (
-    sample_first_file,
+    sample_files,
 )
 from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
     ParquetDatasourceV2,
@@ -35,7 +35,7 @@ def _mk_read_files(tmp_path) -> ReadFiles:
 
     datasource = ParquetDatasourceV2([str(f)])
     indexer = NonSamplingFileIndexer(ignore_missing_paths=False)
-    sample = sample_first_file(indexer, datasource.paths, datasource.filesystem)
+    sample = sample_files(indexer, datasource.paths, datasource.filesystem)
     schema = datasource.infer_schema(sample)
     scanner = datasource.create_scanner(schema=schema)
 

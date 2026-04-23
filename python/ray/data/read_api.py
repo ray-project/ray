@@ -424,7 +424,7 @@ def _read_datasource_v2(
         PartitionPruner,
     )
     from ray.data._internal.datasource_v2.listing.listing_utils import (
-        sample_first_file,
+        sample_files,
     )
     from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
         RoundRobinPartitioner,
@@ -454,11 +454,9 @@ def _read_datasource_v2(
 
     indexer = datasource._get_file_indexer()
 
-    # Sample one file for schema inference. Listed again (cheaply) during
+    # Sample a few files for schema inference. Listed again (cheaply) during
     # execution inside the ListFiles op — no caching layer needed.
-    sample = sample_first_file(
-        indexer, datasource.paths, datasource.filesystem, pruners
-    )
+    sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
     schema = datasource.infer_schema(sample)
     # Resolve any path-discovered partitioning field names from the sample
     # and pass the result through to the scanner. Keeping the discovery

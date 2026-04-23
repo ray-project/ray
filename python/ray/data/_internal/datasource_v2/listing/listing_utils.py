@@ -113,7 +113,7 @@ def shuffle_files(
     yield FileManifest(combined).shuffle(seed).as_block()
 
 
-def sample_first_file(
+def sample_files(
     indexer: "FileIndexer",
     paths: List[str],
     filesystem: "FileSystem",
@@ -151,5 +151,5 @@ def sample_first_file(
         if collected_rows >= max_files:
             break
     if not collected:
-        raise ValueError(f"sample_first_file: no files found under {paths!r}")
+        raise ValueError(f"sample_files: no files found under {paths!r}")
     return FileManifest.concat(collected)
