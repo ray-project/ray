@@ -441,9 +441,7 @@ class SerializationContext:
         ):
             if copy_mode == "lazy":
                 # Lazy: consumer allocates buffer, producer scatter-writes.
-                return store.fetch_via_vm_lazy(
-                    flight_uri, key, info["ipc_size"]
-                )
+                return store.fetch_via_vm_lazy(flight_uri, key, info["ipc_size"])
             else:
                 # Eager: consumer reads from producer's pre-serialized buffer.
                 return store.fetch_via_vm_eager(

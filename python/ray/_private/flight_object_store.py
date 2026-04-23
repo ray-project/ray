@@ -13,7 +13,6 @@ Two IPC copy modes (set via ARROW_IPC_COPY_MODE env var):
 """
 
 import os
-import sys
 import threading
 
 import pyarrow as pa
@@ -131,8 +130,7 @@ class _FlightServer(flight.FlightServerBase):
         # in a single process_vm_writev syscall.
         from ray._raylet import vm_scatter_write
 
-        vm_scatter_write(consumer_pid, consumer_addr, buf_size,
-                         sink.scatter_list)
+        vm_scatter_write(consumer_pid, consumer_addr, buf_size, sink.scatter_list)
 
         # Clean up the table after writing.
         self._store.delete(key)
@@ -162,9 +160,7 @@ class FlightObjectStore:
         self._port = self._server.port
         ip = _get_local_ip()
         self._uri = f"grpc://{ip}:{self._port}"
-        self._server_thread = threading.Thread(
-            target=self._server.serve, daemon=True
-        )
+        self._server_thread = threading.Thread(target=self._server.serve, daemon=True)
         self._server_thread.start()
         return self._port
 
@@ -256,8 +252,7 @@ class FlightObjectStore:
         reader = client.do_get(ticket)
         return reader.read_all()
 
-    def fetch_via_vm_eager(self, pid, ipc_address, ipc_size,
-                           flight_uri=None, key=None):
+    def fetch_via_vm_eager(self, pid, ipc_address, ipc_size, flight_uri=None, key=None):
         """Eager mode: process_vm_readv from producer's pre-serialized buffer."""
         from ray._raylet import vm_read_into_arrow_buffer
 
@@ -275,8 +270,6 @@ class FlightObjectStore:
     def fetch_via_vm_lazy(self, flight_uri, key, ipc_size):
         """Lazy mode: allocate buffer, ask producer to scatter-write into it."""
         import struct
-
-        from ray._raylet import vm_read_into_arrow_buffer
 
         # Allocate local Arrow buffer for producer to write into.
         local_buf = pa.allocate_buffer(ipc_size)

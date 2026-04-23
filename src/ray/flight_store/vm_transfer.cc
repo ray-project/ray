@@ -10,9 +10,9 @@ namespace ray {
 namespace vm_transfer {
 
 ssize_t ReadFromRemoteProcess(pid_t remote_pid,
-                               void *local_buf,
-                               uintptr_t remote_addr,
-                               size_t size) {
+                              void *local_buf,
+                              uintptr_t remote_addr,
+                              size_t size) {
 #ifdef __linux__
   struct iovec local_iov = {local_buf, size};
   struct iovec remote_iov = {reinterpret_cast<void *>(remote_addr), size};
@@ -28,9 +28,9 @@ ssize_t ReadFromRemoteProcess(pid_t remote_pid,
 }
 
 ssize_t WriteToRemoteProcess(pid_t remote_pid,
-                              const void *local_buf,
-                              uintptr_t remote_addr,
-                              size_t size) {
+                             const void *local_buf,
+                             uintptr_t remote_addr,
+                             size_t size) {
 #ifdef __linux__
   struct iovec local_iov = {const_cast<void *>(local_buf), size};
   struct iovec remote_iov = {reinterpret_cast<void *>(remote_addr), size};
@@ -46,11 +46,11 @@ ssize_t WriteToRemoteProcess(pid_t remote_pid,
 }
 
 ssize_t ScatterWriteToRemoteProcess(pid_t remote_pid,
-                                     const uintptr_t *local_addrs,
-                                     const size_t *local_sizes,
-                                     size_t num_bufs,
-                                     uintptr_t remote_addr,
-                                     size_t remote_size) {
+                                    const uintptr_t *local_addrs,
+                                    const size_t *local_sizes,
+                                    size_t num_bufs,
+                                    uintptr_t remote_addr,
+                                    size_t remote_size) {
 #ifdef __linux__
   // Build local iovec array from the scatter list.
   std::vector<struct iovec> local_iovs(num_bufs);
@@ -60,8 +60,7 @@ ssize_t ScatterWriteToRemoteProcess(pid_t remote_pid,
   }
   // Single contiguous remote destination.
   struct iovec remote_iov = {reinterpret_cast<void *>(remote_addr), remote_size};
-  return process_vm_writev(remote_pid, local_iovs.data(), num_bufs,
-                           &remote_iov, 1, 0);
+  return process_vm_writev(remote_pid, local_iovs.data(), num_bufs, &remote_iov, 1, 0);
 #else
   (void)remote_pid;
   (void)local_addrs;
