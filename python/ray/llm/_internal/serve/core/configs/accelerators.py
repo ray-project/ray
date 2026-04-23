@@ -211,3 +211,7 @@ class TPUAccelerator(AcceleratorBackend):
                 logger.warning(f"Failed to shut down TPU slice PG: {e}")
             finally:
                 self._slice_pg_wrapper = None
+
+    def __del__(self):
+        """Ensure placement groups are cleaned up when this backend is garbage collected."""
+        self.shutdown()

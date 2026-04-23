@@ -737,13 +737,3 @@ class LLMServer(LLMServerProtocol):
         deployment_options["ray_actor_options"] = ray_actor_options
 
         return deployment_options
-
-    def __del__(self):
-        """Cleanup logic to ensure PGs are cleaned up during garbage collection."""
-        cfg = getattr(self, "_llm_config", None)
-        eng = getattr(cfg, "_engine_config", None) if cfg else None
-        acc = getattr(eng, "accelerator", None) if eng else None
-
-        # If specified, call the accelerator backend's shutdown method.
-        if acc is not None:
-            acc.shutdown()
