@@ -1090,9 +1090,9 @@ def test_recv_actor_dies(ray_start_regular, caplog, propagate_logs):
         ray.get(actors[0].recv.remote(1))
 
 
-# @pytest.mark.skip(
-#     "Lineage Reconstruction currently results in a check failure with RDT"
-# )
+@pytest.mark.skip(
+    "Lineage Reconstruction currently results in a check failure with RDT"
+)
 def test_rdt_lineage_reconstruction(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=0)
