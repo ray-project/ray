@@ -288,9 +288,10 @@ class ArrowFlightTransport(TensorTransportManager):
 
         Body format: key_len(4) + key + pid(4) + addr(8) + size(8).
         """
-        from ray._raylet import vm_scatter_write
         import pyarrow as pa
         import pyarrow.ipc as ipc
+
+        from ray._raylet import vm_scatter_write
 
         offset = 0
         key_len = struct.unpack_from("<I", body, offset)[0]

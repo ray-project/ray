@@ -1,5 +1,4 @@
 import logging
-import sys
 import threading
 import traceback
 import warnings

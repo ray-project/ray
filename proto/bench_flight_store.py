@@ -25,18 +25,22 @@ N_ACTORS = 4
 
 def _producer_cls():
     if USE_FLIGHT:
+
         @ray.remote(num_cpus=1, max_concurrency=CONCURRENCY)
         class Producer:
             @ray.method(tensor_transport="ARROW_FLIGHT")
             def make_table(self, size_mb):
                 n_rows = max(1, size_mb * 1024 * 1024 // 8)
                 return pa.table({"data": np.random.randn(n_rows)})
+
     else:
+
         @ray.remote(num_cpus=1, max_concurrency=CONCURRENCY)
         class Producer:
             def make_table(self, size_mb):
                 n_rows = max(1, size_mb * 1024 * 1024 // 8)
                 return pa.table({"data": np.random.randn(n_rows)})
+
     return Producer
 
 

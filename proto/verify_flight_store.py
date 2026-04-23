@@ -109,6 +109,7 @@ CASES = [
 
 def _producer_cls():
     if USE_FLIGHT:
+
         @ray.remote(num_cpus=1)
         class Producer:
             @ray.method(tensor_transport="ARROW_FLIGHT")
@@ -117,7 +118,9 @@ def _producer_cls():
                     if name == case_name:
                         return fn()
                 raise KeyError(case_name)
+
     else:
+
         @ray.remote(num_cpus=1)
         class Producer:
             def make(self, case_name):
@@ -125,6 +128,7 @@ def _producer_cls():
                     if name == case_name:
                         return fn()
                 raise KeyError(case_name)
+
     return Producer
 
 
