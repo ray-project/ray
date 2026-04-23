@@ -233,11 +233,12 @@ argcomplete==3.3.0 \
     #   azure-cli-core
     #   knack
     #   yq
-asgiref==3.11.1 \
-    --hash=sha256:5f184dc43b7e763efe848065441eac62229c9f7b0475f41f80e207a114eda4ce \
-    --hash=sha256:e8667a091e69529631969fd45dc268fa79b99c92c5fcdda727757e52146ec133
+asgiref==3.9.2 \
+    --hash=sha256:0b61526596219d70396548fc003635056856dba5d0d086f86476f10b33c75960 \
+    --hash=sha256:a0249afacb66688ef258ffe503528360443e2b9a8d8c4581b6ebefa58c841ef1
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/py313/test-requirements.txt
     #   opentelemetry-instrumentation-asgi
 asttokens==3.0.1 \
     --hash=sha256:15a3ebc0f43c2d0a50eeafea25e19046c68398e487b9f1f5b517f7c0f40f976a \
@@ -1165,9 +1166,9 @@ farama-notifications==0.0.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   gymnasium
-fastapi==0.136.0 \
-    --hash=sha256:8793d44ec7378e2be07f8a013cf7f7aa47d6327d0dfe9804862688ec4541a6b4 \
-    --hash=sha256:cf08e067cc66e106e102d9ba659463abfac245200752f8a5b7b1e813de4ff73e
+fastapi==0.121.0 \
+    --hash=sha256:06663356a0b1ee93e875bbf05a31fb22314f5bed455afaaad2b2dad7f26e98fa \
+    --hash=sha256:8bdf1b15a55f4e4b0d6201033da9109ea15632cb76cf156e7b8b4019f2172106
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -5427,9 +5428,9 @@ stack-data==0.6.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ipython
-starlette==0.52.1 \
-    --hash=sha256:0029d43eb3d273bc4f83a08720b4912ea4b071087a3b48db01b7c839f7954d74 \
-    --hash=sha256:834edd1b0a23167694292e94f597773bc3f89f362be6effee198165a35d62933
+starlette==0.49.3 \
+    --hash=sha256:1c14546f299b5901a1ea0e34410575bc33bbd741377a10484a54445588d00284 \
+    --hash=sha256:b579b99715fdc2980cf88c8ec96d3bf1ce16f5a8051a7c2b84ef9b1cdecaea2f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -5618,7 +5619,6 @@ typing-inspection==0.4.2 \
     --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   fastapi
     #   pydantic
 tzdata==2026.1 \
     --hash=sha256:4b1d2be7ac37ceafd7327b961aa3a54e467efbdb563a23655fbfe0d39cfc42a9 \

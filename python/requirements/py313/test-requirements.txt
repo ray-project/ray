@@ -15,7 +15,17 @@ boto3==1.29.7
 cloudpickle==3.1.1
 tornado>=6.2.0
 cython==0.29.37
-fastapi>=0.115.12
+# FastAPI 0.125+ removed pydantic.v1 model support in route handlers
+# (raises PydanticV1NotSupportedError). test_pydantic_serialization still
+# exercises v1 BaseModel in FastAPI routes, so pin to the last known-good
+# version (matches the default py3.11 lock).
+fastapi==0.121.0
+# asgiref 3.10+ reworked async-to-sync adapters; Serve's direct-ingress
+# request timeout / disconnect handling regresses on 3.11 — fails
+# test_direct_ingress_standalone::test_http_request_timeout_disconnect_headers
+# parametrizations that depend on server-side timeout or client-disconnect
+# detection. Hold at the last known-good version.
+asgiref==3.9.2
 feather-format==0.4.1
 # Keep compatible with Werkzeug
 flask==2.1.3

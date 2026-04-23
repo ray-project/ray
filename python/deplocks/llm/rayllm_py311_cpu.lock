@@ -919,9 +919,9 @@ farama-notifications==0.0.4 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
     #   gymnasium
-fastapi==0.136.0 \
-    --hash=sha256:8793d44ec7378e2be07f8a013cf7f7aa47d6327d0dfe9804862688ec4541a6b4 \
-    --hash=sha256:cf08e067cc66e106e102d9ba659463abfac245200752f8a5b7b1e813de4ff73e
+fastapi==0.121.0 \
+    --hash=sha256:06663356a0b1ee93e875bbf05a31fb22314f5bed455afaaad2b2dad7f26e98fa \
+    --hash=sha256:8bdf1b15a55f4e4b0d6201033da9109ea15632cb76cf156e7b8b4019f2172106
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
     #   -r python/requirements.txt
@@ -1081,7 +1081,6 @@ fastar==0.11.0 \
     --hash=sha256:fff12452a9a5c6814a012445f26365541cc3d99dcca61f09762e6a389f7a32ea
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
-    #   fastapi
     #   fastapi-cloud-cli
 fastrlock==0.8.3 ; sys_platform != 'darwin' \
     --hash=sha256:001fd86bcac78c79658bac496e8a17472d64d558cd2227fdc768aa77f877fe40 \
@@ -3483,7 +3482,6 @@ pydantic==2.12.3 \
     #   openai
     #   openai-harmony
     #   pydantic-extra-types
-    #   pydantic-settings
     #   taskiq
     #   vllm
     #   xgrammar
@@ -3613,14 +3611,7 @@ pydantic-extra-types==2.11.0 \
     --hash=sha256:84b864d250a0fc62535b7ec591e36f2c5b4d1325fa0017eb8cda9aeb63b374a6
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
-    #   fastapi
     #   mistral-common
-pydantic-settings==2.14.0 \
-    --hash=sha256:24285fd4b0e0c06507dd9fdfd331ee23794305352aaec8fc4eb92d4047aeb67d \
-    --hash=sha256:fc8d5d692eb7092e43c8647c1c35a3ecd00e040fcf02ed86f4cb5458ca62182e
-    # via
-    #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
-    #   fastapi
 pygments==2.18.0 \
     --hash=sha256:786ff802f32e91311bff3889f6e9a86e81505fe99f2735bb6d60ae0c5004f199 \
     --hash=sha256:b8e6aca0523f3ab76fee51799c488e38782ac06eafcf95e7ba832985c8e7b13a
@@ -3651,7 +3642,6 @@ python-dotenv==1.2.2 \
     --hash=sha256:2c371a91fbd7ba082c2c1dc1f8bf89ca22564a087c2c287cd9b662adde799cf3
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
-    #   pydantic-settings
     #   uvicorn
 python-json-logger==4.1.0 \
     --hash=sha256:132994765cf75bf44554be9aa49b06ef2345d23661a96720262716438141b6b2 \
@@ -4649,9 +4639,9 @@ sse-starlette==2.1.3 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
     #   mcp
-starlette==0.52.1 \
-    --hash=sha256:0029d43eb3d273bc4f83a08720b4912ea4b071087a3b48db01b7c839f7954d74 \
-    --hash=sha256:834edd1b0a23167694292e94f597773bc3f89f362be6effee198165a35d62933
+starlette==0.49.3 \
+    --hash=sha256:1c14546f299b5901a1ea0e34410575bc33bbd741377a10484a54445588d00284 \
+    --hash=sha256:b579b99715fdc2980cf88c8ec96d3bf1ce16f5a8051a7c2b84ef9b1cdecaea2f
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
     #   -r python/requirements.txt
@@ -5008,9 +4998,7 @@ typing-inspection==0.4.2 \
     --hash=sha256:ba561c48a67c5958007083d386c3295464928b01faa735ab8547c5692e87f464
     # via
     #   -c python/deplocks/llm/rayllm_test_py311_cpu.lock
-    #   fastapi
     #   pydantic
-    #   pydantic-settings
 tzdata==2026.1 \
     --hash=sha256:4b1d2be7ac37ceafd7327b961aa3a54e467efbdb563a23655fbfe0d39cfc42a9 \
     --hash=sha256:67658a1903c75917309e753fdc349ac0efd8c27db7a0cb406a25be4840f87f98

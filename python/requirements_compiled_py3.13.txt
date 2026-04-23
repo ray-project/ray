@@ -125,8 +125,10 @@ arro3-core==0.8.0
     # via deltalake
 arrow==1.4.0
     # via isoduration
-asgiref==3.11.1
-    # via opentelemetry-instrumentation-asgi
+asgiref==3.9.2
+    # via
+    #   -r python/requirements/py313/test-requirements.txt
+    #   opentelemetry-instrumentation-asgi
 asn1crypto==1.5.1
     # via snowflake-connector-python
 asttokens==3.0.1
@@ -532,7 +534,7 @@ fairscale==0.4.6
     # via -r python/requirements/ml/py313/tune-test-requirements.txt
 farama-notifications==0.0.4
     # via gymnasium
-fastapi==0.136.0
+fastapi==0.121.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -2244,7 +2246,7 @@ stack-data==0.6.3
     # via ipython
 stanio==0.5.1
     # via cmdstanpy
-starlette==0.52.1
+starlette==0.49.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
@@ -2547,9 +2549,7 @@ typing-extensions==4.15.0
 typing-inspect==0.9.0
     # via pyre-extensions
 typing-inspection==0.4.2
-    # via
-    #   fastapi
-    #   pydantic
+    # via pydantic
 tzdata==2026.1
     # via
     #   arrow
