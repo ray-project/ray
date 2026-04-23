@@ -84,9 +84,7 @@ from ray.serve._private.constants import (
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
-    SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER,
     SERVE_HTTP_REQUEST_ID_HEADER,
-    SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_DEPLOYMENT,
@@ -116,6 +114,8 @@ from ray.serve._private.http_util import (
     configure_http_middlewares,
     configure_http_options_with_defaults,
     convert_object_to_asgi_messages,
+    parse_disconnect_disabled_header,
+    parse_request_timeout_header,
     start_asgi_http_server,
 )
 from ray.serve._private.logging_utils import (
@@ -2463,23 +2463,14 @@ class Replica:
 
         return route
 
-    def _parse_request_timeout(self, headers: Dict[str, str]) -> Optional[float]:
+    def _parse_request_timeout(self, headers: Dict[bytes, bytes]) -> Optional[float]:
         """Gets the desired request timeout from the headers.
         If the header is missing or invalid, returns the default request timeout
         from HttpOptions. If the header is non-positive, timeout is disabled.
         """
-        header_name = SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER.encode("utf-8")
-        if header_name not in headers:
-            return self._http_options.request_timeout_s
-
-        value = headers.get(header_name).decode("utf-8")
-        try:
-            timeout = float(value)
-            if timeout > 0:
-                return timeout
-            return None
-        except ValueError:
-            return self._http_options.request_timeout_s
+        return parse_request_timeout_header(
+            headers, self._http_options.request_timeout_s
+        )
 
     async def _direct_ingress_asgi(
         self,
@@ -2548,11 +2539,7 @@ class Replica:
             headers.get(SERVE_HTTP_REQUEST_ID_HEADER.encode("utf-8")).decode("utf-8")
             or generate_request_id()
         )
-        request_disconnect_disabled = (
-            headers.get(
-                SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER.encode("utf-8"), b"?0"
-            ).decode("utf-8")
-        ) == "?1"
+        request_disconnect_disabled = parse_disconnect_disabled_header(headers)
         request_timeout_s = self._parse_request_timeout(headers)
 
         request_metadata = RequestMetadata(
