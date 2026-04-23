@@ -2044,10 +2044,6 @@ cdef void execute_task(
             # Special casing these two because Ray can raise them
             raise
         except BaseException as e:
-            # Errors must propagate through the CPU/object-store path, not RDT.
-            # Passing c_tensor_transport here would serialize the error via the
-            # RDT branch of store_task_outputs and leave a stale empty entry in
-            # the executor's RDTStore deque, breaking retries + tensor_transport.
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
                     task_type, title, caller_address, returns, application_error)
