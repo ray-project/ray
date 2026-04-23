@@ -437,6 +437,31 @@ def _read_datasource_v2(
     if ray_remote_args is None:
         ray_remote_args = {}
 
+    # Local-scheme reads (``local://...``) must run on the driver so
+    # tasks can see the driver's filesystem. Use the label selector API
+    # (``ray.io/node-id`` label) rather than
+    # ``NodeAffinitySchedulingStrategy(soft=False)`` — matches the
+    # Ray-wide migration in PR #54940. ``supports_distributed_reads`` is
+    # captured on the datasource against the original (pre-resolution)
+    # paths, so the check survives the scheme-stripping done by
+    # ``_resolve_paths_and_filesystem``.
+    if not datasource.supports_distributed_reads:
+        import ray.util.client
+
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the "
+                "Ray cluster can't access your local files. To fix this issue, "
+                "store files in cloud storage or a distributed filesystem like "
+                "NFS."
+            )
+        label_selector = ray_remote_args.get("label_selector", {})
+        label_selector[
+            ray._raylet.RAY_NODE_ID_KEY
+        ] = ray.get_runtime_context().get_node_id()
+        ray_remote_args["label_selector"] = label_selector
+        ray_remote_args.pop("scheduling_strategy", None)
+
     if "scheduling_strategy" not in ray_remote_args and (
         "label_selector" not in ray_remote_args
     ):
