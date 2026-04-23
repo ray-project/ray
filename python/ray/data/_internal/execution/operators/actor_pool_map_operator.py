@@ -36,6 +36,7 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 )
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
     RebundleQueue,
     create_bundle_queue,
 )
@@ -188,6 +189,16 @@ class ActorPoolMapOperator(MapOperator):
         # Locality metrics
         self._locality_hits = 0
         self._locality_misses = 0
+
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return [self._block_ref_bundler]
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_queue]
 
     def _create_actor_pool(
         self, compute_strategy: ActorPoolStrategy
