@@ -4,11 +4,10 @@ One actor produces tables, one actor consumes (takes table as input,
 returns num_rows). Measures single-hop transfer latency without pulling
 the table back to the driver.
 
-If RAY_USE_FLIGHT_STORE=1 is set, tables go through the Flight store.
-Otherwise they go through Ray's normal object store (plasma).
+Set USE_FLIGHT = True to route through the ARROW_FLIGHT RDT backend.
+Otherwise tables go through Ray's normal object store (plasma).
 """
 
-import os
 import time
 
 import numpy as np
@@ -16,21 +15,29 @@ import pyarrow as pa
 
 import ray
 
+USE_FLIGHT = True
+
 SIZES_MB = [1, 10, 100]
 N_ITERS = 20
 CONCURRENCY = 4
 N_ACTORS = 4
 
-# Env vars the workers need to see (so RAY_USE_FLIGHT_STORE / ARROW_IPC_COPY_MODE
-# set on the driver propagate to actor processes).
-_PROPAGATED_ENV_VARS = ("RAY_USE_FLIGHT_STORE", "ARROW_IPC_COPY_MODE")
 
-
-@ray.remote(num_cpus=1, max_concurrency=CONCURRENCY)
-class Producer:
-    def make_table(self, size_mb):
-        n_rows = max(1, size_mb * 1024 * 1024 // 8)
-        return pa.table({"data": np.random.randn(n_rows)})
+def _producer_cls():
+    if USE_FLIGHT:
+        @ray.remote(num_cpus=1, max_concurrency=CONCURRENCY)
+        class Producer:
+            @ray.method(tensor_transport="ARROW_FLIGHT")
+            def make_table(self, size_mb):
+                n_rows = max(1, size_mb * 1024 * 1024 // 8)
+                return pa.table({"data": np.random.randn(n_rows)})
+    else:
+        @ray.remote(num_cpus=1, max_concurrency=CONCURRENCY)
+        class Producer:
+            def make_table(self, size_mb):
+                n_rows = max(1, size_mb * 1024 * 1024 // 8)
+                return pa.table({"data": np.random.randn(n_rows)})
+    return Producer
 
 
 @ray.remote(num_cpus=1, max_concurrency=CONCURRENCY)
@@ -83,11 +90,9 @@ def bench(producers, consumers, size_mb, n_iters):
 
 
 def main():
-    flight = os.environ.get("RAY_USE_FLIGHT_STORE", "0") == "1"
-    mode = "Flight store" if flight else "Ray object store (plasma)"
+    mode = "ARROW_FLIGHT (RDT)" if USE_FLIGHT else "Ray object store (plasma)"
 
-    env_vars = {k: os.environ[k] for k in _PROPAGATED_ENV_VARS if k in os.environ}
-    ray.init(runtime_env={"env_vars": env_vars} if env_vars else None)
+    ray.init()
     print(f"Mode: {mode}")
     print(
         f"Sizes: {SIZES_MB} MB, {N_ITERS} iterations each, "
@@ -96,6 +101,7 @@ def main():
     )
     print()
 
+    Producer = _producer_cls()
     producers = [Producer.remote() for _ in range(N_ACTORS)]
     consumers = [Consumer.remote() for _ in range(N_ACTORS)]
 

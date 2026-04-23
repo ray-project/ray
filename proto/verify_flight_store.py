@@ -1,19 +1,13 @@
-"""Correctness checks for the Flight object store path.
+"""Correctness checks for the Arrow Flight RDT backend.
 
 Runs the same set of tables through Ray in two ways — ray.get from the
 driver, and actor-to-actor — then checks pa.Table.equals against the
-original. Exercises both eager and lazy copy modes.
+original.
 
-Usage:
-    # Default: compares flight-store output against ground-truth local tables.
-    RAY_USE_FLIGHT_STORE=1 python proto/verify_flight_store.py
-    RAY_USE_FLIGHT_STORE=1 ARROW_IPC_COPY_MODE=lazy python proto/verify_flight_store.py
-
-    # Baseline: plasma path (should also pass — sanity check on the harness).
-    python proto/verify_flight_store.py
+Set USE_FLIGHT = True (default) to exercise the ARROW_FLIGHT RDT backend.
+Set USE_FLIGHT = False to run the plasma baseline as a regression check.
 """
 
-import os
 import sys
 import traceback
 
@@ -21,6 +15,8 @@ import numpy as np
 import pyarrow as pa
 
 import ray
+
+USE_FLIGHT = True
 
 # ---------------------------------------------------------------------------
 # Test cases — diverse schemas and sizes.
@@ -92,11 +88,6 @@ def case_dictionary():
     return pa.table({"fruit": dict_arr})
 
 
-# Env vars the workers need to see (so RAY_USE_FLIGHT_STORE / ARROW_IPC_COPY_MODE
-# set on the driver propagate to actor processes).
-_PROPAGATED_ENV_VARS = ("RAY_USE_FLIGHT_STORE", "ARROW_IPC_COPY_MODE")
-
-
 CASES = [
     ("empty", case_empty),
     ("tiny_ints", case_tiny_ints),
@@ -116,13 +107,25 @@ CASES = [
 # ---------------------------------------------------------------------------
 
 
-@ray.remote(num_cpus=1)
-class Producer:
-    def make(self, case_name):
-        for name, fn in CASES:
-            if name == case_name:
-                return fn()
-        raise KeyError(case_name)
+def _producer_cls():
+    if USE_FLIGHT:
+        @ray.remote(num_cpus=1)
+        class Producer:
+            @ray.method(tensor_transport="ARROW_FLIGHT")
+            def make(self, case_name):
+                for name, fn in CASES:
+                    if name == case_name:
+                        return fn()
+                raise KeyError(case_name)
+    else:
+        @ray.remote(num_cpus=1)
+        class Producer:
+            def make(self, case_name):
+                for name, fn in CASES:
+                    if name == case_name:
+                        return fn()
+                raise KeyError(case_name)
+    return Producer
 
 
 @ray.remote(num_cpus=1)
@@ -189,18 +192,13 @@ def check(name, result):
 
 
 def run_suite():
-    mode_label = (
-        "Flight store"
-        if os.environ.get("RAY_USE_FLIGHT_STORE", "0") == "1"
-        else "Plasma (baseline)"
-    )
-    copy_mode = os.environ.get("ARROW_IPC_COPY_MODE", "eager")
-    print(f"Mode: {mode_label}  (copy_mode={copy_mode})")
+    mode_label = "ARROW_FLIGHT (RDT)" if USE_FLIGHT else "Plasma (baseline)"
+    print(f"Mode: {mode_label}")
     print()
 
-    env_vars = {k: os.environ[k] for k in _PROPAGATED_ENV_VARS if k in os.environ}
-    ray.init(runtime_env={"env_vars": env_vars} if env_vars else None)
+    ray.init()
 
+    Producer = _producer_cls()
     producer = Producer.remote()
     consumer = Consumer.remote()
 
