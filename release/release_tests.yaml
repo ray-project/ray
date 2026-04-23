@@ -4129,6 +4129,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_g5-4xlarge.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4190,6 +4191,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4209,6 +4211,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4228,6 +4231,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4248,6 +4252,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4268,6 +4273,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4352,6 +4358,7 @@
       runtime_env:
         - RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=1
       post_build_script: byod_llm_sglang_test.sh
+    anyscale_sdk_2026: true
     cluster_compute: llm_four_L4_gpu_head_node.yaml
 
   run:
@@ -4372,6 +4379,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_4xl4.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4393,6 +4401,7 @@
     byod:
       type: llm-cu128
       post_build_script: byod_llm_sglang_test.sh
+    anyscale_sdk_2026: true
     cluster_compute: llm_4xl4.yaml
 
   run:
@@ -4432,6 +4441,7 @@
       type: llm-cu128
       post_build_script: byod_llm_single_node_baseline_benchmark.sh
       python_depset: llm_batch/llm_batch_single_node_benchmark_py311_cu128.lock
+    anyscale_sdk_2026: true
     cluster_compute: llm_single_node_benchmark_l4.yaml
 
   run:
