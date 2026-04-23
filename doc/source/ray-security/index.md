@@ -8,6 +8,11 @@
 token-auth
 ```
 
+```{admonition} Note
+:class: note 
+For the latest Ray security alerts, see the [Security Advisories](https://github.com/ray-project/ray/security/advisories) page on GitHub.
+```
+
 Ray is an easy-to-use framework to run arbitrary code across one or more nodes in a Ray Cluster. Ray provides fault-tolerance, optimized scheduling, task orchestration, and auto-scaling to run a given workload.
 
 To achieve performant and distributed workloads, Ray components require intra-cluster communication. This communication includes central tenets like distributed memory and node-heartbeats, as well as auxiliary functions like metrics and logs. Ray leverages gRPC for a majority of this communication.
