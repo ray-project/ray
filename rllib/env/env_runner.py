@@ -248,7 +248,9 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                     "Resetting the env resulted in an error! The original error "
                     f"is: {e.args[0]}"
                 )
-                # Recreate the env and simply try again.
+                # Recreate the env and simply try again. If `make_env` itself
+                # raises, the exception propagates up to `sample()` where
+                # `_on_sample_exception` terminates the actor.
                 self.make_env()
                 return self._try_env_reset(seed=seed, options=options)
             else:
@@ -272,7 +274,9 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
                     logger.exception(
                         f"RLlib {self.__class__.__name__}: Environment step failed. Will force reset env(s) in this EnvRunner. The original error is: {e}"
                     )
-                # Recreate the env.
+                # Recreate the env. If `make_env` itself raises, the exception
+                # propagates up to `sample()` where `_on_sample_exception`
+                # terminates the actor.
                 self.make_env()
                 # And return that the stepping failed. The caller will then handle
                 # specific cleanup operations (for example discarding thus-far collected

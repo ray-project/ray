@@ -227,11 +227,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     * self.num_envs
                 )
 
-            # If a prior connector crash left `_cached_to_module` as None, force
-            # a reset so we don't hit the assert in `_sample()`.
-            if self._cached_to_module is None:
-                force_reset = True
-
             # Sample n timesteps.
             if num_timesteps is not None:
                 assert num_timesteps >= 0
@@ -647,8 +642,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         `self.config.env_config`) and then call this method to create new environments
         with the updated configuration.
         """
-        # If an env already exists, try closing it first
-        # to allow it to properly clean up.
+        # If an env already exists, try closing it first to allow it to properly
+        # clean up. Set to None before constructing the new one so that if the
+        # construction below raises, `self.env` stays consistent (None) rather than
+        # pointing at a closed env.
         if self.env is not None:
             try:
                 self.env.close()
@@ -657,6 +654,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     "Tried closing the existing env, but failed with error: "
                     f"{e.args[0]}"
                 )
+        self.env = None
 
         env_config = self.config.env_config
         if not isinstance(env_config, EnvContext):

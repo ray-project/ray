@@ -8,36 +8,11 @@ from gymnasium.envs.mujoco.swimmer_v4 import SwimmerEnv
 import ray
 from ray import tune
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.env.env_runner import StepFailedRecreateEnvError
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.examples.envs.classes.simple_corridor import SimpleCorridor
 from ray.rllib.examples.envs.classes.ten_step_error_env import TenStepErrorEnv
 from ray.tune.registry import ENV_CREATOR, _global_registry
-
-
-class _RaiseOnNthCallConnector(ConnectorV2):
-    """ConnectorV2 that raises `RuntimeError` on its N-th `__call__` (1-indexed)."""
-
-    def __init__(self, *, raise_on_call, **kwargs):
-        super().__init__(**kwargs)
-        self._raise_on_call = raise_on_call
-        self.num_calls = 0
-
-    @property
-    def observation_space(self):
-        return self.input_observation_space
-
-    @property
-    def action_space(self):
-        return self.input_action_space
-
-    def __call__(self, *, batch, episodes, **kwargs):
-        self.num_calls += 1
-        if self.num_calls == self._raise_on_call:
-            raise RuntimeError("Simulated env-to-module connector crash.")
-        return batch
 
 
 class TestSingleAgentEnvRunner(unittest.TestCase):
@@ -481,28 +456,25 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         env_runner = SingleAgentEnvRunner(config=config)
         assert env_runner.env.env._sutton_barto_reward is True
 
-    def test_recovers_from_env_to_module_connector_crash(self):
-        """A crashing env-to-module connector must not crash-loop subsequent
-        `sample()` calls."""
-        config = PPOConfig().environment("CartPole-v1")
+    def test_make_env_leaves_self_env_none_on_failure(self):
+        """If env construction fails, `self.env` must stay None — not become a
+        missing attribute or a reference to a closed env."""
+        config = (
+            AlgorithmConfig()
+            .environment("CartPole-v1")
+            .env_runners(num_envs_per_env_runner=1)
+        )
         env_runner = SingleAgentEnvRunner(config=config)
+        self.assertIsNotNone(env_runner.env)
 
-        # Raise on the 2nd call: first succeeds inside `_reset_envs_and_episodes`,
-        # second fires at the end of the first `_sample()` loop iteration.
-        faulty = _RaiseOnNthCallConnector(raise_on_call=2)
-        env_runner._env_to_module.prepend(faulty)
-
-        with self.assertRaisesRegex(
-            RuntimeError, "Simulated env-to-module connector crash."
+        with patch(
+            "ray.rllib.env.single_agent_env_runner.gym.make_vec",
+            side_effect=RuntimeError("boom"),
         ):
-            env_runner.sample(num_timesteps=10)
-        self.assertIsNone(env_runner._cached_to_module)
-        self.assertEqual(faulty.num_calls, 2)
+            with self.assertRaises(Exception):
+                env_runner.make_env()
 
-        # After the crash, the env-to-module connector should be reset and the next sample call should succeed.
-        episodes = env_runner.sample(num_timesteps=10)
-        self.assertGreaterEqual(sum(len(e) for e in episodes), 10)
-        self.assertIsNotNone(env_runner._cached_to_module)
+        self.assertIsNone(env_runner.env)
 
 
 if __name__ == "__main__":

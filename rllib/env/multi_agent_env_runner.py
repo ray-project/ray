@@ -231,11 +231,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     * self.num_envs
                 )
 
-            # If a prior connector crash left `_cached_to_module` as None, force
-            # a reset so we don't hit the assert in `_sample()`.
-            if self._cached_to_module is None:
-                force_reset = True
-
             # Sample "num_timesteps" timesteps.
             if num_timesteps is not None:
                 assert num_timesteps >= 0
@@ -797,7 +792,9 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     @override(EnvRunner)
     def make_env(self):
         # If an env already exists, try closing it first (to allow it to properly
-        # cleanup).
+        # cleanup). Set to None before constructing the new one so that if the
+        # construction below raises, `self.env` stays consistent (None) rather than
+        # a missing attribute.
         if self.env is not None:
             try:
                 self.env.close()
@@ -806,7 +803,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     "Tried closing the existing env (multi-agent), but failed with "
                     f"error: {e.args[0]}"
                 )
-            del self.env
+        self.env = None
 
         env_ctx = self.config.env_config
         if not isinstance(env_ctx, EnvContext):
