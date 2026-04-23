@@ -42,6 +42,7 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     CPUConfig,
     GPUConfig,
     TPUConfig,
+    infer_hardware_kind_from_bundles,
 )
 from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
@@ -482,24 +483,16 @@ class LLMConfig(BaseModelExtended):
         if self.accelerator_config is not None:
             return self
 
-        # Infer hardware from placement_group_config
-        if self.placement_group_config:
-            bundle_per_worker = (
-                self.placement_group_config.get("bundle_per_worker") or {}
-            )
-            bundles = self.placement_group_config.get("bundles") or []
-            all_bundles = [bundle_per_worker] + bundles
+        # Infer hardware from placement_group_config bundles
+        inferred_kind = infer_hardware_kind_from_bundles(self.placement_group_config)
 
-            has_tpu = any(b.get("TPU", 0) > 0 for b in all_bundles)
-            has_gpu = any(b.get("GPU", 0) > 0 for b in all_bundles)
-
-            if has_tpu:
-                self.accelerator_config = TPUConfig(kind="tpu")
-                return self
-            if has_gpu:
-                self.accelerator_config = GPUConfig(kind="gpu")
-                return self
-
+        if inferred_kind == "tpu":
+            self.accelerator_config = TPUConfig(kind="tpu")
+            return self
+        if inferred_kind == "gpu":
+            self.accelerator_config = GPUConfig(kind="gpu")
+            return self
+        if inferred_kind == "cpu":
             self.accelerator_config = CPUConfig(kind="cpu")
             return self
 

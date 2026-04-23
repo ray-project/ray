@@ -22,6 +22,26 @@ TPU_ACCELERATOR_VALUES = {
 }
 
 
+def infer_hardware_kind_from_bundles(
+    placement_group_config: Optional[Dict[str, Any]]
+) -> Optional[str]:
+    """Inspects placement group bundles and returns the inferred hardware kind."""
+    if not placement_group_config:
+        return None
+
+    bundle_per_worker = placement_group_config.get("bundle_per_worker") or {}
+    bundles = placement_group_config.get("bundles") or []
+    all_bundles = [bundle_per_worker] + bundles
+
+    if any(b.get("TPU", 0) > 0 for b in all_bundles):
+        return "tpu"
+    if any(b.get("GPU", 0) > 0 for b in all_bundles):
+        return "gpu"
+
+    # If a config was provided but lacks GPUs or TPUs, it is a CPU deployment
+    return "cpu"
+
+
 class AcceleratorConfig(BaseModel):
     kind: str
 

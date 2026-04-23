@@ -24,6 +24,7 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     GPUConfig,
     TPUAccelerator,
     TPUConfig,
+    infer_hardware_kind_from_bundles,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     AcceleratorType,
@@ -100,6 +101,8 @@ class VLLMEngineConfig(BaseModelExtended):
     @model_validator(mode="after")
     def _build_accelerator(self):
         cfg = self.accelerator_config
+
+        # Use explicit config if provided
         if isinstance(cfg, TPUConfig):
             self._accelerator = TPUAccelerator(cfg)
             return self
@@ -110,24 +113,18 @@ class VLLMEngineConfig(BaseModelExtended):
             self._accelerator = GPUAccelerator()
             return self
 
-        # Infer from bundles if config is not provided
-        if self.placement_group_config:
-            bundle_per_worker = (
-                self.placement_group_config.get("bundle_per_worker") or {}
-            )
-            bundles = self.placement_group_config.get("bundles") or []
-            all_bundles = [bundle_per_worker] + bundles
+        # Infer hardware from placement_group_config bundles
+        inferred_kind = infer_hardware_kind_from_bundles(self.placement_group_config)
 
-            has_tpu = any(b.get("TPU", 0) > 0 for b in all_bundles)
-            has_gpu = any(b.get("GPU", 0) > 0 for b in all_bundles)
-
-            if has_tpu:
-                self._accelerator = TPUAccelerator(TPUConfig(kind="tpu"))
-                return self
-            if not has_gpu:
-                # Bundles are explicitly provided but lack GPU/TPU, infer CPU backend
-                self._accelerator = CPUAccelerator()
-                return self
+        if inferred_kind == "tpu":
+            self._accelerator = TPUAccelerator(TPUConfig(kind="tpu"))
+            return self
+        if inferred_kind == "gpu":
+            self._accelerator = GPUAccelerator()
+            return self
+        if inferred_kind == "cpu":
+            self._accelerator = CPUAccelerator()
+            return self
 
         # Infer hardware from accelerator type
         if self.accelerator_type:
