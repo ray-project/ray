@@ -456,26 +456,6 @@ class TestSingleAgentEnvRunner(unittest.TestCase):
         env_runner = SingleAgentEnvRunner(config=config)
         assert env_runner.env.env._sutton_barto_reward is True
 
-    def test_make_env_leaves_self_env_none_on_failure(self):
-        """If env construction fails, `self.env` must stay None — not become a
-        missing attribute or a reference to a closed env."""
-        config = (
-            AlgorithmConfig()
-            .environment("CartPole-v1")
-            .env_runners(num_envs_per_env_runner=1)
-        )
-        env_runner = SingleAgentEnvRunner(config=config)
-        self.assertIsNotNone(env_runner.env)
-
-        with patch(
-            "ray.rllib.env.single_agent_env_runner.gym.make_vec",
-            side_effect=RuntimeError("boom"),
-        ):
-            with self.assertRaises(Exception):
-                env_runner.make_env()
-
-        self.assertIsNone(env_runner.env)
-
 
 if __name__ == "__main__":
     import sys

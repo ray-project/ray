@@ -641,10 +641,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         `self.config.env_config`) and then call this method to create new environments
         with the updated configuration.
         """
-        # If an env already exists, try closing it first to allow it to properly
-        # clean up. Set to None before constructing the new one so that if the
-        # construction below raises, `self.env` stays consistent (None) rather than
-        # pointing at a closed env.
         if self.env is not None:
             try:
                 self.env.close()

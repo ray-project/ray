@@ -791,10 +791,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
     @override(EnvRunner)
     def make_env(self):
-        # If an env already exists, try closing it first (to allow it to properly
-        # cleanup). Set to None before constructing the new one so that if the
-        # construction below raises, `self.env` stays consistent (None) rather than
-        # a missing attribute.
         if self.env is not None:
             try:
                 self.env.close()
