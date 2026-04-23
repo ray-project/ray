@@ -1028,7 +1028,8 @@
 
 - name: does_not_over_provision
   group: data-autoscaling
-  # Set to manual because this is expected to fail with the `DefaultAutoscalerV2`.
+  # Set to manual because this is expected to fail with the
+  # `DefaultClusterAutoscalerV2`.
   frequency: manual
 
   cluster:
