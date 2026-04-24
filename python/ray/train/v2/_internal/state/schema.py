@@ -102,15 +102,13 @@ class TrainWorker(BaseModel):
     pid: int = Field(description="The process ID of the worker.")
     gpu_ids: List[int] = Field(description="A list of GPU IDs allocated to the worker.")
     status: Optional[ActorStatus] = Field(
-        None,
-        description="The current status of the worker actor."
+        None, description="The current status of the worker actor."
     )
     resources: TrainResources = Field(
         description="The resources allocated to this Train worker."
     )
     log_file_path: Optional[str] = Field(
-        None,
-        description="The path to the log file for the Train worker."
+        None, description="The path to the log file for the Train worker."
     )
 
 
@@ -132,7 +130,7 @@ class ProcessStats(BaseModel):
     mem: Optional[List[int]] = Field(
         None,
         description="Memory statistics, including total memory, free memory, "
-        "and memory usage ratio."
+        "and memory usage ratio.",
     )
     memoryInfo: MemoryInfo = Field(description="Detailed memory usage information.")
 
@@ -152,8 +150,7 @@ class GPUStats(BaseModel):
     index: int = Field(description="The index of the GPU.")
     name: str = Field(description="The name of the GPU.")
     utilizationGpu: Optional[float] = Field(
-        None,
-        description="The percentage utilization of the GPU."
+        None, description="The percentage utilization of the GPU."
     )
     memoryUsed: float = Field(description="The amount of GPU memory used in bytes.")
     memoryTotal: float = Field(description="The total amount of GPU memory in bytes.")
@@ -190,7 +187,7 @@ class TrainRunAttempt(BaseModel):
     status_detail: Optional[str] = Field(
         None,
         description="Additional details about the status,"
-        " including error messages if applicable."
+        " including error messages if applicable.",
     )
     start_time_ns: int = Field(
         description="The UNIX timestamp (in nanoseconds)"
@@ -200,7 +197,7 @@ class TrainRunAttempt(BaseModel):
         None,
         description="The UNIX timestamp (in nanoseconds)"
         " when the Train run attempt ended. "
-        "If null, the attempt is still ongoing."
+        "If null, the attempt is still ongoing.",
     )
     resources: List[TrainResources] = Field(
         description="The resources (e.g., CPU, GPU) allocated to the Train run attempt."
@@ -245,15 +242,13 @@ class ScalingConfig(BaseModel):
     )
     use_gpu: bool = Field(description="Whether to use GPUs for the Train run.")
     resources_per_worker: Optional[Dict[str, float]] = Field(
-        None,
-        description="The resources per worker for a Train run."
+        None, description="The resources per worker for a Train run."
     )
     placement_strategy: str = Field(
         description="The placement strategy for the Train run."
     )
     accelerator_type: Optional[str] = Field(
-        None,
-        description="The accelerator type for the Train run."
+        None, description="The accelerator type for the Train run."
     )
     use_tpu: bool = Field(description="Whether to use TPUs for the Train run.")
     topology: Optional[str] = Field(None, description="The topology for the Train run.")
@@ -308,8 +303,7 @@ class RunConfig(BaseModel):
     )
     storage_path: str = Field(description="The storage path for a Train run.")
     storage_filesystem: Optional[str] = Field(
-        None,
-        description="The storage filesystem for a Train run."
+        None, description="The storage filesystem for a Train run."
     )
 
 
@@ -318,8 +312,7 @@ class BackendConfig(BaseModel):
     """Backend config for a Train run."""
 
     framework: Optional[TrainingFramework] = Field(
-        None,
-        description="The training framework for this backend config."
+        None, description="The training framework for this backend config."
     )
     config: Dict[str, Any] = Field(
         description="Training framework-specific configuration fields."
@@ -335,8 +328,7 @@ class RunSettings(BaseModel):
     """
 
     train_loop_config: Optional[Dict] = Field(
-        None,
-        description="The user defined train loop config for a Train run."
+        None, description="The user defined train loop config for a Train run."
     )
     backend_config: BackendConfig = Field(
         description="The backend config for a Train run. Can vary with the framework (e.g. TorchConfig)"
@@ -371,7 +363,7 @@ class TrainRun(BaseModel):
     status_detail: Optional[str] = Field(
         None,
         description="Additional details about the current status, "
-        "including error messages if applicable."
+        "including error messages if applicable.",
     )
     start_time_ns: int = Field(
         description="The UNIX timestamp (in nanoseconds) when the Train run started."
@@ -379,11 +371,10 @@ class TrainRun(BaseModel):
     end_time_ns: Optional[int] = Field(
         None,
         description="The UNIX timestamp (in nanoseconds) when the Train run ended. "
-        "If null, the run is still in progress."
+        "If null, the run is still in progress.",
     )
     controller_log_file_path: Optional[str] = Field(
-        None,
-        description="The path to the log file for the Train run controller."
+        None, description="The path to the log file for the Train run controller."
     )
     framework_versions: Dict[str, str] = Field(
         description="The relevant framework versions for this Train run,"

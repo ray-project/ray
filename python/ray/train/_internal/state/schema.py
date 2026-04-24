@@ -141,7 +141,7 @@ class TrainRunInfo(BaseModel):
     end_time_ms: Optional[int] = Field(
         None,
         description="The UNIX timestamp of the end time of this Train run. "
-        "If null, the Train run has not ended yet."
+        "If null, the Train run has not ended yet.",
     )
     resources: List[Dict[str, float]] = Field(
         description="The resources allocated to the worker."

@@ -31,8 +31,7 @@ elif not hasattr(pydantic, "__version__") or packaging.version.parse(
     pydantic.__version__
 ) < packaging.version.parse("2.0"):
     raise ImportError(
-        "Pydantic v1 is no longer supported in Ray. "
-        "Please upgrade to `pydantic>=2`."
+        "Pydantic v1 is no longer supported in Ray. " "Please upgrade to `pydantic>=2`."
     )
 else:
     IS_PYDANTIC_2 = True
