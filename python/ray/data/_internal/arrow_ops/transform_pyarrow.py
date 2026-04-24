@@ -87,6 +87,7 @@ def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
             pyarrow.types.is_struct(field.type)
             or pyarrow.types.is_list(field.type)
             or pyarrow.types.is_large_list(field.type)
+            or pyarrow.types.is_fixed_size_list(field.type)
             or pyarrow.types.is_map(field.type)
         ):
             return True
@@ -115,7 +116,13 @@ def _hash_partition(
         # row-by-row loop.
         import pandas as pd
 
-        hashes = pd.util.hash_pandas_object(table.to_pandas(), index=False).values
+        # Use types_mapper=pd.ArrowDtype to keep Arrow-backed extension arrays
+        # in pandas. This avoids int64 -> float64 promotion for nullable integer
+        # columns, which would cause the same value to hash differently across
+        # blocks depending on whether the block contains nulls.
+        hashes = pd.util.hash_pandas_object(
+            table.to_pandas(types_mapper=pd.ArrowDtype), index=False
+        ).values
         np.mod(hashes, num_partitions, out=hashes)
         partitions = hashes
 
