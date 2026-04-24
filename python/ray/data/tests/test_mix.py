@@ -5,6 +5,7 @@ from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.n_ary_operator import (
     Mix,
     MixStoppingCondition,
+    estimate_num_mix_outputs,
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
@@ -172,6 +173,63 @@ def test_mix_non_uniform_block_sizes(ray_start_10_cpus_shared):
     for batch in mixed.iter_batches(batch_size=160):
         ratio = (batch["source"] == 0).sum() / len(batch["source"])
         assert ratio == 0.75
+
+
+class TestEstimateNumMixOutputs:
+    def test_stop_on_longest_drop(self):
+        # Sum of all inputs.
+        assert (
+            estimate_num_mix_outputs(
+                [100, 200], [0.5, 0.5], MixStoppingCondition.STOP_ON_LONGEST_DROP
+            )
+            == 300
+        )
+
+    def test_stop_on_shortest_equal_weights(self):
+        # Limited by the smaller input: 100 / 0.5 = 200.
+        assert (
+            estimate_num_mix_outputs(
+                [100, 200], [0.5, 0.5], MixStoppingCondition.STOP_ON_SHORTEST
+            )
+            == 200
+        )
+
+    def test_stop_on_shortest_uneven_weights(self):
+        # ds1: 300 / 0.75 = 400, ds2: 100 / 0.25 = 400. Both sustain 400.
+        assert (
+            estimate_num_mix_outputs(
+                [300, 100], [0.75, 0.25], MixStoppingCondition.STOP_ON_SHORTEST
+            )
+            == 400
+        )
+
+    def test_stop_on_shortest_bottleneck(self):
+        # ds1: 100 / 0.75 = 133, ds2: 100 / 0.25 = 400. ds1 is bottleneck.
+        assert (
+            estimate_num_mix_outputs(
+                [100, 100], [0.75, 0.25], MixStoppingCondition.STOP_ON_SHORTEST
+            )
+            == 133
+        )
+
+    def test_none_input(self):
+        assert (
+            estimate_num_mix_outputs(
+                [100, None], [0.5, 0.5], MixStoppingCondition.STOP_ON_SHORTEST
+            )
+            is None
+        )
+
+    def test_three_datasets(self):
+        # ds1: 500/0.5=1000, ds2: 300/0.3=1000, ds3: 200/0.2=1000.
+        assert (
+            estimate_num_mix_outputs(
+                [500, 300, 200],
+                [0.5, 0.3, 0.2],
+                MixStoppingCondition.STOP_ON_SHORTEST,
+            )
+            == 1000
+        )
 
 
 if __name__ == "__main__":

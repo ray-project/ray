@@ -9,7 +9,10 @@ from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
     NAryOperator,
 )
-from ray.data._internal.logical.operators.n_ary_operator import MixStoppingCondition
+from ray.data._internal.logical.operators.n_ary_operator import (
+    MixStoppingCondition,
+    estimate_num_mix_outputs,
+)
 from ray.data._internal.stats import StatsDict
 from ray.data.context import DataContext
 
@@ -119,22 +122,18 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
         return refs
 
     def num_outputs_total(self) -> Optional[int]:
-        num_outputs = 0
-        for input_op in self.input_dependencies:
-            input_num_outputs = input_op.num_outputs_total()
-            if input_num_outputs is None:
-                return None
-            num_outputs += input_num_outputs
-        return num_outputs
+        return estimate_num_mix_outputs(
+            [op.num_outputs_total() for op in self.input_dependencies],
+            self._weights,
+            self._stopping_condition,
+        )
 
     def num_output_rows_total(self) -> Optional[int]:
-        total_rows = 0
-        for input_op in self.input_dependencies:
-            input_num_rows = input_op.num_output_rows_total()
-            if input_num_rows is None:
-                return None
-            total_rows += input_num_rows
-        return total_rows
+        return estimate_num_mix_outputs(
+            [op.num_output_rows_total() for op in self.input_dependencies],
+            self._weights,
+            self._stopping_condition,
+        )
 
     def get_stats(self) -> StatsDict:
         return self._stats

@@ -30,6 +30,28 @@ class MixStoppingCondition(enum.Enum):
     STOP_ON_LONGEST_DROP = "stop_on_longest_drop"
 
 
+def estimate_num_mix_outputs(
+    per_input_counts: List[Optional[int]],
+    weights: List[float],
+    stopping_condition: MixStoppingCondition,
+) -> Optional[int]:
+    """Estimate total output count for a mix operation.
+
+    Used by both the logical and physical Mix operators to estimate
+    num_outputs_total / num_output_rows_total.
+    """
+    if any(c is None for c in per_input_counts):
+        return None
+    if stopping_condition == MixStoppingCondition.STOP_ON_LONGEST_DROP:
+        return sum(per_input_counts)
+    # STOP_ON_SHORTEST: limited by whichever input runs out first
+    # relative to its weight.
+    total_weight = sum(weights)
+    return min(
+        int(count / (w / total_weight)) for count, w in zip(per_input_counts, weights)
+    )
+
+
 class NAry(LogicalOperator):
     """Base class for n-ary operators, which take multiple input operators."""
 
@@ -93,31 +115,11 @@ class Mix(NAry):
         super().__init__(*input_ops)
 
     def estimated_num_outputs(self) -> Optional[int]:
-        if self.stopping_condition == MixStoppingCondition.STOP_ON_SHORTEST:
-            # The output is limited by whichever input runs out first
-            # relative to its weight.
-            total_weight = sum(self.weights)
-            min_scaled_outputs = None
-            for i, input_dep in enumerate(self.input_dependencies):
-                num_outputs = input_dep.estimated_num_outputs()
-                if num_outputs is None:
-                    return None
-                num_scaled_outputs = int(num_outputs / (self.weights[i] / total_weight))
-                if (
-                    min_scaled_outputs is None
-                    or num_scaled_outputs < min_scaled_outputs
-                ):
-                    min_scaled_outputs = num_scaled_outputs
-            return min_scaled_outputs
-        else:
-            # STOP_ON_LONGEST_DROP: sum of all inputs.
-            total = 0
-            for input_dep in self.input_dependencies:
-                num_outputs = input_dep.estimated_num_outputs()
-                if num_outputs is None:
-                    return None
-                total += num_outputs
-            return total
+        return estimate_num_mix_outputs(
+            [dep.estimated_num_outputs() for dep in self.input_dependencies],
+            self.weights,
+            self.stopping_condition,
+        )
 
 
 class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
