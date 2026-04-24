@@ -336,6 +336,11 @@ def test_python_object_leak(shutdown_only):
             # Clear any existing circular references
             # before testing leaks in actor tasks.
             gc.collect()
+            # Exempt import-time cycles (e.g. pyarrow's ABCMeta-based
+            # ListScalar/StructScalar introduced in pyarrow 21) from
+            # DEBUG_SAVEALL — the test measures only leaks produced by the
+            # workload below, not class-definition cycles in dependencies.
+            gc.freeze()
             self.gc_garbage_len = 0
 
         def get_gc_garbage_len(self):
@@ -367,6 +372,11 @@ def test_python_object_leak(shutdown_only):
             # Clear any existing circular references
             # before testing leaks in actor tasks.
             gc.collect()
+            # Exempt import-time cycles (e.g. pyarrow's ABCMeta-based
+            # ListScalar/StructScalar introduced in pyarrow 21) from
+            # DEBUG_SAVEALL — the test measures only leaks produced by the
+            # workload below, not class-definition cycles in dependencies.
+            gc.freeze()
             self.gc_garbage_len = 0
 
         def get_gc_garbage_len(self):
