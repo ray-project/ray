@@ -184,16 +184,14 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
     ) -> Optional[float]:
         """Resolve the effective timeout for a validation task.
 
-        Per-task ``timeout_s=None`` falls back to the ValidationConfig default;
-        ``timeout_s=-1`` disables the timeout even if a default is set.
+        Per-task ``timeout_s=None`` falls back to the ValidationConfig default.
         """
         default_timeout_s = self._validation_config.task_config.timeout_s
         if isinstance(validation, ValidationTaskConfig):
             task_timeout_s = validation.timeout_s
         else:
             task_timeout_s = None
-        effective = default_timeout_s if task_timeout_s is None else task_timeout_s
-        return effective
+        return default_timeout_s if task_timeout_s is None else task_timeout_s
 
     def _kick_off_validations(self) -> int:
         """Kick off validations and return the number of pending validations."""
