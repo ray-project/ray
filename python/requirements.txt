@@ -21,7 +21,7 @@ watchfiles
 # Python version-specific requirements
 grpcio>=1.42.0
 
-pyarrow >= 15.0.0
+pyarrow >= 17.0.0
 
 # ray[all]
 smart_open

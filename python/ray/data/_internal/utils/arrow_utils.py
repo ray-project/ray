@@ -16,7 +16,7 @@ _PYARROW_VERSION: Optional[Version] = None
 # NOTE: Make sure that these lower and upper bounds stay in sync with version
 # constraints given in python/setup.py.
 # Inclusive minimum pyarrow version.
-_PYARROW_SUPPORTED_VERSION_MIN = "15.0.0"
+_PYARROW_SUPPORTED_VERSION_MIN = "17.0.0"
 _PYARROW_VERSION_VALIDATED = False
 
 
