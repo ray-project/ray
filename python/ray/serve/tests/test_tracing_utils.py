@@ -57,9 +57,6 @@ except ImportError:
     )
 
 CUSTOM_EXPORTER_OUTPUT_FILENAME = "spans.txt"
-os.environ[
-    "RAY_SERVE_TRACING_EXPORTER_IMPORT_PATH"
-] = DEFAULT_TRACING_EXPORTER_IMPORT_PATH
 
 
 @pytest.fixture
@@ -171,7 +168,6 @@ def test_missing_dependencies():
                 component_type=ServeComponentType.REPLICA,
                 component_name="component_name",
                 component_id="component_id",
-                tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
                 tracing_sampling_ratio=1.0,
             )
 
@@ -383,7 +379,6 @@ def test_tracing_e2e(
             component_name="upstream_app",
             component_id="345",
             tracing_sampling_ratio=1.0,
-            tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -405,7 +400,6 @@ def test_tracing_e2e(
             component_name="upstream_app",
             component_id="345",
             tracing_sampling_ratio=1.0,
-            tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -445,7 +439,6 @@ def test_tracing_e2e(
             component_name="upstream_app",
             component_id="345",
             tracing_sampling_ratio=1.0,
-            tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -587,7 +580,6 @@ def test_tracing_e2e_with_errors(
             component_name="upstream_app",
             component_id="345",
             tracing_sampling_ratio=1.0,
-            tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -612,7 +604,6 @@ def test_tracing_e2e_with_errors(
             component_name="upstream_app",
             component_id="345",
             tracing_sampling_ratio=1.0,
-            tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -646,7 +637,6 @@ def test_tracing_e2e_with_errors(
             component_name="upstream_app",
             component_id="345",
             tracing_sampling_ratio=1.0,
-            tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
         )
         tracer = trace.get_tracer("test_tracing")
         with tracer.start_as_current_span("upstream_app"):
@@ -975,7 +965,6 @@ def test_batched_span_attached_to_first_request_trace():
         component_name="upstream_app",
         component_id="batching_test_upstream_multi",
         tracing_sampling_ratio=1.0,
-        tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     )
 
     tracer = trace.get_tracer("test_tracing_batching_multi")

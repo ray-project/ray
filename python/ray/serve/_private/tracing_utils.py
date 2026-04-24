@@ -80,8 +80,6 @@ def default_tracing_exporter(tracing_file_name):
                 out_file.flush()
                 out_file.close()
 
-    # exporter = FileConsoleSpanExporter(out=out_file)
-    # processor = SimpleSpanProcessor(exporter)
     return [SimpleSpanProcessor(FileConsoleSpanExporter(out=out_file))]
 
 
