@@ -1,7 +1,6 @@
 --index-url https://pypi.org/simple
 --extra-index-url https://download.pytorch.org/whl/cu128
 --find-links https://data.pyg.org/whl/torch-2.7.0+cu128.html
---find-links https://storage.googleapis.com/jax-releases/jax_cuda_releases.html
 
 about-time==4.2.1 \
     --hash=sha256:6a538862d33ce67d997429d14998310e1dbfda6cb7d9bbfbf799c4709847fece \
@@ -506,13 +505,15 @@ bleach==6.1.0 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   nbconvert
-boto3==1.29.7 ; python_full_version < '3.12' \
+boto3==1.29.7 \
     --hash=sha256:1eb4c548118b5fc5e018dee956fd33e6fb249cd1f2def85f1bba816aef4d9f3e \
     --hash=sha256:96e9890ebe7cd823b5f4976dd676e112c000c6528c28e20a2f274590589dd18b
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/train-test-requirements.txt
+    #   -r python/requirements/ml/py313/tune-test-requirements.txt
     #   aim
-botocore==1.32.7 ; python_full_version < '3.12' \
+botocore==1.32.7 \
     --hash=sha256:58b33d02cafa23461c8a9d211b30e8cded992380a84de409379fd02811fa3e11 \
     --hash=sha256:c6795c731b04c8e3635588c44cfd1a4462fc5987859195522c96812cf3eceff9
     # via
@@ -531,7 +532,6 @@ cachetools==5.5.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aim
-    #   cudf-cu12
     #   google-auth
 celery==5.5.3 \
     --hash=sha256:0b5761a07057acee94694464ca482416b959568904c9dfa41ce8413a7d65d525 \
@@ -907,76 +907,6 @@ cryptography==44.0.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   aim
     #   pyopenssl
-cuda-bindings==12.9.6 ; sys_platform != 'darwin' \
-    --hash=sha256:0ea331bc47d9988cc61f0ecc5fa8df9dd188b4493ae1c6688bb1ee8ce8ba1af4 \
-    --hash=sha256:2662f59db67d9aeaf8959c593c91f600792c2970cf02cae2814387fc687b115a \
-    --hash=sha256:2b23ac88152b2b09f9c12fb70d5e07c25f17e915ab2e1b1dec7b702b25ae5dc6 \
-    --hash=sha256:3d1be8bd80b34f51dcbaf138dafd817e888cf2d12c47833019fd933beb32d7ef \
-    --hash=sha256:407b85671c363a5ddf77cd4bdeb05355340a88ac2cd0c6adc1a0f4b4d11c13c2 \
-    --hash=sha256:48666e666f083a4c4387ffe20594b05e092b535a4453d1e4817d71237d02aa13 \
-    --hash=sha256:4df01e34cefd3275170b2ac0426d325271ab435e85f59a69300eacd8ff23d34c \
-    --hash=sha256:69e820e72af29bac65cf821a0a7b2546ef4cca5685640739a828c00ef91fdbef \
-    --hash=sha256:7f0a08eba6e807d041bf6f2ba66d84db1ddf54787399dfac716497ef40fb5fc3 \
-    --hash=sha256:b1731d651fe05e795295bf011e98bae0ad5cc29759da7ccb6ff946cc541b50c1 \
-    --hash=sha256:b2b54b95a47104eff56b5155818ab5790e3ccdba8dd51e2928ae56782aaf5b02 \
-    --hash=sha256:b4f82f8f8061f3a39446bf854c4edd9bcc2d0da3f58d8f6f54541b3e4d5c933d \
-    --hash=sha256:bb2f1eedc8f65902b34e807c21a3b7c922dc8de1f51d0829ecbb5c6a5e9c5ff1 \
-    --hash=sha256:d3bc6e28cf5d133f72050c515db72876870fb009f1431bcbf45b54a179be2284 \
-    --hash=sha256:d9f9031e7a265e74f1517668139987253552d1677d995da4b0d990aa19b9b9b0 \
-    --hash=sha256:da30d89db8188b9beb5a6467d72b2f11d1b667ab901d2d373bcde51b97765b21 \
-    --hash=sha256:e0ac0a4facdb9a6563984ae4917c7a658cbc6a5d0feb858e5a79ba4047c36397 \
-    --hash=sha256:e8519707644ea630a365b101703a9136f4cb144760cc2c73281c38a05e07d08d \
-    --hash=sha256:e88d38fdf07cc777dec1afaba8139c2eedb3819063f6b42f1e2ea8516bdd6806 \
-    --hash=sha256:ee82fd3588ad28ec9887503bf81b329b89ea9ac0df726e0e50fb377abd57d2a0 \
-    --hash=sha256:f00290f9468d2cfeee92aaad2275be32dfd2f4967a97ac0f12314b7e6281ad78
-    # via
-    #   cuda-python
-    #   numba-cuda
-cuda-core==0.7.0 ; sys_platform != 'darwin' \
-    --hash=sha256:0cb4c757cc068dfd8e83b8a8fe56ffb357e12753112bc648b53e3244d7a6e63f \
-    --hash=sha256:133f996d7dabe61624dab10c5ef56bb5217270fe53ca4ab26edf8ee14c67df8e \
-    --hash=sha256:2301155335c9b8d50e642f49fb2c1dbf250c33a243bf05e01d54f52363b2a5aa \
-    --hash=sha256:2ecfb8d83a72505ef4c241079d2e8935adabe8330de9f2c7c9135e7116b1dcc3 \
-    --hash=sha256:52d11f599ec5af622da0b7cf28506978e382aa614f8552edaddbf21bcda6c7a6 \
-    --hash=sha256:57f2391ec036185a9bf189effda3d538a6e78d97e220c12254f96ebc1db7a009 \
-    --hash=sha256:6377276918cdb3fad5ace36ebc2806718435782c6ed739e91ea5d06e3fca8f05 \
-    --hash=sha256:69946d1d5e2d96fc65b7bb36164d26c328cca75d9482b74ee7d61b2c1e1d33a7 \
-    --hash=sha256:6ae3250b756f262f70bf435b9f505435f8739698884a15db482c46bf714b0de2 \
-    --hash=sha256:7dd6bed3075de55f10ef2dcd2de9f5f3bbd2b03d4650e62ae38343f68f6fa974 \
-    --hash=sha256:83a8b06c0ba2703f627ebb3c24f9cf8863a70445b96ac9b775d0ba2b64884628 \
-    --hash=sha256:9a76af173fb686bc7579230699b011d825320e640b6963776b305a94b584c0c1 \
-    --hash=sha256:b4dd7c2b2d9f95acbffc9df62bd52d4bcdab72b7780fc3bd7e691e1e0cc1f071 \
-    --hash=sha256:c50c18363cb132e2925cad1f3843471c6699b8d6b3df6b8d21a3d0f0e3cf528e \
-    --hash=sha256:c580a87ff824d7949883675484d04e60a23f9f26004da9ab39c88577a9271a7f \
-    --hash=sha256:c8cf0d73c28761b63d32fbdaae8a4d2ce0f78e8dc6d376830daf1452d8e49b6d \
-    --hash=sha256:e8feaf99613cd1d025b26374b1c92ff72d9e8078a3236fc78aa550ff3b0028e3 \
-    --hash=sha256:f25a3042a73dcaa8046a7fa3b0ba9b3de15a39a05b77483dc0a8281bd182716e
-    # via numba-cuda
-cuda-pathfinder==1.5.2 ; sys_platform != 'darwin' \
-    --hash=sha256:0c5f160a7756c5b072723cbbd6d861e38917ef956c68150b02f0b6e9271c71fa
-    # via
-    #   cuda-bindings
-    #   cuda-core
-cuda-python==12.9.6 ; sys_platform != 'darwin' \
-    --hash=sha256:ed5cf30e1129729eecf4605dff6e8bce84f2d30c17b17c7e5ac4b76448de35d2
-    # via
-    #   cudf-cu12
-    #   numba-cuda
-    #   pylibcudf-cu12
-    #   rmm-cu12
-cuda-toolkit==12.8.0 ; sys_platform != 'darwin' \
-    --hash=sha256:f179e2f8d027d2c3b7f786ecaeb526640396df52303fdfbb0b60c6ced69b5732
-    # via cudf-cu12
-cudf-cu12==26.2.1 ; sys_platform != 'darwin' \
-    --hash=sha256:1dacad89771d4dad0f24949659a1d688902f2cbb24d78c61ab46dda4dc6e35b1 \
-    --hash=sha256:23c0f10714903d522c8c444107b5239bdbfa6878873e37782cf41d53bcc21a75 \
-    --hash=sha256:4690d207817124891ba5852e03033cb9c1b413a41c6cc13a25362ea46f0b2dfa \
-    --hash=sha256:51c2ff6a4f73b6aaa2dfc3877e4b852bc8c929582b4bd4a4739cb1fefeeb94c9 \
-    --hash=sha256:55e838bc8067c40f4590e617694762d4e20ca7d9686fb7a720af694970f75502 \
-    --hash=sha256:86d12dfff0bddad886ef0f8cb12cf4260570978ea5c798d86004c1a08f46cac7 \
-    --hash=sha256:a458e735dc90297d2de4bd12304337d1b869e3b08abb221f8ef82d974a62f95a \
-    --hash=sha256:b54fcb609aa549c55f7ecc11c70ab78c734d59e4820257724bd9dd091593cef5
-    # via -r python/requirements/ml/py313/dl-gpu-requirements.txt
 cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     --hash=sha256:297b4268f839de67ef7865c2202d3f5a0fb8d20bd43360bc51b6e60cb4406447 \
     --hash=sha256:4d2dfd9bb4705d446f542739a3616b4c9eea98d674fce247402cc9bcec89a1e4 \
@@ -996,7 +926,6 @@ cupy-cuda12x==13.6.0 ; sys_platform != 'darwin' \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
-    #   cudf-cu12
     #   ray
 cycler==0.12.1 \
     --hash=sha256:85cef7cff222d8644161529808465972e51340599459b8ac3ccbac5a854e0d30 \
@@ -1425,11 +1354,11 @@ fsspec==2023.12.1 \
     --hash=sha256:c4da01a35ac65c853f833e43f67802c25213f560820d54ddf248f92eddd5e990
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   cudf-cu12
     #   datasets
     #   etils
     #   evaluate
     #   huggingface-hub
+    #   lightning
     #   pytorch-lightning
     #   ray
     #   torch
@@ -1885,11 +1814,44 @@ izulu==0.50.0 \
     --hash=sha256:4e9ae2508844e7c5f62c468a8b9e2deba2f60325ef63f01e65b39fd9a6b3fab4 \
     --hash=sha256:cc8e252d5e8560c70b95380295008eeb0786f7b745a405a40d3556ab3252d5f5
     # via taskiq
-jaxlib==0.4.28+cuda12.cudnn89 ; sys_platform != 'darwin' \
-    --hash=sha256:3d7b56bfe50470c585f0b8567ba67550691fd783c6ddd909d08a29d0b8a29a74
+jax==0.4.33 ; sys_platform != 'darwin' \
+    --hash=sha256:5f33e30b49060ebc990b1f8d75f89d15b9fec263f6fff34ef1af1d01996d314f \
+    --hash=sha256:f0d788692fc0179653066c9e1c64e57311b8c15a389837fd7baf328abefcbb92
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
+jax-cuda12-pjrt==0.4.33 ; sys_platform != 'darwin' \
+    --hash=sha256:6a9945a8b58fabd040a06850f5ca6bcf94b9ec45b8248afb20c7f2eb809e2cea \
+    --hash=sha256:b43f199ec27fd9b3bb79b34ed297894ad50bb7a6eab62012baaa9ea6607b22de
+    # via jax-cuda12-plugin
+jax-cuda12-plugin==0.4.33 ; sys_platform != 'darwin' \
+    --hash=sha256:73c54317223aa8a5b46f6821d7cacfb38f4dbd2fc66f2a83a33419b4d72a5211 \
+    --hash=sha256:750b8147076b17ddff097bd6b38f1db227eba6674eb4e5843dbb007e0b6bec33 \
+    --hash=sha256:80736e03df2a5a0c35e4801f59e4d3c8b94cc8e8a03221763c95dcf7851fd120 \
+    --hash=sha256:a88cf22061416a97731ef837d56695e73d5ebd26aefc612328eeea510d3ed7e5 \
+    --hash=sha256:ad8f8863ee8d5e11a867bd71b37e979939cad64d0f74efd52cdb37292517613e \
+    --hash=sha256:bb81b2f65b1bb8e65b966b6f79985d3b168d495628b694fdf1791cd89696694e
+    # via -r python/requirements/ml/py313/dl-gpu-requirements.txt
+jaxlib==0.4.33 ; sys_platform != 'darwin' \
+    --hash=sha256:054aa0f122725e000b8f8815b1794067ef2ff821588b62e1fab2a1280847f5c6 \
+    --hash=sha256:0676ac605880ac6aa0ab9946a24a073ee8a1a83baf71cc1d35b71917a99d03d1 \
+    --hash=sha256:3e14b4b50a19370312875541509a7ddc1ef8fc0bd95cff9508db9725038e8297 \
+    --hash=sha256:400f401498675fd42dcaf0b855f325691951b250d619a8cbc5955f947e2494aa \
+    --hash=sha256:43c63e094948f0486505035b55a685b03ddde61705ce585f84b8c1438da20da0 \
+    --hash=sha256:4af6ee4070650ff120a92ff8454e70e0ef993434f3f3767a0e898cc484b836e2 \
+    --hash=sha256:5ba7eaa9722037755833cb70d9a98a049abea13e51dac3719b833dbf42ddf69a \
+    --hash=sha256:6ee2f8692a5ea32acc63bbcc7390312f553614c22348c7366f08995e8764d839 \
+    --hash=sha256:82c29635ddc51ba91671ab2be042f4701339df176e792eb6adf50ccabd723606 \
+    --hash=sha256:94e8d7bdd0506e1471d36d5da1e5838711fbd2ce18dffe7b694cad6b56e64e8c \
+    --hash=sha256:95fedfb5f10f8bdfa57d81dd09933e78ba297719b40192357685b3aaa4287fef \
+    --hash=sha256:98e682e0d944ca8af8c05724dc4a14b7aaa87cd67ddb32737861eee7ccdaabb4 \
+    --hash=sha256:9e6e933033cdfaebd018cdb5bfaf735bc164020316fe3ecff6c4b0dcf63f0f95 \
+    --hash=sha256:c12294ff10e5dcea9a4601833399a8b04aa7d0c8ab6e2c1afde930d36d5d0b20 \
+    --hash=sha256:eaf21b55fd8f046fcd82c8ea956b636b4b11f892341f3fcd3dc29c4ce5ac4857
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
+    #   jax
 jaxtyping==0.3.4 \
     --hash=sha256:70e438db2f361575d04cccea50f77f9c8fe92f8b2086dc0ce89e5f1658bebaab \
     --hash=sha256:b4aac576a1b6c62a363f76f543f21c7cd4c7bb8714816c2c875f28b7abcdb770
@@ -1918,7 +1880,7 @@ jinja2==3.1.6 \
     #   nbconvert
     #   torch
     #   torch-geometric
-jmespath==1.0.1 ; python_full_version < '3.12' \
+jmespath==1.0.1 \
     --hash=sha256:02e2e4cc71b5bcab88332eebf907519190dd9e6e82107fa7f83b1003a6252980 \
     --hash=sha256:90261b206d6defd58fdd5e85f478bf633a2901798906be2ad389150c5c60edbe
     # via
@@ -2212,26 +2174,16 @@ libclang==18.1.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   tensorflow
-libcudf-cu12==26.2.1 ; sys_platform != 'darwin' \
-    --hash=sha256:4cd642211a9f15a5cd61afd013afbae3fff0a78b5b4c30c905b4e12dc0dba4a1
-    # via
-    #   cudf-cu12
-    #   pylibcudf-cu12
-libkvikio-cu12==26.2.0 ; sys_platform != 'darwin' \
-    --hash=sha256:3baf372dbd6b4b91e27d1634e486108de43d2c9465f8adcfc2d6eef6e194d157 \
-    --hash=sha256:c1de5b8fb29790d4e222b57f2342a24303d3c5ccdf216474f566f614d4db0dc8
-    # via libcudf-cu12
-librmm-cu12==26.2.0 ; sys_platform != 'darwin' \
-    --hash=sha256:d0cdd82ad292b7772bf6fa8661c2f7444056de8904ce802586e11c6781c53e31 \
-    --hash=sha256:d4ed1aa3554e90562ad7cf276c61d56fa99be486a7fc158beea332750d20a0e7
-    # via
-    #   libcudf-cu12
-    #   rmm-cu12
+lightning==2.6.1 \
+    --hash=sha256:30e1adac23004c713663928541bd72ecb1371b7abc9aff9f46b7fd2644988d30 \
+    --hash=sha256:859104b98c61add6fe60d0c623abf749baf25f2950a66ebdfb4bd18aa7decba9
+    # via -r python/requirements/ml/py313/tune-test-requirements.txt
 lightning-utilities==0.11.2 \
     --hash=sha256:541f471ed94e18a28d72879338c8c52e873bb46f4c47644d89228faeb6751159 \
     --hash=sha256:adf4cf9c5d912fe505db4729e51d1369c6927f3a8ac55a9dff895ce5c0da08d9
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   lightning
     #   pytorch-lightning
 linear-operator==0.6 \
     --hash=sha256:a9e2663879f1a2b28631bf7ef34892c4e5749893e711c8ef0ab0a39aff70a654 \
@@ -2761,6 +2713,7 @@ ml-dtypes==0.5.4 \
     --hash=sha256:f21c9219ef48ca5ee78402d5cc831bd58ea27ce89beda894428bc67a52da5328
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jax
     #   jaxlib
     #   keras
     #   tensorflow
@@ -3166,24 +3119,7 @@ numba==0.61.2 \
     --hash=sha256:efd3db391df53aaa5cfbee189b6c910a5b471488749fd6606c3f33fc984c2ae2
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   cudf-cu12
-    #   numba-cuda
     #   statsforecast
-numba-cuda==0.22.2 ; sys_platform != 'darwin' \
-    --hash=sha256:12226656f47621337fc26cefa7791e263c704843101f4968bd1cbad5d92653c1 \
-    --hash=sha256:17a53af35f83e5857cf7045aee569f7aeadf8e0a48614a68a5191eaf8e7d5980 \
-    --hash=sha256:2e5289bf6ea3351c75d07130ba2b8b7ce9a0cf8d24416cc0b36496e888b45393 \
-    --hash=sha256:34fab56da7da95f6342642f9702597e28246dfda0ec13da826d32dfdf889ed86 \
-    --hash=sha256:60ced937a1d07db7b23e3738e8532892ccf8eec30cbcc02f6b5fad5702d5c5f4 \
-    --hash=sha256:89e48985590860c3177fd77ed3fb5e664fb5435edc3bfba6d73bb60a562fb993 \
-    --hash=sha256:8d34d95cd5a352c1d9564503aecb49d940274e6ffb5dae44b78e4e4e47b8a9f5 \
-    --hash=sha256:9d586fe1e587925498906d31f19eb37ae35f97b8c6e3aa31992d6a38cb9f9b1c \
-    --hash=sha256:a2518d617a3e33f99816e55c9760e846e12ac1243f61c082584317de5b8d4ecd \
-    --hash=sha256:b680f70e49e78b90dc82d2ba5ee26d8e8b4bf6917a9bfd69124e11136ffe1464 \
-    --hash=sha256:bd14260246ae8c675d0f821be506b1d3e6553a1ce61c398004be2c4cc30609cf \
-    --hash=sha256:dc1901d32ef388b6c100467ce2bb971769bc2aa031ed3004a664cc7a1ef9bf4e \
-    --hash=sha256:e8c19bc1174dfc3596259381fa708f1c3397a618bdbbaa5d068bcc56af8fd921
-    # via cudf-cu12
 numexpr==2.14.1 \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
     --hash=sha256:05f9366d23a2e991fd5a8b5e61a17558f028ba86158a4552f8f239b005cdf83c \
@@ -3244,6 +3180,7 @@ numexpr==2.14.1 \
     --hash=sha256:fdd886f4b7dbaf167633ee396478f0d0aa58ea2f9e7ccc3c6431019623e8d68f
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
     #   -r python/requirements/ml/py313/train-requirements.txt
 numpy==2.2.6 \
     --hash=sha256:038613e9fb8c72b0a41f025a7e4c3f0b7a1b5d768ece4796b674c8f3fe13efff \
@@ -3312,8 +3249,6 @@ numpy==2.2.6 \
     #   cmdstanpy
     #   configspace
     #   contourpy
-    #   cuda-core
-    #   cudf-cu12
     #   cupy-cuda12x
     #   datasets
     #   deepspeed
@@ -3327,6 +3262,7 @@ numpy==2.2.6 \
     #   hpbandster
     #   hyperopt
     #   imageio
+    #   jax
     #   jaxlib
     #   keras
     #   labmaze
@@ -3354,7 +3290,6 @@ numpy==2.2.6 \
     #   pymoo
     #   pyro-ppl
     #   ray
-    #   rmm-cu12
     #   scikit-learn
     #   scipy
     #   shimmy
@@ -3382,38 +3317,21 @@ nvidia-cublas-cu12==12.8.3.14 ; platform_machine == 'x86_64' and sys_platform ==
     #   nvidia-cudnn-cu12
     #   nvidia-cusolver-cu12
     #   torch
-nvidia-cuda-cccl-cu12==12.9.27 ; sys_platform != 'darwin' \
-    --hash=sha256:37869e17ce2e1ecec6eddf1927cca0f8c34e64fd848d40453df559091e2d7117 \
-    --hash=sha256:72106f95a9bb3be18472806b4f663ebf0f9248a86d14b4ae3305725b855d9d92 \
-    --hash=sha256:d7898b38aa68beaa234d48f0868273702342a196d6e2e9d0ef058dca2390ebea
-    # via numba-cuda
 nvidia-cuda-cupti-cu12==12.8.57 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:8e0b2eb847de260739bee4a3f66fac31378f4ff49538ff527a38a01a9a39f950 \
     --hash=sha256:bbed719c52a476958a74cfc42f2b95a3fd6b3fd94eb40134acc4601feb4acac3 \
     --hash=sha256:ff154211724fd824e758ce176b66007b558eea19c9a5135fc991827ee147e317
     # via torch
-nvidia-cuda-nvcc-cu12==12.8.61 ; sys_platform != 'darwin' \
-    --hash=sha256:171f605044ba17bc455d19cad289946c3dbea029a90c60dfa7b88e545bc8e329 \
-    --hash=sha256:28604ec42aaa09035b0fb7111432e5121bc385580b30c55d2acfb7d644b16548 \
-    --hash=sha256:4524739cfc080e9c9e53032912be8f020058e0a7186746d19acef3b6d916ea0b
-    # via
-    #   cuda-toolkit
-    #   numba-cuda
-nvidia-cuda-nvrtc-cu12==12.8.61 ; sys_platform != 'darwin' \
+nvidia-cuda-nvrtc-cu12==12.8.61 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:9c8887bf5e5dffc441018ba8c5dc59952372a6f4806819e8c1f03d62637dbeea \
     --hash=sha256:a0fa9c2a21583105550ebd871bd76e2037205d56f33f128e69f6d2a55e0af9ed \
     --hash=sha256:b1f376bf58111ca73dde4fd4df89a462b164602e074a76a2c29c121ca478dcd4
-    # via
-    #   cuda-toolkit
-    #   numba-cuda
-    #   torch
-nvidia-cuda-runtime-cu12==12.8.57 ; sys_platform != 'darwin' \
+    # via torch
+nvidia-cuda-runtime-cu12==12.8.57 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:534ccebd967b6a44292678fa5da4f00666029cb2ed07a79515ea41ef31fe3ec7 \
     --hash=sha256:75342e28567340b7428ce79a5d6bb6ca5ff9d07b69e7ce00d2c7b4dc23eff0be \
     --hash=sha256:89be637e3ee967323865b85e0f147d75f9a5bd98360befa37481b02dd57af8f5
-    # via
-    #   numba-cuda
-    #   torch
+    # via torch
 nvidia-cudnn-cu12==9.7.1.26 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:6d011159a158f3cfc47bf851aea79e31bcff60d530b70ef70474c84cac484d07 \
     --hash=sha256:7b805b9a4cf9f3da7c5f4ea4a9dff7baf62d1a612d6154a7e0d2ea51ed296241 \
@@ -3450,23 +3368,17 @@ nvidia-cusparselt-cu12==0.6.3 ; platform_machine == 'x86_64' and sys_platform ==
     --hash=sha256:8371549623ba601a06322af2133c4a44350575f5a3108fb75f3ef20b822ad5f1 \
     --hash=sha256:e5c8a26c36445dd2e6812f1177978a24e2d37cacce7e090f297a688d1ec44f46
     # via torch
-nvidia-libnvcomp-cu12==5.1.0.21 ; sys_platform != 'darwin' \
-    --hash=sha256:1352c7c4264ee5357f8f20e4a8da7f2f91debe21d8968f44576a7f4b51f91533 \
-    --hash=sha256:68de61183edb9a870c9a608273a2b5da97dea18e3552096c61fafd9bb2689db0 \
-    --hash=sha256:77dfb3cb8c8995dfa0279ba99b0501e03cbe77e876aab44f4693abdcfac549ce
-    # via libcudf-cu12
 nvidia-nccl-cu12==2.26.2 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:5c196e95e832ad30fbbb50381eb3cbd1fadd5675e587a548563993609af19522 \
     --hash=sha256:694cf3879a206553cc9d7dbda76b13efaf610fdb70a50cba303de1b0d1530ac6
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   torch
-nvidia-nvjitlink-cu12==12.8.61 ; sys_platform != 'darwin' \
+nvidia-nvjitlink-cu12==12.8.61 ; platform_machine == 'x86_64' and sys_platform == 'linux' \
     --hash=sha256:1166a964d25fdc0eae497574d38824305195a5283324a21ccb0ce0c802cbf41c \
     --hash=sha256:45fd79f2ae20bd67e8bc411055939049873bfd8fac70ff13bd4865e0b9bdab17 \
     --hash=sha256:9b80ecab31085dda3ce3b41d043be0ec739216c3fc633b8abe212d5a30026df0
     # via
-    #   numba-cuda
     #   nvidia-cufft-cu12
     #   nvidia-cusolver-cu12
     #   nvidia-cusparse-cu12
@@ -3476,35 +3388,6 @@ nvidia-nvtx-cu12==12.8.55 ; platform_machine == 'x86_64' and sys_platform == 'li
     --hash=sha256:9022681677aef1313458f88353ad9c0d2fbbe6402d6b07c9f00ba0e3ca8774d3 \
     --hash=sha256:c38405335fbc0f0bf363eaeaeb476e8dfa8bae82fada41d25ace458b9ba9f3db
     # via torch
-nvtx==0.2.15 ; sys_platform != 'darwin' \
-    --hash=sha256:02bca69ee55e0be41eabf908de9dbcdd18e702c7f49f9aa63fd396ce684ff5d5 \
-    --hash=sha256:10749686633f880ad53dcdbb2179fad41b45dcf5b7631d4a1070a577577bd386 \
-    --hash=sha256:157b80ea9b4db6c8f47f8dbe2fa2e81e7a7f1445bb87f8268f43dec9210b78a1 \
-    --hash=sha256:2287d3be05b85661deb386f878d1f536c2e532774aa9ec7a50c434942ed81ae5 \
-    --hash=sha256:25813ead4fff4d3a6e04f69a72507b096a6bdbecefa369f1100b0e584767bca8 \
-    --hash=sha256:2cc530cd0f1a2c14a3a7e683833db509888ac5ed4ead94e5c9e2c7317c6937a7 \
-    --hash=sha256:3741edac4678b92f03d22a3f0a2dfd469f422f85e63db71b038e02525b2404ad \
-    --hash=sha256:3c6d0f27d4f8a2f479eb64a6b842c13aee32120348a1715d995b9bb9f75b35cf \
-    --hash=sha256:3ca8030a6d197952318013dd1c12c22da1d4b9feb76ba72e0fcd449961183c2c \
-    --hash=sha256:58653bf6fd8453947b9e5153da2ad7aeb0ceafa030de7f133efb3eada5da7ca7 \
-    --hash=sha256:5f3362f0db4252514719326c9d5662b0f93d254659ba97b9c8dbe556286e0e3e \
-    --hash=sha256:70a1e768964e0520b68ccabc4df391cc227537c45936a7eba6507bc65e617e00 \
-    --hash=sha256:8be06c3c8c267eba56a0396366b9593092e0b75ea8d3702b303d48c0a1662f0e \
-    --hash=sha256:9934fad0b441cfa6e896a848b092498ba23e2ff205c2b9a7b60520ff8367ffef \
-    --hash=sha256:9d1d10db4fb4a3b0ffd6ed37bf25f0a966a3b4d34b3c9abb1f6572732959a6e5 \
-    --hash=sha256:a4f50832fd90a1b480a9deef6e4cd48015b61869095b54dd1a7afe87b4138c6a \
-    --hash=sha256:a6650b029263d12f8427a4dee8bd59cb9c91bccb60543bfcb20bc2b00fdcd672 \
-    --hash=sha256:aca61135c76b8107ae3c994325613afa661e1336a991c59cc9c6176829b3b32c \
-    --hash=sha256:b5171b8283dd3ea9ae688a86d16901b4c2c142c4eb0a4bdbf6c222f5f67f9524 \
-    --hash=sha256:c6c9e76d40eae128b6ad0bd44123df516dfcc26e2d6bb65ddd9336b35caeec7f \
-    --hash=sha256:d28660d9c46f8ba750d781572b6aa5a1e6221abba224ab32d7fb32c2d0fd67df \
-    --hash=sha256:d2ec75546d37738ae41dea026bbd04ccf61c11a9acbf96b744a9478aa93a8c2f \
-    --hash=sha256:d71f934e580d4572f382712b6da464ab69e4c212981506f781f927d5c6d935d6 \
-    --hash=sha256:dbe41f78f5a811bd4cdad0a237e5b41a4937d8c2c6c9abdd161091671a598bc0 \
-    --hash=sha256:f862e22017b43edf7eaf8379091a034e88d99631bc16f3b6b11abf6d09a1177f
-    # via
-    #   cudf-cu12
-    #   pylibcudf-cu12
 onnx==1.16.0 ; platform_machine != 'arm64' or sys_platform != 'darwin' \
     --hash=sha256:034ae21a2aaa2e9c14119a840d2926d213c27aad29e5e3edaa30145a745048e1 \
     --hash=sha256:03a627488b1a9975d95d6a55582af3e14c7f3bb87444725b999935ddd271d352 \
@@ -3649,6 +3532,7 @@ opt-einsum==3.3.0 \
     --hash=sha256:59f6475f77bbc37dcf7cd748519c0ec60722e91e63ca114e68821c0c54a46549
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   jax
     #   pyro-ppl
     #   tensorflow
 optree==0.18.0 \
@@ -3805,7 +3689,6 @@ packaging==24.2 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   accelerate
     #   aim
-    #   cudf-cu12
     #   datasets
     #   deepspeed
     #   evaluate
@@ -3818,14 +3701,13 @@ packaging==24.2 \
     #   jupytext
     #   keras
     #   kombu
+    #   lightning
     #   lightning-utilities
     #   matplotlib
     #   nbconvert
-    #   numba-cuda
     #   onnxruntime
     #   optuna
     #   plotly
-    #   pylibcudf-cu12
     #   pytest
     #   pytorch-lightning
     #   ray
@@ -3897,7 +3779,6 @@ pandas==2.3.3 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   ax-platform
     #   cmdstanpy
-    #   cudf-cu12
     #   datasets
     #   evaluate
     #   nevergrad
@@ -4312,7 +4193,6 @@ pyarrow==19.0.1 \
     --hash=sha256:fd44d66093a239358d07c42a91eebf5015aa54fccba959db899f932218ac9cc8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   cudf-cu12
     #   datasets
     #   ray
     #   triad
@@ -4544,16 +4424,6 @@ pygments==2.18.0 \
     #   ipython
     #   nbconvert
     #   rich
-pylibcudf-cu12==26.2.1 ; sys_platform != 'darwin' \
-    --hash=sha256:51283391a5cd336480ee8da3a6a3bece88ccade557261bf7d070bd8be812367a \
-    --hash=sha256:5bf727a5e6964ef4c5075d51790dd9c3d2dc704da154e38a43159f50219ff25d \
-    --hash=sha256:74ce0739ccde48c822355313c03d9f00c5125fcba59db701dfa657b5fbeb38bf \
-    --hash=sha256:a43552055267d21afd89ee5da98c949aafc14f608ae76e29d376d0f1d4feaab6 \
-    --hash=sha256:b0860720206a4fd62398deb72720b55f06cdfd0187972c75832de8fefd7b070e \
-    --hash=sha256:ccae0c64fbd0f05050dd214e05eed83dadbe6444df9485bffee00de8e04ea6f9 \
-    --hash=sha256:db7dfceb9b73a38a25cd4cf23271655f6c790f7f9828f8efbb3e719264be1574 \
-    --hash=sha256:e4f525141d4b9ffe2d9647f572e075fd2b9374400b9bb8248f435990900dd527
-    # via cudf-cu12
 pymoo==0.6.1.6 \
     --hash=sha256:007bdabe638d5cc1ff98d1df096e7cea42f266ecc7b84fc0aac695a20b6f02f6 \
     --hash=sha256:01e848762e04d183e8dcc12e1cfb1e2cdd2c5efeda47961dbcf6c86c09751e30 \
@@ -4693,7 +4563,15 @@ pytest==7.4.4 \
     --hash=sha256:b090cdf5ed60bf4c45261be03239c2c1c22df034fbffe691abe93cd80cea01d8
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
+    #   pytest-asyncio
     #   pytest-remotedata
+pytest-asyncio==0.17.2 \
+    --hash=sha256:6d895b02432c028e6957d25fc936494e78c6305736e785d9fee408b1efbc7ff4 \
+    --hash=sha256:e0fe5dbea40516b661ef1bcfe0bd9461c2847c4ef4bb40012324f2454fb7d56d
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   -r python/requirements/ml/py313/rllib-test-requirements.txt
 pytest-remotedata==0.3.2 \
     --hash=sha256:3be58f09116f3ce80cff9e5076cda528a84ae36d21ca9645abf782e112c281bc \
     --hash=sha256:e20c58d4b7c359c4975dc3c3d3d67be0905180d2368be0be3ae09b15a136cfc0
@@ -4731,7 +4609,7 @@ pytorch-lightning==2.4.0 \
     --hash=sha256:9ac7935229ac022ef06994c928217ed37f525ac6700f7d4fc57009624570e655
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-    #   -r python/requirements/ml/py313/tune-test-requirements.txt
+    #   lightning
 pytorch-ranger==0.1.1 ; python_full_version < '3.12' \
     --hash=sha256:1e69156c9cc8439185cb8ba4725b18c91947fbe72743e25aca937da8aeb0c8ec \
     --hash=sha256:aa7115431cef11b57d7dd7bc86e7302a911dae467f62ec5d0b10e1ff744875db
@@ -4826,6 +4704,7 @@ pyyaml==6.0.3 \
     #   huggingface-hub
     #   jupyter-events
     #   jupytext
+    #   lightning
     #   ml-collections
     #   mosaicml
     #   optuna
@@ -4939,12 +4818,6 @@ qpd==0.4.4 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   fugue
-rapids-logger==0.2.3 ; sys_platform != 'darwin' \
-    --hash=sha256:119a0391a6965b773dc0e48c35e3872585e69418aedbc8b618ac2bf63ae12e28 \
-    --hash=sha256:7fe67ef4049c5d8ba6154746325dcf7cc0f327f0efa8f2611fc8f64e67510f60
-    # via
-    #   libcudf-cu12
-    #   librmm-cu12
 referencing==0.36.2 \
     --hash=sha256:df2e89862cd09deabbdba16944cc3f10feb6b3e6f18e902f7cc25609a34775aa \
     --hash=sha256:e8699adbbf8b5c7de96d8ffa0eb5c158b3beafce084968e2ea8bb08c6794dcd0
@@ -5078,22 +4951,9 @@ rich==13.7.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/rllib-requirements.txt
-    #   cudf-cu12
     #   keras
     #   memray
     #   textual
-rmm-cu12==26.2.0 ; sys_platform != 'darwin' \
-    --hash=sha256:067cabd6d2b3be3f84c2bfa9ae5d843ebb491198ffbb871ceb70944421b1251c \
-    --hash=sha256:249a9189274795984c07ab3e129b920c6912af27c4a3421da625be504268cb40 \
-    --hash=sha256:25df389b1911040157febdd4282dbd76f55c6afc6f60beacce2e817ae57360b6 \
-    --hash=sha256:8a2e143803e63bfa1f0eb85392542ac77b888f569fd4e70de2164a81875d6db9 \
-    --hash=sha256:8b726a2d4e2875d06fe8d776487bcced4ce8fc7d9f2c3cd44a6c91e9c744f92c \
-    --hash=sha256:9f016db706c24d55e04206633ee89af8ade86fceafe9155b5bff8d4d92cee04b \
-    --hash=sha256:ba3cbb16e0c87d7aeaf7f40a2f34dc18e674832960a9e8506230ca16b05b3bd6 \
-    --hash=sha256:d7e36663d6d53cbed16700d717e0746d834809c65697652b9b8928835781d5cb
-    # via
-    #   cudf-cu12
-    #   pylibcudf-cu12
 rpds-py==0.22.3 \
     --hash=sha256:009de23c9c9ee54bf11303a966edf4d9087cd43a6003672e6aa7def643d06518 \
     --hash=sha256:02fbb9c288ae08bcb34fb41d516d5eeb0455ac35b5512d03181d755d80810059 \
@@ -5301,7 +5161,7 @@ s3torchconnectorclient==1.4.3 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   s3torchconnector
-s3transfer==0.8.0 ; python_full_version < '3.12' \
+s3transfer==0.8.0 \
     --hash=sha256:baa479dc2e63e5c2ed51611b4d46cdf0295e2070d8d0b86b22f335ee5b954986 \
     --hash=sha256:e8d6bd52ffd99841e3a57b34370a54841f12d3aab072af862cdcc50955288002
     # via
@@ -5491,6 +5351,7 @@ scipy==1.14.1 \
     #   gpytorch
     #   hpbandster
     #   hyperopt
+    #   jax
     #   jaxlib
     #   linear-operator
     #   open-spiel
@@ -5845,6 +5706,7 @@ tf-keras==2.20.0 \
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
     #   -r python/requirements/ml/py313/ml-requirements.txt
+    #   -r python/requirements/ml/py313/rllib-requirements.txt
 threadpoolctl==3.1.0 \
     --hash=sha256:8b99adda265feb6773280df41eece7b2e6561b772d21ffd52e372f999024907b \
     --hash=sha256:a335baacfaa4400ae1f0d8e3a58d6674d2f8828e3716bb2802c44955ad391380
@@ -6033,6 +5895,7 @@ torch==2.7.0+cu128 \
     #   botorch
     #   deepspeed
     #   fairscale
+    #   lightning
     #   linear-operator
     #   mosaicml
     #   nixl
@@ -6081,6 +5944,7 @@ torchmetrics==0.10.3 \
     --hash=sha256:b12cf92897545e24a825b0d168888c0f3052700c2901e2d4f7d90b252bc4a343
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+    #   lightning
     #   mosaicml
     #   pytorch-lightning
 torchvision==0.22.0+cu128 \
@@ -6134,6 +5998,7 @@ tqdm==4.67.1 \
     #   evaluate
     #   huggingface-hub
     #   hyperopt
+    #   lightning
     #   mosaicml
     #   moviepy
     #   optuna
@@ -6207,13 +6072,13 @@ typing-extensions==4.15.0 \
     #   async-lru
     #   botorch
     #   configspace
-    #   cudf-cu12
     #   etils
     #   exceptiongroup
     #   fastapi
     #   grpcio
     #   gymnasium
     #   huggingface-hub
+    #   lightning
     #   lightning-utilities
     #   nevergrad
     #   opentelemetry-api
@@ -6222,7 +6087,6 @@ typing-extensions==4.15.0 \
     #   optree
     #   pydantic
     #   pydantic-core
-    #   pylibcudf-cu12
     #   pyopenssl
     #   pyre-extensions
     #   pytorch-lightning

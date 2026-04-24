@@ -124,7 +124,7 @@ void Worker::SetProcess(std::unique_ptr<ProcessInterface> proc) {
 
 rpc::Language Worker::GetLanguage() const { return language_; }
 
-const std::string Worker::IpAddress() const { return ip_address_; }
+std::string Worker::IpAddress() const { return ip_address_; }
 
 int Worker::Port() const {
   // NOTE(kfstorm): Since `RayletClient::AnnounceWorkerPort` is an asynchronous
@@ -206,8 +206,6 @@ void Worker::AssignActorId(const ActorID &actor_id) {
 
 const ActorID &Worker::GetActorId() const { return actor_id_; }
 
-const RayLease &Worker::GetGrantedLease() const { return granted_lease_; }
-
 const std::string Worker::GetLeaseIdAsDebugString() const {
   std::stringstream id_ss;
   if (GetActorId().IsNil()) {
@@ -218,7 +216,8 @@ const std::string Worker::GetLeaseIdAsDebugString() const {
 }
 
 bool Worker::IsDetachedActor() const {
-  return granted_lease_.GetLeaseSpecification().IsDetachedActor();
+  RAY_CHECK(granted_lease_.has_value());
+  return granted_lease_->GetLeaseSpecification().IsDetachedActor();
 }
 
 const std::shared_ptr<ClientConnection> Worker::Connection() const { return connection_; }

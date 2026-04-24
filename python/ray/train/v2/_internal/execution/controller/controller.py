@@ -58,10 +58,8 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2._internal.execution.worker_group import (
     WorkerGroup,
-    WorkerGroupPollStatus,
-)
-from ray.train.v2._internal.execution.worker_group.worker_group import (
     WorkerGroupContext,
+    WorkerGroupPollStatus,
 )
 from ray.train.v2._internal.logging import LoggingManager
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
@@ -184,6 +182,12 @@ class TrainController:
             os.getenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, DEFAULT_HEALTH_CHECK_INTERVAL_S)
         )
 
+        self._manages_replica_groups = (
+            train_run_context.backend_config.backend_cls.has_replica_groups
+            if train_run_context.backend_config
+            else False
+        )
+
         self._worker_group: Optional[WorkerGroup] = None
         self._state = InitializingState()
 
@@ -249,20 +253,64 @@ class TrainController:
         )
         if failure_result:
             return failure_result
-
-        if self._worker_group:
-            self._shutdown_worker_group()
-
-        self._start_worker_group(
-            num_workers=decision.num_workers,
-            resources_per_worker=decision.resources_per_worker,
+        current_num_workers = (
+            len(self._worker_group.get_workers()) if self._worker_group else 0
         )
+        poll_status = (
+            self._worker_group.get_latest_poll_status() if self._worker_group else None
+        )
+        failing_rgs = (
+            poll_status.failing_replica_group_indices if poll_status else set()
+        )
+        all_rgs = poll_status.all_replica_group_indices if poll_status else set()
+        if (
+            self._manages_replica_groups
+            and bool(failing_rgs)
+            and failing_rgs != all_rgs
+            and self._worker_group
+            # TODO: relax this after integrating replica groups with elastic training.
+            and decision.num_workers == current_num_workers
+        ):
+            # Torchft: replace only failing replica groups.
+            self._replace_bad_workers(poll_status)
+        else:
+            # Standard: full restart.
+            if self._worker_group:
+                self._shutdown_worker_group()
+            self._start_worker_group(
+                num_workers=decision.num_workers,
+                resources_per_worker=decision.resources_per_worker,
+            )
 
         return TrainControllerLoopIterationResult(
             run_attempt_id=self._get_run_attempt_id(),
             previous_state=self._state,
             next_state=RunningState(),
         )
+
+    def _replace_bad_workers(self, poll_status: WorkerGroupPollStatus):
+        """Replace failing replica groups in the worker group.
+
+        Args:
+            poll_status: The poll status containing error information.
+
+        Returns:
+            None
+        """
+        failing_rg_indices = poll_status.failing_replica_group_indices
+
+        if not failing_rg_indices:
+            logger.warning("No failing replica groups found in poll status.")
+            return
+
+        logger.info(f"Replacing failing replica groups: {failing_rg_indices}")
+
+        for rg_index in failing_rg_indices:
+            # TODO: parallelize this.
+            # TODO: also ensure that if earlier replacements succeed and later replacements fail,
+            # we don't redo the earlier replacements.
+            # See https://github.com/ray-project/ray/pull/61475#discussion_r3055217289
+            self._worker_group.replace_replica_group(rg_index)
 
     def _get_retry_state(
         self,
@@ -789,7 +837,8 @@ class TrainController:
         self,
         current_report_index: int,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+        timeout_s: Optional[float] = None,
     ) -> List["ReportedCheckpoint"]:
         return await self._checkpoint_manager.get_all_reported_checkpoints(
-            current_report_index, consistency_mode
+            current_report_index, consistency_mode, timeout_s
         )

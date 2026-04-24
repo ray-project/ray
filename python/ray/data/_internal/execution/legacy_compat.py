@@ -135,7 +135,7 @@ def _execute_dag(
 
     # Enforce to preserve ordering if the plan has operators
     # required to do so, such as Zip and Sort.
-    if preserve_order or plan.require_preserve_order():
+    if preserve_order or plan._logical_plan.require_preserve_order():
         executor._options.preserve_order = True
 
     return executor.execute(dag, initial_stats=stats, callbacks=callbacks)
