@@ -390,6 +390,7 @@ def range_tensor(
     )
 
 
+@wrap_auto_init
 def _read_datasource_v2(
     datasource,
     *,
@@ -1201,9 +1202,8 @@ def read_parquet(
             # row filtering down to the file scan.
             ds = ray.data.read_parquet(
                 "s3://anonymous@ray-example-data/iris.parquet",
-                columns=["sepal.length", "variety"],
                 filter=pa.dataset.field("sepal.length") > 5.0,
-            )
+            ).select_columns(["sepal.length", "variety"])
 
             ds.show(2)
 
@@ -1323,6 +1323,7 @@ def read_parquet(
             include_paths=include_paths,
             shuffle=shuffle,
             arrow_parquet_args=arrow_parquet_args,
+            schema=schema,
         )
         return _read_datasource_v2(
             datasource_v2,

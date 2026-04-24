@@ -79,6 +79,7 @@ def test_apply_projection_returns_new_op_with_pruned_scanner(tmp_path):
     assert isinstance(new_op.scanner, ParquetScanner)
     assert new_op.scanner.columns == ("a",)
     # Original scanner untouched
+    assert isinstance(op.scanner, ParquetScanner)
     assert op.scanner.columns is None
 
 
@@ -93,6 +94,8 @@ def test_supports_and_apply_predicate_pushdown(tmp_path):
 
     new_op = op.apply_predicate(col("a") > 1)
     assert new_op is not op
+    assert isinstance(new_op.scanner, ParquetScanner)
     assert new_op.scanner.predicate is not None
     # Original scanner untouched
+    assert isinstance(op.scanner, ParquetScanner)
     assert op.scanner.predicate is None

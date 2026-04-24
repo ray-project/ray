@@ -16,7 +16,7 @@ from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces.task_context import TaskContext
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
@@ -152,7 +152,11 @@ def sample_files(
             collected.append(manifest)
             collected_rows += len(manifest)
         else:
-            collected.append(FileManifest(manifest.as_block().slice(0, remaining)))
+            collected.append(
+                FileManifest(
+                    BlockAccessor.for_block(manifest.as_block()).slice(0, remaining)
+                )
+            )
             collected_rows = max_files
         if collected_rows >= max_files:
             break

@@ -30,7 +30,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data.block import Block
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
@@ -48,8 +48,7 @@ def _apply_column_renames(block: Block, renames: Optional[Dict[str, str]]) -> Bl
     """
     if not renames:
         return block
-    new_names = [renames.get(n, n) for n in block.schema.names]
-    return block.rename_columns(new_names)
+    return BlockAccessor.for_block(block).rename_columns(renames)
 
 
 def plan_read_files_op(
@@ -77,10 +76,9 @@ def plan_read_files_op(
         # ``FileScanner`` subclasses expose ``prune_manifest``; the base
         # implementation is an identity no-op, and ``ArrowFileScanner``
         # overrides it to evaluate ``partition_predicate``.
-        is_file_scanner = isinstance(scanner, FileScanner)
         for block in blocks:
             manifest = FileManifest(block)
-            if is_file_scanner:
+            if isinstance(scanner, FileScanner):
                 manifest = scanner.prune_manifest(manifest)
             if len(manifest) == 0:
                 continue

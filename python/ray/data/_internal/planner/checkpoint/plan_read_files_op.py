@@ -16,7 +16,7 @@ file is the only place V2 reads pick up a checkpoint filter.
 from typing import List, Optional
 
 import pyarrow
-import pyarrow.fs as fs
+import pyarrow.fs
 
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -58,10 +58,11 @@ def plan_read_files_op_with_checkpoint_filter(
     physical_read_op = plan_read_files_op(op, physical_children, data_context)
 
     checkpoint_config = data_context.checkpoint_config
+    assert checkpoint_config is not None
     info = checkpoint_config.filesystem.get_file_info(
         _unwrap_protocol(checkpoint_config.checkpoint_path)
     )
-    if info.type == fs.FileType.NotFound:
+    if info.type == pyarrow.fs.FileType.NotFound:
         return physical_read_op
 
     checkpoint_manager = IdColumnCheckpointManager(checkpoint_config=checkpoint_config)

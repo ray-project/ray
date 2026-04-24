@@ -36,9 +36,10 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
+    MapTransformFn,
 )
 from ray.data._internal.logical.operators import ListFiles
-from ray.data.block import BlockAccessor
+from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
@@ -65,7 +66,7 @@ def plan_list_files_op(
 
     shuffle_config = op.shuffle_config_factory()
 
-    transform_fns = [
+    transform_fns: List[MapTransformFn] = [
         BlockMapTransformFn(
             partial(
                 list_files_for_each_block,
@@ -152,8 +153,9 @@ def _create_input_data_buffer(
         metadata = BlockAccessor.for_block(block).get_metadata(
             input_files=None, block_exec_stats=None
         )
+        block_ref: ray.ObjectRef[Block] = ray.put(block)
         ref_bundle = RefBundle(
-            ((ray.put(block), metadata),),
+            ((block_ref, metadata),),  # pyrefly: ignore[bad-argument-type]
             # ``owns_blocks=False``: these are the root of the DAG and
             # must not be freed eagerly, or the DAG can't be reconstructed.
             owns_blocks=False,

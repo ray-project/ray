@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
+    _SUPPORTS_FRAGMENT_BATCH_READAHEAD,
     FileFormat,
     FileReader,
 )
@@ -235,10 +236,15 @@ class ParquetFileReader(FileReader):
         # while keeping throughput equal to the default. batch_readahead=1
         # (inherited from FileReader base kwargs) plus fragment_readahead=1
         # is enough to keep decode pipelined. See apache/arrow#39808.
-        return {
+        kwargs: dict = {
             "fragment_scan_options": pds.ParquetFragmentScanOptions(
                 pre_buffer=False,
                 use_buffered_stream=True,
             ),
-            "fragment_readahead": 1,
         }
+        # ``fragment_readahead`` on ``Fragment.scanner`` only exists on
+        # pyarrow 12.0+; older wheels raise ``TypeError`` even though
+        # ``Dataset.scanner`` has always accepted it.
+        if _SUPPORTS_FRAGMENT_BATCH_READAHEAD:
+            kwargs["fragment_readahead"] = 1
+        return kwargs

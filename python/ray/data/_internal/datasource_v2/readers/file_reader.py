@@ -32,9 +32,10 @@ _ARROW_SCANNER_BATCH_READAHEAD = 1
 # 12.0+; older wheels in CI reject the kwarg even though
 # ``Dataset.scanner`` has always taken it.
 _MIN_PYARROW_FRAGMENT_BATCH_READAHEAD = parse_version("12.0.0")
+_PYARROW_VERSION = get_pyarrow_version()
 _SUPPORTS_FRAGMENT_BATCH_READAHEAD = (
-    get_pyarrow_version() is not None
-    and get_pyarrow_version() >= _MIN_PYARROW_FRAGMENT_BATCH_READAHEAD
+    _PYARROW_VERSION is not None
+    and _PYARROW_VERSION >= _MIN_PYARROW_FRAGMENT_BATCH_READAHEAD
 )
 
 

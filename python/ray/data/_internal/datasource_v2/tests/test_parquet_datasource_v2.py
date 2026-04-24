@@ -20,7 +20,7 @@ from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
 from ray.data._internal.datasource_v2.scanners.parquet_scanner import (
     ParquetScanner,
 )
-from ray.data.datasource.partitioning import Partitioning
+from ray.data.datasource.partitioning import Partitioning, PartitionStyle
 
 
 def _write_parquet(path: str, table: pa.Table) -> None:
@@ -51,7 +51,9 @@ def test_infer_schema_hive_partitioned(tmp_path):
         _write_parquet(str(d / "data.parquet"), pa.table({"x": [1, 2]}))
 
     first_file = str(tmp_path / "color=a" / "data.parquet")
-    datasource = ParquetDatasourceV2([str(tmp_path)], partitioning=Partitioning("hive"))
+    datasource = ParquetDatasourceV2(
+        [str(tmp_path)], partitioning=Partitioning(PartitionStyle.HIVE)
+    )
     schema = datasource.infer_schema(_manifest_of([first_file]))
 
     assert "x" in schema.names

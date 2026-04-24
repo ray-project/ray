@@ -9,7 +9,7 @@ Constructed from `read_api.read_parquet` when
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Literal, Optional, Union
 
 import pyarrow as pa
 from typing_extensions import override
@@ -35,6 +35,7 @@ from ray.data._internal.util import _is_local_scheme
 from ray.data.context import DataContext
 from ray.data.datasource.partitioning import (
     Partitioning,
+    PartitionStyle,
     PathPartitionParser,
     _partition_field_types_to_pa_schema,
 )
@@ -43,6 +44,8 @@ from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
+
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
 
 
 @DeveloperAPI
@@ -61,12 +64,13 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         paths: List[str],
         *,
         filesystem: Optional["FileSystem"] = None,
-        partitioning: Optional[Partitioning] = Partitioning("hive"),
+        partitioning: Optional[Partitioning] = Partitioning(PartitionStyle.HIVE),
         file_extensions: Optional[List[str]] = None,
         ignore_missing_paths: bool = False,
         include_paths: bool = False,
-        shuffle: Optional[str] = None,
+        shuffle: Optional[Union[Literal["files"], "FileShuffleConfig"]] = None,
         arrow_parquet_args: Optional[dict] = None,
+        schema: Optional[pa.Schema] = None,
     ):
         super().__init__(name="ParquetV2", category=DatasourceCategory.FILE_BASED)
         # Capture the ``local://`` check against the *original* paths;
@@ -87,6 +91,11 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         self._include_paths = include_paths
         self._shuffle = shuffle
         self._arrow_parquet_args = arrow_parquet_args or {}
+        # User-supplied schema override. When set, ``infer_schema`` returns
+        # it verbatim (plus partition/path augmentation) rather than reading
+        # footers, and the scanner pins it on the pyarrow dataset so files
+        # are cast to these types at scan time.
+        self._user_schema = schema
 
     @property
     def paths(self) -> List[str]:
@@ -113,7 +122,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         return self._include_paths
 
     @property
-    def shuffle(self) -> Optional[str]:
+    def shuffle(self) -> Optional[Union[Literal["files"], "FileShuffleConfig"]]:
         return self._shuffle
 
     def _get_file_indexer(self) -> FileIndexer:
@@ -176,7 +185,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         # the plan stays valid; downstream ops produce zero blocks and
         # the executor runs through without error (matches V1).
         if len(sample) == 0:
-            return pa.schema([])
+            return self._user_schema if self._user_schema is not None else pa.schema([])
 
         sample_paths = sample.paths.tolist()
         # Parquet footer reads against high-latency object stores
@@ -198,9 +207,18 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
             with filesystem.open_input_file(path) as handle:
                 return pq.read_schema(handle)
 
-        with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
-            per_file_schemas = list(executor.map(_read_schema, sample_paths))
-        schema = unify_schemas_with_validation(per_file_schemas) or per_file_schemas[0]
+        if self._user_schema is not None:
+            # Caller pinned the schema — skip footer reads. Partition/path
+            # augmentation below still applies so downstream ops see the
+            # synthesized columns.
+            schema = self._user_schema
+        else:
+            with ThreadPoolExecutor(max_workers=min(len(sample_paths), 16)) as executor:
+                per_file_schemas = list(executor.map(_read_schema, sample_paths))
+            schema = (
+                unify_schemas_with_validation(per_file_schemas) or per_file_schemas[0]
+            )
+            assert isinstance(schema, pa.Schema)
 
         resolved_partitioning = self.resolve_partitioning(sample)
         if resolved_partitioning is not None:
