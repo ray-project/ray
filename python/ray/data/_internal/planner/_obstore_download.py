@@ -354,43 +354,65 @@ def _obstore_filesystem_requires_threaded_download(
     return True
 
 
+def _is_fsspec_s3_filesystem(filesystem: "pyarrow.fs.FileSystem") -> bool:
+    """True if *filesystem* is a PyFileSystem wrapping an fsspec s3/s3a handler."""
+    if isinstance(filesystem, RetryingPyFileSystem):
+        filesystem = filesystem.unwrap()
+    PyFileSystem = getattr(pyarrow.fs, "PyFileSystem", None)
+    FSSpecHandler = getattr(pyarrow.fs, "FSSpecHandler", None)
+    if (
+        PyFileSystem is None
+        or FSSpecHandler is None
+        or not isinstance(filesystem, PyFileSystem)
+        or not isinstance(filesystem.handler, FSSpecHandler)
+    ):
+        return False
+    fsspec_fs = getattr(filesystem.handler, "fs", None)
+    if fsspec_fs is None:
+        return False
+    protocol = getattr(fsspec_fs, "protocol", None)
+    if isinstance(protocol, tuple):
+        protocol = protocol[0] if protocol else None
+    return protocol in ("s3", "s3a")
+
+
 # Per-process dedup for credential-extraction warnings. Keyed by ``id(fs)`` so
 # each distinct filesystem object warns exactly once in a worker.
 _warned_credential_fs_ids: set = set()
 
 
-def _warn_credential_extraction_failed(
+def _warn_fsspec_s3_credentials_unextractable(
     filesystem: "pyarrow.fs.FileSystem",
 ) -> None:
-    """Emit a one-shot WARNING per filesystem object when creds can't be extracted."""
+    """Emit a one-shot WARNING for fsspec-S3 filesystems with unextractable creds.
+
+    Only call this for filesystems where ``_is_fsspec_s3_filesystem`` is True —
+    the message hardcodes fsspec-specific advice (``storage_options``) and
+    would be misleading for native filesystems like ``LocalFileSystem`` or
+    ``HdfsFileSystem``.
+    """
     fs_id = id(filesystem)
     if fs_id in _warned_credential_fs_ids:
         return
     _warned_credential_fs_ids.add(fs_id)
 
-    fs_class = type(filesystem).__name__
-    inner_class: Optional[str] = None
     unwrapped = (
         filesystem.unwrap()
         if isinstance(filesystem, RetryingPyFileSystem)
         else filesystem
     )
-    PyFileSystem = getattr(pyarrow.fs, "PyFileSystem", None)
-    if PyFileSystem is not None and isinstance(unwrapped, PyFileSystem):
-        handler = getattr(unwrapped, "handler", None)
-        inner = getattr(handler, "fs", None)
-        if inner is not None:
-            inner_class = type(inner).__name__
+    handler = getattr(unwrapped, "handler", None)
+    inner = getattr(handler, "fs", None)
+    inner_class = type(inner).__name__ if inner is not None else "unknown"
 
-    detail = f" (inner fsspec: {inner_class})" if inner_class else ""
     logger.warning(
-        "Could not extract S3 credentials from user-supplied filesystem %s%s; "
-        "falling back to the PyArrow threaded download path so the filesystem's "
-        "own credential resolution stays authoritative. If this is unexpected, "
-        "pass credentials via fsspec ``storage_options`` "
-        "(e.g. key/secret/token) so they can be forwarded to obstore.",
-        fs_class,
-        detail,
+        "Could not extract S3 credentials from user-supplied fsspec "
+        "filesystem (inner: %s); falling back to the PyArrow threaded "
+        "download path so the filesystem's own credential resolution stays "
+        "authoritative. If this is unexpected, pass credentials via fsspec "
+        "``storage_options`` (e.g. key/secret/token) so they can be "
+        "forwarded to obstore.",
+        inner_class,
     )
 
 
@@ -400,14 +422,24 @@ def _plan_obstore_routing(
     """Decide whether to use obstore and return the kwargs to forward.
 
     Returns ``(True, fs_kwargs)`` if obstore should be used, or ``(False, {})``
-    if the caller must route to the threaded path (emits a warning).
+    if the caller must route to the threaded path. Emits a ``WARNING`` only
+    when an fsspec-S3 filesystem was supplied but its credentials couldn't be
+    extracted — routing native / unrecognized filesystems to the threaded
+    path is the expected behavior and is logged at ``DEBUG``.
     """
     if _obstore_filesystem_requires_threaded_download(filesystem):
         return False, {}
     fs_kwargs = _extract_credentials_from_filesystem(filesystem)
     if fs_kwargs is None:
-        assert filesystem is not None  # only fsspec-S3 branch can return None
-        _warn_credential_extraction_failed(filesystem)
+        assert filesystem is not None  # None filesystem always returns {}
+        if _is_fsspec_s3_filesystem(filesystem):
+            _warn_fsspec_s3_credentials_unextractable(filesystem)
+        else:
+            logger.debug(
+                "Routing filesystem %s to the PyArrow threaded download path "
+                "(obstore cannot forward credentials for this filesystem type).",
+                type(filesystem).__name__,
+            )
         return False, {}
     return True, fs_kwargs
 
