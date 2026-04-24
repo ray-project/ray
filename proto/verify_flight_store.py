@@ -1,11 +1,13 @@
-"""Correctness checks for the Arrow Flight RDT backend.
+"""Correctness checks for the Flight object store paths.
 
 Runs the same set of tables through Ray in two ways — ray.get from the
 driver, and actor-to-actor — then checks pa.Table.equals against the
 original.
 
-Set USE_FLIGHT = True (default) to exercise the ARROW_FLIGHT RDT backend.
-Set USE_FLIGHT = False to run the plasma baseline as a regression check.
+FLIGHT_MODE selects the transfer path to exercise:
+  - "plasma": Ray's normal object store (baseline / regression check).
+  - "native": RAY_USE_FLIGHT_NATIVE=1 intercept path.
+  - "rdt":    ARROW_FLIGHT RDT backend via @ray.method(tensor_transport=...).
 """
 
 import sys
@@ -16,7 +18,7 @@ import pyarrow as pa
 
 import ray
 
-USE_FLIGHT = True
+FLIGHT_MODE = "native"  # "plasma" | "native" | "rdt"
 
 # ---------------------------------------------------------------------------
 # Test cases — diverse schemas and sizes.
@@ -108,7 +110,7 @@ CASES = [
 
 
 def _producer_cls():
-    if USE_FLIGHT:
+    if FLIGHT_MODE == "rdt":
 
         @ray.remote(num_cpus=1)
         class Producer:
@@ -195,12 +197,22 @@ def check(name, result):
     return False
 
 
+_MODE_LABELS = {
+    "plasma": "Plasma (baseline)",
+    "native": "Flight store (native, RAY_USE_FLIGHT_NATIVE=1)",
+    "rdt": "Flight store (RDT, ARROW_FLIGHT transport)",
+}
+
+
 def run_suite():
-    mode_label = "ARROW_FLIGHT (RDT)" if USE_FLIGHT else "Plasma (baseline)"
-    print(f"Mode: {mode_label}")
+    assert FLIGHT_MODE in _MODE_LABELS, f"invalid FLIGHT_MODE: {FLIGHT_MODE}"
+    print(f"Mode: {_MODE_LABELS[FLIGHT_MODE]}")
     print()
 
-    ray.init()
+    runtime_env = None
+    if FLIGHT_MODE == "native":
+        runtime_env = {"env_vars": {"RAY_USE_FLIGHT_NATIVE": "1"}}
+    ray.init(runtime_env=runtime_env)
 
     Producer = _producer_cls()
     producer = Producer.remote()

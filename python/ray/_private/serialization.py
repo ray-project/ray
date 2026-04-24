@@ -416,6 +416,20 @@ class SerializationContext:
                 cause=ray_error_info.actor_died_error.actor_died_error_context
             )
 
+    def _fetch_flight_table(self, data):
+        """Consumer-side handler for the native Flight store path.
+
+        The data buffer holds a small msgpack-encoded transfer-info dict
+        written by store_task_outputs on the producer. Dispatch same-node
+        vs cross-node fetch to the flight store.
+        """
+        import msgpack
+
+        from ray._private.flight_object_store import get_flight_store
+
+        info = msgpack.unpackb(data.to_pybytes(), raw=False)
+        return get_flight_store().fetch(info)
+
     def _deserialize_object(
         self,
         data,
@@ -432,6 +446,9 @@ class SerializationContext:
                 return self._deserialize_msgpack_data(
                     data, metadata_fields, out_of_band_tensors
                 )
+            # Native Flight store path (opt-in via RAY_USE_FLIGHT_NATIVE=1).
+            if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_FLIGHT_TABLE:
+                return self._fetch_flight_table(data)
             # Check if the object should be returned as raw bytes.
             if metadata_fields[0] == ray_constants.OBJECT_METADATA_TYPE_RAW:
                 if data is None:

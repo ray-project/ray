@@ -4,8 +4,12 @@ One actor produces tables, one actor consumes (takes table as input,
 returns num_rows). Measures single-hop transfer latency without pulling
 the table back to the driver.
 
-Set USE_FLIGHT = True to route through the ARROW_FLIGHT RDT backend.
-Otherwise tables go through Ray's normal object store (plasma).
+FLIGHT_MODE selects the transfer path:
+  - "plasma": Ray's normal object store.
+  - "native": Flight store via the RAY_USE_FLIGHT_NATIVE=1 intercept in
+              store_task_outputs. Fastest (producer->consumer, no owner hop).
+  - "rdt":    Flight store via @ray.method(tensor_transport="ARROW_FLIGHT").
+              Goes through Ray's RDT owner-orchestrated path.
 """
 
 import time
@@ -15,16 +19,16 @@ import pyarrow as pa
 
 import ray
 
-USE_FLIGHT = True
+FLIGHT_MODE = "native"  # "plasma" | "native" | "rdt"
 
 SIZES_MB = [1, 10, 100]
-N_ITERS = 20
+N_ITERS = 10
 CONCURRENCY = 4
 N_ACTORS = 4
 
 
 def _producer_cls():
-    if USE_FLIGHT:
+    if FLIGHT_MODE == "rdt":
 
         @ray.remote(num_cpus=1, max_concurrency=CONCURRENCY)
         class Producer:
@@ -93,11 +97,22 @@ def bench(producers, consumers, size_mb, n_iters):
     )
 
 
-def main():
-    mode = "ARROW_FLIGHT (RDT)" if USE_FLIGHT else "Ray object store (plasma)"
+_MODE_LABELS = {
+    "plasma": "Ray object store (plasma)",
+    "native": "Flight store (native, RAY_USE_FLIGHT_NATIVE=1)",
+    "rdt": "Flight store (RDT, ARROW_FLIGHT transport)",
+}
 
-    ray.init()
-    print(f"Mode: {mode}")
+
+def main():
+    assert FLIGHT_MODE in _MODE_LABELS, f"invalid FLIGHT_MODE: {FLIGHT_MODE}"
+
+    runtime_env = None
+    if FLIGHT_MODE == "native":
+        runtime_env = {"env_vars": {"RAY_USE_FLIGHT_NATIVE": "1"}}
+
+    ray.init(runtime_env=runtime_env)
+    print(f"Mode: {_MODE_LABELS[FLIGHT_MODE]}")
     print(
         f"Sizes: {SIZES_MB} MB, {N_ITERS} iterations each, "
         f"{N_ACTORS} actors x {CONCURRENCY} concurrent tasks "
