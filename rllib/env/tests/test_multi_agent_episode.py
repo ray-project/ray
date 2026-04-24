@@ -1545,6 +1545,24 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(rew, {"a0": [0.2, 0.3]})
         self.assertNotIn("a1", rew)
 
+        # The fix is in the shared path _get_single_agent_data_by_env_step_indices,
+        # so get_actions should also work for the same slice.
+        act = episode.get_actions(indices=slice(1, 3))
+        check(act, {"a0": [1, 2]})
+        self.assertNotIn("a1", act)
+
+        # Non-finalized (list-based) episodes should behave the same way.
+        episode_list = MultiAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            len_lookback_buffer=0,
+            terminateds={"a0": True, "a1": True, "__all__": True},
+        )
+        rew_list = episode_list.get_rewards(indices=slice(1, 3))
+        check(rew_list, {"a0": [0.2, 0.3]})
+        self.assertNotIn("a1", rew_list)
+
     def test_other_getters(self):
         # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.
         return
