@@ -1712,6 +1712,10 @@ cdef execute_dynamic_generator_and_store_task_outputs(
 
 # (karticam) module-level task counter for memray file naming
 _km_task_counter = {}
+# (karticam) pids where a memray Tracker is currently active — memray allows
+# only one Tracker per process, but async actors run methods concurrently,
+# so re-entrant execute_task calls must skip starting a second Tracker.
+_km_memray_active = set()
 
 cdef void execute_task(
         const CAddress &caller_address,
@@ -1845,23 +1849,31 @@ cdef void execute_task(
                 f"_task{_km_task_num}.bin"
             )
             _km_tracker = None
-            try:
-                import memray as _km_memray
-                _km_tracker = _km_memray.Tracker(
-                    _km_memray_path,
-                    native_traces=True,
-                )
-                _km_tracker.__enter__()
-                print(
-                    f"(karticam) [MEMRAY-START] PID={_km_pid} "
-                    f"task={title} task_num={_km_task_num} "
-                    f"file={_km_memray_path}"
-                )
-            except ImportError:
+            if _km_pid in _km_memray_active:
                 print(
                     f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
-                    f"memray not installed"
+                    f"task={title} task_num={_km_task_num} "
+                    f"reason=tracker_already_active (concurrent actor call)"
                 )
+            else:
+                try:
+                    import memray as _km_memray
+                    _km_tracker = _km_memray.Tracker(
+                        _km_memray_path,
+                        native_traces=True,
+                    )
+                    _km_tracker.__enter__()
+                    _km_memray_active.add(_km_pid)
+                    print(
+                        f"(karticam) [MEMRAY-START] PID={_km_pid} "
+                        f"task={title} task_num={_km_task_num} "
+                        f"file={_km_memray_path}"
+                    )
+                except ImportError:
+                    print(
+                        f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
+                        f"memray not installed"
+                    )
 
             _km_rss, _km_uss, _km_shared = _km_get_mem()
             print(
@@ -2158,6 +2170,7 @@ cdef void execute_task(
             # (karticam) stop memray tracker (.bin only, analyze locally)
             if _km_tracker is not None:
                 _km_tracker.__exit__(None, None, None)
+                _km_memray_active.discard(_km_pid)
                 _km_rss, _km_uss, _km_shared = _km_get_mem()
                 print(
                     f"(karticam) [MEMRAY-STOP] PID={_km_pid} "
