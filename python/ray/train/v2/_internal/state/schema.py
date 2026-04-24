@@ -102,12 +102,14 @@ class TrainWorker(BaseModel):
     pid: int = Field(description="The process ID of the worker.")
     gpu_ids: List[int] = Field(description="A list of GPU IDs allocated to the worker.")
     status: Optional[ActorStatus] = Field(
+        None,
         description="The current status of the worker actor."
     )
     resources: TrainResources = Field(
         description="The resources allocated to this Train worker."
     )
     log_file_path: Optional[str] = Field(
+        None,
         description="The path to the log file for the Train worker."
     )
 
@@ -118,8 +120,8 @@ class MemoryInfo(BaseModel):
 
     rss: int = Field(description="The resident set size (RSS) memory usage in bytes.")
     vms: int = Field(description="The virtual memory size (VMS) usage in bytes.")
-    pfaults: Optional[int] = Field(description="The number of page faults.")
-    pageins: Optional[int] = Field(description="The number of page-ins.")
+    pfaults: Optional[int] = Field(None, description="The number of page faults.")
+    pageins: Optional[int] = Field(None, description="The number of page-ins.")
 
 
 @DeveloperAPI
@@ -128,6 +130,7 @@ class ProcessStats(BaseModel):
 
     cpuPercent: float = Field(description="The percentage of CPU usage.")
     mem: Optional[List[int]] = Field(
+        None,
         description="Memory statistics, including total memory, free memory, "
         "and memory usage ratio."
     )
@@ -149,6 +152,7 @@ class GPUStats(BaseModel):
     index: int = Field(description="The index of the GPU.")
     name: str = Field(description="The name of the GPU.")
     utilizationGpu: Optional[float] = Field(
+        None,
         description="The percentage utilization of the GPU."
     )
     memoryUsed: float = Field(description="The amount of GPU memory used in bytes.")
@@ -184,6 +188,7 @@ class TrainRunAttempt(BaseModel):
         description="The current execution status of the Train run attempt."
     )
     status_detail: Optional[str] = Field(
+        None,
         description="Additional details about the status,"
         " including error messages if applicable."
     )
@@ -192,6 +197,7 @@ class TrainRunAttempt(BaseModel):
         " when the Train run attempt started."
     )
     end_time_ns: Optional[int] = Field(
+        None,
         description="The UNIX timestamp (in nanoseconds)"
         " when the Train run attempt ended. "
         "If null, the attempt is still ongoing."
@@ -222,7 +228,9 @@ class DataConfig(BaseModel):
     datasets_to_split: Union[Literal["all"], List[str]] = Field(
         description="Which datasets to split; either 'all' or a list of dataset names.",
     )
-    execution_options: Optional[Dict] = Field(description="Data execution options")
+    execution_options: Optional[Dict] = Field(
+        None, description="Data execution options"
+    )
     enable_shard_locality: bool = Field(
         description="Whether to enable shard locality optimization."
     )
@@ -237,19 +245,21 @@ class ScalingConfig(BaseModel):
     )
     use_gpu: bool = Field(description="Whether to use GPUs for the Train run.")
     resources_per_worker: Optional[Dict[str, float]] = Field(
+        None,
         description="The resources per worker for a Train run."
     )
     placement_strategy: str = Field(
         description="The placement strategy for the Train run."
     )
     accelerator_type: Optional[str] = Field(
+        None,
         description="The accelerator type for the Train run."
     )
     use_tpu: bool = Field(description="Whether to use TPUs for the Train run.")
-    topology: Optional[str] = Field(description="The topology for the Train run.")
+    topology: Optional[str] = Field(None, description="The topology for the Train run.")
     bundle_label_selector: Optional[
         Union[Dict[str, str], List[Dict[str, str]]]
-    ] = Field(description="The bundle label selector for the Train run.")
+    ] = Field(None, description="The bundle label selector for the Train run.")
 
 
 @DeveloperAPI
@@ -269,9 +279,11 @@ class CheckpointConfig(BaseModel):
     """Checkpoint config for a Train run."""
 
     num_to_keep: Optional[int] = Field(
+        None,
         description="The number of most recent checkpoints to keep. Older checkpoints may be deleted.",
     )
     checkpoint_score_attribute: Optional[str] = Field(
+        None,
         description="Attribute used to score and rank checkpoints; can be a metric key or attribute.",
     )
     checkpoint_score_order: Literal["max", "min"] = Field(
@@ -296,6 +308,7 @@ class RunConfig(BaseModel):
     )
     storage_path: str = Field(description="The storage path for a Train run.")
     storage_filesystem: Optional[str] = Field(
+        None,
         description="The storage filesystem for a Train run."
     )
 
@@ -305,6 +318,7 @@ class BackendConfig(BaseModel):
     """Backend config for a Train run."""
 
     framework: Optional[TrainingFramework] = Field(
+        None,
         description="The training framework for this backend config."
     )
     config: Dict[str, Any] = Field(
@@ -321,6 +335,7 @@ class RunSettings(BaseModel):
     """
 
     train_loop_config: Optional[Dict] = Field(
+        None,
         description="The user defined train loop config for a Train run."
     )
     backend_config: BackendConfig = Field(
@@ -354,6 +369,7 @@ class TrainRun(BaseModel):
         description="The current execution status of the Train run."
     )
     status_detail: Optional[str] = Field(
+        None,
         description="Additional details about the current status, "
         "including error messages if applicable."
     )
@@ -361,10 +377,12 @@ class TrainRun(BaseModel):
         description="The UNIX timestamp (in nanoseconds) when the Train run started."
     )
     end_time_ns: Optional[int] = Field(
+        None,
         description="The UNIX timestamp (in nanoseconds) when the Train run ended. "
         "If null, the run is still in progress."
     )
     controller_log_file_path: Optional[str] = Field(
+        None,
         description="The path to the log file for the Train run controller."
     )
     framework_versions: Dict[str, str] = Field(

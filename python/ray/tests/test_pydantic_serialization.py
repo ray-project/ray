@@ -7,7 +7,6 @@ import pydantic
 import pytest
 from fastapi import FastAPI
 from packaging import version
-
 from pydantic import BaseModel, ValidationError
 import ray
 from ray.tests.pydantic_module import User, app, closure, user

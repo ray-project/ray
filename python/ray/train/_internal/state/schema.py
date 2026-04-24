@@ -59,15 +59,15 @@ class TrainWorkerInfo(BaseModel):
 class MemoryInfo(BaseModel):
     rss: int
     vms: int
-    pfaults: Optional[int]
-    pageins: Optional[int]
+    pfaults: Optional[int] = None
+    pageins: Optional[int] = None
 
 
 @DeveloperAPI
 class ProcessStats(BaseModel):
     cpuPercent: float
     # total memory, free memory, memory used ratio
-    mem: Optional[List[int]]
+    mem: Optional[List[int]] = None
     memoryInfo: MemoryInfo
 
 
@@ -82,7 +82,7 @@ class GPUStats(BaseModel):
     uuid: str
     index: int
     name: str
-    utilizationGpu: Optional[float]
+    utilizationGpu: Optional[float] = None
     memoryUsed: float
     memoryTotal: float
     processInfo: ProcessGPUUsage
@@ -110,7 +110,7 @@ class TrainDatasetInfo(BaseModel):
         description="The key of the dataset dict specified in Ray Train Trainer."
     )
     dataset_uuid: str = Field(description="The uuid of the dataset.")
-    dataset_name: Optional[str] = Field(description="The name of the dataset.")
+    dataset_name: Optional[str] = Field(None, description="The name of the dataset.")
 
 
 @DeveloperAPI
@@ -139,6 +139,7 @@ class TrainRunInfo(BaseModel):
         description="The UNIX timestamp of the start time of this Train run."
     )
     end_time_ms: Optional[int] = Field(
+        None,
         description="The UNIX timestamp of the end time of this Train run. "
         "If null, the Train run has not ended yet."
     )
