@@ -12,6 +12,8 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <grpcpp/grpcpp.h>
+
 #include <memory>
 #include <string>
 #include <vector>
@@ -24,6 +26,7 @@
 #include "ray/gcs/metrics.h"
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/observability/fake_metric.h"
+#include "src/proto/grpc/health/v1/health.grpc.pb.h"
 
 namespace ray {
 
@@ -88,15 +91,35 @@ class GcsServerTest : public ::testing::Test {
         io_service_, /*record_stats=*/false, /*local_address=*/""));
     client_.reset(
         new rpc::GcsRpcClient("0.0.0.0", gcs_server_->GetPort(), *client_call_manager_));
+
+    // Create health check stub.
+    auto channel =
+        grpc::CreateChannel("localhost:" + std::to_string(gcs_server_->GetPort()),
+                            grpc::InsecureChannelCredentials());
+    health_check_stub_ = grpc::health::v1::Health::NewStub(channel);
   }
 
   void TearDown() override {
     io_service_.stop();
     rpc::DrainServerCallExecutor();
     gcs_server_->Stop();
-    thread_io_service_->join();
+    if (thread_io_service_ && thread_io_service_->joinable()) {
+      thread_io_service_->join();
+    }
     gcs_server_.reset();
     rpc::ResetServerCallExecutor();
+  }
+
+  grpc::Status CheckHealth(std::chrono::milliseconds timeout) {
+    grpc::health::v1::HealthCheckRequest request;
+    grpc::health::v1::HealthCheckResponse response;
+    grpc::ClientContext context;
+    context.set_deadline(std::chrono::system_clock::now() + timeout);
+    auto status = health_check_stub_->Check(&context, request, &response);
+    if (status.ok()) {
+      EXPECT_EQ(response.status(), grpc::health::v1::HealthCheckResponse::SERVING);
+    }
+    return status;
   }
 
   bool AddJob(rpc::AddJobRequest request) {
@@ -106,7 +129,7 @@ class GcsServerTest : public ::testing::Test {
                       RAY_CHECK_OK(status);
                       promise.set_value(true);
                     });
-    return WaitReady(promise.get_future(), timeout_ms_);
+    return WaitReady(promise.get_future(), client_timeout_ms_);
   }
 
   bool MarkJobFinished(rpc::MarkJobFinishedRequest request) {
@@ -117,7 +140,7 @@ class GcsServerTest : public ::testing::Test {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
-    return WaitReady(promise.get_future(), timeout_ms_);
+    return WaitReady(promise.get_future(), client_timeout_ms_);
   }
 
   std::optional<rpc::ActorTableData> GetActorInfo(const std::string &actor_id) {
@@ -136,7 +159,7 @@ class GcsServerTest : public ::testing::Test {
                             }
                             promise.set_value(true);
                           });
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
     return actor_table_data_opt;
   }
 
@@ -149,7 +172,7 @@ class GcsServerTest : public ::testing::Test {
           promise.set_value(true);
         });
 
-    return WaitReady(promise.get_future(), timeout_ms_);
+    return WaitReady(promise.get_future(), client_timeout_ms_);
   }
 
   bool UnregisterNode(rpc::UnregisterNodeRequest request) {
@@ -161,7 +184,7 @@ class GcsServerTest : public ::testing::Test {
           promise.set_value(true);
         });
 
-    return WaitReady(promise.get_future(), timeout_ms_);
+    return WaitReady(promise.get_future(), client_timeout_ms_);
   }
 
   std::vector<rpc::GcsNodeInfo> GetAllNodeInfo() {
@@ -178,7 +201,7 @@ class GcsServerTest : public ::testing::Test {
           }
           promise.set_value(true);
         });
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
     return node_info_list;
   }
 
@@ -190,7 +213,7 @@ class GcsServerTest : public ::testing::Test {
           RAY_CHECK_OK(status);
           promise.set_value(status.ok());
         });
-    return WaitReady(promise.get_future(), timeout_ms_);
+    return WaitReady(promise.get_future(), client_timeout_ms_);
   }
 
   std::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string &worker_id) {
@@ -210,7 +233,7 @@ class GcsServerTest : public ::testing::Test {
           }
           promise.set_value(true);
         });
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
     return worker_table_data_opt;
   }
 
@@ -228,7 +251,7 @@ class GcsServerTest : public ::testing::Test {
           }
           promise.set_value(true);
         });
-    EXPECT_TRUE(WaitReady(promise.get_future(), timeout_ms_));
+    EXPECT_TRUE(WaitReady(promise.get_future(), client_timeout_ms_));
     return worker_table_data;
   }
 
@@ -240,21 +263,20 @@ class GcsServerTest : public ::testing::Test {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
-    return WaitReady(promise.get_future(), timeout_ms_);
+    return WaitReady(promise.get_future(), client_timeout_ms_);
   }
 
  protected:
-  // Gcs server
+  // Server-related fields.
   std::unique_ptr<gcs::GcsServer> gcs_server_;
   std::unique_ptr<std::thread> thread_io_service_;
   instrumented_io_context io_service_;
 
-  // Gcs client
+  // Client-related fields.
   std::unique_ptr<rpc::GcsRpcClient> client_;
   std::unique_ptr<rpc::ClientCallManager> client_call_manager_;
-
-  // Timeout waiting for gcs server reply, default is 5s
-  const std::chrono::milliseconds timeout_ms_{5000};
+  std::unique_ptr<grpc::health::v1::Health::Stub> health_check_stub_;
+  const std::chrono::milliseconds client_timeout_ms_{5000};
 
   // Fake metrics for testing
   observability::FakeGauge actor_by_state_gauge_;
@@ -520,12 +542,26 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
 }
 // TODO(sang): Add tests after adding asyncAdd
 
-}  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 3);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  return RUN_ALL_TESTS();
+TEST_F(GcsServerTest, HealthCheckSucceeds) {
+  auto status = CheckHealth(std::chrono::milliseconds(5000));
+  ASSERT_TRUE(status.ok()) << "Health check failed: " << status.error_message();
 }
+
+TEST_F(GcsServerTest, HealthCheckTimesOutWhenMainIOContextBlocked) {
+  // Health check should succeed while io_context is running.
+  auto status = CheckHealth(std::chrono::milliseconds(5000));
+  ASSERT_TRUE(status.ok()) << "Health check failed: " << status.error_message();
+
+  // Stop the main io_context so the custom health check handler cannot be dispatched.
+  io_service_.stop();
+  thread_io_service_->join();
+  thread_io_service_.reset();
+
+  // The health check should time out because the handler is posted to the
+  // main io_context which is no longer processing events.
+  status = CheckHealth(std::chrono::milliseconds(100));
+  ASSERT_FALSE(status.ok());
+  EXPECT_EQ(status.error_code(), grpc::StatusCode::DEADLINE_EXCEEDED);
+}
+
+}  // namespace ray

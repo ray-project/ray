@@ -508,9 +508,11 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             const c_vector[CNodeSelector] &node_selectors)
 
         void AsyncGetAll(
-            const MultiItemPyCallback[CGcsNodeInfo] &callback,
+            const OptionalItemPyCallback[c_pair[c_vector[CGcsNodeInfo], int64_t]] &callback,
             int64_t timeout_ms,
-            c_vector[CNodeID] node_ids)
+            optional[CGcsNodeState] state_filter,
+            const c_vector[CNodeSelector] &node_selectors,
+            optional[int64_t] limit) const
 
     cdef cppclass CNodeResourceInfoAccessor "ray::gcs::NodeResourceInfoAccessor":
         CRayStatus GetAllResourceUsage(
@@ -643,6 +645,13 @@ cdef extern from "ray/gcs_rpc_client/accessor.h" nogil:
             int64_t timeout_ms,
             c_bool &is_accepted,
             c_string &rejection_reason_message
+        )
+
+        CRayStatus ResizeRayletResourceInstances(
+            const c_string &node_id,
+            const unordered_map[c_string, double] &resources,
+            int64_t timeout_ms,
+            unordered_map[c_string, double] &total_resources
         )
 
     cdef cppclass CPublisherAccessor "ray::gcs::PublisherAccessor":
@@ -867,6 +876,7 @@ cdef extern from "ray/common/constants.h" nogil:
     cdef const char[] kNodeMarketTypeEnv
     cdef const char[] kNodeRegionEnv
     cdef const char[] kNodeZoneEnv
+    cdef const char[] kLabelKeyNodeID
     cdef const char[] kLabelKeyNodeAcceleratorType
     cdef const char[] kLabelKeyNodeMarketType
     cdef const char[] kLabelKeyNodeRegion

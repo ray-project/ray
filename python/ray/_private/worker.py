@@ -1,4 +1,5 @@
 import atexit
+import dataclasses
 import faulthandler
 import functools
 import inspect
@@ -457,12 +458,12 @@ class Worker:
         self.node = None
         self.mode = None
         self.actors = {}
-        # GPU object manager to manage GPU object lifecycles, including coordinating out-of-band
-        # tensor transfers between actors, storing and retrieving GPU objects, and garbage collection.
-        # We create the GPU object manager lazily, if a user specifies a
-        # non-default tensor_transport, to avoid circular import and because it
-        # imports third-party dependencies like PyTorch.
-        self._gpu_object_manager = None
+        # RDT manager to manage RDT object lifecycles, including coordinating out-of-band
+        # tensor transfers between actors, storing and retrieving RDT objects, and garbage collection.
+        # We create the RDT manager lazily, if a user specifies a non-default
+        # tensor_transport, to avoid circular import and because it imports
+        # third-party dependencies like PyTorch.
+        self._rdt_manager = None
         # When the worker is constructed. Record the original value of the
         # (CUDA_VISIBLE_DEVICES, ONEAPI_DEVICE_SELECTOR, HIP_VISIBLE_DEVICES,
         # NEURON_RT_VISIBLE_CORES, TPU_VISIBLE_CHIPS, ..) environment variables.
@@ -513,15 +514,15 @@ class Worker:
         self._is_connected: bool = False
 
     @property
-    def gpu_object_manager(self) -> "ray.experimental.GPUObjectManager":
-        if self._gpu_object_manager is None:
-            # We create the GPU object manager lazily, if a user specifies a
-            # non-default tensor_transport, to avoid circular import and because it
-            # imports third-party dependencies like PyTorch.
-            from ray.experimental import GPUObjectManager
+    def rdt_manager(self) -> "ray.experimental.RDTManager":
+        if self._rdt_manager is None:
+            # We create the RDT manager lazily, if a user specifies a
+            # non-default tensor_transport, to avoid circular import and because
+            # it imports third-party dependencies like PyTorch.
+            from ray.experimental import RDTManager
 
-            self._gpu_object_manager = GPUObjectManager()
-        return self._gpu_object_manager
+            self._rdt_manager = RDTManager()
+        return self._rdt_manager
 
     @property
     def connected(self):
@@ -576,6 +577,11 @@ class Worker:
     @property
     def current_node_id(self):
         return self.core_worker.get_current_node_id()
+
+    @property
+    def current_temp_dir(self):
+        self.check_connected()
+        return self.node.temp_dir
 
     @property
     def task_depth(self):
@@ -838,7 +844,7 @@ class Worker:
                 "ray.ObjectRef in a list and call 'put' on it."
             )
         tensors = None
-        from ray.experimental.gpu_object_manager.util import (
+        from ray.experimental.rdt.util import (
             normalize_and_validate_tensor_transport,
             validate_one_sided,
         )
@@ -854,7 +860,9 @@ class Worker:
                 (
                     serialized_value,
                     tensors,
-                ) = self.get_serialization_context().serialize_gpu_objects(value)
+                ) = self.get_serialization_context().serialize_rdt_objects(
+                    value, tensor_transport
+                )
             else:
                 serialized_value = self.get_serialization_context().serialize(value)
         except TypeError as e:
@@ -886,7 +894,7 @@ class Worker:
             tensor_transport=tensor_transport,
         )
         if tensors:
-            self.gpu_object_manager.put_object(ret, tensor_transport, tensors)
+            self.rdt_manager.put_object(ret, tensor_transport, tensors)
         return ret
 
     def raise_errors(self, serialized_objects, object_refs):
@@ -902,20 +910,31 @@ class Worker:
         object_refs,
         use_object_store: bool = False,
     ):
-        gpu_objects: Dict[str, List["torch.Tensor"]] = {}
-        for obj_ref, (_, _, tensor_transport) in zip(object_refs, serialized_objects):
+        rdt_objects: Dict[str, List["torch.Tensor"]] = {}
+        for obj_ref, (_, metadata, tensor_transport) in zip(
+            object_refs, serialized_objects
+        ):
             if tensor_transport is None:
-                # The object is not a gpu object, so we cannot use other external transport to
+                # The object is not an RDT object, so we cannot use other external transport to
                 # fetch it.
                 continue
 
+            # Assures that the upstream task didn't error out. This logic comes from the
+            # serialization_context deserialize_objects path. RDT tensors are only used
+            # if the metadata field contains that constant
+            if not metadata:
+                continue
+            metadata_fields = metadata.split(b",")
+            if metadata_fields[0] != ray_constants.OBJECT_METADATA_TYPE_PYTHON:
+                continue
+
             object_id = obj_ref.hex()
-            if object_id not in gpu_objects:
+            if object_id not in rdt_objects:
                 # If using a non-object store transport, then tensors will be sent
                 # out-of-band. Get them before deserializing the object store data.
                 # The user can set use_object_store to fetch the RDT object
                 # through the object store.
-                gpu_objects[object_id] = self.gpu_object_manager.get_gpu_object(
+                rdt_objects[object_id] = self.rdt_manager.get_rdt_object(
                     object_id, use_object_store
                 )
 
@@ -926,7 +945,7 @@ class Worker:
         with self.function_actor_manager.lock:
             context = self.get_serialization_context()
             return context.deserialize_objects(
-                serialized_objects, object_refs, gpu_objects
+                serialized_objects, object_refs, rdt_objects
             )
 
     def get_objects(
@@ -1110,9 +1129,9 @@ class Worker:
             assigned_ids = {str(original_ids[i]) for i in assigned_ids}
         return list(assigned_ids)
 
-    def shutdown_gpu_object_manager(self):
-        if self._gpu_object_manager:
-            self._gpu_object_manager.shutdown()
+    def shutdown_rdt_manager(self):
+        if self._rdt_manager:
+            self._rdt_manager.shutdown()
 
 
 _connect_or_shutdown_lock = threading.RLock()
@@ -1410,6 +1429,7 @@ def init(
     cgroup_path: Optional[str] = None,
     system_reserved_cpu: Optional[float] = None,
     system_reserved_memory: Optional[int] = None,
+    proxy_server_url: Optional[str] = None,
     **kwargs,
 ) -> BaseContext:
     """
@@ -1517,7 +1537,9 @@ def init(
         runtime_env: The runtime environment to use
             for this job (see :ref:`runtime-environments` for details).
         object_spilling_directory: The path to spill objects to. The same path will
-            be used as the object store fallback directory as well.
+            be used as the object store fallback directory as well. Defaults to the node's session dir.
+            If head node specifies an object spilling directory, and this node doesn't specify one,
+            use the head node's object spilling directory.
         enable_resource_isolation: Enable resource isolation through cgroupv2 by reserving
             memory and cpu resources for ray system processes. To use, only cgroupv2 (not cgroupv1)
             must be enabled with read and write permissions for the raylet. Cgroup memory and
@@ -1527,6 +1549,11 @@ def init(
             The process starting ray must have read/write permissions to this path.
             Cgroup memory and cpu controllers must be enabled for this cgroup.
             This option only works if enable_resource_isolation is True.
+        proxy_server_url:[Experimental] The server url to redirect dashboard backend requests to.
+            By default, the dashboard requests will be directed to the Ray api server.
+            If you have a custom server to serve the dashboard requests,
+            you can set this option to override the server url.
+            Ex: proxy_server_url=http://historyserver:8080
         system_reserved_cpu: The number of cpu cores to reserve for ray system processes.
             Cores can be fractional i.e. 1.5 means one and a half a cpu core.
             By default, the value will be atleast 1 core, and at maximum 3 cores. The default value
@@ -1553,7 +1580,8 @@ def init(
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
             directory for the Ray process. Must be an absolute path. Defaults to an
-            OS-specific conventional location, e.g., "/tmp/ray".
+            OS-specific conventional location, e.g., "/tmp/ray" for head node, and
+            head node's temp dir for worker node.
         _metrics_export_port: Port number Ray exposes system metrics
             through a Prometheus endpoint. It is currently under active
             development, and the API is subject to change.
@@ -1666,6 +1694,14 @@ def init(
                 # builder
                 passed_kwargs[argument_name] = passed_value
         passed_kwargs.update(kwargs)
+
+        # Convert LoggingConfig to dict before client sends it over JSON
+        if "logging_config" in passed_kwargs and isinstance(
+            passed_kwargs["logging_config"], LoggingConfig
+        ):
+            lc = passed_kwargs["logging_config"]
+            passed_kwargs["logging_config"] = dataclasses.asdict(lc)
+
         builder._init_args(**passed_kwargs)
         ctx = builder.connect()
         from ray._common.usage import usage_lib
@@ -1779,6 +1815,7 @@ def init(
     if logging_config is not None:
         job_config.set_py_logging_config(logging_config)
 
+    services.find_gcs_addresses.cache_clear()
     redis_address, gcs_address = None, None
     bootstrap_address = services.canonicalize_bootstrap_address(address, _temp_dir)
     if bootstrap_address is not None:
@@ -1868,6 +1905,7 @@ def init(
             tracing_startup_hook=_tracing_startup_hook,
             node_name=_node_name,
             resource_isolation_config=resource_isolation_config,
+            proxy_server_url=proxy_server_url,
         )
         # Start the Ray processes. We set shutdown_at_exit=False because we
         # shutdown the node in the ray.shutdown call that happens in the atexit
@@ -2011,21 +2049,6 @@ def init(
     for hook in _post_init_hooks:
         hook()
 
-    # Check and show accelerator override warning during driver initialization
-    from ray._private.ray_constants import env_bool
-
-    override_on_zero = env_bool(
-        ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
-        True,
-    )
-    if override_on_zero and log_once("ray_accel_env_var_override_on_zero"):
-        warnings.warn(
-            "Tip: In future versions of Ray, Ray will no longer override accelerator "
-            "visible devices env var if num_gpus=0 or num_gpus=None (default). To enable "
-            "this behavior and turn off this error message, set RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO=0",
-            FutureWarning,
-        )
-
     # Check for Pydantic v1 and emit deprecation warning
     from ray._common.pydantic_compat import PYDANTIC_MAJOR_VERSION
 
@@ -2041,6 +2064,7 @@ def init(
             FutureWarning,
         )
 
+    services.find_gcs_addresses.cache_clear()
     node_id = global_worker.core_worker.get_current_node_id()
     global_node_address_info = _global_node.address_info.copy()
     global_node_address_info["webui_url"] = _remove_protocol_from_url(dashboard_url)
@@ -2093,7 +2117,7 @@ def shutdown(_exiting_interpreter: bool = False):
     from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
 
     _shutdown_all_compiled_dags()
-    global_worker.shutdown_gpu_object_manager()
+    global_worker.shutdown_rdt_manager()
 
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
@@ -2130,6 +2154,7 @@ def shutdown(_exiting_interpreter: bool = False):
     # should simply set "global_worker" to equal "None" or something like that.
     global_worker.set_mode(None)
     global_worker.set_cached_job_id(None)
+    services.find_gcs_addresses.cache_clear()
 
 
 atexit.register(shutdown, True)
@@ -2410,6 +2435,9 @@ def listen_error_messages(worker, threads_stopped):
             error_message = _internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
+        expected_job_ids = frozenset(
+            [worker.current_job_id.binary(), JobID.nil().binary()]
+        )
         while True:
             # Exit if received a signal that the thread should stop.
             if threads_stopped.is_set():
@@ -2418,10 +2446,10 @@ def listen_error_messages(worker, threads_stopped):
             _, error_data = worker.gcs_error_subscriber.poll()
             if error_data is None:
                 continue
-            if error_data["job_id"] is not None and error_data["job_id"] not in [
-                worker.current_job_id.binary(),
-                JobID.nil().binary(),
-            ]:
+            if (
+                error_data["job_id"] is not None
+                and error_data["job_id"] not in expected_job_ids
+            ):
                 continue
 
             error_message = error_data["error_message"]
@@ -3368,7 +3396,12 @@ def _make_remote(function_or_class, options):
         function_or_class.__module__ = "global"
 
     if inspect.isfunction(function_or_class) or is_cython(function_or_class):
-        ray_option_utils.validate_task_options(options, in_options=False)
+        is_generator_callable = inspect.isgeneratorfunction(
+            function_or_class
+        ) or inspect.isasyncgenfunction(function_or_class)
+        ray_option_utils.validate_task_options(
+            options, in_options=False, is_generator_callable=is_generator_callable
+        )
         return ray.remote_function.RemoteFunction(
             Language.PYTHON,
             function_or_class,

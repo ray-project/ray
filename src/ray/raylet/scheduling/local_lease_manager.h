@@ -106,12 +106,9 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   void LeasesUnblocked(const std::vector<LeaseID> &ready_ids) override;
 
   /// Cleanup the lease and release the worker resources.
-  /// This method will be removed and can be replaced by `ReleaseWorkerResources` directly
-  /// once we remove the legacy scheduler.
   ///
   /// \param worker: The worker which was granted the lease.
-  /// \param lease: Output parameter.
-  void CleanupLease(std::shared_ptr<WorkerInterface> worker, RayLease *lease) override;
+  void CleanupLease(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Attempt to cancel all queued leases that match the predicate.
   ///
@@ -160,14 +157,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   bool ReturnCpuResourcesToUnblockedWorker(
       std::shared_ptr<WorkerInterface> worker) override;
 
-  /// TODO(Chong-Li): Removing this and maintaining normal task resources by local
-  /// resource manager.
-  /// Calculate normal task resources.
-  ResourceSet CalcNormalTaskResources() const override;
-
-  void SetWorkerBacklog(SchedulingClass scheduling_class,
-                        const WorkerID &worker_id,
-                        int64_t backlog_size) override;
+  void SetWorkerBacklog(rpc::ReportWorkerBacklogRequest request) override;
 
   void ClearWorkerBacklog(const WorkerID &worker_id) override;
 
@@ -207,7 +197,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   void RemoveFromGrantedLeasesIfExists(const RayLease &lease);
 
   /// Handle the popped worker from worker pool.
-  bool PoppedWorkerHandler(const std::shared_ptr<WorkerInterface> worker,
+  bool PoppedWorkerHandler(const std::shared_ptr<WorkerInterface> &worker,
                            PopWorkerStatus status,
                            const LeaseID &lease_id,
                            SchedulingClass scheduling_class,
@@ -256,7 +246,7 @@ class LocalLeaseManager : public LocalLeaseManagerInterface {
   void RecomputeDebugStats() const;
 
   void Grant(
-      std::shared_ptr<WorkerInterface> worker,
+      const std::shared_ptr<WorkerInterface> &worker,
       absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers_,
       const std::shared_ptr<TaskResourceInstances> &allocated_instances,
       const RayLease &lease,
