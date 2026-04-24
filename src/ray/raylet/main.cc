@@ -50,6 +50,7 @@
 #include "ray/raylet_rpc_client/raylet_client.h"
 #include "ray/stats/stats.h"
 #include "ray/stats/tag_defs.h"
+#include "ray/util/clock.h"
 #include "ray/util/cmd_line_utils.h"
 #include "ray/util/event.h"
 #include "ray/util/process.h"
@@ -288,6 +289,7 @@ int main(int argc, char *argv[]) {
                                         node_id,
                                         system_reserved_cpu_weight,
                                         system_reserved_memory_bytes,
+                                        object_store_memory,
                                         system_pids);
 
   AddProcessToCgroupHook add_process_to_workers_cgroup_hook =
@@ -407,6 +409,7 @@ int main(int argc, char *argv[]) {
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
   /// granting leases.
+  ray::Clock clock;
   std::unique_ptr<ray::ClusterResourceScheduler> cluster_resource_scheduler;
   std::unique_ptr<ray::raylet::LocalLeaseManagerInterface> local_lease_manager;
   std::unique_ptr<ray::raylet::ClusterLeaseManagerInterface> cluster_lease_manager;
@@ -648,6 +651,7 @@ int main(int argc, char *argv[]) {
     node_manager_config.resource_dir = resource_dir;
     node_manager_config.ray_debugger_external = ray_debugger_external;
     node_manager_config.max_io_workers = RayConfig::instance().max_io_workers();
+    node_manager_config.enable_resource_isolation = enable_resource_isolation;
 
     // Configuration for the object manager.
     ray::ObjectManagerConfig object_manager_config;
@@ -909,6 +913,7 @@ int main(int argc, char *argv[]) {
           return gcs_client->Nodes().IsNodeAlive(ray::NodeID::FromBinary(id.Binary()));
         },
         resource_usage_gauge,
+        clock,
         /*get_used_object_store_memory*/
         [&]() {
           if (RayConfig::instance().scheduler_report_pinned_bytes_only()) {

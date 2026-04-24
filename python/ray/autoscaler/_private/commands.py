@@ -601,7 +601,7 @@ def teardown_cluster(
     provider = _get_node_provider(config["provider"], config["cluster_name"])
 
     def remaining_nodes():
-        workers = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
+        workers = provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_WORKER})
 
         if keep_min_workers:
             min_workers = config.get("min_workers", 0)
@@ -611,8 +611,10 @@ def teardown_cluster(
                 cf.bold(min_workers),
                 cf.bold("--keep-min-workers"),
             )
-
-            workers = random.sample(workers, len(workers) - min_workers)
+            if len(workers) > min_workers:
+                workers = random.sample(workers, len(workers) - min_workers)
+            else:
+                workers = []
 
         # todo: it's weird to kill the head node but not all workers
         if workers_only:
@@ -620,11 +622,9 @@ def teardown_cluster(
                 "The head node will not be shut down. " + cf.dimmed("(due to {})"),
                 cf.bold("--workers-only"),
             )
-
             return workers
 
-        head = provider.non_terminated_nodes({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
-
+        head = provider.nodes_for_teardown({TAG_RAY_NODE_KIND: NODE_KIND_HEAD})
         return head + workers
 
     def run_docker_stop(node, container_name):

@@ -36,6 +36,7 @@
 #include "ray/raylet/scheduling/local_lease_manager.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
 #include "ray/raylet/tests/util.h"
+#include "ray/util/clock.h"
 #include "mock/ray/gcs_client/gcs_client.h"
 // clang-format on
 
@@ -258,7 +259,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
     double num_cpus,
     double num_gpus,
     gcs::GcsClient &gcs_client,
-    ray::observability::MetricInterface &resource_usage_gauge) {
+    ray::observability::MetricInterface &resource_usage_gauge,
+    ray::ClockInterface &clock) {
   absl::flat_hash_map<std::string, double> local_node_resources;
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
@@ -272,7 +274,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
       [&gcs_client](scheduling::NodeID node_id) {
         return gcs_client.Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
       },
-      resource_usage_gauge);
+      resource_usage_gauge,
+      clock);
 
   return scheduler;
 }
@@ -388,7 +391,8 @@ class ClusterLeaseManagerTest : public ::testing::Test {
                                              num_cpus_at_head,
                                              num_gpus_at_head,
                                              *gcs_client_,
-                                             fake_resource_usage_gauge_)),
+                                             fake_resource_usage_gauge_,
+                                             clock_)),
         lease_dependency_manager_(missing_objects_),
         local_lease_manager_(std::make_unique<LocalLeaseManager>(
             id_,
@@ -517,6 +521,7 @@ class ClusterLeaseManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::MockGcsClient> gcs_client_;
   NodeID id_;
   ray::observability::FakeGauge fake_resource_usage_gauge_;
+  ray::Clock clock_;
   std::shared_ptr<ClusterResourceScheduler> scheduler_;
   MockWorkerPool pool_;
   absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> leased_workers_;
@@ -594,8 +599,8 @@ TEST_F(ClusterLeaseManagerTest, BasicTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(node_info_calls_, 0);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  const RayLease &finished_lease = leased_workers_.begin()->second->GetGrantedLease();
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   ASSERT_EQ(finished_lease.GetLeaseSpecification().LeaseId(),
             lease.GetLeaseSpecification().LeaseId());
   AssertNoLeaks();
@@ -649,9 +654,9 @@ TEST_F(ClusterLeaseManagerTest, IdempotencyTest) {
 
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 4.0);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  const RayLease &finished_lease = leased_workers_.begin()->second->GetGrantedLease();
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   ASSERT_EQ(finished_lease.GetLeaseSpecification().LeaseId(),
             lease.GetLeaseSpecification().LeaseId());
   ASSERT_EQ(scheduler_->GetLocalResourceManager().GetLocalAvailableCpus(), 8.0);
@@ -729,8 +734,8 @@ TEST_F(ClusterLeaseManagerTest, GrantQueueNonBlockingTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(node_info_calls_, 0);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  const RayLease &finished_lease = leased_workers_.begin()->second->GetGrantedLease();
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   ASSERT_EQ(finished_lease.GetLeaseSpecification().LeaseId(),
             lease_A.GetLeaseSpecification().LeaseId());
 
@@ -812,11 +817,11 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDiesTest) {
   local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker1);
   local_lease_manager_->ReleaseCpuResourcesFromBlockedWorker(worker2);
 
-  RayLease finished_lease1;
-  RayLease finished_lease2;
+  const RayLease &finished_lease1 = leased_workers_[lease_id1]->GetGrantedLease();
+  const RayLease &finished_lease2 = leased_workers_[lease_id2]->GetGrantedLease();
   // If a resource was double-freed, we will crash in this call.
-  local_lease_manager_->CleanupLease(leased_workers_[lease_id1], &finished_lease1);
-  local_lease_manager_->CleanupLease(leased_workers_[lease_id2], &finished_lease2);
+  local_lease_manager_->CleanupLease(leased_workers_[lease_id1]);
+  local_lease_manager_->CleanupLease(leased_workers_[lease_id2]);
   ASSERT_EQ(finished_lease1.GetLeaseSpecification().LeaseId(),
             lease1.GetLeaseSpecification().LeaseId());
   ASSERT_EQ(finished_lease2.GetLeaseSpecification().LeaseId(),
@@ -862,8 +867,8 @@ TEST_F(ClusterLeaseManagerTest, BlockedWorkerDies2Test) {
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(node_info_calls_, 0);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  const RayLease &finished_lease = leased_workers_.begin()->second->GetGrantedLease();
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   ASSERT_EQ(finished_lease.GetLeaseSpecification().LeaseId(),
             lease.GetLeaseSpecification().LeaseId());
 
@@ -1034,8 +1039,7 @@ TEST_F(ClusterLeaseManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(pool_.num_pops, 1);
 
   /* Second lease finishes, making space for the original lease */
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   leased_workers_.clear();
 
   lease_manager_.ScheduleAndGrantLeases();
@@ -1049,7 +1053,7 @@ TEST_F(ClusterLeaseManagerTest, ResourceTakenWhileResolving) {
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(pool_.num_pops, 2);
 
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   AssertNoLeaks();
 }
 
@@ -1112,8 +1116,7 @@ TEST_F(ClusterLeaseManagerTest, TestIsSelectedBasedOnLocality) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   while (!leased_workers_.empty()) {
-    RayLease finished_lease;
-    local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+    local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
     leased_workers_.erase(leased_workers_.begin());
   }
   AssertNoLeaks();
@@ -1178,8 +1181,7 @@ TEST_F(ClusterLeaseManagerTest, TestGrantOrReject) {
   ASSERT_EQ(pool_.workers.size(), 0);
 
   while (!leased_workers_.empty()) {
-    RayLease finished_lease;
-    local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+    local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
     leased_workers_.erase(leased_workers_.begin());
   }
   AssertNoLeaks();
@@ -1260,8 +1262,8 @@ TEST_F(ClusterLeaseManagerTest, TestSpillAfterAssigned) {
   // Leave one alive worker.
   ASSERT_EQ(pool_.workers.size(), 1);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  const RayLease &finished_lease = leased_workers_.begin()->second->GetGrantedLease();
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   ASSERT_EQ(finished_lease.GetLeaseSpecification().LeaseId(),
             lease.GetLeaseSpecification().LeaseId());
 
@@ -1509,8 +1511,8 @@ TEST_F(ClusterLeaseManagerTest, TaskCancellationTest) {
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(leased_workers_.size(), 1);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  const RayLease &finished_lease = leased_workers_.begin()->second->GetGrantedLease();
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   ASSERT_EQ(finished_lease.GetLeaseSpecification().LeaseId(),
             lease2.GetLeaseSpecification().LeaseId());
 
@@ -1645,8 +1647,8 @@ TEST_F(ClusterLeaseManagerTest, TaskCancelWithResourceShape) {
   ASSERT_EQ(pool_.workers.size(), 0);
   ASSERT_EQ(leased_workers_.size(), 1);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  const RayLease &finished_lease = leased_workers_.begin()->second->GetGrantedLease();
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   ASSERT_EQ(finished_lease.GetLeaseSpecification().LeaseId(),
             lease1.GetLeaseSpecification().LeaseId());
 
@@ -1888,8 +1890,14 @@ TEST_F(ClusterLeaseManagerTest, BacklogReportTest) {
         false,
         std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
     worker_ids.push_back(WorkerID::FromRandom());
-    local_lease_manager_->SetWorkerBacklog(
-        lease.GetLeaseSpecification().GetSchedulingClass(), worker_ids.back(), 10 - i);
+    {
+      rpc::ReportWorkerBacklogRequest backlog_request;
+      backlog_request.set_worker_id(worker_ids.back().Binary());
+      auto *report = backlog_request.add_backlog_reports();
+      report->mutable_lease_spec()->CopyFrom(lease.GetLeaseSpecification().GetMessage());
+      report->set_backlog_size(10 - i);
+      local_lease_manager_->SetWorkerBacklog(backlog_request);
+    }
     pool_.TriggerCallbacks();
     // Don't add the first lease to `to_cancel`.
     if (i != 0) {
@@ -1949,9 +1957,7 @@ TEST_F(ClusterLeaseManagerTest, BacklogReportTest) {
     ASSERT_EQ(resource_load_by_shape.resource_demands().size(), 0);
 
     while (!leased_workers_.empty()) {
-      RayLease finished_lease;
-      local_lease_manager_->CleanupLease(leased_workers_.begin()->second,
-                                         &finished_lease);
+      local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
       leased_workers_.erase(leased_workers_.begin());
     }
     AssertNoLeaks();
@@ -2192,8 +2198,8 @@ TEST_F(ClusterLeaseManagerTest, ArgumentEvicted) {
   ASSERT_EQ(num_callbacks, 1);
   ASSERT_EQ(leased_workers_.size(), 1);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  const RayLease &finished_lease = leased_workers_.begin()->second->GetGrantedLease();
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   ASSERT_EQ(finished_lease.GetLeaseSpecification().LeaseId(),
             lease.GetLeaseSpecification().LeaseId());
 
@@ -2252,8 +2258,8 @@ TEST_F(ClusterLeaseManagerTest, FeasibleToNonFeasible) {
   ASSERT_EQ(local_lease_manager_->waiting_lease_queue_.size(), 0);
   ASSERT_EQ(lease_manager_.infeasible_leases_.size(), 1);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  const RayLease &finished_lease = leased_workers_.begin()->second->GetGrantedLease();
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   ASSERT_EQ(finished_lease.GetLeaseSpecification().LeaseId(),
             lease1.GetLeaseSpecification().LeaseId());
 }
@@ -2493,8 +2499,7 @@ TEST_F(ClusterLeaseManagerTest, TestSpillWaitingLeases) {
   ASSERT_EQ(num_callbacks, 4);
   ASSERT_EQ(replies[0]->retry_at_raylet_address().node_id(), "");
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   leased_workers_.clear();
   ASSERT_TRUE(lease_manager_.CancelLease(leases[0].GetLeaseSpecification().LeaseId()));
   AssertNoLeaks();
@@ -2559,8 +2564,7 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsMemoryTest) {
   ASSERT_EQ(pool_.workers.size(), 1);
 
   /* First lease finishes, freeing memory for the second lease */
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   leased_workers_.clear();
 
   lease_manager_.ScheduleAndGrantLeases();
@@ -2570,7 +2574,7 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsMemoryTest) {
   ASSERT_EQ(leased_workers_.size(), 1);
   ASSERT_EQ(pool_.workers.size(), 0);
 
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   leased_workers_.clear();
   AssertNoLeaks();
 }
@@ -2622,9 +2626,8 @@ TEST_F(ClusterLeaseManagerTest, PinnedArgsSameMemoryTest) {
   ASSERT_EQ(leased_workers_.size(), 2);
   ASSERT_EQ(pool_.workers.size(), 0);
 
-  RayLease finished_lease;
   for (auto &cur_worker : leased_workers_) {
-    local_lease_manager_->CleanupLease(cur_worker.second, &finished_lease);
+    local_lease_manager_->CleanupLease(cur_worker.second);
   }
   AssertNoLeaks();
 }
@@ -2655,8 +2658,7 @@ TEST_F(ClusterLeaseManagerTest, LargeArgsNoStarvationTest) {
   ASSERT_EQ(leased_workers_.size(), 1);
   AssertPinnedLeaseArgumentsPresent(lease);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   AssertNoLeaks();
 }
 
@@ -2708,8 +2710,8 @@ TEST_F(ClusterLeaseManagerTest, PopWorkerExactlyOnce) {
   // Worker has been popped. Don't call `PopWorker` repeatedly.
   ASSERT_EQ(pool_.CallbackSize(runtime_env_hash), 0);
 
-  RayLease finished_lease;
-  local_lease_manager_->CleanupLease(leased_workers_.begin()->second, &finished_lease);
+  const RayLease &finished_lease = leased_workers_.begin()->second->GetGrantedLease();
+  local_lease_manager_->CleanupLease(leased_workers_.begin()->second);
   ASSERT_EQ(finished_lease.GetLeaseSpecification().LeaseId(),
             lease.GetLeaseSpecification().LeaseId());
   AssertNoLeaks();
@@ -2772,15 +2774,14 @@ TEST_F(ClusterLeaseManagerTest, CapRunningOnDispatchQueue) {
   // of the given scheduling class so we shouldn't dispatch the remaining lease.
   ASSERT_EQ(num_callbacks, 2);
 
-  RayLease buf;
-  local_lease_manager_->CleanupLease(workers[1], &buf);
+  local_lease_manager_->CleanupLease(workers[1]);
 
   lease_manager_.ScheduleAndGrantLeases();
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 3);
 
-  local_lease_manager_->CleanupLease(workers[0], &buf);
-  local_lease_manager_->CleanupLease(workers[2], &buf);
+  local_lease_manager_->CleanupLease(workers[0]);
+  local_lease_manager_->CleanupLease(workers[2]);
 
   AssertNoLeaks();
 }
@@ -2827,8 +2828,7 @@ TEST_F(ClusterLeaseManagerTest, ZeroCPULeases) {
   ASSERT_EQ(num_callbacks, 3);
 
   for (auto &worker : workers) {
-    RayLease buf;
-    local_lease_manager_->CleanupLease(worker, &buf);
+    local_lease_manager_->CleanupLease(worker);
   }
 
   AssertNoLeaks();
@@ -2874,8 +2874,7 @@ TEST_F(ClusterLeaseManagerTestWithoutCPUsAtHead, ZeroCPUNode) {
   ASSERT_EQ(num_callbacks, 3);
 
   for (auto &worker : workers) {
-    RayLease buf;
-    local_lease_manager_->CleanupLease(worker, &buf);
+    local_lease_manager_->CleanupLease(worker);
   }
   AssertNoLeaks();
 }
@@ -2996,8 +2995,7 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
   // Let just one lease finish.
   for (auto it = workers.begin(); it != workers.end(); it++) {
     if (!(*it)->IsBlocked()) {
-      RayLease buf;
-      local_lease_manager_->CleanupLease(*it, &buf);
+      local_lease_manager_->CleanupLease(*it);
       workers.erase(it);
       break;
     }
@@ -3031,8 +3029,7 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapIncrease) {
   ASSERT_EQ(num_callbacks, 4);
 
   for (auto &worker : workers) {
-    RayLease buf;
-    local_lease_manager_->CleanupLease(worker, &buf);
+    local_lease_manager_->CleanupLease(worker);
   }
 
   AssertNoLeaks();
@@ -3081,9 +3078,8 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
 
   ASSERT_EQ(num_callbacks, 2);
 
-  RayLease buf;
-  local_lease_manager_->CleanupLease(worker1, &buf);
-  local_lease_manager_->CleanupLease(worker2, &buf);
+  local_lease_manager_->CleanupLease(worker1);
+  local_lease_manager_->CleanupLease(worker2);
 
   AssertNoLeaks();
 
@@ -3132,11 +3128,11 @@ TEST_F(ClusterLeaseManagerTest, SchedulingClassCapResetTest) {
     lease_manager_.ScheduleAndGrantLeases();
     pool_.TriggerCallbacks();
     ASSERT_EQ(num_callbacks, 5);
-    local_lease_manager_->CleanupLease(worker5, &buf);
+    local_lease_manager_->CleanupLease(worker5);
   }
 
-  local_lease_manager_->CleanupLease(worker3, &buf);
-  local_lease_manager_->CleanupLease(worker4, &buf);
+  local_lease_manager_->CleanupLease(worker3);
+  local_lease_manager_->CleanupLease(worker4);
 
   AssertNoLeaks();
 }
@@ -3226,8 +3222,7 @@ TEST_F(ClusterLeaseManagerTest, DispatchTimerAfterRequestTest) {
   ASSERT_EQ(num_callbacks, 3);
 
   for (auto &worker : workers) {
-    RayLease buf;
-    local_lease_manager_->CleanupLease(worker, &buf);
+    local_lease_manager_->CleanupLease(worker);
   }
 
   AssertNoLeaks();
@@ -3368,11 +3363,6 @@ TEST_F(ClusterLeaseManagerTestWithoutCPUsAtHead, OneCpuInfeasibleLease) {
     }
     ASSERT_TRUE(one_cpu_found);
   }
-}
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }
 
 }  // namespace raylet
