@@ -56,6 +56,8 @@ from ray.serve._private.http_util import (
     configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
+    parse_disconnect_disabled_header,
+    parse_request_timeout_header,
     receive_http_body,
     send_http_response_on_exception,
     start_asgi_http_server,
@@ -1354,10 +1356,20 @@ class HTTPProxy(GenericProxy):
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
 
+        # Per-request headers override the global HTTPOptions timeout and disconnect
+        # policy, enabling HAProxy (or other callers) to pass per-request hints.
+        request_headers = dict(proxy_request.headers)
+        request_timeout_s = parse_request_timeout_header(
+            request_headers, self.request_timeout_s
+        )
+        request_disconnect_disabled = parse_disconnect_disabled_header(request_headers)
+
         response_generator = ProxyResponseGenerator(
             handle.remote(handle_arg_bytes),
-            timeout_s=self.request_timeout_s,
-            disconnected_task=proxy_asgi_receive_task,
+            timeout_s=request_timeout_s,
+            disconnected_task=(
+                None if request_disconnect_disabled else proxy_asgi_receive_task
+            ),
             result_callback=result_callback,
         )
 
@@ -1415,7 +1427,7 @@ class HTTPProxy(GenericProxy):
                     yield asgi_message
                     response_started = True
         except BaseException as e:
-            status = get_http_response_status(e, self.request_timeout_s, request_id)
+            status = get_http_response_status(e, request_timeout_s, request_id)
             for asgi_message in send_http_response_on_exception(
                 status, response_started
             ):

@@ -68,9 +68,10 @@ void NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     const SchedulingKey scheduling_key(task_spec.GetSchedulingClass(),
                                        task_spec.GetDependencyIds(),
                                        task_spec.GetRuntimeEnvHash());
-    // TODO(#56107): Only create the lease spec if this is a new scheduling key entry
     auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-    scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
+    if (!scheduling_key_entry.lease_spec.has_value()) {
+      scheduling_key_entry.lease_spec = LeaseSpecification(task_spec.GetMessage());
+    }
     scheduling_key_entry.task_queue.push_back(std::move(task_spec));
 
     if (!scheduling_key_entry.AllWorkersBusy()) {
@@ -109,7 +110,6 @@ void NormalTaskSubmitter::AddWorkerLeaseClient(
 
   auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
   RAY_CHECK(scheduling_key_entry.active_workers.emplace(worker_address).second);
-  RAY_CHECK(scheduling_key_entry.active_workers.size() >= 1);
 }
 
 void NormalTaskSubmitter::ReturnWorkerLease(const rpc::Address &addr,
@@ -193,7 +193,11 @@ void NormalTaskSubmitter::OnWorkerIdle(
 }
 
 void NormalTaskSubmitter::CancelWorkerLeaseIfNeeded(const SchedulingKey &scheduling_key) {
-  auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+  auto iter = scheduling_key_entries_.find(scheduling_key);
+  if (iter == scheduling_key_entries_.end()) {
+    return;
+  }
+  auto &scheduling_key_entry = iter->second;
   auto &task_queue = scheduling_key_entry.task_queue;
   if (!task_queue.empty()) {
     // There are still pending tasks so let the worker lease request succeed.
@@ -238,11 +242,13 @@ void NormalTaskSubmitter::ReportWorkerBacklog() {
     // We report backlog size per scheduling class not per scheduling key
     // so we need to aggregate backlog sizes of different scheduling keys
     // with the same scheduling class
-    const auto scheduling_class = std::get<0>(scheduling_key);
-    auto [it, inserted] = backlogs.try_emplace(
-        scheduling_class, scheduling_key_entry.lease_spec.GetMessage(), 0);
-    int64_t &backlog_size = it->second.second;
-    backlog_size += scheduling_key_entry.BacklogSize();
+    if (scheduling_key_entry.lease_spec.has_value()) {
+      const auto scheduling_class = std::get<0>(scheduling_key);
+      auto [it, inserted] = backlogs.try_emplace(
+          scheduling_class, scheduling_key_entry.lease_spec->GetMessage(), 0);
+      int64_t &backlog_size = it->second.second;
+      backlog_size += scheduling_key_entry.BacklogSize();
+    }
   }
 
   rpc::ReportWorkerBacklogRequest request;
@@ -303,12 +309,8 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
     // All tasks have corresponding pending leases, no need to request more
     return;
   }
-  // Counter for generating unique lease IDs.
-  static uint32_t lease_id_counter = 0;
-  const LeaseID lease_id = LeaseID::FromWorker(worker_id_, lease_id_counter++);
-  rpc::LeaseSpec lease_spec_msg = scheduling_key_entry.lease_spec.GetMessage();
-  lease_spec_msg.set_lease_id(lease_id.Binary());
-  const LeaseSpecification lease_spec = LeaseSpecification(std::move(lease_spec_msg));
+  RAY_CHECK(scheduling_key_entry.lease_spec.has_value());
+  const LeaseSpecification &lease_spec = *scheduling_key_entry.lease_spec;
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
   bool is_selected_based_on_locality = false;
@@ -321,13 +323,22 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
   auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(*raylet_address);
   const std::string function_or_actor_name = lease_spec.GetFunctionOrActorName();
+
+  // Counter for generating unique lease IDs.
+  static uint32_t lease_id_counter = 0;
+  const LeaseID lease_id = LeaseID::FromWorker(worker_id_, lease_id_counter++);
   RAY_LOG(DEBUG) << "Requesting lease " << lease_id << " from raylet "
                  << NodeID::FromBinary(raylet_address->node_id()) << " for "
                  << function_or_actor_name;
 
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_lease_spec()->CopyFrom(lease_spec.GetMessage());
+  request.mutable_lease_spec()->set_lease_id(lease_id.Binary());
+  request.set_grant_or_reject(is_spillback);
+  request.set_backlog_size(task_queue.size());
+  request.set_is_selected_based_on_locality(is_selected_based_on_locality);
   raylet_client->RequestWorkerLease(
-      lease_spec.GetMessage(),
-      /*grant_or_reject=*/is_spillback,
+      std::move(request),
       [this,
        scheduling_key,
        lease_id,
@@ -489,9 +500,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
               task_spec.TaskId(), error_type, &error_status, &error_info);
           tasks_to_fail.pop_front();
         }
-      },
-      task_queue.size(),
-      is_selected_based_on_locality);
+      });
   scheduling_key_entry.pending_lease_requests.emplace(lease_id, *raylet_address);
 
   // Lease more workers if there are still pending tasks and
