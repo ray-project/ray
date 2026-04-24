@@ -331,6 +331,7 @@ class TestReconciler:
         assert len(events_i_1) == 1
         assert events_i_1[0].new_instance_status == Instance.TERMINATED
         assert events_i_1[0].instance_id == "i-1"
+        assert events_i_1[0].cloud_instance_id == "c-1"
 
         events_i_2 = subscriber.events_by_id("i-2")
         assert len(events_i_2) == 2

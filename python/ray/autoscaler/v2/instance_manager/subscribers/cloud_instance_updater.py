@@ -1,12 +1,13 @@
 import logging
 import uuid
 from collections import defaultdict
-from typing import List
+from typing import List, Optional
 
 from ray.autoscaler.v2.instance_manager.instance_manager import (
     InstanceUpdatedSubscriber,
 )
 from ray.autoscaler.v2.instance_manager.node_provider import ICloudInstanceProvider
+from ray.autoscaler.v2.metrics_reporter import AutoscalerMetricsReporter
 from ray.core.generated.instance_manager_pb2 import Instance, InstanceUpdateEvent
 
 logger = logging.getLogger(__name__)
@@ -28,8 +29,10 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
     def __init__(
         self,
         cloud_provider: ICloudInstanceProvider,
+        metrics_reporter: Optional[AutoscalerMetricsReporter] = None,
     ) -> None:
         self._cloud_provider = cloud_provider
+        self._metrics_reporter = metrics_reporter
 
     def notify(self, events: List[InstanceUpdateEvent]) -> None:
         new_requests = [
@@ -40,8 +43,15 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
             for event in events
             if event.new_instance_status == Instance.TERMINATING
         ]
+        terminated_instances = [
+            event
+            for event in events
+            if event.new_instance_status == Instance.TERMINATED
+            and event.cloud_instance_id
+        ]
         self._launch_new_instances(new_requests)
         self._terminate_instances(new_terminations)
+        self._count_stopped_instances(terminated_instances)
 
     def _terminate_instances(self, new_terminations: List[InstanceUpdateEvent]):
         """
@@ -61,6 +71,21 @@ class CloudInstanceUpdater(InstanceUpdatedSubscriber):
         self._cloud_provider.terminate(
             ids=cloud_instance_ids, request_id=str(uuid.uuid4())
         )
+
+    def _count_stopped_instances(self, terminated_instances: List[InstanceUpdateEvent]):
+        """
+        Record successfully terminated cloud instances.
+
+        Args:
+            terminated_instances: List of terminated cloud instances.
+
+        Returns:
+            None.
+        """
+        if not terminated_instances or not self._metrics_reporter:
+            return
+
+        self._metrics_reporter.inc_stopped_nodes(len(terminated_instances))
 
     def _launch_new_instances(self, new_requests: List[InstanceUpdateEvent]):
         """

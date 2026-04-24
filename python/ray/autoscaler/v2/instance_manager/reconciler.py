@@ -559,6 +559,7 @@ class Reconciler:
             updates[instance.instance_id] = IMInstanceUpdateEvent(
                 instance_id=instance.instance_id,
                 new_instance_status=IMInstance.TERMINATED,
+                cloud_instance_id=cloud_instance_id,
                 details=f"cloud instance {cloud_instance_id} no longer found",
             )
 

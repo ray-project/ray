@@ -12,6 +12,9 @@ class AutoscalerMetricsReporter:
     def __init__(self, prom_metrics: AutoscalerPrometheusMetrics) -> None:
         self._prom_metrics = prom_metrics
 
+    def inc_stopped_nodes(self, count: int) -> None:
+        self._prom_metrics.stopped_nodes.inc(count)
+
     def report_instances(
         self,
         instances: List[IMInstance],
@@ -22,10 +25,9 @@ class AutoscalerMetricsReporter:
             - pending_nodes: Nodes that are launching/pending ray start
             - active_nodes: Active nodes (nodes running ray)
             - recently_failed_nodes: Nodes that are being terminated.
-            - stopped_nodes: Nodes that are terminated.
         """
         # map of instance type to a dict of status to count.
-        status_count_by_type: Dict[NodeType : Dict[str, int]] = {}
+        status_count_by_type: Dict[NodeType, Dict[str, int]] = {}
         # initialize the status count by type.
         for instance_type in node_type_configs.keys():
             status_count_by_type[instance_type] = {
@@ -57,8 +59,6 @@ class AutoscalerMetricsReporter:
             self._prom_metrics.recently_failed_nodes.labels(
                 SessionName=self._prom_metrics.session_name, NodeType=instance_type
             ).set(status_count["terminating"])
-
-            self._prom_metrics.stopped_nodes.inc(status_count["terminated"])
 
     def report_resources(
         self,
