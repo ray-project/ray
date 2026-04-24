@@ -1471,7 +1471,7 @@ packaging==24.2
     #   transformers
     #   utilsforecast
     #   wandb
-pandas==2.2.0
+pandas==2.2.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/data-requirements.txt
@@ -2496,7 +2496,9 @@ typing-inspect==0.9.0
 typing-inspection==0.4.2
     # via pydantic
 tzdata==2025.2
-    # via kombu
+    # via
+    #   kombu
+    #   pandas
 tzlocal==5.3
     # via -r python/requirements/cloud-requirements.txt
 uc-micro-py==1.0.3

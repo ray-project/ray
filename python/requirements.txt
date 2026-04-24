@@ -44,7 +44,8 @@ aiohttp_cors
 dm_tree
 uvicorn
 prometheus_client>=0.7.1
-pandas>=2.2.0
+pandas>=2.2.3,<2.3.0; python_version < '3.12'
+pandas>=2.3.3; python_version >= '3.12'
 tensorboardX
 aiohttp>=3.13.3
 starlette

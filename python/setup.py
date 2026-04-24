@@ -218,8 +218,8 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    pandas_dep = "pandas>=2.2.0; python_version < '3.13'"
-    pandas_py313_dep = "pandas>=2.2.2; python_version >= '3.13'"
+    pandas_dep = "pandas>=2.2.3,<2.3.0; python_version < '3.12'"
+    pandas_py312_dep = "pandas>=2.3.3; python_version >= '3.12'"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
         "pyarrow >= 17.0.0",
@@ -238,7 +238,7 @@ if setup_spec.type == SetupType.RAY:
         "data": [
             numpy_dep,
             pandas_dep,
-            pandas_py313_dep,
+            pandas_py312_dep,
             *pyarrow_deps,
             "fsspec",
         ],

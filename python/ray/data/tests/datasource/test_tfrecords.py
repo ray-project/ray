@@ -5,8 +5,17 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import numpy as np
+import pyarrow as pa
 import pytest
+from packaging.version import Version
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
+
+if Version(pa.__version__) < Version("17.0.0"):
+    pytest.skip(
+        "TFX-BSL test environments currently pin pyarrow<11, "
+        "but Ray Data requires pyarrow>=17.",
+        allow_module_level=True,
+    )
 
 import ray
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions

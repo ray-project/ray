@@ -4700,7 +4700,6 @@ typing-extensions==4.15.0 \
 #   gymnasium
 #   huggingface-hub
 #   lance-namespace-urllib3-client
-#   modin
 #   opentelemetry-api
 #   opentelemetry-sdk
 #   opentelemetry-semantic-conventions
