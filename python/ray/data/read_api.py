@@ -643,7 +643,8 @@ def read_audio(
     
 def read_zarrv2(
     path: str,
-    array_paths: List[str],
+    chunk_shape: List[int] | None = None,
+    array_paths: List[str] | None = None,
     *,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -654,6 +655,7 @@ def read_zarrv2(
 ):
     datasource = ZarrV2Datasource(
         path = path,
+        chunk_shape = chunk_shape,
         array_paths = array_paths
     )
     return read_datasource(

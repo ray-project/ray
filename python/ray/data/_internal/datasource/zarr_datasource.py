@@ -110,13 +110,19 @@ class ZarrV2Datasource(Datasource):
     def __init__(
         self,
         path: str,
+        chunk_shape: List[int] | None = None,
         array_paths: List[str] | None = None,
     ) -> None:
         super().__init__()
         _check_import(self, module="zarr", package="zarr")
+        
+        if chunk_shape:
+            for val in chunk_shape:
+                if val <= 0 or not isinstance(val, int):
+                    raise ValueError("chunk shape must only contain positive integerse")
 
         self.paths = [str(path)]
-
+        self.chunk_shape = tuple(chunk_shape) if chunk_shape else chunk_shape
         self._metadata = self._load_consolidated_metadata()
         self._selected_arrays = self._select_array_metadata(array_paths)
         self._grid_shape_dict = self._gen_grid_shape()
@@ -143,8 +149,10 @@ class ZarrV2Datasource(Datasource):
         """Pick a single array's metadata from the consolidated metadata."""
         arrays: dict[str, dict[str, object]] = {}
         for key, value in self._metadata.items():
-            if not key.endswith(".zarray") or key == ".zarray":
+            if not key.endswith(".zarray"):
                 continue
+            elif key == ".zarray":
+                arrays[""] = value
             else:
                 arrays[key[: -len("/.zarray")]] = value
 
@@ -173,9 +181,12 @@ class ZarrV2Datasource(Datasource):
         for array, meta in self._selected_arrays.items():
             shape = tuple(meta['shape'])
             chunk_shape = tuple(meta['chunks'])
+            if self.chunk_shape:
+                chunk_shape = self.chunk_shape
+                meta['chunks'] = chunk_shape
             
             if len(shape) != len(chunk_shape):
-                raise ValueError("array dimensions must be the same as chunk dimensions")
+                raise ValueError(f"chunk shape must have same dimension length as the array: {array}")
             
             grid_shape = tuple(
                 math.ceil(size / chunk)
