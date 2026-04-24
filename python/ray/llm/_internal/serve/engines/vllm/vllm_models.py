@@ -15,16 +15,13 @@ from ray.llm._internal.serve.constants import (
     ENV_VARS_TO_PROPAGATE,
 )
 from ray.llm._internal.serve.core.configs.accelerators import (
-    TPU_ACCELERATOR_VALUES,
     AcceleratorBackend,
     AnyAcceleratorConfig,
     CPUAccelerator,
     CPUConfig,
     GPUAccelerator,
-    GPUConfig,
     TPUAccelerator,
     TPUConfig,
-    infer_hardware_kind_from_bundles,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     AcceleratorType,
@@ -100,71 +97,17 @@ class VLLMEngineConfig(BaseModelExtended):
 
     @model_validator(mode="after")
     def _build_accelerator(self):
+        """Instantiates the accelerator backend based on the resolved config."""
         cfg = self.accelerator_config
 
-        # Use explicit config if provided
+        # LLMConfig has already resolved and validated accelerator_config
         if isinstance(cfg, TPUConfig):
             self._accelerator = TPUAccelerator(cfg)
-            return self
-        if isinstance(cfg, CPUConfig):
+        elif isinstance(cfg, CPUConfig):
             self._accelerator = CPUAccelerator()
-            return self
-        if isinstance(cfg, GPUConfig):
+        else:
+            # Default to GPU if it's GPUConfig or isn't set
             self._accelerator = GPUAccelerator()
-            return self
-
-        # Infer hardware from placement_group_config bundles
-        inferred_kind = infer_hardware_kind_from_bundles(self.placement_group_config)
-
-        if inferred_kind == "tpu":
-            self._accelerator = TPUAccelerator(TPUConfig(kind="tpu"))
-            return self
-        if inferred_kind == "gpu":
-            self._accelerator = GPUAccelerator()
-            return self
-        if inferred_kind == "cpu":
-            self._accelerator = CPUAccelerator()
-            return self
-
-        # Infer hardware from accelerator type
-        if self.accelerator_type:
-            accel_str = getattr(
-                self.accelerator_type, "value", str(self.accelerator_type)
-            )
-            if accel_str in TPU_ACCELERATOR_VALUES:
-                self._accelerator = TPUAccelerator(TPUConfig(kind="tpu"))
-                return self
-
-            self._accelerator = GPUAccelerator()
-            return self
-
-        # Default to GPU if no config, explicit bundles, or type are passed
-        self._accelerator = GPUAccelerator()
-        return self
-
-    @model_validator(mode="after")
-    def _validate_accelerator_type_with_hardware_mode(self):
-        """Validate that accelerator_type aligns with the resolved hardware configuration."""
-        if not self.accelerator_type:
-            return self
-
-        if isinstance(self.accelerator, CPUAccelerator):
-            raise ValueError(
-                f"accelerator_type='{self.accelerator_type}' cannot be used with "
-                "CPU-only configurations. You must provide a GPU or TPU accelerator_config."
-            )
-
-        # Check for mismatch between accelerator type and hardware backend
-        accel_str = getattr(self.accelerator_type, "value", str(self.accelerator_type))
-        expected_kind = "tpu" if accel_str in TPU_ACCELERATOR_VALUES else "gpu"
-        actual_kind = "tpu" if isinstance(self.accelerator, TPUAccelerator) else "gpu"
-
-        if actual_kind != expected_kind:
-            raise ValueError(
-                f"Hardware mismatch: accelerator_type='{self.accelerator_type}' requires a "
-                f"{expected_kind.upper()} backend, but the configuration resolved to a "
-                f"{actual_kind.upper()} backend."
-            )
 
         return self
 

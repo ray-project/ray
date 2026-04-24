@@ -478,23 +478,29 @@ class LLMConfig(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
-    def _resolve_accelerator_config(self):
+    def _resolve_and_validate_accelerator(self):
+        """Resolves the accelerator configuration and validates it."""
+        self._resolve_accelerator_config_inline()
+        self._check_accelerator_type_matches_hardware()
+        return self
+
+    def _resolve_accelerator_config_inline(self) -> None:
         """Infers and populates accelerator_config if omitted by the user."""
         if self.accelerator_config is not None:
-            return self
+            return
 
         # Infer hardware from placement_group_config bundles
         inferred_kind = infer_hardware_kind_from_bundles(self.placement_group_config)
 
         if inferred_kind == "tpu":
             self.accelerator_config = TPUConfig(kind="tpu")
-            return self
+            return
         if inferred_kind == "gpu":
             self.accelerator_config = GPUConfig(kind="gpu")
-            return self
+            return
         if inferred_kind == "cpu":
             self.accelerator_config = CPUConfig(kind="cpu")
-            return self
+            return
 
         # Infer hardware from accelerator_type string
         if self.accelerator_type:
@@ -503,20 +509,26 @@ class LLMConfig(BaseModelExtended):
             )
             if accel_str in TPU_ACCELERATOR_VALUES:
                 self.accelerator_config = TPUConfig(kind="tpu")
-                return self
+                return
 
             self.accelerator_config = GPUConfig(kind="gpu")
-            return self
+            return
 
         # Default to GPUConfig if not otherwise specified
         self.accelerator_config = GPUConfig(kind="gpu")
-        return self
 
-    @model_validator(mode="after")
-    def _validate_accelerator_type_with_hardware_mode(self):
-        """Validate that accelerator_type is not set for CPU-only configurations."""
+    def _check_accelerator_type_matches_hardware(self) -> None:
+        """Validate that accelerator_type aligns with the hardware configuration."""
+        if isinstance(self.accelerator_config, TPUConfig):
+            # For TPU slices, both accelerator_type and topology must be provided.
+            if self.accelerator_config.topology and not self.accelerator_type:
+                raise ValueError(
+                    "accelerator_type must be provided when specifying a TPU topology "
+                    "for TPU slice provisioning."
+                )
+
         if not self.accelerator_type:
-            return self
+            return
 
         if isinstance(self.accelerator_config, CPUConfig):
             raise ValueError(
@@ -535,8 +547,6 @@ class LLMConfig(BaseModelExtended):
                 f"{self.accelerator_config.kind.upper()} backend. Please ensure your "
                 f"bundles and accelerator_type align."
             )
-
-        return self
 
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None
