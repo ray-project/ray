@@ -124,6 +124,12 @@ class NixlTensorTransport(TensorTransportManager):
         nixl_agent.register_memory(pool.get_pool_tensor())
         self._memory_pool = pool
 
+    def deregister_nixl_memory(self, tensor: "torch.Tensor") -> None:
+        """Decrements the reference count for the tensor's NIXL memory registration.
+        If the count reaches 0, the memory is deregistered from NIXL.
+        """
+        self._remove_tensor_descs([tensor])
+
     def get_nixl_agent(self):
         """
         Creates a NIXL agent with UCX backend if not already created.
@@ -350,16 +356,7 @@ class NixlTensorTransport(TensorTransportManager):
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
                 nixl_agent.remove_remote_agent(remote_name)
             if added_tensor_descs:
-                with self._cache_lock:
-                    for tensor in tensors:
-                        key = tensor.untyped_storage().data_ptr()
-                        tensor_desc = self._tensor_desc_cache[key]
-                        tensor_desc.metadata_count -= 1
-
-                        if tensor_desc.metadata_count == 0:
-                            nixl_agent.deregister_memory(tensor_desc.reg_desc)
-                            self._tensor_desc_cache.pop(key)
-                            self._nixl_agent_meta_version += 1
+                self._remove_tensor_descs(tensors)
 
         return tensors
 
@@ -384,25 +381,7 @@ class NixlTensorTransport(TensorTransportManager):
             if obj_id not in self._managed_meta_nixl:
                 return
             self._managed_meta_nixl.pop(obj_id, None)
-
-            pool_return_ptrs = []
-            for tensor in tensors:
-                key = tensor.untyped_storage().data_ptr()
-                if key not in self._tensor_desc_cache:
-                    continue
-                tensor_desc = self._tensor_desc_cache[key]
-                tensor_desc.metadata_count -= 1
-                if tensor_desc.metadata_count == 0:
-                    self._tensor_desc_cache.pop(key)
-                    if tensor_desc.reg_desc is not None:
-                        # Traditional path: deregister NIXL memory.
-                        self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
-                        self._nixl_agent_meta_version += 1
-                    else:
-                        # Pool path: return block to pool.
-                        pool_return_ptrs.append(key)
-            if pool_return_ptrs and self._memory_pool is not None:
-                self._memory_pool.return_blocks(pool_return_ptrs)
+            self._remove_tensor_descs(tensors)
 
     def abort_transport(
         self,
@@ -431,6 +410,32 @@ class NixlTensorTransport(TensorTransportManager):
         """
         with self._cache_lock:
             self._managed_meta_nixl[object_id] = meta
+
+    def _remove_tensor_descs(self, tensors: List["torch.Tensor"]):
+        """
+        Decrements the reference count for each tensor. If the count reaches 0,
+        traditionally-registered memory is deregistered from NIXL, while
+        pool-managed blocks (reg_desc is None) are returned to the pool.
+        """
+        with self._cache_lock:
+            pool_return_ptrs: List[int] = []
+            for tensor in tensors:
+                key = tensor.untyped_storage().data_ptr()
+                if key not in self._tensor_desc_cache:
+                    continue
+                tensor_desc = self._tensor_desc_cache[key]
+                tensor_desc.metadata_count -= 1
+                if tensor_desc.metadata_count == 0:
+                    self._tensor_desc_cache.pop(key)
+                    if tensor_desc.reg_desc is not None:
+                        # Traditional path: deregister NIXL memory.
+                        self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
+                        self._nixl_agent_meta_version += 1
+                    else:
+                        # Pool path: return block to pool.
+                        pool_return_ptrs.append(key)
+            if pool_return_ptrs and self._memory_pool is not None:
+                self._memory_pool.return_blocks(pool_return_ptrs)
 
     def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
         """

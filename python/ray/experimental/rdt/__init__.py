@@ -9,6 +9,7 @@ from ray.experimental.rdt.tensor_transport_manager import (
     TensorTransportMetadata,
 )
 from ray.experimental.rdt.util import (
+    deregister_nixl_memory,
     register_nixl_memory,
     register_nixl_memory_pool,
     register_tensor_transport,
@@ -19,6 +20,7 @@ __all__ = [
     "wait_tensor_freed",
     "register_tensor_transport",
     "register_nixl_memory",
+    "deregister_nixl_memory",
     "register_nixl_memory_pool",
     "TensorTransportManager",
     "TensorTransportMetadata",

@@ -574,7 +574,7 @@ def test_nixl_get_into_tensor_buffers(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 1}], indirect=True)
-def test_register_nixl_memory(ray_start_regular):
+def test_register_deregister_nixl_memory(ray_start_regular):
     """
     Test that register_nixl_memory persists the NIXL memory registration when the object ref goes out of scope
     """
@@ -600,6 +600,10 @@ def test_register_nixl_memory(ray_start_regular):
     assert key in transport._tensor_desc_cache
     # The reference count should be 1 due to being bumped by register_nixl_memory
     assert transport._tensor_desc_cache[key].metadata_count == 1
+
+    # decrement the remaining count to 0 and deregister the memory
+    transport.deregister_nixl_memory(tensor)
+    assert key not in transport._tensor_desc_cache
 
 
 @pytest.mark.parametrize("device", ["cpu", "cuda"])
