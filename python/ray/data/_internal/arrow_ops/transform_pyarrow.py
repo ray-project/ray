@@ -75,6 +75,24 @@ def _create_empty_table(schema: "pyarrow.Schema"):
     return pa.table(arrays, schema=schema)
 
 
+def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
+    """Check if any column type becomes unhashable after to_pandas() conversion.
+
+    Struct, list, large_list, and map types convert to Python dicts/lists which
+    are not hashable by pandas' hash_pandas_object. We check the schema upfront
+    so the hash algorithm choice is deterministic per schema, not per block data.
+    """
+    for field in schema:
+        if (
+            pyarrow.types.is_struct(field.type)
+            or pyarrow.types.is_list(field.type)
+            or pyarrow.types.is_large_list(field.type)
+            or pyarrow.types.is_map(field.type)
+        ):
+            return True
+    return False
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
@@ -85,22 +103,21 @@ def _hash_partition(
     if len(table.columns) == 1 and pyarrow.types.is_integer(table.column(0).type):
         target_column = table.column(0)
         partitions = (target_column.to_numpy() % num_partitions).astype(np.int64)
+    elif _has_unhashable_pandas_types(table.schema):
+        # Struct/list/map columns become dicts/lists in pandas, which are
+        # unhashable. Use row-by-row hashing on PyArrow scalars instead.
+        partitions = np.zeros((table.num_rows,), dtype=np.int64)
+        for i in range(table.num_rows):
+            _tuple = tuple(c[i] for c in table.columns)
+            partitions[i] = hash(_tuple) % num_partitions
     else:
         # Use pandas' vectorized hash (xxhash-based) instead of a Python
         # row-by-row loop.
         import pandas as pd
 
-        try:
-            hashes = pd.util.hash_pandas_object(table.to_pandas(), index=False).values
-            np.mod(hashes, num_partitions, out=hashes)
-            partitions = hashes
-        except (TypeError, ValueError):
-            # Struct/nested columns become dicts in pandas, which are unhashable.
-            # Fall back to row-by-row hashing on PyArrow scalars.
-            partitions = np.zeros((table.num_rows,), dtype=np.int64)
-            for i in range(table.num_rows):
-                _tuple = tuple(c[i] for c in table.columns)
-                partitions[i] = hash(_tuple) % num_partitions
+        hashes = pd.util.hash_pandas_object(table.to_pandas(), index=False).values
+        np.mod(hashes, num_partitions, out=hashes)
+        partitions = hashes
 
     return partitions
 
