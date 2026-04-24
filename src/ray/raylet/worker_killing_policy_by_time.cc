@@ -119,6 +119,9 @@ TimeBasedWorkerKillingPolicy::Policy(
         if (right->GetGrantedLeaseId().IsNil() && !left->GetGrantedLeaseId().IsNil()) {
           return false;
         }
+        if (left->GetGrantedLeaseId().IsNil() && right->GetGrantedLeaseId().IsNil()) {
+          return false;
+        }
 
         if (left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
             !right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
@@ -142,6 +145,7 @@ TimeBasedWorkerKillingPolicy::Policy(
   while (memory_left_to_free > 0 && sorted_worker_it != sorted_workers.end()) {
     std::shared_ptr<WorkerInterface> worker_to_kill = *sorted_worker_it;
     bool should_retry =
+        !worker_to_kill->GetGrantedLeaseId().IsNil() &&
         worker_to_kill->GetGrantedLease().GetLeaseSpecification().IsRetriable();
     workers_to_kill.push_back(std::make_pair(worker_to_kill, should_retry));
 
@@ -192,7 +196,8 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
       break;
     }
 
-    bool retriable = worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
+    bool retriable = !worker->GetGrantedLeaseId().IsNil() &&
+                     worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
     worker_debug_strings.push_back(absl::StrFormat(
         "(Worker's Lease ID: %s | Granted time: %s | Retriable: %s | Memory used: %d "
         "bytes)",

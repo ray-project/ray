@@ -127,8 +127,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak1) {
       actor_data, rpc::TaskSpec(), counter, fake_ray_event_recorder_, "");
   rpc::ClientCallback<rpc::RequestWorkerLeaseReply> cb;
   EXPECT_CALL(*raylet_client,
-              RequestWorkerLease(An<const rpc::LeaseSpec &>(), _, _, _, _))
-      .WillOnce(testing::SaveArg<2>(&cb));
+              RequestWorkerLease(An<rpc::RequestWorkerLeaseRequest &&>(), _))
+      .WillOnce(testing::SaveArg<1>(&cb));
   // Ensure actor is killed
   EXPECT_CALL(*raylet_client, KillLocalActor(_, _));
   actor_scheduler->Schedule(actor);
@@ -158,8 +158,8 @@ TEST_F(GcsActorSchedulerMockTest, KillWorkerLeak2) {
   // Ensure actor is killed
   EXPECT_CALL(*raylet_client, KillLocalActor(_, _));
   EXPECT_CALL(*raylet_client,
-              RequestWorkerLease(An<const rpc::LeaseSpec &>(), _, _, _, _))
-      .WillOnce(testing::SaveArg<2>(&request_worker_lease_cb));
+              RequestWorkerLease(An<rpc::RequestWorkerLeaseRequest &&>(), _))
+      .WillOnce(testing::SaveArg<1>(&request_worker_lease_cb));
 
   // Postable is not default constructable, so we use a unique_ptr to hold one.
   std::unique_ptr<Postable<void(bool)>> async_put_with_index_cb;

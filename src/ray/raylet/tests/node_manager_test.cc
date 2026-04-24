@@ -1534,6 +1534,10 @@ TEST_P(ReleaseUnusedBundlesRetriesTest, TestHandleReleaseUnusedBundlesRetries) {
   LeaseID lease_id = LeaseID::FromRandom();
   auto worker = std::make_shared<raylet::FakeWorker>(worker_id, 0, io_service_);
   worker->SetBundleId(bundle_id);
+  rpc::LeaseSpec lease_spec_msg;
+  lease_spec_msg.set_lease_id(lease_id.Binary());
+  lease_spec_msg.set_type(rpc::TaskType::NORMAL_TASK);
+  worker->GrantLease(RayLease(std::move(lease_spec_msg)));
   worker->GrantLeaseId(lease_id);
   leased_workers_.emplace(lease_id, worker);
 
