@@ -350,13 +350,13 @@ def test_unsupported_report_metrics(metric_name, tmp_path):
     with pytest.raises(WorkerGroupError) as exc_info:
         trainer.fit()
 
-        assert len(exc_info.value.worker_failures) == 1
-        worker_error = exc_info.value.worker_failures[0]
-        assert isinstance(worker_error, ValueError)
-        assert worker_error.args[0].startswith(
-            "Passing objects containing Torch tensors as metrics is not "
-            "supported as it will throw an exception on deserialization."
-        )
+    assert len(exc_info.value.worker_failures) == 1
+    worker_error = exc_info.value.worker_failures[0]
+    assert isinstance(worker_error, ValueError)
+    assert worker_error.args[0].startswith(
+        "Passing objects containing Torch tensors as metrics is not "
+        "supported as it will throw an exception on deserialization."
+    )
 
 
 @pytest.mark.parametrize("metric", SUPPORTED_METRICS)
@@ -372,7 +372,7 @@ def test_supported_returned_metrics(metric, tmp_path):
         ),
     )
     result = trainer.fit()
-    return result.return_value == metric
+    assert result.return_value == metric
 
 
 @pytest.mark.parametrize("metric_name", UNSUPPORTED_METRICS)
@@ -399,14 +399,14 @@ def test_unsupported_returned_metrics(metric_name, tmp_path):
     with pytest.raises(WorkerGroupError) as exc_info:
         trainer.fit()
 
-        assert len(exc_info.value.worker_failures) == 1
-        worker_error = exc_info.value.worker_failures[0]
-        assert isinstance(worker_error, ValueError)
-        assert worker_error.args[0].startswith(
-            "Returning objects containing Torch tensors from the "
-            "training function is not supported as it will throw an "
-            "exception on deserialization."
-        )
+    assert len(exc_info.value.worker_failures) == 1
+    worker_error = exc_info.value.worker_failures[0]
+    assert isinstance(worker_error, ValueError)
+    assert worker_error.args[0].startswith(
+        "Returning objects containing Torch tensors from the "
+        "training function is not supported as it will throw an "
+        "exception on deserialization."
+    )
 
 
 if __name__ == "__main__":
