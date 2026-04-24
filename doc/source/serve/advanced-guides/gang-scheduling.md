@@ -142,10 +142,7 @@ You can also use `placement_group_bundle_label_selector` to control which nodes 
 
 ## Autoscaling
 
-Gang scheduling works with Ray Serve autoscaling (`num_replicas="auto"`). When autoscaling is enabled, replica counts are automatically quantized to multiples of `gang_size`:
-
-- **Scaling up**: The target replica count is rounded **up** to the next multiple of `gang_size`, ensuring sufficient capacity.
-- **Scaling down**: The target replica count is rounded **down** to the nearest multiple of `gang_size`, releasing only complete gangs.
+Gang scheduling works with Ray Serve autoscaling (`num_replicas="auto"`). When autoscaling is enabled, the replica count recommended by the base autoscaling policy is always rounded **up** to the next multiple of `gang_size`, so the deployment never operates below the capacity the base policy requested.
 
 ```{literalinclude} ../doc_code/gang_scheduling.py
 :start-after: __autoscaling_start__
@@ -161,7 +158,7 @@ Scale-to-zero (`min_replicas=0`) is not supported with gang scheduling.
 
 In Ray Serve autoscaler, gang quantization is handled automatically by a `GangSchedulingAutoscalingPolicy` wrapper that is injected around the base autoscaling policy.
 
-**Example**: With `gang_size=4` and 8 current replicas, if the base autoscaling policy recommends 5 replicas (scale down), the gang-aware policy rounds down to 4, releasing one complete gang. If the policy recommends 10 replicas (scale up), the gang-aware policy rounds up to 12, creating one complete new gang.
+**Example**: With `gang_size=4`, if the base autoscaling policy recommends 5 replicas, the `GangSchedulingAutoscalingPolicy` rounds up to 8. If the policy recommends 10 replicas, the gang-aware policy rounds up to 12. Always rounding up makes the output deterministic: the same desired count produces the same replica target regardless of the current replica count, which prevents oscillation between two gang-aligned values.
 
 ## Fault tolerance
 
