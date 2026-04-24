@@ -10,15 +10,18 @@ import asyncio
 import bisect
 import logging
 import time
+from collections import OrderedDict
 from typing import FrozenSet, List, Optional
 
 import mmh3
 
 from ray.serve._private.common import ReplicaID
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import DEFAULT_LATENCY_BUCKET_MS, SERVE_LOGGER_NAME
+from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.request_router.common import PendingRequest
 from ray.serve._private.request_router.replica_wrapper import RunningReplica
 from ray.serve._private.request_router.request_router import RequestRouter
+from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -29,6 +32,9 @@ CONSISTENT_HASH_SEED = 0xF9B4CA77
 
 DEFAULT_VIRTUAL_NODES = 100
 DEFAULT_FALLBACK_REPLICAS = 2
+
+# Bounded LRU size for the top-sessions gauge
+TOP_SESSIONS_MAX = 20
 
 
 def _hash_bytes(key: bytes) -> int:
@@ -67,6 +73,51 @@ class ConsistentHashRouter(RequestRouter):
         self._virtual_nodes: int = DEFAULT_VIRTUAL_NODES
         self._fallback_replicas: int = DEFAULT_FALLBACK_REPLICAS
 
+        # Metrics
+        default_tags = {
+            "application": self._deployment_id.app_name,
+            "deployment": self._deployment_id.name,
+            "actor_id": self._self_actor_id,
+            "handle_source": self._handle_source.value,
+        }
+        common_tag_keys = ("application", "deployment", "actor_id", "handle_source")
+
+        # Primary (rank=0) vs. fallback (rank>=1) usage; the affinity
+        # health signal. rank=-1 means the accepting replica wasn't in
+        # the current ranked list (staleness window).
+        self.fallback_counter = metrics.Counter(
+            "serve_consistent_hash_fallback",
+            description=("Routing decisions per rank."),
+            tag_keys=common_tag_keys + ("rank",),
+        ).set_default_tags(default_tags)
+
+        # Hottest session_ids over a rolling window.
+        self.top_sessions_gauge = metrics.Gauge(
+            "serve_consistent_hash_top_sessions",
+            description=(
+                f"Per-session routing count for the top {TOP_SESSIONS_MAX} "
+                "recently-active session_ids."
+            ),
+            tag_keys=common_tag_keys + ("session_id",),
+        ).set_default_tags(default_tags)
+
+        # In-memory LRU backing the gauge above.
+        self._top_sessions_lru: "OrderedDict[str, int]" = OrderedDict()
+
+        # Ring rebuild count and latency; catches scale-event thrash.
+        self.ring_rebuilds_counter = metrics.Counter(
+            "serve_consistent_hash_ring_rebuilds",
+            description=("Number of full consistent-hash ring rebuilds."),
+            tag_keys=common_tag_keys,
+        ).set_default_tags(default_tags)
+
+        self.ring_rebuild_duration_ms_histogram = metrics.Histogram(
+            "serve_consistent_hash_ring_rebuild_duration_ms",
+            description="Latency of a full consistent-hash ring rebuild, in ms.",
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=common_tag_keys,
+        ).set_default_tags(default_tags)
+
     def initialize_state(self, **kwargs) -> None:
         virtual_nodes = kwargs.get("virtual_nodes", DEFAULT_VIRTUAL_NODES)
         fallback_replicas = kwargs.get("fallback_replicas", DEFAULT_FALLBACK_REPLICAS)
@@ -104,6 +155,8 @@ class ConsistentHashRouter(RequestRouter):
         the replica's unique_id rather than the full ReplicaID keeps the
         key stable across controller restarts.
         """
+        start = time.perf_counter()
+
         new_hashes: List[int] = []
         new_replicas: List[ReplicaID] = []
 
@@ -121,10 +174,15 @@ class ConsistentHashRouter(RequestRouter):
         self._ring_replicas = new_replicas
         self._replica_set_snapshot = new_snapshot
 
+        duration_ms = (time.perf_counter() - start) * 1000.0
+        self.ring_rebuilds_counter.inc()
+        self.ring_rebuild_duration_ms_histogram.observe(duration_ms)
+
         logger.info(
             f"Rebuilt consistent-hash ring for {self._deployment_id}: "
             f"{len(new_snapshot)} replicas, "
-            f"{len(new_hashes)} vnodes."
+            f"{len(new_hashes)} vnodes, "
+            f"{duration_ms:.3f}ms."
         )
 
     def _routing_key(self, pending_request: Optional[PendingRequest]) -> Optional[str]:
@@ -290,3 +348,46 @@ class ConsistentHashRouter(RequestRouter):
         finally:
             self._routing_tasks.remove(asyncio.current_task(loop=self._event_loop))
             self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
+
+    def on_request_routed(
+        self,
+        pending_request: PendingRequest,
+        replica_id: ReplicaID,
+        result: ReplicaResult,
+    ) -> None:
+        """Emit per-rank and top-sessions metrics after a replica accepts
+        the request.
+        """
+        rank = self._compute_rank(self._routing_key(pending_request), replica_id)
+        self.fallback_counter.inc(tags={"rank": str(rank)})
+
+        session_id = pending_request.metadata.session_id if pending_request else ""
+        if session_id:
+            self._touch_top_session(session_id)
+
+    def _compute_rank(self, routing_key: str, replica_id: ReplicaID) -> int:
+        """Position of ``replica_id`` in the current ranked walk
+        (0 = primary); -1 if the ring drifted between routing and
+        this call and the replica is no longer a ranked candidate."""
+        try:
+            return self._lookup_ranked_replicas(routing_key).index(replica_id)
+        except ValueError:
+            return -1
+
+    def _touch_top_session(self, session_id: str) -> None:
+        """Record one more routing event for ``session_id`` in the LRU
+        and update its gauge value. On eviction, zero the evicted series
+        so Prometheus doesn't show it frozen at its final count."""
+        if session_id in self._top_sessions_lru:
+            self._top_sessions_lru[session_id] += 1
+            self._top_sessions_lru.move_to_end(session_id)
+        else:
+            if len(self._top_sessions_lru) >= TOP_SESSIONS_MAX:
+                evicted_id, _ = self._top_sessions_lru.popitem(last=False)
+                self.top_sessions_gauge.set(0, tags={"session_id": evicted_id})
+            self._top_sessions_lru[session_id] = 1
+
+        self.top_sessions_gauge.set(
+            self._top_sessions_lru[session_id],
+            tags={"session_id": session_id},
+        )

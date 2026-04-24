@@ -481,6 +481,7 @@ class RequestRouter(ABC):
     ):
         self._deployment_id = deployment_id
         self._handle_source = handle_source
+        self._self_actor_id = self_actor_id or ""
         self._self_actor_handle = self_actor_handle
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
         self._create_replica_wrapper_func = create_replica_wrapper_func
@@ -549,7 +550,7 @@ class RequestRouter(ABC):
                 "app": self._deployment_id.app_name,
                 "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
-                "actor_id": self_actor_id if self_actor_id else "",
+                "actor_id": self._self_actor_id,
                 "handle_source": self._handle_source.value,
             }
         )
@@ -569,7 +570,7 @@ class RequestRouter(ABC):
                 "app": self._deployment_id.app_name,
                 "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
-                "actor_id": self_actor_id if self_actor_id else "",
+                "actor_id": self._self_actor_id,
                 "handle_source": self._handle_source.value,
             }
         )
@@ -589,7 +590,7 @@ class RequestRouter(ABC):
             {
                 "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
-                "actor_id": self_actor_id if self_actor_id else "",
+                "actor_id": self._self_actor_id,
                 "handle_source": self._handle_source.value,
             }
         )
@@ -611,7 +612,7 @@ class RequestRouter(ABC):
             {
                 "application": self._deployment_id.app_name,
                 "deployment": self._deployment_id.name,
-                "actor_id": self_actor_id if self_actor_id else "",
+                "actor_id": self._self_actor_id,
                 "handle_source": self._handle_source.value,
             }
         )
