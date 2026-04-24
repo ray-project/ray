@@ -87,9 +87,10 @@ class AcceleratorBackend(ABC):
         pass
 
     @property
+    @abstractmethod
     def requires_remote_initialization(self) -> bool:
         """Boolean indicating whether this backend needs a remote Ray task to query hardware during init."""
-        return True
+        pass
 
     @abstractmethod
     def get_remote_options(self, accelerator_type_str: str = None) -> Dict[str, Any]:
@@ -145,6 +146,10 @@ class GPUAccelerator(AcceleratorBackend):
         accelerator_type_str: Optional[str] = None,
     ):
         return placement_group(bundles=bundles, strategy=strategy, name=name)
+
+    @property
+    def requires_remote_initialization(self) -> bool:
+        return True
 
     def get_remote_options(self, accelerator_type_str: str = None):
         options = {"num_gpus": 0.001}
@@ -213,6 +218,10 @@ class TPUAccelerator(AcceleratorBackend):
             name=name,
         )
         return self._slice_pg_wrapper.placement_group
+
+    @property
+    def requires_remote_initialization(self) -> bool:
+        return True
 
     def get_remote_options(self, accelerator_type_str: str = None):
         # TPUs use custom resource strings rather than a native kwarg
