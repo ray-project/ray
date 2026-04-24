@@ -258,13 +258,10 @@ class TestDownloadHelpers:
             assert _is_obstore_supported_url(uri) is expected
 
 
-# TestSessionBackedFsspecCredentials
-def _make_sync_session(access_key, secret_key, token):
-    """Build a sync (botocore-style) session returning the given frozen creds."""
-    frozen = MagicMock()
-    frozen.access_key = access_key
-    frozen.secret_key = secret_key
-    frozen.token = token
+# Test helpers for fsspec-S3 credential extraction & routing.
+def _sync_session(access_key, secret_key="sk", token="tk"):
+    """Build a botocore-style sync session returning frozen creds."""
+    frozen = MagicMock(access_key=access_key, secret_key=secret_key, token=token)
     creds = MagicMock()
     creds.get_frozen_credentials = MagicMock(return_value=frozen)
     session = MagicMock()
@@ -272,20 +269,27 @@ def _make_sync_session(access_key, secret_key, token):
     return session
 
 
-def _wrap_fsspec(session, storage_options=None, protocol="s3", anon=False):
-    """Wrap a minimal fsspec-like stub in PyFileSystem(FSSpecHandler(...))."""
+def _raising_session(exc=RuntimeError("no creds")):
+    session = MagicMock()
+    session.get_credentials = MagicMock(side_effect=exc)
+    return session
+
+
+def _wrap_s3fs(session=None, storage_options=None, protocol="s3", anon=False):
+    """Build a PyFileSystem(FSSpecHandler(stub)) with the given session."""
     from pyarrow.fs import FSSpecHandler, PyFileSystem
 
-    inner = MagicMock()
-    inner.protocol = protocol
-    inner.storage_options = storage_options or {}
-    inner.session = session
-    inner.key = None
-    inner.secret = None
-    inner.token = None
-    inner.endpoint_url = None
-    inner.client_kwargs = None
-    inner.anon = anon
+    inner = MagicMock(
+        protocol=protocol,
+        storage_options=storage_options or {},
+        session=session,
+        key=None,
+        secret=None,
+        token=None,
+        endpoint_url=None,
+        client_kwargs=None,
+        anon=anon,
+    )
     inner._strip_protocol = lambda p: p.split("://", 1)[-1] if "://" in p else p
     return PyFileSystem(FSSpecHandler(inner))
 
@@ -293,132 +297,76 @@ def _wrap_fsspec(session, storage_options=None, protocol="s3", anon=False):
 class TestFsspecSessionCreds:
     """Session-backed s3fs (Okta / STS / profile-based) credential paths."""
 
-    def test_sync_session(self):
-        session = _make_sync_session("AKIA_OKTA", "sstoken_secret", "sts_token")
+    def test_frozen_sync_and_underscore_fallback(self):
+        # Modern s3fs uses ``session``; older versions used ``_session``.
+        # Both must work and produce identical frozen-credential output.
+        expected = {"access_key": "AKIA", "secret_key": "sk", "token": "tk"}
+
+        modern = MagicMock(session=_sync_session("AKIA"))
+        assert _frozen_s3fs_credentials(modern) == expected
+
+        legacy = MagicMock(spec=["_session"])
+        legacy._session = _sync_session("AKIA")
+        assert _frozen_s3fs_credentials(legacy) == expected
+
+    def test_frozen_async_session(self):
+        # aiobotocore returns coroutines from get_credentials and
+        # get_frozen_credentials. The helper must drive them to completion.
+        async def _frozen():
+            return MagicMock(access_key="AKIA_AIO", secret_key="s", token="t")
+
+        async def _creds():
+            return MagicMock(get_frozen_credentials=MagicMock(return_value=_frozen()))
+
         inner = MagicMock()
-        inner.session = session
+        inner.session = MagicMock()
+        inner.session.get_credentials = MagicMock(return_value=_creds())
         assert _frozen_s3fs_credentials(inner) == {
-            "access_key": "AKIA_OKTA",
-            "secret_key": "sstoken_secret",
-            "token": "sts_token",
+            "access_key": "AKIA_AIO",
+            "secret_key": "s",
+            "token": "t",
         }
 
-    def test_missing_session(self):
+    @pytest.mark.parametrize(
+        "session_factory",
+        [
+            pytest.param(lambda: None, id="no-session"),
+            pytest.param(_raising_session, id="session-raises"),
+            pytest.param(lambda: _sync_session(None, None, None), id="empty-creds"),
+        ],
+    )
+    def test_frozen_returns_none_on_failure(self, session_factory):
         inner = MagicMock()
-        inner.session = None
+        inner.session = session_factory()
         inner._session = None
         assert _frozen_s3fs_credentials(inner) is None
 
-    def test_session_raises(self):
-        session = MagicMock()
-        session.get_credentials = MagicMock(side_effect=RuntimeError("expired"))
-        inner = MagicMock()
-        inner.session = session
-        assert _frozen_s3fs_credentials(inner) is None
-
-    def test_empty_access_key(self):
-        # session returns creds but access_key is None → return None.
-        inner = MagicMock()
-        inner.session = _make_sync_session(None, None, None)
-        assert _frozen_s3fs_credentials(inner) is None
-
-    def test_async_session(self):
-        # aiobotocore returns coroutines from get_credentials and
-        # get_frozen_credentials. The helper must drive them to completion.
-        async def _async_frozen():
-            frozen = MagicMock()
-            frozen.access_key = "AKIA_AIO"
-            frozen.secret_key = "aio_secret"
-            frozen.token = "aio_tok"
-            return frozen
-
-        async def _async_creds():
-            creds = MagicMock()
-            creds.get_frozen_credentials = MagicMock(return_value=_async_frozen())
-            return creds
-
-        session = MagicMock()
-        session.get_credentials = MagicMock(return_value=_async_creds())
-        inner = MagicMock()
-        inner.session = session
-        assert _frozen_s3fs_credentials(inner) == {
-            "access_key": "AKIA_AIO",
-            "secret_key": "aio_secret",
-            "token": "aio_tok",
-        }
-
-    def test_underscore_session_fallback(self):
-        # Older s3fs versions exposed `_session` instead of `session`.
-        session = _make_sync_session("AKIA_OLD", "old_sec", "")
-        inner = MagicMock(spec=["_session"])
-        inner._session = session
-        assert _frozen_s3fs_credentials(inner) == {
-            "access_key": "AKIA_OLD",
-            "secret_key": "old_sec",
-            "token": "",
-        }
-
-    def test_extract_uses_session_when_static_empty(self):
+    def test_extract_recovers_via_session(self):
         # The target bug: fsspec s3fs with Okta has static attrs None but
         # credentials resolvable via session. Extraction must recover them.
-        session = _make_sync_session("AKIA_STS", "secret_sts", "token_sts")
-        wrapped = _wrap_fsspec(session)
+        wrapped = _wrap_s3fs(_sync_session("AKIA_STS", "s_sts", "t_sts"))
         assert _extract_credentials_from_filesystem(wrapped) == {
             "access_key_id": "AKIA_STS",
-            "secret_access_key": "secret_sts",
-            "session_token": "token_sts",
+            "secret_access_key": "s_sts",
+            "session_token": "t_sts",
         }
 
-    def test_static_wins_over_session(self):
+    def test_extract_static_wins_over_session(self):
         # Static storage_options wins — explicit user config is not overridden.
-        session = _make_sync_session("AKIA_SESSION", "x", "y")
-        wrapped = _wrap_fsspec(
-            session,
-            storage_options={"key": "AKIA_EXPLICIT", "secret": "explicit_secret"},
+        session = _sync_session("AKIA_SESSION")
+        wrapped = _wrap_s3fs(
+            session, storage_options={"key": "AKIA_EXPLICIT", "secret": "e"}
         )
         result = _extract_credentials_from_filesystem(wrapped)
-        assert result is not None
         assert result["access_key_id"] == "AKIA_EXPLICIT"
-        assert result["secret_access_key"] == "explicit_secret"
+        assert result["secret_access_key"] == "e"
         session.get_credentials.assert_not_called()
 
-    def test_unresolvable_session_returns_none(self):
-        session = MagicMock()
-        session.get_credentials = MagicMock(side_effect=RuntimeError("no creds"))
-        assert _extract_credentials_from_filesystem(_wrap_fsspec(session)) is None
-
-    def test_anon_skips_session(self):
-        session = MagicMock()
-        session.get_credentials = MagicMock(
-            side_effect=AssertionError("must not be called when anon=True")
-        )
-        wrapped = _wrap_fsspec(session, anon=True)
+    def test_extract_anon_skips_session(self):
+        # Anonymous → no creds needed; session must not be invoked.
+        session = _raising_session(AssertionError("must not be called"))
+        wrapped = _wrap_s3fs(session, anon=True)
         assert _extract_credentials_from_filesystem(wrapped) == {"skip_signature": True}
-
-
-# TestPlanObstoreRouting
-def _make_fsspec_s3_wrapper(*, session=None, storage_options=None, anon=False):
-    """Build a PyFileSystem(FSSpecHandler(stub)) for s3 protocol."""
-    from pyarrow.fs import FSSpecHandler, PyFileSystem
-
-    inner = MagicMock()
-    inner.protocol = "s3"
-    inner.storage_options = storage_options or {}
-    inner.session = session
-    inner.key = None
-    inner.secret = None
-    inner.token = None
-    inner.endpoint_url = None
-    inner.client_kwargs = None
-    inner.anon = anon
-    inner._strip_protocol = lambda p: p
-    return PyFileSystem(FSSpecHandler(inner))
-
-
-def _make_raising_session():
-    session = MagicMock()
-    session.get_credentials = MagicMock(side_effect=RuntimeError("no creds"))
-    return session
 
 
 class TestPlanObstoreRouting:
@@ -431,67 +379,61 @@ class TestPlanObstoreRouting:
         m._warned_credential_fs_ids.clear()
 
     def test_none_fs_uses_obstore(self):
-        use_obstore, kwargs = _plan_obstore_routing(None)
-        assert use_obstore is True
-        assert kwargs == {}
+        assert _plan_obstore_routing(None) == (True, {})
 
-    def test_non_s3_fsspec_to_threaded(self):
+    def test_extractable_fsspec_s3_uses_obstore(self):
+        wrapped = _wrap_s3fs(
+            storage_options={"key": "AKIA", "secret": "sec", "token": "tok"}
+        )
+        assert _plan_obstore_routing(wrapped) == (
+            True,
+            {
+                "access_key_id": "AKIA",
+                "secret_access_key": "sec",
+                "session_token": "tok",
+            },
+        )
+
+    def test_fsspec_s3_unextractable_warns_once(self):
+        # Patch module logger directly — Ray's internal loggers don't always
+        # propagate to pytest's caplog in sandboxed test runners. This also
+        # covers the dedup path: same FS twice = one warning, different FS =
+        # new warning.
+        fs_a = _wrap_s3fs(_raising_session())
+        fs_b = _wrap_s3fs(_raising_session())
+
+        with patch(
+            "ray.data._internal.planner._obstore_download.logger"
+        ) as mock_logger:
+            assert _plan_obstore_routing(fs_a) == (False, {})
+            _plan_obstore_routing(fs_a)  # dedup — no new warning
+            _plan_obstore_routing(fs_b)  # different FS — new warning
+
+        assert mock_logger.warning.call_count == 2
+        msg = mock_logger.warning.call_args_list[0][0][0]
+        assert "S3 credentials" in msg and "storage_options" in msg
+
+    def test_silent_routing_for_unrecognized_fs(self):
+        # Both non-S3 fsspec and native unrecognized filesystems must route
+        # to the threaded path WITHOUT a S3-specific warning. The hardcoded
+        # "pass credentials via fsspec storage_options" advice only makes
+        # sense for fsspec-S3.
         import fsspec
         from pyarrow.fs import FSSpecHandler, PyFileSystem
 
         class _GcsStub(fsspec.AbstractFileSystem):
             protocol = "gcs"
 
-        wrapped = PyFileSystem(FSSpecHandler(_GcsStub()))
-        use_obstore, kwargs = _plan_obstore_routing(wrapped)
-        assert use_obstore is False
-        assert kwargs == {}
-
-    def test_fsspec_s3_unextractable_warns(self):
-        # Patch the module logger directly instead of relying on caplog —
-        # Ray's internal loggers don't always propagate in test environments,
-        # so caplog.records can come back empty even when the warning fires.
-        wrapped = _make_fsspec_s3_wrapper(session=_make_raising_session())
-
-        with patch(
-            "ray.data._internal.planner._obstore_download.logger"
-        ) as mock_logger:
-            use_obstore, kwargs = _plan_obstore_routing(wrapped)
-
-        assert use_obstore is False
-        assert kwargs == {}
-        # Exactly one warning, with the S3-specific advice.
-        assert mock_logger.warning.call_count == 1
-        msg = mock_logger.warning.call_args[0][0]
-        assert "S3 credentials" in msg and "storage_options" in msg
-
-    def test_warns_once_per_fs(self):
-        fs_a = _make_fsspec_s3_wrapper(session=_make_raising_session())
-        fs_b = _make_fsspec_s3_wrapper(session=_make_raising_session())
-
-        with patch(
-            "ray.data._internal.planner._obstore_download.logger"
-        ) as mock_logger:
-            _plan_obstore_routing(fs_a)
-            _plan_obstore_routing(fs_a)  # same FS — no new warning
-            _plan_obstore_routing(fs_b)  # different FS — new warning
-
-        assert mock_logger.warning.call_count == 2
-
-    def test_native_fs_silent_routing(self):
-        # LocalFileSystem / HdfsFileSystem / etc. are unrecognized non-None
-        # filesystems. Routing to threaded is correct, but the WARNING is
-        # hardcoded with S3/fsspec advice and would be misleading for these
-        # — the routing must be silent (DEBUG only).
-        with patch(
-            "ray.data._internal.planner._obstore_download.logger"
-        ) as mock_logger:
-            use_obstore, kwargs = _plan_obstore_routing(pafs.LocalFileSystem())
-
-        assert use_obstore is False
-        assert kwargs == {}
-        mock_logger.warning.assert_not_called()
-        # A debug message is fine — just verifying no WARN noise.
+        filesystems = [
+            PyFileSystem(FSSpecHandler(_GcsStub())),
+            pafs.LocalFileSystem(),
+        ]
+        for fs in filesystems:
+            with patch(
+                "ray.data._internal.planner._obstore_download.logger"
+            ) as mock_logger:
+                assert _plan_obstore_routing(fs) == (False, {})
+                mock_logger.warning.assert_not_called()
 
     def test_async_partition_actor_fails_closed(self):
         pytest.importorskip("obstore")
@@ -499,10 +441,10 @@ class TestPlanObstoreRouting:
             AsyncPartitionActor,
         )
 
-        bad_fs = pafs.LocalFileSystem()  # extraction → None
-        ctx = DataContext.get_current()
         with pytest.raises(RuntimeError, match="cannot be statically extracted"):
-            AsyncPartitionActor(["uri"], ctx, filesystem=bad_fs)
+            AsyncPartitionActor(
+                ["uri"], DataContext.get_current(), filesystem=pafs.LocalFileSystem()
+            )
 
     def test_download_uris_fails_closed(self):
         pytest.importorskip("obstore")
@@ -512,18 +454,6 @@ class TestPlanObstoreRouting:
                     ["file:///tmp/x.bin"], "uri", filesystem=pafs.LocalFileSystem()
                 )
             )
-
-    def test_extractable_fsspec_s3_uses_obstore(self):
-        wrapped = _make_fsspec_s3_wrapper(
-            storage_options={"key": "AKIA", "secret": "sec", "token": "tok"}
-        )
-        use_obstore, kwargs = _plan_obstore_routing(wrapped)
-        assert use_obstore is True
-        assert kwargs == {
-            "access_key_id": "AKIA",
-            "secret_access_key": "sec",
-            "session_token": "tok",
-        }
 
 
 # TestObstoreDownloadPath
