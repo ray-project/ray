@@ -2728,9 +2728,7 @@ class DeploymentState:
         # threshold, the deployment is considered terminally failed.
         self._deployment_actor_retry_counter: int = 0
 
-        self._replica_state_cache: Dict[
-            ReplicaID, Tuple[ReplicaState, float]
-        ] = {}  # (state, last_reported_time)
+        self._last_replica_state_gauge_refresh_time: Optional[float] = None
         self._replicas: ReplicaStateContainer = ReplicaStateContainer(
             on_replica_state_change=self._on_replica_state_change
         )
@@ -4454,23 +4452,19 @@ class DeploymentState:
             # Reconfigure replicas that had their ranks reassigned
             self._reconfigure_replicas_with_new_ranks(replicas_to_reconfigure)
 
-        # Refresh replica_state_gauge for every tracked replica.
+        # Periodically, export the current state of all replicas to the replica_state_gauge metric.
         now = time.time()
-        for replica in self._replicas.get():
-            replica_id = replica.replica_id
-            state = replica.actor_details.state
-            cached = self._replica_state_cache.get(replica_id)
-            value_changed = cached is None or cached[0] != state
-            interval_elapsed = (
-                cached is None
-                or (now - cached[1]) >= RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
-            )
-            if not value_changed and not interval_elapsed:
-                continue
-            self._replica_state_cache[replica_id] = (state, now)
-            self.replica_state_gauge.set(
-                state.to_numeric(), tags={"replica": replica_id.unique_id}
-            )
+        if (
+            self._last_replica_state_gauge_refresh_time is None
+            or now - self._last_replica_state_gauge_refresh_time
+            >= RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
+        ):
+            for replica in self._replicas.get():
+                self.replica_state_gauge.set(
+                    replica.actor_details.state.to_numeric(),
+                    tags={"replica": replica.replica_id.unique_id},
+                )
+            self._last_replica_state_gauge_refresh_time = now
 
     def _handle_deployment_actor_failed_health_check(
         self,
@@ -4627,7 +4621,6 @@ class DeploymentState:
                 # This ensures rank is available during draining/graceful shutdown
                 replica_id = replica.replica_id.unique_id
                 self._clear_health_gauge_cache(replica_id)
-                self._replica_state_cache.pop(replica.replica_id, None)
                 # Update the replica state gauge to 0 (UNKNOWN)
                 self.replica_state_gauge.set(0, tags={"replica": replica_id})
                 if self._rank_manager.has_replica_rank(replica_id):
