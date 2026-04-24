@@ -1836,14 +1836,32 @@ cdef void execute_task(
                 _i = _p.memory_full_info()
                 return _i.rss / 1e6, _i.uss / 1e6, (_i.rss - _i.uss) / 1e6
 
-            # (karticam) per-task counter (memray disabled for this run)
+            # (karticam) memray tracking per task invocation
             _km_pid = os.getpid()
             _km_task_counter[_km_pid] = _km_task_counter.get(_km_pid, 0) + 1
             _km_task_num = _km_task_counter[_km_pid]
-            print(
-                f"(karticam) [TASK-START] PID={_km_pid} "
-                f"task={title} task_num={_km_task_num}"
+            _km_memray_path = (
+                f"/mnt/shared_storage/karticam/memray_pid{_km_pid}"
+                f"_task{_km_task_num}.bin"
             )
+            _km_tracker = None
+            try:
+                import memray as _km_memray
+                _km_tracker = _km_memray.Tracker(
+                    _km_memray_path,
+                    native_traces=True,
+                )
+                _km_tracker.__enter__()
+                print(
+                    f"(karticam) [MEMRAY-START] PID={_km_pid} "
+                    f"task={title} task_num={_km_task_num} "
+                    f"file={_km_memray_path}"
+                )
+            except ImportError:
+                print(
+                    f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
+                    f"memray not installed"
+                )
 
             _km_rss, _km_uss, _km_shared = _km_get_mem()
             print(
@@ -2137,89 +2155,92 @@ cdef void execute_task(
                 f"Shared={_km_shared:.1f}MB"
             )
 
-            # (karticam) end-of-task probes (memray disabled for this run)
-            _km_rss, _km_uss, _km_shared = _km_get_mem()
-            print(
-                f"(karticam) [TASK-END] PID={_km_pid} "
-                f"task={title} task_num={_km_task_num} | "
-                f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
-                f"Shared={_km_shared:.1f}MB"
-            )
-
-            # --- Probe 1: mallinfo2() via ctypes ---
-            try:
-                import ctypes
-                import ctypes.util
-
-                class _km_mallinfo2(ctypes.Structure):
-                    _fields_ = [
-                        ("arena", ctypes.c_size_t),
-                        ("ordblks", ctypes.c_size_t),
-                        ("smblks", ctypes.c_size_t),
-                        ("hblks", ctypes.c_size_t),
-                        ("hblkhd", ctypes.c_size_t),
-                        ("usmblks", ctypes.c_size_t),
-                        ("fsmblks", ctypes.c_size_t),
-                        ("uordblks", ctypes.c_size_t),
-                        ("fordblks", ctypes.c_size_t),
-                        ("keepcost", ctypes.c_size_t),
-                    ]
-
-                _km_libc = ctypes.CDLL(ctypes.util.find_library("c"))
-                _km_libc.mallinfo2.restype = _km_mallinfo2
-                _km_libc.mallinfo2.argtypes = []
-                _km_mi = _km_libc.mallinfo2()
+            # (karticam) stop memray tracker (.bin only, analyze locally)
+            if _km_tracker is not None:
+                _km_tracker.__exit__(None, None, None)
+                _km_rss, _km_uss, _km_shared = _km_get_mem()
                 print(
-                    f"(karticam) [MALLINFO2] PID={_km_pid} "
-                    f"arena={_km_mi.arena / 1e6:.1f}MB "
-                    f"ordblks={_km_mi.ordblks} "
-                    f"hblkhd={_km_mi.hblkhd / 1e6:.1f}MB "
-                    f"uordblks={_km_mi.uordblks / 1e6:.1f}MB "
-                    f"fordblks={_km_mi.fordblks / 1e6:.1f}MB "
-                    f"keepcost={_km_mi.keepcost / 1e6:.1f}MB"
-                )
-            except Exception as _km_mi_err:
-                print(
-                    f"(karticam) [MALLINFO2-ERR] PID={_km_pid} "
-                    f"err={_km_mi_err}"
+                    f"(karticam) [MEMRAY-STOP] PID={_km_pid} "
+                    f"task={title} task_num={_km_task_num} "
+                    f"file={_km_memray_path} | "
+                    f"RSS={_km_rss:.1f}MB USS={_km_uss:.1f}MB "
+                    f"Shared={_km_shared:.1f}MB"
                 )
 
-            # --- Probe 2: gc.collect() + USS delta ---
-            try:
-                import gc as _km_gc
-                _km_uss_before_gc = _km_get_mem()[1]
-                _km_gc_collected = _km_gc.collect()
-                _km_uss_after_gc = _km_get_mem()[1]
-                print(
-                    f"(karticam) [GC-COLLECT] PID={_km_pid} "
-                    f"collected={_km_gc_collected} "
-                    f"USS_before={_km_uss_before_gc:.1f}MB "
-                    f"USS_after={_km_uss_after_gc:.1f}MB "
-                    f"delta={_km_uss_after_gc - _km_uss_before_gc:.1f}MB"
-                )
-            except Exception as _km_gc_err:
-                print(
-                    f"(karticam) [GC-COLLECT-ERR] PID={_km_pid} "
-                    f"err={_km_gc_err}"
-                )
+                # --- Probe 1: mallinfo2() via ctypes ---
+                try:
+                    import ctypes
+                    import ctypes.util
 
-            # --- Probe 3: malloc_trim(0) + USS delta ---
-            try:
-                _km_uss_before_trim = _km_get_mem()[1]
-                _km_trim_result = _km_libc.malloc_trim(0)
-                _km_uss_after_trim = _km_get_mem()[1]
-                print(
-                    f"(karticam) [MALLOC-TRIM] PID={_km_pid} "
-                    f"trim_returned={_km_trim_result} "
-                    f"USS_before={_km_uss_before_trim:.1f}MB "
-                    f"USS_after={_km_uss_after_trim:.1f}MB "
-                    f"delta={_km_uss_after_trim - _km_uss_before_trim:.1f}MB"
-                )
-            except Exception as _km_trim_err:
-                print(
-                    f"(karticam) [MALLOC-TRIM-ERR] PID={_km_pid} "
-                    f"err={_km_trim_err}"
-                )
+                    class _km_mallinfo2(ctypes.Structure):
+                        _fields_ = [
+                            ("arena", ctypes.c_size_t),
+                            ("ordblks", ctypes.c_size_t),
+                            ("smblks", ctypes.c_size_t),
+                            ("hblks", ctypes.c_size_t),
+                            ("hblkhd", ctypes.c_size_t),
+                            ("usmblks", ctypes.c_size_t),
+                            ("fsmblks", ctypes.c_size_t),
+                            ("uordblks", ctypes.c_size_t),
+                            ("fordblks", ctypes.c_size_t),
+                            ("keepcost", ctypes.c_size_t),
+                        ]
+
+                    _km_libc = ctypes.CDLL(ctypes.util.find_library("c"))
+                    _km_libc.mallinfo2.restype = _km_mallinfo2
+                    _km_libc.mallinfo2.argtypes = []
+                    _km_mi = _km_libc.mallinfo2()
+                    print(
+                        f"(karticam) [MALLINFO2] PID={_km_pid} "
+                        f"arena={_km_mi.arena / 1e6:.1f}MB "
+                        f"ordblks={_km_mi.ordblks} "
+                        f"hblkhd={_km_mi.hblkhd / 1e6:.1f}MB "
+                        f"uordblks={_km_mi.uordblks / 1e6:.1f}MB "
+                        f"fordblks={_km_mi.fordblks / 1e6:.1f}MB "
+                        f"keepcost={_km_mi.keepcost / 1e6:.1f}MB"
+                    )
+                except Exception as _km_mi_err:
+                    print(
+                        f"(karticam) [MALLINFO2-ERR] PID={_km_pid} "
+                        f"err={_km_mi_err}"
+                    )
+
+                # --- Probe 2: gc.collect() + USS delta ---
+                try:
+                    import gc as _km_gc
+                    _km_uss_before_gc = _km_get_mem()[1]
+                    _km_gc_collected = _km_gc.collect()
+                    _km_uss_after_gc = _km_get_mem()[1]
+                    print(
+                        f"(karticam) [GC-COLLECT] PID={_km_pid} "
+                        f"collected={_km_gc_collected} "
+                        f"USS_before={_km_uss_before_gc:.1f}MB "
+                        f"USS_after={_km_uss_after_gc:.1f}MB "
+                        f"delta={_km_uss_after_gc - _km_uss_before_gc:.1f}MB"
+                    )
+                except Exception as _km_gc_err:
+                    print(
+                        f"(karticam) [GC-COLLECT-ERR] PID={_km_pid} "
+                        f"err={_km_gc_err}"
+                    )
+
+                # --- Probe 3: malloc_trim(0) + USS delta ---
+                try:
+                    _km_uss_before_trim = _km_get_mem()[1]
+                    _km_trim_result = _km_libc.malloc_trim(0)
+                    _km_uss_after_trim = _km_get_mem()[1]
+                    print(
+                        f"(karticam) [MALLOC-TRIM] PID={_km_pid} "
+                        f"trim_returned={_km_trim_result} "
+                        f"USS_before={_km_uss_before_trim:.1f}MB "
+                        f"USS_after={_km_uss_after_trim:.1f}MB "
+                        f"delta={_km_uss_after_trim - _km_uss_before_trim:.1f}MB"
+                    )
+                except Exception as _km_trim_err:
+                    print(
+                        f"(karticam) [MALLOC-TRIM-ERR] PID={_km_pid} "
+                        f"err={_km_trim_err}"
+                    )
 
         except (KeyboardInterrupt, SystemExit):
             # Special casing these two because Ray can raise them
