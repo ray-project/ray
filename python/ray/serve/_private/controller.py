@@ -1034,6 +1034,9 @@ class ServeController:
                 for the application.
         """
         if self._shutting_down:
+            logger.warning(
+                "Ignoring deploy_applications request because Serve controller is shutting down."
+            )
             return
 
         name_to_deployment_args = {}
@@ -1099,6 +1102,9 @@ class ServeController:
         If `deployment_time` is not provided, `time.time()` is used.
         """
         if self._shutting_down:
+            logger.warning(
+                "Ignoring apply_config request because Serve controller is shutting down."
+            )
             return
 
         ServeUsageTag.API_VERSION.record("v2")

@@ -5491,6 +5491,10 @@ class DeploymentStateManager:
             bool: Whether the target state has changed.
         """
         if self._shutting_down:
+            logger.warning(
+                f"Ignoring deploy request for {deployment_id} "
+                "because deployment state manager is shutting down."
+            )
             return False
         if deployment_id not in self._deployment_states:
             self._deployment_states[deployment_id] = self._create_deployment_state(
@@ -5531,6 +5535,10 @@ class DeploymentStateManager:
     ):
         """Set target number of replicas for a deployment."""
         if self._shutting_down:
+            logger.warning(
+                f"Ignoring set_target_num_replicas request for {deployment_id} "
+                "because deployment state manager is shutting down."
+            )
             return
 
         self._validate_deployment_state_for_num_replica_update(deployment_id)
@@ -5685,6 +5693,10 @@ class DeploymentStateManager:
             True if the deployment was autoscaled, False otherwise.
         """
         if self._shutting_down:
+            logger.warning(
+                f"Ignoring autoscale request for {deployment_id} "
+                "because deployment state manager is shutting down."
+            )
             return False
 
         if deployment_id not in self._deployment_states:
