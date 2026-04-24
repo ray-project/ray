@@ -1515,8 +1515,8 @@ class TestMultiAgentEpisode(unittest.TestCase):
         # an agent was inactive during all requested env steps.
         observations = [
             {"a0": 0, "a1": 0},  # env step 0: both agents
-            {"a0": 1},           # env step 1: only a0 (a1 inactive)
-            {"a0": 2},           # env step 2: only a0 (a1 inactive)
+            {"a0": 1},  # env step 1: only a0 (a1 inactive)
+            {"a0": 2},  # env step 2: only a0 (a1 inactive)
             {"a0": 3, "a1": 3},  # env step 3: both agents (terminal)
         ]
         actions = [{"a0": 0, "a1": 0}, {"a0": 1}, {"a0": 2}]
