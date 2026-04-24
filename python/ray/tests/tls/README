@@ -12,16 +12,24 @@ openssl genrsa -out {str(tmp_path)}/tls/redis.key 2048
 openssl req \
     -new -sha256 \
     -key {str(tmp_path)}/tls/redis.key \
-    -subj '/O=Redis Test/CN=Server' | \
-    openssl x509 \
-        -req -sha256 \
-        -CA {str(tmp_path)}/tls/ca.crt \
-        -CAkey {str(tmp_path)}/tls/ca.key \
-        -CAserial {str(tmp_path)}/tls/ca.txt \
-        -CAcreateserial \
-        -days 3650 \
-        -out {str(tmp_path)}/tls/redis.crt
+    -subj '/O=Redis Test/CN=Server' \
+    -out {str(tmp_path)}/tls/redis.csr
+openssl x509 \
+    -req -sha256 \
+    -in {str(tmp_path)}/tls/redis.csr \
+    -CA {str(tmp_path)}/tls/ca.crt \
+    -CAkey {str(tmp_path)}/tls/ca.key \
+    -CAserial {str(tmp_path)}/tls/ca.txt \
+    -CAcreateserial \
+    -days 3650 \
+    -extfile <(printf 'subjectAltName=DNS:localhost,IP:127.0.0.1,IP:::1') \
+    -out {str(tmp_path)}/tls/redis.crt
 openssl dhparam -out {str(tmp_path)}/tls/redis.dh 2048
+
+The -extfile flag adds a Subject Alternative Name extension binding the cert
+to localhost / 127.0.0.1 / ::1. Without it, modern TLS clients (redis-py >= 7,
+hiredis with recent OpenSSL) reject the cert with a hostname-mismatch alert
+when connecting to 127.0.0.1.
 
 
 See https://github.com/ray-project/ray/pull/40378/ for more details
