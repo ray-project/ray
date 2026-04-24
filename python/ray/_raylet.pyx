@@ -1716,6 +1716,10 @@ _km_task_counter = {}
 # only one Tracker per process, but async actors run methods concurrently,
 # so re-entrant execute_task calls must skip starting a second Tracker.
 _km_memray_active = set()
+# (karticam) hostname for memray filename — pids are only unique per-host, and
+# the .bin files land on shared storage, so include hostname to avoid collisions.
+import socket as _km_socket
+_km_hostname = _km_socket.gethostname()
 
 cdef void execute_task(
         const CAddress &caller_address,
@@ -1845,8 +1849,8 @@ cdef void execute_task(
             _km_task_counter[_km_pid] = _km_task_counter.get(_km_pid, 0) + 1
             _km_task_num = _km_task_counter[_km_pid]
             _km_memray_path = (
-                f"/mnt/shared_storage/karticam/memray_pid{_km_pid}"
-                f"_task{_km_task_num}.bin"
+                f"/mnt/shared_storage/karticam/memray_{_km_hostname}"
+                f"_pid{_km_pid}_task{_km_task_num}.bin"
             )
             _km_tracker = None
             if _km_pid in _km_memray_active:
