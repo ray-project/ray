@@ -17,7 +17,7 @@ same dispatch shape V1 uses for ``plan_read_op_with_checkpoint_filter``.
 from __future__ import annotations
 
 import logging
-from typing import Dict, Iterable, List, Optional
+from typing import Iterable, List
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.scanners.file_scanner import FileScanner
@@ -30,25 +30,11 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators import ReadFiles
 from ray.data._internal.output_buffer import OutputBlockSizeOption
-from ray.data.block import Block, BlockAccessor
+from ray.data.block import Block
 from ray.data.context import DataContext
+from ray.data.datasource.datasource import _DatasourceProjectionPushdownMixin
 
 logger = logging.getLogger(__name__)
-
-
-def _apply_column_renames(block: Block, renames: Optional[Dict[str, str]]) -> Block:
-    """Rename columns on the block according to ``renames``.
-
-    Scanner-level projection pushdown only knows the original column names
-    in the file schema. Any ``old → new`` rename recorded on ``ReadFiles``
-    (via ``ProjectionPushdown._push_projection_into_read_op``) must be
-    applied here, before the block hits the executor — otherwise
-    downstream ops receive tables whose column names don't match the
-    logical plan's schema.
-    """
-    if not renames:
-        return block
-    return BlockAccessor.for_block(block).rename_columns(renames)
 
 
 def plan_read_files_op(
@@ -88,7 +74,7 @@ def plan_read_files_op(
                 # V1 ``ParquetDatasource`` semantics.
                 if block_udf is not None:
                     table = block_udf(table)
-                yield _apply_column_renames(table, renames)
+                yield _DatasourceProjectionPushdownMixin._apply_rename(table, renames)
 
     return MapOperator.create(
         MapTransformer(
