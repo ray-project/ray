@@ -1,5 +1,5 @@
 pyarrow==17.0.0
 hudi
 pylance
-modin==0.37.1
-pandas==2.3.3
+modin==0.31.0
+pandas==2.2.3
