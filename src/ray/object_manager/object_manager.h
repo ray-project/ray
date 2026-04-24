@@ -57,8 +57,6 @@ struct ObjectManagerConfig {
   unsigned int pull_timeout_ms;
   /// Object chunk size, in bytes
   uint64_t object_chunk_size;
-  /// Max object push bytes in flight.
-  uint64_t max_bytes_in_flight;
   /// The store socket name.
   std::string store_socket_name;
   /// The time in milliseconds to wait until a Push request
@@ -138,8 +136,9 @@ class ObjectManager : public ObjectManagerInterface,
   /// \param request Push request including the object chunk data
   /// \param reply Reply to the sender
   /// \param send_reply_callback Callback of the request
-  void HandlePush(rpc::PushRequest request,
-                  rpc::PushReply *reply,
+  void HandlePush(rpc::PushRequest header,
+                  const uint8_t *data,
+                  size_t data_len,
                   rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle pull request from remote object manager
@@ -400,7 +399,8 @@ class ObjectManager : public ObjectManagerInterface,
                           uint64_t data_size,
                           uint64_t metadata_size,
                           uint64_t chunk_index,
-                          const std::string &data);
+                          const uint8_t *data,
+                          size_t data_len);
 
   /// Send pull request
   ///

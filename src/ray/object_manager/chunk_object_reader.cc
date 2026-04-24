@@ -15,6 +15,7 @@
 #include "ray/object_manager/chunk_object_reader.h"
 
 #include <algorithm>
+#include <memory>
 #include <string>
 #include <utility>
 
@@ -66,4 +67,19 @@ std::optional<std::string> ChunkObjectReader::GetChunk(uint64_t chunk_index) con
   }
   return result;
 }
+
+std::optional<ChunkRef> ChunkObjectReader::GetChunkRef(uint64_t chunk_index) const {
+  std::shared_ptr<Buffer> buffer_ref;
+  const uint8_t *base = object_->GetContiguousBuffer(&buffer_ref);
+  if (base == nullptr) {
+    return std::nullopt;
+  }
+
+  const auto total_size = object_->GetDataSize() + object_->GetMetadataSize();
+  const auto cur_chunk_offset = chunk_index * chunk_size_;
+  const auto cur_chunk_size = std::min(chunk_size_, total_size - cur_chunk_offset);
+
+  return ChunkRef{base + cur_chunk_offset, cur_chunk_size, std::move(buffer_ref)};
+}
+
 };  // namespace ray

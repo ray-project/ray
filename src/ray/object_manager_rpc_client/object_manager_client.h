@@ -26,6 +26,7 @@
 #include "ray/object_manager/grpc_client_manager.h"
 #include "ray/object_manager_rpc_client/object_manager_client_interface.h"
 #include "ray/rpc/grpc_client.h"
+#include "ray/rpc/raw_push_client_call.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/object_manager.grpc.pb.h"
 #include "src/ray/protobuf/object_manager.pb.h"
@@ -46,22 +47,17 @@ class ObjectManagerClient : public ObjectManagerClientInterface {
                       ClientCallManager &client_call_manager)
       : grpc_client_manager_(
             std::make_unique<GrpcClientManagerImpl<ObjectManagerService>>(
-                address, port, client_call_manager)) {}
+                address, port, client_call_manager)),
+        raw_push_manager_(std::make_unique<RawPushClientCallManager>(
+            BuildChannel(address, port), client_call_manager)) {}
 
-  /// Push object to remote object manager
-  ///
-  /// \param request The request message.
-  /// \param callback The callback function that handles reply from server
-  VOID_RPC_CLIENT_METHOD(ObjectManagerService,
-                         Push,
-                         grpc_client_manager_->GetGrpcClient(),
-                         /*method_timeout_ms*/ -1,
-                         override)
+  /// Push object chunk to remote object manager as a raw ByteBuffer.
+  void Push(grpc::ByteBuffer request,
+            std::function<void(const Status &)> callback) override {
+    raw_push_manager_->Push(std::move(request), std::move(callback));
+  }
 
   /// Pull object from remote object manager
-  ///
-  /// \param request The request message
-  /// \param callback The callback function that handles reply from server
   VOID_RPC_CLIENT_METHOD(ObjectManagerService,
                          Pull,
                          grpc_client_manager_->GetGrpcClient(),
@@ -69,9 +65,6 @@ class ObjectManagerClient : public ObjectManagerClientInterface {
                          override)
 
   /// Tell remote object manager to free objects
-  ///
-  /// \param request The request message
-  /// \param callback  The callback function that handles reply
   VOID_RPC_CLIENT_METHOD(ObjectManagerService,
                          FreeObjects,
                          grpc_client_manager_->GetGrpcClient(),
@@ -80,6 +73,7 @@ class ObjectManagerClient : public ObjectManagerClientInterface {
 
  private:
   std::unique_ptr<GrpcClientManager<ObjectManagerService>> grpc_client_manager_;
+  std::unique_ptr<RawPushClientCallManager> raw_push_manager_;
 };
 
 }  // namespace rpc

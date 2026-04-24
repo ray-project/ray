@@ -40,6 +40,8 @@ class MemoryObjectReader : public IObjectReader {
                                uint64_t size,
                                std::string &output) const override;
 
+  const uint8_t *GetContiguousBuffer(std::shared_ptr<Buffer> *buffer_ref) const override;
+
  private:
   const plasma::ObjectBuffer object_buffer_;
   const rpc::Address owner_address_;
