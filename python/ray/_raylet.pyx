@@ -1715,7 +1715,10 @@ _km_task_counter = {}
 # (karticam) pids where a memray Tracker is currently active — memray allows
 # only one Tracker per process, but async actors run methods concurrently,
 # so re-entrant execute_task calls must skip starting a second Tracker.
+# Lock serializes the check-and-add against threaded concurrent actor methods.
 _km_memray_active = set()
+import threading as _km_threading
+_km_memray_lock = _km_threading.Lock()
 # (karticam) hostname for memray filename — pids are only unique per-host, and
 # the .bin files land on shared storage, so include hostname to avoid collisions.
 import socket as _km_socket
@@ -1853,31 +1856,43 @@ cdef void execute_task(
                 f"_pid{_km_pid}_task{_km_task_num}.bin"
             )
             _km_tracker = None
-            if _km_pid in _km_memray_active:
-                print(
-                    f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
-                    f"task={title} task_num={_km_task_num} "
-                    f"reason=tracker_already_active (concurrent actor call)"
-                )
-            else:
-                try:
-                    import memray as _km_memray
-                    _km_tracker = _km_memray.Tracker(
-                        _km_memray_path,
-                        native_traces=True,
-                    )
-                    _km_tracker.__enter__()
-                    _km_memray_active.add(_km_pid)
-                    print(
-                        f"(karticam) [MEMRAY-START] PID={_km_pid} "
-                        f"task={title} task_num={_km_task_num} "
-                        f"file={_km_memray_path}"
-                    )
-                except ImportError:
+            with _km_memray_lock:
+                if _km_pid in _km_memray_active:
                     print(
                         f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
-                        f"memray not installed"
+                        f"task={title} task_num={_km_task_num} "
+                        f"reason=tracker_already_active (concurrent actor call)"
                     )
+                else:
+                    try:
+                        import memray as _km_memray
+                        _km_tracker = _km_memray.Tracker(
+                            _km_memray_path,
+                            native_traces=True,
+                        )
+                        _km_tracker.__enter__()
+                        _km_memray_active.add(_km_pid)
+                        print(
+                            f"(karticam) [MEMRAY-START] PID={_km_pid} "
+                            f"task={title} task_num={_km_task_num} "
+                            f"file={_km_memray_path}"
+                        )
+                    except ImportError:
+                        _km_tracker = None
+                        print(
+                            f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
+                            f"memray not installed"
+                        )
+                    except RuntimeError as _km_e:
+                        # Safety net: if memray's own check rejects us (e.g.,
+                        # leaked tracker from a previous run, or our flag is
+                        # out of sync), don't kill the task.
+                        _km_tracker = None
+                        print(
+                            f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
+                            f"task={title} task_num={_km_task_num} "
+                            f"reason=tracker_enter_failed err={_km_e}"
+                        )
 
             _km_rss, _km_uss, _km_shared = _km_get_mem()
             print(
@@ -2173,8 +2188,11 @@ cdef void execute_task(
 
             # (karticam) stop memray tracker (.bin only, analyze locally)
             if _km_tracker is not None:
-                _km_tracker.__exit__(None, None, None)
-                _km_memray_active.discard(_km_pid)
+                try:
+                    _km_tracker.__exit__(None, None, None)
+                finally:
+                    with _km_memray_lock:
+                        _km_memray_active.discard(_km_pid)
                 _km_rss, _km_uss, _km_shared = _km_get_mem()
                 print(
                     f"(karticam) [MEMRAY-STOP] PID={_km_pid} "
