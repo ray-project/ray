@@ -11,6 +11,7 @@ py_library(
         "//python/ray/data:__pkg__",
         "//python/ray/tests:__subpackages__",
     ],
+    deps = ["//:ray_lib"],
 )
 
 py_test_module_list(
