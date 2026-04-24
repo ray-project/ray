@@ -5,44 +5,6 @@
 # The GPU options are NVIDIA CUDA developer images.
 ARG BASE_IMAGE="ubuntu:22.04"
 
-# --- HAProxy Build Stage ---
-FROM ${BASE_IMAGE} AS haproxy-builder
-
-RUN <<EOF
-#!/bin/bash
-set -euo pipefail
-
-apt-get update -y
-apt-get install -y --no-install-recommends \
-    build-essential \
-    ca-certificates \
-    curl \
-    libc6-dev \
-    liblua5.3-dev \
-    libpcre3-dev \
-    libssl-dev \
-    zlib1g-dev
-
-# Install HAProxy from source.
-# Fetched from ray-project/haproxy-release (a GitHub release mirror) because
-# www.haproxy.org's wildcard TLS cert expired 2026-04-17 and the release tarball
-# disappeared from the upstream download site. Integrity is enforced by sha256
-# verification. Drop this mirror and switch back to www.haproxy.org once the
-# cert is renewed and the tarball is republished.
-HAPROXY_VERSION="2.8.20"
-HAPROXY_SHA256="c8301de11dabfbf049db07080e43b9570a63f99e41d4b0754760656bf7ea00b7"
-HAPROXY_BUILD_DIR=$(mktemp -d)
-curl --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
-     -sSfL -o "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" \
-     "https://github.com/ray-project/haproxy-release/releases/download/${HAPROXY_VERSION}/haproxy-${HAPROXY_VERSION}.tar.gz"
-echo "${HAPROXY_SHA256}  ${HAPROXY_BUILD_DIR}/haproxy.tar.gz" | sha256sum -c -
-tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
-make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
-make -C "${HAPROXY_BUILD_DIR}" install SBINDIR=/usr/local/bin
-rm -rf "${HAPROXY_BUILD_DIR}"
-
-EOF
-
 # --- Main image ---
 FROM ${BASE_IMAGE}
 # If this arg is not "autoscaler" then no autoscaler requirements will be included
@@ -70,6 +32,15 @@ ARG PYTHON_DEPSET="python/deplocks/base_deps/ray_base_deps_py${PYTHON_VERSION}.l
 ARG RAY_UID=1000
 ARG RAY_GID=100
 
+# HAProxy package and source build parameters
+ARG HAPROXY_REPO="https://www.haproxy.com/download/haproxy/performance/ubuntu/ha32"
+ARG HAPROXY_KEY_URL="https://pks.haproxy.com/linux/community/RPM-GPG-KEY-HAProxy"
+ARG AWSLC_TAG="v1.69.0"
+ARG HAPROXY_BRANCH="3.2"
+ARG HAPROXY_MINOR="3.2.16"
+ARG HAPROXY_SHA256="2ed807f2a8742a4c1ec64906fe857bc53472d521aea8dcc453c82b8e5b1ecb02"
+ARG HAPROXY_SRC_URL="https://www.haproxy.org/download"
+
 RUN <<EOF
 #!/bin/bash
 
@@ -81,6 +52,7 @@ apt-get upgrade -y
 APT_PKGS=(
     sudo
     tzdata
+    ca-certificates
     git
     libjemalloc-dev
     wget
@@ -98,9 +70,59 @@ APT_PKGS=(
 
     # For HAProxy
     liblua5.3-0
+    socat
 )
 
 apt-get install -y "${APT_PKGS[@]}"
+
+# Install HAProxy 3.2 based on architecture
+DPKG_ARCH=$(dpkg --print-architecture)
+if [ "$DPKG_ARCH" = "amd64" ]; then
+    # Use HAProxy performance package (haproxy-awslc) from HAProxy repo
+    install -d -m 0755 /usr/share/keyrings && \
+    wget -qO /usr/share/keyrings/HAPROXY-key-community.asc "${HAPROXY_KEY_URL}" && \
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/HAPROXY-key-community.asc] ${HAPROXY_REPO} jammy main" \
+        > /etc/apt/sources.list.d/haproxy.list && \
+    apt-get update -y && \
+    apt-get install -y --no-install-recommends haproxy-awslc && \
+    ln -s /usr/sbin/haproxy /usr/local/bin/haproxy
+else
+    # Build HAProxy from source with AWS-LC on non-amd64 platforms
+    apt-get install -y --no-install-recommends \
+        ca-certificates curl golang ninja-build \
+        make libc6-dev libssl-dev libpcre2-dev liblua5.4-dev && \
+    git clone --depth 1 --branch "${AWSLC_TAG}" https://github.com/aws/aws-lc.git /tmp/aws-lc && \
+    mkdir /tmp/aws-lc/build && \
+    cd /tmp/aws-lc/build && \
+    cmake -G Ninja -DCMAKE_INSTALL_PREFIX=/opt/aws-lc -DCMAKE_BUILD_TYPE=Release -DBUILD_SHARED_LIBS=ON .. && \
+    ninja install && \
+    rm -rf /tmp/aws-lc && \
+    curl -sfSL "${HAPROXY_SRC_URL}/${HAPROXY_BRANCH}/src/haproxy-${HAPROXY_MINOR}.tar.gz" -o /tmp/haproxy.tar.gz && \
+    echo "${HAPROXY_SHA256} */tmp/haproxy.tar.gz" | sha256sum -c - && \
+    mkdir -p /tmp/haproxy && \
+    tar -xzf /tmp/haproxy.tar.gz -C /tmp/haproxy --strip-components=1 && \
+    rm -f /tmp/haproxy.tar.gz && \
+    make -C /tmp/haproxy -j"$(nproc)" TARGET=linux-glibc CPU=generic \
+        USE_PCRE2=1 USE_PCRE2_JIT=1 \
+        USE_TFO=1 USE_LINUX_TPROXY=1 USE_LUA=1 USE_GETADDRINFO=1 \
+        USE_PROMEX=1 USE_SLZ=1 \
+        USE_OPENSSL_AWSLC=1 USE_PTHREAD_EMULATION=1 \
+        SSL_INC=/opt/aws-lc/include SSL_LIB=/opt/aws-lc/lib USE_QUIC=1 \
+        LDFLAGS="-L/opt/aws-lc/lib -Wl,-rpath,/opt/aws-lc/lib" \
+        ADDLIB=-ljemalloc \
+        all && \
+    make -C /tmp/haproxy TARGET=linux-glibc install-bin && \
+    ln -s /usr/local/sbin/haproxy /usr/local/bin/haproxy && \
+    rm -rf /tmp/haproxy && \
+    echo "/opt/aws-lc/lib" > /etc/ld.so.conf.d/awslc.conf && \
+    mkdir -p /opt/aws-lc/ssl && \
+    rm -rf /opt/aws-lc/ssl/certs && \
+    ln -s /etc/ssl/certs /opt/aws-lc/ssl/certs && \
+    ldconfig && \
+    apt-get purge -y golang ninja-build libssl-dev libpcre2-dev liblua5.4-dev && \
+    apt-get autoremove -y && \
+    apt-get install -y --no-install-recommends liblua5.4-0 libpcre2-8-0
+fi
 
 useradd -ms /bin/bash -d /home/ray ray --uid $RAY_UID --gid $RAY_GID
 usermod -aG sudo ray
@@ -111,7 +133,6 @@ chown -R ray:"$(id -gn ray)" /run/haproxy
 
 EOF
 
-COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
 ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
 
 USER $RAY_UID
