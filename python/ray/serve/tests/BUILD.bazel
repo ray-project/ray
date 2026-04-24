@@ -752,7 +752,8 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "enormous",
+    size = "large",
+    timeout = "eternal",
     files = [
         "test_per_request_headers.py",
     ],
@@ -787,7 +788,8 @@ py_test_module_list(
 )
 
 py_test_module_list(
-    size = "enormous",
+    size = "large",
+    timeout = "eternal",
     env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
     files = [
         "test_per_request_headers.py",
