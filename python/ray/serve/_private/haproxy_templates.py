@@ -33,7 +33,7 @@ HAPROXY_CONFIG_TEMPLATE = """global
     {%- if config.hard_stop_after_s is not none %}
     hard-stop-after {{ config.hard_stop_after_s }}s
     {%- endif %}
-defaults
+defaults ray_defaults
     mode http
     option log-health-checks
     {% if config.timeout_connect_s is not none %}timeout connect {{ config.timeout_connect_s }}s{% endif %}
@@ -61,12 +61,17 @@ defaults
     load-server-state-from-file global
     {%- endif %}
     balance {{ config.balance_algorithm }}
-frontend prometheus
+{%- if user_config_content %}
+# Begin user-supplied config fragment ({{ user_config_path }})
+{{ user_config_content }}
+# End user-supplied config fragment
+{%- endif %}
+frontend prometheus from ray_defaults
     bind :{{ config.metrics_port }}
     mode http
     http-request use-service prometheus-exporter if { path {{ config.metrics_uri }} }
     no log
-frontend http_frontend
+frontend http_frontend from {{ parent_defaults }}
     bind {{ config.frontend_host }}:{{ config.frontend_port }}
 {{ healthz_rules|safe }}
     # Routes endpoint
@@ -84,12 +89,12 @@ frontend http_frontend
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
     default_backend default_backend
-backend default_backend
+backend default_backend from {{ parent_defaults }}
     http-request return status 404 content-type text/plain lf-string "Path \'%[path]\' not found. Ping http://.../-/routes for available routes."
 {%- for item in backends_with_health_config %}
 {%- set backend = item.backend %}
 {%- set hc = item.health_config %}
-backend {{ backend.name or 'unknown' }}
+backend {{ backend.name or 'unknown' }} from {{ parent_defaults }}
     log global
     # Enable HTTP connection reuse for better performance
     http-reuse always
@@ -132,7 +137,7 @@ backend {{ backend.name or 'unknown' }}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
     {%- endif %}
 {%- endfor %}
-listen stats
+listen stats from ray_defaults
   bind *:{{ config.stats_port }}
   stats enable
   stats uri {{ config.stats_uri }}

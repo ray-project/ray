@@ -275,7 +275,7 @@ global
     server-state-base /tmp/haproxy-serve
     server-state-file /tmp/haproxy-serve/server-state
     hard-stop-after 120s
-defaults
+defaults ray_defaults
     mode http
     option log-health-checks
     timeout connect 5s
@@ -293,12 +293,12 @@ defaults
     errorfile 504 {temp_dir}/500.http
     load-server-state-from-file global
     balance random(2)
-frontend prometheus
+frontend prometheus from ray_defaults
     bind :9101
     mode http
     http-request use-service prometheus-exporter if {{ path /metrics }}
     no log
-frontend http_frontend
+frontend http_frontend from ray_defaults
     bind *:8000
     # Health check endpoint
     acl healthcheck path -i /-/healthz
@@ -322,9 +322,9 @@ frontend http_frontend
     acl is_web_backend path /web
     use_backend web_backend if is_web_backend
     default_backend default_backend
-backend default_backend
+backend default_backend from ray_defaults
     http-request return status 404 content-type text/plain lf-string "Path \'%[path]\' not found. Ping http://.../-/routes for available routes."
-backend api_backend
+backend api_backend from ray_defaults
     log global
     # Enable HTTP connection reuse for better performance
     http-reuse always
@@ -342,7 +342,7 @@ backend api_backend
     server api_server2 127.0.0.1:8002 check
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server api_fallback_server 127.0.0.1:8500 check backup
-backend web_backend
+backend web_backend from ray_defaults
     log global
     # Enable HTTP connection reuse for better performance
     http-reuse always
@@ -359,7 +359,7 @@ backend web_backend
     default-server fastinter 250ms downinter 250ms fall 3 rise 2 inter 2s check
     # Servers in this backend
     server web_server1 127.0.0.1:8003 check
-listen stats
+listen stats from ray_defaults
   bind *:8080
   stats enable
   stats uri /mystats
@@ -377,6 +377,59 @@ listen stats
                             os.remove(temp_file)
                     except (FileNotFoundError, OSError):
                         pass  # File already removed or doesn't exist
+
+
+def test_generate_config_with_user_override(haproxy_api_cleanup):
+    """When RAY_SERVE_HAPROXY_USER_CONFIG_PATH is set, the file's contents are
+    spliced after `defaults ray_defaults` and Ray's frontends/backends inherit
+    from `user_overrides` so user-supplied directives win for last-defined
+    directives."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+        user_config_path = os.path.join(temp_dir, "user.cfg")
+        user_fragment = (
+            "defaults user_overrides from ray_defaults\n"
+            "    timeout http-request 5s\n"
+            "    retries 3\n"
+            "    option redispatch\n"
+        )
+        with open(user_config_path, "w") as f:
+            f.write(user_fragment)
+
+        backend_config_stub = {
+            "api_backend": BackendConfig(
+                name="api_backend",
+                path_prefix="/api",
+                app_name="api_backend",
+                servers=[ServerConfig(name="s1", host="127.0.0.1", port=8001)],
+            ),
+        }
+
+        with mock.patch(
+            "ray.serve._private.haproxy.RAY_SERVE_HAPROXY_USER_CONFIG_PATH",
+            user_config_path,
+        ):
+            api = HAProxyApi(
+                cfg=HAProxyConfig(),
+                config_file_path=config_file_path,
+                backend_configs=backend_config_stub,
+            )
+            api._generate_config_file_internal()
+
+        with open(config_file_path, "r") as f:
+            content = f.read()
+
+        # User fragment is spliced verbatim.
+        assert "defaults user_overrides from ray_defaults" in content
+        assert "timeout http-request 5s" in content
+        # Ray-owned frontend/backend inherit from user_overrides, not ray_defaults.
+        assert "frontend http_frontend from user_overrides" in content
+        assert "backend default_backend from user_overrides" in content
+        assert "backend api_backend from user_overrides" in content
+        # ray_defaults is still the root parent and other sections still use it.
+        assert "defaults ray_defaults" in content
+        assert "frontend prometheus from ray_defaults" in content
+        assert "listen stats from ray_defaults" in content
 
 
 def test_generate_backends_in_order(haproxy_api_cleanup):
