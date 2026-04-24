@@ -538,7 +538,7 @@ class BlockAccessor:
         # implements the Mapping protocol. Use bulk GPU->CPU transfer via
         # to_arrow() instead of the slow column-by-column Mapping path.
         elif _is_cudf_dataframe(batch):
-            return batch.to_arrow()
+            return batch.to_arrow(preserve_index=False)
 
         elif isinstance(batch, pandas.DataFrame):
             if (block_type == BlockType.ARROW) or (
@@ -558,7 +558,7 @@ class BlockAccessor:
                     return cls.batch_to_arrow_block(batch)
                 except ArrowConversionError as e:
                     if log_once("_fallback_to_pandas_block_warning"):
-                        logger.warning(
+                        logger.debug(
                             f"Failed to convert batch to Arrow due to: {e}; "
                             f"falling back to Pandas block"
                         )

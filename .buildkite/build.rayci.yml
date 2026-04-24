@@ -4,8 +4,10 @@ steps:
     key: linux_wheels_upload
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
         --wanda-image-name=ray-wheel-py{{array.python}}
+        --file-glob='*.whl'
+        --output-dir=.whl
       - ./ci/build/copy_build_artifacts.sh wheel
     array:
       python:
@@ -15,7 +17,7 @@ steps:
         - "3.13"
         - "3.14"
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build($)
       - forge
     tags:
       - release_wheels
@@ -47,7 +49,7 @@ steps:
       - linux_wheels
       - oss
     depends_on:
-      - ray-core-build
+      - ray-core-build(*)
       - ray-cpp-core-build
       - ray-java-build
       - ray-dashboard-build
@@ -56,8 +58,10 @@ steps:
     key: linux_cpp_wheels_upload
     instance_type: small
     commands:
-      - bazel run //ci/ray_ci/automation:extract_wanda_wheels --
+      - bazel run //ci/ray_ci/automation:extract_wanda_artifact --
         --wanda-image-name=ray-cpp-wheel
+        --file-glob='*.whl'
+        --output-dir=.whl
       - ./ci/build/copy_build_artifacts.sh wheel
     depends_on:
       - ray-cpp-wheel-build
@@ -99,7 +103,7 @@ steps:
       - docker
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build($)
       - raycpubase($)
 
   - name: ray-image-tpu-build
@@ -120,7 +124,7 @@ steps:
       - docker
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build($)
       - raytpubase($)
 
   - label: ":tapioca: smoke test: ray tpu image"
@@ -167,7 +171,7 @@ steps:
       - docker
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build($)
       - raycudabase($)
 
   - label: ":crane: publish: ray py{{array.python}} (x86_64)"
@@ -224,7 +228,7 @@ steps:
       - docker
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build($)
       - raycpubaseextra($)
 
   - name: ray-extra-image-cuda-build
@@ -256,7 +260,7 @@ steps:
       - docker
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build($)
       - raycudabaseextra($)
 
   - name: ray-llm-image-cuda-build
@@ -281,7 +285,7 @@ steps:
       - docker
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build($)
       - ray-llmbase($)
 
   - name: ray-llm-extra-image-cuda-build
@@ -306,7 +310,7 @@ steps:
       - docker
       - oss
     depends_on:
-      - ray-wheel-build
+      - ray-wheel-build($)
       - ray-llmbaseextra($)
 
   - label: ":crane: publish: ray-extra py{{array.python}} (x86_64)"
