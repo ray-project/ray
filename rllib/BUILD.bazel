@@ -1912,6 +1912,17 @@ py_test(
 )
 
 py_test(
+    name = "algorithms/tests/test_get_main_process_bundle",
+    size = "small",
+    srcs = ["algorithms/tests/test_get_main_process_bundle.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "algorithms/tests/test_dependency_tf",
     size = "small",
     srcs = ["algorithms/tests/test_dependency_tf.py"],
@@ -2484,6 +2495,18 @@ py_test(
     name = "test_torch_learner_compile",
     size = "medium",
     srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"],
+    tags = [
+        "core",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
+    name = "test_torch_learner_optimizer_restore",
+    size = "medium",
+    srcs = ["core/learner/torch/tests/test_torch_learner_optimizer_restore.py"],
     tags = [
         "core",
         "exclusive",
