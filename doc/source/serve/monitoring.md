@@ -612,6 +612,7 @@ The following diagram shows where metrics are captured along the request path:
   │   │  ○ ray_serve_deployment_processing_latency_ms (on completion)       │   │
   │   │  ○ ray_serve_deployment_request_counter_total (on completion)       │   │
   │   │  ○ ray_serve_deployment_error_counter_total   (on exception)        │   │
+  │   │  ○ ray_serve_deployment_max_processing_latency_ms (rolling max)     │   │
   │   └─────────────────────────────────────────────────────────────────────┘   │
   │                                                                             │
   └─────────────────────────────────────────────────────────────────────────────┘
@@ -667,6 +668,7 @@ These metrics track request throughput, errors, and latency at the replica level
 | `ray_serve_deployment_request_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application` | Total number of requests processed by the replica. |
 | `ray_serve_deployment_processing_latency_ms` **[D]** | Histogram | `deployment`, `replica`, `route`, `application` | Histogram of request processing time in milliseconds (excludes queue wait time). |
 | `ray_serve_deployment_error_counter_total` **[D]** | Counter | `deployment`, `replica`, `route`, `application`, `exception_type` | Total number of exceptions raised while processing requests. |
+| `ray_serve_deployment_max_processing_latency_ms` **[D]** | Gauge | `deployment`, `replica`, `route`, `application` | Maximum request processing time in milliseconds over a rolling window. Tracks the highest latency observed per route across a configurable time window, reported periodically. Configure with `RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S` (default: 60s), `RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S` (default: 10s), and `RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS` (default: 6). |
 
 ### Batching metrics
 
