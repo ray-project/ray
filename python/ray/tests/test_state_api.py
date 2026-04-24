@@ -135,13 +135,20 @@ def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="c
     )
 
 
-def generate_pg_data(id):
+def generate_pg_data(
+    id,
+    name="abc",
+    label_domain_key="",
+    label_domain_assignments=None,
+):
     return PlacementGroupTableData(
         placement_group_id=id,
         state=PlacementGroupTableData.PlacementGroupState.CREATED,
-        name="abc",
+        name=name,
         creator_job_dead=True,
         creator_actor_dead=False,
+        label_domain_key=label_domain_key,
+        label_domain_assignments=label_domain_assignments or {},
     )
 
 

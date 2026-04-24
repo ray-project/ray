@@ -293,6 +293,49 @@ async def test_api_manager_list_pgs(state_api_manager):
 
 
 @pytest.mark.asyncio
+async def test_api_manager_list_pgs_label_domain(state_api_manager):
+    data_source_client = state_api_manager.data_source_client
+
+    pg_with_domain = generate_pg_data(
+        b"1",
+        name="gpu-domain-pg",
+        label_domain_key="ray.io/gpu-domain",
+        label_domain_assignments={"ray.io/gpu-domain": "rack-1"},
+    )
+    pg_without_domain = generate_pg_data(b"2")
+
+    data_source_client.get_all_placement_group_info.return_value = (
+        GetAllPlacementGroupReply(
+            placement_group_table_data=[pg_with_domain, pg_without_domain],
+            total=2,
+        )
+    )
+
+    result = await state_api_manager.list_placement_groups(
+        option=create_api_options(detail=True)
+    )
+    assert len(result.result) == 2
+
+    pg_domain = next(r for r in result.result if r["name"] == "gpu-domain-pg")
+    verify_schema(PlacementGroupState, pg_domain, detail=True)
+    assert pg_domain["label_domain_key"] == "ray.io/gpu-domain"
+    assert pg_domain["label_domain_assignments"] == {"ray.io/gpu-domain": "rack-1"}
+
+    pg_no_domain = next(r for r in result.result if r["name"] == "abc")
+    verify_schema(PlacementGroupState, pg_no_domain, detail=True)
+    assert pg_no_domain["label_domain_key"] == ""
+    assert pg_no_domain["label_domain_assignments"] == {}
+
+    # Verify the fields are excluded from non-detail responses.
+    result = await state_api_manager.list_placement_groups(
+        option=create_api_options(detail=False)
+    )
+    for pg in result.result:
+        assert "label_domain_key" not in pg
+        assert "label_domain_assignments" not in pg
+
+
+@pytest.mark.asyncio
 async def test_api_manager_list_nodes(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     id = b"1234"
