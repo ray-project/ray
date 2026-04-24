@@ -37,8 +37,8 @@ ARG HAPROXY_REPO="https://www.haproxy.com/download/haproxy/performance/ubuntu/ha
 ARG HAPROXY_KEY_URL="https://pks.haproxy.com/linux/community/RPM-GPG-KEY-HAProxy"
 ARG AWSLC_TAG="v1.69.0"
 ARG HAPROXY_BRANCH="3.2"
-ARG HAPROXY_MINOR="3.2.16"
-ARG HAPROXY_SHA256="2ed807f2a8742a4c1ec64906fe857bc53472d521aea8dcc453c82b8e5b1ecb02"
+ARG HAPROXY_MINOR="3.2.15"
+ARG HAPROXY_SHA256="117e408aff544c9ad758c2fb3fd8cf791a72609d3ae319b2cf9f2a0b035393c2"
 ARG HAPROXY_SRC_URL="https://www.haproxy.org/download"
 
 RUN <<EOF
