@@ -310,8 +310,11 @@ class TestFsspecSessionCreds:
         assert _frozen_s3fs_credentials(legacy) == expected
 
     def test_frozen_async_session(self):
-        # aiobotocore returns coroutines from get_credentials and
-        # get_frozen_credentials. The helper must drive them to completion.
+        # aiobotocore returns coroutines from get_credentials /
+        # get_frozen_credentials; the helper must drive them. Internally
+        # we use ``inspect.isawaitable`` (not ``asyncio.iscoroutine``) so
+        # custom wrappers returning Tasks / Futures / other awaitables
+        # also work.
         async def _frozen():
             return MagicMock(access_key="AKIA_AIO", secret_key="s", token="t")
 

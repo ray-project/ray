@@ -1,4 +1,5 @@
 import asyncio
+import inspect
 import logging
 import os
 from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
@@ -113,6 +114,16 @@ def _is_obstore_supported_url(path: str) -> bool:
 
 
 # Credential extraction & store management
+async def _await(awaitable):
+    """Drive an arbitrary awaitable (coroutine, Task, Future, ...) to a value.
+
+    ``asyncio.run`` only accepts coroutines, but ``inspect.isawaitable``
+    matches a wider set (Task, Future, custom ``__await__`` objects).
+    Wrapping with ``await`` here lets ``asyncio.run`` drive any of them.
+    """
+    return await awaitable
+
+
 def _frozen_s3fs_credentials(fsspec_fs) -> Optional[Dict[str, str]]:
     """Snapshot credentials from an s3fs-style session.
 
@@ -135,17 +146,20 @@ def _frozen_s3fs_credentials(fsspec_fs) -> Optional[Dict[str, str]]:
     try:
         get_creds = session.get_credentials
         creds = get_creds()
-        if asyncio.iscoroutine(creds):
+        # Use inspect.isawaitable rather than asyncio.iscoroutine — sessions
+        # backed by aiobotocore / custom wrappers can return Tasks, Futures,
+        # or other awaitables that ``iscoroutine`` does not recognize.
+        if inspect.isawaitable(creds):
             try:
-                creds = asyncio.run(creds)
+                creds = asyncio.run(_await(creds))
             except RuntimeError:
                 return None
         if creds is None:
             return None
         frozen = creds.get_frozen_credentials()
-        if asyncio.iscoroutine(frozen):
+        if inspect.isawaitable(frozen):
             try:
-                frozen = asyncio.run(frozen)
+                frozen = asyncio.run(_await(frozen))
             except RuntimeError:
                 return None
     except Exception as e:
