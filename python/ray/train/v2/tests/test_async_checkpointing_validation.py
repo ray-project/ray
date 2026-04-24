@@ -475,13 +475,13 @@ def test_report_validation_fn_error(tmp_path):
     def validation_fn(checkpoint, rank=None, iteration=None):
         if rank == 0 and iteration == 0:
             raise ValueError("validation failed")
-        return {}
+        return {"validation_score": iteration}
 
     def train_fn():
         rank = ray.train.get_context().get_world_rank()
         with create_dict_checkpoint({}) as cp1:
             ray.train.report(
-                metrics={},
+                metrics={"training_score": 0},
                 checkpoint=cp1,
                 validation=ValidationTaskConfig(
                     fn_kwargs={"rank": rank, "iteration": 0}
@@ -489,12 +489,24 @@ def test_report_validation_fn_error(tmp_path):
             )
         with create_dict_checkpoint({}) as cp2:
             ray.train.report(
-                metrics={},
+                metrics={"training_score": 1},
                 checkpoint=cp2,
                 validation=ValidationTaskConfig(
                     fn_kwargs={"rank": rank, "iteration": 1}
                 ),
             )
+
+        reported_checkpoints = ray.train.get_all_reported_checkpoints()
+        assert len(reported_checkpoints) == 2
+        assert (
+            reported_checkpoints[0].status == ReportedCheckpointStatus.VALIDATION_FAILED
+        )
+        assert reported_checkpoints[0].metrics == {"training_score": 0}
+        assert reported_checkpoints[1].status == ReportedCheckpointStatus.VALIDATED
+        assert reported_checkpoints[1].metrics == {
+            "training_score": 1,
+            "validation_score": 1,
+        }
 
     trainer = DataParallelTrainer(
         train_fn,
@@ -504,8 +516,42 @@ def test_report_validation_fn_error(tmp_path):
     )
     result = trainer.fit()
     assert result.error is None
-    assert result.checkpoint == result.best_checkpoints[1][0]
     assert len(result.best_checkpoints) == 2
+    assert result.best_checkpoints[0][1] == {"training_score": 0}
+    assert result.best_checkpoints[1][1] == {"training_score": 1, "validation_score": 1}
+
+
+def test_report_validation_fn_timeout(tmp_path):
+    def validation_fn(checkpoint):
+        while True:
+            time.sleep(1)
+
+    def train_fn():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"training_score": 0}, checkpoint=cp, validation=True
+            )
+
+        reported_checkpoints = ray.train.get_all_reported_checkpoints()
+        assert len(reported_checkpoints) == 1
+        assert (
+            reported_checkpoints[0].status
+            == ReportedCheckpointStatus.VALIDATION_TIMEOUT
+        )
+        assert reported_checkpoints[0].metrics == {"training_score": 0}
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        validation_config=ValidationConfig(
+            fn=validation_fn, task_config=ValidationTaskConfig(timeout_s=2)
+        ),
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(storage_path=str(tmp_path)),
+    )
+    result = trainer.fit()
+    assert result.error is None
+    assert len(result.best_checkpoints) == 1
+    assert result.best_checkpoints[0][1] == {"training_score": 0}
 
 
 def test_report_validation_fn_success_after_retry():
@@ -532,6 +578,10 @@ def test_report_validation_fn_success_after_retry():
                 checkpoint=cp,
                 validation=True,
             )
+
+        reported_checkpoints = ray.train.get_all_reported_checkpoints()
+        assert len(reported_checkpoints) == 1
+        assert reported_checkpoints[0].status == ReportedCheckpointStatus.VALIDATED
 
     trainer = DataParallelTrainer(
         train_fn,
@@ -703,6 +753,94 @@ def test_report_validation_fn_resumption_on_train_fn_error(
         run_config=run_config,
     ).fit()
     assert result.metrics == {"score": expected_score}
+
+
+def test_trainer_resumption_with_checkpoint_status(tmp_path):
+    def validation_fn(checkpoint, name):
+        if name == "timeout":
+            while True:
+                time.sleep(1)
+        elif name == "error":
+            raise ValueError("validation error")
+        else:
+            return {"validation": name}
+
+    def train_fn_first():
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"score": 0},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(fn_kwargs={"name": "success"}),
+            )
+
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"score": 1},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(
+                    fn_kwargs={"name": "timeout"}, timeout_s=1
+                ),
+            )
+
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"score": 2},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(fn_kwargs={"name": "error"}),
+            )
+
+        with create_dict_checkpoint({}) as cp:
+            ray.train.report(
+                metrics={"score": 3},
+                checkpoint=cp,
+                validation=ValidationTaskConfig(fn_kwargs={"name": "success"}),
+            )
+
+        reported_checkpoints = ray.train.get_all_reported_checkpoints()
+        assert len(reported_checkpoints) == 4
+        assert reported_checkpoints[0].status == ReportedCheckpointStatus.VALIDATED
+        assert (
+            reported_checkpoints[1].status
+            == ReportedCheckpointStatus.VALIDATION_TIMEOUT
+        )
+        assert (
+            reported_checkpoints[2].status == ReportedCheckpointStatus.VALIDATION_FAILED
+        )
+        assert reported_checkpoints[3].status == ReportedCheckpointStatus.VALIDATED
+        assert reported_checkpoints[3].metrics == {"score": 3, "validation": "success"}
+
+        raise RuntimeError("train_fn failed intentionally")
+
+    def train_fn_second():
+        reported_checkpoints = ray.train.get_all_reported_checkpoints()
+        assert len(reported_checkpoints) == 4
+        assert reported_checkpoints[0].status == ReportedCheckpointStatus.VALIDATED
+        assert (
+            reported_checkpoints[1].status
+            == ReportedCheckpointStatus.VALIDATION_TIMEOUT
+        )
+        assert (
+            reported_checkpoints[2].status == ReportedCheckpointStatus.VALIDATION_FAILED
+        )
+        assert reported_checkpoints[3].status == ReportedCheckpointStatus.VALIDATED
+
+    with pytest.raises(WorkerGroupError):
+        DataParallelTrainer(
+            train_fn_first,
+            run_config=RunConfig(
+                "test-trainer-resumption-with-checkpoint-status",
+                storage_path=str(tmp_path),
+            ),
+            validation_config=ValidationConfig(fn=validation_fn),
+        ).fit()
+
+    result = DataParallelTrainer(
+        train_fn_second,
+        run_config=RunConfig(
+            "test-trainer-resumption-with-checkpoint-status", storage_path=str(tmp_path)
+        ),
+    ).fit()
+    assert len(result.best_checkpoints) == 4
 
 
 def test_report_validation_fn_resumption_checkpoint_status(tmp_path):

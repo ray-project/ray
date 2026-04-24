@@ -15,11 +15,16 @@ class ReportedCheckpointStatus(Enum):
     * COMMITTED: The checkpoint is saved, and no validation was requested.
     * PENDING_VALIDATION: The checkpoint is saved, and validation is in progress.
     * VALIDATED: The checkpoint is saved, and validation is complete.
+    * VALIDATION_TIMEOUT: The checkpoint is saved, and validation is timed out according to
+        `ValidationTaskConfig(..., timeout_s=N)`.
+    * VALIDATION_FAILED: The checkpoint is saved, and validation failed / canceled.
     """
 
     COMMITTED = "COMMITTED"
     PENDING_VALIDATION = "PENDING_VALIDATION"
     VALIDATED = "VALIDATED"
+    VALIDATION_TIMEOUT = "VALIDATION_TIMEOUT"
+    VALIDATION_FAILED = "VALIDATION_FAILED"
 
 
 @dataclass
