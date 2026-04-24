@@ -439,28 +439,18 @@ class VLLMEngine(LLMEngine):
         # If the backend is anything other than CPU, we need to create the
         # engine config on a task with hardware access.
         if engine_config.accelerator.requires_remote_initialization:
-            # Initialize the base options required for the remote task
+            accelerator = engine_config.accelerator
+            accelerator_type = self.llm_config.accelerator_type
+
+            # Initialize options required for the remote task and hardware backend
             remote_options = {
                 "num_cpus": 0,
                 "runtime_env": callback_ctx.runtime_env,
                 "scheduling_strategy": PlacementGroupSchedulingStrategy(
                     placement_group=callback_ctx.placement_group,
                 ),
+                **accelerator.get_remote_options(accelerator_type),
             }
-
-            # Set the hardware requirements based on the accelerator backend
-            accel_str = (
-                getattr(
-                    self.llm_config.accelerator_type,
-                    "value",
-                    self.llm_config.accelerator_type,
-                )
-                if self.llm_config.accelerator_type
-                else None
-            )
-
-            hardware_options = engine_config.accelerator.get_remote_options(accel_str)
-            remote_options.update(hardware_options)
 
             ref = (
                 ray.remote(_get_vllm_engine_config)
