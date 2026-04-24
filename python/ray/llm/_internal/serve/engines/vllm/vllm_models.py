@@ -22,6 +22,7 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     GPUAccelerator,
     TPUAccelerator,
     TPUConfig,
+    format_ray_accelerator_resource,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
     AcceleratorType,
@@ -225,10 +226,6 @@ class VLLMEngineConfig(BaseModelExtended):
             placement_group_config=placement_group_config,
         )
 
-    def ray_accelerator_type(self) -> str:
-        """Converts the accelerator type to the Ray Core format."""
-        return f"accelerator_type:{self.accelerator_type}"
-
     @property
     def tensor_parallel_degree(self) -> int:
         return self.engine_kwargs.get("tensor_parallel_size", 1)
@@ -261,7 +258,8 @@ class VLLMEngineConfig(BaseModelExtended):
                 for _ in range(self.num_devices):
                     bundle = bundle_per_worker.copy()
                     if self.accelerator_type:
-                        bundle.setdefault(self.ray_accelerator_type(), 0.001)
+                        res_key = format_ray_accelerator_resource(self.accelerator_type)
+                        bundle.setdefault(res_key, 0.001)
                     bundles.append(bundle)
                 return bundles
 
@@ -272,14 +270,14 @@ class VLLMEngineConfig(BaseModelExtended):
                 bundle = bundle_dict.copy()
                 if self.accelerator_type:
                     # Use setdefault to add accelerator hint WITHOUT overriding explicit user values
-                    bundle.setdefault(self.ray_accelerator_type(), 0.001)
+                    res_key = format_ray_accelerator_resource(self.accelerator_type)
+                    bundle.setdefault(res_key, 0.001)
                 bundles.append(bundle)
             return bundles
 
         # Default bundles based on the accelerator backend.
-        ray_accel_type = self.ray_accelerator_type() if self.accelerator_type else None
         return self.accelerator.default_bundles(
-            num_devices=self.num_devices, ray_accelerator_type=ray_accel_type
+            num_devices=self.num_devices, accelerator_type_str=self.accelerator_type
         )
 
     def get_or_create_pg(self) -> PlacementGroup:
@@ -305,17 +303,11 @@ class VLLMEngineConfig(BaseModelExtended):
                 )
             name = "" if dp_rank is None else f"dp_{dp_rank}"
 
-            accel_str = (
-                getattr(self.accelerator_type, "value", self.accelerator_type)
-                if self.accelerator_type
-                else None
-            )
-
             pg = self.accelerator.create_placement_group(
                 bundles=self.placement_bundles,
                 strategy=self.placement_strategy,
                 name=name,
-                accelerator_type_str=accel_str,
+                accelerator_type_str=self.accelerator_type,
             )
 
             logger.info(f"Using new placement group {pg}. {placement_group_table(pg)}")

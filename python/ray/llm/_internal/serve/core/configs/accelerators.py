@@ -22,6 +22,11 @@ TPU_ACCELERATOR_VALUES = {
 }
 
 
+def format_ray_accelerator_resource(accelerator_type_str: str) -> str:
+    """Formats the accelerator type into a Ray custom resource string."""
+    return f"accelerator_type:{accelerator_type_str}"
+
+
 def infer_hardware_kind_from_bundles(
     placement_group_config: Optional[Dict[str, Any]]
 ) -> Optional[str]:
@@ -130,11 +135,11 @@ class CPUAccelerator(AcceleratorBackend):
 class GPUAccelerator(AcceleratorBackend):
     # stateless — no __init__
     def default_bundles(
-        self, *, num_devices: int, ray_accelerator_type: Optional[str] = None
+        self, *, num_devices: int, accelerator_type_str: Optional[str] = None
     ):
         bundle = {"GPU": 1}
-        if ray_accelerator_type:
-            bundle[ray_accelerator_type] = 0.001
+        if accelerator_type_str:
+            bundle[format_ray_accelerator_resource(accelerator_type_str)] = 0.001
         return [bundle.copy() for _ in range(num_devices)]
 
     def create_placement_group(
@@ -164,11 +169,11 @@ class TPUAccelerator(AcceleratorBackend):
         self._slice_pg_wrapper = None
 
     def default_bundles(
-        self, *, num_devices: int, ray_accelerator_type: Optional[str] = None
+        self, *, num_devices: int, accelerator_type_str: Optional[str] = None
     ):
         bundle = {"TPU": 1}
-        if ray_accelerator_type:
-            bundle[ray_accelerator_type] = 0.001
+        if accelerator_type_str:
+            bundle[format_ray_accelerator_resource(accelerator_type_str)] = 0.001
         return [bundle.copy() for _ in range(num_devices)]
 
     def create_placement_group(
