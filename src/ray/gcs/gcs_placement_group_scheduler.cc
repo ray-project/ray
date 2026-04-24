@@ -58,9 +58,9 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
   const auto &bundles = placement_group->GetUnplacedBundles();
   const auto &strategy = placement_group->GetStrategy();
 
-  // If all bundles of a placement group are unplaced and there is a specific label
-  // domain, then this means that the placement group should clear its original assignment
-  // and try for a new assignment within the label domain.
+  // For label-domain PGs: if ALL bundles are unplaced (total failure), clear the
+  // domain assignment so a new domain can be selected. If only some bundles are
+  // unplaced (partial failure), we attempt to reschedule the bundles on the same domain.
   if (placement_group->AllUnplacedBundles() &&
       placement_group->GetLabelDomainKey().has_value()) {
     placement_group->ClearLabelDomainAssignments();
