@@ -78,18 +78,22 @@ def _create_empty_table(schema: "pyarrow.Schema"):
 def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
     """Check if any column type becomes unhashable after to_pandas() conversion.
 
-    Struct, list, large_list, and map types convert to Python dicts/lists which
-    are not hashable by pandas' hash_pandas_object. We check the schema upfront
-    so the hash algorithm choice is deterministic per schema, not per block data.
+    Nested PyArrow types (struct/list/large_list/fixed_size_list/map/union and
+    their view variants) convert to Python dicts/lists, and Ray's tensor and
+    Python-object extension types convert to numpy arrays / Python objects.
+    None of these are hashable by pandas' hash_pandas_object. We check the
+    schema upfront so the hash algorithm choice is deterministic per schema,
+    not per block data.
     """
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+
+    tensor_types = get_arrow_extension_tensor_types()
     for field in schema:
-        if (
-            pyarrow.types.is_struct(field.type)
-            or pyarrow.types.is_list(field.type)
-            or pyarrow.types.is_large_list(field.type)
-            or pyarrow.types.is_fixed_size_list(field.type)
-            or pyarrow.types.is_map(field.type)
-        ):
+        if pyarrow.types.is_nested(field.type):
+            return True
+        if isinstance(field.type, tensor_types):
+            return True
+        if isinstance(field.type, ArrowPythonObjectType):
             return True
     return False
 
