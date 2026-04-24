@@ -263,7 +263,7 @@ class TestThreadedDownloadPreResolve:
     pre-resolved filesystem across all workers.
     """
 
-    def test_resolves_filesystem_once_across_workers(self, tmp_path):
+    def test_probe_once_across_workers(self, tmp_path):
         for i in range(10):
             (tmp_path / f"f{i}.bin").write_bytes(f"data-{i}".encode())
 
@@ -301,7 +301,7 @@ class TestThreadedDownloadPreResolve:
         out_bytes = [b.as_py() for b in results[0].column("bytes")]
         assert out_bytes == [f"data-{i}".encode() for i in range(10)]
 
-    def test_supplied_filesystem_skips_probe(self, tmp_path):
+    def test_supplied_fs_skips_probe(self, tmp_path):
         (tmp_path / "f.bin").write_bytes(b"supplied")
         uri = f"file://{tmp_path}/f.bin"
         table = pa.Table.from_arrays([pa.array([uri])], names=["uri"])
@@ -333,7 +333,7 @@ class TestThreadedDownloadPreResolve:
         assert probe_calls == []
         assert results[0].column("bytes")[0].as_py() == b"supplied"
 
-    def test_bad_first_uri_still_finds_filesystem(self, tmp_path):
+    def test_bad_first_uri_probes_past(self, tmp_path):
         # Probe loop must skip None / unresolvable URIs and continue until it
         # finds one that yields both paths and a filesystem.
         (tmp_path / "good.bin").write_bytes(b"good content")
@@ -349,7 +349,7 @@ class TestThreadedDownloadPreResolve:
         # None URI → None result; good URI → good content.
         assert out_bytes[1] == b"good content"
 
-    def test_all_probe_uris_unresolvable_does_not_crash(self):
+    def test_all_probes_fail_no_crash(self):
         # Every URI raises during inference. Workers must fall back to
         # per-URI resolution without crashing. Every URI yields None.
         uris = ["not-a-scheme://bogus/1", "also-bogus://2"]
@@ -361,7 +361,7 @@ class TestThreadedDownloadPreResolve:
         out_bytes = [b.as_py() for b in results[0].column("bytes")]
         assert all(b is None for b in out_bytes)
 
-    def test_empty_block_does_not_spawn_workers(self):
+    def test_empty_block_no_workers(self):
         # Zero URIs → the column loop skips; no probe, no workers.
         table = pa.Table.from_arrays([pa.array([], type=pa.string())], names=["uri"])
         ctx = DataContext.get_current()
@@ -374,7 +374,7 @@ class TestThreadedDownloadPreResolve:
             # No resolve calls expected; iterator should finish cleanly.
             list(download_bytes_threaded(table, ["uri"], ["bytes"], ctx))
 
-    def test_probe_rejects_empty_paths_result(self):
+    def test_probe_skips_empty_paths(self):
         # Regression: the probe must NOT break when _resolve_paths_and_filesystem
         # returns ([], fs) — that would leave workers with no usable FS and
         # push them back to per-URI resolution (the IMDS herd). The loop must
@@ -424,6 +424,43 @@ class TestThreadedDownloadPreResolve:
 
         out_bytes = [b.as_py() for b in results[0].column("bytes")]
         assert out_bytes[1] == b"second uri wins"
+
+    def test_fallback_caches_fs_in_worker(self):
+        # Regression: when all block-level probes fail, workers fall back
+        # to per-URI resolution with filesystem=None. After the first
+        # successful fallback resolution, subsequent URIs in the same
+        # worker must reuse it — otherwise the fallback path reconstructs
+        # the FS on every URI and defeats the whole point of the PR.
+        #
+        # With 32 URIs round-robin'd across 16 workers, we get 2 URIs per
+        # worker. If the per-worker cache works, inference happens exactly
+        # once per worker → 16 total. Without the cache it would be 32.
+        from ray.data._internal.planner import plan_download_op as pdo
+
+        real_fs = pafs.LocalFileSystem()
+        inference_calls: list = []
+
+        def _fake_resolve(uri, filesystem=None, **_kw):
+            if uri == "probe-fail":
+                raise RuntimeError("probe fails for all URIs")
+            if filesystem is None:
+                inference_calls.append(uri)
+                return ([f"/tmp/{uri}"], real_fs)
+            return ([f"/tmp/{uri}"], filesystem)
+
+        uris = ["probe-fail"] * 32
+        table = pa.Table.from_arrays([pa.array(uris)], names=["uri"])
+        ctx = DataContext.get_current()
+
+        with patch.object(
+            pdo, "_resolve_paths_and_filesystem", side_effect=_fake_resolve
+        ):
+            list(download_bytes_threaded(table, ["uri"], ["bytes"], ctx))
+
+        assert len(inference_calls) == 16, (
+            f"Expected 16 inferences (one per worker) after per-worker caching, "
+            f"got {len(inference_calls)} — fallback path is re-inferring per URI."
+        )
 
 
 # TestObstoreDownloadPath

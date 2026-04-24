@@ -247,10 +247,17 @@ def download_bytes_threaded(
                         resolved_paths, per_uri_fs = _resolve_paths_and_filesystem(
                             uri, filesystem=None
                         )
-                        fs_for_read = RetryingPyFileSystem.wrap(
+                        # Cache the first successful inference for the rest of
+                        # this worker's iterator so we don't redo it per URI.
+                        # Without this, every URI in the fallback path would
+                        # reconstruct the filesystem — recreating the repeated
+                        # construction cost this PR is trying to avoid.
+                        resolved_fs = per_uri_fs
+                        wrapped_fs = RetryingPyFileSystem.wrap(
                             per_uri_fs,
                             retryable_errors=data_context.retried_io_errors,
                         )
+                        fs_for_read = wrapped_fs
                     else:
                         # Path normalization only — _resolve_paths_and_filesystem
                         # short-circuits when filesystem is supplied (no network).
