@@ -1115,7 +1115,7 @@ mlflow-skinny==3.1.4
     # via mlflow
 mmh3==4.1.0
     # via pyiceberg
-modin==0.31.0 ; python_version < "3.12"
+modin==0.31.0
     # via -r python/requirements/ml/data-requirements.txt
 monotonic==1.6
     # via
