@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pyarrow.fs
 import pytest
+import torch
 
 import ray
 from ray.tests.client_test_utils import create_remote_signal_actor
@@ -281,6 +282,131 @@ def test_sigint_abort(spam_sigint):
             time.sleep(1)
             os.kill(process.pid, signal.SIGINT)
     process.join()
+
+
+SUPPORTED_METRICS = [
+    {"loss": 1.0},
+    {"loss": 1, "accuracy": 0.95},
+    {"loss": None},
+    {"loss": "label"},
+    {"nested": {"a": 1}},
+]
+UNSUPPORTED_METRICS = ["torch_tensor", "nested_torch_tensor", "torch_state_dict"]
+
+
+def test_supported_report_metrics(tmp_path):
+    def train_fn():
+        for metric in SUPPORTED_METRICS:
+            with tempfile.TemporaryDirectory() as temp_dir:
+                ray.train.report(
+                    metrics=metric,
+                    checkpoint=ray.train.Checkpoint.from_directory(temp_dir),
+                )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="test-supported-report-metrics", storage_path=str(tmp_path)
+        ),
+    )
+    result = trainer.fit()
+    for (_, actual_metric), expected_metric in zip(
+        result.best_checkpoints, SUPPORTED_METRICS, strict=True
+    ):
+        assert actual_metric == expected_metric
+
+    restored_result = Result.from_path(tmp_path / "test-supported-report-metrics")
+    for (_, actual_metric), expected_metric in zip(
+        restored_result.best_checkpoints, SUPPORTED_METRICS, strict=True
+    ):
+        assert actual_metric == expected_metric
+
+
+@pytest.mark.parametrize("metric_name", UNSUPPORTED_METRICS)
+def test_unsupported_report_metrics(metric_name, tmp_path):
+    def train_fn():
+        if metric_name == "torch_tensor":
+            metric = {"loss": torch.tensor(1.0)}
+        elif metric_name == "nested_torch_tensor":
+            metric = {"nested": {"a": torch.tensor(1.0)}}
+        elif metric_name == "torch_state_dict":
+            metric = torch.nn.Linear(1, 1).state_dict()
+        else:
+            raise ValueError()
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            ray.train.report(
+                metrics=metric, checkpoint=ray.train.Checkpoint.from_directory(temp_dir)
+            )
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="test-unsupported-report-metrics", storage_path=str(tmp_path)
+        ),
+    )
+    with pytest.raises(WorkerGroupError) as exc_info:
+        trainer.fit()
+
+        assert len(exc_info.value.worker_failures) == 1
+        worker_error = exc_info.value.worker_failures[0]
+        assert isinstance(worker_error, ValueError)
+        assert worker_error.args[0].startswith(
+            "Passing objects containing Torch tensors as metrics is not "
+            "supported as it will throw an exception on deserialization."
+        )
+
+
+@pytest.mark.parametrize("metric", SUPPORTED_METRICS)
+def test_supported_returned_metrics(metric, tmp_path):
+    def train_fn():
+        return metric
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="test-supported-return-metrics", storage_path=str(tmp_path)
+        ),
+    )
+    result = trainer.fit()
+    return result.return_value == metric
+
+
+@pytest.mark.parametrize("metric_name", UNSUPPORTED_METRICS)
+def test_unsupported_returned_metrics(metric_name, tmp_path):
+    def train_fn():
+        if metric_name == "torch_tensor":
+            metric = {"loss": torch.tensor(1.0)}
+        elif metric_name == "nested_torch_tensor":
+            metric = {"nested": {"a": torch.tensor(1.0)}}
+        elif metric_name == "torch_state_dict":
+            metric = torch.nn.Linear(1, 1).state_dict()
+        else:
+            raise ValueError()
+
+        return metric
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        scaling_config=ScalingConfig(num_workers=1),
+        run_config=RunConfig(
+            name="test-unsupported-report-metrics", storage_path=str(tmp_path)
+        ),
+    )
+    with pytest.raises(WorkerGroupError) as exc_info:
+        trainer.fit()
+
+        assert len(exc_info.value.worker_failures) == 1
+        worker_error = exc_info.value.worker_failures[0]
+        assert isinstance(worker_error, ValueError)
+        assert worker_error.args[0].startswith(
+            "Returning objects containing Torch tensors from the "
+            "training function is not supported as it will throw an "
+            "exception on deserialization."
+        )
 
 
 if __name__ == "__main__":

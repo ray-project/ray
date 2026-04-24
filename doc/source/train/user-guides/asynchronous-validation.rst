@@ -126,7 +126,8 @@ loss on a validation set. Note the following about this example:
   example allowing different resource requirements for training and validation, for example,
   A100 for training and A10G for validation.
 * The validation train function returns its metrics directly from worker 0 rather than calling
-  ``ray.train.report`` which is accessible via ``result.return_value``.
+  ``ray.train.report`` which is accessible via ``result.return_value``. These values can't be torch
+  tensors and must be python based like ``ray.train.report``.
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python

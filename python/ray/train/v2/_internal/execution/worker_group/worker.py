@@ -2,6 +2,7 @@ import logging
 import os
 import queue
 import socket
+import sys
 from dataclasses import dataclass
 from functools import cached_property
 from typing import TYPE_CHECKING, Callable, Dict, List, Optional, TypeVar, Union
@@ -141,6 +142,19 @@ class RayTrainWorker:
 
         def train_fn_with_final_checkpoint_flush():
             result = train_fn()
+            if "torch" in sys.modules:
+                from ray.air._internal.torch_utils import contains_tensor
+
+                if contains_tensor(result):
+                    raise ValueError(
+                        "Returning objects containing Torch tensors from the "
+                        "training function is not supported as it will throw an "
+                        "exception on deserialization. You can either convert "
+                        "the tensors to Python objects (ex: `.numpy()`, "
+                        "`.item()`, etc.) or save tensors as part of the "
+                        "checkpoint files instead."
+                    )
+
             get_train_context().checkpoint_upload_threadpool.shutdown()
             return result
 
