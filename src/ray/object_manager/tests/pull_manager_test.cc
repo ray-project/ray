@@ -1189,12 +1189,13 @@ TEST_F(PullManagerWithAdmissionControlTest, TestPrioritizeWorkerRequests) {
 }
 
 // Local objects don't need to be fetched, so they shouldn't count against
-// the pull quota. With capacity 10, seed a 4 byte remote bundle and then a
-// 7 byte all local bundle. The local bundle should activate even though
-// 4 + 7 > 10.
+// the pull quota. With 10 bytes of pull budget and a 4 byte remote seed
+// bundle kept in flight (the first bundle always passes to avoid
+// deadlock), a task bundle with a 7 byte local object should activate
+// even though 4 + 7 > 10.
 TEST_F(PullManagerWithAdmissionControlTest, TestLocalObjectsDoNotConsumeQuota) {
-  std::unordered_set<NodeID> client_ids;
-  client_ids.insert(NodeID::FromRandom());
+  std::unordered_set<NodeID> remote_node;
+  remote_node.insert(NodeID::FromRandom());
   std::vector<rpc::ObjectReference> objects_to_locate;
 
   auto remote_refs = CreateObjectRefs(1);
@@ -1202,7 +1203,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestLocalObjectsDoNotConsumeQuota) {
   auto remote_req = pull_manager_.Pull(
       remote_refs, BundlePriority::TASK_ARGS, {"", false}, &objects_to_locate);
   pull_manager_.OnLocationChange(
-      remote_oid, client_ids, "", NodeID::Nil(), false, /*object_size=*/4);
+      remote_oid, remote_node, "", NodeID::Nil(), false, /*object_size=*/4);
   ASSERT_TRUE(pull_manager_.IsObjectActive(remote_oid));
 
   object_is_local_ = true;
@@ -1212,9 +1213,11 @@ TEST_F(PullManagerWithAdmissionControlTest, TestLocalObjectsDoNotConsumeQuota) {
   auto local_req = pull_manager_.Pull(
       local_refs, BundlePriority::TASK_ARGS, {"", false}, &objects_to_locate);
   pull_manager_.OnLocationChange(
-      local_oid, client_ids, "", NodeID::Nil(), false, /*object_size=*/7);
+      local_oid, remote_node, "", NodeID::Nil(), false, /*object_size=*/7);
 
+  ASSERT_TRUE(pull_manager_.IsObjectActive(remote_oid));
   ASSERT_TRUE(pull_manager_.IsObjectActive(local_oid));
+  AssertNumActiveBundlesEquals(2);
 
   pull_manager_.CancelPull(remote_req);
   pull_manager_.CancelPull(local_req);
@@ -1227,8 +1230,8 @@ TEST_F(PullManagerWithAdmissionControlTest, TestLocalObjectsDoNotConsumeQuota) {
 // request. The task_args pull should not be canceled to make room, even
 // though 3 + 8 > 10.
 TEST_F(PullManagerWithAdmissionControlTest, TestLocalGetDoesNotEvictTaskArgs) {
-  std::unordered_set<NodeID> client_ids;
-  client_ids.insert(NodeID::FromRandom());
+  std::unordered_set<NodeID> remote_node;
+  remote_node.insert(NodeID::FromRandom());
   std::vector<rpc::ObjectReference> objects_to_locate;
 
   auto task_refs = CreateObjectRefs(1);
@@ -1236,7 +1239,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestLocalGetDoesNotEvictTaskArgs) {
   auto task_req = pull_manager_.Pull(
       task_refs, BundlePriority::TASK_ARGS, {"", false}, &objects_to_locate);
   pull_manager_.OnLocationChange(
-      task_oid, client_ids, "", NodeID::Nil(), false, /*object_size=*/3);
+      task_oid, remote_node, "", NodeID::Nil(), false, /*object_size=*/3);
   ASSERT_TRUE(pull_manager_.IsObjectActive(task_oid));
 
   object_is_local_ = true;
@@ -1246,7 +1249,7 @@ TEST_F(PullManagerWithAdmissionControlTest, TestLocalGetDoesNotEvictTaskArgs) {
   auto get_req = pull_manager_.Pull(
       get_refs, BundlePriority::GET_REQUEST, {"", false}, &objects_to_locate);
   pull_manager_.OnLocationChange(
-      get_oid, client_ids, "", NodeID::Nil(), false, /*object_size=*/8);
+      get_oid, remote_node, "", NodeID::Nil(), false, /*object_size=*/8);
 
   ASSERT_TRUE(pull_manager_.IsObjectActive(task_oid));
   ASSERT_TRUE(pull_manager_.IsObjectActive(get_oid));
