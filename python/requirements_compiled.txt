@@ -1930,7 +1930,7 @@ regex==2024.5.15
     # via
     #   cfn-lint
     #   transformers
-requests==2.32.5
+requests==2.33.0
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/cloud-requirements.txt
