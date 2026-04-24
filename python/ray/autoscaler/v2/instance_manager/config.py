@@ -309,7 +309,9 @@ class AutoscalingConfig:
 
     def get_provider_instance_type(self, ray_node_type: NodeType) -> str:
         provider = self.provider
-        node_config = self.get_node_type_specific_config(ray_node_type, "node_config")
+        node_config = (
+            self.get_node_type_specific_config(ray_node_type, "node_config") or {}
+        )
         if provider in [Provider.AWS, Provider.ALIYUN]:
             return node_config.get("InstanceType", "")
         elif provider == Provider.AZURE:
