@@ -142,6 +142,8 @@ class RayTrainWorker:
 
         def train_fn_with_final_checkpoint_flush():
             result = train_fn()
+            get_train_context().checkpoint_upload_threadpool.shutdown()
+
             if "torch" in sys.modules:
                 from ray.air._internal.torch_utils import contains_tensor
 
@@ -155,7 +157,6 @@ class RayTrainWorker:
                         "checkpoint files instead."
                     )
 
-            get_train_context().checkpoint_upload_threadpool.shutdown()
             return result
 
         # Create and start the training thread.
