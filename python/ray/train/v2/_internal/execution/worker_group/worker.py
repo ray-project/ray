@@ -138,7 +138,9 @@ class RayTrainWorker:
         except Exception as e:
             logger.error(f"Error deserializing the training function: {e}")
             raise
-
+        
+        logger.info("Launching training function.")
+        
         def train_fn_with_final_checkpoint_flush():
             train_fn()
             get_train_context().checkpoint_upload_threadpool.shutdown()
