@@ -754,6 +754,77 @@ def test_app_error_fetch_to_driver(ray_start_regular):
     assert torch.equal(ray.get(ref, _use_object_store=True), small_tensor)
 
 
+@ray.remote
+class FailingRDTActor:
+    def __init__(self):
+        self.attempts = 0
+
+    @ray.method(
+        tensor_transport="gloo", max_task_retries=1, retry_exceptions=[ValueError]
+    )
+    def fail_first_attempt(self):
+        self.attempts += 1
+        if self.attempts == 1:
+            raise ValueError("first-attempt failure")
+        return torch.tensor([1, 2, 3])
+
+    @ray.method(
+        tensor_transport="gloo", max_task_retries=1, retry_exceptions=[ValueError]
+    )
+    def rdt_obj_always_fails(self):
+        self.attempts += 1
+        raise ValueError("permanent failure")
+
+    def consume(self, tensor):
+        return tensor
+
+    def get_num_rdt_objects(self):
+        return ray._private.worker.global_worker.rdt_manager.rdt_store.get_num_objects()
+
+
+def test_rdt_retry_then_succeeds(ray_start_regular):
+    """
+    Retryable exception on first attempt, success on second
+    Only one entry should be in the RDTStore.
+    """
+    sender = FailingRDTActor.remote()
+    receiver = FailingRDTActor.remote()
+    create_collective_group([sender, receiver], backend="gloo")
+
+    ref = sender.fail_first_attempt.remote()
+    result = ray.get(receiver.consume.remote(ref))
+    assert torch.equal(result, torch.tensor([1, 2, 3]))
+
+    # Sender should hold one primary entry for this ref
+    assert ray.get(sender.get_num_rdt_objects.remote()) == 1
+
+
+def test_rdt_retry_fetch_through_obj_store(ray_start_regular):
+    """
+    Retryable exception on first attempt, successful fetch to driver on second
+    """
+    sender = FailingRDTActor.remote()
+    create_collective_group([sender], backend="gloo")
+
+    ref = sender.fail_first_attempt.remote()
+    assert torch.equal(ray.get(ref, _use_object_store=True), torch.tensor([1, 2, 3]))
+
+
+def test_rdt_retries_exhausted_raises(ray_start_regular):
+    """
+    When all retries fail, the user's exception must propagate to the
+    consumer via the CPU path (no direct_transport_metadata is set on the
+    final reply, so the consumer sees the error when deserializing the arg).
+    """
+    sender = FailingRDTActor.remote()
+    receiver = FailingRDTActor.remote()
+    create_collective_group([sender, receiver], backend="gloo")
+
+    ref = sender.rdt_obj_always_fails.remote()
+    with pytest.raises(Exception, match="permanent failure"):
+        ray.get(receiver.consume.remote(ref))
+
+
 def test_write_after_save(ray_start_regular):
     """Check that an actor can safely write to a tensor after saving it to its
     local state by calling `ray.experimental.wait_tensor_freed`."""

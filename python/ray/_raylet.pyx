@@ -974,8 +974,7 @@ cdef store_task_errors(
         proctitle,
         const CAddress &caller_address,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_string* application_error,
-        optional[c_string] c_tensor_transport):
+        c_string* application_error):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
@@ -1025,7 +1024,7 @@ cdef store_task_errors(
         caller_address,
         returns,
         None,  # ref_generator_id
-        c_tensor_transport)
+        NULL_TENSOR_TRANSPORT)
 
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
         raise ActorDiedError.from_task_error(failure_object)
@@ -1601,8 +1600,7 @@ cdef create_generator_error_object(
                 function_name, task_type, title,
                 caller_address,
                 &intermediate_result,
-                application_error,
-                NULL_TENSOR_TRANSPORT)
+                application_error)
 
     error_object[0] = intermediate_result.back()
 
@@ -1671,8 +1669,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         None,  # actor id
                         function_name, task_type, title, caller_address,
                         dynamic_returns,
-                        application_error,
-                        NULL_TENSOR_TRANSPORT)
+                        application_error)
             if num_errors_stored == 0:
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
@@ -2049,7 +2046,7 @@ cdef void execute_task(
         except BaseException as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
-                    task_type, title, caller_address, returns, application_error, c_tensor_transport)
+                    task_type, title, caller_address, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -2203,8 +2200,7 @@ cdef execute_task_with_cancellation_handler(
                 returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
-                NULL,
-                NULL_TENSOR_TRANSPORT)
+                NULL)
     finally:
         with current_task_id_lock:
             current_task_id = None
