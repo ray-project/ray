@@ -141,6 +141,8 @@ async-generator==1.10
     # via -r python/requirements/py313/test-requirements.txt
 async-lru==2.3.0
     # via jupyterlab
+async-timeout==5.0.1
+    # via redis
 attrs==26.1.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
@@ -433,7 +435,7 @@ databricks-sdk==0.103.0
     # via
     #   mlflow-skinny
     #   mlflow-tracing
-datasets==4.8.4
+datasets==3.6.0
     # via
     #   -r python/requirements/ml/py313/data-test-requirements.txt
     #   -r python/requirements/ml/py313/train-requirements.txt
@@ -466,7 +468,7 @@ deprecated==1.3.1
     # via
     #   deltalake
     #   pymoo
-dill==0.4.1
+dill==0.3.8
     # via
     #   datasets
     #   evaluate
@@ -798,7 +800,6 @@ httplib2==0.20.4
 httpx==0.28.1
     # via
     #   -r python/requirements/py313/test-requirements.txt
-    #   datasets
     #   gradio
     #   gradio-client
     #   jupyterlab
@@ -1190,7 +1191,7 @@ multidict==6.7.1
     #   yarl
 multipledispatch==1.0.0
     # via botorch
-multiprocess==0.70.19
+multiprocess==0.70.16
     # via
     #   datasets
     #   evaluate
@@ -1972,7 +1973,7 @@ pyzmq==27.1.0
     #   jupyter-server
 raydp==1.7.0b20250423.dev0
     # via -r python/requirements/ml/py313/data-test-requirements.txt
-redis==7.4.0
+redis==4.5.4
     # via -r python/requirements/py313/test-requirements.txt
 referencing==0.36.2
     # via

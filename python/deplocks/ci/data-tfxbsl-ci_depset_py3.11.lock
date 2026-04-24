@@ -200,7 +200,6 @@ anyio==4.13.0 \
     --hash=sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc
     # via
     #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-    #   httpx
     #   starlette
     #   taskiq
     #   watchfiles
@@ -406,8 +405,6 @@ certifi==2026.4.22 \
     # via
     #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
     #   clickhouse-connect
-    #   httpcore
-    #   httpx
     #   requests
     #   snowflake-connector-python
 cffi==1.17.1 \
@@ -2011,7 +2008,6 @@ h11==0.16.0 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
     # via
     #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-    #   httpcore
     #   uvicorn
 h5py==3.12.1 \
     --hash=sha256:018a4597f35092ae3fb28ee851fdc756d2b88c96336b8480e124ce1ac6fb9166 \
@@ -2076,12 +2072,6 @@ hf-xet==1.4.3 ; platform_machine == 'aarch64' or platform_machine == 'amd64' or 
     # via
     #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
     #   huggingface-hub
-httpcore==1.0.9 \
-    --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
-    --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
-    # via
-    #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-    #   httpx
 httplib2==0.22.0 \
     --hash=sha256:14ae0a53c1ba8f3d37e9e27cf37eabb0fb9980f435ba405d546948b009dd64dc \
     --hash=sha256:d7a10bc5ef5ab08322488bde8c726eeee5c8618723fdb399597ec58f3d82df81
@@ -2136,10 +2126,6 @@ httptools==0.7.1 \
     --hash=sha256:f65744d7a8bdb4bda5e1fa23e4ba16832860606fcc09d674d56e425e991539ec \
     --hash=sha256:f72fdbae2dbc6e68b8239defb48e6a5937b12218e6ffc2c7846cc37befa84362
     # via -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
-httpx==0.28.1 \
-    --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
-    --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
-    # via -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
 huggingface-hub==0.36.2 \
     --hash=sha256:1934304d2fb224f8afa3b87007d58501acfda9215b334eed53072dd5e815ff7a \
     --hash=sha256:48f0c8eac16145dfce371e9d2d7772854a4f591bcb56c9cf548accf531d54270
@@ -2150,7 +2136,6 @@ idna==3.12 \
     # via
     #   -r python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py3.11.lock
     #   anyio
-    #   httpx
     #   requests
     #   snowflake-connector-python
     #   yarl

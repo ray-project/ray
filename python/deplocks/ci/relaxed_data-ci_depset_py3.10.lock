@@ -206,7 +206,6 @@ anyio==4.13.0 \
     --hash=sha256:334b70e641fd2221c1505b3890c69882fe4a2df910cba14d97019b90b24439dc
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-#   httpx
 #   starlette
 #   taskiq
 #   watchfiles
@@ -325,10 +324,12 @@ astunparse==1.6.3 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   tensorflow
-async-timeout==4.0.3; python_full_version < "3.11" \
-    --hash=sha256:4640d96be84d82d02ed59ea2b7105a0f7b33abe8703703cd0ab0bf87c427522f \
-    --hash=sha256:7405140ff1230c310e51dc27b3145b9092d659ce68ff733fb0cefe3ee42be028
-# via aiohttp
+async-timeout==5.0.1; python_full_version < "3.11" \
+    --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
+    --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
+# via
+#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
+#   aiohttp
 attrs==26.1.0 \
     --hash=sha256:c647aa4a12dfbad9333ca4e71fe62ddc36f4e63b2d260a37a8b83d2f043ac309 \
     --hash=sha256:d03ceb89cb322a8fd706d4fb91940737b6642aa36998fe130a9bc96c985eff32
@@ -392,8 +393,6 @@ certifi==2026.4.22 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   clickhouse-connect
-#   httpcore
-#   httpx
 #   requests
 #   snowflake-connector-python
 cffi==1.17.1 \
@@ -1843,7 +1842,6 @@ h11==0.16.0 \
     --hash=sha256:63cf8bbe7522de3bf65932fda1d9c2772064ffb3dae62d55932da54b31cb6c86
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-#   httpcore
 #   uvicorn
 h5py==3.12.1 \
     --hash=sha256:018a4597f35092ae3fb28ee851fdc756d2b88c96336b8480e124ce1ac6fb9166 \
@@ -1905,12 +1903,6 @@ hf-xet==1.4.3; platform_machine == "aarch64" or platform_machine == "amd64" or p
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   huggingface-hub
-httpcore==1.0.9 \
-    --hash=sha256:2d400746a40668fc9dec9810239072b40b4484b640a8c38fd654a024c7a1bf55 \
-    --hash=sha256:6e34463af53fd2ab5d807f399a9b45ea31c3dfa2276f15a2c3f00afff6e176e8
-# via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-#   httpx
 httptools==0.7.1 \
     --hash=sha256:04c6c0e6c5fb0739c5b8a9eb046d298650a0ff38cf42537fc372b28dc7e4472c \
     --hash=sha256:0d92b10dbf0b3da4823cde6a96d18e6ae358a9daa741c71448975f6a2c339cad \
@@ -1956,12 +1948,6 @@ httptools==0.7.1 \
     --hash=sha256:f65744d7a8bdb4bda5e1fa23e4ba16832860606fcc09d674d56e425e991539ec \
     --hash=sha256:f72fdbae2dbc6e68b8239defb48e6a5937b12218e6ffc2c7846cc37befa84362
 # via uvicorn
-httpx==0.28.1 \
-    --hash=sha256:75e98c5f16b0f35b567856f597f06ff2270a374470a5c2392242528e3e3e42fc \
-    --hash=sha256:d909fcccc110f8c7faf814ca82a9a4d816bc5a6dbfea25d6591d6985b8ba59ad
-# via
-#   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
-#   datasets
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   -r python/requirements/ml/py313/data-test-requirements.txt
@@ -1977,7 +1963,6 @@ idna==3.12 \
 # via
 #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
 #   anyio
-#   httpx
 #   requests
 #   snowflake-connector-python
 #   yarl
