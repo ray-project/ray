@@ -1,4 +1,4 @@
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
 
 import pytest
 
@@ -11,31 +11,6 @@ from ray.data._internal.cluster_autoscaler.default_autoscaling_coordinator impor
     get_or_create_autoscaling_coordinator,
 )
 from ray.tests.conftest import wait_for_condition
-
-
-def kill_autoscaling_coordinator():
-    """Kill the AutoscalingCoordinator actor.
-
-    We expose this to keep autoscaling coordinator tests isolated.
-
-    If the AutoscalingCoordinator actor doesn't exist, this function is a no-op.
-    """
-    try:
-        actor = ray.get_actor(
-            "AutoscalingCoordinator", namespace="AutoscalingCoordinator"
-        )
-    except ValueError:
-        # If the actor doesn't exist, `ray.get_actor` raises a `ValueError`.
-        return
-
-    ray.kill(actor)
-
-
-@pytest.fixture
-def teardown_autoscaling_coordinator():
-    yield
-    kill_autoscaling_coordinator()
-
 
 CLUSTER_NODES_WITH_HEAD = [
     # Head node should be included if it has non-zero CPUs or GPUs.
@@ -354,108 +329,161 @@ def test_autoscaling_coordinator_e2e(cluster, gpu_tasks_include_cpu):
     assert ray.get([res1, res2]) == ["ok"] * 2
 
 
-def _test_consecutive_failures(
-    coordinator,
-    call_method,
-    counter_attr,
-    error_msg_prefix,
+@pytest.fixture
+def autoscaling_coordinator_actor(ray_start_regular_shared):
+    actor_cls = ray.remote(num_cpus=0)(_AutoscalingCoordinatorActor)
+    actor = actor_cls.remote(
+        send_resources_request=lambda b: None,
+        get_cluster_nodes=lambda: [
+            {"Alive": True, "Resources": {"CPU": 4}, "NodeID": "n1"}
+        ],
+    )
+    yield actor
+    ray.kill(actor)
+
+
+def test_get_allocated_resources_eventually_consistent(autoscaling_coordinator_actor):
+    """get_allocated_resources eventually reflects a submitted request_resources call."""
+    coordinator = DefaultAutoscalingCoordinator(
+        "test", autoscaling_coordinator_actor=autoscaling_coordinator_actor
+    )
+
+    coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
+
+    wait_for_condition(
+        lambda: coordinator.get_allocated_resources() == [{"CPU": 1}],
+        retry_interval_ms=100,
+        timeout=5,
+    )
+
+
+def test_get_allocated_resources_returns_cached_while_pending(
+    autoscaling_coordinator_actor, monkeypatch
 ):
-    """Test consecutive failures: increment counter, raise after max, reset on success."""
-    max_failures = coordinator.MAX_CONSECUTIVE_FAILURES
-    timeout_error = ray.exceptions.GetTimeoutError("timeout")
+    """Returns the last cached value without blocking when a ref is still in-flight."""
+    coordinator = DefaultAutoscalingCoordinator(
+        "test", autoscaling_coordinator_actor=autoscaling_coordinator_actor
+    )
 
-    # Counter increments on each failure
-    with patch("ray.get", side_effect=timeout_error):
-        for attempt in range(1, max_failures):
-            call_method()
-            assert getattr(coordinator, counter_attr) == attempt
+    coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
+    wait_for_condition(
+        lambda: coordinator.get_allocated_resources() == [{"CPU": 1}],
+        retry_interval_ms=100,
+        timeout=5,
+    )
 
-    # Exception raised after max consecutive failures
-    expected_error_msg = f"{error_msg_prefix} after {max_failures} consecutive failures"
-    with patch("ray.get", side_effect=timeout_error):
-        with pytest.raises(RuntimeError, match=expected_error_msg):
-            call_method()
+    # Make ray.wait report all refs as still pending.
+    def fake_wait(refs, *args, **kwargs):
+        return [], refs
 
-    # Counter resets on success
-    with patch("ray.get", return_value=None):
-        call_method()
-        assert getattr(coordinator, counter_attr) == 0
+    monkeypatch.setattr(ray, "wait", fake_wait)
+
+    coordinator.request_resources(resources=[{"CPU": 2}], expire_after_s=60)
+    # Should return the stale cached value, not block.
+    assert coordinator.get_allocated_resources() == [{"CPU": 1}]
 
 
-def test_get_allocated_resources_handles_timeout_error(
-    teardown_autoscaling_coordinator,
+def test_get_allocated_resources_returns_cached_on_actor_error(
+    autoscaling_coordinator_actor, monkeypatch
 ):
-    """Test get_allocated_resources handles timeout error."""
-    coordinator = DefaultAutoscalingCoordinator("test")
-    coordinator._cached_allocated_resources = [{"CPU": 1}]
+    """Actor errors fall back to the cached value, log a warning, and never raise.
 
-    def call_method():
-        return coordinator.get_allocated_resources()
-
-    max_failures = coordinator.MAX_CONSECUTIVE_FAILURES
-    timeout_error = ray.exceptions.GetTimeoutError("timeout")
-    cached_value = [{"CPU": 1}]
-    new_value = [{"CPU": 2}]
-
-    # Counter increments on failures and returns cached value
-    with patch("ray.get", side_effect=timeout_error):
-        for attempt in range(1, max_failures):
-            result = call_method()
-            assert result == cached_value
-            assert coordinator._consecutive_failures_get_allocated_resources == attempt
-
-    # Exception raised after max consecutive failures
-    expected_error_msg = (
-        f"Failed to get allocated resources for test "
-        f"after {max_failures} consecutive failures"
+    Recovery is automatic: a fresh request is submitted on the next call.
+    """
+    coordinator = DefaultAutoscalingCoordinator(
+        "test", autoscaling_coordinator_actor=autoscaling_coordinator_actor
     )
-    with patch("ray.get", side_effect=timeout_error):
-        with pytest.raises(RuntimeError, match=expected_error_msg):
-            call_method()
 
-    # Counter resets on success and returns new value
-    with patch("ray.get", return_value=new_value):
-        result = call_method()
-        assert result == new_value
-        assert coordinator._consecutive_failures_get_allocated_resources == 0
+    coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
+    wait_for_condition(
+        lambda: coordinator.get_allocated_resources() == [{"CPU": 1}],
+        retry_interval_ms=100,
+        timeout=5,
+    )
 
+    def fake_wait(refs, *args, **kwargs):
+        # Report the ref as ready so ray.get is attempted.
+        return refs, []
 
-def test_cancel_request_handles_timeout_error(teardown_autoscaling_coordinator):
-    """Test cancel_request handles timeout error."""
-    coordinator = DefaultAutoscalingCoordinator("test")
+    monkeypatch.setattr(ray, "wait", fake_wait)
+    monkeypatch.setattr(ray, "get", Mock(side_effect=ray.exceptions.RayActorError()))
 
-    _test_consecutive_failures(
-        coordinator=coordinator,
-        call_method=lambda: coordinator.cancel_request(),
-        counter_attr="_consecutive_failures_cancel_request",
-        error_msg_prefix="Failed to cancel resource request for test",
+    # Must return the last cached value, not raise.
+    assert coordinator.get_allocated_resources() == [{"CPU": 1}]
+
+    # Recovery: submit a new request after the error and verify it eventually
+    # resolves, proving the coordinator can communicate with the actor again.
+    monkeypatch.undo()
+    coordinator.request_resources(resources=[{"CPU": 2}], expire_after_s=60)
+    wait_for_condition(
+        lambda: coordinator.get_allocated_resources() == [{"CPU": 2}],
+        retry_interval_ms=100,
+        timeout=5,
     )
 
 
-def test_request_resources_handles_timeout_error(teardown_autoscaling_coordinator):
-    """Test request_resources handles timeout error."""
-    coordinator = DefaultAutoscalingCoordinator("test")
-
-    _test_consecutive_failures(
-        coordinator=coordinator,
-        call_method=lambda: coordinator.request_resources(
-            [{"CPU": 1}], expire_after_s=1
-        ),
-        counter_attr="_consecutive_failures_request_resources",
-        error_msg_prefix="Failed to send resource request for test",
+def test_cancel_request_makes_get_return_empty(autoscaling_coordinator_actor):
+    """After cancel_request, get_allocated_resources eventually returns []."""
+    coordinator = DefaultAutoscalingCoordinator(
+        "test", autoscaling_coordinator_actor=autoscaling_coordinator_actor
     )
+
+    coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
+    wait_for_condition(
+        lambda: coordinator.get_allocated_resources() == [{"CPU": 1}],
+        retry_interval_ms=100,
+        timeout=5,
+    )
+
+    coordinator.cancel_request()
+    wait_for_condition(
+        lambda: coordinator.get_allocated_resources() == [],
+        retry_interval_ms=100,
+        timeout=5,
+    )
+
+
+def test_non_ray_errors_propagate(autoscaling_coordinator_actor, monkeypatch):
+    """Non-Ray errors during result consumption propagate rather than being swallowed.
+
+    Guards against accidentally broadening the catch from RayError to Exception.
+    """
+    coordinator = DefaultAutoscalingCoordinator(
+        "test", autoscaling_coordinator_actor=autoscaling_coordinator_actor
+    )
+
+    coordinator.request_resources(resources=[{"CPU": 1}], expire_after_s=60)
+    wait_for_condition(
+        lambda: coordinator.get_allocated_resources() == [{"CPU": 1}],
+        retry_interval_ms=100,
+        timeout=5,
+    )
+
+    monkeypatch.setattr(ray, "wait", lambda refs, *a, **kw: (refs, []))
+    monkeypatch.setattr(
+        ray, "get", Mock(side_effect=ValueError("unexpected local error"))
+    )
+
+    with pytest.raises(ValueError, match="unexpected local error"):
+        coordinator.get_allocated_resources()
 
 
 def test_coordinator_accepts_zero_resource_for_missing_resource_type(
-    teardown_autoscaling_coordinator,
+    autoscaling_coordinator_actor,
 ):
     # This is a regression test for a bug where the coordinator crashes when you request
     # a resource type (e.g., GPU: 0) that doesn't exist on the cluster.
-    coordinator = DefaultAutoscalingCoordinator("spam")
+    coordinator = DefaultAutoscalingCoordinator(
+        "spam", autoscaling_coordinator_actor=autoscaling_coordinator_actor
+    )
 
     coordinator.request_resources(resources=[{"CPU": 1, "GPU": 0}], expire_after_s=1)
 
-    assert coordinator.get_allocated_resources() == [{"CPU": 1, "GPU": 0}]
+    wait_for_condition(
+        lambda: coordinator.get_allocated_resources() == [{"CPU": 1, "GPU": 0}],
+        retry_interval_ms=100,
+        timeout=5,
+    )
 
 
 if __name__ == "__main__":
