@@ -115,13 +115,12 @@ access the storage location, which is useful if the path is on cloud storage.
     :end-before: __result_path_end__
 
 
-.. You can restore a result with :meth:`Result.from_path <ray.train.Result.from_path>`:
+You can restore a result with :meth:`Result.from_path <ray.train.Result.from_path>`:
 
-.. .. literalinclude:: ../doc_code/key_concepts.py
-..     :language: python
-..     :start-after: __result_restore_start__
-..     :end-before: __result_restore_end__
-
+.. literalinclude:: ../doc_code/key_concepts.py
+    :language: python
+    :start-after: __result_restore_start__
+    :end-before: __result_restore_end__
 
 
 Catching Errors
