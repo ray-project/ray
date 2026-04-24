@@ -89,7 +89,12 @@ def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
 
     tensor_types = get_arrow_extension_tensor_types()
     for field in schema:
-        if pyarrow.types.is_nested(field.type):
+        # `is_nested` covers struct/list/large_list/map/union and (on pyarrow
+        # 16+) list_view/large_list_view. It does NOT include fixed_size_list
+        # on older pyarrow (<10-ish), so check that explicitly.
+        if pyarrow.types.is_nested(field.type) or pyarrow.types.is_fixed_size_list(
+            field.type
+        ):
             return True
         if isinstance(field.type, tensor_types):
             return True
