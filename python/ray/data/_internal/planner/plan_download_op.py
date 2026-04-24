@@ -247,6 +247,11 @@ def download_bytes_threaded(
                         resolved_paths, per_uri_fs = _resolve_paths_and_filesystem(
                             uri, filesystem=None
                         )
+                        if per_uri_fs is None:
+                            # Resolution succeeded structurally but yielded no FS —
+                            # don't cache and don't try to read. Move on so the
+                            # next URI gets a fresh inference attempt.
+                            continue
                         # Cache the first successful inference for the rest of
                         # this worker's iterator so we don't redo it per URI.
                         # Without this, every URI in the fallback path would

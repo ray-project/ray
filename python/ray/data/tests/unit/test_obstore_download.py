@@ -371,31 +371,44 @@ class TestThreadedDownloadPreResolve:
             )
         assert results[0].column("bytes")[-1].as_py() == b"good"
 
-    def test_all_probes_fail_fallback_caches_per_worker(self):
+    def test_all_probes_fail_fallback_caches_per_worker(self, tmp_path):
         # Two safety guarantees in one test:
         #  1. When every probe URI fails, we don't crash — workers fall back
-        #     to per-URI inference and each URI either yields bytes or None.
-        #  2. After the first successful fallback resolution IN A WORKER, the
-        #     worker caches the filesystem for its remaining URIs. With 32
-        #     "probe-fail" URIs across 16 workers, we get 2 URIs per worker:
-        #     correct caching → 16 inferences total, not 32.
+        #     to per-URI inference.
+        #  2. After the first successful fallback resolution IN A WORKER,
+        #     the worker caches the filesystem for its remaining URIs.
+        #     With 32 URIs round-robin'd across 16 workers (2 each), the
+        #     cache should yield exactly 16 inferences, not 32.
+        #
+        # The probe loop and the worker fallback both call
+        # _resolve_paths_and_filesystem(uri, filesystem=None) for the same
+        # URI. To make the probe fail but the worker succeed, we
+        # differentiate by thread id: the probe runs in this test's
+        # thread; workers run in threads spawned by make_async_gen.
+        import threading
+
         from ray.data._internal.planner import plan_download_op as pdo
 
+        # The worker tries to open the file, so it must exist.
+        real_path = tmp_path / "f.bin"
+        real_path.write_bytes(b"x")
         real_fs = pafs.LocalFileSystem()
+
+        main_tid = threading.get_ident()
         inference_calls: list = []
 
         def _fake(uri, filesystem=None, **_kw):
-            if uri == "probe-fail":
-                raise RuntimeError("probe fails for all URIs")
             if filesystem is None:
+                if threading.get_ident() == main_tid:
+                    raise RuntimeError("probe fails")
                 inference_calls.append(uri)
-                return ([f"/tmp/{uri}"], real_fs)
-            return ([f"/tmp/{uri}"], filesystem)
+                return ([str(real_path)], real_fs)
+            # Normalize-only call (filesystem supplied by worker after caching).
+            return ([str(real_path)], filesystem)
 
         uris = ["probe-fail"] * 32
         table = pa.Table.from_arrays([pa.array(uris)], names=["uri"])
         with patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_fake):
-            # Should not raise.
             list(
                 download_bytes_threaded(
                     table, ["uri"], ["bytes"], DataContext.get_current()
