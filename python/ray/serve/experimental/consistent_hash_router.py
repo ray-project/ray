@@ -187,6 +187,10 @@ class ConsistentHashRouter(RequestRouter):
         if not candidate_replicas:
             return []
 
+        if pending_request is not None:
+            # Enable exponential-backoff sleep between outer retry iterations.
+            pending_request.routing_context.should_backoff = True
+
         routing_key = self._routing_key(pending_request)
         if routing_key is None:
             # Returning [] here would livelock the framework's retry loop.
