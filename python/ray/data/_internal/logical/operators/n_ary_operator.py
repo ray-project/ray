@@ -82,27 +82,35 @@ class Mix(NAry):
     ):
         self.weights = weights
         self.stopping_condition = stopping_condition
+
+        if len(input_ops) != len(weights):
+            raise ValueError(
+                f"Number of input operators ({len(input_ops)}) must match number of weights ({len(weights)})."
+            )
+        if any(weight <= 0 for weight in weights):
+            raise ValueError(f"Weights must be positive. Got weights: {weights}")
+
         super().__init__(*input_ops)
 
     def estimated_num_outputs(self) -> Optional[int]:
         if self.stopping_condition == MixStoppingCondition.STOP_ON_SHORTEST:
             # The output is limited by whichever input runs out first
             # relative to its weight.
-            min_outputs = None
+            total_weight = sum(self.weights)
+            min_scaled_outputs = None
             for i, input_dep in enumerate(self.input_dependencies):
                 num_outputs = input_dep.estimated_num_outputs()
                 if num_outputs is None:
                     return None
-                # Scale by weight to estimate how many total output blocks
-                # this input can sustain.
-                weight = self.weights[i] / sum(self.weights)
-                if weight > 0:
-                    scaled = int(num_outputs / weight)
-                    if min_outputs is None or scaled < min_outputs:
-                        min_outputs = scaled
-            return min_outputs
+                num_scaled_outputs = int(num_outputs / (self.weights[i] / total_weight))
+                if (
+                    min_scaled_outputs is None
+                    or num_scaled_outputs < min_scaled_outputs
+                ):
+                    min_scaled_outputs = num_scaled_outputs
+            return min_scaled_outputs
         else:
-            # STOP_ON_LONGEST_DROP: sum of all inputs (like Union).
+            # STOP_ON_LONGEST_DROP: sum of all inputs.
             total = 0
             for input_dep in self.input_dependencies:
                 num_outputs = input_dep.estimated_num_outputs()
