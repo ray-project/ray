@@ -193,7 +193,7 @@ class ActorPoolMapOperator(MapOperator):
     @property
     @override
     def _input_queues(self) -> List["BaseBundleQueue"]:
-        return [self._block_ref_bundler]
+        return [self._bundle_queue, self._block_ref_bundler]
 
     @property
     @override
