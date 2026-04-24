@@ -393,9 +393,6 @@ class RefBundle:
     def __str__(self) -> str:
         if self.schema is None:
             schema_str = "None"
-        elif isinstance(self.schema, type):
-            # block.Schema can be a bare Python type (e.g. int).
-            schema_str = str(self.schema)
         else:
             # PyArrow or PandasBlockSchema — use Dataset.Schema for
             # consistent formatting with Dataset.schema().
