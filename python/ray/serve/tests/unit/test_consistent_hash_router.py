@@ -448,6 +448,59 @@ async def test_unavailable_primary_falls_over_then_recovers(router):
 
 
 @pytest.mark.asyncio
+async def test_backoff_engaged_when_all_ranks_saturated(router):
+    router.initial_backoff_s = 999
+    router.backoff_multiplier = 1
+    router.max_backoff_s = 999
+
+    loop = get_or_create_event_loop()
+
+    # 1 + DEFAULT_FALLBACK_REPLICAS replicas -> the full ranked set is
+    # saturated, so _choose_replicas_with_backoff exhausts every yielded rank
+    # and falls through to the backoff branch.
+    replicas = [
+        FakeRunningReplica(f"r{i}") for i in range(1 + DEFAULT_FALLBACK_REPLICAS)
+    ]
+    for r in replicas:
+        r.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+    router.update_replicas(replicas)
+
+    task = loop.create_task(
+        router._choose_replica_for_request(_make_request("user_42"))
+    )
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0
+
+    # The routing task must have entered the backoff branch.
+    assert router.num_routing_tasks_in_backoff >= 1
+
+    # Free up the primary. With a 999s backoff sleep already in flight, the
+    # task must remain pending.
+    ranks = await router.choose_replicas(
+        candidate_replicas=replicas, pending_request=_make_request("user_42")
+    )
+    primary_id = ranks[0][0].replica_id
+    for r in replicas:
+        if r.replica_id == primary_id:
+            r.set_queue_len_response(0)
+
+    done, _ = await asyncio.wait([task], timeout=0.1)
+    assert len(done) == 0, (
+        "routing task completed within the sleep window -- "
+        "exponential backoff is not being applied"
+    )
+
+    task.cancel()
+    try:
+        await task
+    except BaseException:
+        pass
+    router._routing_tasks.clear()
+    router._pending_requests_to_fulfill.clear()
+    router._pending_requests_to_route.clear()
+
+
+@pytest.mark.asyncio
 async def test_two_routers_route_same_session_to_same_replica(router):
     """Two independent routers with the same replica set must pick the same
     replica for the same session_id."""
