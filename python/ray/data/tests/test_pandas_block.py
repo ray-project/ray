@@ -17,6 +17,7 @@ from ray.data._internal.pandas_block import (
 )
 from ray.data._internal.util import is_null
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
+from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
 
 # Set seed for the test for size as it related to sampling
@@ -512,6 +513,39 @@ def test_tensor_column_with_all_nan_preserves_type(ray_start_regular_shared):
     assert isinstance(
         arrow_table.schema.field("foo").type, (ArrowTensorType, ArrowTensorTypeV2)
     ), "TensorDtype column with all-NaN values should preserve tensor type"
+
+
+def test_arrow_tensor_block_to_cudf_uses_pandas_fallback(monkeypatch):
+    from ray.data.extensions import TensorArray
+    from ray.data.util import data_batch_conversion
+
+    df = pd.DataFrame(
+        {"foo": TensorArray([np.array([[1, 2]]), np.array([[3, 4]])]), "bar": [1, 2]}
+    )
+    arrow_table = PandasBlockAccessor.for_block(df).to_arrow()
+    block_accessor = BlockAccessor.for_block(arrow_table)
+
+    converted = {}
+
+    class FakeCudf:
+        class DataFrame:
+            @staticmethod
+            def from_arrow(_):
+                raise AssertionError(
+                    "to_cudf should not call cudf.DataFrame.from_arrow"
+                )
+
+        @staticmethod
+        def from_pandas(pandas_df):
+            converted["df"] = pandas_df.copy()
+            return "converted"
+
+    monkeypatch.setattr(data_batch_conversion, "_lazy_import_cudf", lambda: FakeCudf)
+
+    assert block_accessor.to_cudf() == "converted"
+    assert isinstance(converted["df"].iloc[0]["foo"], np.ndarray)
+    assert converted["df"].iloc[0]["foo"].shape == (1, 2)
+    assert converted["df"]["bar"].tolist() == [1, 2]
 
 
 if __name__ == "__main__":

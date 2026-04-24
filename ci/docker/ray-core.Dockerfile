@@ -56,11 +56,29 @@ if [[ "$IS_LOCAL_BUILD" == "true" ]]; then
   BAZEL_RESOURCE_FLAGS=$(python3 "$HOME/ray/ci/build/container_resource_utils.py")
 fi
 
-bazelisk --output_base=$BAZEL_CACHE build --config=ci \
-    --repository_cache=$REPOSITORY_CACHE \
-    $BAZEL_CACHE_ARGS \
-    $BAZEL_RESOURCE_FLAGS \
-    //:ray_pkg_zip //:ray_py_proto_zip
+build_targets() {
+  bazelisk --output_base=$BAZEL_CACHE build --config=ci \
+      --repository_cache=$REPOSITORY_CACHE \
+      $1 \
+      $BAZEL_RESOURCE_FLAGS \
+      //:ray_pkg_zip //:ray_py_proto_zip
+}
+
+BUILD_LOG=$(mktemp)
+set +e
+build_targets "$BAZEL_CACHE_ARGS" 2>&1 | tee "$BUILD_LOG"
+BUILD_STATUS=${PIPESTATUS[0]}
+set -e
+
+if [[ $BUILD_STATUS -ne 0 ]] && grep -Eq \
+  'Failed to fetch blobs because of a remote cache error|SSLEngine closed already' \
+  "$BUILD_LOG"; then
+  echo "Remote cache fetch failed; retrying Bazel build without remote cache."
+  rm -rf "$BAZEL_CACHE/server"
+  build_targets "--remote_cache="
+elif [[ $BUILD_STATUS -ne 0 ]]; then
+  exit $BUILD_STATUS
+fi
 
 cp bazel-bin/ray_pkg.zip /home/forge/ray_pkg.zip
 cp bazel-bin/ray_py_proto.zip /home/forge/ray_py_proto.zip

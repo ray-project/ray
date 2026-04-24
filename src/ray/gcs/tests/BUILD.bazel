@@ -171,6 +171,25 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "gcs_task_events_query_benchmark_test",
+    size = "small",
+    srcs = [
+        "gcs_task_events_query_benchmark_test.cc",
+    ],
+    tags = [
+        "manual",
+        "team:core",
+    ],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:test_utils",
+        "//src/ray/gcs:gcs_task_manager",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
     name = "gcs_placement_group_manager_test",
     size = "small",
     srcs = [
