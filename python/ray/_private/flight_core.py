@@ -135,9 +135,7 @@ class FlightCore:
         with self._lock:
             self._tables.pop(key, None)
 
-    def fetch_via_vm(
-        self, flight_uri: str, key: str, size: int
-    ):
+    def fetch_via_vm(self, flight_uri: str, key: str, size: int):
         """Same-node consumer path: allocate a local buffer, ask the producer
         to scatter-write the IPC stream into it via process_vm_writev, then
         reassemble the pa.Table with zero-copy column views.
@@ -254,9 +252,7 @@ class FlightCore:
         location = flight.Location.for_grpc_tcp("0.0.0.0", 0)
         self._server = _Server(location)
         self._uri = f"grpc://{_get_local_ip()}:{self._server.port}"
-        self._server_thread = threading.Thread(
-            target=self._server.serve, daemon=True
-        )
+        self._server_thread = threading.Thread(target=self._server.serve, daemon=True)
         self._server_thread.start()
 
 
