@@ -69,8 +69,9 @@ APT_PKGS=(
     gnupg
 
     # For HAProxy
-    liblua5.3-0
     socat
+    libpcre2-8-0
+
 )
 
 apt-get install -y "${APT_PKGS[@]}"
