@@ -1510,6 +1510,41 @@ class TestMultiAgentEpisode(unittest.TestCase):
         rew = episode.get_rewards(env_steps=False)
         self.assertTrue(rew == {})
 
+        # Regression test for https://github.com/ray-project/ray/issues/62903
+        # get_rewards() on a finalized (numpy) episode should not crash when
+        # an agent was inactive during all requested env steps.
+        observations = [
+            {"a0": 0, "a1": 0},  # env step 0: both agents
+            {"a0": 1},           # env step 1: only a0 (a1 inactive)
+            {"a0": 2},           # env step 2: only a0 (a1 inactive)
+            {"a0": 3, "a1": 3},  # env step 3: both agents (terminal)
+        ]
+        actions = [{"a0": 0, "a1": 0}, {"a0": 1}, {"a0": 2}]
+        rewards = [
+            {"a0": 0.1, "a1": 0.1},
+            {"a0": 0.2},
+            {"a0": 0.3},
+            {"a0": 0.4, "a1": 0.4},
+        ]
+        episode = MultiAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            len_lookback_buffer=0,
+            terminateds={"a0": True, "a1": True, "__all__": True},
+        )
+        episode.to_numpy()
+
+        # Full range: a1 has data at env steps 0 and 3, should work.
+        rew = episode.get_rewards()
+        check(rew, {"a0": [0.1, 0.2, 0.3], "a1": [0.1]})
+
+        # Slice covering only env steps where a1 was inactive.
+        # Before fix: ValueError("Input `list_of_structs` does not contain any items.")
+        rew = episode.get_rewards(indices=slice(1, 3))
+        check(rew, {"a0": [0.2, 0.3]})
+        self.assertNotIn("a1", rew)
+
     def test_other_getters(self):
         # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.
         return
