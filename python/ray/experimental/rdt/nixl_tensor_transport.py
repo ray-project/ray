@@ -208,10 +208,15 @@ class NixlTensorTransport(TensorTransportManager):
 
                 nixl_agent = self.get_nixl_agent()
                 # Use the pool only when every tensor lives on the exact same
-                # device as the pool.
-                pool = self._memory_pool
-                pool_eligible = pool is not None and all(
-                    t.device == pool.get_pool_tensor().device for t in rdt_object
+                # device as the pool, AND no tensor already has an existing
+                # NIXL registration (via register_nixl_memory).
+                pool_eligible = (
+                    self._memory_pool is not None
+                    and all(
+                        t.device == self._memory_pool.get_pool_tensor().device
+                        for t in rdt_object
+                    )
+                    and not any(self._tensor_memory_registered(t) for t in rdt_object)
                 )
                 if pool_eligible:
                     xfer_descs = self._allocate_from_memory_pool(rdt_object)
@@ -485,6 +490,11 @@ class NixlTensorTransport(TensorTransportManager):
                         f"Set UCX_LOG_LEVEL=debug for detailed UCX diagnostics."
                     ) from e
                 self._tensor_desc_cache[key] = TensorDesc(reg_desc, 1)
+
+    def _tensor_memory_registered(self, t: "torch.Tensor") -> bool:
+        """Check if the tensor's memory has been registered with NIXL."""
+        entry = self._tensor_desc_cache.get(t.untyped_storage().data_ptr())
+        return entry is not None and entry.reg_desc is not None
 
     def _add_pool_tensor_descs(self, tensors: List["torch.Tensor"]):
         """Add pool-managed tensor entries to the unified _tensor_desc_cache.
