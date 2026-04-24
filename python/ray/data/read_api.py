@@ -653,6 +653,62 @@ def read_zarrv2(
     memory: Optional[float] = None,
     ray_remote_args: Optional[Dict[str, Any]] = None,
 ):
+    """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
+
+    Each row in the resulting dataset describes a single chunk from one of the
+    selected arrays in the store. The returned rows contain chunk metadata and
+    per-dimension slice bounds that can be used to query the chunk, but the
+    datasource doesn't materialize any array or chunk data.
+
+    The column names are ``"array"``, ``"array_shape"``, ``"chunk_shape"``,
+    ``"dtype"``, and ``"chunk_slices"``.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_zarrv2("/path/to/store")  # doctest: +SKIP
+
+        Read specific arrays from a store.
+
+        >>> ds = ray.data.read_zarrv2(  # doctest: +SKIP
+        ...     "/path/to/store",
+        ...     array_paths=["images", "labels"],
+        ... )
+
+        Override the chunk shape used to generate chunk descriptors.
+
+        >>> ds = ray.data.read_zarrv2(  # doctest: +SKIP
+        ...     "/path/to/store",
+        ...     chunk_shape=[256, 256],
+        ... )
+
+    Args:
+        path: Path to the Zarr v2 store. The store must contain consolidated
+            metadata in a ``.zmetadata`` file.
+        chunk_shape: Optional chunk shape override to use for all selected arrays.
+            If unspecified, the datasource uses the chunk shape recorded in each
+            array's metadata. If provided, the chunk shape must have the same
+            number of dimensions as each selected array.
+        array_paths: Optional list of array paths within the Zarr store to read.
+            If unspecified, all arrays found in the store are used.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+        num_cpus: The number of CPUs to reserve for each parallel read worker.
+        num_gpus: The number of GPUs to reserve for each parallel read worker. For
+            example, specify `num_gpus=1` to request 1 GPU for each parallel read
+            worker.
+        memory: The heap memory in bytes to reserve for each parallel read worker.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+
+    Returns:
+        A :class:`~ray.data.Dataset` where each row contains the selected array
+        path, array metadata, and per-dimension chunk slice bounds for one chunk.
+    """
     datasource = ZarrV2Datasource(
         path = path,
         chunk_shape = chunk_shape,
