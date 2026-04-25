@@ -12,48 +12,7 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     TPUConfig,
 )
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
-from ray.tests.conftest import _ray_start_cluster
 from ray.util.placement_group import PlacementGroup, placement_group_table
-
-
-@pytest.fixture(scope="module")
-def ray_tpu_cluster():
-    """
-    Simulates a Ray cluster with a multi-host TPU v6e-16 slice (4x4 topology).
-    """
-    pod_type = "v6e-16"
-    topology = "4x4"
-
-    with _ray_start_cluster() as cluster:
-        # A 4x4 v6e slice has 16 chips. We simulate 4 hosts with 4 chips each.
-        for i in range(4):
-            env_vars = {
-                "TPU_NAME": "test-slice",
-                "TPU_WORKER_ID": str(i),
-                "TPU_ACCELERATOR_TYPE": pod_type,
-                "TPU_TOPOLOGY": topology,
-            }
-            labels = {
-                "ray.io/tpu-slice-name": "test-slice",
-                "ray.io/tpu-worker-id": str(i),
-                "ray.io/tpu-pod-type": pod_type,
-            }
-            resources = {"TPU": 4, "accelerator_type:TPU-V6E": 4}
-
-            # The first node is the "head" of the slice
-            if i == 0:
-                resources[f"TPU-{pod_type}-head"] = 1
-
-            cluster.add_node(
-                num_cpus=8,
-                resources=resources,
-                labels=labels,
-                env_vars=env_vars,
-            )
-
-        ray.init(address=cluster.address)
-        yield cluster
-        ray.shutdown()
 
 
 def test_tpu_slice_placement_group_creation_default_resources(ray_tpu_cluster):
@@ -65,7 +24,6 @@ def test_tpu_slice_placement_group_creation_default_resources(ray_tpu_cluster):
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
         accelerator_config={"kind": "tpu", "topology": "4x4"},
-        llm_engine="vLLM",
     )
 
     engine_config = llm_config.get_engine_config()
@@ -103,7 +61,6 @@ def test_tpu_slice_placement_group_creation_host_resources(ray_tpu_cluster):
             "strategy": "STRICT_SPREAD",
             "bundles": [{"TPU": 4}],
         },
-        llm_engine="vLLM",
     )
 
     engine_config = llm_config.get_engine_config()
@@ -135,7 +92,6 @@ def test_single_tpu_fallback(ray_tpu_cluster):
     llm_config = LLMConfig(
         model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
         accelerator_type="TPU-V6E",
-        llm_engine="vLLM",
     )
 
     engine_config = llm_config.get_engine_config()
@@ -170,7 +126,6 @@ def test_tpu_slice_placement_group_creation_bundle_per_worker(ray_tpu_cluster):
         engine_kwargs={
             "tensor_parallel_size": 2,
         },
-        llm_engine="vLLM",
     )
 
     engine_config = llm_config.get_engine_config()
@@ -196,7 +151,6 @@ def test_accelerator_inference_logic():
     cfg1 = LLMConfig(
         model_loading_config={"model_id": "test"},
         accelerator_type="TPU-V6E",
-        llm_engine="vLLM",
     )
     assert isinstance(cfg1.accelerator_config, TPUConfig)
     assert isinstance(cfg1.get_engine_config().accelerator, TPUAccelerator)
@@ -205,13 +159,12 @@ def test_accelerator_inference_logic():
     cfg2 = LLMConfig(
         model_loading_config={"model_id": "test"},
         accelerator_type="A10G",
-        llm_engine="vLLM",
     )
     assert isinstance(cfg2.accelerator_config, GPUConfig)
     assert isinstance(cfg2.get_engine_config().accelerator, GPUAccelerator)
 
     # No accelerator hints falls back to GPU by default
-    cfg3 = LLMConfig(model_loading_config={"model_id": "test"}, llm_engine="vLLM")
+    cfg3 = LLMConfig(model_loading_config={"model_id": "test"})
     assert isinstance(cfg3.accelerator_config, GPUConfig)
     assert isinstance(cfg3.get_engine_config().accelerator, GPUAccelerator)
 
@@ -219,7 +172,6 @@ def test_accelerator_inference_logic():
     cfg4 = LLMConfig(
         model_loading_config={"model_id": "test"},
         accelerator_config={"kind": "cpu"},
-        llm_engine="vLLM",
     )
     assert isinstance(cfg4.accelerator_config, CPUConfig)
     assert isinstance(cfg4.get_engine_config().accelerator, CPUAccelerator)
