@@ -14,6 +14,7 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import NUM_MODULE_STEPS_TRAINED
 
 NUM_AGENTS = 5
+BATCH_SIZE = 500
 
 
 def policy_mapping_fn(agent_id, episode, **kw):
@@ -46,7 +47,8 @@ def test_default_appo_unequal_data():
     learners = algo.train()["learners"]
     steps_a = learners["policy_a"][NUM_MODULE_STEPS_TRAINED]
     steps_b = learners["policy_b"][NUM_MODULE_STEPS_TRAINED]
-    assert steps_a / steps_b > 1.5, (
+    # steps_a should be 4x more data than steps_b
+    assert steps_a / steps_b > 2.5, (
         "Expected policy_a to train on more data than policy_b "
         "with biased policy mapping and no minibatch_size."
     )
