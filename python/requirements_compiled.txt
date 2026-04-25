@@ -1117,8 +1117,6 @@ mmh3==4.1.0
     # via pyiceberg
 modin==0.31.0 ; python_version < "3.12"
     # via -r python/requirements/ml/data-requirements.txt
-modin==0.37.1 ; python_version >= "3.12"
-    # via -r python/requirements/ml/data-requirements.txt
 monotonic==1.6
     # via
     #   gsutil
@@ -1474,28 +1472,6 @@ packaging==24.2
     #   utilsforecast
     #   wandb
 pandas==2.2.3 ; python_version < "3.12"
-    # via
-    #   -r python/requirements.txt
-    #   -r python/requirements/ml/data-requirements.txt
-    #   altair
-    #   ax-platform
-    #   cmdstanpy
-    #   dask
-    #   datasets
-    #   delta-sharing
-    #   evaluate
-    #   gradio
-    #   mlflow
-    #   modin
-    #   prophet
-    #   pymars
-    #   qpd
-    #   raydp
-    #   statsforecast
-    #   statsmodels
-    #   triad
-    #   utilsforecast
-pandas==2.3.3 ; python_version >= "3.12"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/data-requirements.txt
