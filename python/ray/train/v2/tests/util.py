@@ -36,6 +36,7 @@ from ray.train.v2._internal.state.schema import (
     BackendConfig as BackendConfigSchema,
     CheckpointConfig as CheckpointConfigSchema,
     DataConfig as DataConfigSchema,
+    DataExecutionOptions,
     FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
     RunConfig as RunConfigSchema,
@@ -47,7 +48,7 @@ from ray.train.v2._internal.state.schema import (
     TrainRunAttempt,
     TrainWorker,
 )
-from ray.train.v2._internal.state.util import execution_options_to_dict
+from ray.train.v2._internal.state.util import execution_options_to_model
 from ray.train.v2._internal.util import ObjectRefWrapper, time_monotonic
 from ray.train.v2.api.exceptions import TrainingFailedError
 from ray.train.v2.api.validation_config import ValidationTaskConfig
@@ -225,8 +226,10 @@ def create_mock_train_run(
             datasets=["dataset_1"],
             data_config=DataConfigSchema(
                 datasets_to_split="all",
-                execution_options=execution_options_to_dict(
-                    DataConfig.default_ingest_options()
+                data_execution_options=DataExecutionOptions(
+                    default=execution_options_to_model(
+                        DataConfig.default_ingest_options()
+                    ),
                 ),
                 enable_shard_locality=True,
             ),

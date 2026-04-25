@@ -5,6 +5,8 @@ from ray.train._internal.data_config import DataConfig
 from ray.train.v2._internal.state.schema import (
     ActorStatus,
     DataConfig as DataConfigSchema,
+    DataExecutionOptions,
+    ExecutionOptions as ExecutionOptionsSchema,
     RunAttemptStatus,
     RunStatus,
     TrainRun,
@@ -55,34 +57,40 @@ def is_actor_alive(actor_id: str, timeout: int) -> bool:
 
 
 def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
+    """Serialize a user-facing DataConfig into the exportable schema.
+
+    Assumption: data_config._execution_options (a defaultdict) hasn't been
+    read since __init__, since any read materializes a per-dataset key and
+    flips the exported shape. Safe today because construct_data_config runs
+    in after_controller_start, before DatasetsCallback invokes configure().
+    """
     exec_options = data_config._execution_options
 
-    # Assumption: capture execution_options in the form the user provided,
-    # before any runtime mutation. This relies on the defaultdict in data_config._execution_options
-    # not having been accessed since DataConfig.__init__ normalized it; any
-    # read flips the exported shape from a single flat dict to a per-dataset
-    # mapping.
+    per_dataset_execution_options = {}
     if exec_options:
-        execution_options = {
-            ds_name: execution_options_to_dict(options)
-            for ds_name, options in exec_options.items()
+        per_dataset_execution_options = {
+            ds_name: execution_options_to_model(opts)
+            for ds_name, opts in exec_options.items()
         }
-    else:
-        execution_options = execution_options_to_dict(exec_options.default_factory())
 
     return DataConfigSchema(
         datasets_to_split=data_config._datasets_to_split,
-        execution_options=execution_options,
+        data_execution_options=DataExecutionOptions(
+            default=execution_options_to_model(exec_options.default_factory()),
+            per_dataset_execution_options=per_dataset_execution_options,
+        ),
         enable_shard_locality=data_config._enable_shard_locality,
     )
 
 
-def execution_options_to_dict(execution_options: ExecutionOptions) -> dict:
-    """Convert this ExecutionOptions object to a dict."""
-    return {
-        "resource_limits": execution_options.resource_limits.to_resource_dict(),
-        "exclude_resources": execution_options.exclude_resources.to_resource_dict(),
-        "preserve_order": execution_options.preserve_order,
-        "actor_locality_enabled": execution_options.actor_locality_enabled,
-        "verbose_progress": execution_options.verbose_progress,
-    }
+def execution_options_to_model(
+    execution_options: ExecutionOptions,
+) -> ExecutionOptionsSchema:
+    """Convert a ray.data ExecutionOptions object into the export schema model."""
+    return ExecutionOptionsSchema(
+        resource_limits=execution_options.resource_limits.to_resource_dict(),
+        exclude_resources=execution_options.exclude_resources.to_resource_dict(),
+        preserve_order=execution_options.preserve_order,
+        actor_locality_enabled=execution_options.actor_locality_enabled,
+        verbose_progress=execution_options.verbose_progress,
+    )

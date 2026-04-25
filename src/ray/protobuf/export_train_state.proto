@@ -163,6 +163,21 @@ message ExportTrainRunEventData {
     }
   }
 
+  // ExecutionOptions for a Ray Data ingest pipeline.
+  message ExecutionOptions {
+    google.protobuf.Struct resource_limits = 1;
+    google.protobuf.Struct exclude_resources = 2;
+    bool preserve_order = 3;
+    bool actor_locality_enabled = 4;
+    bool verbose_progress = 5;
+  }
+
+  // ExecutionOptions for a Ray Train run.
+  message DataExecutionOptions {
+    ExecutionOptions default = 1;
+    map<string, ExecutionOptions> per_dataset_execution_options = 2;
+  }
+
   // Configuration for dataset splitting and execution options within Ray Train.
   message DataConfig {
     // Marker for selecting all datasets.
@@ -177,7 +192,7 @@ message ExportTrainRunEventData {
       StringList datasets = 2;
     }
     // Data execution options.
-    google.protobuf.Struct execution_options = 3;
+    DataExecutionOptions data_execution_options = 3;
     // Whether to enable shard locality optimization.
     bool enable_shard_locality = 4;
   }

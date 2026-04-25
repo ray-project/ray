@@ -19,6 +19,7 @@ from ray.train.v2._internal.state.schema import (
     ActorStatus,
     BackendConfig,
     DataConfig,
+    ExecutionOptions,
     RunAttemptStatus,
     RunConfig,
     RunSettings,
@@ -280,11 +281,39 @@ def to_proto_scaling_config(
     return proto_scaling_config
 
 
+def _to_proto_execution_options(
+    execution_options: ExecutionOptions,
+) -> ProtoTrainRun.ExecutionOptions:
+    """Convert a single ExecutionOptions schema model to protobuf.
+
+    resource_limits/exclude_resources go through _dict_to_human_readable_struct
+    so non-finite floats (inf) are stringified for JSON compatibility.
+    """
+    return ProtoTrainRun.ExecutionOptions(
+        resource_limits=_dict_to_human_readable_struct(
+            execution_options.resource_limits
+        ),
+        exclude_resources=_dict_to_human_readable_struct(
+            execution_options.exclude_resources
+        ),
+        preserve_order=execution_options.preserve_order,
+        actor_locality_enabled=execution_options.actor_locality_enabled,
+        verbose_progress=execution_options.verbose_progress,
+    )
+
+
 def to_proto_data_config(data_config: DataConfig) -> ProtoTrainRun.DataConfig:
     """Convert DataConfig to protobuf format."""
+    data_execution_options = data_config.data_execution_options
     proto_data_config = ProtoTrainRun.DataConfig(
         enable_shard_locality=data_config.enable_shard_locality,
-        execution_options=_dict_to_human_readable_struct(data_config.execution_options),
+        data_execution_options=ProtoTrainRun.DataExecutionOptions(
+            default=_to_proto_execution_options(data_execution_options.default),
+            per_dataset_execution_options={
+                name: _to_proto_execution_options(opts)
+                for name, opts in data_execution_options.per_dataset_execution_options.items()
+            },
+        ),
     )
 
     if data_config.datasets_to_split == "all":

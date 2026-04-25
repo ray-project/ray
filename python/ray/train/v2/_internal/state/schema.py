@@ -216,13 +216,50 @@ class DecoratedTrainRunAttempt(TrainRunAttempt):
 
 
 @DeveloperAPI
+class ExecutionOptions(BaseModel):
+    """ExecutionOptions for a single Ray Data ingest pipeline."""
+
+    resource_limits: Dict[str, Any] = Field(
+        description="The resource limits applied to the Ray Data execution plan."
+    )
+    exclude_resources: Dict[str, Any] = Field(
+        description="The resources excluded from the Ray Data execution plan "
+        "(e.g. resources reserved by Ray Train workers)."
+    )
+    preserve_order: bool = Field(
+        description="Whether to preserve the order of outputs across operators."
+    )
+    actor_locality_enabled: bool = Field(
+        description="Whether actor-based locality optimizations are enabled."
+    )
+    verbose_progress: bool = Field(
+        description="Whether verbose progress reporting is enabled."
+    )
+
+
+@DeveloperAPI
+class DataExecutionOptions(BaseModel):
+    """ExecutionOptions for a Ray Train run, split into defaults and per-dataset overrides."""
+
+    default: ExecutionOptions = Field(
+        description="Execution options applied to any dataset without a per-dataset override."
+    )
+    per_dataset_execution_options: Dict[str, ExecutionOptions] = Field(
+        default_factory=dict,
+        description="Per-dataset execution option overrides, keyed by dataset name.",
+    )
+
+
+@DeveloperAPI
 class DataConfig(BaseModel):
     """Configuration for dataset splitting and execution options within Ray Train."""
 
     datasets_to_split: Union[Literal["all"], List[str]] = Field(
         description="Which datasets to split; either 'all' or a list of dataset names.",
     )
-    execution_options: Dict[str, Any] = Field(description="Data execution options")
+    data_execution_options: DataExecutionOptions = Field(
+        description="Data execution options"
+    )
     enable_shard_locality: bool = Field(
         description="Whether to enable shard locality optimization."
     )

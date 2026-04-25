@@ -43,6 +43,8 @@ from ray.train.v2._internal.state.schema import (
     BackendConfig as BackendConfigSchema,
     CheckpointConfig as CheckpointConfigSchema,
     DataConfig as DataConfigSchema,
+    DataExecutionOptions,
+    ExecutionOptions as ExecutionOptionsSchema,
     FailureConfig as FailureConfigSchema,
     RunAttemptStatus,
     RunConfig as RunConfigSchema,
@@ -61,7 +63,7 @@ from ray.train.v2._internal.state.state_manager import TrainStateManager
 from ray.train.v2._internal.state.util import (
     _DEAD_CONTROLLER_ABORT_STATUS_DETAIL,
     construct_data_config,
-    execution_options_to_dict,
+    execution_options_to_model,
 )
 from ray.train.v2.api.config import (
     CheckpointConfig,
@@ -175,6 +177,11 @@ def callback(monkeypatch):
     return callback
 
 
+# =============================================================================
+# TrainStateActor: CRUD and dead-controller reconciliation
+# =============================================================================
+
+
 def test_train_state_actor_create_and_get_run(ray_start_regular):
     """Test basic CRUD operations for train runs in the state actor."""
     actor = ray.remote(TrainStateActor).remote()
@@ -207,7 +214,11 @@ def test_train_state_actor_create_and_get_run(ray_start_regular):
             datasets=["dataset_1"],
             data_config=DataConfigSchema(
                 datasets_to_split="all",
-                execution_options={},
+                data_execution_options=DataExecutionOptions(
+                    default=execution_options_to_model(
+                        DataConfig.default_ingest_options()
+                    ),
+                ),
                 enable_shard_locality=True,
             ),
             run_config=RunConfigSchema(
@@ -469,6 +480,11 @@ def test_train_state_actor_abort_dead_controller_live_runs_server_unavailable(
     assert actor.get_train_runs()["run_id"].status == RunStatus.ABORTED
 
 
+# =============================================================================
+# TrainStateManager: run and run-attempt lifecycle
+# =============================================================================
+
+
 def test_train_state_manager_run_lifecycle(ray_start_regular):
     """Test the complete lifecycle of a training run through the state manager."""
     manager = TrainStateManager()
@@ -604,6 +620,11 @@ def test_train_state_manager_run_attempt_lifecycle(ray_start_regular):
     assert attempt.end_time_ns is not None
     assert len(attempt.workers) == 2
     assert all(w.status == ActorStatus.DEAD for w in attempt.workers)
+
+
+# =============================================================================
+# StateManagerCallback: controller state, worker group, and log paths
+# =============================================================================
 
 
 def test_callback_controller_state_transitions(ray_start_regular, callback):
@@ -828,6 +849,11 @@ def test_callback_log_file_paths(
     assert attempt.workers[0].log_file_path == mock_worker.log_file_path
 
 
+# =============================================================================
+# Helpers: framework version detection and DataConfig serialization
+# =============================================================================
+
+
 def test_get_framework_version():
     """Test _get_framework_version with None and every TrainingFramework value."""
     # None should return only the ray version.
@@ -850,22 +876,16 @@ def test_get_framework_version():
                 assert module_name not in versions
 
 
-def test_execution_options_to_dict_defaults_and_custom():
-    """Test execution_options_to_dict with default and fully customized options."""
+def test_execution_options_to_model_defaults_and_custom():
+    """Test execution_options_to_model with default and fully customized options."""
     # Default options
-    default_result = execution_options_to_dict(ExecutionOptions())
-    assert set(default_result.keys()) == {
-        "resource_limits",
-        "exclude_resources",
-        "preserve_order",
-        "actor_locality_enabled",
-        "verbose_progress",
-    }
-    assert default_result["preserve_order"] is False
-    assert default_result["actor_locality_enabled"] is True
+    default_result = execution_options_to_model(ExecutionOptions())
+    assert isinstance(default_result, ExecutionOptionsSchema)
+    assert default_result.preserve_order is False
+    assert default_result.actor_locality_enabled is True
 
     # All custom values
-    custom_result = execution_options_to_dict(
+    custom_result = execution_options_to_model(
         ExecutionOptions(
             resource_limits=ExecutionResources(
                 cpu=8.0, gpu=4.0, object_store_memory=1e9
@@ -876,27 +896,29 @@ def test_execution_options_to_dict_defaults_and_custom():
             verbose_progress=False,
         )
     )
-    assert custom_result["resource_limits"]["CPU"] == 8.0
-    assert custom_result["resource_limits"]["GPU"] == 4.0
-    assert custom_result["resource_limits"]["object_store_memory"] == 1e9
-    assert custom_result["exclude_resources"]["CPU"] == 2.0
-    assert custom_result["exclude_resources"]["GPU"] == 0.5
-    assert custom_result["preserve_order"] is True
-    assert custom_result["actor_locality_enabled"] is False
-    assert custom_result["verbose_progress"] is False
+    assert custom_result.resource_limits["CPU"] == 8.0
+    assert custom_result.resource_limits["GPU"] == 4.0
+    assert custom_result.resource_limits["object_store_memory"] == 1e9
+    assert custom_result.exclude_resources["CPU"] == 2.0
+    assert custom_result.exclude_resources["GPU"] == 0.5
+    assert custom_result.preserve_order is True
+    assert custom_result.actor_locality_enabled is False
+    assert custom_result.verbose_progress is False
 
 
 def test_construct_data_config_defaults_and_split_variants():
     """Test construct_data_config with default config and different split options."""
-    # Default: execution_options is serialized as a single flat dict of the
-    # default ingest options shared by all datasets.
+    # Default: data_execution_options.default mirrors the library default ingest
+    # options and per_dataset_execution_options is empty.
     default = construct_data_config(DataConfig())
     assert isinstance(default, DataConfigSchema)
     assert default.datasets_to_split == "all"
     assert default.enable_shard_locality is True
-    assert default.execution_options == execution_options_to_dict(
+    assert isinstance(default.data_execution_options, DataExecutionOptions)
+    assert default.data_execution_options.default == execution_options_to_model(
         DataConfig.default_ingest_options()
     )
+    assert default.data_execution_options.per_dataset_execution_options == {}
 
     # Specific dataset list
     result = construct_data_config(DataConfig(datasets_to_split=["train", "eval"]))
@@ -912,7 +934,8 @@ def test_construct_data_config_defaults_and_split_variants():
 
 
 def test_construct_data_config_single_execution_options():
-    """A single ExecutionOptions applies to all datasets and is converted one flat dict."""
+    """A single ExecutionOptions lands in data_execution_options.default and
+    leaves per_dataset_execution_options empty."""
     shared = ExecutionOptions(
         resource_limits=ExecutionResources(cpu=8.0, gpu=2.0),
         exclude_resources=ExecutionResources(cpu=1.0),
@@ -927,11 +950,13 @@ def test_construct_data_config_single_execution_options():
         )
     )
 
-    assert result.execution_options == execution_options_to_dict(shared)
+    assert result.data_execution_options.default == execution_options_to_model(shared)
+    assert result.data_execution_options.per_dataset_execution_options == {}
 
 
 def test_construct_data_config_per_dataset_execution_options():
-    """Test with multiple datasets each having distinct execution options."""
+    """Per-dataset ExecutionOptions land in per_dataset_execution_options while
+    default remains the library default."""
     config = DataConfig(
         datasets_to_split=["ds1", "ds2", "ds3"],
         execution_options={
@@ -955,22 +980,50 @@ def test_construct_data_config_per_dataset_execution_options():
 
     assert result.datasets_to_split == ["ds1", "ds2", "ds3"]
     assert result.enable_shard_locality is False
-    assert len(result.execution_options) == 3
 
-    ds1 = result.execution_options["ds1"]
-    assert ds1["resource_limits"]["CPU"] == 16.0
-    assert ds1["resource_limits"]["GPU"] == 8.0
-    assert ds1["exclude_resources"]["CPU"] == 4.0
-    assert ds1["preserve_order"] is True
-    assert ds1["actor_locality_enabled"] is False
-    assert ds1["verbose_progress"] is False
+    # default reflects the library default ingest options.
+    assert result.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
 
-    ds2 = result.execution_options["ds2"]
-    assert ds2["verbose_progress"] is False
+    overrides = result.data_execution_options.per_dataset_execution_options
+    assert set(overrides.keys()) == {"ds1", "ds2", "ds3"}
 
-    ds3 = result.execution_options["ds3"]
-    assert ds3["exclude_resources"]["CPU"] == 0.5
-    assert ds3["exclude_resources"]["GPU"] == 0.5
+    ds1 = overrides["ds1"]
+    assert ds1.resource_limits["CPU"] == 16.0
+    assert ds1.resource_limits["GPU"] == 8.0
+    assert ds1.exclude_resources["CPU"] == 4.0
+    assert ds1.preserve_order is True
+    assert ds1.actor_locality_enabled is False
+    assert ds1.verbose_progress is False
+
+    ds2 = overrides["ds2"]
+    assert ds2.verbose_progress is False
+
+    ds3 = overrides["ds3"]
+    assert ds3.exclude_resources["CPU"] == 0.5
+    assert ds3.exclude_resources["GPU"] == 0.5
+
+
+def test_construct_data_config_partial_per_dataset_execution_options():
+    """User dict covering a subset of datasets populates only those overrides
+    while default remains the library default."""
+    custom = ExecutionOptions(
+        resource_limits=ExecutionResources(cpu=4.0),
+        preserve_order=True,
+    )
+    config = DataConfig(
+        datasets_to_split=["train", "eval", "predict"],
+        execution_options={"train": custom},
+    )
+    result = construct_data_config(config)
+
+    assert result.data_execution_options.default == execution_options_to_model(
+        DataConfig.default_ingest_options()
+    )
+    overrides = result.data_execution_options.per_dataset_execution_options
+    assert set(overrides.keys()) == {"train"}
+    assert overrides["train"] == execution_options_to_model(custom)
 
 
 if __name__ == "__main__":
