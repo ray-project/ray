@@ -3,6 +3,7 @@ import sys
 import pytest
 
 import ray
+from ray import serve
 from ray.llm._internal.serve.core.configs.accelerators import (
     CPUAccelerator,
     CPUConfig,
@@ -11,6 +12,8 @@ from ray.llm._internal.serve.core.configs.accelerators import (
     TPUAccelerator,
     TPUConfig,
 )
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
+from ray.llm.tests.serve.mocks.mock_vllm_engine import PGCreationMockEngine
 from ray.serve.llm import LLMConfig, ModelLoadingConfig
 from ray.util.placement_group import PlacementGroup, placement_group_table
 
@@ -216,6 +219,95 @@ def test_tpu_slice_placement_group_creation_cpu_driver_homogeneous_tpu_bundles_p
         ray.util.remove_placement_group(pg)
     except Exception:
         pass
+
+
+def test_tpu_serve_deployment_default_chip_level_bundles(ray_tpu_cluster):
+    """
+    Verifies that a Serve deployment created for a multi-host TPU slice defaults
+    to chip-level bundles when no placement_group_config is specified.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
+        accelerator_type="TPU-V6E",
+        accelerator_config={"kind": "tpu", "topology": "4x4"},
+    )
+
+    app = serve.deployment(LLMServer).bind(llm_config, engine_cls=PGCreationMockEngine)
+    serve.run(app)
+
+    pg_table = ray.util.placement_group_table()
+    active_pgs = list(
+        {k: v for k, v in pg_table.items() if v["state"] == "CREATED"}.values()
+    )
+
+    assert (
+        len(active_pgs) == 2
+    ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
+
+    head_pgs = [
+        pg
+        for pg in active_pgs
+        if any(
+            any("head" in res.lower() for res in b.keys())
+            for b in pg["bundles"].values()
+        )
+    ]
+    assert len(head_pgs) == 1
+
+    worker_pg = [pg for pg in active_pgs if pg not in head_pgs][0]
+
+    assert worker_pg["strategy"] == "PACK"
+    # 4x4 topology = 16 chips. Default is 16 bundles of 1 TPU.
+    assert len(worker_pg["bundles"]) == 16
+    for bundle in worker_pg["bundles"].values():
+        assert bundle.get("TPU", 0) == 1
+
+    serve.shutdown()
+
+
+def test_tpu_serve_deployment_explicit_host_level_bundles(ray_tpu_cluster):
+    """
+    Verifies that a user can explicitly request host-level bundles (4 TPUs per bundle)
+    for a Serve deployment via placement_group_config.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
+        accelerator_type="TPU-V6E",
+        accelerator_config={"kind": "tpu", "topology": "4x4"},
+        placement_group_config={"bundle_per_worker": {"TPU": 4}},
+    )
+
+    app = serve.deployment(LLMServer).bind(llm_config, engine_cls=PGCreationMockEngine)
+    serve.run(app)
+
+    pg_table = ray.util.placement_group_table()
+    active_pgs = list(
+        {k: v for k, v in pg_table.items() if v["state"] == "CREATED"}.values()
+    )
+
+    assert (
+        len(active_pgs) == 2
+    ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
+
+    head_pgs = [
+        pg
+        for pg in active_pgs
+        if any(
+            any("head" in res.lower() for res in b.keys())
+            for b in pg["bundles"].values()
+        )
+    ]
+    assert len(head_pgs) == 1
+
+    worker_pg = [pg for pg in active_pgs if pg not in head_pgs][0]
+
+    assert worker_pg["strategy"] == "PACK"
+    # 4x4 topology = 16 chips. With 4 TPUs per bundle, expect exactly 4 bundles.
+    assert len(worker_pg["bundles"]) == 4
+    for bundle in worker_pg["bundles"].values():
+        assert bundle.get("TPU", 0) == 4
+
+    serve.shutdown()
 
 
 if __name__ == "__main__":

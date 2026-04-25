@@ -93,6 +93,15 @@ class AcceleratorBackend(ABC):
 
     @property
     @abstractmethod
+    def requires_deferred_placement_group(self) -> bool:
+        """
+        If True, Ray Serve will not provision a placement group for the deployment.
+        Instead, creation is deferred to the replica at runtime.
+        """
+        pass
+
+    @property
+    @abstractmethod
     def requires_remote_initialization(self) -> bool:
         """Boolean indicating whether this backend needs a remote Ray task to query hardware during init."""
         pass
@@ -109,6 +118,10 @@ class AcceleratorBackend(ABC):
 
 class CPUAccelerator(AcceleratorBackend):
     # stateless — no __init__
+    @property
+    def requires_deferred_placement_group(self) -> bool:
+        return False
+
     def default_bundles(
         self, *, num_devices: int, accelerator_type_str: Optional[str] = None
     ):
@@ -134,6 +147,10 @@ class CPUAccelerator(AcceleratorBackend):
 
 class GPUAccelerator(AcceleratorBackend):
     # stateless — no __init__
+    @property
+    def requires_deferred_placement_group(self) -> bool:
+        return False
+
     def default_bundles(
         self, *, num_devices: int, accelerator_type_str: Optional[str] = None
     ):
@@ -229,6 +246,10 @@ class TPUAccelerator(AcceleratorBackend):
             name=name,
         )
         return self._slice_pg_wrapper.placement_group
+
+    @property
+    def requires_deferred_placement_group(self) -> bool:
+        return self._config.topology is not None
 
     @property
     def requires_remote_initialization(self) -> bool:
