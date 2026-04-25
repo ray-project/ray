@@ -1,7 +1,7 @@
 import functools
 import math
 from dataclasses import InitVar, dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Set, Union
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import (
@@ -318,11 +318,8 @@ class ReadFiles(
         # dummy-table trick. Falls back to the scanner schema if the
         # probe fails — the UDF may require a non-empty input.
         if self.block_udf is not None:
-            try:
-                transformed = self.block_udf(schema.empty_table()).schema
-                schema = transformed.with_metadata(schema.metadata)
-            except Exception:
-                pass
+            transformed = self.block_udf(schema.empty_table()).schema
+            schema = transformed.with_metadata(schema.metadata)
         if self.column_renames:
             import pyarrow as pa
 
@@ -415,31 +412,54 @@ class ReadFiles(
     def get_current_predicate(self) -> Optional[Expr]:
         return getattr(self.scanner, "predicate", None)
 
-    def apply_predicate(self, predicate_expr: Expr) -> "ReadFiles":
+    def apply_predicate(self, predicate_expr: Expr) -> LogicalOperator:
+        from ray.data._internal.datasource.parquet_datasource import (
+            _split_predicate_by_columns,
+        )
         from ray.data._internal.datasource_v2.logical_optimizers import (
             SupportsFilterPushdown,
             SupportsPartitionPruning,
         )
-        from ray.data._internal.planner.plan_expression.expression_visitors import (
-            get_column_references,
-        )
+        from ray.data._internal.logical.operators.map_operator import Filter
 
         assert isinstance(self.scanner, SupportsFilterPushdown)
 
-        # Skip pushdown if the predicate references any partition column:
-        # ``push_filters`` passes the expression to pyarrow's scanner, which
-        # can only bind on-disk columns. Splitting the predicate into
-        # data- and partition-column conjuncts (then routing each through
-        # ``push_filters`` / ``prune_partitions``) is a follow-up; for
-        # now the rule keeps the ``Filter`` above ``ReadFiles`` when we
-        # return ``self`` unchanged, so correctness is preserved.
-        if isinstance(self.scanner, SupportsPartitionPruning):
-            referenced = set(get_column_references(predicate_expr))
-            if referenced & self.scanner.partition_columns:
-                return self
+        partition_cols: Set[str] = (
+            self.scanner.partition_columns
+            if isinstance(self.scanner, SupportsPartitionPruning)
+            else set()
+        )
 
-        new_scanner, _residual = self.scanner.push_filters(predicate_expr)
-        return replace(self, input_op=self.input_dependency, scanner=new_scanner)
+        if not partition_cols:
+            new_scanner, _residual = self.scanner.push_filters(predicate_expr)
+            return replace(self, input_op=self.input_dependency, scanner=new_scanner)
+
+        split = _split_predicate_by_columns(predicate_expr, partition_cols)
+
+        if split.data_predicate is None and split.partition_predicate is None:
+            # Entire predicate is residual (e.g. a single mixed-column
+            # ``OR``); nothing safe to push. Returning ``self`` tells
+            # ``PredicatePushdown`` to keep the ``Filter`` above us.
+            return self
+
+        new_scanner = self.scanner
+        if split.partition_predicate is not None:
+            new_scanner = new_scanner.prune_partitions(split.partition_predicate)
+        if split.data_predicate is not None:
+            new_scanner, _residual = new_scanner.push_filters(split.data_predicate)
+
+        new_op = replace(self, input_op=self.input_dependency, scanner=new_scanner)
+
+        if split.residual_predicate is None:
+            return new_op
+
+        # Residual conjuncts can't be pushed through either ``push_filters``
+        # (pyarrow only binds data columns) or ``prune_partitions`` (path
+        # parser only binds partition columns), so re-emit them as a
+        # ``Filter`` above the new ``ReadFiles``. Without this, we'd keep
+        # the splittable parts and silently drop the residual — letting
+        # rows through that the original predicate would have rejected.
+        return Filter(new_op, predicate_expr=split.residual_predicate)
 
 
 @dataclass(frozen=True, repr=False, eq=False)

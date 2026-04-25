@@ -2,7 +2,7 @@
 
 This module tests the _split_predicate_by_columns function which optimizes
 predicate pushdown for partitioned Parquet datasets by splitting predicates
-into data-column and partition-column parts.
+into data-column, partition-column, and residual parts.
 """
 
 from dataclasses import dataclass
@@ -25,6 +25,7 @@ class PredicateSplitTestCase:
     expected_data_predicate: Optional[Expr]
     expected_partition_predicate: Optional[Expr]
     description: str
+    expected_residual_predicate: Optional[Expr] = None
 
 
 # fmt: off
@@ -151,6 +152,7 @@ TEST_CASES = [
         partition_cols={"partition_col"},
         expected_data_predicate=None,
         expected_partition_predicate=None,
+        expected_residual_predicate=(col("data1") > 5) | (col("partition_col") == "US"),
         description="OR with data and partition (unsafe to split)",
     ),
     PredicateSplitTestCase(
@@ -158,6 +160,7 @@ TEST_CASES = [
         partition_cols={"partition_col"},
         expected_data_predicate=None,
         expected_partition_predicate=None,
+        expected_residual_predicate=(col("partition_col") == "US") | (col("data1") > 5),
         description="OR with partition and data (unsafe to split)",
     ),
     PredicateSplitTestCase(
@@ -165,6 +168,7 @@ TEST_CASES = [
         partition_cols={"partition_col"},
         expected_data_predicate=None,
         expected_partition_predicate=None,
+        expected_residual_predicate=((col("data1") > 5) & (col("data2") < 10)) | (col("partition_col") == "US"),
         description="OR with complex data predicate and partition",
     ),
     # ====================================================================
@@ -182,6 +186,7 @@ TEST_CASES = [
         partition_cols={"partition_col"},
         expected_data_predicate=None,
         expected_partition_predicate=None,
+        expected_residual_predicate=~((col("data1") > 5) & (col("partition_col") == "US")),
         description="NOT of mixed AND (becomes OR via De Morgan, unsafe)",
     ),
     PredicateSplitTestCase(
@@ -227,7 +232,8 @@ TEST_CASES = [
         partition_cols={"partition_col"},
         expected_data_predicate=col("data2") < 10,
         expected_partition_predicate=None,
-        description="AND with left side having OR with partition (can extract right side data)",
+        expected_residual_predicate=(col("data1") > 5) | (col("partition_col") == "US"),
+        description="AND with left side having OR with partition (residual carries the unsplittable OR)",
     ),
     # ====================================================================
     # Edge cases
@@ -309,9 +315,9 @@ def test_split_predicate_by_columns(test_case: PredicateSplitTestCase):
     - Pure data predicates (should extract data part only)
     - Pure partition predicates (should extract partition part only)
     - Mixed predicates with AND (should split both parts)
-    - Mixed predicates with OR (can't split safely)
+    - Mixed predicates with OR (kept as residual)
     - Mixed predicates with NOT (varies by case)
-    - Complex nested scenarios
+    - Complex nested scenarios with residual carry-over
     - Edge cases
     """
     result = _split_predicate_by_columns(test_case.predicate, test_case.partition_cols)
@@ -326,6 +332,12 @@ def test_split_predicate_by_columns(test_case: PredicateSplitTestCase):
         result.partition_predicate,
         test_case.expected_partition_predicate,
         "partition",
+        test_case.description,
+    )
+    _assert_predicate_matches(
+        result.residual_predicate,
+        test_case.expected_residual_predicate,
+        "residual",
         test_case.description,
     )
 

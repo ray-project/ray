@@ -117,26 +117,25 @@ class SetReadParallelismRule(Rule):
     def _apply_v2(
         self, plan: PhysicalPlan, op: PhysicalOperator, logical_op: ReadFiles
     ):
-        """Set parallelism for a ``ReadFiles`` op using sample-extrapolated size.
+        """Set parallelism for a ``ReadFiles`` op without a size estimate.
 
-        ``ReadFiles`` defers file listing to physical execution, so we don't
-        know the true file count here. The driver has already cached a
-        sample via ``_read_datasource_v2``; we use it plus
-        ``ParquetInMemorySizeEstimator`` to produce an upper-bound
-        in-memory size, then let ``_autodetect_parallelism`` pick a block
-        count. The ``ListFiles`` op's configured ``FilePartitioner``
-        rebalances at execution time, so this is only a planning-time
-        approximation.
+        ``ReadFiles`` defers file listing to physical execution, so the true
+        file count and dataset size are not known here. Rather than
+        extrapolating a size from a driver-side sample, we let the upstream
+        ``ListFiles`` op's ``RoundRobinPartitioner`` produce size-balanced
+        buckets at execution time. ``_autodetect_parallelism`` is invoked
+        with ``mem_size=None`` and falls back to its CPU/min-blocks
+        heuristics; the size-based ``min_safe_parallelism`` /
+        ``max_reasonable_parallelism`` clamp is not applied for V2 reads.
         """
         ctx = DataContext.get_current()
-        mem_size = logical_op.estimate_in_memory_size()
 
         detected_parallelism, reason, _ = _autodetect_parallelism(
             logical_op.parallelism,
             op.target_max_block_size_override or ctx.target_max_block_size,
             ctx,
             datasource_or_legacy_reader=None,
-            mem_size=mem_size,
+            mem_size=None,
         )
 
         if logical_op.parallelism == -1:
