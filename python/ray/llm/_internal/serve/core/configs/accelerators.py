@@ -76,7 +76,7 @@ class AcceleratorBackend(ABC):
         self,
         *,
         num_devices: int,
-        ray_accelerator_type: Optional[str] = None,
+        accelerator_type_str: Optional[str] = None,
     ) -> List[Dict[str, float]]:
         pass
 
@@ -110,7 +110,7 @@ class AcceleratorBackend(ABC):
 class CPUAccelerator(AcceleratorBackend):
     # stateless — no __init__
     def default_bundles(
-        self, *, num_devices: int, ray_accelerator_type: Optional[str] = None
+        self, *, num_devices: int, accelerator_type_str: Optional[str] = None
     ):
         return [{"CPU": 1} for _ in range(num_devices)]
 

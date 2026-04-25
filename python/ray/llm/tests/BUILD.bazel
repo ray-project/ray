@@ -105,17 +105,3 @@ py_test_module_list(
         "//:ray_lib",
     ],
 )
-
-py_test_module_list(
-    size = "large",
-    data = glob(["serve/**/*.yaml"]),
-    files = glob(["serve/tpu/**/test_*.py"]),
-    tags = [
-        "exclusive",
-        "team:llm",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
