@@ -480,11 +480,11 @@ class LLMConfig(BaseModelExtended):
     @model_validator(mode="after")
     def _resolve_and_validate_accelerator(self):
         """Resolves the accelerator configuration and validates it."""
-        self._resolve_accelerator_config_inline()
+        self._resolve_accelerator_config()
         self._check_accelerator_type_matches_hardware()
         return self
 
-    def _resolve_accelerator_config_inline(self) -> None:
+    def _resolve_accelerator_config(self) -> None:
         """Infers and populates accelerator_config if omitted by the user."""
         if self.accelerator_config is not None:
             return
