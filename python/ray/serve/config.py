@@ -46,7 +46,7 @@ from ray.util.annotations import Deprecated, PublicAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class AutoscalingContext:
     """Rich context provided to custom autoscaling policies.
 
@@ -862,7 +862,7 @@ class HTTPOptions(BaseModel):
         return v
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class gRPCOptions(BaseModel):
     """gRPC options for the proxies. Supported fields:
 

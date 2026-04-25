@@ -335,8 +335,11 @@ class DeploymentSchema(BaseModel):
     max_queued_requests: StrictInt = Field(
         default=DEFAULT.VALUE,
         description=(
-            "[DEPRECATED] The max number of requests that will be executed at once in "
-            f"each replica. Defaults to {DEFAULT_MAX_ONGOING_REQUESTS}."
+            "Maximum number of requests to this deployment that will be queued at "
+            "each caller (proxy or DeploymentHandle). Once this limit is reached, "
+            "subsequent requests will raise a BackPressureError (for handles) or "
+            "return an HTTP 503 status code (for HTTP requests). Defaults to -1 "
+            "(no limit)."
         ),
     )
     user_config: Optional[Dict] = Field(
