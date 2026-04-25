@@ -71,6 +71,7 @@ ray_cc_library(
         ":scheduler_internal",
         "//src/ray/observability:metric_interface",
         "//src/ray/protobuf:gcs_cc_proto",
+        "//src/ray/util:clock",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_prod",
@@ -156,6 +157,7 @@ ray_cc_library(
         "//src/ray/protobuf:node_manager_cc_proto",
         "//src/ray/ray_syncer",
         "//src/ray/stats:stats_metric",
+        "//src/ray/util:clock",
         "//src/ray/util:logging",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_googletest//:gtest_prod",
@@ -219,6 +221,7 @@ ray_cc_library(
     srcs = ["policy/label_domain_bundle_scheduling_policy.cc"],
     hdrs = ["policy/label_domain_bundle_scheduling_policy.h"],
     deps = [
+        ":cluster_resource_manager",
         ":scheduling_policy",
     ],
 )

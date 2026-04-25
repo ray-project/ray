@@ -30,6 +30,10 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
@@ -49,6 +53,7 @@ from ray.serve._private.deployment_state import (
     ReplicaStateContainer,
 )
 from ray.serve._private.exceptions import DeploymentIsBeingDeletedError
+from ray.serve._private.long_poll import LongPollNamespace
 from ray.serve._private.test_utils import (
     MockDeploymentActorWrapper,
     MockPlacementGroup,
@@ -511,6 +516,90 @@ class TestDeploymentActorContainer:
 
 
 class TestDeploymentActorWrapper:
+    @pytest.mark.parametrize(
+        "deployment_runtime_env,actor_runtime_env,conflicting_keys",
+        [
+            (
+                {
+                    "env_vars": {
+                        RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR: "user-app",
+                    }
+                },
+                None,
+                [RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR],
+            ),
+            (
+                None,
+                {
+                    "env_vars": {
+                        RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR: "user-deployment",
+                        RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR: "user-actor",
+                    }
+                },
+                [
+                    RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
+                    RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+                ],
+            ),
+            (
+                {
+                    "env_vars": {
+                        RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR: "user-v1",
+                    }
+                },
+                {
+                    "env_vars": {
+                        RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR: "user-deployment",
+                    }
+                },
+                [
+                    RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
+                    RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
+                ],
+            ),
+        ],
+    )
+    def test_start_rejects_reserved_internal_context_env_vars(
+        self,
+        deployment_runtime_env,
+        actor_runtime_env,
+        conflicting_keys,
+    ):
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        actor_options = {}
+        if actor_runtime_env is not None:
+            actor_options["runtime_env"] = actor_runtime_env
+
+        config = DeploymentActorConfig(
+            name="counter",
+            actor_class="builtins:object",
+            actor_options=actor_options,
+        )
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            success, err = wrapper.start(deployment_runtime_env=deployment_runtime_env)
+
+        assert success is False
+        assert err is not None
+        for key in conflicting_keys:
+            assert key in err
+        mock_actor_cls.options.assert_not_called()
+
     def test_properties(self):
         """Test actor_logical_name and code_version properties."""
         config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
@@ -548,6 +637,79 @@ class TestDeploymentActorWrapper:
         assert err is None
         assert wrapper._handle is mock_handle
         assert wrapper._ready_ref is mock_ready_ref
+
+    def test_start_injects_internal_deployment_context_env_vars(self):
+        """Test start() injects deployment metadata into actor runtime_env."""
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        config = DeploymentActorConfig(name="counter", actor_class="builtins:object")
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v1",
+        )
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            success, err = wrapper.start(
+                deployment_runtime_env={"env_vars": {"PARENT_ENV": "parent"}}
+            )
+
+        assert success is True
+        assert err is None
+
+        actor_options = mock_actor_cls.options.call_args.kwargs
+        assert "runtime_env" in actor_options
+        assert actor_options["runtime_env"]["env_vars"] == {
+            "PARENT_ENV": "parent",
+            "RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME": TEST_DEPLOYMENT_ID.app_name,
+            "RAY_SERVE_INTERNAL_DEPLOYMENT_NAME": TEST_DEPLOYMENT_ID.name,
+            "RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME": "counter",
+            "RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION": "v1",
+        }
+
+    def test_start_preserves_user_env_vars_when_injecting_internal_context(self):
+        """Test internal context env injection preserves unrelated user env vars."""
+        mock_ready_ref = MagicMock()
+        mock_handle = MagicMock()
+        mock_handle.__ray_ready__ = MagicMock(
+            remote=MagicMock(return_value=mock_ready_ref)
+        )
+        mock_actor_cls = MagicMock()
+        mock_actor_cls.options.return_value.remote.return_value = mock_handle
+
+        config = DeploymentActorConfig(
+            name="counter",
+            actor_class="builtins:object",
+            actor_options={"runtime_env": {"env_vars": {"CHILD_ENV": "child"}}},
+        )
+        wrapper = DeploymentActorWrapper(
+            deployment_id=TEST_DEPLOYMENT_ID,
+            config=config,
+            code_version="v2",
+        )
+        with patch(
+            "ray.serve._private.deployment_state.DeploymentActorConfig.get_actor_class",
+            return_value=mock_actor_cls,
+        ):
+            wrapper.start(deployment_runtime_env={"env_vars": {"PARENT_ENV": "parent"}})
+
+        actor_options = mock_actor_cls.options.call_args.kwargs
+        assert actor_options["runtime_env"]["env_vars"]["PARENT_ENV"] == "parent"
+        assert actor_options["runtime_env"]["env_vars"]["CHILD_ENV"] == "child"
+        assert (
+            actor_options["runtime_env"]["env_vars"][
+                "RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME"
+            ]
+            == "counter"
+        )
 
     def test_start_failure(self):
         """Test start() returns (False, error_msg) when actor creation fails."""
@@ -616,10 +778,13 @@ class TestDeploymentActorWrapper:
 
     def test_check_ready_ref_ready_then_success(self):
         """Test check_ready() when _ready_ref is ready and ray.get succeeds."""
-        with patch(
-            "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
-            return_value=True,
-        ), patch("ray.serve._private.deployment_state.ray.get"):
+        with (
+            patch(
+                "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                return_value=True,
+            ),
+            patch("ray.serve._private.deployment_state.ray.get"),
+        ):
             config = DeploymentActorConfig(
                 name="counter", actor_class="builtins:object"
             )
@@ -636,12 +801,15 @@ class TestDeploymentActorWrapper:
 
     def test_check_ready_ref_ready_then_fails(self):
         """Test check_ready() when ray.get on _ready_ref raises."""
-        with patch(
-            "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
-            return_value=True,
-        ), patch(
-            "ray.serve._private.deployment_state.ray.get",
-            side_effect=RuntimeError("actor crashed"),
+        with (
+            patch(
+                "ray.serve._private.deployment_state.check_obj_ref_ready_nowait",
+                return_value=True,
+            ),
+            patch(
+                "ray.serve._private.deployment_state.ray.get",
+                side_effect=RuntimeError("actor crashed"),
+            ),
         ):
             config = DeploymentActorConfig(
                 name="counter", actor_class="builtins:object"
@@ -675,10 +843,13 @@ class TestDeploymentActorWrapper:
     def test_kill_without_handle(self):
         """Test kill() when _handle is None - fetches via get_actor then kills."""
         fake_handle = object()
-        with patch(
-            "ray.serve._private.deployment_state.ray.get_actor",
-            return_value=fake_handle,
-        ), patch("ray.serve._private.deployment_state.ray.kill") as mock_kill:
+        with (
+            patch(
+                "ray.serve._private.deployment_state.ray.get_actor",
+                return_value=fake_handle,
+            ),
+            patch("ray.serve._private.deployment_state.ray.kill") as mock_kill,
+        ):
             config = DeploymentActorConfig(
                 name="counter", actor_class="builtins:object"
             )
@@ -692,10 +863,13 @@ class TestDeploymentActorWrapper:
 
     def test_kill_actor_already_stopped(self):
         """Test kill() when actor is already stopped - should not raise."""
-        with patch(
-            "ray.serve._private.deployment_state.ray.get_actor",
-            side_effect=ValueError("actor not found"),
-        ), patch("ray.serve._private.deployment_state.ray.kill"):
+        with (
+            patch(
+                "ray.serve._private.deployment_state.ray.get_actor",
+                side_effect=ValueError("actor not found"),
+            ),
+            patch("ray.serve._private.deployment_state.ray.kill"),
+        ):
             config = DeploymentActorConfig(
                 name="counter", actor_class="builtins:object"
             )
@@ -3758,6 +3932,54 @@ def test_shutdown(mock_deployment_state_manager):
 
     # After all deployments shutdown, `is_ready_for_shutdown()` should return True
     assert dsm.is_ready_for_shutdown()
+
+
+def test_shutdown_does_not_delete_checkpoint(mock_deployment_state_manager):
+    """Tests checkpoint must survive `shutdown() and `is_ready_for_shutdown().
+    Only an explicit `delete_checkpoint() call should remove it.
+    """
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    grace_period_s = 10
+    b_info_1, _ = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    dsm.save_checkpoint()
+
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Single replica should be created and become running.
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    # Checkpoint should exist after save.
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is not None
+
+    # shutdown() must NOT delete the checkpoint.
+    dsm.shutdown()
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is not None
+
+    # save_checkpoint() after shutdown should be a no-op.
+    pre_shutdown_checkpoint = dsm._kv_store.get(CHECKPOINT_KEY)
+    dsm.save_checkpoint()
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is pre_shutdown_checkpoint
+
+    timer.advance(grace_period_s + 0.1)
+    dsm.update()
+    replica = ds._replicas.get()[0]
+    replica._actor.set_done_stopping()
+    dsm.update()
+    assert dsm.is_ready_for_shutdown()
+
+    # is_ready_for_shutdown() must NOT delete the checkpoint.
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is not None
+
+    # Only delete_checkpoint() should remove it.
+    dsm.delete_checkpoint()
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is None
 
 
 def test_resource_requirements_none():
@@ -7300,6 +7522,86 @@ def test_broadcasted_replicas_set_changed_flag_set_on_lightweight_broadcast_conf
         mock_get_infos.assert_not_called()
 
 
+def test_broadcast_deferred_while_replicas_recovering(mock_deployment_state_manager):
+    """Regression test: During controller recovery, broadcast_running_replicas_if_changed() must
+    be deferred until all RECOVERING replicas have transitioned, then fire once with
+    the complete set.
+
+    More Context: https://github.com/ray-project/ray/issues/62728
+    """
+
+    def targets_key_was_broadcast(mock_lph):
+        """Return True if notify_changed was called with a DEPLOYMENT_TARGETS key."""
+        for call in mock_lph.notify_changed.call_args_list:
+            keys_dict = call[0][0]
+            if any(
+                isinstance(k, tuple) and k[0] == LongPollNamespace.DEPLOYMENT_TARGETS
+                for k in keys_dict
+            ):
+                return True
+        return False
+
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    # Deploy 3 replicas and bring to steady state.
+    info_1, v1 = deployment_info(num_replicas=3, version="1")
+    dsm.deploy(TEST_DEPLOYMENT_ID, info_1)
+    dsm.save_checkpoint()
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for r in ds._replicas.get():
+        r._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+    assert ds.curr_status_info.status == DeploymentStatus.HEALTHY
+
+    # Simulate controller restart
+    replica_ids = [r.replica_id.to_full_id_str() for r in ds._replicas.get()]
+    new_dsm: DeploymentStateManager = create_dsm(actor_names=replica_ids)
+    new_ds = new_dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # All 3 replicas should be RECOVERING.
+    check_counts(new_ds, total=3, by_state=[(ReplicaState.RECOVERING, 3, v1)])
+
+    # While replicas are RECOVERING, broadcast must not fire, even though the
+    # _broadcasted_replicas_set_changed=True.
+    assert new_ds._broadcasted_replicas_set_changed is True
+    new_ds._long_poll_host.notify_changed.reset_mock()
+    new_ds.broadcast_running_replicas_if_changed()
+    assert not targets_key_was_broadcast(new_ds._long_poll_host)
+
+    # Partially complete recovery: 2/3 replicas RUNNING.
+    # Broadcast still suppressed because 1 replica is RECOVERING.
+    new_ds._long_poll_host.notify_changed.reset_mock()
+    recovering = new_ds._replicas.get(states=[ReplicaState.RECOVERING])
+    for r in recovering[:2]:
+        r._actor.set_ready()
+    new_dsm.update()
+    check_counts(
+        new_ds,
+        total=3,
+        by_state=[(ReplicaState.RUNNING, 2, v1), (ReplicaState.RECOVERING, 1, v1)],
+    )
+    assert not targets_key_was_broadcast(new_ds._long_poll_host)
+
+    # All replicas finish recovery, so broadcast fires
+    new_ds._long_poll_host.notify_changed.reset_mock()
+    for r in new_ds._replicas.get(states=[ReplicaState.RECOVERING]):
+        r._actor.set_ready()
+    new_dsm.update()
+    check_counts(new_ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
+    assert targets_key_was_broadcast(new_ds._long_poll_host)
+    # The payload must contain all 3 running replicas.
+    for call in new_ds._long_poll_host.notify_changed.call_args_list:
+        keys_dict = call[0][0]
+        key = (LongPollNamespace.DEPLOYMENT_TARGETS, TEST_DEPLOYMENT_ID)
+        if key in keys_dict:
+            assert len(keys_dict[key].running_replicas) == 3
+            break
+
+
 def test_in_transition_cleared_at_steady_state(mock_deployment_state_manager):
     """Test that _in_transition is cleared once a deployment reaches
     HEALTHY steady state and that subsequent ticks skip expensive work."""
@@ -7498,6 +7800,40 @@ def test_pending_migration_prevents_in_transition_clear(
         f"Expected 0 PENDING_MIGRATION replicas but found {pending_migration_count}. "
         "The replica is stuck because _in_transition was incorrectly cleared."
     )
+
+
+class TestIsGangDeploymentProperty:
+    """Tests for DeploymentState._is_gang_deployment property."""
+
+    @pytest.mark.parametrize(
+        "gang_scheduling_config, expected_value",
+        [
+            pytest.param(GangSchedulingConfig(gang_size=2), True, id="gang"),
+            pytest.param(None, False, id="non-gang"),
+        ],
+    )
+    def test_is_gang_deployment(
+        self,
+        mock_deployment_state_manager,
+        gang_scheduling_config,
+        expected_value,
+    ):
+        """_is_gang_deployment reflects whether gang scheduling is configured."""
+        create_dsm, _, _, _ = mock_deployment_state_manager
+
+        create_dsm_kwargs = {}
+        deployment_info_kwargs = {"num_replicas": 2}
+        if gang_scheduling_config is not None:
+            create_dsm_kwargs[
+                "create_placement_group_fn_override"
+            ] = lambda *args, **kwargs: Mock()
+            deployment_info_kwargs["gang_scheduling_config"] = gang_scheduling_config
+
+        dsm: DeploymentStateManager = create_dsm(**create_dsm_kwargs)
+        b_info, _ = deployment_info(**deployment_info_kwargs)
+        dsm.deploy(TEST_DEPLOYMENT_ID, b_info)
+        ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+        assert ds._is_gang_deployment is expected_value
 
 
 class TestScaleDeploymentGangReplicas:

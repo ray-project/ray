@@ -8,9 +8,9 @@ import pandas as pd
 import torch
 from benchmark import (
     Benchmark,
-    OperatorStatsTracker,
     RuntimeEnvSetupTracker,
     benchmark_py_modules,
+    collect_dataset_stats,
 )
 from PIL import Image
 from torchvision.models import vit_b_16, ViT_B_16_Weights
@@ -200,9 +200,6 @@ def main(args: argparse.Namespace):
     if args.chaos:
         start_chaos()
 
-    ctx = ray.data.DataContext.get_current()
-    ctx.custom_execution_callback_classes.append(OperatorStatsTracker)
-
     print("Creating metadata")
     metadata = create_metadata(scale_factor=args.scale_factor)
 
@@ -212,7 +209,7 @@ def main(args: argparse.Namespace):
         transform = weights.transforms()
         model_ref = ray.put(model)
 
-        (
+        ds = (
             ray.data.from_pandas(metadata)
             .with_column("channel0", download("channel0_uris"))
             .with_column("channel1", download("channel1_uris"))
@@ -221,7 +218,7 @@ def main(args: argparse.Namespace):
             .filter(lambda row: row["image"].size != 0)
             .map(process_image)
             .flat_map(patch_image)
-            .map_batches(ProcessPatches(transform))
+            .map_batches(ProcessPatches(transform), batch_size="auto")
             .map_batches(
                 EmbedPatches,
                 num_gpus=1,
@@ -229,9 +226,9 @@ def main(args: argparse.Namespace):
                 concurrency=tuple(args.inference_concurrency),
                 fn_constructor_kwargs={"model": model_ref, "device": "cuda"},
             )
-            .write_parquet(WRITE_PATH)
         )
-        metrics = OperatorStatsTracker.collect()
+        ds.write_parquet(WRITE_PATH)
+        metrics = collect_dataset_stats(ds)
         metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
         return metrics
 
