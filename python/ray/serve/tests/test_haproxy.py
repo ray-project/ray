@@ -612,17 +612,25 @@ def test_haproxy_metrics(ray_shutdown):
     metric_prefix = (
         'haproxy_backend_http_responses_total{proxy="http-default",code="2xx"} '
     )
+    last_metrics = [""]
 
     def metrics_show_2xx_response():
         assert httpx.get("http://localhost:8000/").text == "hello1"
         resp = httpx.get("http://localhost:9101/metrics")
         assert resp.status_code == 200
+        last_metrics[0] = resp.text
         for line in resp.text.splitlines():
             if line.startswith(metric_prefix):
                 return int(line[len(metric_prefix) :]) >= 1
         return False
 
-    wait_for_condition(metrics_show_2xx_response, timeout=30)
+    try:
+        wait_for_condition(metrics_show_2xx_response, timeout=30)
+    except RuntimeError:
+        # Dump full /metrics so bazel test logs show the real backend counters
+        # instead of pytest's truncated assertion message.
+        print("Final /metrics output:\n" + last_metrics[0])
+        raise
 
     serve.shutdown()
 
