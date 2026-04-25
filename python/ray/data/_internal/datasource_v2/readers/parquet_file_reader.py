@@ -260,7 +260,9 @@ class ParquetFileReader(FileReader):
         filter_expr = scanner_kwargs.get("filter")
         batch_size = scanner_kwargs.get("batch_size")
 
-        pf = pq.ParquetFile(fragment.path, filesystem=fragment.filesystem)
+        pf = pq.ParquetFile(  # pyrefly: ignore[unexpected-keyword]
+            fragment.path, filesystem=fragment.filesystem
+        )
 
         # Scope the safe batch-size calculation to the columns actually being
         # decoded so we don't shrink batches based on columns we won't read.

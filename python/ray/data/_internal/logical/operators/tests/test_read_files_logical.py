@@ -130,11 +130,14 @@ def test_supports_and_apply_predicate_pushdown(tmp_path):
 
     new_op = op.apply_predicate(col("a") > 1)
     assert new_op is not op
-    assert isinstance(new_op.scanner, ParquetScanner)
-    assert new_op.scanner.predicate is not None
+    assert isinstance(new_op, ReadFiles)
+    new_scanner = new_op.scanner
+    assert isinstance(new_scanner, ParquetScanner)
+    assert new_scanner.predicate is not None
     # Original scanner untouched
-    assert isinstance(op.scanner, ParquetScanner)
-    assert op.scanner.predicate is None
+    orig_scanner = op.scanner
+    assert isinstance(orig_scanner, ParquetScanner)
+    assert orig_scanner.predicate is None
 
 
 def test_apply_predicate_partition_only_routes_to_prune_partitions(tmp_path):
@@ -143,9 +146,13 @@ def test_apply_predicate_partition_only_routes_to_prune_partitions(tmp_path):
     new_op = op.apply_predicate(col("country") == "US")
 
     assert isinstance(new_op, ReadFiles) and new_op is not op
-    assert new_op.scanner.partition_predicate is not None
-    assert new_op.scanner.predicate is None
-    assert op.scanner.partition_predicate is None
+    new_scanner = new_op.scanner
+    assert isinstance(new_scanner, ParquetScanner)
+    orig_scanner = op.scanner
+    assert isinstance(orig_scanner, ParquetScanner)
+    assert new_scanner.partition_predicate is not None
+    assert new_scanner.predicate is None
+    assert orig_scanner.partition_predicate is None
 
 
 def test_apply_predicate_mixed_and_splits_into_data_and_partition(tmp_path):
@@ -154,8 +161,10 @@ def test_apply_predicate_mixed_and_splits_into_data_and_partition(tmp_path):
     new_op = op.apply_predicate((col("a") > 0) & (col("country") == "US"))
 
     assert isinstance(new_op, ReadFiles) and new_op is not op
-    assert new_op.scanner.predicate is not None
-    assert new_op.scanner.partition_predicate is not None
+    new_scanner = new_op.scanner
+    assert isinstance(new_scanner, ParquetScanner)
+    assert new_scanner.predicate is not None
+    assert new_scanner.partition_predicate is not None
 
 
 def test_apply_predicate_mixed_or_keeps_filter_above(tmp_path):
@@ -181,10 +190,13 @@ def test_apply_predicate_mixed_and_with_unsplittable_residual(tmp_path):
     result = op.apply_predicate(pure_data & pure_partition & mixed_or)
 
     assert isinstance(result, Filter)
-    assert isinstance(result.input_dependency, ReadFiles)
     new_read = result.input_dependency
-    assert new_read.scanner.predicate is not None
-    assert new_read.scanner.partition_predicate is not None
+    assert isinstance(new_read, ReadFiles)
+    new_scanner = new_read.scanner
+    assert isinstance(new_scanner, ParquetScanner)
+    assert new_scanner.predicate is not None
+    assert new_scanner.partition_predicate is not None
     # The residual carried by the new Filter is exactly the mixed-OR
     # conjunct that couldn't be pushed.
+    assert result.predicate_expr is not None
     assert result.predicate_expr.structurally_equals(mixed_or)
