@@ -31,7 +31,7 @@ from ray.train.v2._internal.state.schema import (
 )
 from ray.train.v2._internal.util import TrainingFramework
 
-TRAIN_SCHEMA_VERSION = 3
+TRAIN_SCHEMA_VERSION = 4
 RAY_TRAIN_VERSION = 2
 
 # Status mapping dictionaries
