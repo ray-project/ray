@@ -31,9 +31,11 @@ def main(args):
         # chain. Materialize the intermediate (partsupp_germany) once and
         # derive both the per-part aggregate and the scalar threshold from it.
 
-        # Q11 parameters
+        # Q11 parameters. Per the TPC-H spec, FRACTION is defined as
+        # 0.0001 / SF so the threshold tracks per-part stock values
+        # consistently across scale factors.
         nation_name = "GERMANY"
-        fraction = 0.0001
+        fraction = 0.0001 / args.sf
 
         nation = load_table("nation", args.sf).select_columns(["n_nationkey", "n_name"])
         supplier = load_table("supplier", args.sf).select_columns(
