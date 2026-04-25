@@ -3,12 +3,14 @@ zones:
     - us-west1-b
 
 head_node:
-    instance_type: n2-standard-4  # 4 CPUs
+    instance_type: n2-standard-8  # 8 CPUs
     resources:
       CPU: 4
 
 worker_nodes:
-    - instance_type: n2-standard-4
+    - instance_type: n2-standard-8
       min_nodes: 0
       max_nodes: 2
       market_type: ON_DEMAND
+      resources:
+        CPU: 4

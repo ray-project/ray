@@ -7,9 +7,9 @@ from typing import Dict
 
 ray.init("auto")
 
-# Sync with the compute config.
+# Sync with the compute config (release/autoscaling_tests/aws.yaml).
 HEAD_NODE_CPU = 0
-WORKER_NODE_CPU = 4
+WORKER_NODE_CPU = 8
 IDLE_TERMINATION_S = 60 * 5  # 5 min
 DEFAULT_RETRY_INTERVAL_MS = 15 * 1000  # 15 sec
 

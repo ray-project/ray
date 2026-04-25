@@ -57,7 +57,7 @@ def main(
         head_node=HeadNodeConfig(instance_type="m5.8xlarge"),
         worker_nodes=[
             WorkerNodeGroupConfig(
-                instance_type="m5.xlarge",
+                instance_type="m5.2xlarge",
                 min_nodes=0,
                 max_nodes=1000,
                 resources={"worker_resource": 1},

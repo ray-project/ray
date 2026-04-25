@@ -33,7 +33,7 @@ TEST_CLUSTER_COMPUTE = {
     "worker_node_types": [
         {
             "name": "worker_node",
-            "instance_type": "m5.xlarge",
+            "instance_type": "m5.2xlarge",
             "min_workers": 0,
             "max_workers": 0,
             "use_spot": False,
@@ -49,7 +49,7 @@ TEST_CLUSTER_COMPUTE_NEW_SCHEMA = {
     },
     "worker_nodes": [
         {
-            "instance_type": "m5.xlarge",
+            "instance_type": "m5.2xlarge",
             "min_nodes": 0,
             "max_nodes": 4,
         }

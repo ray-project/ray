@@ -19,7 +19,9 @@ head_node:
   instance_type: m5.16xlarge
 
 worker_nodes:
-  - instance_type: m6i.large
+  - instance_type: m5.2xlarge
     min_nodes: 500
     max_nodes: 2000
     market_type: ON_DEMAND
+    resources:
+      CPU: 2
