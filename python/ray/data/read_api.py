@@ -390,6 +390,51 @@ def range_tensor(
     )
 
 
+def _resolve_read_remote_args(
+    datasource: Datasource,
+    ray_remote_args: Optional[Dict[str, Any]],
+    num_cpus: Optional[float],
+    num_gpus: Optional[float],
+    memory: Optional[float],
+    ctx: DataContext,
+) -> Dict[str, Any]:
+    """Common ``ray_remote_args`` setup shared between ``read_datasource`` and
+    ``_read_datasource_v2``.
+
+    Local-scheme reads (``local://...``) must run on the driver so tasks can
+    see the driver's filesystem. We use the ``ray.io/node-id`` label selector
+    rather than ``NodeAffinitySchedulingStrategy(soft=False)`` — matches the
+    Ray-wide migration in PR #54940. ``supports_distributed_reads`` is
+    captured on the datasource against the original (pre-resolution) paths,
+    so the check survives the scheme-stripping done by
+    ``_resolve_paths_and_filesystem``.
+
+    Callers handle datasource-specific guards (Ray Client rejection,
+    ``_validate_head_node_resources_for_local_scheduling``) themselves since
+    they sit in different positions in the V1 and V2 flows.
+    """
+    if ray_remote_args is None:
+        ray_remote_args = {}
+    if not datasource.supports_distributed_reads:
+        label_selector = ray_remote_args.get("label_selector", {})
+        label_selector[
+            ray._raylet.RAY_NODE_ID_KEY
+        ] = ray.get_runtime_context().get_node_id()
+        ray_remote_args["label_selector"] = label_selector
+        ray_remote_args.pop("scheduling_strategy", None)
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and "label_selector" not in ray_remote_args
+    ):
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+    return merge_resources_to_ray_remote_args(
+        num_cpus,
+        num_gpus,
+        memory,
+        ray_remote_args,
+    )
+
+
 @wrap_auto_init
 def _read_datasource_v2(
     datasource,
@@ -420,12 +465,8 @@ def _read_datasource_v2(
     """
     import time
 
-    from ray.data._internal.datasource_v2.listing.file_pruners import (
-        FileExtensionPruner,
-        FilePruner,
-        PartitionPruner,
-    )
     from ray.data._internal.datasource_v2.listing.listing_utils import (
+        _build_pruners,
         sample_files,
     )
     from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
@@ -435,17 +476,6 @@ def _read_datasource_v2(
 
     ctx = DataContext.get_current()
 
-    if ray_remote_args is None:
-        ray_remote_args = {}
-
-    # Local-scheme reads (``local://...``) must run on the driver so
-    # tasks can see the driver's filesystem. Use the label selector API
-    # (``ray.io/node-id`` label) rather than
-    # ``NodeAffinitySchedulingStrategy(soft=False)`` — matches the
-    # Ray-wide migration in PR #54940. ``supports_distributed_reads`` is
-    # captured on the datasource against the original (pre-resolution)
-    # paths, so the check survives the scheme-stripping done by
-    # ``_resolve_paths_and_filesystem``.
     if not datasource.supports_distributed_reads:
         import ray.util.client
 
@@ -456,28 +486,17 @@ def _read_datasource_v2(
                 "store files in cloud storage or a distributed filesystem like "
                 "NFS."
             )
-        label_selector = ray_remote_args.get("label_selector", {})
-        label_selector[
-            ray._raylet.RAY_NODE_ID_KEY
-        ] = ray.get_runtime_context().get_node_id()
-        ray_remote_args["label_selector"] = label_selector
-        ray_remote_args.pop("scheduling_strategy", None)
 
-    if "scheduling_strategy" not in ray_remote_args and (
-        "label_selector" not in ray_remote_args
-    ):
-        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
-
-    ray_remote_args = merge_resources_to_ray_remote_args(
+    ray_remote_args = _resolve_read_remote_args(
+        datasource,
+        ray_remote_args,
         num_cpus,
         num_gpus,
         memory,
-        ray_remote_args,
+        ctx,
     )
 
-    pruners: List[FilePruner] = [FileExtensionPruner(datasource.file_extensions)]
-    if partition_filter is not None:
-        pruners.append(PartitionPruner(partition_filter))
+    pruners = _build_pruners(datasource.file_extensions, partition_filter)
 
     indexer = datasource._get_file_indexer()
 
@@ -638,28 +657,13 @@ def read_datasource(
 
     ctx = DataContext.get_current()
 
-    if ray_remote_args is None:
-        ray_remote_args = {}
-
-    if not datasource.supports_distributed_reads:
-        label_selector = ray_remote_args.get("label_selector", {})
-        label_selector[
-            ray._raylet.RAY_NODE_ID_KEY
-        ] = ray.get_runtime_context().get_node_id()
-        ray_remote_args["label_selector"] = label_selector
-        ray_remote_args.pop("scheduling_strategy", None)
-
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and "label_selector" not in ray_remote_args
-    ):
-        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
-
-    ray_remote_args = merge_resources_to_ray_remote_args(
+    ray_remote_args = _resolve_read_remote_args(
+        datasource,
+        ray_remote_args,
         num_cpus,
         num_gpus,
         memory,
-        ray_remote_args,
+        ctx,
     )
 
     if not datasource.supports_distributed_reads:
