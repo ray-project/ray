@@ -630,6 +630,100 @@ def test_select_ops_to_run(ray_start_regular_shared):
         assert selected is o1
 
 
+def test_get_output_blocking_event_signaling(ray_start_regular_shared):
+    """`get_output_blocking` wakes on add_output/mark_finished via a
+    threading.Event rather than polling with time.sleep.
+
+    This exercises the clear-check-wait pattern end-to-end from a worker
+    thread: the consumer blocks inside get_output_blocking, the executor
+    adds an output or marks finished, and the consumer observes the new
+    state without relying on a 10ms poll tick.
+
+    Cases 2 and 3 assert wake-up *latency* (< 200 ms), not just
+    eventual delivery. The internal wait has a 1.0 s safety-net timeout
+    that would mask a regression in `event.set()` if we only checked
+    delivery — the consumer would still wake (via the timeout fallback)
+    and the test would still pass. The latency bound is the only thing
+    that distinguishes "the threading.Event signal works" from "only
+    the safety timeout works".
+    """
+    import threading
+
+    inputs = make_ref_bundles([[x] for x in range(1)])
+    op = InputDataBuffer(DataContext.get_current(), inputs)
+    op_state = OpState(op, [])
+
+    # `add_output` internally re-wraps the bundle via
+    # `dedupe_schemas_with_validation`; compare block contents rather than
+    # object identity.
+    def _same_block(a, b):
+        return a.blocks == b.blocks
+
+    # Case 1: add_output before consumer starts — fast-path, no wait.
+    ref = make_ref_bundle("ready")
+    op_state.add_output(ref)
+    got = op_state.get_output_blocking(output_split_idx=None)
+    assert _same_block(got, ref)
+
+    # Case 2: consumer blocks first, producer signals from another thread.
+    # We assert the consumer wakes within a short window; a healthy Event
+    # signal returns in microseconds, whereas the old time.sleep(0.01)
+    # polling path would observe the enqueue within ~10ms.
+    delivered: list = []
+    ready = threading.Event()
+
+    def consumer():
+        ready.set()
+        delivered.append(op_state.get_output_blocking(output_split_idx=None))
+
+    t = threading.Thread(target=consumer)
+    t.start()
+    ready.wait(timeout=2.0)
+    # Give the consumer a moment to enter the blocking wait.
+    time.sleep(0.05)
+    ref2 = make_ref_bundle("late")
+    t0 = time.perf_counter()
+    op_state.add_output(ref2)
+    t.join(timeout=0.5)
+    elapsed = time.perf_counter() - t0
+    assert not t.is_alive(), "consumer did not wake from add_output signal"
+    assert len(delivered) == 1 and _same_block(delivered[0], ref2)
+    assert elapsed < 0.2, (
+        f"add_output signal took {elapsed*1000:.0f} ms to wake the "
+        f"consumer. With the threading.Event signal working, wake-up is "
+        f"essentially immediate (< 50 ms). A latency near 1 s indicates "
+        f"`add_output` is not setting the event and the 1 s safety "
+        f"timeout in `get_output_blocking` is the only thing waking the "
+        f"consumer."
+    )
+
+    # Case 3: mark_finished wakes a blocked consumer with StopIteration.
+    op2 = InputDataBuffer(DataContext.get_current(), inputs)
+    op_state2 = OpState(op2, [])
+    errors: list = []
+
+    def consumer2():
+        try:
+            op_state2.get_output_blocking(output_split_idx=None)
+        except StopIteration:
+            errors.append("stopiter")
+
+    t2 = threading.Thread(target=consumer2)
+    t2.start()
+    time.sleep(0.05)
+    t0 = time.perf_counter()
+    op_state2.mark_finished()
+    t2.join(timeout=0.5)
+    elapsed = time.perf_counter() - t0
+    assert not t2.is_alive(), "consumer did not wake from mark_finished signal"
+    assert errors == ["stopiter"]
+    assert elapsed < 0.2, (
+        f"mark_finished signal took {elapsed*1000:.0f} ms to wake the "
+        f"consumer. A latency near 1 s indicates `mark_finished` is not "
+        f"setting the event and only the 1 s safety timeout fires."
+    )
+
+
 def test_dispatch_next_task(ray_start_regular_shared):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(DataContext.get_current(), inputs)

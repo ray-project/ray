@@ -4,6 +4,7 @@ This is split out from streaming_executor.py to facilitate better unit testing.
 """
 import dataclasses
 import logging
+import threading
 import time
 from collections import defaultdict
 from dataclasses import dataclass
@@ -186,6 +187,13 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
+        # Signals the consumer thread (inside `get_output_blocking`) that new
+        # output is available in `output_queue`, or that the operator has
+        # finished / errored. The executor thread sets this event from
+        # `add_output` and `mark_finished`; the consumer clears-then-rechecks
+        # before each wait so a concurrent set from the executor is never
+        # lost (clear-check-wait idiom).
+        self._output_ready_event = threading.Event()
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -273,6 +281,10 @@ class OpState:
         self._warned_on_schema_divergence |= diverged
 
         self.output_queue.append(ref)
+        # Wake any consumer blocked in `get_output_blocking`. Set after the
+        # append so the consumer's post-wake queue poll always observes this
+        # bundle.
+        self._output_ready_event.set()
         self.num_completed_tasks += 1
 
         actor_info = self.op.get_actor_info()
@@ -313,20 +325,43 @@ class OpState:
             StopIteration: If all outputs are already consumed.
             Exception: If there was an exception raised during execution.
         """
+        # The consumer blocks on an `_output_ready_event` that the executor
+        # signals from `add_output` and `mark_finished`. The clear-check-wait
+        # idiom below avoids a signal-loss race:
+        #
+        #   1. Pop the queue. If we got a ref, return it.
+        #   2. Clear the event (under the assumption the queue is empty).
+        #   3. Re-check the queue and the finished/exception flags. If the
+        #      executor set the event between our pop and our clear, the
+        #      state change is visible here and we don't enter a stale wait.
+        #   4. Wait with a short timeout as a safety net — the invariant
+        #      above should already prevent signal loss, so the timeout
+        #      should rarely fire; it only exists to tolerate bugs elsewhere.
         while True:
-            # Check if StreamingExecutor has caught an exception or is done execution.
             if self._exception is not None:
                 raise self._exception
             elif self._finished and not self.output_queue.has_next(output_split_idx):
                 raise StopIteration()
             ref = self.output_queue.pop(output_split_idx)
             if ref is not None:
-                # Update outqueue metrics when blocks are removed from this operator's outqueue
-                # TODO: Abstract queue-releated metrics to queue.
+                # Update outqueue metrics when blocks are removed from this
+                # operator's outqueue. TODO: abstract queue metrics to queue.
                 self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
                 self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
                 return ref
-            time.sleep(0.01)
+
+            # Queue was empty. Arm the wait by clearing the event, then
+            # re-check — this closes the race with a concurrent `add_output`
+            # / `mark_finished` that fires between our pop and our clear.
+            self._output_ready_event.clear()
+            if self._exception is not None:
+                raise self._exception
+            if self._finished and not self.output_queue.has_next(output_split_idx):
+                raise StopIteration()
+            if self.output_queue.has_next(output_split_idx):
+                # Executor raced us; skip the wait, loop back to pop.
+                continue
+            self._output_ready_event.wait(timeout=1.0)
 
     def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""
@@ -347,6 +382,9 @@ class OpState:
             self._finished = True
         else:
             self._exception = exception
+        # Wake the consumer thread so it observes the flag change. Set after
+        # the flag write so the consumer's post-wake check always sees it.
+        self._output_ready_event.set()
 
 
 def build_streaming_topology(
