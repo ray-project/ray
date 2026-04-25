@@ -2871,11 +2871,6 @@ def test_read_parquet_nested_type_arrow_not_implemented_fallback(
     Regression test for https://github.com/ray-project/ray/issues/61675
     See also: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
     """
-    if ray.data.DataContext.get_current().use_datasource_v2:
-        pytest.skip(
-            "Nested-type (ARROW-5030) fallback reader is not yet ported to "
-            "the DataSourceV2 path."
-        )
     data_dir, _, num_rows, schema = nested_parquet_exceeding_2gb
     ds = ray.data.read_parquet(data_dir)
     total_rows = 0

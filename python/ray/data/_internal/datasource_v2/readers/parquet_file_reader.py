@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import TYPE_CHECKING, List, Optional
+from typing import TYPE_CHECKING, Iterator, List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -22,6 +22,7 @@ from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -225,6 +226,88 @@ class ParquetFileReader(FileReader):
             return
         row_size = table.nbytes / table.num_rows
         self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
+
+    @override
+    def _iter_fragment_tables(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+    ) -> "Iterator[pa.Table]":
+        """Use V1's nested-type fallback path when the fragment has nested
+        columns whose row-group size exceeds Arrow's ~2GB chunking limit
+        (ARROW-5030).
+        """
+        from ray.data._internal.datasource.parquet_datasource import (
+            _get_safe_batch_size_for_nested_types,
+            _needs_nested_type_fallback,
+            _resolve_leaf_column_indices,
+        )
+
+        columns = scanner_kwargs.get("columns")
+        if not _needs_nested_type_fallback(fragment, columns):
+            yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
+            return
+
+        if log_once(f"parquet_nested_fallback_v2:{fragment.path}"):
+            logger.warning(
+                "Using pyarrow.parquet row-level batched reader for '%s' due "
+                "to Arrow nested type chunking limitation (ARROW-5030). "
+                "Consider writing Parquet files with smaller row group sizes "
+                "to avoid this.",
+                fragment.path,
+            )
+
+        filter_expr = scanner_kwargs.get("filter")
+        batch_size = scanner_kwargs.get("batch_size")
+
+        pf = pq.ParquetFile(fragment.path, filesystem=fragment.filesystem)
+
+        # Scope the safe batch-size calculation to the columns actually being
+        # decoded so we don't shrink batches based on columns we won't read.
+        leaf_indices = (
+            _resolve_leaf_column_indices(pf.metadata, columns)
+            if columns is not None and pf.metadata.num_row_groups > 0
+            else None
+        )
+        safe_batch_size = _get_safe_batch_size_for_nested_types(pf, leaf_indices)
+        fallback_batch_size = (
+            min(batch_size, safe_batch_size) if batch_size else safe_batch_size
+        )
+
+        # Apply row-group-level predicate pushdown via fragment.subset; the
+        # row-level filter is applied per-batch below since iter_batches
+        # doesn't accept a filter expression.
+        subset = (
+            fragment.subset(filter=filter_expr) if filter_expr is not None else fragment
+        )
+        row_groups = (
+            [rg.id for rg in subset.row_groups]
+            if subset.row_groups is not None
+            else None
+        )
+        if row_groups is not None and len(row_groups) == 0:
+            return
+
+        # When a filter is present we can't reliably extract its referenced
+        # columns from a pyarrow.compute Expression, so read all columns and
+        # project after filtering. With no filter, the caller-supplied
+        # ``columns`` already excludes synthesized partition/path columns.
+        read_columns = None if filter_expr is not None else columns
+
+        for batch in pf.iter_batches(
+            batch_size=fallback_batch_size,
+            columns=read_columns,
+            use_threads=False,
+            row_groups=row_groups,
+        ):
+            table = pa.Table.from_batches([batch])
+            if filter_expr is not None:
+                table = table.filter(filter_expr)
+                if columns is not None:
+                    table = table.select(
+                        [c for c in columns if c in table.column_names]
+                    )
+            yield table
 
     @override
     def _arrow_scanner_kwargs(self) -> dict:

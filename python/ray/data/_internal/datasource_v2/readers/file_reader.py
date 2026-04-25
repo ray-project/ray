@@ -310,8 +310,8 @@ class FileReader(Reader[FileManifest]):
         """
         return {}
 
-    @staticmethod
     def _read_fragment_batches(
+        self,
         dataset: pds.Dataset,
         scanner_kwargs: dict,
     ) -> Iterator[tuple[pa.Table, str]]:
@@ -324,10 +324,21 @@ class FileReader(Reader[FileManifest]):
         the same per-fragment pattern via ``fragment.to_batches``.
         """
         for fragment in dataset.get_fragments():
-            scanner = fragment.scanner(
-                **scanner_kwargs, schema=fragment.physical_schema
-            )
-            for tagged in scanner.scan_batches():
-                table = pa.Table.from_batches(batches=[tagged.record_batch])
+            for table in self._iter_fragment_tables(fragment, scanner_kwargs):
                 if table.num_rows > 0:
                     yield table, fragment.path
+
+    def _iter_fragment_tables(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+    ) -> Iterator[pa.Table]:
+        """Yield Arrow tables for a single fragment.
+
+        Subclasses override this to swap in a format-specific reader for
+        fragments that don't fit the default scanner-based path (e.g.
+        Parquet's ARROW-5030 nested-type fallback).
+        """
+        scanner = fragment.scanner(**scanner_kwargs, schema=fragment.physical_schema)
+        for tagged in scanner.scan_batches():
+            yield pa.Table.from_batches(batches=[tagged.record_batch])
