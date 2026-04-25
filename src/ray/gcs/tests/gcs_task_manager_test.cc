@@ -1383,7 +1383,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     }
   }
 
-  // Failed tasks from job1 failed timestamp not overriden
+  // Failed tasks from job1 failed timestamp not overridden
   {
     google::protobuf::RepeatedPtrField<rpc::TaskEvents> mergedEvents;
     for (const auto &task_id : tasks_failed_job1) {
