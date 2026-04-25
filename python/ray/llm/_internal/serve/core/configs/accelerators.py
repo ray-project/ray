@@ -215,6 +215,12 @@ class TPUAccelerator(AcceleratorBackend):
             # Default to 1 TPU per bundle.
             worker_bundle = {"TPU": 1}
 
+        if self._slice_pg_wrapper is not None:
+            logger.debug(
+                "Existing TPU slice PG found. Shutting it down before creating a new one."
+            )
+            self.shutdown()
+
         self._slice_pg_wrapper = slice_placement_group(
             topology=self._config.topology,
             accelerator_version=version,
