@@ -356,6 +356,87 @@ class TestActorPool(unittest.TestCase):
             tasks_in_flight=0,
         )
 
+    def test_dead_actor_released_from_pool(self):
+        # Test that a permanently dead actor is removed from the pool,
+        # freeing the slot for the autoscaler to create a replacement.
+        pool = self._create_actor_pool(min_size=1, max_size=1, max_tasks_in_flight=1)
+        actor = self._add_ready_actor(pool)
+
+        # Simulate the actor having an in-flight task.
+        picked_actor = self._assign_actor(pool)
+        assert picked_actor == actor
+        assert pool.num_active_actors() == 1
+        assert pool.num_running_actors() == 1
+        assert pool.current_size() == 1
+
+        # Mock the actor as DEAD and refresh state.
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.DEAD,
+        ):
+            pool.refresh_actor_state()
+
+        # Pool should now be empty, allowing autoscaler to replace.
+        assert pool.num_running_actors() == 0
+        assert pool.num_active_actors() == 0
+        assert pool.num_tasks_in_flight() == 0
+        assert pool.current_size() == 0
+
+    def test_dead_restarting_actor_released_from_pool(self):
+        # Test that a dead actor previously marked restarting
+        # correctly decrements counters when released.
+        pool = self._create_actor_pool(min_size=1, max_size=1, max_tasks_in_flight=1)
+        actor = self._add_ready_actor(pool)
+
+        # Mark as restarting first.
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.RESTARTING,
+        ):
+            pool.refresh_actor_state()
+        assert pool.num_restarting_actors() == 1
+
+        # Now mark as DEAD.
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.DEAD,
+        ):
+            pool.refresh_actor_state()
+
+        assert pool.num_restarting_actors() == 0
+        assert pool.num_running_actors() == 0
+        assert pool.current_size() == 0
+
+    def test_on_task_completed_after_dead_actor_released(self):
+        # Test that on_task_completed is a no-op for an actor already removed
+        # by _release_dead_actor. This race occurs when refresh_actor_state
+        # removes a dead actor while its in-flight task's callback fires.
+        pool = self._create_actor_pool(min_size=1, max_size=1, max_tasks_in_flight=1)
+        actor = self._add_ready_actor(pool)
+
+        # Submit a task so the actor has in-flight work.
+        picked = self._assign_actor(pool)
+        assert picked == actor
+        assert pool.num_tasks_in_flight() == 1
+
+        # Actor dies — removed from pool.
+        with patch.object(
+            actor,
+            "_get_local_state",
+            return_value=gcs_pb2.ActorTableData.ActorState.DEAD,
+        ):
+            pool.refresh_actor_state()
+        assert pool.num_running_actors() == 0
+
+        # Task callback fires after actor is already gone.
+        # Must not raise KeyError.
+        pool.on_task_completed(actor)
+        assert pool.num_tasks_in_flight() == 0
+        assert pool.num_active_actors() == 0
+
     def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
         pool = self._create_actor_pool(max_tasks_in_flight=999)
@@ -1303,6 +1384,73 @@ def test_completed_when_downstream_op_has_finished_execution(ray_start_regular_s
     # ASSERT: Since the downstream operator has finished execution, the actor pool
     # operator should consider itself completed.
     assert actor_pool_map_op.has_completed()
+
+
+def test_dead_actor_replaced_in_fixed_size_pool(shutdown_only, restore_data_context):
+    """Regression test for https://github.com/ray-project/ray/issues/62746.
+
+    sys.exit(0) inside a UDF causes the actor to be permanently DEAD
+    (INTENDED_USER_EXIT bypasses max_restarts). With ActorPoolStrategy(size=1)
+    and max_errored_blocks=-1, the dead actor must be released from the pool so
+    a replacement can be created. Without the fix the pipeline hangs forever.
+
+    Bug mechanism:
+      1. Actor calls sys.exit(0) → WorkerExitType=INTENDED_USER_EXIT
+      2. GCS sets need_reconstruct=false → actor permanently DEAD
+         (max_restarts=-1 is never consulted for INTENDED_USER_EXIT)
+      3. Dead actor stays in _running_actors → current_size()=1 → autoscaler
+         sees pool at capacity → no replacement created
+      4. max_errored_blocks=-1 swallows the task error → no abort
+      5. Result: 0 schedulable actors, queued blocks > 0, pipeline hangs
+    """
+    import concurrent.futures
+
+    ray.shutdown()
+    ray.init(num_cpus=2)
+
+    ctx = ray.data.DataContext.get_current()
+    ctx.max_errored_blocks = -1
+
+    class DyingPredictor:
+        def __init__(self):
+            self.counter = 0
+
+        def __call__(self, batch):
+            import sys
+
+            self.counter += 1
+            if self.counter == 3:
+                # sys.exit(0) → INTENDED_USER_EXIT → permanent DEAD
+                # even with the default max_restarts=-1.
+                sys.exit(0)
+            batch["output"] = [x * 2 for x in batch["data"]]
+            return batch
+
+    ds = ray.data.from_items([{"data": i} for i in range(100)])
+
+    # Use default max_restarts/max_task_retries (Data sets -1/-1).
+    # sys.exit(0) → INTENDED_USER_EXIT → permanent DEAD regardless.
+    # Without the fix, this hangs forever.
+    def run_pipeline():
+        return ds.map_batches(
+            DyingPredictor,
+            batch_size=1,
+            compute=ray.data.ActorPoolStrategy(size=1),
+        ).take_all()
+
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        future = executor.submit(run_pipeline)
+        try:
+            result = future.result(timeout=60)
+        except concurrent.futures.TimeoutError:
+            pytest.fail(
+                "Pipeline hung for 60s — dead actor likely occupying pool slot "
+                "(https://github.com/ray-project/ray/issues/62746)"
+            )
+
+    # Some rows lost (errored blocks from actor death), but pipeline must finish.
+    assert len(result) > 0
+    assert len(result) < 100
 
 
 def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):

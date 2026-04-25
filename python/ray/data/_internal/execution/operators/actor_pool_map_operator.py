@@ -879,7 +879,8 @@ class _ActorPool(AutoscalingActorPool):
     @override
     def refresh_actor_state(self):
         self._alive_node_to_actor_heap.clear()
-        for actor in self._running_actors:
+        # Iterate over a copy since _release_dead_actor may modify _running_actors.
+        for actor in list(self._running_actors):
             self._update_running_actor_state(actor)
 
     @override
@@ -1014,6 +1015,9 @@ class _ActorPool(AutoscalingActorPool):
     @override
     def on_task_completed(self, actor: ActorHandle):
         """Called when a task completes. Returns the provided actor to the pool."""
+        if actor not in self._running_actors:
+            # Actor was already removed (e.g., released as dead).
+            return
         state = self._running_actors[actor]
         assert state.num_tasks_in_flight > 0
         state.num_tasks_in_flight -= 1
@@ -1073,7 +1077,7 @@ class _ActorPool(AutoscalingActorPool):
         self._actor_to_logical_id[actor] = logical_actor_id
         return actor, ready_ref, resource_usage
 
-    def _update_running_actor_state(self, actor: ActorHandle):
+    def _update_running_actor_state(self, actor: ActorHandle) -> None:
         """Update running actor state. This is called for every actor
         in `refresh_actor_state`.
 
@@ -1085,10 +1089,14 @@ class _ActorPool(AutoscalingActorPool):
         # 1) Check if actor is restarting
         running_actor_state = self._running_actors[actor]
         died: bool = False
-        if actor_state in (None, _ACTOR_STATE_DEAD):
-            # actor._get_local_state can return None if the state is Unknown
-            # If actor_state is None or dead, there is nothing to do.
+        if actor_state is None:
+            # actor._get_local_state can return None if the state is Unknown.
             died = True
+        elif actor_state == _ACTOR_STATE_DEAD:
+            # DEAD is a terminal state — the actor will not restart.
+            # Remove it from the pool so the autoscaler can replace it.
+            self._release_dead_actor(actor)
+            return
         elif actor_state != _ACTOR_STATE_ALIVE:
             # The actors can be either ALIVE or RESTARTING here because they will
             # be restarted indefinitely until execution finishes.
@@ -1134,6 +1142,46 @@ class _ActorPool(AutoscalingActorPool):
             node_heap = self._alive_node_to_actor_heap.get(node_id)
             if node_heap is not None and actor in node_heap:
                 del node_heap[actor]
+
+    def _release_dead_actor(self, actor: ActorHandle) -> None:
+        """Remove a permanently dead actor from the pool.
+
+        Dead actors cannot accept remote calls, so we skip the on_exit hook
+        and just clean up internal state. This allows the autoscaler to
+        create a replacement actor.
+        """
+        if actor not in self._running_actors:
+            return
+
+        actor_state = self._running_actors[actor]
+
+        self._total_num_tasks_in_flight -= actor_state.num_tasks_in_flight
+        if actor_state.num_tasks_in_flight > 0:
+            self._num_active_actors -= 1
+        if actor_state.is_restarting:
+            self._num_restarting_actors -= 1
+
+        if actor in self._alive_actors_to_in_flight_tasks_heap:
+            del self._alive_actors_to_in_flight_tasks_heap[actor]
+
+        node_id = actor_state.actor_location
+        node_heap = self._alive_node_to_actor_heap.get(node_id)
+        if node_heap is not None and actor in node_heap:
+            del node_heap[actor]
+
+        del self._running_actors[actor]
+        del self._actor_to_logical_id[actor]
+
+        usage = self._actor_resource_usage.pop(actor)
+        self._total_usage = self._total_usage.subtract(usage)
+        if actor_state.is_restarting:
+            self._pending_or_restarting_usage = (
+                self._pending_or_restarting_usage.subtract(usage)
+            )
+
+        logger.info(
+            f"Removed dead actor from pool " f"(pool_size={len(self._running_actors)})"
+        )
 
     def _add_pending_actor(
         self,
