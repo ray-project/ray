@@ -250,7 +250,17 @@ class DataIterator(abc.ABC):
             if stats:
                 stats.iter_initialize_s.add(time.perf_counter() - time_start)
 
-            yield from batch_iterator
+            try:
+                yield from batch_iterator
+            finally:
+                # On early exit (e.g. ``break`` in the for-loop), the inner
+                # ``_ClosingIterator`` would only shut down the executor via
+                # its ``__del__``, which is non-deterministic. Shut it down
+                # eagerly so the executor stops producing blocks into the
+                # object store and releases resources for other datasets.
+                # ``shutdown`` is idempotent.
+                if executor is not None:
+                    executor.shutdown(force=False)
 
             if stats:
                 stats.iter_total_s.add(time.perf_counter() - time_start)

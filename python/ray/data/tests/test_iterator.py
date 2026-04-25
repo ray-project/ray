@@ -75,6 +75,60 @@ def test_basic_dataset_preemption(ray_start_regular_shared):
         assert result == list(range(50))
 
 
+def test_iter_batches_early_exit_shuts_down_executor(ray_start_regular_shared):
+    """Tests that breaking out of ``iter_batches`` early shuts down the
+    streaming executor deterministically. Otherwise the executor's worker
+    thread keeps producing blocks that pile up in the object store and
+    holds resources that can starve other datasets (e.g., a validation
+    dataset waiting to run)."""
+
+    ds = ray.data.range(1000, override_num_blocks=20)
+    it = ds.iterator()
+
+    for i, _ in enumerate(it.iter_batches(batch_size=10)):
+        if i == 0:
+            break
+
+    executor = ds._current_executor
+    assert executor is not None
+    assert executor._shutdown is True
+
+
+def test_iter_batches_full_iteration_shuts_down_executor(ray_start_regular_shared):
+    """Tests that fully iterating ``iter_batches`` shuts down the
+    streaming executor (regression guard for the early-exit cleanup
+    path, which adds an idempotent shutdown to the iterator)."""
+
+    ds = ray.data.range(100, override_num_blocks=5)
+    it = ds.iterator()
+
+    for _ in it.iter_batches(batch_size=10):
+        pass
+
+    executor = ds._current_executor
+    assert executor is not None
+    assert executor._shutdown is True
+
+
+def test_iter_batches_exception_shuts_down_executor(ray_start_regular_shared):
+    """Tests that an exception raised inside the user's iteration loop
+    still triggers executor shutdown via the iterator's ``finally``."""
+
+    ds = ray.data.range(1000, override_num_blocks=20)
+    it = ds.iterator()
+
+    class _Sentinel(Exception):
+        pass
+
+    with pytest.raises(_Sentinel):
+        for _ in it.iter_batches(batch_size=10):
+            raise _Sentinel()
+
+    executor = ds._current_executor
+    assert executor is not None
+    assert executor._shutdown is True
+
+
 def test_basic_dataset_iter_rows(ray_start_regular_shared):
     ds = ray.data.range(100)
     it = ds.iterator()
