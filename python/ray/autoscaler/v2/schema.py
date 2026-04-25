@@ -209,7 +209,7 @@ class ClusterStatus:
         default_factory=ResourceDemandSummary
     )
     # Query metics
-    stats: Stats = field(default_factory=Stats)
+    stats: Stats = field(default_factory=lambda: Stats(gcs_request_time_s=0.0))
 
     def total_resources(self) -> Dict[str, float]:
         return {r.resource_name: r.total for r in self.cluster_resource_usage}

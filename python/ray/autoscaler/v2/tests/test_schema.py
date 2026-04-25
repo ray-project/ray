@@ -4,10 +4,29 @@ import time
 
 import pytest
 
-from ray.autoscaler.v2.schema import AutoscalerInstance, IPPRGroupSpec, IPPRStatus
+from ray.autoscaler.v2.schema import (
+    AutoscalerInstance,
+    ClusterStatus,
+    IPPRGroupSpec,
+    IPPRStatus,
+)
 from ray.core.generated.autoscaler_pb2 import NodeState, NodeStatus
 from ray.core.generated.instance_manager_pb2 import Instance
 
+
+
+def test_cluster_status_default_stats():
+    status = ClusterStatus()
+
+    assert status.active_nodes == []
+    assert status.idle_nodes == []
+    assert status.pending_launches == []
+    assert status.failed_launches == []
+    assert status.pending_nodes == []
+    assert status.failed_nodes == []
+    assert status.cluster_resource_usage == []
+    assert status.stats.gcs_request_time_s == 0.0
+    assert status.stats.request_ts_s is None
 
 def _make_ippr_status() -> IPPRStatus:
     return IPPRStatus(
