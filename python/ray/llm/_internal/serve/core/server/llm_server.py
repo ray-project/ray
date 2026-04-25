@@ -687,6 +687,14 @@ class LLMServer(LLMServerProtocol):
         engine_config = llm_config.get_engine_config()
         deployment_options = copy.deepcopy(llm_config.deployment_config)
 
+        if (
+            "placement_group_bundles" in llm_config.deployment_config
+            or "placement_group_strategy" in llm_config.deployment_config
+        ):
+            raise ValueError(
+                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can override the default values by setting the `placement_group_config` in the LLMConfig."
+            )
+
         # Handle the ray_actor_options that could be passed in to
         # deployment_options
         ray_actor_options = deployment_options.get("ray_actor_options", {})
@@ -699,14 +707,6 @@ class LLMServer(LLMServerProtocol):
             }
             if "memory" in ray_actor_options:
                 replica_actor_resources["memory"] = ray_actor_options["memory"]
-
-            if (
-                "placement_group_bundles" in llm_config.deployment_config
-                or "placement_group_strategy" in llm_config.deployment_config
-            ):
-                raise ValueError(
-                    "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can override the default values by setting the `placement_group_config` in the LLMConfig."
-                )
 
             # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
             # more generic place.
