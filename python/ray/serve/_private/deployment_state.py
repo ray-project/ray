@@ -2952,11 +2952,6 @@ class DeploymentState:
             self._deployment_scheduler.on_replica_recovering(replica_id)
             logger.debug(f"RECOVERING {replica_id}.")
 
-        # TODO(jiaodong): this currently halts all traffic in the cluster
-        # briefly because we will broadcast a replica update with everything in
-        # RECOVERING. We should have a grace period where we recover the state
-        # of the replicas before doing this update.
-
     def _recover_deployment_actors(self):
         """Recover deployment-scoped actors that survived a controller restart.
 
@@ -3199,6 +3194,11 @@ class DeploymentState:
             not self._broadcasted_replicas_set_changed
             and not self._request_routing_info_updated
         ):
+            return
+
+        # Hold off on broadcasting while replicas are in RECOVERING state to avoid sending
+        # partial or empty routable set.
+        if self._replicas.count(states=[ReplicaState.RECOVERING]) > 0:
             return
 
         running_replica_infos = self.get_running_replica_infos()
@@ -5354,24 +5354,19 @@ class DeploymentStateManager:
         for deployment_state in self._deployment_states.values():
             deployment_state.delete()
 
-        # TODO(jiaodong): This might not be 100% safe since we deleted
-        # everything without ensuring all shutdown goals are completed
-        # yet. Need to address in follow-up PRs.
-        self._kv_store.delete(CHECKPOINT_KEY)
-
         # TODO(jiaodong): Need to add some logic to prevent new replicas
         # from being created once shutdown signal is sent.
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all deployments are shutdown.
 
-        Check there are no deployment states and no checkpoints.
+        Check there are no deployment states.
         """
-        return (
-            self._shutting_down
-            and len(self._deployment_states) == 0
-            and self._kv_store.get(CHECKPOINT_KEY) is None
-        )
+        return self._shutting_down and len(self._deployment_states) == 0
+
+    def delete_checkpoint(self) -> None:
+        """Delete the deployment state checkpoint from KV store."""
+        self._kv_store.delete(CHECKPOINT_KEY)
 
     def save_checkpoint(self) -> None:
         """Write a checkpoint of all deployment states."""
