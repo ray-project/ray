@@ -175,7 +175,7 @@ class Stats:
     # How long it took to get the GCS request.
     # This is required when initializing the Stats since it should be calculated before
     # the request was made.
-    gcs_request_time_s: float
+    gcs_request_time_s: float = 0.0
     # How long it took to get all live instances from node provider.
     none_terminated_node_request_time_s: Optional[float] = None
     # How long for autoscaler to process the scaling decision.
@@ -209,7 +209,7 @@ class ClusterStatus:
         default_factory=ResourceDemandSummary
     )
     # Query metics
-    stats: Stats = field(default_factory=lambda: Stats(gcs_request_time_s=0.0))
+    stats: Stats = field(default_factory=Stats)
 
     def total_resources(self) -> Dict[str, float]:
         return {r.resource_name: r.total for r in self.cluster_resource_usage}
