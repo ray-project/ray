@@ -123,6 +123,9 @@ class GcsPlacementGroup {
   /// Check if there are unplaced bundles.
   bool HasUnplacedBundles() const;
 
+  /// Check if all bundles are unplaced.
+  bool AllUnplacedBundles() const;
+
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
 
