@@ -11,6 +11,8 @@ from packaging.version import Version
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
 
 if Version(pa.__version__) < Version("17.0.0"):
+    if __name__ == "__main__":
+        sys.exit(0)
     pytest.skip(
         "TFX-BSL test environments currently pin pyarrow<11, "
         "but Ray Data requires pyarrow>=17.",
