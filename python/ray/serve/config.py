@@ -421,7 +421,7 @@ class AggregationFunction(str, Enum):
     MIN = "min"
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class AutoscalingPolicy(BaseModel):
     # Cloudpickled policy definition.
     _serialized_policy_def: bytes = PrivateAttr(default=b"")
@@ -618,7 +618,7 @@ class AutoscalingConfig(BaseModel):
     # Autoscaling policy. This policy is deployment scoped. Defaults to the request-based autoscaler.
     policy: AutoscalingPolicy = Field(
         default_factory=AutoscalingPolicy,
-        description="The autoscaling policy for the deployment. This option is experimental.",
+        description="The autoscaling policy for the deployment.",
     )
 
     @model_validator(mode="after")

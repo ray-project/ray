@@ -50,7 +50,7 @@ from ray.util.annotations import PublicAPI
 TARGET_CAPACITY_FIELD = Field(
     default=None,
     description=(
-        "[EXPERIMENTAL]: the target capacity percentage for all replicas across the "
+        "The target capacity percentage for all replicas across the "
         "cluster. The `num_replicas`, `min_replicas`, `max_replicas`, and "
         "`initial_replicas` for each deployment will be scaled by this percentage."
     ),
@@ -319,8 +319,7 @@ class DeploymentSchema(BaseModel):
         description=(
             "The number of processes that handle requests to this "
             "deployment. Uses a default if null. Can also be set to "
-            "`auto` for a default autoscaling configuration "
-            "(experimental)."
+            "`auto` for a default autoscaling configuration."
         ),
     )
     max_ongoing_requests: int = Field(
@@ -872,7 +871,7 @@ class ServeApplicationSchema(BaseModel):
         }
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="stable")
 class gRPCOptionsSchema(BaseModel):
     """Options to start the gRPC Proxy with."""
 
@@ -1322,7 +1321,7 @@ class DeploymentDetails(BaseModel):
         description="The current status of the deployment."
     )
     status_trigger: DeploymentStatusTrigger = Field(
-        description="[EXPERIMENTAL] The trigger for the current status.",
+        description="The trigger for the current status.",
     )
     message: str = Field(
         description=(
