@@ -87,7 +87,17 @@ def _convert_config_dicts(merged: dict) -> dict:
     which lack the default field values, causing AttributeError when vLLM code
     tries to access those fields.
     """
-    type_hints = typing.get_type_hints(AsyncEngineArgs)
+    try:
+        type_hints = typing.get_type_hints(AsyncEngineArgs)
+    except NameError as e:
+        # vLLM cu130 dev build has TYPE_CHECKING-gated forward refs (e.g.
+        # OnlineQuantizationConfigArgs) that fail at runtime. Fall back to raw
+        # string annotations; we still need this dict to look up keys.
+        import logging
+        logging.getLogger(__name__).warning(
+            "get_type_hints(AsyncEngineArgs) failed (%s); falling back to __annotations__", e
+        )
+        type_hints = dict(AsyncEngineArgs.__annotations__)
 
     for key, value in list(merged.items()):
         if not isinstance(value, dict) or key not in type_hints:
