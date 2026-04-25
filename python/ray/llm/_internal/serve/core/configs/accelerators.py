@@ -249,7 +249,7 @@ class TPUAccelerator(AcceleratorBackend):
 
     @property
     def requires_deferred_placement_group(self) -> bool:
-        return self._config.topology is not None
+        return bool(self._config.topology)
 
     @property
     def requires_remote_initialization(self) -> bool:

@@ -691,23 +691,23 @@ class LLMServer(LLMServerProtocol):
         # deployment_options
         ray_actor_options = deployment_options.get("ray_actor_options", {})
 
-        replica_actor_resources = {
-            "CPU": ray_actor_options.get("num_cpus", 1),
-            "GPU": ray_actor_options.get("num_gpus", 0),
-            **ray_actor_options.get("resources", {}),
-        }
-        if "memory" in ray_actor_options:
-            replica_actor_resources["memory"] = ray_actor_options["memory"]
-
-        if (
-            "placement_group_bundles" in llm_config.deployment_config
-            or "placement_group_strategy" in llm_config.deployment_config
-        ):
-            raise ValueError(
-                "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can override the default values by setting the `placement_group_config` in the LLMConfig."
-            )
-
         if not engine_config.accelerator.requires_deferred_placement_group:
+            replica_actor_resources = {
+                "CPU": ray_actor_options.get("num_cpus", 1),
+                "GPU": ray_actor_options.get("num_gpus", 0),
+                **ray_actor_options.get("resources", {}),
+            }
+            if "memory" in ray_actor_options:
+                replica_actor_resources["memory"] = ray_actor_options["memory"]
+
+            if (
+                "placement_group_bundles" in llm_config.deployment_config
+                or "placement_group_strategy" in llm_config.deployment_config
+            ):
+                raise ValueError(
+                    "placement_group_bundles and placement_group_strategy must not be specified in deployment_config. You can override the default values by setting the `placement_group_config` in the LLMConfig."
+                )
+
             # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
             # more generic place.
             pg_bundles = _merge_replica_actor_and_child_actor_bundles(

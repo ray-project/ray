@@ -244,13 +244,12 @@ def test_tpu_serve_deployment_default_chip_level_bundles(ray_tpu_cluster):
         len(active_pgs) == 2
     ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
 
+    tpu_head_resource = "TPU-v6e-16-head"
     head_pgs = [
         pg
         for pg in active_pgs
-        if any(
-            any("head" in res.lower() for res in b.keys())
-            for b in pg["bundles"].values()
-        )
+        if len(pg["bundles"]) == 1
+        and tpu_head_resource in list(pg["bundles"].values())[0]
     ]
     assert len(head_pgs) == 1
 
@@ -289,13 +288,12 @@ def test_tpu_serve_deployment_explicit_host_level_bundles(ray_tpu_cluster):
         len(active_pgs) == 2
     ), "Expected 2 PGs - one for TPU Head, one for worker bundles"
 
+    tpu_head_resource = "TPU-v6e-16-head"
     head_pgs = [
         pg
         for pg in active_pgs
-        if any(
-            any("head" in res.lower() for res in b.keys())
-            for b in pg["bundles"].values()
-        )
+        if len(pg["bundles"]) == 1
+        and tpu_head_resource in list(pg["bundles"].values())[0]
     ]
     assert len(head_pgs) == 1
 
