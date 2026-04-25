@@ -1,5 +1,11 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
+# g4dn instances aren't supported in us-west-2d, so restrict to the
+# AZs where they're available.
+allowed_azs:
+    - us-west-2a
+    - us-west-2b
+    - us-west-2c
 
 max_workers: 4
 
