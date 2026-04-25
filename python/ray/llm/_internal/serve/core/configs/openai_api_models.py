@@ -1,103 +1,106 @@
 """This module contains wrapper classes for OpenAI-compatible protocol models.
 
-Supports both vLLM and SGLang as the underlying engine. vLLM is tried first;
-on ImportError, SGLang models are imported as a fallback. If neither is
-installed, an ImportError is raised at import time.
+Each feature group (chat-completion, completion, embed, score, transcription,
+tokenize, error) is resolved independently:
+    1. try the vLLM submodule that provides it,
+    2. fall back to the SGLang equivalent if vLLM doesn't have that submodule,
+    3. fall back to a NotImplementedError stub so import never blows up.
+
+This lets Ray Serve LLM run on top of vLLM builds that ship a partial protocol
+surface (e.g., the DeepSeek-V4 cu130 dev container does not have
+`vllm.entrypoints.pooling.score`, which previously prevented the entire module
+from importing). Only the missing endpoints raise; chat/completion still work.
+
+Chat-completion + completion are required (since every supported engine ships
+them); if both vLLM and SGLang are unavailable we still raise ImportError.
 """
 
+import logging
 import uuid
 from typing import TYPE_CHECKING, Any, AsyncGenerator, Dict, List, Optional, Union
 
 from pydantic import BaseModel, ConfigDict, Field
 
-try:
-    from vllm.entrypoints.openai.chat_completion.protocol import (
-        ChatCompletionRequest as _ChatCompletionRequest,
-        ChatCompletionResponse as _ChatCompletionResponse,
-        ChatCompletionStreamResponse as _ChatCompletionStreamResponse,
-    )
-    from vllm.entrypoints.openai.completion.protocol import (
-        CompletionRequest as _CompletionRequest,
-        CompletionResponse as _CompletionResponse,
-        CompletionStreamResponse as _CompletionStreamResponse,
-    )
-    from vllm.entrypoints.openai.engine.protocol import (
-        ErrorInfo as _ErrorInfo,
-        ErrorResponse as _ErrorResponse,
-    )
-    from vllm.entrypoints.openai.speech_to_text.protocol import (
-        TranscriptionRequest as _TranscriptionRequest,
-        TranscriptionResponse as _TranscriptionResponse,
-        TranscriptionStreamResponse as _TranscriptionStreamResponse,
-    )
-    from vllm.entrypoints.pooling.embed.protocol import (
-        EmbeddingChatRequest as _EmbeddingChatRequest,
-        EmbeddingCompletionRequest as _EmbeddingCompletionRequest,
-        EmbeddingResponse as _EmbeddingResponse,
-    )
-    from vllm.entrypoints.pooling.score.protocol import (
-        ScoreResponse as _ScoreResponse,
-        ScoreTextRequest as _ScoreTextRequest,
-    )
-    from vllm.entrypoints.serve.tokenize.protocol import (
-        DetokenizeRequest as _DetokenizeRequest,
-        DetokenizeResponse as _DetokenizeResponse,
-        TokenizeChatRequest as _TokenizeChatRequest,
-        TokenizeCompletionRequest as _TokenizeCompletionRequest,
-        TokenizeResponse as _TokenizeResponse,
+logger = logging.getLogger(__name__)
+
+
+def _unsupported_model(name: str, hint: str = ""):
+    """Create a BaseModel stub that raises NotImplementedError on instantiation."""
+    msg = f"{name} is not supported with the current backend." + (
+        f" {hint}" if hint else ""
     )
 
-except ImportError:
+    class _Stub(BaseModel):
+        model_config = ConfigDict(arbitrary_types_allowed=True)
+
+        def __init__(self, **kwargs):
+            raise NotImplementedError(msg)
+
+    _Stub.__name__ = _Stub.__qualname__ = name
+    return _Stub
+
+
+def _try_import(module_path: str, names: tuple) -> Optional[dict]:
+    """Try `from module_path import *names`. Return dict of name->obj or None."""
     try:
-        from sglang.srt.entrypoints.openai.protocol import (
-            ChatCompletionRequest as _ChatCompletionRequest,
-            ChatCompletionResponse as _ChatCompletionResponse,
-            ChatCompletionStreamResponse as _ChatCompletionStreamResponse,
-            CompletionRequest as _CompletionRequest,
-            CompletionResponse as _CompletionResponse,
-            CompletionStreamResponse as _CompletionStreamResponse,
-            DetokenizeRequest as _DetokenizeRequest,
-            DetokenizeResponse as _DetokenizeResponse,
-            EmbeddingRequest as _EmbeddingCompletionRequest,
-            EmbeddingResponse as _EmbeddingResponse,
-            ScoringRequest as _ScoreTextRequest,
-            ScoringResponse as _ScoreResponse,
-            TokenizeRequest as _TokenizeCompletionRequest,
-            TokenizeResponse as _TokenizeResponse,
-        )
+        mod = __import__(module_path, fromlist=list(names))
     except ImportError:
-        raise ImportError(
-            "Neither vLLM nor SGLang is installed. At least one is required "
-            "for Ray Serve LLM protocol models. Install with: "
-            "`pip install ray[llm]` or `pip install sglang[all]`"
-        )
+        return None
+    out = {}
+    for name in names:
+        try:
+            out[name] = getattr(mod, name)
+        except AttributeError:
+            return None
+    return out
 
-    def _unsupported_model(name: str, feature: str = ""):
-        """Create a BaseModel stub that raises NotImplementedError on instantiation."""
-        msg = f"{name} is not supported with the current backend." + (
-            f" {feature}" if feature else ""
-        )
 
-        class _Stub(BaseModel):
-            model_config = ConfigDict(arbitrary_types_allowed=True)
-
-            def __init__(self, **kwargs):
-                raise NotImplementedError(msg)
-
-        _Stub.__name__ = _Stub.__qualname__ = name
-        return _Stub
-
-    # SGLang does not provide transcription protocol models.
-    _vllm_hint = "Install vLLM to use transcription endpoints."
-    _TranscriptionRequest = _unsupported_model("TranscriptionRequest", _vllm_hint)
-    _TranscriptionResponse = _unsupported_model("TranscriptionResponse", _vllm_hint)
-    _TranscriptionStreamResponse = _unsupported_model(
-        "TranscriptionStreamResponse", _vllm_hint
+# --- Chat completion (REQUIRED) -----------------------------------------------
+_chat = _try_import(
+    "vllm.entrypoints.openai.chat_completion.protocol",
+    ("ChatCompletionRequest", "ChatCompletionResponse", "ChatCompletionStreamResponse"),
+)
+if _chat is None:
+    _sg = _try_import(
+        "sglang.srt.entrypoints.openai.protocol",
+        ("ChatCompletionRequest", "ChatCompletionResponse", "ChatCompletionStreamResponse"),
     )
+    if _sg is None:
+        raise ImportError(
+            "Neither vLLM nor SGLang exposes ChatCompletion protocol models. "
+            "At least one is required for Ray Serve LLM. "
+            "Install with: `pip install ray[llm]` or `pip install sglang[all]`"
+        )
+    _chat = _sg
+_ChatCompletionRequest = _chat["ChatCompletionRequest"]
+_ChatCompletionResponse = _chat["ChatCompletionResponse"]
+_ChatCompletionStreamResponse = _chat["ChatCompletionStreamResponse"]
 
-    # SGLang has no equivalent to vLLM's nested ErrorResponse.error -> ErrorInfo
-    # pattern, so we define our own.
+# --- Completion (REQUIRED) ----------------------------------------------------
+_cmpl = _try_import(
+    "vllm.entrypoints.openai.completion.protocol",
+    ("CompletionRequest", "CompletionResponse", "CompletionStreamResponse"),
+) or _try_import(
+    "sglang.srt.entrypoints.openai.protocol",
+    ("CompletionRequest", "CompletionResponse", "CompletionStreamResponse"),
+)
+if _cmpl is None:
+    raise ImportError(
+        "Neither vLLM nor SGLang exposes Completion protocol models."
+    )
+_CompletionRequest = _cmpl["CompletionRequest"]
+_CompletionResponse = _cmpl["CompletionResponse"]
+_CompletionStreamResponse = _cmpl["CompletionStreamResponse"]
 
+# --- Error (always defined; vLLM uses nested error→info, SGLang has no nest) --
+_err = _try_import(
+    "vllm.entrypoints.openai.engine.protocol",
+    ("ErrorInfo", "ErrorResponse"),
+)
+if _err is not None:
+    _ErrorInfo = _err["ErrorInfo"]
+    _ErrorResponse = _err["ErrorResponse"]
+else:
     class _ErrorInfo(BaseModel):
         model_config = ConfigDict(arbitrary_types_allowed=True)
         message: str
@@ -109,8 +112,128 @@ except ImportError:
         model_config = ConfigDict(arbitrary_types_allowed=True)
         error: _ErrorInfo
 
-    _EmbeddingChatRequest = _EmbeddingCompletionRequest
-    _TokenizeChatRequest = _TokenizeCompletionRequest
+# --- Embedding (optional) -----------------------------------------------------
+_emb = _try_import(
+    "vllm.entrypoints.pooling.embed.protocol",
+    ("EmbeddingChatRequest", "EmbeddingCompletionRequest", "EmbeddingResponse"),
+)
+if _emb is not None:
+    _EmbeddingChatRequest = _emb["EmbeddingChatRequest"]
+    _EmbeddingCompletionRequest = _emb["EmbeddingCompletionRequest"]
+    _EmbeddingResponse = _emb["EmbeddingResponse"]
+else:
+    _sg = _try_import(
+        "sglang.srt.entrypoints.openai.protocol",
+        ("EmbeddingRequest", "EmbeddingResponse"),
+    )
+    if _sg is not None:
+        _EmbeddingCompletionRequest = _sg["EmbeddingRequest"]
+        _EmbeddingChatRequest = _sg["EmbeddingRequest"]  # SGLang has one shared type
+        _EmbeddingResponse = _sg["EmbeddingResponse"]
+    else:
+        _emb_hint = "Install a vLLM/SGLang build with embedding support."
+        _EmbeddingChatRequest = _unsupported_model("EmbeddingChatRequest", _emb_hint)
+        _EmbeddingCompletionRequest = _unsupported_model(
+            "EmbeddingCompletionRequest", _emb_hint
+        )
+        _EmbeddingResponse = _unsupported_model("EmbeddingResponse", _emb_hint)
+        logger.info(
+            "Ray Serve LLM: embedding endpoints unavailable (no vLLM/SGLang "
+            "embedding protocol). Calls will raise NotImplementedError."
+        )
+
+# --- Score (optional) ---------------------------------------------------------
+_score = _try_import(
+    "vllm.entrypoints.pooling.score.protocol",
+    ("ScoreResponse", "ScoreTextRequest"),
+)
+if _score is not None:
+    _ScoreResponse = _score["ScoreResponse"]
+    _ScoreTextRequest = _score["ScoreTextRequest"]
+else:
+    _sg = _try_import(
+        "sglang.srt.entrypoints.openai.protocol",
+        ("ScoringRequest", "ScoringResponse"),
+    )
+    if _sg is not None:
+        _ScoreTextRequest = _sg["ScoringRequest"]
+        _ScoreResponse = _sg["ScoringResponse"]
+    else:
+        _score_hint = "Install a vLLM/SGLang build with scoring support."
+        _ScoreResponse = _unsupported_model("ScoreResponse", _score_hint)
+        _ScoreTextRequest = _unsupported_model("ScoreTextRequest", _score_hint)
+        logger.info(
+            "Ray Serve LLM: score endpoints unavailable (no vLLM/SGLang "
+            "scoring protocol). Calls will raise NotImplementedError."
+        )
+
+# --- Transcription (optional, vLLM-only) --------------------------------------
+_trn = _try_import(
+    "vllm.entrypoints.openai.speech_to_text.protocol",
+    (
+        "TranscriptionRequest",
+        "TranscriptionResponse",
+        "TranscriptionStreamResponse",
+    ),
+)
+if _trn is not None:
+    _TranscriptionRequest = _trn["TranscriptionRequest"]
+    _TranscriptionResponse = _trn["TranscriptionResponse"]
+    _TranscriptionStreamResponse = _trn["TranscriptionStreamResponse"]
+else:
+    _trn_hint = "Install vLLM with speech_to_text support to use transcription endpoints."
+    _TranscriptionRequest = _unsupported_model("TranscriptionRequest", _trn_hint)
+    _TranscriptionResponse = _unsupported_model("TranscriptionResponse", _trn_hint)
+    _TranscriptionStreamResponse = _unsupported_model(
+        "TranscriptionStreamResponse", _trn_hint
+    )
+
+# --- Tokenize / detokenize (optional) -----------------------------------------
+_tok = _try_import(
+    "vllm.entrypoints.serve.tokenize.protocol",
+    (
+        "DetokenizeRequest",
+        "DetokenizeResponse",
+        "TokenizeChatRequest",
+        "TokenizeCompletionRequest",
+        "TokenizeResponse",
+    ),
+)
+if _tok is not None:
+    _DetokenizeRequest = _tok["DetokenizeRequest"]
+    _DetokenizeResponse = _tok["DetokenizeResponse"]
+    _TokenizeChatRequest = _tok["TokenizeChatRequest"]
+    _TokenizeCompletionRequest = _tok["TokenizeCompletionRequest"]
+    _TokenizeResponse = _tok["TokenizeResponse"]
+else:
+    _sg = _try_import(
+        "sglang.srt.entrypoints.openai.protocol",
+        (
+            "DetokenizeRequest",
+            "DetokenizeResponse",
+            "TokenizeRequest",
+            "TokenizeResponse",
+        ),
+    )
+    if _sg is not None:
+        _DetokenizeRequest = _sg["DetokenizeRequest"]
+        _DetokenizeResponse = _sg["DetokenizeResponse"]
+        _TokenizeCompletionRequest = _sg["TokenizeRequest"]
+        _TokenizeChatRequest = _sg["TokenizeRequest"]  # SGLang has one shared type
+        _TokenizeResponse = _sg["TokenizeResponse"]
+    else:
+        _tok_hint = "Install a vLLM/SGLang build with tokenize support."
+        _DetokenizeRequest = _unsupported_model("DetokenizeRequest", _tok_hint)
+        _DetokenizeResponse = _unsupported_model("DetokenizeResponse", _tok_hint)
+        _TokenizeChatRequest = _unsupported_model("TokenizeChatRequest", _tok_hint)
+        _TokenizeCompletionRequest = _unsupported_model(
+            "TokenizeCompletionRequest", _tok_hint
+        )
+        _TokenizeResponse = _unsupported_model("TokenizeResponse", _tok_hint)
+        logger.info(
+            "Ray Serve LLM: tokenize/detokenize endpoints unavailable. "
+            "Calls will raise NotImplementedError."
+        )
 
 
 if TYPE_CHECKING:
