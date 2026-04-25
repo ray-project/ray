@@ -250,3 +250,11 @@ tag-mapping.json
 
 # Worktrees
 .worktrees/
+
+# Glia dev-env symlinks to compiled Ray artifacts (set up by editable install;
+# harmless to ignore — not part of upstreamable source)
+python/ray/_private/runtime_env/agent/thirdparty_files
+python/ray/thirdparty_files
+# Benchmark run logs (kept separately from .jsonl results; optional audit trail)
+glia-bench/results/*.log
+python/ray/dashboard/client/build
