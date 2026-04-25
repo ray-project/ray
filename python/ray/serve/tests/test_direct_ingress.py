@@ -737,11 +737,14 @@ def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_insta
     # Shutdown the replica
     serve.delete("default", _blocking=True)
 
-    # Check that the ports are released
-    for http_port in http_ports:
-        assert not _is_port_in_use(http_port)
-    for grpc_port in grpc_ports:
-        assert not _is_port_in_use(grpc_port)
+    # Wait until ports are fully out of TIME_WAIT before redeploying, otherwise
+    # the port allocator may skip a port that is still in TIME_WAIT and the
+    # expected port set won't match on the second deployment.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
 
     # redeploy the application
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
@@ -850,6 +853,13 @@ def test_crashed_replica_port_is_released_and_reused(
 
     # delete the application
     serve.delete("default", _blocking=True)
+
+    # Wait until ports are fully out of TIME_WAIT before redeploying.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
 
     # run the deployment again
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
