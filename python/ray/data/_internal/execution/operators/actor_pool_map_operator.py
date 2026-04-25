@@ -1152,35 +1152,9 @@ class _ActorPool(AutoscalingActorPool):
         """
         if actor not in self._running_actors:
             return
-
-        actor_state = self._running_actors[actor]
-
-        self._total_num_tasks_in_flight -= actor_state.num_tasks_in_flight
-        if actor_state.num_tasks_in_flight > 0:
-            self._num_active_actors -= 1
-        if actor_state.is_restarting:
-            self._num_restarting_actors -= 1
-
-        if actor in self._alive_actors_to_in_flight_tasks_heap:
-            del self._alive_actors_to_in_flight_tasks_heap[actor]
-
-        node_id = actor_state.actor_location
-        node_heap = self._alive_node_to_actor_heap.get(node_id)
-        if node_heap is not None and actor in node_heap:
-            del node_heap[actor]
-
-        del self._running_actors[actor]
-        del self._actor_to_logical_id[actor]
-
-        usage = self._actor_resource_usage.pop(actor)
-        self._total_usage = self._total_usage.subtract(usage)
-        if actor_state.is_restarting:
-            self._pending_or_restarting_usage = (
-                self._pending_or_restarting_usage.subtract(usage)
-            )
-
+        self._release_running_actor(actor)
         logger.info(
-            f"Removed dead actor from pool " f"(pool_size={len(self._running_actors)})"
+            f"Removed dead actor from pool (pool_size={len(self._running_actors)})"
         )
 
     def _add_pending_actor(
