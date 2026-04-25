@@ -804,15 +804,20 @@ label-domain scheduling. Ray:
 Fault tolerance
 ~~~~~~~~~~~~~~~
 
-Label locality scheduling improves on static label selectors by providing automatic domain-level
-fault tolerance:
+Label locality scheduling improves on static label selectors by providing automatic
+domain-level fault tolerance:
 
-- **Partial failure** (some nodes in the domain die): Ray reschedules the lost bundles onto
-  surviving nodes **within the same domain**. Actors and tasks on the remaining bundles continue
-  running. If the domain does not have enough resources to reschedule the bundle, the remaining 
-  bundles are left infeasible and queued until resources become available in the same domain.
-- **Total failure** (all nodes in the domain die): Ray clears the domain assignment and
-  reschedules the entire placement group onto a different domain.
+- **Partial failure** (some nodes in the domain die): Ray reschedules the lost bundles
+  onto surviving nodes **within the same domain**. Actors and tasks on the remaining
+  bundles keep running. If the domain doesn't have enough resources to reschedule the
+  lost bundles, those bundles stay infeasible and queued until resources free up in
+  the same domain. To force the placement group onto a different domain, call
+  :func:`ray.util.remove_placement_group <ray.util.remove_placement_group>` and
+  create a new one. Removing the placement group forcefully kills every actor and
+  task still using its bundles and doesn't restart them, so you must re-create them
+  yourself on the new placement group.
+- **Total failure** (all nodes in the domain die): Ray clears the domain assignment
+  and reschedules the entire placement group onto a different domain.
 
 Observability
 ~~~~~~~~~~~~~
