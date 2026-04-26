@@ -1005,6 +1005,7 @@ class AsyncioRouter:
         result: Optional[ReplicaResult] = None
         replica: Optional[RunningReplica] = None
         callback_registered = False
+        queue_len_incremented = False
         try:
             # Resolve request arguments BEFORE incrementing queued requests.
             # This ensures that queue metrics reflect actual pending work,
@@ -1032,6 +1033,7 @@ class AsyncioRouter:
                 result = replica.try_send_request(pr, with_rejection=with_rejection)
                 # Proactively update the queue length cache.
                 self.request_router.on_send_request(replica.replica_id)
+                queue_len_incremented = True
 
             # Keep track of requests that have been sent out to replicas
             if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
@@ -1126,7 +1128,11 @@ class AsyncioRouter:
                 self.request_router.on_request_completed(
                     replica.replica_id, pr.metadata.internal_request_id
                 )
-                self.request_router.on_replica_result_finished(replica.replica_id)
+                # Only decrement if on_send_request was called (i.e., try_send_request
+                # succeeded and incremented the cache). If try_send_request raised error,
+                # on_send_request was never called so there is no +1 to undo.
+                if queue_len_incremented:
+                    self.request_router.on_replica_result_finished(replica.replica_id)
 
         return None
 
