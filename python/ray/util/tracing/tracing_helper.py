@@ -102,6 +102,22 @@ def _enable_tracing():
     _opentelemetry.try_all()
 
 
+def _get_opentelemetry() -> "_OpenTelemetryProxy":
+    """Avoids pickling a stale `_opentelemetry` value into closures."""
+    return _opentelemetry
+
+
+def _get_actor_id_hex(actor_ref: Any) -> Optional[str]:
+    """Actor id extraction across core and client actor refs."""
+    ray_actor_id = getattr(actor_ref, "_ray_actor_id", None)
+    if ray_actor_id is not None:
+        return ray_actor_id.hex()
+    client_actor_id = getattr(actor_ref, "_actor_id", None)
+    if client_actor_id is not None:
+        return client_actor_id.hex()
+    return None
+
+
 def _sort_params_list(params_list: List[Parameter]):
     """Given a list of Parameters, if a kwargs Parameter exists,
     move it to the end of the list."""
@@ -166,13 +182,15 @@ class _DictPropagator:
     def inject_current_context() -> Dict[Any, Any]:
         """Inject trace context into otel propagator."""
         context_dict: Dict[Any, Any] = {}
-        _opentelemetry.propagate.inject(context_dict)
+        opentelemetry = _get_opentelemetry()
+        opentelemetry.propagate.inject(context_dict)
         return context_dict
 
     def extract(context_dict: Dict[Any, Any]) -> "_opentelemetry.Context":
         """Given a trace context, extract as a Context."""
+        opentelemetry = _get_opentelemetry()
         return cast(
-            _opentelemetry.Context, _opentelemetry.propagate.extract(context_dict)
+            opentelemetry.Context, opentelemetry.propagate.extract(context_dict)
         )
 
 
@@ -181,15 +199,16 @@ def _use_context(
     parent_context: "_opentelemetry.Context",
 ) -> Generator[None, None, None]:
     """Uses the Ray trace context for the span."""
+    opentelemetry = _get_opentelemetry()
     if parent_context is not None:
         new_context = parent_context
     else:
-        new_context = _opentelemetry.Context()
-    token = _opentelemetry.context.attach(new_context)
+        new_context = opentelemetry.Context()
+    token = opentelemetry.context.attach(new_context)
     try:
         yield
     finally:
-        _opentelemetry.context.detach(token)
+        opentelemetry.context.detach(token)
 
 
 def _function_hydrate_span_args(function_name: str):
@@ -310,10 +329,11 @@ def _tracing_task_invocation(method):
             return method(self, args, kwargs, *_args, **_kwargs)
 
         assert "_ray_trace_ctx" not in kwargs
-        tracer = _opentelemetry.trace.get_tracer(__name__)
+        opentelemetry = _get_opentelemetry()
+        tracer = opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
             _function_span_producer_name(self._function_name),
-            kind=_opentelemetry.trace.SpanKind.PRODUCER,
+            kind=opentelemetry.trace.SpanKind.PRODUCER,
             attributes=_function_hydrate_span_args(self._function_name),
         ):
             # Inject a _ray_trace_ctx as a dictionary
@@ -347,7 +367,8 @@ def _inject_tracing_into_function(function):
         if _ray_trace_ctx is None:
             return function(*args, **kwargs)
 
-        tracer = _opentelemetry.trace.get_tracer(__name__)
+        opentelemetry = _get_opentelemetry()
+        tracer = opentelemetry.trace.get_tracer(__name__)
         function_name = function.__module__ + "." + function.__name__
 
         # Retrieves the context from the _ray_trace_ctx dictionary we injected
@@ -355,7 +376,7 @@ def _inject_tracing_into_function(function):
             _DictPropagator.extract(_ray_trace_ctx)
         ), tracer.start_as_current_span(
             _function_span_consumer_name(function_name),
-            kind=_opentelemetry.trace.SpanKind.CONSUMER,
+            kind=opentelemetry.trace.SpanKind.CONSUMER,
             attributes=_function_hydrate_span_args(function_name),
         ):
             return function(*args, **kwargs)
@@ -386,18 +407,20 @@ def _tracing_actor_creation(method):
         class_name = self.__ray_metadata__.class_name
         method_name = "__init__"
         assert "_ray_trace_ctx" not in _kwargs
-        tracer = _opentelemetry.trace.get_tracer(__name__)
+        opentelemetry = _get_opentelemetry()
+        tracer = opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
             name=_actor_span_producer_name(class_name, method_name),
-            kind=_opentelemetry.trace.SpanKind.PRODUCER,
+            kind=opentelemetry.trace.SpanKind.PRODUCER,
             attributes=_actor_hydrate_span_args(class_name, method_name),
         ) as span:
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
 
             result = method(self, args, kwargs, *_args, **_kwargs)
-
-            span.set_attribute("ray.actor_id", result._ray_actor_id.hex())
+            actor_id = _get_actor_id_hex(result)
+            if actor_id:
+                span.set_attribute("ray.actor_id", actor_id)
 
             return result
 
@@ -425,16 +448,19 @@ def _tracing_actor_method_invocation(method):
         method_name = self._method_name
         assert "_ray_trace_ctx" not in _kwargs
 
-        tracer = _opentelemetry.trace.get_tracer(__name__)
+        opentelemetry = _get_opentelemetry()
+        tracer = opentelemetry.trace.get_tracer(__name__)
         with tracer.start_as_current_span(
             name=_actor_span_producer_name(class_name, method_name),
-            kind=_opentelemetry.trace.SpanKind.PRODUCER,
+            kind=opentelemetry.trace.SpanKind.PRODUCER,
             attributes=_actor_hydrate_span_args(class_name, method_name),
         ) as span:
             # Inject a _ray_trace_ctx as a dictionary
             kwargs["_ray_trace_ctx"] = _DictPropagator.inject_current_context()
 
-            span.set_attribute("ray.actor_id", self._actor._ray_actor_id.hex())
+            actor_id = _get_actor_id_hex(self._actor)
+            if actor_id:
+                span.set_attribute("ray.actor_id", actor_id)
 
             return method(self, args, kwargs, *_args, **_kwargs)
 
@@ -460,7 +486,8 @@ def _inject_tracing_into_class(_cls):
             if not _is_tracing_enabled() or _ray_trace_ctx is None:
                 return method(self, *_args, **_kwargs)
 
-            tracer: _opentelemetry.trace.Tracer = _opentelemetry.trace.get_tracer(
+            opentelemetry = _get_opentelemetry()
+            tracer: opentelemetry.trace.Tracer = opentelemetry.trace.get_tracer(
                 __name__
             )
 
@@ -470,7 +497,7 @@ def _inject_tracing_into_class(_cls):
                 _DictPropagator.extract(_ray_trace_ctx)
             ), tracer.start_as_current_span(
                 _actor_span_consumer_name(self.__class__.__name__, method),
-                kind=_opentelemetry.trace.SpanKind.CONSUMER,
+                kind=opentelemetry.trace.SpanKind.CONSUMER,
                 attributes=_actor_hydrate_span_args(self.__class__.__name__, method),
             ):
                 return method(self, *_args, **_kwargs)
@@ -492,7 +519,8 @@ def _inject_tracing_into_class(_cls):
             if not _is_tracing_enabled() or _ray_trace_ctx is None:
                 return await method(self, *_args, **_kwargs)
 
-            tracer = _opentelemetry.trace.get_tracer(__name__)
+            opentelemetry = _get_opentelemetry()
+            tracer = opentelemetry.trace.get_tracer(__name__)
 
             # Retrieves the context from the _ray_trace_ctx dictionary we
             # injected, or starts a new context
@@ -500,7 +528,7 @@ def _inject_tracing_into_class(_cls):
                 _DictPropagator.extract(_ray_trace_ctx)
             ), tracer.start_as_current_span(
                 _actor_span_consumer_name(self.__class__.__name__, method.__name__),
-                kind=_opentelemetry.trace.SpanKind.CONSUMER,
+                kind=opentelemetry.trace.SpanKind.CONSUMER,
                 attributes=_actor_hydrate_span_args(
                     self.__class__.__name__, method.__name__
                 ),
