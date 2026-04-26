@@ -692,6 +692,7 @@ py_test(
     srcs = ["ray_release/tests/test_custom_byod_build_init_helper.py"],
     data = [
         "ray_release/configs/oss_config.yaml",
+        "//:ray-images.json",
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
@@ -713,6 +714,7 @@ py_test(
         "ray_release/configs/oss_config.yaml",
         "ray_release/tests/sample_5_tests.yaml",
         "ray_release/tests/sample_tests.yaml",
+        "//:ray-images.json",
     ],
     exec_compatible_with = ["//bazel:py3"],
     tags = [
@@ -824,6 +826,26 @@ py_test(
     ],
     deps = [
         ":ray_release",
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_new_sdk_compute_configs",
+    size = "small",
+    srcs = ["ray_release/tests/test_new_sdk_compute_configs.py"],
+    data = glob(
+        ["**/*.yaml"],
+        exclude = ["ray_release/**/*.yaml"],
+    ),
+    exec_compatible_with = ["//bazel:py3"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
+        bk_require("anyscale"),
         bk_require("pytest"),
     ],
 )

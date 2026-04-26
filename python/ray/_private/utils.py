@@ -278,7 +278,7 @@ def set_visible_accelerator_ids() -> Mapping[str, Optional[str]]:
     original_visible_accelerator_env_vars = {}
     override_on_zero = env_bool(
         ray._private.accelerators.RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO_ENV_VAR,
-        True,
+        False,
     )
     for resource_name, accelerator_ids in (
         ray.get_runtime_context().get_accelerator_ids().items()
@@ -1661,18 +1661,15 @@ def parse_pg_formatted_resources_to_original(
 def validate_actor_state_name(actor_state_name):
     if actor_state_name is None:
         return
-    actor_state_names = [
-        "DEPENDENCIES_UNREADY",
-        "PENDING_CREATION",
-        "ALIVE",
-        "RESTARTING",
-        "DEAD",
-    ]
-    if actor_state_name not in actor_state_names:
+
+    from ray._private.custom_types import ACTOR_STATUS
+
+    if actor_state_name not in ACTOR_STATUS:
+        quoted = [f'"{s}"' for s in ACTOR_STATUS]
+        states_str = ", ".join(quoted[:-1]) + f", or {quoted[-1]}"
         raise ValueError(
             f'"{actor_state_name}" is not a valid actor state name, '
-            'it must be one of the following: "DEPENDENCIES_UNREADY", '
-            '"PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD"'
+            f"it must be one of the following: {states_str}"
         )
 
 

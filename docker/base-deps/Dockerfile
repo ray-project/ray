@@ -23,10 +23,19 @@ apt-get install -y --no-install-recommends \
     libssl-dev \
     zlib1g-dev
 
-# Install HAProxy from source
-HAPROXY_VERSION="2.8.12"
+# Install HAProxy from source.
+# Fetched from ray-project/haproxy-release (a GitHub release mirror) because
+# www.haproxy.org's wildcard TLS cert expired 2026-04-17 and the release tarball
+# disappeared from the upstream download site. Integrity is enforced by sha256
+# verification. Drop this mirror and switch back to www.haproxy.org once the
+# cert is renewed and the tarball is republished.
+HAPROXY_VERSION="2.8.20"
+HAPROXY_SHA256="c8301de11dabfbf049db07080e43b9570a63f99e41d4b0754760656bf7ea00b7"
 HAPROXY_BUILD_DIR=$(mktemp -d)
-curl -sSfL -o "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" "https://www.haproxy.org/download/2.8/src/haproxy-${HAPROXY_VERSION}.tar.gz"
+curl --retry 5 --retry-all-errors --connect-timeout 20 --max-time 300 \
+     -sSfL -o "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" \
+     "https://github.com/ray-project/haproxy-release/releases/download/${HAPROXY_VERSION}/haproxy-${HAPROXY_VERSION}.tar.gz"
+echo "${HAPROXY_SHA256}  ${HAPROXY_BUILD_DIR}/haproxy.tar.gz" | sha256sum -c -
 tar -xzf "${HAPROXY_BUILD_DIR}/haproxy.tar.gz" -C "${HAPROXY_BUILD_DIR}" --strip-components=1
 make -C "${HAPROXY_BUILD_DIR}" TARGET=linux-glibc USE_OPENSSL=1 USE_ZLIB=1 USE_PCRE=1 USE_LUA=1 USE_PROMEX=1 -j$(nproc)
 make -C "${HAPROXY_BUILD_DIR}" install SBINDIR=/usr/local/bin
@@ -88,7 +97,6 @@ APT_PKGS=(
     gnupg
 
     # For HAProxy
-    socat
     liblua5.3-0
 )
 
@@ -104,6 +112,7 @@ chown -R ray:"$(id -gn ray)" /run/haproxy
 EOF
 
 COPY --from=haproxy-builder /usr/local/bin/haproxy /usr/local/bin/haproxy
+ENV RAY_SERVE_HAPROXY_BINARY_PATH=/usr/local/bin/haproxy
 
 USER $RAY_UID
 ENV HOME=/home/ray
