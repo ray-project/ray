@@ -152,11 +152,17 @@ def build_openai_app(builder_config: dict) -> Application:
             f"{num_ingress_request_router_replicas} ingress request router "
             "replicas (LLMRouter)"
         )
+        # Late-bind by deployment name to avoid pulling LLMServer Apps into
+        # the router's recursive build (which produces phantom duplicates).
+        from ray.llm._internal.serve.core.server.builder import _get_deployment_name
+        _llm_router_names = [
+            "LLMServer:" + _get_deployment_name(c) for c in llm_configs
+        ]
         ingress_request_router_app = serve.deployment(
             LLMRouter,
             num_replicas=num_ingress_request_router_replicas,
             max_ongoing_requests=1000,
-        ).bind(llm_deployments=llm_deployments)
+        ).bind(llm_deployment_names=_llm_router_names, llm_configs_pre=llm_configs)
 
         ingress_app = llm_deployments[0]
         return serve.Application(

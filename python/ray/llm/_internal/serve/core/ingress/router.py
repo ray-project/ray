@@ -28,14 +28,45 @@ ingress_request_router_app = FastAPI()
 class LLMRouter:
     """Lightweight ingress request router deployment for ingress bypass."""
 
-    def __init__(self, llm_deployments: List[DeploymentHandle]):
+    def __init__(
+        self,
+        llm_deployments=None,
+        llm_deployment_names=None,
+        llm_configs_pre=None,
+    ):
         self._default_serve_handles: Dict[str, DeploymentHandle] = {}
         self._llm_configs: Dict[str, LLMConfig] = {}
         self._rr_counter = 0
 
         self._init_completed = asyncio.Event()
-        get_or_create_event_loop().create_task(self._setup(llm_deployments))
+        if llm_deployment_names is not None:
+            # Late-bind path: resolve handles by name when the deployment is ready.
+            get_or_create_event_loop().create_task(
+                self._setup_by_names(llm_deployment_names, llm_configs_pre or [])
+            )
+        else:
+            get_or_create_event_loop().create_task(self._setup(llm_deployments or []))
         get_or_create_event_loop().create_task(self._install_route_middleware())
+
+    async def _setup_by_names(self, names, configs_pre):
+        from ray import serve as _serve
+        # Pre-fill configs from build-time data so we can answer routing decisions
+        # before the LLMServer replica is actually up.
+        for cfg in configs_pre:
+            self._llm_configs[cfg.model_id] = cfg
+        # Wait until each named deployment is registered, then grab its handle.
+        for name, cfg in zip(names, configs_pre):
+            for _ in range(600):  # up to ~60s
+                try:
+                    handle = _serve.get_deployment_handle(name)
+                    break
+                except Exception:
+                    await asyncio.sleep(0.1)
+            else:
+                raise RuntimeError(f"LLMServer deployment {name} did not register in time")
+            self._default_serve_handles[cfg.model_id] = handle
+        self._init_completed.set()
+
 
     async def _install_route_middleware(self):
         while not hasattr(self, "_asgi_app"):
