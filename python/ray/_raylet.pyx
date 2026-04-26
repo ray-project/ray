@@ -1847,52 +1847,14 @@ cdef void execute_task(
                 _i = _p.memory_full_info()
                 return _i.rss / 1e6, _i.uss / 1e6, (_i.rss - _i.uss) / 1e6
 
-            # (karticam) memray tracking per task invocation
+            # (karticam) memray tracking DISABLED — kept _km_pid/_km_task_num
+            # for other probes; _km_tracker stays None so the stop block is
+            # a no-op.
             _km_pid = os.getpid()
             _km_task_counter[_km_pid] = _km_task_counter.get(_km_pid, 0) + 1
             _km_task_num = _km_task_counter[_km_pid]
-            _km_memray_path = (
-                f"/mnt/shared_storage/karticam/memray_{_km_hostname}"
-                f"_pid{_km_pid}_task{_km_task_num}.bin"
-            )
+            _km_memray_path = ""
             _km_tracker = None
-            with _km_memray_lock:
-                if _km_pid in _km_memray_active:
-                    print(
-                        f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
-                        f"task={title} task_num={_km_task_num} "
-                        f"reason=tracker_already_active (concurrent actor call)"
-                    )
-                else:
-                    try:
-                        import memray as _km_memray
-                        _km_tracker = _km_memray.Tracker(
-                            _km_memray_path,
-                            native_traces=True,
-                        )
-                        _km_tracker.__enter__()
-                        _km_memray_active.add(_km_pid)
-                        print(
-                            f"(karticam) [MEMRAY-START] PID={_km_pid} "
-                            f"task={title} task_num={_km_task_num} "
-                            f"file={_km_memray_path}"
-                        )
-                    except ImportError:
-                        _km_tracker = None
-                        print(
-                            f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
-                            f"memray not installed"
-                        )
-                    except RuntimeError as _km_e:
-                        # Safety net: if memray's own check rejects us (e.g.,
-                        # leaked tracker from a previous run, or our flag is
-                        # out of sync), don't kill the task.
-                        _km_tracker = None
-                        print(
-                            f"(karticam) [MEMRAY-SKIP] PID={_km_pid} "
-                            f"task={title} task_num={_km_task_num} "
-                            f"reason=tracker_enter_failed err={_km_e}"
-                        )
 
             _km_rss, _km_uss, _km_shared = _km_get_mem()
             print(
