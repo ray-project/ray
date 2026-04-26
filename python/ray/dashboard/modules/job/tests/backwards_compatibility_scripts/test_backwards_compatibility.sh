@@ -36,7 +36,7 @@ do
     echo "========================================================================================="
     printf "\n\n\n"
 
-    conda create -y -n "${env_name}" python="${PYTHON_VERSION}"
+    conda create -y -n "${env_name}" python="${PYTHON_VERSION}" pip
     conda activate "${env_name}"
 
     # Pin pydantic version due to: https://github.com/ray-project/ray/issues/36990.
