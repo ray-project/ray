@@ -68,12 +68,6 @@ class FakeApplicationStateManager:
         return self.ingress_deployments.get(app_name, f"{app_name}_ingress")
 
 
-class FakeDeploymentReplica:
-    def __init__(self, node_id, replica_id: ReplicaID):
-        self.actor_node_id = node_id
-        self.replica_id = replica_id
-
-
 class FakeProxyState:
     def __init__(self, node_id, node_ip, name):
         self.node_id = node_id

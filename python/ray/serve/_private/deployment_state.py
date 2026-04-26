@@ -5493,7 +5493,7 @@ class DeploymentStateManager:
                         replica.replica_id.unique_id
                     )
 
-        return node_id_to_alive_replica_ids
+        return dict(node_id_to_alive_replica_ids)
 
     def _dump_replica_states_for_testing(
         self, deployment_id: DeploymentID

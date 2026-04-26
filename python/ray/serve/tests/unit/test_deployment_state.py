@@ -4169,7 +4169,9 @@ def test_get_node_id_to_alive_replica_ids(mock_deployment_state_manager):
     replicas1[1]._actor.set_node_id(node2)
     replicas2[0]._actor.set_node_id(node1)
 
-    assert dsm.get_node_id_to_alive_replica_ids() == {
+    node_id_to_alive_replica_ids = dsm.get_node_id_to_alive_replica_ids()
+    assert type(node_id_to_alive_replica_ids) is dict
+    assert node_id_to_alive_replica_ids == {
         node1: {
             replicas1[0].replica_id.unique_id,
             replicas2[0].replica_id.unique_id,
@@ -4183,7 +4185,9 @@ def test_get_node_id_to_alive_replica_ids(mock_deployment_state_manager):
     replicas2[0]._actor.set_ready()
     dsm.update()
 
-    assert dsm.get_node_id_to_alive_replica_ids() == {
+    node_id_to_alive_replica_ids = dsm.get_node_id_to_alive_replica_ids()
+    assert type(node_id_to_alive_replica_ids) is dict
+    assert node_id_to_alive_replica_ids == {
         node1: {replicas1[0].replica_id.unique_id},
         node2: {replicas1[1].replica_id.unique_id},
     }
