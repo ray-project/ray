@@ -48,11 +48,17 @@ struct SystemMemorySnapshot {
 using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
 
 /**
- * @brief Callback that runs at each monitoring interval.
+ * @brief Callback invoked by the memory monitor when worker killing should be triggered.
  *
- * \param system_memory snapshot of system memory information.
+ * \param system_memory snapshot of system memory information at the time the monitor
+ *        decided to fire.
+ * \param threshold_bytes the byte threshold against which the monitor evaluated
+ *        \p system_memory.used_bytes. For monitors that are event-driven rather than
+ *        threshold-driven (e.g. cgroup memory.events / PSI) this should be
+ *        MemoryMonitorInterface::kNull to indicate no single byte threshold applies.
  */
-using KillWorkersCallback = std::function<void(SystemMemorySnapshot system_memory)>;
+using KillWorkersCallback =
+    std::function<void(SystemMemorySnapshot system_memory, int64_t threshold_bytes)>;
 
 /**
  * @brief implementations of this interface monitors the memory usage of the node

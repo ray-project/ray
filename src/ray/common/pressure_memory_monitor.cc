@@ -161,8 +161,8 @@ void PressureMemoryMonitor::MonitoringThreadMain() {
     if (fds[0].revents & POLLPRI) {
       if (IsEnabled()) {
         Disable();
-        kill_workers_callback_(
-            MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path_));
+        kill_workers_callback_(MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path_),
+                               MemoryMonitorInterface::kNull);
       }
     } else if (fds[0].revents & POLLERR) {
       RAY_LOG(ERROR) << "Got POLLERR while monitoring memory pressure. "

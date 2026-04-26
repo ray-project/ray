@@ -3048,9 +3048,9 @@ std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
 
 // Picks the workers and kills the process if the memory usage is above the threshold.
 KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
-  return [this](SystemMemorySnapshot system_memory_snapshot) {
+  return [this](SystemMemorySnapshot system_memory_snapshot, int64_t threshold_bytes) {
     io_service_.post(
-        [this, system_memory = std::move(system_memory_snapshot)]() {
+        [this, system_memory = std::move(system_memory_snapshot), threshold_bytes]() {
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           std::vector<std::shared_ptr<WorkerInterface>> workers =
@@ -3074,25 +3074,13 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
             return;
           }
 
-          // Compute the memory usage threshold
-          int64_t total_memory_bytes = system_memory.total_bytes;
-          int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-              total_memory_bytes,
-              RayConfig::instance().memory_usage_threshold(),
-              RayConfig::instance().min_memory_free_bytes(),
-              initial_config_.enable_resource_isolation,
-              *cgroup_manager_);
-          float computed_threshold_fraction =
-              static_cast<float>(computed_threshold_bytes) /
-              static_cast<float>(total_memory_bytes);
-
           std::string oom_kill_details = CreateOomKillMessageDetails(
               workers_to_kill_and_should_retry,
               self_node_id_,
               system_memory,
               store_client_->GetMemoryUsage().value_or("Not available"),
               process_memory_snapshot,
-              computed_threshold_fraction);
+              threshold_bytes);
           std::string oom_kill_suggestions =
               CreateOomKillMessageSuggestions(workers_to_kill_and_should_retry);
 
@@ -3162,7 +3150,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
     const SystemMemorySnapshot &system_memory_snapshot,
     const std::string &object_store_memory_usage,
     const ProcessesMemorySnapshot &process_memory_snapshot,
-    float usage_threshold) const {
+    int64_t threshold_bytes) const {
   if (workers_to_kill.empty()) {
     return "";
   }
@@ -3174,6 +3162,25 @@ std::string NodeManager::CreateOomKillMessageDetails(
   std::string total_bytes_gb = absl::StrFormat(
       "%.2f",
       static_cast<float>(system_memory_snapshot.total_bytes) / 1024 / 1024 / 1024);
+
+  // Render the threshold. For threshold-based monitors `threshold_bytes` is the
+  // exact byte value the monitor compared against. For event- or pressure-driven
+  // monitors (kNull) there is no single byte threshold to report, so we fall back
+  // to describing the triggering signal instead.
+  std::string threshold_str;
+  if (threshold_bytes == MemoryMonitorInterface::kNull) {
+    threshold_str = "cgroup memory event/pressure signal (no fixed threshold)";
+  } else {
+    float threshold_fraction =
+        system_memory_snapshot.total_bytes > 0
+            ? static_cast<float>(threshold_bytes) /
+                  static_cast<float>(system_memory_snapshot.total_bytes)
+            : 0.0f;
+    threshold_str =
+        absl::StrFormat("%.2fGB (%f)",
+                        static_cast<float>(threshold_bytes) / 1024 / 1024 / 1024,
+                        threshold_fraction);
+  }
 
   const auto &first_worker = workers_to_kill.front().first;
   std::string node_ip = first_worker->IpAddress();
@@ -3221,7 +3228,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
 
   return absl::StrFormat(
       "Memory on the node (IP: %s, ID: %s) was %sGB / %sGB (%f), "
-      "which exceeds the memory usage threshold of %f; "
+      "which exceeds the memory usage threshold of %s; "
       "Object store memory usage: [%s]; "
       "Ray killed %d worker(s) based on the killing policy: "
       "[%s]; "
@@ -3233,7 +3240,7 @@ std::string NodeManager::CreateOomKillMessageDetails(
       used_bytes_gb,
       total_bytes_gb,
       usage_fraction,
-      usage_threshold,
+      threshold_str,
       absl::StrReplaceAll(object_store_memory_usage, {{"\n", "; "}}),
       workers_to_kill.size(),
       absl::StrJoin(worker_details, "; "),
