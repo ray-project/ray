@@ -105,6 +105,28 @@ class JobManager:
 
         return job_driver_logger
 
+    async def _supervisor_start_failure(
+        self,
+        submission_id: str,
+        driver_logger: logging.Logger,
+        message: str,
+        *,
+        shield_status_update: bool = False,
+    ) -> None:
+        tb_str = traceback.format_exc()
+        full_message = f"{message}. Full traceback:\n{tb_str}"
+        driver_logger.warning(full_message)
+        put_status = self._job_info_client.put_status(
+            submission_id,
+            JobStatus.FAILED,
+            message=full_message,
+            error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
+        )
+        if shield_status_update:
+            await asyncio.shield(put_status)
+        else:
+            await put_status
+
     async def _recover_running_jobs(self):
         """Recovers all running jobs from the status client.
 
@@ -614,20 +636,24 @@ class JobManager:
             run_background_task(
                 self._monitor_job(submission_id, job_supervisor=supervisor)
             )
-        except Exception as e:
-            tb_str = traceback.format_exc()
-            driver_logger.warning(
-                f"Failed to start supervisor actor for job {submission_id}: '{e}'"
-                f". Full traceback:\n{tb_str}"
-            )
-            await self._job_info_client.put_status(
+        except asyncio.CancelledError:
+            await self._supervisor_start_failure(
                 submission_id,
-                JobStatus.FAILED,
-                message=(
-                    f"Failed to start supervisor actor {submission_id}: '{e}'"
-                    f". Full traceback:\n{tb_str}"
+                driver_logger,
+                (
+                    f"Failed to start supervisor actor for job {submission_id}: "
+                    "the submit request was cancelled before the supervisor actor "
+                    "started. This can happen if the HTTP client disconnected or "
+                    "timed out during submission"
                 ),
-                error_type=JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE,
+                shield_status_update=True,
+            )
+            raise
+        except Exception as e:
+            await self._supervisor_start_failure(
+                submission_id,
+                driver_logger,
+                f"Failed to start supervisor actor for job {submission_id}: '{e}'",
             )
         finally:
             close_logger_file_descriptor(driver_logger)

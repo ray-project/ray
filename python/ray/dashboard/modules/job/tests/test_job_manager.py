@@ -1587,6 +1587,45 @@ async def test_job_pending_timeout(job_manager, monkeypatch):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("call_ray_start", ["ray start --head"], indirect=True)
+async def test_submit_job_cancelled_during_supervisor_start(
+    call_ray_start,
+    tmp_path,
+    monkeypatch,  # noqa: F811
+):
+    ray.init(address=call_ray_start)
+    submission_id = "raysubmit_cancelled_during_submit"
+
+    async def raise_cancelled_error(resources_specified):
+        raise asyncio.CancelledError
+
+    # Mock the cancellation at the first await after PENDING is persisted.
+    gcs_client = ray._private.worker.global_worker.gcs_client
+    job_manager = JobManager(gcs_client, tmp_path)
+    monkeypatch.setattr(job_manager, "_get_label_selector", raise_cancelled_error)
+
+    with pytest.raises(asyncio.CancelledError):
+        await job_manager.submit_job(
+            entrypoint="echo 'hello world'",
+            submission_id=submission_id,
+        )
+
+    job_info = await job_manager.get_job_info(submission_id)
+    assert job_info.status == JobStatus.FAILED
+    assert job_info.error_type == JobErrorType.JOB_SUPERVISOR_ACTOR_START_FAILURE
+    assert (
+        "the submit request was cancelled before the supervisor actor started"
+        in job_info.message
+    )
+    assert (
+        "This can happen if the HTTP client disconnected or timed out during "
+        "submission" in job_info.message
+    )
+    assert job_info.driver_exit_code is None
+    assert job_manager._get_actor_for_job(submission_id) is None
+
+
+@pytest.mark.asyncio
 async def test_failed_driver_exit_code(job_manager):
     """Test driver exit code from finished task that failed"""
     EXIT_CODE = 10
