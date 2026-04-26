@@ -4128,6 +4128,101 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     assert None not in dsm.get_active_node_ids()
 
 
+def test_get_deployment_ids(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    assert dsm.get_deployment_ids() == []
+
+    info1, _ = deployment_info(version="1", num_replicas=1)
+    info2, _ = deployment_info(version="2", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID_2, info2)
+
+    assert dsm.get_deployment_ids() == [TEST_DEPLOYMENT_ID, TEST_DEPLOYMENT_ID_2]
+
+
+def test_get_node_id_to_alive_replica_ids(mock_deployment_state_manager):
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    cluster_node_info_cache.add_node(node1)
+    cluster_node_info_cache.add_node(node2)
+
+    info1, v1 = deployment_info(version="1", num_replicas=2)
+    info2, v2 = deployment_info(version="2", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID_2, info2)
+
+    ds1 = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    ds2 = dsm._deployment_states[TEST_DEPLOYMENT_ID_2]
+
+    dsm.update()
+    check_counts(ds1, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
+    check_counts(ds2, total=1, by_state=[(ReplicaState.STARTING, 1, v2)])
+
+    replicas1 = ds1._replicas.get()
+    replicas2 = ds2._replicas.get()
+    replicas1[0]._actor.set_node_id(node1)
+    replicas1[1]._actor.set_node_id(node2)
+    replicas2[0]._actor.set_node_id(node1)
+
+    assert dsm.get_node_id_to_alive_replica_ids() == {
+        node1: {
+            replicas1[0].replica_id.unique_id,
+            replicas2[0].replica_id.unique_id,
+        },
+        node2: {replicas1[1].replica_id.unique_id},
+    }
+
+    replicas1[0]._actor.set_ready()
+    replicas1[1]._actor.set_ready()
+    replicas2[0]._actor.set_node_id(None)
+    replicas2[0]._actor.set_ready()
+    dsm.update()
+
+    assert dsm.get_node_id_to_alive_replica_ids() == {
+        node1: {replicas1[0].replica_id.unique_id},
+        node2: {replicas1[1].replica_id.unique_id},
+    }
+
+
+def test_dump_replica_states_for_testing(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    info1, _ = deployment_info(version="1", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    assert dsm._dump_replica_states_for_testing(TEST_DEPLOYMENT_ID) is ds._replicas
+
+    with pytest.raises(KeyError):
+        dsm._dump_replica_states_for_testing(TEST_DEPLOYMENT_ID_2)
+
+
+def test_stop_one_running_replica_for_testing(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    info1, _ = deployment_info(version="1", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    replica = ds._replicas.get()[0]
+    replica._actor.set_ready()
+    dsm.update()
+    assert len(ds._replicas.get([ReplicaState.RUNNING])) == 1
+
+    dsm._stop_one_running_replica_for_testing(TEST_DEPLOYMENT_ID)
+
+    assert len(ds._replicas.get([ReplicaState.RUNNING])) == 0
+    assert len(ds._replicas.get([ReplicaState.STOPPING])) == 1
+
+
 class TestAutoscaling:
     def scale(
         self,
