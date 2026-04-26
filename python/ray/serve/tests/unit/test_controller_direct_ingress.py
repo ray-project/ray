@@ -156,9 +156,9 @@ class FakeDeploymentStateManager:
             for replica_info in replica_infos:
                 if replica_info.node_id is None:
                     continue
-                node_id_to_alive_replica_ids.setdefault(replica_info.node_id, set()).add(
-                    replica_info.replica_id.unique_id
-                )
+                node_id_to_alive_replica_ids.setdefault(
+                    replica_info.node_id, set()
+                ).add(replica_info.replica_id.unique_id)
         return node_id_to_alive_replica_ids
 
     def get_replica_details(self, replica_info: RunningReplicaInfo) -> ReplicaDetails:
