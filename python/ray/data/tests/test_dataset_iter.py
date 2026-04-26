@@ -557,16 +557,6 @@ def test_iter_tf_batches_tensor_ds(ray_start_regular_shared):
         )
 
 
-def test_get_internal_block_refs(ray_start_regular_shared):
-    blocks = ray.data.range(10, override_num_blocks=10).get_internal_block_refs()
-    assert len(blocks) == 10
-    out = []
-    for b in ray.get(blocks):
-        out.extend(extract_values("id", BlockAccessor.for_block(b).iter_rows(True)))
-    out = sorted(out)
-    assert out == list(range(10)), out
-
-
 def test_iter_internal_ref_bundles(ray_start_regular_shared):
     n = 10
     ds = ray.data.range(n, override_num_blocks=n)

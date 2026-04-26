@@ -6977,31 +6977,6 @@ class Dataset:
 
         return iter_ref_bundles
 
-    @Deprecated
-    @ConsumptionAPI(pattern="Examples:")
-    def get_internal_block_refs(self) -> List[ObjectRef[Block]]:
-        """Get a list of references to the underlying blocks of this dataset.
-
-        This function can be used for zero-copy access to the data. It blocks
-        until the underlying blocks are computed.
-
-        Examples:
-            >>> import ray
-            >>> ds = ray.data.range(1)
-            >>> ds.get_internal_block_refs()
-            [ObjectRef(...)]
-
-        Returns:
-            A list of references to this dataset's blocks.
-        """
-        logger.warning(
-            "`Dataset.get_internal_block_refs()` is deprecated. Use "
-            "`Dataset.iter_internal_ref_bundles()` instead.",
-        )
-        block_refs = self._plan.execute().block_refs
-        self._synchronize_progress_bar()
-        return block_refs
-
     @DeveloperAPI
     def has_serializable_lineage(self) -> bool:
         """Whether this dataset's lineage is able to be serialized for storage and
