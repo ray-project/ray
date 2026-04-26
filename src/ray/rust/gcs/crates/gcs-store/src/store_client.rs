@@ -11,7 +11,7 @@ use std::collections::HashMap;
 ///
 /// Implementations include:
 /// - `InMemoryStoreClient`: HashMap-based, for development and testing
-/// - `RedisStoreClient`: Redis-backed, for production (future)
+/// - `RedisStoreClient`: Redis-backed, for production persistence
 ///
 /// # Design Notes
 ///

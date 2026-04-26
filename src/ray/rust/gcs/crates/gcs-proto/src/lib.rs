@@ -19,5 +19,13 @@ pub mod ray {
         pub mod events {
             tonic::include_proto!("ray.rpc.events");
         }
+
+        /// Ray syncer service + messages from `ray.rpc.syncer` package
+        /// (`src/ray/protobuf/ray_syncer.proto`). Mirrors the C++
+        /// `ray::rpc::syncer::RaySyncer` gRPC surface registered in
+        /// `GcsServer::InitRaySyncer` (`gcs/gcs_server.cc:607-621`).
+        pub mod syncer {
+            tonic::include_proto!("ray.rpc.syncer");
+        }
     }
 }

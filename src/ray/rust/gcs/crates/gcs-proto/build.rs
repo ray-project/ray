@@ -25,9 +25,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "src/ray/protobuf/gcs.proto",
         "src/ray/protobuf/pubsub.proto",
         "src/ray/protobuf/events_event_aggregator_service.proto",
+        // Raylet and worker protos (needed for actor scheduling RPCs)
+        "src/ray/protobuf/node_manager.proto",
+        "src/ray/protobuf/core_worker.proto",
         // Service protos (gRPC services)
         "src/ray/protobuf/gcs_service.proto",
         "src/ray/protobuf/autoscaler.proto",
+        "src/ray/protobuf/ray_syncer.proto",
     ];
 
     let proto_paths: Vec<PathBuf> = proto_files

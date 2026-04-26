@@ -365,7 +365,12 @@ dependencies = [
  "gcs-table-storage",
  "parking_lot",
  "prost",
+ "rand",
+ "ray-config",
+ "serde",
+ "serde_json",
  "tokio",
+ "tokio-stream",
  "tokio-test",
  "tonic",
  "tonic-health",
@@ -408,6 +413,9 @@ dependencies = [
  "gcs-pubsub",
  "gcs-store",
  "gcs-table-storage",
+ "parking_lot",
+ "prost",
+ "ray-config",
  "redis",
  "serde",
  "serde_json",
@@ -1102,6 +1110,17 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ec0be4795e2f6a28069bec0b5ff3e2ac9bafc99e6a9a7dc3547996c5c816922c"
 dependencies = [
  "getrandom 0.2.17",
+]
+
+[[package]]
+name = "ray-config"
+version = "0.1.0"
+dependencies = [
+ "once_cell",
+ "parking_lot",
+ "serde",
+ "serde_json",
+ "tracing",
 ]
 
 [[package]]

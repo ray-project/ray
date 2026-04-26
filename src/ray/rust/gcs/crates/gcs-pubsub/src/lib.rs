@@ -83,6 +83,46 @@ impl GcsPublisher {
             data,
         });
     }
+
+    /// Publish an error info message (RAY_ERROR_INFO_CHANNEL = 7).
+    /// Maps C++ `GcsPublisher::PublishError`.
+    pub fn publish_error(&self, key_id: &str, data: Vec<u8>) {
+        self.publish(PubSubMessage {
+            channel: "ERROR_INFO".into(),
+            key_id: key_id.as_bytes().to_vec(),
+            data,
+        });
+    }
+
+    /// Publish a log batch (RAY_LOG_CHANNEL = 8).
+    /// Maps C++ `GcsPublisher::PublishLogs`.
+    pub fn publish_logs(&self, data: Vec<u8>) {
+        self.publish(PubSubMessage {
+            channel: "LOG".into(),
+            key_id: vec![],
+            data,
+        });
+    }
+
+    /// Publish node resource usage (RAY_NODE_RESOURCE_USAGE_CHANNEL = 9).
+    /// Maps C++ `GcsPublisher::PublishNodeResource`.
+    pub fn publish_node_resource_usage(&self, node_id: &[u8], data: Vec<u8>) {
+        self.publish(PubSubMessage {
+            channel: "NODE_RESOURCE_USAGE".into(),
+            key_id: node_id.to_vec(),
+            data,
+        });
+    }
+
+    /// Publish node address and liveness (GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL = 10).
+    /// Maps C++ publisher on this channel for lightweight node state updates.
+    pub fn publish_node_address_and_liveness(&self, node_id: &[u8], data: Vec<u8>) {
+        self.publish(PubSubMessage {
+            channel: "NODE_ADDRESS_AND_LIVENESS".into(),
+            key_id: node_id.to_vec(),
+            data,
+        });
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -266,6 +306,13 @@ impl PubSubManager {
             subscriber = hex_encode(subscriber_id),
             channel_type, "Subscription removed"
         );
+    }
+
+    /// Returns `true` if `subscriber_id` is registered. Primarily for tests
+    /// and lifecycle-cleanup introspection (e.g. verifying that a
+    /// `worker_dead` or `node_removed` listener cleaned the subscriber).
+    pub fn has_subscriber(&self, subscriber_id: &[u8]) -> bool {
+        self.subscribers.contains_key(subscriber_id)
     }
 
     /// Remove a subscriber entirely (cleanup on disconnect).

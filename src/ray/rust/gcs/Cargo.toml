@@ -9,6 +9,7 @@ members = [
     "crates/gcs-managers",
     "crates/gcs-server",
     "crates/gcs-test-utils",
+    "crates/ray-config",
 ]
 
 [workspace.dependencies]

@@ -10,14 +10,19 @@ gcs-proto = { path = "../gcs-proto" }
 gcs-table-storage = { path = "../gcs-table-storage" }
 gcs-kv = { path = "../gcs-kv" }
 gcs-pubsub = { path = "../gcs-pubsub" }
+ray-config = { path = "../ray-config" }
 async-trait = { workspace = true }
 tonic = { workspace = true }
 tonic-health = { workspace = true }
 tokio = { workspace = true }
+tokio-stream = { workspace = true }
 tracing = { workspace = true }
 dashmap = { workspace = true }
 prost = { workspace = true }
 parking_lot = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+rand = "0.8"
 
 [dev-dependencies]
 tokio-test = { workspace = true }

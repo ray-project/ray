@@ -11,8 +11,11 @@ gcs-table-storage = { path = "../gcs-table-storage" }
 gcs-kv = { path = "../gcs-kv" }
 gcs-pubsub = { path = "../gcs-pubsub" }
 gcs-managers = { path = "../gcs-managers" }
+ray-config = { path = "../ray-config" }
 redis = { workspace = true }
 async-trait = { workspace = true }
+parking_lot = { workspace = true }
+prost = { workspace = true }
 tonic = { workspace = true }
 tonic-health = { workspace = true }
 tokio = { workspace = true }
