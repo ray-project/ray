@@ -1096,7 +1096,6 @@ def test_grpc_streaming_tracing_attributes(serve_and_ray_shutdown, method_name):
         component_name="upstream_app",
         component_id="345",
         tracing_sampling_ratio=1.0,
-        tracing_exporter_import_path=DEFAULT_TRACING_EXPORTER_IMPORT_PATH,
     )
 
     tracer = trace.get_tracer("test_tracing")
