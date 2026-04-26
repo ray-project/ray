@@ -49,24 +49,26 @@ bool NodeResourceInstanceSet::Has(ResourceID resource_id) const {
 void NodeResourceInstanceSet::Remove(ResourceID resource_id) {
   resources_.erase(resource_id);
 
-  // Remove from the pg_indexed_resources_ as well
-  auto data = ParsePgFormattedResource(resource_id.Binary(),
-                                       /*for_wildcard_resource=*/false,
-                                       /*for_indexed_resource=*/true);
-  if (data) {
-    ResourceID original_resource_id(data->original_resource);
+  if (track_pg_index_) {
+    // Remove from the pg_indexed_resources_ as well
+    auto data = ParsePgFormattedResource(resource_id.Binary(),
+                                         /*for_wildcard_resource=*/false,
+                                         /*for_indexed_resource=*/true);
+    if (data) {
+      ResourceID original_resource_id(data->original_resource);
 
-    auto pg_resource_map_it = pg_indexed_resources_.find(original_resource_id);
-    if (pg_resource_map_it != pg_indexed_resources_.end()) {
-      auto resource_set_it = pg_resource_map_it->second.find(data->group_id);
+      auto pg_resource_map_it = pg_indexed_resources_.find(original_resource_id);
+      if (pg_resource_map_it != pg_indexed_resources_.end()) {
+        auto resource_set_it = pg_resource_map_it->second.find(data->group_id);
 
-      if (resource_set_it != pg_resource_map_it->second.end()) {
-        resource_set_it->second.erase(resource_id);
-        if (resource_set_it->second.empty()) {
-          pg_resource_map_it->second.erase(data->group_id);
-        }
-        if (pg_resource_map_it->second.empty()) {
-          pg_indexed_resources_.erase(original_resource_id);
+        if (resource_set_it != pg_resource_map_it->second.end()) {
+          resource_set_it->second.erase(resource_id);
+          if (resource_set_it->second.empty()) {
+            pg_resource_map_it->second.erase(data->group_id);
+          }
+          if (pg_resource_map_it->second.empty()) {
+            pg_indexed_resources_.erase(original_resource_id);
+          }
         }
       }
     }
@@ -98,22 +100,24 @@ NodeResourceInstanceSet &NodeResourceInstanceSet::Set(ResourceID resource_id,
   } else {
     resources_[resource_id] = std::move(instances);
 
-    // Popluate the pg_indexed_resources_map_
-    // TODO(myan): The parsing of the resource_id String can be costly and impact the
-    // task creation throughput if the parting is required every time we allocate
-    // resources for a task and updating the available resources. The current benchmark
-    // shows no observable impact for now. But in the future, ideas of improvement are:
-    // (1) to add the placement group id as well as the bundle index inside the
-    // ResourceID class. And instead of parse the String, leveraging the fields in the
-    // ResourceID class directly; (2) to update the pg resource id format to start with
-    // a special prefix so that we can do "startwith" instead of regex match which is
-    // less costly
-    auto data = ParsePgFormattedResource(resource_id.Binary(),
-                                         /*for_wildcard_resource=*/false,
-                                         /*for_indexed_resource=*/true);
-    if (data) {
-      pg_indexed_resources_[ResourceID(data->original_resource)][data->group_id].emplace(
-          resource_id);
+    if (track_pg_index_) {
+      // Populate the pg_indexed_resources_map_
+      // TODO(myan): The parsing of the resource_id String can be costly and impact the
+      // task creation throughput if the parting is required every time we allocate
+      // resources for a task and updating the available resources. The current benchmark
+      // shows no observable impact for now. But in the future, ideas of improvement are:
+      // (1) to add the placement group id as well as the bundle index inside the
+      // ResourceID class. And instead of parse the String, leveraging the fields in the
+      // ResourceID class directly; (2) to update the pg resource id format to start with
+      // a special prefix so that we can do "startwith" instead of regex match which is
+      // less costly
+      auto data = ParsePgFormattedResource(resource_id.Binary(),
+                                           /*for_wildcard_resource=*/false,
+                                           /*for_indexed_resource=*/true);
+      if (data) {
+        pg_indexed_resources_[ResourceID(data->original_resource)][data->group_id]
+            .emplace(resource_id);
+      }
     }
   }
   return *this;
@@ -136,9 +140,71 @@ bool NodeResourceInstanceSet::operator==(const NodeResourceInstanceSet &other) c
   return this->resources_ == other.resources_;
 }
 
-std::optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>
-NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
-  absl::flat_hash_map<ResourceID, std::vector<FixedPoint>> allocations;
+bool NodeResourceInstanceSet::CanAllocate(const ResourceSet &resource_demands) const {
+  for (const auto &[resource_id, demand] : resource_demands.Resources()) {
+    const std::vector<FixedPoint> &available = Get(resource_id);
+
+    if (available.empty()) {
+      return false;
+    }
+
+    if (available.size() == 1) {
+      if (available[0] >= demand) {
+        continue;
+      }
+      return false;
+    }
+
+    FixedPoint remaining_demand = demand;
+    int64_t full_instances_used = 0;
+
+    if (remaining_demand >= 1.) {
+      for (size_t i = 0; i < available.size(); i++) {
+        if (available[i] == 1.) {
+          full_instances_used++;
+          remaining_demand -= 1.;
+        }
+        if (remaining_demand < 1.) {
+          break;
+        }
+      }
+    }
+
+    if (remaining_demand >= 1.) {
+      // Not enough full-capacity instances to cover the integer part.
+      return false;
+    }
+
+    if (remaining_demand > 0.) {
+      bool found_fit = false;
+      int64_t full_instances_skipped = 0;
+
+      for (size_t i = 0; i < available.size(); i++) {
+        // Skip the exact number of full instances we previously calculated
+        if (available[i] == 1. && full_instances_skipped < full_instances_used) {
+          full_instances_skipped++;
+          continue;
+        }
+
+        // EARLY EXIT: We only need to know IF it can fit, not WHERE it fits best.
+        if (available[i] >= remaining_demand) {
+          found_fit = true;
+          break;
+        }
+      }
+
+      if (!found_fit) {
+        return false;
+      }
+    }
+  }
+
+  return true;
+}
+
+std::optional<ResourceAllocation> NodeResourceInstanceSet::TryAllocate(
+    const ResourceSet &resource_demands) {
+  ResourceAllocation allocations;
 
   // During resource allocation with a placement group, no matter whether the allocation
   // requirement specifies a bundle index, we generate the allocation on both
@@ -288,8 +354,7 @@ NodeResourceInstanceSet::TryAllocate(const ResourceSet &resource_demands) {
     allocations[*wildcard_resource_id] = std::move(*wildcard_allocation);
   }
 
-  return std::make_optional<absl::flat_hash_map<ResourceID, std::vector<FixedPoint>>>(
-      std::move(allocations));
+  return std::make_optional<ResourceAllocation>(std::move(allocations));
 }
 
 std::optional<std::vector<FixedPoint>> NodeResourceInstanceSet::TryAllocate(
