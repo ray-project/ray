@@ -4407,38 +4407,18 @@ def read_delta(
         Delta Lake table.
 
     """
-    # Modified from ray.data._internal.util._check_import, which is meant for objects,
-    # not functions. Move to _check_import if moved to a DataSource object.
-    import importlib
+    from ray.data._internal.datasource.delta_datasource import DeltaDatasource
 
-    package = "deltalake"
-    try:
-        importlib.import_module(package)
-    except ImportError:
-        raise ImportError(
-            f"`ray.data.read_delta` depends on '{package}', but '{package}' "
-            f"couldn't be imported. You can install '{package}' by running `pip "
-            f"install {package}`."
-        )
-
-    from deltalake import DeltaTable
-
-    # This seems reasonable to keep it at one table, even Spark doesn't really support
-    # multi-table reads, it's usually up to the developer to keep it in one table.
-    if not isinstance(path, str):
-        raise ValueError("Only a single Delta Lake table path is supported.")
-
-    dt = DeltaTable(path, version=version, storage_options=storage_options)
-    pa_dataset = dt.to_pyarrow_dataset(filesystem=filesystem)
-
-    datasource = ParquetDatasource.from_pyarrow_dataset(
-        pa_dataset,
+    datasource = DeltaDatasource(
+        path,
+        version=version,
+        storage_options=storage_options,
+        filesystem=filesystem,
         columns=columns,
-        to_batch_kwargs=arrow_parquet_args if arrow_parquet_args else None,
         shuffle=shuffle,
         include_paths=include_paths,
+        arrow_parquet_args=arrow_parquet_args,
     )
-
     return read_datasource(
         datasource,
         parallelism=parallelism,
