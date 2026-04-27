@@ -18,6 +18,7 @@
 #include <chrono>
 #include <functional>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -263,6 +264,9 @@ void ObjectManager::CancelPull(uint64_t request_id) {
 void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &client_id) {
   auto rpc_client = GetRpcClient(client_id);
   if (rpc_client) {
+    RAY_LOG(INFO) << "[karticam] SendPullRequest: local_node=" << self_node_id_
+                  << " asking remote_node=" << client_id
+                  << " for object_id=" << object_id;
     // Try pulling from the client.
     rpc_service_.post(
         [this, object_id, client_id, rpc_client]() {
@@ -471,6 +475,11 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
   auto num_chunks = chunk_reader->GetNumChunks();
   bool move_semantics_enabled = RayConfig::instance().enable_plasma_move_semantics();
 
+  RAY_LOG(INFO) << "[karticam] Push start from PushObjectInternal: local_node="
+                << self_node_id_ << " sending to remote_node=" << node_id
+                << " object_id=" << object_id << " num_chunks=" << num_chunks
+                << " total_bytes=" << chunk_reader->GetObject().GetObjectSize();
+
   if (move_semantics_enabled) {
     auto push_key = std::make_pair(object_id, node_id);
     push_ack_tracking_[push_key] = {
@@ -611,6 +620,11 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                        uint64_t chunk_index,
                                        const std::string &data) {
   num_bytes_received_total_ += data.size();
+  if (chunk_index == 0) {
+    RAY_LOG(INFO) << "[karticam] Receive start: local_node=" << self_node_id_
+                  << " receiving from remote_node=" << node_id
+                  << " object_id=" << object_id << " object_size=" << data_size;
+  }
   RAY_LOG(DEBUG).WithField(object_id)
       << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
       << " of object, chunk index: " << chunk_index
@@ -654,8 +668,9 @@ void ObjectManager::HandlePull(rpc::PullRequest request,
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG).WithField(node_id).WithField(object_id)
-      << "Received pull request from node for object";
+  RAY_LOG(INFO) << "[karticam] HandlePull: local_node=" << self_node_id_
+                << " received pull request from remote_node=" << node_id
+                << " for object_id=" << object_id;
 
   main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
                       "ObjectManager.HandlePull");

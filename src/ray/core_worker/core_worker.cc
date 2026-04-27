@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <future>
 #include <memory>
+#include <sstream>
 #include <string>
 #include <tuple>
 #include <unordered_map>
@@ -3327,6 +3328,17 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
   std::vector<ObjectID> object_ids =
       std::vector<ObjectID>(by_ref_ids.begin(), by_ref_ids.end());
   auto owner_addresses = reference_counter_->GetOwnerAddresses(object_ids);
+  // [karticam] Log when the worker is about to read args from plasma. For
+  // actor tasks these are already local by now (raylet pulled them via
+  // WaitForActorCallArgs); this is just the local plasma Get.
+  if (!object_ids.empty()) {
+    std::stringstream ids_ss;
+    for (const auto &id : object_ids) {
+      ids_ss << id << " ";
+    }
+    RAY_LOG(INFO) << "[karticam] GetAndPinArgs plasma Get (args should be local): "
+                  << "count=" << object_ids.size() << " ids=[ " << ids_ss.str() << "]";
+  }
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->Get(object_ids, owner_addresses, -1, &result_map));
   for (const auto &it : result_map) {
@@ -3343,6 +3355,24 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
                                 rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG).WithField(TaskID::FromBinary(request.task_spec().task_id()))
       << "Received Handle Push Task";
+
+  // [karticam] Log the task arrival and its arguments (ObjectRef args).
+  {
+    std::stringstream args_ss;
+    for (int i = 0; i < request.task_spec().args_size(); i++) {
+      const auto &arg = request.task_spec().args(i);
+      if (!arg.object_ref().object_id().empty()) {
+        args_ss << ObjectID::FromBinary(arg.object_ref().object_id()) << " ";
+      }
+    }
+    const std::string args_str = args_ss.str();
+    if (!args_str.empty()) {
+      RAY_LOG(INFO) << "[karticam] HandlePushTask (task arrived at worker): "
+                    << "task_id=" << TaskID::FromBinary(request.task_spec().task_id())
+                    << " func=" << request.task_spec().name() << " by_ref_args=[ "
+                    << args_str << "]";
+    }
+  }
   if (HandleWrongRecipient(WorkerID::FromBinary(request.intended_worker_id()),
                            send_reply_callback)) {
     return;

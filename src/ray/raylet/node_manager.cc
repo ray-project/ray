@@ -1724,6 +1724,19 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
       flatbuffers::GetRoot<protocol::WaitForActorCallArgsRequest>(message_data);
   auto object_ids = FlatbufferToObjectIds(*message->object_ids());
   int64_t tag = message->tag();
+  // [karticam] Log when a worker asks the raylet to fetch actor task args.
+  // This is the IPC entry point — the worker has queued an actor task and is
+  // now telling the raylet to pull the task's by-ref args to this node.
+  {
+    std::stringstream ids_ss;
+    for (const auto &id : object_ids) {
+      ids_ss << id << " ";
+    }
+    RAY_LOG(INFO) << "[karticam] ProcessWaitForActorCallArgsRequestMessage: "
+                  << "raylet=" << self_node_id_ << " tag=" << tag
+                  << " object_count=" << object_ids.size() << " object_ids=[ "
+                  << ids_ss.str() << "]";
+  }
   // Pull any missing objects to the local node.
   const auto refs =
       FlatbufferToObjectReferences(*message->object_ids(), *message->owner_addresses());
@@ -1736,6 +1749,17 @@ void NodeManager::ProcessWaitForActorCallArgsRequestMessage(
                      object_ids.size(),
                      [this, client, tag](const std::vector<ObjectID> &ready,
                                          const std::vector<ObjectID> &remaining) {
+                       // [karticam] All requested args are now local on this raylet.
+                       // About to send IPC reply to the worker telling it the args
+                       // are ready, so its actor task can run.
+                       std::stringstream ready_ss;
+                       for (const auto &id : ready) {
+                         ready_ss << id << " ";
+                       }
+                       RAY_LOG(INFO) << "[karticam] WaitForActorCallArgs complete: "
+                                     << "raylet=" << self_node_id_ << " tag=" << tag
+                                     << " ready_count=" << ready.size() << " ready_ids=[ "
+                                     << ready_ss.str() << "]";
                        RAY_CHECK(remaining.empty());
                        std::shared_ptr<WorkerInterface> worker =
                            worker_pool_.GetRegisteredWorker(client);
