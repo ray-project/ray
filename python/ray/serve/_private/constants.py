@@ -720,6 +720,11 @@ RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
 )
 
+# HAProxy stats UI port
+RAY_SERVE_HAPROXY_STATS_PORT = int(
+    os.environ.get("RAY_SERVE_HAPROXY_STATS_PORT", "8404")
+)
+
 # HAProxy log port
 RAY_SERVE_HAPROXY_SYSLOG_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_SYSLOG_PORT", "514")
