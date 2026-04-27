@@ -422,7 +422,6 @@ class TestApplyCheckpointInfo:
         config = self._make_llm_config()
 
         gguf_path = str(tmp_path / "model-Q5_K_M.gguf")
-        Path(gguf_path).touch()
 
         config.apply_checkpoint_info(gguf_path)
 
