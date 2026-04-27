@@ -10,7 +10,11 @@ import requests
 import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
-from ray.util.placement_group import PlacementGroup, placement_group
+from ray.util.placement_group import (
+    PlacementGroup,
+    placement_group,
+    remove_placement_group,
+)
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -311,8 +315,6 @@ def reserve_tpu_slice(
         # Clean up the pending head reservation so that resources are not
         # held while the caller decides whether to retry.
         try:
-            from ray.util.placement_group import remove_placement_group
-
             remove_placement_group(head_placement_group)
         except Exception:
             logger.exception(
