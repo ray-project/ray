@@ -216,8 +216,13 @@ def _get_main_process_bundle(config):
         bundle = {
             "CPU": max(num_cpus_per_learner, config.num_cpus_for_main_process),
             "GPU": config.num_gpus_per_learner,
+            **config.custom_resources_for_main_process,
         }
     else:
-        bundle = {"CPU": config.num_cpus_for_main_process, "GPU": 0}
+        bundle = {
+            "CPU": config.num_cpus_for_main_process,
+            "GPU": 0,
+            **config.custom_resources_for_main_process,
+        }
 
     return bundle

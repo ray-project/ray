@@ -59,7 +59,7 @@ def compute_area(batch: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
     batch["petal area (cm^2)"] = length * width
     return batch
 
-transformed_ds = ds.map_batches(compute_area)
+transformed_ds = ds.map_batches(compute_area, batch_size="auto")
 
 # Iterate over batches of data.
 for batch in transformed_ds.iter_batches(batch_size=4):
