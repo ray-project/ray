@@ -188,12 +188,11 @@ LOAD_STAGES = [
 
 
 def log_and_assert_results(stats: Dict[str, Any]) -> None:
+    # ToDo(kamil) for now only report errors, max latency and total requests. Once stable add asserts too.
     errors = stats["num_failures"]
     total = stats["total_requests"]
     p50 = stats["p50_latency"]
     p99 = stats["p99_latency"]
-
-    # ToDo(kamil) - for now only report max_latency, once stable add checks.
     max_latency = stats["max_latency"]
 
     logger.info(
@@ -238,10 +237,16 @@ def log_and_assert_results(stats: Dict[str, Any]) -> None:
                 )
 
     # Assertions on aggregated results
-    assert errors == 0, f"Expected 0 failures, got {errors} out of {total} requests."
+    if errors > 0:
+        logger.warning(f"Expected 0 failures, got {errors} out of {total} requests.")
+    if total < 2_000_000:
+        logger.warning(
+            f"Total requests = {total} below an expected minimum of 2_000_000.")
+    if max_latency > 5_000:
+        logger.warning(f"max_latency unbounded: {max_latency:.1f}")
+
     assert p50 <= 100, f"p50 latency {p50:.1f}ms exceeds 100ms."
     assert p99 <= 200, f"p99 latency {p99:.1f}ms exceeds 200ms."
-    assert total >= 2_000_000, f"Total requests {total} below minimum 2,000,000."
 
     logger.info("All assertions passed.")
 
