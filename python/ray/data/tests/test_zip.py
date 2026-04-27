@@ -153,6 +153,43 @@ def test_zip_preserve_order(ray_start_regular_shared):
     ), result
 
 
+@pytest.fixture
+def zip_policy(request):
+    policy = request.param
+    ctx = ray.data.DataContext.get_current()
+    old_policy = ctx.get_config("zip_rows_policy", None)
+    ctx.set_config("zip_rows_policy", policy)
+    yield
+    if old_policy is None:
+        ctx.remove_config("zip_rows_policy")
+    else:
+        ctx.set_config("zip_rows_policy", old_policy)
+
+
+@pytest.mark.parametrize("zip_policy", ["drop"], indirect=True)
+def test_zip_drop_policy_for_different_row_counts(ray_start_regular_shared, zip_policy):
+    ds1 = ray.data.range(5, override_num_blocks=2)
+    ds2 = ray.data.range(3, override_num_blocks=1).map(
+        column_udf("id", lambda x: x + 10)
+    )
+    assert ds1.zip(ds2).take_all() == named_values(
+        ["id", "id_1"],
+        [(0, 10), (1, 11), (2, 12)],
+    )
+
+
+@pytest.mark.parametrize("zip_policy", ["pad"], indirect=True)
+def test_zip_pad_policy_for_different_row_counts(ray_start_regular_shared, zip_policy):
+    ds1 = ray.data.range(3, override_num_blocks=2)
+    ds2 = ray.data.range(5, override_num_blocks=1).map(
+        column_udf("id", lambda x: x + 10)
+    )
+    assert ds1.zip(ds2).take_all() == named_values(
+        ["id", "id_1"],
+        [(0, 10), (1, 11), (2, 12), (None, 13), (None, 14)],
+    )
+
+
 if __name__ == "__main__":
     import sys
 
