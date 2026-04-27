@@ -2,8 +2,8 @@
 //python/ray/serve/tests:test_haproxy_api
 //python/ray/serve/tests:test_metrics_haproxy
 //python/ray/serve/tests:test_direct_ingress
-//python/ray/serve/tests:test_direct_ingress_standalone
-//python/ray/serve/tests:test_direct_ingress_standalone_with_grpc
+//python/ray/serve/tests:test_per_request_headers
+//python/ray/serve/tests:test_per_request_headers_with_grpc
 //python/ray/serve/tests:test_direct_ingress_with_grpc
 //python/ray/serve/tests:test_grpc_e2e
 //python/ray/serve/tests:test_grpc_replica_wrapper

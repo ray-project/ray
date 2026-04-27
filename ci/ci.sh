@@ -204,7 +204,13 @@ install_ray() {
     # too high that can break CI, especially on MacOS.
     pip install -q cython==3.0.12
 
-    pip install -v -e . -c requirements_compiled.txt
+    # editable_mode=compat: force setuptools (>=64) to emit a legacy
+    # .egg-link / easy-install.pth editable install instead of a PEP 660
+    # .pth + MetaPathFinder. Static tools (mypy, pyright) walk sys.path and
+    # can't follow PEP 660 finders, so test_typing fails with
+    # `Module "ray" has no attribute "init"` under strict editables.
+    pip install -v -e . -c requirements_compiled.txt \
+      --config-settings editable_mode=compat
   )
   (
     # For runtime_env tests, wheels are needed
