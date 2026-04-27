@@ -854,7 +854,7 @@
     script: >
       python model_inference_pipeline_benchmark.py
       --input-path s3://ray-benchmark-data/tpch/parquet/sf100/lineitem
-      --preprocessing-batch-size 4096
+      --preprocessing-batch-size "auto"
       --inference-batch-size 1024
       --inference-min-actors 1
       --inference-max-actors 300
@@ -1146,6 +1146,8 @@
 
 - name: does_not_over_provision
   group: data-autoscaling
+  # Set to manual because this is expected to fail with the
+  # `DefaultClusterAutoscalerV2`.
   frequency: manual
 
   cluster:
