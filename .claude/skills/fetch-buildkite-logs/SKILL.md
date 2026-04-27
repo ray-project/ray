@@ -7,7 +7,7 @@ description: Fetch and analyze Buildkite CI build logs for failures
 
 ## Prerequisites
 - BUILDKITE_API_TOKEN must be set in the environment (typically ~/.bashrc)
-- If not configured, direct user to doc/source/ray-contribute/agent-development.rst for setup
+- If not configured, direct user to doc/source/ray-contribute/agent-development.md for setup
 
 ## Steps
 1. Verify token: `echo $BUILDKITE_API_TOKEN | head -c4`
