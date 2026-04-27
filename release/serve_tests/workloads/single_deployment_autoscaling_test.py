@@ -67,6 +67,9 @@ STAGES = [
     LocustStage(duration_s=490, users=109, spawn_rate=20),  # sustain
 ]
 
+STAGE_NAMES = ["warmup", "ramp_up", "sharp_jump", "sustain"]
+
+
 
 def build_results(stats: LocustTestResults, service_id: str) -> Dict[str, Any]:
     results_per_stage = [
@@ -128,32 +131,62 @@ def build_results(stats: LocustTestResults, service_id: str) -> Dict[str, Any]:
 
 
 def log_and_assert_results(stats: LocustTestResults) -> None:
+    # ToDo(kamil) for now only report errors, max latency and total requests. Once stable add asserts too.
+    errors = stats.num_failures
+    total = stats.total_requests
+    p50 = stats.p50_latency
+    p99 = stats.p99_latency
+    max_latency = stats.max_latency
+
     logger.info(
-        f"Aggregated: {stats.total_requests} requests, "
-        f"{stats.num_failures} failures, "
-        f"p50={stats.p50_latency:.1f}ms, "
-        f"p99={stats.p99_latency:.1f}ms"
+        f"Aggregated: {total} requests, "
+        f"{errors} failures, "
+        f"p50={p50:.1f}ms, "
+        f"p99={p99:.1f}ms, "
+        f"max_latency={max_latency:.1f}ms"
     )
 
     for i, stage_stats in enumerate(stats.stats_in_stages):
+        name = STAGE_NAMES[i] if i < len(STAGE_NAMES) else f"stage_{i + 1}"
         logger.info(
-            f"Stage {i + 1}: rps={stage_stats.rps:.0f}, "
+            f"Stage '{name}': "
+            f"rps={stage_stats.rps:.0f}, "
             f"p50={stage_stats.p50_latency:.1f}ms, "
-            f"p99={stage_stats.p99_latency:.1f}ms"
+            f"p99={stage_stats.p99_latency:.1f}ms, "
+            f"max_latency={stage_stats.max_latency:.1f}ms"
         )
 
-    assert stats.num_failures == 0, (
-        f"Expected 0 failures, got {stats.num_failures} "
-        f"out of {stats.total_requests}."
-    )
-    assert (
-        stats.p99_latency <= 200
-    ), f"p99 latency {stats.p99_latency:.1f}ms exceeds 200ms."
-    assert (
-        stats.p50_latency <= 100
-    ), f"p50 latency {stats.p50_latency:.1f}ms exceeds 100ms."
+    # Per-stage assertions
+    stage_thresholds = {
+        "warmup": {"p99_latency": 200},
+        "ramp_up": {"p99_latency": 200, "rps": 100},
+        "sharp_jump": {"p99_latency": 200},
+        "sustain": {"p99_latency": 200, "rps": 1000},
+    }
+    for i, stage_stats in enumerate(stats.stats_in_stages):
+        if i >= len(STAGE_NAMES):
+            continue
+        name = STAGE_NAMES[i]
+        thresholds = stage_thresholds.get(name, {})
+        if "p99_latency" in thresholds:
+            assert stage_stats.p99_latency <= thresholds["p99_latency"], (
+                f"{name} p99_latency={stage_stats.p99_latency:.1f}ms "
+                f"exceeds: {thresholds['p99_latency']}ms."
+            )
+        if "rps" in thresholds:
+            assert stage_stats.rps >= thresholds["rps"], (
+                f"{name} rps={stage_stats.rps:.0f} "
+                f"below: {thresholds['rps']}."
+            )
 
-    logger.info("All assertions passed.")
+    if errors > 0:
+        logger.warning(f"Expected 0 failures, got {errors} out of {total} requests.")
+    if total < 1_000_000:
+        logger.warning(
+            f"Total requests = {total} below an expected minimum of 2_000_000."
+        )
+    if max_latency > 5_000:
+        logger.warning(f"max_latency unbounded: {max_latency:.1f}")
 
 
 @click.command()

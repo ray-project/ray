@@ -25,7 +25,7 @@ class PerformanceStats:
     p90_latency: float
     p99_latency: float
     rps: float
-
+    max_latency: float = 0.0
 
 @dataclass
 class LocustTestResults:
@@ -38,6 +38,7 @@ class LocustTestResults:
     p99_latency: float
     avg_rps: float
     stats_in_stages: List[PerformanceStats]
+    max_latency: float = 0.0
 
 
 @dataclass
@@ -124,6 +125,7 @@ def on_stage_finished(master_runner, stats_in_stages):
             p90_latency=stats_entry.get_current_response_time_percentile(0.9),
             p99_latency=stats_entry.get_current_response_time_percentile(0.99),
             rps=stats_entry.current_rps,
+            max_latency=stats_entry.max_response_time,
         )
     )
 
@@ -245,6 +247,7 @@ def run_locust_master(
         p99_latency=stats_entry.get_response_time_percentile(0.99),
         avg_rps=stats_entry.total_rps,
         stats_in_stages=client.stats_in_stages,
+        max_latency=stats_entry.max_response_time,
     )
     return asdict(results)
 
