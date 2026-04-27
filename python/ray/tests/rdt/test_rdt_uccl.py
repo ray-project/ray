@@ -144,7 +144,6 @@ def test_p2p(ray_start_regular):
     assert tensor.sum().item() == ray.get(result)
 
 
-@pytest.mark.skip(reason="CPU-CPU transfer support is WIP")
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_p2p_cpu_to_cpu(ray_start_regular):
     num_actors = 2

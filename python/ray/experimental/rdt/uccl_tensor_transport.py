@@ -94,18 +94,10 @@ class UCCLTensorTransport(TensorTransportManager):
         import torch
         from uccl import p2p
 
-        # Currently using physical GPU index when creating the endpoint.
         cuda_device = (
             torch.cuda.current_device() if torch.cuda.is_available() else 0
         )
-        gpu_ids = ray.get_gpu_ids()
-        if gpu_ids:
-            physical_gpu_idx = int(gpu_ids[cuda_device])
-        else:
-            physical_gpu_idx = cuda_device
-        # TODO: This endpoint API is subject to future changes as UCCL is evolving to
-        # better support GPU index identification for workloads like Ray.
-        self._uccl_endpoint = p2p.Endpoint(cuda_device, physical_gpu_idx)
+        self._uccl_endpoint = p2p.Endpoint(cuda_device)
         self._uccl_endpoint.start_passive_accept()
 
         ctx = ray.get_runtime_context()
