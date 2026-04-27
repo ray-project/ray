@@ -371,53 +371,34 @@ class TestThreadedDownloadPreResolve:
             )
         assert results[0].column("bytes")[-1].as_py() == b"good"
 
-    def test_all_probes_fail_fallback_caches_per_worker(self, tmp_path):
-        # Two safety guarantees in one test:
-        #  1. When every probe URI fails, we don't crash — workers fall back
-        #     to per-URI inference.
-        #  2. After the first successful fallback resolution IN A WORKER,
-        #     the worker caches the filesystem for its remaining URIs.
-        #     With 32 URIs round-robin'd across 16 workers (2 each), the
-        #     cache should yield exactly 16 inferences, not 32.
-        #
-        # The probe loop and the worker fallback both call
-        # _resolve_paths_and_filesystem(uri, filesystem=None) for the same
-        # URI. To make the probe fail but the worker succeed, we
-        # differentiate by thread id: the probe runs in this test's
-        # thread; workers run in threads spawned by make_async_gen.
-        import threading
-
+    def test_all_probes_fail_yields_none(self):
+        # When the probe iterates every URI and can't resolve a filesystem,
+        # workers would just retry the same URIs with the same filesystem=None
+        # and hit the same failure — while reintroducing per-worker FS
+        # construction (the IMDS herd this PR exists to prevent). Instead, we
+        # short-circuit: yield None for every URI and skip the worker pool.
         from ray.data._internal.planner import plan_download_op as pdo
 
-        # The worker tries to open the file, so it must exist.
-        real_path = tmp_path / "f.bin"
-        real_path.write_bytes(b"x")
-        real_fs = pafs.LocalFileSystem()
+        resolve_calls: list = []
 
-        main_tid = threading.get_ident()
-        inference_calls: list = []
+        def _fail_all(uri, filesystem=None, **_kw):
+            resolve_calls.append((uri, filesystem))
+            raise RuntimeError("nothing resolves")
 
-        def _fake(uri, filesystem=None, **_kw):
-            if filesystem is None:
-                if threading.get_ident() == main_tid:
-                    raise RuntimeError("probe fails")
-                inference_calls.append(uri)
-                return ([str(real_path)], real_fs)
-            # Normalize-only call (filesystem supplied by worker after caching).
-            return ([str(real_path)], filesystem)
-
-        uris = ["probe-fail"] * 32
+        uris = ["bad-1", "bad-2", "bad-3"]
         table = pa.Table.from_arrays([pa.array(uris)], names=["uri"])
-        with patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_fake):
-            list(
+        with patch.object(pdo, "_resolve_paths_and_filesystem", side_effect=_fail_all):
+            results = list(
                 download_bytes_threaded(
                     table, ["uri"], ["bytes"], DataContext.get_current()
                 )
             )
-        assert len(inference_calls) == 16, (
-            f"Expected 16 inferences (one per worker) after per-worker caching, "
-            f"got {len(inference_calls)} — fallback path is re-inferring per URI."
-        )
+
+        # Probe tried each URI exactly once. No worker calls.
+        assert len(resolve_calls) == len(uris)
+        assert all(fs is None for _, fs in resolve_calls)
+        # Every URI yields None.
+        assert [b.as_py() for b in results[0].column("bytes")] == [None] * len(uris)
 
     def test_empty_block_no_workers(self):
         # Zero URIs → the column loop skips; no probe, no workers spawned.

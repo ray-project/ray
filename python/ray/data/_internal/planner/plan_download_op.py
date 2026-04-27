@@ -216,17 +216,32 @@ def download_bytes_threaded(
                     continue
                 # _resolve_paths_and_filesystem can silently drop unresolvable
                 # URIs (returning ([], ...)) or yield no filesystem. Only accept
-                # a result we can actually use — otherwise workers fall back to
-                # per-URI inference and recreate the IMDS herd.
+                # a result we can actually use.
                 if paths and candidate_fs is not None:
                     resolved_fs = candidate_fs
                     break
 
-        wrapped_fs = None
-        if resolved_fs is not None:
-            wrapped_fs = RetryingPyFileSystem.wrap(
-                resolved_fs, retryable_errors=data_context.retried_io_errors
+        if resolved_fs is None:
+            # Probe iterated every URI and could not infer a filesystem. Workers
+            # would just retry the same URIs with the same filesystem=None and
+            # hit the same failure — while reintroducing per-worker FS
+            # construction (the IMDS herd this PR exists to prevent). Yield
+            # None for every URI and skip the worker pool entirely.
+            logger.warning(
+                "Could not resolve a filesystem from any URI in column "
+                f"{uri_column_name!r} ({len(uris)} URIs). Yielding None for "
+                "all rows."
             )
+            output_block = output_block.add_column(
+                len(output_block.column_names),
+                output_bytes_column_name,
+                pa.array([None] * len(uris), type=pa.binary()),
+            )
+            continue
+
+        wrapped_fs = RetryingPyFileSystem.wrap(
+            resolved_fs, retryable_errors=data_context.retried_io_errors
+        )
 
         def load_uri_bytes(
             uri_iterator,
@@ -240,41 +255,15 @@ def download_bytes_threaded(
                 try:
                     if uri is None:
                         continue
-                    if wrapped_fs is None:
-                        # All probe URIs failed — last-resort per-URI resolution.
-                        # Mirrors legacy behavior so a block full of unresolvable
-                        # URIs doesn't lose the ones that might still resolve.
-                        resolved_paths, per_uri_fs = _resolve_paths_and_filesystem(
-                            uri, filesystem=None
-                        )
-                        if per_uri_fs is None:
-                            # Resolution succeeded structurally but yielded no FS —
-                            # don't cache and don't try to read. Move on so the
-                            # next URI gets a fresh inference attempt.
-                            continue
-                        # Cache the first successful inference for the rest of
-                        # this worker's iterator so we don't redo it per URI.
-                        # Without this, every URI in the fallback path would
-                        # reconstruct the filesystem — recreating the repeated
-                        # construction cost this PR is trying to avoid.
-                        resolved_fs = per_uri_fs
-                        wrapped_fs = RetryingPyFileSystem.wrap(
-                            per_uri_fs,
-                            retryable_errors=data_context.retried_io_errors,
-                        )
-                        fs_for_read = wrapped_fs
-                    else:
-                        # Path normalization only — _resolve_paths_and_filesystem
-                        # short-circuits when filesystem is supplied (no network).
-                        resolved_paths, _ = _resolve_paths_and_filesystem(
-                            uri, filesystem=resolved_fs
-                        )
-                        fs_for_read = wrapped_fs
-
+                    # Path normalization only — _resolve_paths_and_filesystem
+                    # short-circuits when filesystem is supplied (no network).
+                    resolved_paths, _ = _resolve_paths_and_filesystem(
+                        uri, filesystem=resolved_fs
+                    )
                     resolved_path = resolved_paths[0] if resolved_paths else None
                     if resolved_path is None:
                         continue
-                    with fs_for_read.open_input_stream(resolved_path) as f:
+                    with wrapped_fs.open_input_stream(resolved_path) as f:
                         read_bytes = f.read()
                 except OSError as e:
                     logger.debug(
