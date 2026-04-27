@@ -139,8 +139,8 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
                 continue
             self._pending_validations.pop(task)
             logger.info(
-                f"Validation for checkpoint {pending.checkpoint} exceeded timeout_s="
-                f"{pending.timeout_s}s. Cancelling."
+                f"Validation for checkpoint {pending.checkpoint} exceeded "
+                f"timeout_s={pending.timeout_s}s. Cancelling."
             )
             self._timed_out_tasks.add(task)
             ray.cancel(task)
@@ -167,16 +167,15 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
                 f"Staged validations for checkpoint(s): {[tr.checkpoint for tr in self._training_report_queue]}."
             )
 
-        # Process next finished validation
-        # TODO: consider configuration to process multiple at a time
-        if self._finished_validations:
-            task, checkpoint = next(iter(self._finished_validations.items()))
-            self._finished_validations.pop(task)
+        # Process finished validations
+        while self._finished_validations:
+            task, checkpoint = self._finished_validations.popitem(last=False)
             update = self._process_finished_validation(task, checkpoint)
             if update is not None:
                 self._checkpoint_manager.update_checkpoints_with_validation_result(
                     {checkpoint: update}
                 )
+
         return len(self._pending_validations)
 
     def _resolve_timeout_s(
@@ -185,12 +184,15 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         """Resolve the effective timeout for a validation task.
 
         Per-task ``timeout_s=None`` falls back to the ValidationConfig default.
+        ``timeout_s=-1`` disables the timeout even if a default is set.
         """
-        default_timeout_s = self._validation_config.task_config.timeout_s
         if isinstance(validation, ValidationTaskConfig):
             task_timeout_s = validation.timeout_s
+            if task_timeout_s < 0:
+                return None
         else:
             task_timeout_s = None
+        default_timeout_s = self._validation_config.task_config.timeout_s
         return default_timeout_s if task_timeout_s is None else task_timeout_s
 
     def _kick_off_validations(self) -> int:
@@ -239,8 +241,7 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         except ray.exceptions.TaskCancelledError:
             if was_timed_out:
                 logger.info(
-                    f"Validation for checkpoint {checkpoint} was cancelled due to "
-                    "timeout."
+                    f"Validation for checkpoint {checkpoint} was cancelled due to timeout."
                 )
                 return {}, ReportedCheckpointStatus.VALIDATION_TIMEOUT
             logger.info(
