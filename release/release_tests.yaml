@@ -1114,7 +1114,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1154,7 +1154,7 @@
         cluster_compute: tpl_cpu_1_gce.yaml
 
 - name: long_running_serve_failure
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1194,7 +1194,7 @@
         cluster_compute: tpl_cpu_1_c5_gce.yaml
 
 - name: long_running_many_jobs
-  python: "3.10"
+  python: "3.13"
   group: Long running tests
   working_dir: long_running_tests
 
@@ -1238,7 +1238,7 @@
 ########################
 
 - name: jobs_basic_local_working_dir
-  python: "3.10"
+  python: "3.13"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1248,7 +1248,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch_cu130
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1269,7 +1269,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_basic_remote_working_dir
-  python: "3.10"
+  python: "3.13"
   group: Jobs tests
   working_dir: jobs_tests
 
@@ -1279,7 +1279,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch_cu130
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1300,7 +1300,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_remote_multi_node
-  python: "3.10"
+  python: "3.13"
   group: Jobs tests
   team: serve
   frequency: nightly
@@ -1309,7 +1309,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch_cu130
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
     timeout: 600
@@ -1326,7 +1326,7 @@
         cluster_compute: compute_tpl_gce_4_xlarge.yaml
 
 - name: jobs_check_cuda_available
-  python: "3.10"
+  python: "3.13"
   group: Jobs tests
   team: serve
 
@@ -1335,7 +1335,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch_cu130
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
     timeout: 600
@@ -1352,7 +1352,7 @@
         cluster_compute: compute_tpl_gce_gpu_node.yaml
 
 - name: jobs_specify_num_gpus
-  python: "3.10"
+  python: "3.13"
   group: Jobs tests
   team: serve
 
@@ -1361,7 +1361,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: gpu
+      type: torch_cu130
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
     timeout: 600
@@ -1463,7 +1463,7 @@
 ########################
 
 - name: pytest_serve_scale_replicas
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1491,7 +1491,7 @@
             - RAY_SERVE_ENABLE_HA_PROXY=1
 
 - name: pytest_serve_multi_deployment_1k_noop_replica
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1526,7 +1526,7 @@
         cluster_compute: compute_tpl_32_cpu_gce.yaml
 
 - name: pytest_serve_autoscaling_load_test
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1535,7 +1535,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch_cu130
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1556,7 +1556,7 @@
             - RAY_SERVE_ENABLE_HA_PROXY=1
 
 - name: serve_controller_benchmark_haproxy
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1592,7 +1592,7 @@
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_microbenchmarks
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1620,7 +1620,7 @@
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_throughput_optimized_microbenchmarks
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1653,7 +1653,7 @@
         cluster_compute: compute_tpl_single_node_gce.yaml
 
 - name: pytest_serve_resnet_benchmark
-  python: "3.10"
+  python: "3.13"
   group: Serve tests
   working_dir: serve_tests
 
@@ -1662,7 +1662,7 @@
 
   cluster:
     byod:
-      type: gpu
+      type: torch_cu130
     cluster_compute: compute_tpl_gpu_node.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -3679,6 +3679,7 @@
         cluster_compute: agent_stress_compute_gce.yaml
 
 - name: k8s_serve_ha_test
+  python: "3.13"
   group: k8s-test
   working_dir: k8s_tests
 
@@ -4543,7 +4544,7 @@
 
 - name: langchain_agent_ray_serve  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/ray-overview/examples/langchain_agent_ray_serve  # use // to access from repo's root
@@ -4569,7 +4570,7 @@
 
 - name: multi_agent_a2a  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/ray-overview/examples/multi_agent_a2a
@@ -4594,7 +4595,7 @@
 
 - name: model_multiplexing_forecast  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.12"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/serve/tutorials/model_multiplexing_forecast  # use // to access from repo's root
@@ -4619,7 +4620,7 @@
 
 - name: model_composition_recsys  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.12"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/serve/tutorials/model_composition_recsys  # use // to access from repo's root
@@ -4644,7 +4645,7 @@
 
 - name: asynchronous_inference  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.11"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/serve/tutorials/asynchronous-inference
@@ -4670,7 +4671,7 @@
 
 - name: video_analysis_pipeline  # do not use dashes (regex sensitive)
   frequency: weekly
-  python: "3.10"
+  python: "3.13"
   group: ray-examples
   team: serve
   working_dir: //doc/source/serve/tutorials/video-analysis
