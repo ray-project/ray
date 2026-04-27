@@ -253,7 +253,7 @@
     - __suffix__: aws
 
 - name: ssh_sanity_check_llm
-  python: "3.10"
+  python: "3.13"
   team: llm
   group: hello_world
   frequency: nightly
@@ -4013,7 +4013,7 @@
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_quantized_tp_1
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4034,7 +4034,7 @@
 # Runs performance benchmark tests against vLLM service
 - name: llm_serve_llama_3dot1_8B_tp_2
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4054,7 +4054,7 @@
 
 - name: llm_serve_multi_node
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4073,7 +4073,7 @@
 
 - name: llm_serve_dp_engine_fault
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4090,7 +4090,7 @@
 
 - name: llm_serve_llama_3dot2_1B_no_accelerator
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4111,7 +4111,7 @@
 
 - name: llm_serve_llama_3dot1_8B_lora
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4131,7 +4131,7 @@
 
 - name: llm_serve_llama_3dot2_1B_s3
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4151,7 +4151,7 @@
 
 - name: llm_serve_correctness
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4170,7 +4170,7 @@
 
 - name: llm_serve_vllm_integration_tests
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4189,7 +4189,7 @@
 
 - name: llm_serve_sleep_wakeup
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4209,7 +4209,7 @@
 
 - name: llm_serve_pause_resume
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4229,7 +4229,7 @@
 
 - name: llm_serve_rlhf
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4249,7 +4249,7 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_1p1d
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4269,7 +4269,7 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4289,7 +4289,7 @@
 
 - name: llm_serve_llama_3dot1_8B_quantized_tp1_2p6d_lmcache
   frequency: manual # todo(ray-llm): fix this test with new/old lmcache version and new vllm version and re-enable it.
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4310,7 +4310,7 @@
 
 - name: llm_serve_sglang_e2e
   frequency: manual
-  python: "3.10"
+  python: "3.13"
   group: llm-serve
   team: llm
   working_dir: llm_tests/serve
@@ -4333,7 +4333,7 @@
 
 - name: llm_batch_vllm
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
@@ -4353,7 +4353,7 @@
 
 - name: llm_batch_sglang_llama
   frequency: nightly
-  python: "3.10"
+  python: "3.13"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
@@ -4372,7 +4372,7 @@
 - name: llm_batch_vllm_multi_node
   # TODO(ray-llm): https://github.com/anyscale/ray/issues/572
   frequency: manual
-  python: "3.10"
+  python: "3.13"
   group: llm-batch
   team: llm
   working_dir: llm_tests/batch
@@ -4388,7 +4388,7 @@
       pytest -sv test_batch_multi_node_vllm.py
 
 - name: llm_batch_single_node_baseline_benchmark
-  python: "3.10"
+  python: "3.13"
   group: llm-batch
   working_dir: llm_tests/batch
   frequency: nightly
