@@ -60,16 +60,22 @@ class _RecordingSink:
         return self._chunks
 
 
-def ipc_size(table) -> int:
-    """Compute the exact IPC stream size without allocating the bytes."""
+def _serialize_to_recording_sink(table) -> "_RecordingSink":
+    """Walk the table once via the recording sink, producing both the IPC
+    stream size (sink.tell()) and the scatter-list of (addr, size) tuples
+    that the producer will hand to process_vm_writev. Buffer references are
+    held in sink._refs so the underlying memory stays alive while the sink
+    is cached.
+    """
     import pyarrow as pa
     import pyarrow.ipc as ipc
 
-    mock = pa.MockOutputStream()
-    writer = ipc.new_stream(mock, table.schema)
+    sink = _RecordingSink()
+    pf = pa.PythonFile(sink, mode="w")
+    writer = ipc.new_stream(pf, table.schema)
     writer.write_table(table)
     writer.close()
-    return mock.size()
+    return sink
 
 
 def _get_local_ip() -> str:
@@ -92,6 +98,12 @@ class FlightCore:
 
     def __init__(self):
         self._tables: Dict[str, Any] = {}  # key -> pa.Table
+        # key -> _RecordingSink. Built once at put time. Holds the
+        # scatter-list (addresses + sizes) the producer hands to
+        # process_vm_writev on every fetch, plus a refs list that keeps
+        # the underlying buffers alive even if the table dict were to
+        # drop the table independently.
+        self._sinks: Dict[str, Any] = {}
         self._lock = threading.Lock()
         self._server = None
         self._server_thread = None
@@ -115,10 +127,17 @@ class FlightCore:
         return self._uri
 
     def put(self, key: str, table) -> int:
-        """Store `table` under `key`; return its IPC size."""
-        size = ipc_size(table)
+        """Store `table` under `key`; return its IPC stream size.
+
+        Walks the table exactly once via the recording sink — this captures
+        the scatter-list that subsequent fetches will use, so
+        _handle_scatter_write doesn't have to re-serialize on every fetch.
+        """
+        sink = _serialize_to_recording_sink(table)
+        size = sink.tell()
         with self._lock:
             self._tables[key] = table
+            self._sinks[key] = sink
         return size
 
     def get(self, key: str):
@@ -129,11 +148,13 @@ class FlightCore:
     def pop(self, key: str):
         """Remove and return a table by key."""
         with self._lock:
+            self._sinks.pop(key, None)
             return self._tables.pop(key, None)
 
     def delete(self, key: str) -> None:
         with self._lock:
             self._tables.pop(key, None)
+            self._sinks.pop(key, None)
 
     def fetch_via_vm(self, flight_uri: str, key: str, size: int):
         """Same-node consumer path: allocate a local buffer, ask the producer
@@ -193,11 +214,11 @@ class FlightCore:
     def _handle_scatter_write(self, body: bytes) -> None:
         """Producer-side Flight do_action handler for scatter-write transfer.
 
+        Uses the scatter-list cached by put(); no per-fetch table walk.
+
         Body format: key_len(4) + key + pid(4) + addr(8) + size(8).
         """
-        import pyarrow as pa
         import pyarrow.flight as flight
-        import pyarrow.ipc as ipc
 
         from ray._raylet import vm_scatter_write
 
@@ -212,18 +233,10 @@ class FlightCore:
         offset += 8
         buf_size = struct.unpack_from("<q", body, offset)[0]
 
-        table = self.get(key)
-        if table is None:
+        with self._lock:
+            sink = self._sinks.get(key)
+        if sink is None:
             raise flight.FlightError(f"Object not found: {key}")
-
-        # The recording sink captures pointers to the table's column buffers
-        # (no copy) plus small metadata bytes. process_vm_writev then delivers
-        # everything to the consumer's buffer in one syscall.
-        sink = _RecordingSink()
-        pf = pa.PythonFile(sink, mode="w")
-        writer = ipc.new_stream(pf, table.schema)
-        writer.write_table(table)
-        writer.close()
 
         vm_scatter_write(consumer_pid, consumer_addr, buf_size, sink.scatter_list)
 

@@ -30,7 +30,6 @@ import pyarrow as pa
 
 import ray
 
-
 MODE_LABELS = {
     "ray": "Ray object store (plasma)",
     "arrow-native": "Arrow Flight (native, RAY_USE_FLIGHT_NATIVE=1)",
@@ -44,7 +43,9 @@ def parse_args():
     p.add_argument(
         "--placement", choices=["same-node", "cross-node", "mixed"], default="same-node"
     )
-    p.add_argument("--consumer-mode", choices=["read-only", "modify"], default="read-only")
+    p.add_argument(
+        "--consumer-mode", choices=["read-only", "modify"], default="read-only"
+    )
     p.add_argument("--num-actor-pairs", type=int, default=4)
     p.add_argument("--concurrency", type=int, default=4)
     p.add_argument(
@@ -59,6 +60,7 @@ def parse_args():
 
 
 # ------------------------------------------------------------------- actors
+
 
 def _enable_ptrace():
     """Enable process_vm_readv/writev between sibling workers.
@@ -130,8 +132,7 @@ def _make_consumer_cls(consumer_mode: str, concurrency: int):
                 # column.
                 for col in table.columns:
                     if not (
-                        pa.types.is_floating(col.type)
-                        or pa.types.is_integer(col.type)
+                        pa.types.is_floating(col.type) or pa.types.is_integer(col.type)
                     ):
                         continue
                     for chunk in col.chunks:
@@ -143,6 +144,7 @@ def _make_consumer_cls(consumer_mode: str, concurrency: int):
 
 
 # ----------------------------------------------------------------- placement
+
 
 def _worker_nodes():
     """Alive nodes with at least 1 CPU — excludes head-only / dead nodes."""
@@ -175,13 +177,12 @@ def _plan_placement(placement: str, num_pairs: int):
 def _create_actors(cls, node_ids):
     actors = []
     for node_id in node_ids:
-        actors.append(
-            cls.options(label_selector={"ray.io/node-id": node_id}).remote()
-        )
+        actors.append(cls.options(label_selector={"ray.io/node-id": node_id}).remote())
     return actors
 
 
 # ---------------------------------------------------------------------- core
+
 
 class _Stream:
     """Streaming submit/drain state. Caller drives it via submit() + wait()."""
@@ -271,7 +272,9 @@ def bench(producers, consumers, size_mb, duration_s, max_in_flight):
     if lat_sorted:
         avg_ms = sum(latencies) / len(latencies) * 1000
         p50_ms = lat_sorted[len(lat_sorted) // 2] * 1000
-        p99_ms = lat_sorted[min(len(lat_sorted) - 1, int(len(lat_sorted) * 0.99))] * 1000
+        p99_ms = (
+            lat_sorted[min(len(lat_sorted) - 1, int(len(lat_sorted) * 0.99))] * 1000
+        )
     else:
         avg_ms = p50_ms = p99_ms = 0.0
     tables_per_s = completed / elapsed if elapsed > 0 else 0.0
@@ -306,7 +309,9 @@ def main():
         max_in_flight = args.num_actor_pairs * args.concurrency
 
     print(f"Mode:          {MODE_LABELS[args.mode]}")
-    print(f"Placement:     {args.placement}  (cluster has {len(all_nodes)} worker nodes)")
+    print(
+        f"Placement:     {args.placement}  (cluster has {len(all_nodes)} worker nodes)"
+    )
     print(f"Consumer mode: {args.consumer_mode}")
     print(
         f"Actor pairs:   {args.num_actor_pairs} producers + {args.num_actor_pairs} "
