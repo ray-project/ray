@@ -11,13 +11,12 @@ from ray.experimental.rdt.cuda_ipc_transport import CudaIpcTransport
 from ray.experimental.rdt.nixl_tensor_transport import (
     NixlTensorTransport,
 )
-from ray.experimental.rdt.uccl_tensor_transport import (
-    UCCLTensorTransport,
-)
-
 from ray.experimental.rdt.tensor_transport_manager import (
     TensorTransportManager,
     TensorTransportMetadata,
+)
+from ray.experimental.rdt.uccl_tensor_transport import (
+    UCCLTensorTransport,
 )
 from ray.util.annotations import PublicAPI
 

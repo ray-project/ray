@@ -94,9 +94,7 @@ class UCCLTensorTransport(TensorTransportManager):
         import torch
         from uccl import p2p
 
-        cuda_device = (
-            torch.cuda.current_device() if torch.cuda.is_available() else 0
-        )
+        cuda_device = torch.cuda.current_device() if torch.cuda.is_available() else 0
         self._uccl_endpoint = p2p.Endpoint(cuda_device)
         self._uccl_endpoint.start_passive_accept()
 
@@ -221,7 +219,9 @@ class UCCLTensorTransport(TensorTransportManager):
                         ep.remove_remote_endpoint(cached_conn_id)
                     self._remote_endpoints.move_to_end(remote_name)
                 elif len(self._remote_endpoints) >= UCCL_REMOTE_ENDPOINT_CACHE_MAXSIZE:
-                    evicted_name, (evicted_conn_id, _) = self._remote_endpoints.popitem(last=False)
+                    evicted_name, (evicted_conn_id, _) = self._remote_endpoints.popitem(
+                        last=False
+                    )
                     ep.remove_remote_endpoint(evicted_conn_id)
 
             # Establish the connection and read the data.
@@ -255,7 +255,7 @@ class UCCLTensorTransport(TensorTransportManager):
                         raise RuntimeError(
                             f"UCCL transfer aborted for object id: {obj_id}"
                         )
-                time.sleep(0.001) # Avoid busy waiting.
+                time.sleep(0.001)  # Avoid busy waiting.
         except Exception:
             from ray.exceptions import RayDirectTransportError
 
@@ -268,9 +268,7 @@ class UCCLTensorTransport(TensorTransportManager):
             with self._aborted_transfer_obj_ids_lock:
                 self._aborted_transfer_obj_ids.discard(obj_id)
             if UCCL_REMOTE_ENDPOINT_CACHE_MAXSIZE == 0 and remote_name:
-                ep.remove_remote_endpoint(
-                    self._remote_endpoints[remote_name][0]
-                )
+                ep.remove_remote_endpoint(self._remote_endpoints[remote_name][0])
             if local_descs:
                 with self._cache_lock:
                     ep.deregister_memory(local_descs)

@@ -251,7 +251,9 @@ def test_uccl_abort_sender_dies_before_creating(ray_start_regular):
     assert ray.get(result) == 15
 
 
-@pytest.mark.skip(reason="UCCL connection state corruption after sender killed. Fixing this is WIP.")
+@pytest.mark.skip(
+    reason="UCCL connection state corruption after sender killed. Fixing this is WIP."
+)
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 def test_uccl_abort_sender_dies_before_sending(ray_start_regular):
     actors = [UCCLGPUTestActor.remote() for _ in range(2)]
