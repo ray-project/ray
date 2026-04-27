@@ -167,26 +167,55 @@ def _shuffle_map(
         # Release references to allow GC of this block's intermediate data.
         del block, block_partitions
 
-    # Build grouped output: concatenate accumulated shards per partition.
-    # Serialize each shard as LZ4-compressed Arrow IPC to reduce bytes
-    # transferred over the network during the reduce fetch phase.
+    # Build grouped output: compress one group at a time to bound peak memory.
+    # Each group is a single ZSTD-compressed Arrow IPC stream with one
+    # record batch per partition, tagged via schema metadata.
+    import json as _json
+
     ipc_write_options = pa.ipc.IpcWriteOptions(compression=pa.Codec("zstd"))
-    groups = [None] * num_groups
     non_empty_pids = []
     shard_sizes = {}
-    for pid_key, tables in partition_accumulators.items():
-        merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+    groups = [None] * num_groups
+
+    # Bucket partition accumulators by group, then process one group at a
+    # time: merge tables, compress to IPC, release tables before next group.
+    group_pid_keys: Dict[int, List[int]] = {}
+    for pid_key in partition_accumulators:
         group_idx = pid_key // shard_group_size
-        if groups[group_idx] is None:
-            groups[group_idx] = {}
-        # Serialize to ZSTD-compressed Arrow IPC bytes.
+        if group_idx not in group_pid_keys:
+            group_pid_keys[group_idx] = []
+        group_pid_keys[group_idx].append(pid_key)
+
+    for group_idx, pid_keys in group_pid_keys.items():
+        sorted_pids = sorted(pid_keys)
+        # Merge and compress each partition in this group.
+        pid_tables = {}
+        for pid_key in sorted_pids:
+            tables = partition_accumulators.pop(pid_key)
+            merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
+            pid_tables[pid_key] = merged
+            non_empty_pids.append(pid_key)
+            shard_sizes[pid_key] = (merged.num_rows, merged.nbytes)
+
+        # Write all partitions in this group as one compressed IPC stream.
+        first_table = pid_tables[sorted_pids[0]]
+        schema_meta = first_table.schema.metadata or {}
+        schema_meta[b"__pids__"] = _json.dumps(sorted_pids).encode()
+        tagged_schema = first_table.schema.with_metadata(schema_meta)
         sink = pa.BufferOutputStream()
-        writer = pa.ipc.new_stream(sink, merged.schema, options=ipc_write_options)
-        writer.write_table(merged)
+        writer = pa.ipc.new_stream(sink, tagged_schema, options=ipc_write_options)
+        for pid_key in sorted_pids:
+            # Combine into a single batch to guarantee one batch per partition.
+            # write_table can emit multiple batches for chunked tables.
+            table = pid_tables[pid_key]
+            if table.num_columns > 0:
+                table = table.combine_chunks()
+            writer.write_batch(table.to_batches()[0])
         writer.close()
-        groups[group_idx][pid_key] = sink.getvalue()
-        non_empty_pids.append(pid_key)
-        shard_sizes[pid_key] = (merged.num_rows, merged.nbytes)
+        groups[group_idx] = sink.getvalue()
+        # Release this group's tables before processing the next group.
+        del pid_tables
+    del group_pid_keys
     # Build input metadata with totals across all input blocks.
     from dataclasses import replace as _dc_replace
 
@@ -231,17 +260,26 @@ def _shuffle_reduce(
 
     groups = ray.get(group_refs)
 
-    # Decompress ZSTD-compressed Arrow IPC shards and accumulate.
+    # Decompress ZSTD-compressed Arrow IPC streams and accumulate.
+    # Each group is a single IPC stream with partition IDs in schema
+    # metadata, one data batch per partition in the listed order.
+    import json as _json
+
     partition_builders: Dict[int, ArrowBlockBuilder] = {
         pid: ArrowBlockBuilder() for pid in partition_ids
     }
+    partition_ids_set = set(partition_ids)
 
     for group in groups:
         if group is not None:
-            for pid in partition_ids:
-                if pid in group:
-                    reader = pa.ipc.open_stream(group[pid])
-                    partition_builders[pid].add_block(reader.read_all())
+            reader = pa.ipc.open_stream(group)
+            group_pids = _json.loads(reader.schema.metadata[b"__pids__"])
+            for pid_key in group_pids:
+                batch = reader.read_next_batch()
+                if pid_key in partition_ids_set:
+                    partition_builders[pid_key].add_block(
+                        pa.Table.from_batches([batch], schema=reader.schema)
+                    )
     del groups
 
     # Yield each partition as a separate output block.
@@ -328,6 +366,10 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     _DEFAULT_REDUCE_TASK_NUM_CPUS = 1.0
     _DEFAULT_COMPACTION_STRATEGY = "pre_map_merge"  # "none" | "pre_map_merge"
     _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 0.5 * 1024 * 1024 * 1024  # 0.5 GB
+    # Max reducers per node, regardless of heap budget.  Bounds NIC fetch
+    # contention; chosen empirically — most cloud instances saturate around
+    # this concurrency on shuffle-heavy workloads.
+    _DEFAULT_MAX_REDUCERS_PER_NODE = 4
 
     def __init__(
         self,
@@ -410,13 +452,17 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         # -- Reduce per-task CPU reservation ----------------------------------
         # Auto-derived at reduce-start time from actual partition sizes.
         # Reserving >1 CPU per reducer limits how many reducers Ray schedules
-        # on the same node, reducing heap OOM and plasma spill pressure.
+        # on the same node, reducing heap OOM and NIC fetch contention.
         # Can be overridden via config for manual tuning.
         self._reduce_task_num_cpus_override: Optional[float] = data_context.get_config(
             "actorless_shuffle_reduce_task_num_cpus",
             None,
         )
         self._reduce_task_num_cpus: float = self._DEFAULT_REDUCE_TASK_NUM_CPUS
+        self._max_reducers_per_node: int = data_context.get_config(
+            "actorless_shuffle_max_reducers_per_node",
+            self._DEFAULT_MAX_REDUCERS_PER_NODE,
+        )
 
         # -- Output queue -----------------------------------------------------
         self._output_queue: deque = deque()
@@ -678,38 +724,64 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def _auto_derive_reduce_cpus(self) -> float:
         """Derive reduce_task_num_cpus from partition sizes and cluster shape.
 
-        Each reducer decompresses its partition into heap (~2x uncompressed
-        size for input + output during build/yield).  We cap reducers per
-        node so their combined heap fits in the node's available memory.
+        Each reducer task processes ONE group of ``shard_group_size``
+        partitions packed in a single ZSTD IPC stream.  Peak heap is the
+        group's uncompressed bytes for decompressed inputs plus the
+        output blocks during build/yield (~2x).
+
+        Per-node concurrency is capped on two axes:
+
+        1. Heap budget: combined reducer heap must fit in node memory
+           (excluding object store and worker/raylet overhead).
+        2. Fetch contention: concurrent reducers share the local NIC
+           when pulling remote shards.  We don't query the actual NIC
+           bandwidth, so we apply a conservative fixed per-node cap.
         """
         import math
 
         if not self._partition_bytes:
             return self._DEFAULT_REDUCE_TASK_NUM_CPUS
 
-        max_partition = max(self._partition_bytes.values())
-        reducer_heap = max_partition * 2  # decompressed input + output
+        # Actual max group size — accounts for partition skew within a
+        # group (a group with two large partitions costs more than one
+        # with two small ones).
+        max_group_bytes = 0
+        for group_idx in range(self._num_groups):
+            start = group_idx * self._shard_group_size
+            end = min(start + self._shard_group_size, self._num_partitions)
+            group_bytes = sum(
+                self._partition_bytes.get(pid, 0) for pid in range(start, end)
+            )
+            if group_bytes > max_group_bytes:
+                max_group_bytes = group_bytes
 
-        # Get per-node resources from cluster.
+        if max_group_bytes == 0:
+            return self._DEFAULT_REDUCE_TASK_NUM_CPUS
+
+        reducer_heap = max_group_bytes * 2  # decompressed input + output
+
         cluster_res = ray.cluster_resources()
         num_nodes = max(len(ray.nodes()), 1)
-        node_cpus = cluster_res.get("CPU", 8) / num_nodes
+        node_cpus = max(1.0, cluster_res.get("CPU", 8) / num_nodes)
         node_memory = cluster_res.get("memory", 30e9) / num_nodes
 
-        # How many reducers fit per node by heap budget.
-        # Use 80% of node memory to leave room for other tasks / overhead.
-        usable_memory = node_memory * 0.8
-        reducers_per_node = max(1, int(usable_memory / reducer_heap))
+        # Heap cap: 80% of node memory leaves headroom for raylet, IDLE
+        # workers (Python allocator retention), spill workers, and OS.
+        usable_node_memory = node_memory * 0.8
+        per_node_by_heap = max(1, int(usable_node_memory / reducer_heap))
 
-        # Convert to CPU reservation.
-        reduce_cpus = max(1.0, math.ceil(node_cpus / reducers_per_node))
+        target_per_node = min(per_node_by_heap, self._max_reducers_per_node)
+        reduce_cpus = max(1.0, math.ceil(node_cpus / target_per_node))
 
         logger.info(
             f"Auto-derived reduce_cpus={reduce_cpus} "
-            f"(max_partition={max_partition / 1e9:.1f}GB, "
+            f"(max_group={max_group_bytes / 1e9:.1f}GB "
+            f"[shard_group_size={self._shard_group_size}], "
             f"reducer_heap={reducer_heap / 1e9:.1f}GB, "
-            f"node_memory={node_memory / 1e9:.1f}GB, "
-            f"reducers_per_node={reducers_per_node})"
+            f"node_memory={node_memory / 1e9:.0f}GB, "
+            f"per_node_by_heap={per_node_by_heap}, "
+            f"max_reducers_per_node={self._max_reducers_per_node}, "
+            f"target_per_node={target_per_node})"
         )
         return float(reduce_cpus)
 
