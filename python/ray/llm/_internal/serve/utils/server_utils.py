@@ -10,7 +10,7 @@ from httpx import HTTPStatusError as HTTPXHTTPStatusError
 from pydantic import ValidationError as PydanticValidationError
 
 from ray import serve
-from ray.llm._internal.batch.stages.vllm_engine_stage import _VLLM_FATAL_ERRORS
+from ray.llm._internal.common.errors import VLLM_FATAL_ERRORS
 from ray.llm._internal.serve.constants import DEFAULT_FATAL_ERROR_COOLDOWN_S
 from ray.llm._internal.serve.core.configs.openai_api_models import (
     ErrorInfo,
@@ -24,25 +24,19 @@ logger = get_logger(__name__)
 T = TypeVar("T")
 
 
-_FATAL_ERROR_TYPE_NAMES = frozenset(e.__name__ for e in _VLLM_FATAL_ERRORS)
-
-
 def _is_fatal_engine_error(e: Exception) -> bool:
-    """
-    Detect fatal engine errors
-    """
-    type_name = type(e).__name__
-    return any(name in type_name for name in _FATAL_ERROR_TYPE_NAMES)
+    """Detect fatal engine errors via isinstance check."""
+    return VLLM_FATAL_ERRORS and isinstance(e, VLLM_FATAL_ERRORS)
 
 
 class _FatalEngineErrorLogHandler:
     """Rate limits logging for fatal engine errors.
 
-    - First occurrence: logs with full traceback.
-    - Subsequent occurrences within the cooldown window: suppressed.
-    - Every ``cooldown_s`` seconds: emits a summary with the count of
-      suppressed errors.
-    - Non fatal errors are never touched by this handler.
+    - First fatal error: logged with full traceback.
+    - Subsequent occurences within ``cooldown_s``: suppressed.
+    - Next fatal error after ``cooldown_s``: emits a summary with suppressed errors.
+    - Fatal error after ``2 * cooldown_s`` of quiet: logs full traceback again.
+    - Non-fatal errors: always logged, unaffected by rate limiting.
     """
 
     def __init__(self, cooldown_s: float = DEFAULT_FATAL_ERROR_COOLDOWN_S):
@@ -71,9 +65,19 @@ class _FatalEngineErrorLogHandler:
             return
 
         with self._lock:
+            now = time.monotonic()
+
+            # If enough quiet time has passed, treat this as a new failure event.
+            if (
+                self._first_logged
+                and (now - self._last_summary_time) >= 2 * self._cooldown_s
+            ):
+                self._first_logged = False
+                self._suppressed_count = 0
+
             if not self._first_logged:
                 self._first_logged = True
-                self._last_summary_time = time.monotonic()
+                self._last_summary_time = now
                 logger.error(
                     "Encountered failure while handling request %s",
                     request_id,
@@ -83,7 +87,6 @@ class _FatalEngineErrorLogHandler:
                 return
 
             self._suppressed_count += 1
-            now = time.monotonic()
             elapsed = now - self._last_summary_time
             if elapsed >= self._cooldown_s:
                 logger.error(
