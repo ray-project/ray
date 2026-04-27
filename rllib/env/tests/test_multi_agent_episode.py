@@ -1678,6 +1678,25 @@ class TestMultiAgentEpisode(unittest.TestCase):
         self.assertIn("a0", result)
         check(result["a0"], 0.7)
 
+        # --- Finalized episode (numpy-based buffers via to_numpy()) ---
+        # On the finalized path, the un-indexed hanging_val dict causes a crash
+        # in tree.map_structure: "The two structures don't have the same nested
+        # structure" (ndarray vs dict).
+        episode_fin = _make_episode()
+        episode_fin.to_numpy()
+
+        result = episode_fin.get_extra_model_outputs(
+            key="vf_preds", indices=[-1, -2], env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], [0.7, 0.5])
+
+        result = episode_fin.get_extra_model_outputs(
+            key="vf_preds", indices=-1, env_steps=True,
+        )
+        self.assertIn("a0", result)
+        check(result["a0"], 0.7)
+
     def test_other_getters(self):
         # TODO (simon): Revisit this test and the MultiAgentEpisode.episode_concat API.
         return
