@@ -37,8 +37,8 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 # delta-rs DNF ops we can translate. Anything else -> NotImplementedError, and
-# the caller (DeltaDatasource._split) drops the partition_filters and lets the
-# Filter operator stay in the plan.
+# the caller (DeltaDatasource._split) drops the partition_filters and routes
+# the full predicate to the inner ParquetDatasource for PyArrow-level eval.
 _DELTA_OP: Dict[Operation, str] = {
     Operation.EQ: "=",
     Operation.NE: "!=",
@@ -73,23 +73,36 @@ class _DeltaPartitionFilterTranslator:
                 f"delta-rs DNF can't represent "
                 f"{type(expr).__name__}({getattr(expr, 'op', None)})"
             )
-        if not isinstance(expr.left, ColumnExpr):
+
+        left, right = expr.left, expr.right
+        # Normalise literal-on-LHS to column-on-LHS for our supported ops.
+        # Python's __eq__/__ne__ overload already does this for the obvious
+        # `value == col("p")` form (no __req__ exists, so the column's __eq__
+        # fires), but a hand-constructed BinaryExpr can still land here flipped.
+        if (
+            isinstance(left, LiteralExpr)
+            and isinstance(right, ColumnExpr)
+            and expr.op in (Operation.EQ, Operation.NE)
+        ):
+            left, right = right, left
+
+        if not isinstance(left, ColumnExpr):
             raise NotImplementedError(
                 "Left-hand side of a Delta partition predicate must be a column"
             )
-        if not isinstance(expr.right, LiteralExpr):
+        if not isinstance(right, LiteralExpr):
             raise NotImplementedError(
                 "Right-hand side of a Delta partition predicate must be a literal"
             )
 
         op = _DELTA_OP[expr.op]
-        value = expr.right.value
+        value = right.value
         # delta-rs requires string-typed partition values today (delta-rs#3597).
         if op in ("in", "not in"):
             value = [str(v) for v in value]
         else:
             value = str(value)
-        return (expr.left.name, op, value)
+        return (left.name, op, value)
 
 
 class DeltaDatasource(Datasource):
@@ -125,6 +138,10 @@ class DeltaDatasource(Datasource):
         self._shuffle = shuffle
         self._include_paths = include_paths
         self._arrow_parquet_args = dict(arrow_parquet_args or {})
+        # Projection-pushdown state. Datasource.__init__ only initialises the
+        # predicate mixin; we own this attribute because we opt into the
+        # projection mixin via supports_projection_pushdown() below.
+        self._projection_map: Optional[Dict[str, str]] = None
         # Lazy: opened on first property access. Resetting on clone keeps the
         # PyO3 handle from being shared across apply_predicate copies.
         self._delta_table: Optional["DeltaTable"] = None
@@ -156,9 +173,16 @@ class DeltaDatasource(Datasource):
     def supports_predicate_pushdown(self) -> bool:
         return True
 
-    # apply_predicate is inherited from _DatasourcePredicatePushdownMixin
-    # (clones self, AND-combines into self._predicate_expr). Tests A1/A2 in
-    # test_delta_pushdown.py exercise this contract.
+    def supports_projection_pushdown(self) -> bool:
+        # Match ParquetDatasource so column selection (e.g. ds.select_columns)
+        # propagates to the inner reader instead of being a no-op above the
+        # already-removed Filter -- otherwise read_delta is strictly slower
+        # than read_parquet for the projected-columns case.
+        return True
+
+    # apply_predicate / apply_projection are inherited from the mixins
+    # (clone + combine into self._predicate_expr / self._projection_map).
+    # Tests A1/A2 in test_delta_pushdown.py exercise the predicate contract.
 
     def __copy__(self) -> "DeltaDatasource":
         # The default copy.copy would share the lazily-opened DeltaTable PyO3
@@ -181,7 +205,9 @@ class DeltaDatasource(Datasource):
         Returns ``(None, None)`` when no predicate has been applied. On any
         translation failure we degrade gracefully: the partition DNF goes back
         to ``None`` and the full predicate is left in ``data_predicate`` so the
-        Filter operator (still in the plan) can handle it.
+        inner ParquetDatasource can still evaluate it via PyArrow scanner-level
+        pushdown -- the outer Filter has already been pruned by the optimizer
+        because we returned True from ``supports_predicate_pushdown``.
         """
         if self._predicate_expr is None:
             return None, None
@@ -193,6 +219,15 @@ class DeltaDatasource(Datasource):
             return None, self._predicate_expr
 
         split = _split_predicate_by_columns(self._predicate_expr, partition_cols)
+
+        # Unsplittable mixed predicate (OR / NOT spanning partition + data
+        # columns -- parquet_datasource._split_predicate_by_columns returns
+        # (None, None) for these). The outer Filter is gone, so we MUST keep
+        # the full predicate alive on the data side or rows come back
+        # unfiltered.
+        if split.partition_predicate is None and split.data_predicate is None:
+            return None, self._predicate_expr
+
         partition_dnf: Optional[List[Tuple[str, str, Any]]] = None
         data_predicate = split.data_predicate
 
@@ -209,7 +244,7 @@ class DeltaDatasource(Datasource):
                 )
                 partition_dnf = None
                 # Leave the original (full) predicate to flow downstream so the
-                # outer Filter operator handles correctness.
+                # inner ParquetDatasource handles correctness via PyArrow.
                 data_predicate = self._predicate_expr
 
         return partition_dnf, data_predicate
@@ -228,11 +263,22 @@ class DeltaDatasource(Datasource):
         # eagerly fanning out to every parquet file and post-filtering.
         uris = self.delta_table.file_uris(partition_filters=partition_dnf)
 
+        # Route arrow_parquet_args through ParquetDatasource the same way
+        # read_parquet does: pop named kwargs, send the rest as
+        # to_batch_kwargs. ParquetDatasource has no **kwargs, so blindly
+        # unpacking would TypeError on common scanner options like
+        # ``batch_size`` or conflict with our explicit ``schema=``.
+        parquet_args = dict(self._arrow_parquet_args)
+        dataset_kwargs = parquet_args.pop("dataset_kwargs", None)
+        block_udf = parquet_args.pop("_block_udf", None)
+        # Use Delta's schema so PyArrow doesn't inspect parquet footers
+        # (issue #61547 explicitly calls out "even just for tail metadata"),
+        # but let an explicit caller-provided schema win.
+        schema = parquet_args.pop("schema", self.delta_table.schema().to_arrow())
+
         inner = ParquetDatasource(
             paths=list(uris),
-            # Use Delta's schema so PyArrow doesn't inspect parquet footers
-            # (issue #61547 explicitly calls out "even just for tail metadata").
-            schema=self.delta_table.schema().to_arrow(),
+            schema=schema,
             columns=self._columns,
             filesystem=self._filesystem,
             # We've already pruned at the Delta level. Disable ParquetDatasource's
@@ -242,8 +288,16 @@ class DeltaDatasource(Datasource):
             partitioning=None,
             shuffle=self._shuffle,
             include_paths=self._include_paths,
-            **self._arrow_parquet_args,
+            dataset_kwargs=dataset_kwargs,
+            _block_udf=block_udf,
+            to_batch_kwargs=parquet_args,
         )
+
+        # Forward any projection pushdown the optimizer applied to us. The
+        # combine logic in _DatasourceProjectionPushdownMixin composes this
+        # with whatever ``columns=`` the inner datasource was constructed with.
+        if self._projection_map is not None:
+            inner = inner.apply_projection(self._projection_map)
 
         if data_predicate is not None:
             inner = inner.apply_predicate(data_predicate)

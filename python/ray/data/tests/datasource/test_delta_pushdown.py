@@ -303,6 +303,53 @@ def test_delta_read_with_columns(partitioned_delta_table):
     assert set(sample.keys()) == {"x"}
 
 
+# ---------------------------------------------------------------------------
+# F. Regressions for review feedback on the first revision
+# ---------------------------------------------------------------------------
+
+
+def test_delta_unsplittable_or_predicate_returns_correct_rows(partitioned_delta_table):
+    """Mixed OR across partition + data columns can't be split into a partition
+    DNF -- ``_split_predicate_by_columns`` returns ``(None, None)`` for these.
+
+    Because ``supports_predicate_pushdown`` is True, the optimizer removes the
+    outer Filter, so the datasource MUST keep the full predicate alive on the
+    data side. Earlier revision dropped it silently and returned all rows.
+    """
+    ds = ray.data.read_delta(partitioned_delta_table)
+    filtered = ds.filter(expr=(col("part") == "a") | (col("x") > 105))
+
+    rows = filtered.take_all()
+    # part="a" -> all 10 rows (x in [0..9])
+    # x>105 in part="b" (x in [100..109]) -> 4 rows {106,107,108,109}
+    # x>105 in part="c" (x in [200..209]) -> 10 rows
+    # OR-union has no overlap with part="a", so total = 10 + 4 + 10 = 24
+    assert len(rows) == 24
+
+
+def test_delta_arrow_parquet_args_routed_to_scanner(partitioned_delta_table):
+    """``ParquetDatasource.__init__`` has no ``**kwargs``. Earlier revision
+    splatted ``arrow_parquet_args`` straight into the constructor, which would
+    TypeError on common scanner options like ``batch_size``. They must be
+    routed through ``to_batch_kwargs`` instead.
+    """
+    # batch_size is a valid PyArrow scanner option; if routing is wrong this
+    # raises TypeError("got an unexpected keyword argument 'batch_size'").
+    ds = ray.data.read_delta(partitioned_delta_table, batch_size=5)
+    assert ds.count() == 30
+
+
+def test_delta_select_columns_pushed_down(partitioned_delta_table):
+    """``select_columns`` (projection pushdown) must compose with our
+    DeltaDatasource and reach the inner ParquetDatasource. Without overriding
+    ``supports_projection_pushdown`` this is a perf regression vs. read_parquet.
+    """
+    ds = ray.data.read_delta(partitioned_delta_table).select_columns(["x"])
+    assert ds.schema().names == ["x"]
+    sample = ds.take(1)[0]
+    assert set(sample.keys()) == {"x"}
+
+
 if __name__ == "__main__":
     import sys
 
