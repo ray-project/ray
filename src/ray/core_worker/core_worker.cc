@@ -19,6 +19,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <tuple>
 #include <unordered_map>
 #include <utility>
@@ -2766,6 +2767,10 @@ Status CoreWorker::ExecuteTask(
     bool *is_retryable_error,
     std::string *actor_repr_name,
     std::string *application_error) {
+  RAY_LOG(INFO) << "[karticam] CoreWorker::ExecuteTask: "
+                << "task_id=" << task_spec.TaskId() << " func=" << task_spec.GetName()
+                << " thread=" << std::this_thread::get_id()
+                << " (about to call user function — this thread will block in user code)";
   RAY_LOG(DEBUG) << "Executing task, task info = " << task_spec.DebugString();
 
   // If the worker is exited via Exit API, we shouldn't execute tasks anymore.
@@ -3337,7 +3342,9 @@ Status CoreWorker::GetAndPinArgsForExecutor(const TaskSpecification &task,
       ids_ss << id << " ";
     }
     RAY_LOG(INFO) << "[karticam] GetAndPinArgs plasma Get (args should be local): "
-                  << "count=" << object_ids.size() << " ids=[ " << ids_ss.str() << "]";
+                  << "count=" << object_ids.size()
+                  << " thread=" << std::this_thread::get_id() << " ids=[ " << ids_ss.str()
+                  << "]";
   }
   RAY_RETURN_NOT_OK(
       plasma_store_provider_->Get(object_ids, owner_addresses, -1, &result_map));
@@ -3369,7 +3376,8 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
     if (!args_str.empty()) {
       RAY_LOG(INFO) << "[karticam] HandlePushTask (task arrived at worker): "
                     << "task_id=" << TaskID::FromBinary(request.task_spec().task_id())
-                    << " func=" << request.task_spec().name() << " by_ref_args=[ "
+                    << " func=" << request.task_spec().name()
+                    << " thread=" << std::this_thread::get_id() << " by_ref_args=[ "
                     << args_str << "]";
     }
   }
@@ -3457,11 +3465,15 @@ void CoreWorker::HandleActorCallArgWaitComplete(
     return;
   }
 
+  RAY_LOG(INFO) << "[karticam] HandleActorCallArgWaitComplete: tag=" << request.tag()
+                << " thread=" << std::this_thread::get_id();
+
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
       [this, tag = request.tag()] {
-        RAY_LOG(DEBUG) << "Actor task args are ready for tag: " << tag;
+        RAY_LOG(INFO) << "[karticam] MarkActorTaskArgsReady (posted callback running): "
+                      << "tag=" << tag << " thread=" << std::this_thread::get_id();
         actor_task_execution_arg_waiter_->MarkReady(tag);
       },
       "CoreWorker.MarkActorTaskArgsReady");

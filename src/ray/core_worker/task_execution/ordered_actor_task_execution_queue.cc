@@ -18,6 +18,7 @@
 #include <memory>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <utility>
 
 namespace ray {
@@ -118,7 +119,8 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
       }
       RAY_LOG(INFO) << "[karticam] Actor task requesting deps fetch: "
                     << "task_id=" << task_spec.TaskId() << " func=" << task_spec.GetName()
-                    << " deps=[ " << deps_ss.str() << "]";
+                    << " thread=" << std::this_thread::get_id() << " deps=[ "
+                    << deps_ss.str() << "]";
     }
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
@@ -131,7 +133,8 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
     waiter_.AsyncWait(
         dependencies, [this, seq_no, is_retry, retry_task, group, task_id]() {
           RAY_LOG(INFO) << "[karticam] Actor task deps ready (raylet signaled): "
-                        << "task_id=" << task_id;
+                        << "task_id=" << task_id
+                        << " thread=" << std::this_thread::get_id();
           TaskToExecute *ready_task = nullptr;
           if (is_retry) {
             // retry_task is guaranteed to be a valid pointer for retries
