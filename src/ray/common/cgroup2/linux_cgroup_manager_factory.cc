@@ -67,18 +67,14 @@ std::unique_ptr<CgroupManagerInterface> CgroupManagerFactory::Create(
   float user_memory_proportion_high = RayConfig::instance().user_memory_proportion_high();
   float user_memory_proportion_max = RayConfig::instance().user_memory_proportion_max();
 
-  int64_t user_memory_high_bytes =
-      static_cast<int64_t>(total_memory_bytes * user_memory_proportion_high);
+  // The system reserved memory here already includes object store memory when
+  // we resolved the resource isolation config.
+  int64_t user_memory_high_bytes = std::min(
+      total_memory_bytes - system_reserved_memory_bytes + object_store_memory_bytes,
+      static_cast<int64_t>(total_memory_bytes * user_memory_proportion_high));
   int64_t user_memory_max_bytes =
       static_cast<int64_t>(total_memory_bytes * user_memory_proportion_max);
-  if (RayConfig::instance().enable_memory_throttling_mode()) {
-    user_memory_high_bytes = std::min(total_memory_bytes - system_reserved_memory_bytes,
-                                      user_memory_high_bytes);
-  } else {
-    user_memory_max_bytes = std::min(
-        total_memory_bytes - system_reserved_memory_bytes + object_store_memory_bytes,
-        user_memory_max_bytes);
-  }
+
   StatusOr<std::unique_ptr<CgroupManagerInterface>> cgroup_manager_s =
       CgroupManager::Create(cgroup_path,
                             node_id,

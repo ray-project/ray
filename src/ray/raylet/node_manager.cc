@@ -244,11 +244,9 @@ NodeManager::NodeManager(
       ray_syncer_(io_service_, self_node_id_.Binary(), 1, 0),
       worker_killing_policy_(WorkerKillingPolicyFactory::Create(
           config.enable_resource_isolation, *cgroup_manager)),
-      memory_monitors_(MemoryMonitorFactory::Create(
-          CreateKillWorkersCallback(),
-          config.enable_resource_isolation,
-          RayConfig::instance().enable_memory_throttling_mode(),
-          *cgroup_manager)),
+      memory_monitors_(MemoryMonitorFactory::Create(CreateKillWorkersCallback(),
+                                                    config.enable_resource_isolation,
+                                                    *cgroup_manager)),
       add_process_to_system_cgroup_hook_(std::move(add_process_to_system_cgroup_hook)),
       cgroup_manager_(std::move(cgroup_manager)),
       shutting_down_(shutting_down),
@@ -3113,7 +3111,6 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
               RayConfig::instance().memory_usage_threshold(),
               RayConfig::instance().min_memory_free_bytes(),
               initial_config_.enable_resource_isolation,
-              RayConfig::instance().enable_memory_throttling_mode(),
               *cgroup_manager_);
           float computed_threshold_fraction =
               static_cast<float>(computed_threshold_bytes) /

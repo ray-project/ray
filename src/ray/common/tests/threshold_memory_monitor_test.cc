@@ -74,7 +74,7 @@ TEST_F(ThresholdMemoryMonitorTest,
 
   NoopCgroupManager noop_cgroup_manager;
   int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-      cgroup_total_bytes, 0.7f, -1, false, false, noop_cgroup_manager);
+      cgroup_total_bytes, 0.7f, -1, false, noop_cgroup_manager);
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
@@ -100,7 +100,7 @@ TEST_F(ThresholdMemoryMonitorTest,
 
   NoopCgroupManager noop_cgroup_manager;
   int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-      cgroup_total_bytes, 0.7f, -1, false, false, noop_cgroup_manager);
+      cgroup_total_bytes, 0.7f, -1, false, noop_cgroup_manager);
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,

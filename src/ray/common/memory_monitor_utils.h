@@ -73,8 +73,6 @@ class MemoryMonitorUtils {
    * @param resource_isolation_enabled Whether resource isolation is enabled. Used
    *        to determine if the threshold should be calculated based on the cgroup
    * constraints.
-   * @param memory_throttling_mode_enabled When true and resource isolation is enabled,
-   *        compute the memory threshold for memory throttling mode.
    * @param cgroup_manager The cgroup manager to fetch the upper bound memory constraints
    * from.
    * @return The memory threshold.
@@ -83,7 +81,6 @@ class MemoryMonitorUtils {
                                     float usage_threshold,
                                     int64_t min_memory_free_bytes,
                                     bool resource_isolation_enabled,
-                                    bool memory_throttling_mode_enabled,
                                     const CgroupManagerInterface &cgroup_manager);
 
   /**

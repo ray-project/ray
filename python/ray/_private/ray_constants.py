@@ -63,7 +63,7 @@ DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION = env_float(
 # The default minimum number of bytes to reserve for ray system processes.
 # This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION < this value.
 DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES = env_integer(
-    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES", 500 * (1024**2)
+    "RAY_DEFAULT_MIN_SYSTEM_RESERVED_MEMORY_BYTES", (1) * (1024**3)
 )
 # The default maximum number of bytes to reserve for ray system processes.
 # This value is used if the available_memory * DEFAULT_SYSTEM_RESERVED_MEMORY_PROPORTION > this value.

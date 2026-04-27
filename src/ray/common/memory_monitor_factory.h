@@ -25,13 +25,9 @@ namespace ray {
 class MemoryMonitorFactory {
  public:
   /**
-   * Create memory monitor instances based on configuration.
-   *
    * On Linux, creates monitors based on configuration:
    *   - Resource isolation disabled: ThresholdMemoryMonitor only.
-   *   - Resource isolation enabled, throttling disabled: ThresholdMemoryMonitor +
-   *     PressureMemoryMonitor.
-   *   - Resource isolation enabled, throttling enabled: EventMemoryMonitor only.
+   *   - Resource isolation enabled, ThresholdMemoryMonitor + EventMemoryMonitor.
    *
    * On non-Linux platforms, returns a vector with a single NoopMemoryMonitor.
    *
@@ -39,9 +35,6 @@ class MemoryMonitorFactory {
    * @param resource_isolation_enabled When resource isolation is enabled, the
    * memory monitors will work with the configured cgroup constraints to better
    * enforce the memory usage limit.
-   * @param memory_throttling_mode_enabled when enabled, the memory monitor will work
-   * with cgroup constraints to balance between memory throttling and worker killing to
-   * enforce stronger resource isolation between user and system slice.
    * @param cgroup_manager When resource isolation is enabled, the monitors will determine
    * the proper memory monitoring threshold based on the set cgroup constraints provided
    * by the cgroup manager.
@@ -50,7 +43,6 @@ class MemoryMonitorFactory {
   static std::vector<std::unique_ptr<MemoryMonitorInterface>> Create(
       KillWorkersCallback kill_workers_callback,
       bool resource_isolation_enabled,
-      bool memory_throttling_mode_enabled,
       const CgroupManagerInterface &cgroup_manager);
 };
 

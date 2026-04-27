@@ -84,7 +84,6 @@ TEST_F(MemoryMonitorFactoryTest,
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
       MemoryMonitorFactory::Create([]() {},
                                    /*resource_isolation_enabled=*/false,
-                                   /*memory_throttling_mode_enabled=*/false,
                                    cgroup_manager);
 
   ASSERT_EQ(monitors.size(), 1u) << "Expected exactly one monitor";
@@ -92,44 +91,19 @@ TEST_F(MemoryMonitorFactoryTest,
       << "Expected the sole monitor to be a ThresholdMemoryMonitor";
 }
 
-TEST_F(
-    MemoryMonitorFactoryTest,
-    TestCreateWithResourceIsolationEnabledThrottlingDisabledReturnsPressureAndThresholdMonitors) {
+TEST_F(MemoryMonitorFactoryTest,
+       TestCreateWithResourceIsolationEnabledReturnsThresholdMonitors) {
   FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
   TempFile pressure_file(cgroup_manager.GetPath() + "/memory.pressure");
 
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
       MemoryMonitorFactory::Create([]() {},
                                    /*resource_isolation_enabled=*/true,
-                                   /*memory_throttling_mode_enabled=*/false,
-                                   cgroup_manager);
-
-  ASSERT_EQ(monitors.size(), 2u)
-      << "Expected ThresholdMemoryMonitor + PressureMemoryMonitor";
-  bool has_threshold = false;
-  bool has_pressure = false;
-  for (const std::unique_ptr<MemoryMonitorInterface> &m : monitors) {
-    if (dynamic_cast<ThresholdMemoryMonitor *>(m.get()) != nullptr) has_threshold = true;
-    if (dynamic_cast<PressureMemoryMonitor *>(m.get()) != nullptr) has_pressure = true;
-  }
-  EXPECT_TRUE(has_threshold) << "Expected a ThresholdMemoryMonitor";
-  EXPECT_TRUE(has_pressure) << "Expected a PressureMemoryMonitor";
-}
-
-TEST_F(MemoryMonitorFactoryTest,
-       TestCreateWithResourceIsolationEnabledThrottlingEnabledReturnsEventMonitor) {
-  FakeCgroupManager cgroup_manager(kUserMemoryMaxBytes, kUserMemoryHighBytes);
-  TempFile pressure_file(cgroup_manager.GetPath() + "/memory.events");
-
-  std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors =
-      MemoryMonitorFactory::Create([]() {},
-                                   /*resource_isolation_enabled=*/true,
-                                   /*memory_throttling_mode_enabled=*/true,
                                    cgroup_manager);
 
   ASSERT_EQ(monitors.size(), 1u) << "Expected exactly one monitor";
-  EXPECT_NE(dynamic_cast<EventMemoryMonitor *>(monitors[0].get()), nullptr)
-      << "Expected the sole monitor to be a EventMemoryMonitor";
+  EXPECT_NE(dynamic_cast<ThresholdMemoryMonitor *>(monitors[0].get()), nullptr)
+      << "Expected the sole monitor to be a ThresholdMemoryMonitor";
 }
 
 }  // namespace ray

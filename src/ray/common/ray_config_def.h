@@ -110,18 +110,6 @@ RAY_CONFIG(int64_t,
 /// default time-based policy.
 RAY_CONFIG(bool, worker_killing_policy_by_group, false)
 
-/// Whether to enable the memory throttling monitoring system.
-/// When true, the memory monitor will work with cgroup constraints to
-/// balance between memory throttling and worker killing to enforce
-/// stronger resource isolation between user and system processes.
-/// This mode restrict the available heap memory for user processes to
-/// total system memory - system reserved memory - object store memory.
-///
-/// This mode is only supported when resource isolation is enabled, and
-/// should only be enabled if the workload is experiencing node deaths
-/// due to memory pressure.
-RAY_CONFIG(bool, enable_memory_throttling_mode, false)
-
 /// The reserved memory bytes for system processes
 /// enforced via cgroup memory.min constraint which guarantees
 /// that the system processes' memory will not be reclaimed under any conditions.
@@ -135,14 +123,17 @@ RAY_CONFIG(int64_t, system_memory_bytes_min, 0)
 /// Enforced by the cgroup memory.high constraint which throttles the
 /// user processes' when the threshold is reached.
 /// Default is 1.0, meaning the user processes are allowed to use 100% of the total
-/// memory. Only configure this value if you are confident that
+/// memory. If resource isolation is enabled, the user memory.high constraint
+/// will be set to the min of total memory - system reserved memory
+/// and user_memory_proportion_high * total memory.
+/// Only configure this value if you are confident that
 /// the configuration is desirable. Bad constraint configurations may
 /// lead to significant system performance degradation.
 RAY_CONFIG(float, user_memory_proportion_high, 1.0)
 
 /// The proportion of total memory the user processes are allowed to use.
 /// Enforced by the cgroup memory.max constraint which triggers the
-//. kernel OOM killer when the threshold is reached.
+/// kernel OOM killer when the threshold is reached.
 /// Default is 1.0, meaning the user processes are allowed to use 100% of the total
 /// memory. Only configure this value if you are confident that
 /// the configuration is desirable. Bad constraint configurations may

@@ -31,7 +31,6 @@ namespace ray {
 std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Create(
     KillWorkersCallback kill_workers_callback,
     bool resource_isolation_enabled,
-    bool memory_throttling_mode_enabled,
     const CgroupManagerInterface &cgroup_manager) {
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors;
 
@@ -44,55 +43,17 @@ std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Creat
       RayConfig::instance().memory_usage_threshold(),
       RayConfig::instance().min_memory_free_bytes(),
       resource_isolation_enabled,
-      memory_throttling_mode_enabled,
       cgroup_manager);
 
-  if (resource_isolation_enabled) {
-    std::string user_cgroup_path = cgroup_manager.GetUserCgroupPath();
-
-    if (memory_throttling_mode_enabled) {
-      StatusSetOr<std::unique_ptr<EventMemoryMonitor>, StatusT::IOError>
-          event_monitor_or = EventMemoryMonitor::Create(user_cgroup_path,
-                                                        std::move(kill_workers_callback));
-      RAY_CHECK(event_monitor_or.has_value())
-          << "Failed to create EventMemoryMonitor: " << event_monitor_or.message();
-      monitors.push_back(std::move(event_monitor_or.value()));
-    } else {
-      if (monitor_interval_ms > 0) {
-        monitors.push_back(std::make_unique<ThresholdMemoryMonitor>(
-            kill_workers_callback, memory_usage_threshold_bytes, monitor_interval_ms));
-      } else {
-        RAY_LOG(INFO)
-            << "ThresholdMemoryMonitor disabled. Relying on PressureMemoryMonitor only. "
-            << "Specify `RAY_memory_monitor_refresh_ms` > 0 to enable the "
-               "ThresholdMemoryMonitor.";
-      }
-
-      MemoryPsi pressure_threshold{
-          PressureMemoryMonitor::kDefaultMemoryPsiMonitoringMode,
-          PressureMemoryMonitor::kDefaultMemoryPsiStallProportion,
-          PressureMemoryMonitor::kDefaultMemoryPsiStallDurationS};
-
-      StatusSetOr<std::unique_ptr<PressureMemoryMonitor>,
-                  StatusT::InvalidArgument,
-                  StatusT::IOError>
-          pressure_monitor_or = PressureMemoryMonitor::Create(
-              pressure_threshold, user_cgroup_path, std::move(kill_workers_callback));
-      RAY_CHECK(pressure_monitor_or.has_value())
-          << "Failed to create PressureMemoryMonitor: " << pressure_monitor_or.message();
-      monitors.push_back(std::move(pressure_monitor_or.value()));
-    }
+  if (monitor_interval_ms > 0) {
+    monitors.push_back(
+        std::make_unique<ThresholdMemoryMonitor>(std::move(kill_workers_callback),
+                                                 memory_usage_threshold_bytes,
+                                                 monitor_interval_ms));
   } else {
-    if (monitor_interval_ms > 0) {
-      monitors.push_back(
-          std::make_unique<ThresholdMemoryMonitor>(std::move(kill_workers_callback),
-                                                   memory_usage_threshold_bytes,
-                                                   monitor_interval_ms));
-    } else {
-      RAY_LOG(INFO) << "ThresholdMemoryMonitor disabled. Specify "
-                    << "`RAY_memory_monitor_refresh_ms` > 0 to enable the monitor.";
-      monitors.push_back(std::make_unique<NoopMemoryMonitor>());
-    }
+    RAY_LOG(INFO) << "ThresholdMemoryMonitor disabled. Specify "
+                  << "`RAY_memory_monitor_refresh_ms` > 0 to enable the monitor.";
+    monitors.push_back(std::make_unique<NoopMemoryMonitor>());
   }
 
   return monitors;
