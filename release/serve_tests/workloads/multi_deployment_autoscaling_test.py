@@ -241,7 +241,8 @@ def log_and_assert_results(stats: Dict[str, Any]) -> None:
         logger.warning(f"Expected 0 failures, got {errors} out of {total} requests.")
     if total < 2_000_000:
         logger.warning(
-            f"Total requests = {total} below an expected minimum of 2_000_000.")
+            f"Total requests = {total} below an expected minimum of 2_000_000."
+        )
     if max_latency > 5_000:
         logger.warning(f"max_latency unbounded: {max_latency:.1f}")
 
