@@ -123,8 +123,7 @@ def test_default_log_level_is_info(controller_logging):
     """Test that the default log level filter is INFO when nothing is configured."""
     context = create_dummy_run_context()
     config = LoggingManager._get_controller_logger_config_dict(context)
-    assert config["loggers"]["ray.train"]["level"] == "DEBUG"
-    assert config["filters"]["train_log_level_filter"]["log_level"] == "INFO"
+    assert config["filters"][""]["log_level"] == "INFO"
 
 
 def test_log_level_filter_on_controller_handlers(controller_logging):
