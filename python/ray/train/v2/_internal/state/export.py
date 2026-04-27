@@ -32,7 +32,7 @@ from ray.train.v2._internal.state.schema import (
 from ray.train.v2._internal.util import TrainingFramework
 
 # Increment each time the exported Train schema changes (proto, pydantic, or
-# wire shape) so downstream consumers can distinguish event versions.
+# exported json) so downstream consumers can distinguish schema versions.
 TRAIN_SCHEMA_VERSION = 4
 RAY_TRAIN_VERSION = 2
 

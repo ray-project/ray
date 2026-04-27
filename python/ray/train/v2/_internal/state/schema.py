@@ -254,8 +254,11 @@ class DataExecutionOptions(BaseModel):
 class DataConfig(BaseModel):
     """Configuration for dataset splitting and execution options within Ray Train."""
 
+    # NOTE: `execution_options: Dict` was removed, replaced by `data_execution_options` below;
+    # do not reintroduce it.
+
     datasets_to_split: Union[Literal["all"], List[str]] = Field(
-        description="Which datasets to split; either 'all' or a list of dataset names.",
+        description="Which datasets to split; either 'all' or a list of dataset names."
     )
     data_execution_options: DataExecutionOptions = Field(
         description="Data execution options"

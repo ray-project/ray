@@ -191,10 +191,16 @@ message ExportTrainRunEventData {
       // Split only the listed datasets (by dataset name).
       StringList datasets = 2;
     }
-    // Data execution options.
-    DataExecutionOptions data_execution_options = 3;
+
+    // Tag 3 was the legacy `google.protobuf.Struct execution_options` field
+    // (Ray <= 2.55). Replaced by `data_execution_options` below.
+    reserved 3;
+    reserved "execution_options";
+
     // Whether to enable shard locality optimization.
     bool enable_shard_locality = 4;
+    // Data execution options.
+    DataExecutionOptions data_execution_options = 5;
   }
 
   // Run configuration parameters for a Train run
