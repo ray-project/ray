@@ -48,7 +48,10 @@ py_test_run_all_subdirectory(
         "exclusive",
         "team:core",
     ],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
@@ -59,7 +62,10 @@ py_test(
         "exclusive",
         "team:core",
     ],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
@@ -70,7 +76,10 @@ py_test(
         "exclusive",
         "team:core",
     ],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
@@ -81,7 +90,10 @@ py_test(
         "exclusive",
         "team:core",
     ],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
@@ -100,7 +112,10 @@ py_test(
         "exclusive",
         "team:core",
     ],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
@@ -119,7 +134,10 @@ py_test(
         "exclusive",
         "team:core",
     ],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
@@ -130,7 +148,10 @@ py_test(
         "exclusive",
         "team:core",
     ],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
@@ -142,7 +163,10 @@ py_test(
         "minimal",
         "team:core",
     ],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
@@ -183,7 +207,10 @@ py_test(
         "modules/serve/tests/test_serve_dashboard.py",
     ],
     tags = ["team:serve"],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
@@ -191,7 +218,10 @@ py_test(
     size = "enormous",
     srcs = ["modules/serve/tests/test_serve_dashboard_2.py"],
     tags = ["team:serve"],
-    deps = [":conftest"],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
 )
 
 py_test(
