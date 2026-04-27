@@ -59,13 +59,12 @@ APPLICATION: Dict[str, Any] = {
     ],
 }
 
-# Approximates the multi-deployment test's ramp profile with discrete stages.
-# Total ~14 min, peak 109 users.
+# Total 14 min; peak 109 users.
 STAGES = [
     LocustStage(duration_s=40, users=8, spawn_rate=2),  # warmup
-    LocustStage(duration_s=300, users=58, spawn_rate=20),  # ramp midpoint
+    LocustStage(duration_s=300, users=58, spawn_rate=20),  # ramp up
     LocustStage(duration_s=10, users=109, spawn_rate=20),  # sharp jump
-    LocustStage(duration_s=490, users=109, spawn_rate=20),  # sustain at peak
+    LocustStage(duration_s=490, users=109, spawn_rate=20),  # sustain
 ]
 
 
