@@ -4,7 +4,13 @@ from typing import Dict
 
 import numpy as np
 import torch
-from benchmark import Benchmark, BenchmarkMetric
+from benchmark import (
+    Benchmark,
+    BenchmarkMetric,
+    RuntimeEnvSetupTracker,
+    collect_dataset_stats,
+    benchmark_py_modules,
+)
 from torchvision.models import ResNet50_Weights, resnet50
 
 import ray
@@ -48,11 +54,6 @@ def main(args):
 
     print(f"Running GPU batch prediction with data from {data_url}")
 
-    # The preprocessing UDF converts images from uint8 to float64, which increases
-    # memory usage 8x. Each processed image is about 1.5 MiB (256×256×3×8 bytes). Since
-    # our target block size is 128 MiB, we set the batch size to around 90 images (128
-    # MiB / 1.5) to avoid running out of memory.
-    PREPROCESS_BATCH_SIZE = 90
     # Largest batch that can fit on a T4.
     INFERENCE_BATCH_SIZE = 900
 
@@ -104,7 +105,7 @@ def main(args):
     else:
         compute = ActorPoolStrategy(min_size=1, max_size=10)
         num_gpus = 1
-    ds = ds.map_batches(preprocess, batch_size=PREPROCESS_BATCH_SIZE)
+    ds = ds.map_batches(preprocess, batch_size="auto")
     ds = ds.map_batches(
         Predictor,
         batch_size=INFERENCE_BATCH_SIZE,
@@ -143,6 +144,7 @@ def main(args):
         print(f"Total chaos killed: {dead_nodes}")
 
     # For structured output integration with internal tooling
+    results = collect_dataset_stats(ds)
     results = {
         BenchmarkMetric.RUNTIME: total_time,
         BenchmarkMetric.THROUGHPUT: throughput,
@@ -151,13 +153,14 @@ def main(args):
         "total_time_s_wo_metadata_fetch": total_time_without_metadata_fetch,
         "throughput_images_s_wo_metadata_fetch": throughput_without_metadata_fetch,
     }
+    results["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
 
     return results
 
 
 if __name__ == "__main__":
     args = parse_args()
-
+    ray.init(runtime_env={"py_modules": benchmark_py_modules()})
     benchmark = Benchmark()
     benchmark.run_fn("batch-inference", main, args)
     benchmark.write_result()

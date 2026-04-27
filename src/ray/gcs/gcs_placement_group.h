@@ -78,6 +78,7 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
+    ComputeLabelDomainKey();
     SetupStates();
   }
 
@@ -122,6 +123,9 @@ class GcsPlacementGroup {
   /// Check if there are unplaced bundles.
   bool HasUnplacedBundles() const;
 
+  /// Check if all bundles are unplaced.
+  bool AllUnplacedBundles() const;
+
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
 
@@ -155,6 +159,21 @@ class GcsPlacementGroup {
   const rpc::PlacementGroupStats &GetStats() const;
 
   rpc::PlacementGroupStats *GetMutableStats();
+
+  /// Get the node label key used for label-domain-aware scheduling (e.g.
+  /// "ray.io/gpu-domain"), or std::nullopt if this PG doesn't use it.
+  std::optional<std::string> GetLabelDomainKey() const;
+
+  /// Get the label domain assignment for the given label key.
+  std::optional<std::string> GetLabelDomainAssignment(const std::string &label_key) const;
+
+  /// Set the label domain assignment for the given label key.
+  void SetLabelDomainAssignment(const std::string &label_key,
+                                const std::string &label_value);
+
+  /// Clear all label domain assignments (used when all bundles for label-domain PGs are
+  /// unplaced).
+  void ClearLabelDomainAssignments();
 
  private:
   // XXX.
@@ -193,6 +212,10 @@ class GcsPlacementGroup {
     }
     last_metric_state_ = cur_state;
   }
+
+  /// Inspects bundle label selectors to determine if this PG requires
+  /// label-domain-aware scheduling and persists the result in the proto.
+  void ComputeLabelDomainKey();
 
   /// The placement_group meta data which contains the task specification as well as the
   /// state of the gcs placement_group and so on (see gcs.proto).

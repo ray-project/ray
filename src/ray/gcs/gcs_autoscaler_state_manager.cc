@@ -256,6 +256,27 @@ void GcsAutoscalerStateManager::GetPendingGangResourceRequests(
         bundle_resource_req->add_placement_constraints()->CopyFrom(pg_constraint.value());
       }
     }
+
+    // Populate locality_requirement if this PG uses label-domain scheduling.
+    // TODO(#61777): Add support for multiple tiers of label domains.
+    const auto &label_domain_key = pg_data.label_domain_key();
+    if (!label_domain_key.empty()) {
+      auto *locality_req = bundle_selector->mutable_locality_requirement();
+      auto *locality_constraint = locality_req->mutable_locality_constraint();
+      locality_constraint->set_label_name(label_domain_key);
+      locality_constraint->set_placement_strategy(rpc::PlacementStrategy::STRICT_PACK);
+
+      // If the PG already has a domain assignment (rescheduling case),
+      // add a label selector to constrain to that specific domain.
+      const auto &assignments = pg_data.label_domain_assignments();
+      if (auto it = assignments.find(label_domain_key); it != assignments.end()) {
+        auto *label_constraint =
+            locality_req->mutable_label_selector()->add_label_constraints();
+        label_constraint->set_label_key(label_domain_key);
+        label_constraint->set_operator_(rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+        label_constraint->add_label_values(it->second);
+      }
+    }
   }
 }
 
@@ -457,12 +478,14 @@ void GcsAutoscalerStateManager::GetNodeStates(
 void GcsAutoscalerStateManager::HandleDrainNode(
     rpc::autoscaler::DrainNodeRequest request,
     rpc::autoscaler::DrainNodeReply *reply,
-    rpc::SendReplyCallback send_reply_callback) {
+    rpc::SendReplyCallback send_reply_callback,
+    const std::string &grpc_peer) {
   RAY_CHECK(thread_checker_.IsOnSameThread());
   const NodeID node_id = NodeID::FromBinary(request.node_id());
   RAY_LOG(INFO).WithField(node_id)
       << "HandleDrainNode, reason: " << request.reason_message()
-      << ", deadline: " << request.deadline_timestamp_ms();
+      << ", deadline: " << request.deadline_timestamp_ms()
+      << ", grpc_peer: " << grpc_peer;
 
   int64_t draining_deadline_timestamp_ms = request.deadline_timestamp_ms();
   if (draining_deadline_timestamp_ms < 0) {

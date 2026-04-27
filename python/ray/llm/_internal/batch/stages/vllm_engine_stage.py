@@ -535,7 +535,7 @@ class vLLMEngineWrapper:
             multi_modal_data = request.multimodal_data
 
         if request.prompt_token_ids is not None:
-            llm_prompt = vllm.inputs.data.TokensPrompt(
+            llm_prompt = vllm.inputs.TokensPrompt(
                 prompt_token_ids=request.prompt_token_ids,
                 multi_modal_data=multi_modal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
@@ -543,7 +543,7 @@ class vLLMEngineWrapper:
             )
         else:
             assert request.prompt
-            llm_prompt = vllm.inputs.data.TextPrompt(
+            llm_prompt = vllm.inputs.TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=multi_modal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
@@ -934,6 +934,15 @@ class vLLMEngineStage(StatefulStage):
         placement_group_config = fn_constructor_kwargs.pop(
             "placement_group_config", None
         )
+
+        # If bundle_per_worker is specified inside placement_group_config,
+        # expand it into full bundles list
+        if placement_group_config is not None:
+            bundle_per_worker = placement_group_config.pop("bundle_per_worker", None)
+            if bundle_per_worker is not None:
+                placement_group_config["bundles"] = [
+                    bundle_per_worker.copy() for _ in range(num_bundles_per_replica)
+                ]
         if executor_backend == "ray":
             # Note that we have to use partial() to pass a function
             # instead of an object.

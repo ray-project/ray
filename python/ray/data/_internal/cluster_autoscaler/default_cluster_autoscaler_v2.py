@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 import ray
-from .base_autoscaling_coordinator import AutoscalingCoordinator
+from .base_autoscaling_coordinator import AutoscalingCoordinator, ResourceDict
 from .default_autoscaling_coordinator import (
     DefaultAutoscalingCoordinator,
 )
@@ -14,11 +14,12 @@ from .resource_utilization_gauge import (
     ResourceUtilizationGauge,
     RollingLogicalUtilizationGauge,
 )
-from .util import cap_resource_request_to_limits
+from .util import cap_resource_request_to_limits, is_autoscaling_enabled
 from ray._common.utils import env_bool, env_float, env_integer
 from ray.data._internal.cluster_autoscaler import ClusterAutoscaler
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.util import GiB
 
 if TYPE_CHECKING:
     from ray.data._internal.execution.resource_manager import ResourceManager
@@ -51,7 +52,9 @@ class _NodeResourceSpec:
     def of(cls, *, cpu=0, gpu=0, mem=0):
         cpu = math.floor(cpu)
         gpu = math.floor(gpu)
-        mem = math.floor(mem)
+        # Round memory to the nearest 0.1 GiB so that nodes of the same type
+        # with slightly different reported physical memory are grouped together.
+        mem = int(round(mem / GiB, 1) * GiB) if mem > 0 else 0
         return cls(cpu=cpu, gpu=gpu, mem=mem)
 
     @classmethod
@@ -108,10 +111,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         to directly scale up nodes.
       * Cluster scaling down isn't handled here. It depends on the idle node
         termination.
-
-    Notes:
-      * It doesn't consider multiple concurrent Datasets for now, as the cluster
-        utilization is calculated by "dataset_usage / global_resources".
     """
 
     # Default cluster utilization threshold to trigger scaling up.
@@ -140,6 +139,12 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         "RAY_DATA_AUTOSCALING_REQUEST_EXPIRE_TIME_S",
         180,
     )
+    # When utilization drops below the scale-up threshold, keep renewing the last
+    # explicit request for a short time before releasing it.
+    DEFAULT_LOW_UTIL_REQUEST_RELEASE_DELAY_S: float = env_float(
+        "RAY_DATA_LOW_UTIL_REQUEST_RELEASE_DELAY_S",
+        180,
+    )
     # Whether to disable INFO-level logs.
     RAY_DATA_DISABLE_AUTOSCALER_LOGGING = env_bool(
         "RAY_DATA_DISABLE_AUTOSCALER_LOGGING", False
@@ -155,14 +160,17 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         cluster_scaling_up_delta: float = DEFAULT_CLUSTER_SCALING_UP_DELTA,
         cluster_util_avg_window_s: float = DEFAULT_CLUSTER_UTIL_AVG_WINDOW_S,
         min_gap_between_autoscaling_requests_s: float = MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS,  # noqa: E501
+        low_util_request_release_delay_s: float = DEFAULT_LOW_UTIL_REQUEST_RELEASE_DELAY_S,  # noqa: E501
         autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
         get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
             _get_node_resource_spec_and_count
         ),
+        get_time: Callable[[], float] = time.time,
     ):
         assert cluster_scaling_up_delta > 0
         assert cluster_util_avg_window_s > 0
         assert min_gap_between_autoscaling_requests_s >= 0
+        assert low_util_request_release_delay_s >= 0
 
         if resource_utilization_calculator is None:
             resource_utilization_calculator = RollingLogicalUtilizationGauge(
@@ -170,9 +178,6 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 cluster_util_avg_window_s=cluster_util_avg_window_s,
                 execution_id=execution_id,
             )
-
-        if autoscaling_coordinator is None:
-            autoscaling_coordinator = DefaultAutoscalingCoordinator()
 
         self._resource_limits = resource_limits
         self._resource_utilization_calculator = resource_utilization_calculator
@@ -182,14 +187,30 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._min_gap_between_autoscaling_requests_s = (
             min_gap_between_autoscaling_requests_s
         )
+        self._low_util_request_release_delay_s = low_util_request_release_delay_s
         # Last time when a request was sent to Ray's autoscaler.
         self._last_request_time = 0
+        # Track the last non-empty explicit request so low-utilization heartbeats
+        # can keep it alive briefly without turning allocated remaining-share
+        # resources into explicit autoscaler demand.
+        self._last_non_empty_resource_request: List[ResourceDict] = []
+        self._last_non_empty_request_time: Optional[float] = None
+        # Unique identifier for the cluster autoscaler as a requester for
+        # the autoscaling coordinator.
         self._requester_id = f"data-{execution_id}"
+        if autoscaling_coordinator is None:
+            autoscaling_coordinator = DefaultAutoscalingCoordinator(
+                requester_id=self._requester_id
+            )
         self._autoscaling_coordinator = autoscaling_coordinator
         self._get_node_counts = get_node_counts
+        self._get_time = get_time
+        self._autoscaling_enabled = is_autoscaling_enabled()
 
-        # Send an empty request to register ourselves as soon as possible,
-        # so the first `get_total_resources` call can get the allocated resources.
+        # Register with the coordinator immediately so the actor knows about this
+        # requester before the first ``get_allocated_resources call``. The cached value
+        # returned by ``get_allocated_resources`` (and thus ``get_total_resources``) will
+        # be empty until the actor responds with the first allocation (cold-start).
         self._send_resource_request([])
 
     def try_trigger_scaling(self):
@@ -198,7 +219,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         self._resource_utilization_calculator.observe()
 
         # Limit the frequency of autoscaling requests.
-        now = time.time()
+        now = self._get_time()
         if now - self._last_request_time < self._min_gap_between_autoscaling_requests_s:
             return
 
@@ -214,12 +235,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
                 f"CPU={util.cpu:.2f}, GPU={util.gpu:.2f}, memory={util.memory:.2f}, "
                 f"object_store_memory={util.object_store_memory:.2f}."
             )
-            # Send current resources allocation when upscaling is not needed,
-            # to renew our registration on AutoscalingCoordinator.
-            curr_resources = self._autoscaling_coordinator.get_allocated_resources(
-                requester_id=self._requester_id
-            )
-            self._send_resource_request(curr_resources)
+            self._send_resource_request(None)
             return
 
         # We separate active bundles (existing nodes) from pending bundles (scale-up delta)
@@ -274,28 +290,59 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             current_count = current_node_counts.get(node_spec, 0)
             message += f" [{node_spec}: {current_count} -> {requested_count}]"
 
-        if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING:
+        if self.RAY_DATA_DISABLE_AUTOSCALER_LOGGING or not self._autoscaling_enabled:
             level = logging.DEBUG
         else:
             level = logging.INFO
 
         logger.log(level, message)
 
-    def _send_resource_request(self, resource_request):
+    def _should_keep_non_empty_request(self, now: float) -> bool:
+        return (
+            self._last_non_empty_request_time is not None
+            and now - self._last_non_empty_request_time
+            < self._low_util_request_release_delay_s
+        )
+
+    def _send_resource_request(
+        self,
+        resource_request: Optional[List[ResourceDict]],
+    ):
+        now = self._get_time()
+        update_non_empty_request_state = True
+        if resource_request is None:
+            if self._should_keep_non_empty_request(now):
+                resource_request = self._last_non_empty_resource_request
+                update_non_empty_request_state = False
+            else:
+                # Renew our registration on AutoscalingCoordinator without
+                # keeping explicit autoscaler demand alive.
+                resource_request = []
+
         # Make autoscaler resource request.
         self._autoscaling_coordinator.request_resources(
-            requester_id=self._requester_id,
             resources=resource_request,
             expire_after_s=self.AUTOSCALING_REQUEST_EXPIRE_TIME_S,
             request_remaining=True,
         )
-        self._last_request_time = time.time()
+        if resource_request and update_non_empty_request_state:
+            self._last_non_empty_resource_request = [
+                bundle.copy() for bundle in resource_request
+            ]
+            self._last_non_empty_request_time = now
+        elif not resource_request:
+            self._last_non_empty_resource_request = []
+            self._last_non_empty_request_time = None
+        self._last_request_time = now
 
     def on_executor_shutdown(self):
         # Cancel the resource request when the executor is shutting down.
         try:
-            self._autoscaling_coordinator.cancel_request(self._requester_id)
+            self._autoscaling_coordinator.cancel_request()
         except Exception:
+            # cancel_request is fire-and-forget and shouldn't raise, but guard
+            # against unexpected Ray Core errors at submit time. At shutdown
+            # there's nothing useful to do except log and let the request expire.
             msg = (
                 f"Failed to cancel resource request for {self._requester_id}."
                 " The request will still expire after the timeout of"
@@ -305,9 +352,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
 
     def get_total_resources(self) -> ExecutionResources:
         """Get total resources available from the autoscaling coordinator."""
-        resources = self._autoscaling_coordinator.get_allocated_resources(
-            requester_id=self._requester_id
-        )
+        resources = self._autoscaling_coordinator.get_allocated_resources()
         total = ExecutionResources.zero()
         for res in resources:
             total = total.add(ExecutionResources.from_resource_dict(res))

@@ -168,7 +168,12 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         checkpoint_to_metrics = {}
         try:
             checkpoint_to_metrics[checkpoint] = ray.get(task)
-        except (ray.exceptions.RayTaskError, ray.exceptions.TaskCancelledError):
+        except ray.exceptions.TaskCancelledError:
+            logger.info(
+                f"Validation was cancelled for checkpoint {checkpoint}, likely because the train run was aborted. "
+                "It will be retried in the next train run with the same storage path if there is one."
+            )
+        except ray.exceptions.RayTaskError:
             checkpoint_to_metrics[checkpoint] = {}
             logger.exception(f"Validation failed for checkpoint {checkpoint}")
             # TODO: track failed validations - see ed45912bb6ed435de06ac1cd58e9918e6825b4fe

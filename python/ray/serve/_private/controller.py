@@ -39,6 +39,12 @@ from ray.serve._private.constants import (
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ENABLE_HA_PROXY,
+    RAY_SERVE_LOG_TO_STDERR,
+    RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
+    RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP,
+    RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD,
+    RAY_SERVE_THROUGHPUT_OPTIMIZED,
+    RAY_SERVE_USE_GRPC_BY_DEFAULT,
     RECOVERING_LONG_POLL_BROADCAST_TIMEOUT_S,
     SERVE_CONTROLLER_NAME,
     SERVE_DEFAULT_APP_NAME,
@@ -116,6 +122,7 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
+SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 
 
 class ServeController:
@@ -150,6 +157,9 @@ class ServeController:
         global_logging_config: LoggingConfig,
         grpc_options: Optional[gRPCOptions] = None,
     ):
+        if RAY_SERVE_THROUGHPUT_OPTIMIZED:
+            self._log_throughput_opt_message()
+
         self._controller_node_id = ray.get_runtime_context().get_node_id()
         assert (
             self._controller_node_id == get_head_node_id()
@@ -256,6 +266,10 @@ class ServeController:
             log_file_path=get_component_logger_file_path(),
         )
         self._shutting_down = False
+        self._shutdown_flag_persisted = False
+        if self.kv_store.get(SHUTDOWN_IN_PROGRESS_KEY) is not None:
+            self._shutting_down = True
+            self._shutdown_flag_persisted = True
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
@@ -284,6 +298,21 @@ class ServeController:
         self._last_broadcasted_target_groups: Optional[List[TargetGroup]] = None
 
         self._last_broadcasted_fallback_targets: Dict[RequestProtocol, Target] = {}
+
+    def _log_throughput_opt_message(self) -> None:
+        msg = "Throughput optimized Ray Serve enabled with the following configurations:\n"
+        if RAY_SERVE_ENABLE_DIRECT_INGRESS:
+            msg += "  • Direct ingress enabled\n"
+        if RAY_SERVE_USE_GRPC_BY_DEFAULT:
+            msg += "  • gRPC communication enabled\n"
+        if not RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD:
+            msg += "  • User code running in main thread (not separate)\n"
+        if not RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP:
+            msg += "  • Router running in main thread (not separate)\n"
+        if not RAY_SERVE_LOG_TO_STDERR:
+            msg += "  • Log to stderr disabled\n"
+        msg += f"  • Request path log buffer size: {RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE}\n"
+        logger.info(msg)
 
     def reconfigure_global_logging_config(self, global_logging_config: LoggingConfig):
         if (
@@ -729,6 +758,11 @@ class ServeController:
         )
 
     def _recover_state_from_checkpoint(self):
+        if self._shutting_down:
+            # If we're recovering into a `shutdown-in-progress state, don't
+            # re-apply the config.
+            return
+
         (
             deployment_time,
             serve_config,
@@ -932,6 +966,9 @@ class ServeController:
             self._shutdown_start_time = time.time()
             logger.info("Controller shutdown started.", extra={"log_to_stderr": False})
 
+        if not self._shutdown_flag_persisted:
+            self.kv_store.put(SHUTDOWN_IN_PROGRESS_KEY, b"1")
+            self._shutdown_flag_persisted = True
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
@@ -956,6 +993,9 @@ class ServeController:
             and proxy_state_is_shutdown
         ):
             self._kill_registered_cleanup_actors()
+            self.application_state_manager.delete_checkpoint()
+            self.deployment_state_manager.delete_checkpoint()
+            self.kv_store.delete(SHUTDOWN_IN_PROGRESS_KEY)
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},
@@ -1717,6 +1757,14 @@ class ServeController:
                 is killed, which raises a RayActorError.
         """
         self._shutting_down = True
+        try:
+            self.kv_store.put(SHUTDOWN_IN_PROGRESS_KEY, b"1")
+            self._shutdown_flag_persisted = True
+        except Exception:
+            logger.warning(
+                "Failed to persist shutdown flag; will retry in control loop.",
+                extra={"log_to_stderr": False},
+            )
         if not wait:
             return
 

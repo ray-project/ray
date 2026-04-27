@@ -129,6 +129,8 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+  // Whether resource isolation via cgroupv2 is enabled.
+  bool enable_resource_isolation;
 };
 
 enum RayletShutdownState : std::uint8_t {
@@ -175,7 +177,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       PlacementGroupResourceManager &placement_group_resource_manager,
       boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
       local_stream_socket socket,
-      ray::observability::MetricInterface &memory_manager_worker_eviction_total_count);
+      ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
+      ray::observability::MetricInterface
+          &node_manager_unexpected_worker_failure_total_count);
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
@@ -342,6 +346,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::CancelLocalTaskReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                               rpc::IsLocalWorkerDeadReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
@@ -437,9 +445,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Convert a worker to an actor since it's finished an actor creation task.
   /// \param worker The worker that was granted the actor creation lease.
-  /// \param lease The lease of the actor creation task.
+  /// \param lease_spec The lease specification of the actor creation task.
   void ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
-                            const RayLease &lease);
+                            const LeaseSpecification &lease_spec);
 
   /// Start a wait request for the requested objects.
   ///
@@ -648,10 +656,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
-
-  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
-                               rpc::IsLocalWorkerDeadReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(rpc::GetNodeStatsRequest request,
@@ -917,6 +921,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   Throttler global_gc_throttler_;
 
   ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
+
+  ray::observability::MetricInterface
+      &node_manager_unexpected_worker_failure_total_count_;
 
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource

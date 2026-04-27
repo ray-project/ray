@@ -53,7 +53,8 @@ def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
         seed_config=RandomSeedConfig(seed=0),
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "RandomShuffle"
     assert isinstance(physical_op, AllToAllOperator)
@@ -85,7 +86,8 @@ def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
     read_op = get_parquet_read_logical_op()
     op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "Repartition"
     assert isinstance(physical_op, AllToAllOperator)
@@ -105,7 +107,7 @@ def test_repartition_e2e(
 ):
     def _check_repartition_usage_and_stats(ds):
         _check_usage_record(["ReadRange", "Repartition"])
-        ds_stats: DatasetStats = ds._plan.stats()
+        ds_stats: DatasetStats = ds._raw_stats()
         if shuffle:
             assert ds_stats.base_name == "ReadRange->Repartition"
             assert "ReadRange->RepartitionMap" in ds_stats.metadata
@@ -115,14 +117,18 @@ def test_repartition_e2e(
         assert "RepartitionReduce" in ds_stats.metadata
 
     ds = ray.data.range(10000, override_num_blocks=10).repartition(20, shuffle=shuffle)
-    assert ds._plan.initial_num_blocks() == 20, ds._plan.initial_num_blocks()
+    assert (
+        ds._logical_plan.initial_num_blocks() == 20
+    ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(10000))
     assert ds._block_num_rows() == [500] * 20, ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
 
     # Test num_output_blocks > num_rows to trigger empty block handling.
     ds = ray.data.range(20, override_num_blocks=10).repartition(40, shuffle=shuffle)
-    assert ds._plan.initial_num_blocks() == 40, ds._plan.initial_num_blocks()
+    assert (
+        ds._logical_plan.initial_num_blocks() == 40
+    ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(20))
     if shuffle:
         assert ds._block_num_rows() == [10] * 2 + [0] * (40 - 2), ds._block_num_rows()
@@ -132,7 +138,9 @@ def test_repartition_e2e(
 
     # Test case where number of rows does not divide equally into num_output_blocks.
     ds = ray.data.range(22).repartition(4, shuffle=shuffle)
-    assert ds._plan.initial_num_blocks() == 4, ds._plan.initial_num_blocks()
+    assert (
+        ds._logical_plan.initial_num_blocks() == 4
+    ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(22))
     if shuffle:
         assert ds._block_num_rows() == [9, 9, 4, 0], ds._block_num_rows()
@@ -142,7 +150,9 @@ def test_repartition_e2e(
 
     # Test case where we do not split on repartitioning.
     ds = ray.data.range(10, override_num_blocks=1).repartition(1, shuffle=shuffle)
-    assert ds._plan.initial_num_blocks() == 1, ds._plan.initial_num_blocks()
+    assert (
+        ds._logical_plan.initial_num_blocks() == 1
+    ), ds._logical_plan.initial_num_blocks()
     assert ds.sum() == sum(range(10))
     assert ds._block_num_rows() == [10], ds._block_num_rows()
     _check_repartition_usage_and_stats(ds)
@@ -161,7 +171,8 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
         compute=TaskPoolStrategy(concurrency),
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "Write"
     assert isinstance(physical_op, TaskPoolMapOperator)
@@ -185,7 +196,8 @@ def test_sort_operator(
         sort_key=SortKey("col1"),
     )
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "Sort"
     assert isinstance(physical_op, AllToAllOperator)
@@ -242,6 +254,13 @@ def test_sort_validate_keys(ray_start_regular_shared_2_cpus):
 
 
 def test_inherit_batch_format_rule():
+    if (
+        DataContext.get_current().batch_to_block_arrow_format
+    ):  # Skip the test if batch_to_block_arrow_format is True as rule is disabled
+        pytest.skip(
+            "Skipping inherit batch format rule test as batch_to_block_arrow_format is True"
+        )
+
     from ray.data._internal.logical.rules import (
         InheritBatchFormatRule,
     )
@@ -362,7 +381,8 @@ def test_zip_operator(ray_start_regular_shared_2_cpus):
     read_op2 = get_parquet_read_logical_op()
     op = Zip(read_op1, read_op2)
     plan = LogicalPlan(op, ctx)
-    physical_op = planner.plan(plan).dag
+    physical_plan, _ = planner.plan(plan)
+    physical_op = physical_plan.dag
 
     assert op.name == "Zip"
     assert isinstance(physical_op, ZipOperator)
@@ -450,7 +470,7 @@ def test_schema_partial_execution(
     assert iris_schema == ray.data.dataset.Schema(pa.schema(fields))
     # Verify that ds.schema() executes only the first block, and not the
     # entire Dataset.
-    assert not ds._plan.has_computed_output()
+    assert not ds.has_computed_output()
     assert ds._plan._logical_plan.dag.dag_str == (
         "Read[ReadParquet] -> MapBatches[MapBatches(<lambda>)]"
     )
