@@ -66,13 +66,7 @@ class TrainContextFilter(logging.Filter):
 
 
 class TrainLogLevelFilter(logging.Filter):
-    """Filter that applies log level filtering only to ray.train log records.
-
-    This allows console and application file handlers to be shared between
-    the ray.train logger and the root logger, while only applying the
-    configured log_level to ray.train logs. User application logs
-    (from the root logger) pass through unfiltered.
-    """
+    """Filter that applies log level filtering only to ray.train log records."""
 
     def __init__(self, log_level: str = "INFO"):
         super().__init__()
