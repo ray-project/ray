@@ -1,6 +1,7 @@
 torch
-pytest
 torchvision
+torchmetrics
+pytest
 openai
 google-api-python-client
 transformers

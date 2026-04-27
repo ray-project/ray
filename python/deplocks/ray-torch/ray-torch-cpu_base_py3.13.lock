@@ -2217,6 +2217,10 @@ lark==1.2.2 \
     # via
     #   rfc3987-syntax
     #   vllm
+lightning-utilities==0.15.3 \
+    --hash=sha256:6c55f1bee70084a1cbeaa41ada96e4b3a0fea5909e844dd335bd80f5a73c5f91 \
+    --hash=sha256:792ae0204c79f6859721ac7f386c237a33b0ed06ba775009cb894e010a842033
+    # via torchmetrics
 linkify-it-py==2.1.0 ; sys_platform != 'win32' \
     --hash=sha256:0d252c1594ecba2ecedc444053db5d3a9b7ec1b0dd929c8f1d74dce89f86c05e \
     --hash=sha256:43360231720999c10e9328dc3691160e27a718e280673d444c38d7d3aaa3b98b
@@ -2863,6 +2867,7 @@ numpy==2.2.6 \
     #   scipy
     #   sentence-transformers
     #   tensorboardx
+    #   torchmetrics
     #   torchvision
     #   transformers
     #   vllm
@@ -3208,12 +3213,14 @@ packaging==26.1 \
     #   kombu
     #   langchain-core
     #   langsmith
+    #   lightning-utilities
     #   lm-format-enforcer
     #   nbconvert
     #   pytest
     #   ray
     #   taskiq
     #   tensorboardx
+    #   torchmetrics
     #   transformers
 pandas==3.0.2 \
     --hash=sha256:01f31a546acd5574ef77fe199bc90b55527c225c20ccda6601cf6b0fd5ed597c \
@@ -5362,6 +5369,7 @@ torch==2.10.0+cpu \
     #   sentence-transformers
     #   torch-c-dlpack-ext
     #   torchaudio
+    #   torchmetrics
     #   torchvision
     #   vllm
     #   xgrammar
@@ -5415,6 +5423,10 @@ torchaudio==2.10.0+cpu \
     --hash=sha256:eeb02bee18b0a98a5f6ea2bceebb3bf3176fbadfe9fcb9fa062d9387d8fecc17 \
     --hash=sha256:ef9a3bc9c0dcbb766775f60bb4e1f5dc02801db0367bc45a6c76e98e041968af
     # via vllm
+torchmetrics==1.9.0 \
+    --hash=sha256:a488609948600df52d3db4fcdab02e62aab2a85ef34da67037dc3e65b8512faa \
+    --hash=sha256:bfdcbff3dd1d96b3374bb2496eb39f23c4b28b8a845b6a18c313688e0d2d9ca1
+    # via -r docker/ray-torch/torch-requirements.txt
 torchvision==0.25.0+cpu \
     --hash=sha256:0c2d0da9bc011a0fde1d125af396a8fbe94d99becf9d313764f24ca7657a3448 \
     --hash=sha256:2d444009c0956669ada149f61ed78f257c1cc96d259efa6acf3929ca96ceb3f0 \
@@ -5534,6 +5546,7 @@ typing-extensions==4.15.0 \
     #   gymnasium
     #   huggingface-hub
     #   langchain-core
+    #   lightning-utilities
     #   mcp
     #   mistral-common
     #   nvidia-cutlass-dsl-libs-base
