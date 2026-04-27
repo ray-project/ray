@@ -46,7 +46,7 @@ while not terminated and not truncated:
         # States is already batched (see above).
         Columns.STATE_IN: states,
         # `obs` is already batched (due to vector env), but needs time-rank.
-        Columns.OBS: convert_to_tensor(obs, framework="torch")[None],
+        Columns.OBS: convert_to_tensor(obs, framework="torch")[None, None],
         # Set to True at beginning of episode.
         "is_first": convert_to_tensor(is_first, "torch")[None],
     }
