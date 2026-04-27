@@ -376,12 +376,26 @@ class PhysicalOperator(Operator):
         input_dependencies: List["PhysicalOperator"],
         data_context: DataContext,
         target_max_block_size_override: Optional[int] = None,
+        num_output_splits: int = 1,
     ):
         super().__init__(name, input_dependencies)
         self._output_dependencies: List["PhysicalOperator"] = []
 
-        for x in input_dependencies:
-            assert isinstance(x, PhysicalOperator), x
+        for input in input_dependencies:
+            assert isinstance(
+                input, PhysicalOperator
+            ), "Must inherit from PhysicalOperator"
+
+            # Assert that number of output splits produced by this operator is not
+            # exceeded by its input deps
+            assert num_output_splits >= input.num_output_splits(), (
+                f"Number of output splits of the upstream may not exceed that one of the downstream: "
+                f"{num_output_splits} for {self}, {input.num_output_splits()} for {input}"
+            )
+
+        # Number of output splits this operator partitions its output by
+        self._num_output_splits = num_output_splits
+
         self._wire_output_deps(input_dependencies)
         self._inputs_complete = not input_dependencies
         self._output_block_size_option_override = OutputBlockSizeOption.of(
@@ -679,7 +693,7 @@ class PhysicalOperator(Operator):
 
         Most operators have a single output split.
         """
-        return 1
+        return self._num_output_splits
 
     def start(self, options: ExecutionOptions) -> None:
         """Called by the executor when execution starts for an operator.
@@ -925,7 +939,15 @@ class PhysicalOperator(Operator):
 
     def get_actor_info(self) -> ActorPoolInfo:
         """Returns the current status of actors being used by the operator"""
-        return ActorPoolInfo(running=0, pending=0, restarting=0)
+        return ActorPoolInfo(
+            running=0,
+            restarting=0,
+            pending=0,
+            active=0,
+            idle=0,
+            pool_utilization=0,
+            tasks_in_flight=0,
+        )
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()

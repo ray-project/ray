@@ -6,6 +6,7 @@ import unittest
 from typing import Any, Dict, List, Optional
 from unittest.mock import MagicMock
 
+import jsonschema
 import pytest
 
 from ray.autoscaler._private.kuberay.node_provider import (
@@ -17,6 +18,7 @@ from ray.autoscaler._private.kuberay.node_provider import (
 from ray.autoscaler.v2.instance_manager.cloud_providers.kuberay.ippr_provider import (
     KubeRayIPPRProvider,
 )
+from ray.autoscaler.v2.schema import IPPRStatus
 from ray.autoscaler.v2.tests.test_node_provider import (
     MockKubernetesHttpApiClient,
 )
@@ -170,15 +172,56 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         assert head.min_cpu == 2.0
         assert head.max_cpu == 4.0
-        assert head.min_memory == 4 * 1024 * 1024 * 1024
-        assert head.max_memory == 8 * 1024 * 1024 * 1024
+        assert head.min_memory == 4 * Gi
+        assert head.max_memory == 8 * Gi
         assert head.resize_timeout == 60
 
         assert small.min_cpu == 1.5
         assert small.max_cpu == 3.0
-        assert small.min_memory == 2 * 1024 * 1024 * 1024
-        assert small.max_memory == 4 * 1024 * 1024 * 1024
+        assert small.min_memory == 2 * Gi
+        assert small.max_memory == 4 * Gi
         assert small.resize_timeout == 30
+
+    def test_invalid_ippr_specs_missing_fields(self):
+        rc = _make_ray_cluster_with_ippr({"small-group": {}})
+        with pytest.raises(jsonschema.ValidationError):
+            self.provider.validate_and_set_ippr_specs(rc)
+
+    def test_invalid_ippr_specs_missing_resize_timeout(self):
+        rc = _make_ray_cluster_with_ippr(
+            {
+                "small-group": {
+                    "max-cpu": 2,
+                    "max-memory": 2147483648,
+                }
+            }
+        )
+        with pytest.raises(jsonschema.ValidationError):
+            self.provider.validate_and_set_ippr_specs(rc)
+
+    def test_invalid_ippr_specs_missing_max_cpu(self):
+        rc = _make_ray_cluster_with_ippr(
+            {
+                "small-group": {
+                    "max-memory": 2147483648,
+                    "resize-timeout": 10,
+                }
+            }
+        )
+        with pytest.raises(jsonschema.ValidationError):
+            self.provider.validate_and_set_ippr_specs(rc)
+
+    def test_invalid_ippr_specs_missing_max_memory(self):
+        rc = _make_ray_cluster_with_ippr(
+            {
+                "small-group": {
+                    "max-cpu": 2,
+                    "resize-timeout": 10,
+                }
+            }
+        )
+        with pytest.raises(jsonschema.ValidationError):
+            self.provider.validate_and_set_ippr_specs(rc)
 
     def test_validate_and_set_ippr_specs_invalid_ray_params_cpu(self):
         rc = _make_ray_cluster_with_ippr(
@@ -265,7 +308,73 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         with pytest.raises(ValueError):
             self.provider.validate_and_set_ippr_specs(rc)
 
-    def test_sync_ippr_status_from_pods_and_accessors(self):
+    def test_sync_with_raylets_calls_gcs_and_clears_resizing_at_on_pod(self):
+        rc = _make_ray_cluster_with_ippr(
+            {"small-group": {"max-cpu": 8, "max-memory": "32Gi", "resize-timeout": 60}}
+        )
+        self.provider.validate_and_set_ippr_specs(rc)
+        spec = self.provider.get_ippr_specs().groups["small-group"]
+        raylet_hex = "0" * 56
+        st = IPPRStatus(
+            cloud_instance_id="ray-worker-1",
+            spec=spec,
+            current_cpu=2.0,
+            current_memory=4 * Gi,
+            desired_cpu=2.0,
+            desired_memory=4 * Gi,
+            resizing_at=123,
+            raylet_id=raylet_hex,
+        )
+        self.provider._ippr_statuses["ray-worker-1"] = st
+        assert st.need_sync_with_raylet()
+
+        self.gcs.resize_raylet_resource_instances.return_value = {
+            "CPU": 2.0,
+            "memory": 4 * Gi,
+        }
+
+        self.provider.sync_with_raylets()
+
+        self.gcs.resize_raylet_resource_instances.assert_called_once_with(
+            raylet_hex,
+            {"CPU": 2.0, "memory": 4 * Gi},
+        )
+
+        ann_payload = self.k8s.get_patches("pods/ray-worker-1")
+        assert ann_payload is not None
+        parsed = json.loads(
+            ann_payload["metadata"]["annotations"]["ray.io/ippr-status"]
+        )
+        assert parsed["raylet-id"] == raylet_hex
+        assert parsed["resizing-at"] is None
+
+    def test_sync_with_raylets_missing_raylet_address_noop(self):
+        rc = _make_ray_cluster_with_ippr(
+            {"small-group": {"max-cpu": 8, "max-memory": "32Gi", "resize-timeout": 60}}
+        )
+        self.provider.validate_and_set_ippr_specs(rc)
+        spec = self.provider.get_ippr_specs().groups["small-group"]
+        raylet_hex = "0" * 56
+        st = IPPRStatus(
+            cloud_instance_id="ray-worker-1",
+            spec=spec,
+            current_cpu=2.0,
+            current_memory=4 * Gi,
+            desired_cpu=2.0,
+            desired_memory=4 * Gi,
+            resizing_at=int(time.time()),
+            raylet_id=raylet_hex,
+        )
+        self.provider._ippr_statuses["ray-worker-1"] = st
+        self.gcs.resize_raylet_resource_instances.side_effect = ValueError(
+            f"Raylet {raylet_hex} is not alive."
+        )
+        self.provider.sync_with_raylets()
+
+        with pytest.raises(KeyError):
+            _ = self.k8s.get_patches("pods/ray-worker-1")
+
+    def test_sync_ippr_status_from_pods_basic(self):
         # Load valid specs first
         rc = _make_ray_cluster_with_ippr(
             {"small-group": {"max-cpu": 4, "max-memory": "8Gi", "resize-timeout": 60}}
@@ -367,8 +476,8 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
 
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         st.raylet_id = "abc"
-        # Desired upsize: from (cpu:2, mem:4Gi) to (cpu:4, mem:8Gi)
-        st.queue_resize_request(desired_cpu=4.0, desired_memory=8 * 1024 * 1024 * 1024)
+        # Desired upsize: from (cpu:1.5, mem:2Gi) to (cpu:4, mem:8Gi)
+        st.queue_resize_request(desired_cpu=4.0, desired_memory=8 * Gi)
 
         self.provider.do_ippr_requests([st])
 
@@ -385,8 +494,8 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         mem_requests = next(
             p for p in patch_ops if p["path"].endswith("requests/memory")
         )
-        assert mem_limits["value"] == 8 * 1024 * 1024 * 1024
-        assert mem_requests["value"] == 7 * 1024 * 1024 * 1024
+        assert mem_limits["value"] == 8 * Gi
+        assert mem_requests["value"] == 7 * Gi
 
         ann_payload = self.k8s.get_patches("pods/ray-worker-1")
         ippr_status_json = ann_payload["metadata"]["annotations"]["ray.io/ippr-status"]
@@ -415,7 +524,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         st.raylet_id = "abc"
         # Desired upsize: from (cpu:0.5, mem:1Gi) to (cpu:4, mem:8Gi)
-        st.queue_resize_request(desired_cpu=4.0, desired_memory=8 * 1024 * 1024 * 1024)
+        st.queue_resize_request(desired_cpu=4.0, desired_memory=8 * Gi)
 
         self.provider.do_ippr_requests([st])
 
@@ -434,7 +543,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         mem_requests = next(
             p for p in patch_ops if p["path"].endswith("requests/memory")
         )
-        assert mem_requests["value"] == 8 * 1024 * 1024 * 1024
+        assert mem_requests["value"] == 8 * Gi
 
         ann_payload = self.k8s.get_patches("pods/ray-worker-1")
         ippr_status_json = ann_payload["metadata"]["annotations"]["ray.io/ippr-status"]
@@ -462,7 +571,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         st.raylet_id = "0" * 56
         # Downsize: current (2 cores, 4Gi) -> desired (1 core, 2Gi)
-        st.queue_resize_request(desired_cpu=1.0, desired_memory=2 * 1024 * 1024 * 1024)
+        st.queue_resize_request(desired_cpu=1.0, desired_memory=2 * Gi)
         self.gcs.resize_raylet_resource_instances.return_value = {
             "CPU": 1.5,
             "memory": 2.5 * Gi,
@@ -481,53 +590,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
             p for p in patch_ops if p["path"].endswith("requests/memory")
         )
         assert cpu_requests["value"] == 1.5
-        assert mem_requests["value"] == 2.5 * 1024 * 1024 * 1024
-
-    def test_sync_with_raylets(self):
-        # Pretend a resize finished and current == desired → should sync with raylet
-        rc = _make_ray_cluster_with_ippr(
-            {"small-group": {"max-cpu": 8, "max-memory": "32Gi", "resize-timeout": 60}}
-        )
-        self.provider.validate_and_set_ippr_specs(rc)
-
-        pod = _make_pod(
-            name="ray-worker-1",
-            group="small-group",
-            kind=KUBERAY_KIND_WORKER,
-            container_name="ray-worker",
-            status_requests={"cpu": "2", "memory": "4Gi"},
-            status_limits={"cpu": "2", "memory": "4Gi"},
-            spec_requests={"cpu": "2", "memory": "4Gi"},
-            spec_limits={"cpu": "2", "memory": "4Gi"},
-        )
-        pod["metadata"]["annotations"]["ray.io/ippr-status"] = json.dumps(
-            {"raylet-id": "0" * 56, "resizing-at": 123}
-        )
-
-        self.gcs.resize_raylet_resource_instances.return_value = {
-            "CPU": 2.0,
-            "memory": 4 * Gi,
-        }
-        # Populate provider's statuses from pod
-        self.provider.sync_ippr_status_from_pods([pod])
-        st = self.provider.get_ippr_statuses()["ray-worker-1"]
-        assert st.is_k8s_resize_finished()
-        assert st.need_sync_with_raylet()
-
-        self.provider.sync_with_raylets()
-
-        self.gcs.resize_raylet_resource_instances.assert_called_once_with(
-            "0" * 56,
-            {"CPU": 2.0, "memory": 4 * Gi},
-        )
-
-        ann_payload = self.k8s.get_patches("pods/ray-worker-1")
-        assert ann_payload is not None
-        parsed = json.loads(
-            ann_payload["metadata"]["annotations"]["ray.io/ippr-status"]
-        )
-        assert parsed["raylet-id"] == "0" * 56
-        assert parsed["resizing-at"] is None
+        assert mem_requests["value"] == 2.5 * Gi
 
     def test_sync_ippr_status_pending_deferred_cpu_sets_suggestions(self):
         # Load specs
@@ -685,6 +748,55 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         assert st.has_resize_request_to_send()
         assert st.suggested_max_memory == 18 * Gi
+        assert st.suggested_max_cpu == 2.0
+
+    def test_sync_ippr_status_pending_infeasible_memory_sets_suggestions_with_sidecars(
+        self,
+    ):
+        # Load specs
+        rc = _make_ray_cluster_with_ippr(
+            {"small-group": {"max-cpu": 8, "max-memory": "64Gi", "resize-timeout": 60}}
+        )
+        self.provider.validate_and_set_ippr_specs(rc)
+
+        # Memory: status limits=8Gi, requests=2Gi → diff=6Gi. Remaining = capacity (12Gi).
+        # suggested_max_memory = 12Gi + 6Gi = 18Gi.
+        pod = _make_pod(
+            name="ray-worker-1",
+            group="small-group",
+            kind=KUBERAY_KIND_WORKER,
+            container_name="ray-worker",
+            status_requests={"cpu": "1", "memory": str(2 * Gi)},
+            status_limits={"cpu": "2", "memory": str(8 * Gi)},
+            spec_requests={"cpu": "7", "memory": str(58 * Gi)},
+            spec_limits={"cpu": "8", "memory": str(64 * Gi)},
+            conditions=[
+                {
+                    "type": "PodResizePending",
+                    "status": "True",
+                    "reason": "Infeasible",
+                    "message": (
+                        f"Node didn't have enough capacity: memory, requested: {58 * Gi}, capacity: {12 * Gi}"
+                    ),
+                }
+            ],
+        )
+        pod["metadata"]["annotations"]["ray.io/ippr-status"] = json.dumps(
+            {"suggested-max-cpu": 2, "raylet-id": "0" * 56}
+        )
+        pod["status"]["containerStatuses"].append(
+            {
+                "name": "sidecar",
+                "resources": {
+                    "requests": {"memory": str(1 * Gi)},
+                },
+            }
+        )
+
+        self.provider.sync_ippr_status_from_pods([pod])
+        st = self.provider.get_ippr_statuses()["ray-worker-1"]
+        assert st.has_resize_request_to_send()
+        assert st.suggested_max_memory == 18 * Gi - 1 * Gi
         assert st.suggested_max_cpu == 2.0
 
     def test_pending_message_unexpected_no_suggestions(self):
@@ -888,7 +1000,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         self.provider.sync_ippr_status_from_pods([pod])
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         st.raylet_id = "0" * 56
-        st.queue_resize_request(desired_cpu=1.0, desired_memory=2 * 1024 * 1024 * 1024)
+        st.queue_resize_request(desired_cpu=1.0, desired_memory=2 * Gi)
         self.gcs.resize_raylet_resource_instances.side_effect = RuntimeError("rpc fail")
 
         self.provider.do_ippr_requests([st])
@@ -897,8 +1009,8 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         with pytest.raises(KeyError):
             _ = self.k8s.get_patches("pods/ray-worker-1/resize")
 
-    def test_do_ippr_requests_memory_limit_drops_below_spec_limit(self):
-        # Setup specs and pod with memory limits present; request downsize below spec limit
+    def test_do_ippr_requests_memory_limit(self):
+        # Setup specs and pod with memory limits present; k8s 1.35 supports downsize memory limit.
         rc = _make_ray_cluster_with_ippr(
             {"small-group": {"max-cpu": 8, "max-memory": "32Gi", "resize-timeout": 60}}
         )
@@ -917,7 +1029,7 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         st = self.provider.get_ippr_statuses()["ray-worker-1"]
         st.raylet_id = "0" * 56
         # Desired memory below spec limit (8Gi)
-        st.queue_resize_request(desired_cpu=2.0, desired_memory=2 * 1024 * 1024 * 1024)
+        st.queue_resize_request(desired_cpu=2.0, desired_memory=2 * Gi)
         self.gcs.resize_raylet_resource_instances.return_value = {
             "CPU": 2.0,
             "memory": 2 * Gi,
@@ -928,43 +1040,50 @@ class TestKubeRayIPPRProvider(unittest.TestCase):
         patch_ops = self.k8s.get_patches("pods/ray-worker-1/resize")
         mem_limits = next(p for p in patch_ops if p["path"].endswith("limits/memory"))
         # Limit must drop below spec limit (8Gi)
-        assert mem_limits["value"] == 2 * 1024 * 1024 * 1024
+        assert mem_limits["value"] == 2 * Gi
         self.gcs.resize_raylet_resource_instances.assert_called_once_with(
             st.raylet_id,
             {"CPU": 2.0, "memory": 2 * Gi},
         )
 
-    def test_sync_with_raylets_missing_raylet_address_noop(self):
-        # Prepare pod that needs sync (desired == current and resizing_at set),
-        # but GCS resize request fails.
+    def test_do_ippr_requests_mixed_cpu_up_memory_down_raylet_payload(self):
+        """CPU upsize + memory down: raylet pre-update must not advertise extra CPU."""
         rc = _make_ray_cluster_with_ippr(
             {"small-group": {"max-cpu": 8, "max-memory": "32Gi", "resize-timeout": 60}}
         )
         self.provider.validate_and_set_ippr_specs(rc)
-
-        raylet_hex = "0" * 56
         pod = _make_pod(
             name="ray-worker-1",
             group="small-group",
             kind=KUBERAY_KIND_WORKER,
             container_name="ray-worker",
-            status_requests={"cpu": "2", "memory": "4Gi"},
-            status_limits={"cpu": "2", "memory": "4Gi"},
-            spec_requests={"cpu": "2", "memory": "4Gi"},
-            spec_limits={"cpu": "2", "memory": "4Gi"},
-        )
-        pod["metadata"]["annotations"]["ray.io/ippr-status"] = json.dumps(
-            {"raylet-id": raylet_hex, "resizing-at": int(time.time())}
-        )
-        self.gcs.resize_raylet_resource_instances.side_effect = ValueError(
-            f"Raylet {raylet_hex} is not alive."
+            status_requests={"cpu": "2", "memory": "8Gi"},
+            status_limits={},
+            spec_requests={"cpu": "2", "memory": "8Gi"},
+            spec_limits={},
         )
         self.provider.sync_ippr_status_from_pods([pod])
-        self.provider.sync_with_raylets()
+        st = self.provider.get_ippr_statuses()["ray-worker-1"]
+        st.raylet_id = "0" * 56
+        st.queue_resize_request(desired_cpu=4.0, desired_memory=2 * Gi)
+        self.gcs.resize_raylet_resource_instances.return_value = {
+            "CPU": 2.0,
+            "memory": 2 * Gi,
+        }
 
-        # No annotation patch should be issued
-        with pytest.raises(KeyError):
-            _ = self.k8s.get_patches("pods/ray-worker-1")
+        self.provider.do_ippr_requests([st])
+
+        self.gcs.resize_raylet_resource_instances.assert_called_once_with(
+            st.raylet_id,
+            {"CPU": 2.0, "memory": 2 * Gi},
+        )
+        patch_ops = self.k8s.get_patches("pods/ray-worker-1/resize")
+        cpu_requests = next(p for p in patch_ops if p["path"].endswith("requests/cpu"))
+        mem_requests = next(
+            p for p in patch_ops if p["path"].endswith("requests/memory")
+        )
+        assert cpu_requests["value"] == 4.0
+        assert mem_requests["value"] == 2 * Gi
 
 
 if __name__ == "__main__":

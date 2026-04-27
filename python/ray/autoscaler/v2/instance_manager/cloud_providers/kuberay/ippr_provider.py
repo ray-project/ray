@@ -3,7 +3,7 @@ import logging
 import re
 import time
 from decimal import Decimal
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import jsonschema
 
@@ -86,6 +86,89 @@ class KubeRayIPPRProvider:
             ValueError: If the Ray pod template is incompatible with IPPR (e.g.,
                 missing required requests, using unsupported resizePolicy restarts,
                 or conflicting ``rayStartParams``).
+
+        Example:
+            import json
+
+            ray_cluster = {
+                "metadata": {
+                    "name": "example-raycluster",
+                    "annotations": {
+                        "ray.io/ippr": json.dumps(
+                            {
+                                "groups": {
+                                    "headgroup": {
+                                        "max-cpu": "4",
+                                        "max-memory": "8Gi",
+                                        "resize-timeout": 300,
+                                    },
+                                    "small-workers": {
+                                        "max-cpu": 2,
+                                        "max-memory": "4Gi",
+                                        "resize-timeout": 120,
+                                    },
+                                }
+                            }
+                        ),
+                    },
+                },
+                "spec": {
+                    "headGroupSpec": {
+                        "rayStartParams": {},
+                        "template": {
+                            "spec": {
+                                "containers": [
+                                    {
+                                        "name": "ray-head",
+                                        "resources": {
+                                            "requests": {
+                                                "cpu": "1",
+                                                "memory": "2Gi",
+                                            },
+                                            "limits": {
+                                                "cpu": "2",
+                                                "memory": "4Gi",
+                                            },
+                                        },
+                                        "resizePolicy": [
+                                            {
+                                                "resourceName": "cpu",
+                                                "restartPolicy": "NotRequired",
+                                            },
+                                            {
+                                                "resourceName": "memory",
+                                                "restartPolicy": "NotRequired",
+                                            },
+                                        ],
+                                    }
+                                ],
+                            }
+                        },
+                    },
+                    "workerGroupSpecs": [
+                        {
+                            "groupName": "small-workers",
+                            "rayStartParams": {},
+                            "template": {
+                                "spec": {
+                                    "containers": [
+                                        {
+                                            "name": "ray-worker",
+                                            "resources": {
+                                                "requests": {
+                                                    "cpu": "500m",
+                                                    "memory": "1Gi",
+                                                },
+                                            },
+                                        }
+                                    ],
+                                }
+                            },
+                        }
+                    ],
+                },
+            }
+            provider.validate_and_set_ippr_specs(ray_cluster)
         """
         if not ray_cluster:
             return
@@ -95,8 +178,8 @@ class KubeRayIPPRProvider:
             self._ippr_specs = IPPRSpecs(groups={})
             return
 
-        specs_raw = json.loads(specs_str)
-        jsonschema.validate(instance=specs_raw, schema=IPPRSpecsSchema)
+        ippr_specs_raw = json.loads(specs_str)
+        jsonschema.validate(instance=ippr_specs_raw, schema=IPPRSpecsSchema)
 
         # Validate and build typed spec per group
         worker_groups = {
@@ -107,7 +190,7 @@ class KubeRayIPPRProvider:
 
         groups = {
             group_name: _build_ippr_group_spec(group_spec, worker_groups[group_name])
-            for group_name, group_spec in specs_raw.get("groups", {}).items()
+            for group_name, group_spec in ippr_specs_raw.get("groups", {}).items()
             if group_name in worker_groups
         }
 
@@ -119,6 +202,14 @@ class KubeRayIPPRProvider:
         For any pod whose K8s resize has completed, update the corresponding Raylet's local resource
         instances via GCS gRPC and clear the pending timestamp on the pod's
         ``ray.io/ippr-status`` annotation.
+
+
+        Three situations we can have exceptions are:
+        1. K8s API is not available.
+        2. GCS is not available.
+        3. Raylet is not available.
+        If a raylet is truly dead, its pod will also be deleted eventually.
+        All of the above exceptions can only be resolved in the future reconcile loops.
         """
         for ippr_status in self._ippr_statuses.values():
             if not ippr_status.need_sync_with_raylet():
@@ -132,10 +223,14 @@ class KubeRayIPPRProvider:
                     },
                 )
                 self._patch_ippr_status(ippr_status, resizing_at=None)
+                ippr_status.resizing_at = None
                 logger.info(f"Pod {ippr_status.cloud_instance_id} resized successfully")
             except Exception as e:
                 logger.error(
-                    f"Failed to resize pod {ippr_status.cloud_instance_id}: {e}"
+                    f"Failed to resize pod {ippr_status.cloud_instance_id}: {e}. "
+                    "If this persists, check GCS (e.g. Head/GCS logs and Raylet reachability) "
+                    "and Kubernetes (e.g. API errors, pod events, ray.io/ippr-status) for "
+                    "related request failures."
                 )
 
     def sync_ippr_status_from_pods(self, pods: List[Dict[str, Any]]) -> None:
@@ -157,15 +252,13 @@ class KubeRayIPPRProvider:
             if "deletionTimestamp" in pod["metadata"]:
                 continue
 
-            labels = pod["metadata"]["labels"]
-            if (
-                labels[KUBERAY_LABEL_KEY_KIND] != KUBERAY_KIND_HEAD
-                and labels[KUBERAY_LABEL_KEY_KIND] != KUBERAY_KIND_WORKER
-            ):
+            labels = pod["metadata"].get("labels", {})
+            kind = labels.get(KUBERAY_LABEL_KEY_KIND)
+            if kind not in (KUBERAY_KIND_HEAD, KUBERAY_KIND_WORKER):
                 continue
 
             ippr_group_spec = self._ippr_specs.groups.get(
-                labels[KUBERAY_LABEL_KEY_TYPE]
+                labels.get(KUBERAY_LABEL_KEY_TYPE)
             )
             ippr_status, container_resource = _get_ippr_status_from_pod(
                 ippr_group_spec, pod
@@ -180,8 +273,12 @@ class KubeRayIPPRProvider:
     def do_ippr_requests(self, resizes: List[IPPRStatus]) -> None:
         """Issue Kubernetes Pod Resize requests for the given targets.
 
-        If downsizing, attempt to first adjust the Raylet's local resources via
-        gRPC to avoid temporary overcommit in Ray's scheduler.
+        If any dimension downsizes, attempt to first adjust the Raylet's local
+        resources via gRPC to avoid temporary overcommit in Ray's scheduler.
+        The raylet request uses ``min(desired, current)`` per resource so mixed
+        resizes (e.g. CPU up and memory down) do not advertise increases before
+        Kubernetes applies them; the reply is merged so upsizing targets are kept
+        for the pod patch.
 
         Args:
             resizes: List of IPPRStatus with desired resources and metadata.
@@ -190,18 +287,22 @@ class KubeRayIPPRProvider:
             logger.info(
                 f"Resizing pod {resize.cloud_instance_id} to cpu={resize.desired_cpu} memory={resize.desired_memory} from cpu={resize.current_cpu} memory={resize.current_memory}"
             )
-            if (
+            if resize.raylet_id and (
                 resize.desired_cpu < resize.current_cpu
                 or resize.desired_memory < resize.current_memory
             ):
-                # For downsizing, update Raylet first.
+                # For any downsize, update Raylet first. Cap each resource at
+                # current so we never tell the scheduler about an upsize until
+                # sync_with_raylets runs after K8s applies the pod resize.
                 try:
                     updated_total_resources = (
                         self._gcs_client.resize_raylet_resource_instances(
                             resize.raylet_id,
                             {
-                                "CPU": resize.desired_cpu,
-                                "memory": resize.desired_memory,
+                                "CPU": min(resize.desired_cpu, resize.current_cpu),
+                                "memory": min(
+                                    resize.desired_memory, resize.current_memory
+                                ),
                             },
                         )
                     )
@@ -212,8 +313,10 @@ class KubeRayIPPRProvider:
                         raise RuntimeError(
                             f"CPU or memory not found in the response of resizing raylet resources: {updated_total_resources}"
                         )
-                    resize.desired_cpu = float(updated_total_resources["CPU"])
-                    resize.desired_memory = int(updated_total_resources["memory"])
+                    if resize.desired_cpu < resize.current_cpu:
+                        resize.desired_cpu = float(updated_total_resources["CPU"])
+                    if resize.desired_memory < resize.current_memory:
+                        resize.desired_memory = int(updated_total_resources["memory"])
                 except Exception as e:
                     logger.error(
                         f"Skip failed downsizing on pod {resize.cloud_instance_id}: {e}"
@@ -239,8 +342,14 @@ class KubeRayIPPRProvider:
     def _patch_ippr_status(
         self, resize: IPPRStatus, resizing_at: Optional[int]
     ) -> None:
-        # Keep the state in a pod annotation so we can correlate in-progress
-        # and completed resizes across/beyond scheduler/provider iterations.
+        """Save the IPPR status to the pod annotation ``ray.io/ippr-status``.
+        The annotation is used to track the IPPR status of the pod across reconcile loops.
+
+        Args:
+            resize: The IPPR status to save.
+            resizing_at: Timestamp while a resize is in progress; pass ``None``
+                to clear after the resize completes (e.g. from ``sync_with_raylets``).
+        """
         self._k8s_api_client.patch(
             "pods/{}".format(resize.cloud_instance_id),
             {
@@ -311,7 +420,7 @@ def _build_ippr_group_spec(
     # Pod template must declare baseline CPU/memory requests for IPPR.
     if "cpu" not in pod_spec_requests or "memory" not in pod_spec_requests:
         raise ValueError(
-            "should have 'cpu' and 'memory' in resource requests if IPPR is used"
+            "should have 'cpu' and 'memory' in resource requests as the resources lower bounds if IPPR is used"
         )
 
     for policy in container_spec.get("resizePolicy", []):
@@ -324,25 +433,30 @@ def _build_ippr_group_spec(
         if restart is not None and restart != "NotRequired":
             raise ValueError("IPPR only supports restartPolicy=NotRequired")
 
+    # pod_spec_limits are the initial resource limits specified for the pod.
+    # we use it together with pod_spec_requests to derive the lower bounds for IPPR.
     pod_spec_limits = container_spec.get("resources", {}).get("limits", {})
     return IPPRGroupSpec(
         min_cpu=_resource_value(pod_spec_requests, pod_spec_limits, "cpu", float),
         min_memory=_resource_value(pod_spec_requests, pod_spec_limits, "memory", int),
-        max_cpu=float(parse_quantity(group_spec.get("max-cpu", 0))),
-        max_memory=int(parse_quantity(group_spec.get("max-memory", 0))),
-        resize_timeout=int(group_spec.get("resize-timeout", 0)),
+        max_cpu=float(parse_quantity(group_spec.get("max-cpu"))),
+        max_memory=int(parse_quantity(group_spec.get("max-memory"))),
+        resize_timeout=int(group_spec.get("resize-timeout")),
     )
 
 
 def _get_ippr_status_from_pod(
     ippr_group_spec: Optional[IPPRGroupSpec],
     pod: Dict[str, Any],
-) -> tuple[Optional[IPPRStatus], Optional[Dict[str, Any]]]:
+) -> Tuple[Optional[IPPRStatus], Optional[Dict[str, Any]]]:
     """Build IPPRStatus and container resource snapshots from a Pod.
 
     Returns a tuple of (ippr_status, container_resource_snapshot). The snapshot
     contains both spec and status requests/limits used to construct resize
     patches that preserve the current QoS gap.
+
+    IPPRStatus includes the updated desired resources based on the failure messages of the previous resize request carried on the pod.
+    This function doesn't have any external side effects.
     """
     if not ippr_group_spec:
         return (None, None)
@@ -468,7 +582,13 @@ def _apply_resize_suggestion(
     pod_status_limits: Dict[str, Any],
     other_container_resources: List[Dict[str, Any]],
 ) -> IPPRStatus:
-    """Parse Kubelet capacity reports and queue a suggested follow-up resize."""
+    """Parse Kubelet capacity reports and queue a suggested follow-up resize.
+
+    A suggested follow-up resize is taken from the failure message of the previous resize request on the pod.
+    For example, a message, "Node didn't have enough resource: cpu, requested: 8000, used: 5000, capacity: 9000",
+    means the pod can only have CPU request up to 4. For our suggested follow-up resize, we will set the suggested_max_cpu to
+    4 + (orignal cpu limit - original cpu request) to keep the gap.
+    """
     report = None
     if ippr_status.k8s_resize_message and ippr_status.k8s_resize_status == "deferred":
         report = re.search(
@@ -511,9 +631,16 @@ def _apply_resize_suggestion(
     #     - CPU request is 7 - 3 = 4 cores (aligned with the kubelet's report, and keep the gap 3 cores)
     #     - Mem limit is 10Gi
     #     - Mem request is 10Gi - 6Gi = 4Gi (aligned with the kubelet's report, and keep the gap 6Gi)
-    used = int(report.group(3) or "0")
-    capacity = int(report.group(4))
-    max_request = capacity - used
+
+    used = int(
+        report.group(3) or "0"
+    )  # this field is the used resource request capacity of the k8s node excluding the current pod.
+    capacity = int(
+        report.group(4)
+    )  # this field is the total resource request capacity of the k8s node.
+    max_request = (
+        capacity - used
+    )  # so this max_request is the remaining resource request capacity that this pod can still request.
     resource_name = report.group(1)
     suggested = _suggested_resize_limit(
         resource_name,
@@ -552,7 +679,7 @@ def _suggested_resize_limit(
         for requests in other_container_resources
     )
     if resource_name == "cpu":
-        available = Decimal(str(max_request / 1000))
+        available = Decimal(str(max_request)) / 1000
         return float(available + gap - other_requests)
     else:
         available = Decimal(str(max_request))

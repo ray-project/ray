@@ -19,13 +19,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.backpressure_policy.resource_budget_backpressure_policy import (
     ResourceBudgetBackpressurePolicy,
 )
-from ray.data._internal.execution.execution_callback import (
-    EXECUTION_CALLBACKS_ENV_VAR,
-    ExecutionCallback,
-    add_execution_callback,
-    get_execution_callbacks,
-    remove_execution_callback,
-)
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -62,7 +56,7 @@ from ray.data._internal.execution.util import make_ref_bundles
 from ray.data._internal.logical.operators import MapRows, Read, Write
 from ray.data._internal.util import MiB
 from ray.data.block import BlockAccessor, BlockMetadataWithSchema, TaskExecWorkerStats
-from ray.data.context import DataContext
+from ray.data.context import EXECUTION_CALLBACKS_ENV_VAR, DataContext
 from ray.data.tests.conftest import *  # noqa
 
 
@@ -814,73 +808,93 @@ def test_streaming_exec_schedule_s(ray_start_regular_shared):
     for _ in ds.iter_batches():
         continue
 
-    ds_stats = ds._plan.stats()
+    ds_stats = ds._raw_stats()
     assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 
-def test_execution_callbacks(ray_start_regular_shared):
-    """Test ExecutionCallback."""
+def test_execution_callbacks_on_success(ray_start_regular_shared):
+    before_execution_starts_called = False
+    after_execution_succeeds_called = False
+    on_execution_step_called = False
+    execution_error = None
 
     class CustomExecutionCallback(ExecutionCallback):
-        def __init__(self):
-            self._before_execution_starts_called = False
-            self._after_execution_succeeds_called = False
-            self._execution_error = None
-            self._on_execution_step_called = False
-
         def before_execution_starts(self, executor: StreamingExecutor):
-            self._before_execution_starts_called = True
+            nonlocal before_execution_starts_called
+            before_execution_starts_called = True
 
         def on_execution_step(self, executor: "StreamingExecutor"):
-            self._on_execution_step_called = True
+            nonlocal on_execution_step_called
+            on_execution_step_called = True
 
         def after_execution_succeeds(self, executor: StreamingExecutor):
-            self._after_execution_succeeds_called = True
+            nonlocal after_execution_succeeds_called
+            after_execution_succeeds_called = True
 
         def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
-            self._execution_error = error
+            nonlocal execution_error
+            execution_error = error
 
-    # Test the success case.
-    ds = ray.data.range(10)
-    ctx = ds.context
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
-    assert callback in get_execution_callbacks(ctx)
+    ctx = DataContext.get_current()
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
 
-    ds.take_all()
+    ray.data.range(1).take_all()
 
-    assert callback._before_execution_starts_called
-    assert callback._after_execution_succeeds_called
-    assert callback._on_execution_step_called
-    assert callback._execution_error is None
+    assert before_execution_starts_called
+    assert after_execution_succeeds_called
+    assert on_execution_step_called
+    assert execution_error is None
 
-    remove_execution_callback(callback, ctx)
-    assert callback not in get_execution_callbacks(ctx)
 
-    # Test the case where the dataset fails due to an error in the UDF.
-    ds = ray.data.range(10)
-    ctx = ds.context
+def test_execution_callbacks_on_error(ray_start_regular_shared):
+    before_execution_starts_called = False
+    after_execution_succeeds_called = False
+    on_execution_step_called = False
+    execution_error = None
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def before_execution_starts(self, executor: StreamingExecutor):
+            nonlocal before_execution_starts_called
+            before_execution_starts_called = True
+
+        def on_execution_step(self, executor: "StreamingExecutor"):
+            nonlocal on_execution_step_called
+            on_execution_step_called = True
+
+        def after_execution_succeeds(self, executor: StreamingExecutor):
+            nonlocal after_execution_succeeds_called
+            after_execution_succeeds_called = True
+
+        def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
+            nonlocal execution_error
+            execution_error = error
+
+    ctx = DataContext.get_current()
     ctx.raise_original_map_exception = True
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
 
     def map_fn(_):
         raise ValueError("")
 
     with pytest.raises(ValueError):
-        ds.map(map_fn).take_all()
+        ray.data.range(1).map(map_fn).take_all()
 
-    assert callback._before_execution_starts_called
-    assert not callback._after_execution_succeeds_called
-    assert callback._on_execution_step_called
-    error = callback._execution_error
-    assert isinstance(error, ValueError), error
+    assert before_execution_starts_called
+    assert not after_execution_succeeds_called
+    assert on_execution_step_called
+    assert isinstance(execution_error, ValueError), execution_error
 
-    # Test the case the dataset is canceled by "ctrl-c".
-    ds = ray.data.range(10)
-    ctx = ds.context
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
+
+def test_execution_callbacks_on_cancel(ray_start_regular_shared):
+    execution_error = None
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def after_execution_fails(self, executor: StreamingExecutor, error: Exception):
+            nonlocal execution_error
+            execution_error = error
+
+    ctx = DataContext.get_current()
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
 
     def patched_get_outupt_blocking(*args, **kwargs):
         raise KeyboardInterrupt()
@@ -890,36 +904,28 @@ def test_execution_callbacks(ray_start_regular_shared):
         new=patched_get_outupt_blocking,
     ):
         with pytest.raises(KeyboardInterrupt):
-            ds.take_all()
+            ray.data.range(1).take_all()
 
-    assert callback._before_execution_starts_called
-    assert not callback._after_execution_succeeds_called
-    assert callback._on_execution_step_called
-    error = callback._execution_error
-    assert isinstance(error, KeyboardInterrupt), error
+    assert isinstance(execution_error, KeyboardInterrupt), execution_error
 
 
 @patch("importlib.import_module")
 @patch.dict(os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "my.module.TestCallback"})
 def test_env_callbacks_loaded(mock_import):
     """Test loading execution callbacks from environment variable."""
-    # Setup mock for importing the module
+
+    class TestCallback(ExecutionCallback):
+        pass
+
     mock_module = MagicMock()
-    mock_callback_cls = MagicMock()
-    mock_callback = MagicMock()
-    mock_callback_cls.return_value = mock_callback
-    mock_module.TestCallback = mock_callback_cls
+    mock_module.TestCallback = TestCallback
     mock_import.return_value = mock_module
 
-    # Get callbacks should initialize from env
     ctx = DataContext.get_current()
-    callbacks = get_execution_callbacks(ctx)
+    callback_classes = ctx.execution_callback_classes
 
-    # Verify the callback was imported and initialized
-    mock_import.assert_called_once_with("my.module")
-    mock_callback_cls.assert_called_once()
-
-    assert len([c for c in callbacks if c is mock_callback]) == 1
+    mock_import.assert_called_with("my.module")
+    assert TestCallback in callback_classes
 
 
 @patch("importlib.import_module")
@@ -928,15 +934,18 @@ def test_env_callbacks_loaded(mock_import):
 )
 def test_multiple_env_callbacks(mock_import):
     """Test loading multiple callbacks from environment variable."""
-    # Setup mock for importing multiple modules
+
+    class Callback1(ExecutionCallback):
+        pass
+
+    class Callback2(ExecutionCallback):
+        pass
+
     mock_module1 = MagicMock()
     mock_module2 = MagicMock()
-    mock_callback1 = MagicMock()
-    mock_callback2 = MagicMock()
-    mock_module1.Callback1.return_value = mock_callback1
-    mock_module2.Callback2.return_value = mock_callback2
+    mock_module1.Callback1 = Callback1
+    mock_module2.Callback2 = Callback2
 
-    # Return different mock modules depending on the import path
     def side_effect(name):
         if name == "module1":
             return mock_module1
@@ -946,21 +955,18 @@ def test_multiple_env_callbacks(mock_import):
 
     mock_import.side_effect = side_effect
 
-    # Get callbacks should initialize from env
     ctx = DataContext.get_current()
-    callbacks = get_execution_callbacks(ctx)
+    callback_classes = ctx.execution_callback_classes
 
-    # Verify both callbacks were imported and initialized
-    assert len([c for c in callbacks if c is mock_callback1]) == 1
-    assert len([c for c in callbacks if c is mock_callback2]) == 1
+    assert Callback1 in callback_classes
+    assert Callback2 in callback_classes
 
 
 @patch.dict(os.environ, {EXECUTION_CALLBACKS_ENV_VAR: "invalid_module"})
 def test_invalid_callback_path():
     """Test handling of invalid callback paths in environment variable."""
-    # Should raise ValueError due to missing class name
     with pytest.raises(ValueError):
-        get_execution_callbacks(DataContext.get_current())
+        _ = DataContext.get_current().execution_callback_classes
 
 
 @patch("importlib.import_module")
@@ -969,30 +975,10 @@ def test_invalid_callback_path():
 )
 def test_import_error_handling(mock_import):
     """Test handling of import errors when loading callbacks."""
-    # Make import fail
     mock_import.side_effect = ImportError("No module named 'nonexistent'")
 
-    # Should re-raise as ValueError with context
     with pytest.raises(ValueError):
-        get_execution_callbacks(DataContext.get_current())
-
-
-def test_callbacks_initialized_once():
-    """Test that environment callbacks are only initialized once per context."""
-    with patch(
-        "ray.data._internal.execution.execution_callback._initialize_env_callbacks"
-    ) as mock_init:
-        # First call should initialize
-        ctx = DataContext.get_current()
-        get_execution_callbacks(ctx)
-        mock_init.assert_called_once_with(ctx)
-
-        # Reset the mock to check if called again
-        mock_init.reset_mock()
-
-        # Second call should not initialize again
-        get_execution_callbacks(ctx)
-        mock_init.assert_not_called()
+        _ = DataContext.get_current().execution_callback_classes
 
 
 def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
@@ -1010,8 +996,7 @@ def test_execution_callbacks_executor_arg(tmp_path, restore_data_context):
     output_path = tmp_path / "output"
 
     ctx = DataContext.get_current()
-    callback = CustomExecutionCallback()
-    add_execution_callback(callback, ctx)
+    ctx.custom_execution_callback_classes.append(CustomExecutionCallback)
     ds = ray.data.read_parquet(input_path)
 
     def udf(row):

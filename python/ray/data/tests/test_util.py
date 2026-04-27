@@ -366,6 +366,23 @@ def test_find_partition_index_with_nulls():
     assert find_partition_index(table, (None,), sort_key) == 3
 
 
+def test_find_partition_index_with_nan():
+    # NaN sorts after regular values in Arrow (before nulls).
+    table = pa.table({"value": [1.0, 2.0, 3.0, float("nan"), float("nan")]})
+    sort_key = SortKey(key=["value"], descending=[False])
+    assert find_partition_index(table, (2.0,), sort_key) == 1
+    assert find_partition_index(table, (4.0,), sort_key) == 3
+
+
+def test_find_partition_index_with_nan_and_nulls():
+    # NaN sorts after regular values, nulls sort after NaN.
+    table = pa.table({"value": [1.0, 2.0, 3.0, float("nan"), None]})
+    sort_key = SortKey(key=["value"], descending=[False])
+    assert find_partition_index(table, (2.0,), sort_key) == 1
+    assert find_partition_index(table, (4.0,), sort_key) == 3
+    assert find_partition_index(table, (None,), sort_key) == 3
+
+
 def test_find_partition_index_duplicates():
     table = pa.table({"value": [2, 2, 2, 2, 2]})
     sort_key = SortKey(key=["value"], descending=[False])

@@ -34,6 +34,26 @@ class BundleQueue(abc.ABC):
         """Return the total # of rows across all bundles."""
         ...
 
+    @abc.abstractmethod
+    def _on_enqueue_bundle(self, bundle: RefBundle):
+        """Hook called before a bundle is added to the queue."""
+        ...
+
+    @abc.abstractmethod
+    def _on_dequeue_bundle(self, bundle: RefBundle):
+        """Hook called after a bundle is removed from the queue."""
+        ...
+
+    @abc.abstractmethod
+    def _add_inner(self, bundle: RefBundle, **kwargs: Any):
+        """Add a bundle to the internal data structure."""
+        ...
+
+    @abc.abstractmethod
+    def _get_next_inner(self) -> RefBundle:
+        """Remove and return the next bundle from the internal data structure."""
+        ...
+
     def add(self, bundle: RefBundle, **kwargs: Any):
         """Add a bundle to the tail(end) of the queue. Base classes should override
         the `_add_inner` method for simple use cases. For more complex metrics tracking,
@@ -167,7 +187,7 @@ class BaseBundleQueue(BundleQueue):
         self._on_enqueue_bundle(bundle)
         self._add_inner(bundle, **kwargs)
 
-    def _add_inner(self, bundle: RefBundle, **kwargs: Any):
+    def _add_inner(self, bundle: RefBundle, **kwargs: Any) -> None:
         raise NotImplementedError
 
     def get_next(self) -> RefBundle:

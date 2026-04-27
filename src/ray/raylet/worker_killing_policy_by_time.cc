@@ -32,12 +32,12 @@ namespace ray {
 
 namespace raylet {
 
-TimeBasedWorkerKillingPolicy::TimeBasedWorkerKillingPolicy(float usage_threshold,
-                                                           int64_t min_memory_free_bytes,
+TimeBasedWorkerKillingPolicy::TimeBasedWorkerKillingPolicy(int64_t threshold_bytes,
                                                            int64_t kill_buffer_bytes)
-    : usage_threshold_(usage_threshold),
-      min_memory_free_bytes_(min_memory_free_bytes),
-      kill_buffer_bytes_(kill_buffer_bytes) {}
+    : threshold_bytes_(threshold_bytes),
+      kill_buffer_bytes_(kill_buffer_bytes),
+      idle_worker_killing_memory_threshold_bytes_(
+          RayConfig::instance().idle_worker_killing_memory_threshold_bytes()) {}
 
 std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
 TimeBasedWorkerKillingPolicy::SelectWorkersToKill(
@@ -64,9 +64,10 @@ TimeBasedWorkerKillingPolicy::SelectWorkersToKill(
     if (workers_being_killed_.empty()) {
       RAY_LOG_EVERY_MS(WARNING, 5000)
           << "Worker killer did not select any workers to "
-             "kill even though memory usage is high. Object store "
-             "may be causing high memory pressure. Consider checking "
-             "if too many objects are unintentionally being stored.";
+             "kill even though memory usage is high. Other Ray processes (e.g. driver, "
+             "raylet, dashboard agent, runtime environment agent, GCS server, "
+             "API server, etc.) or other non-ray processes may be occupying most of "
+             "the memory.";
     }
     return workers_being_killed_;
   }
@@ -85,41 +86,66 @@ TimeBasedWorkerKillingPolicy::Policy(
     return std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>();
   }
 
-  std::vector<std::shared_ptr<WorkerInterface>> sorted_workers(workers.begin(),
-                                                               workers.end());
-
-  int64_t computed_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
-      system_memory_snapshot.total_bytes, usage_threshold_, min_memory_free_bytes_);
+  std::vector<std::shared_ptr<WorkerInterface>> sorted_workers;
+  // Filter workers without lease that are too small to be considered for killing.
+  std::copy_if(
+      workers.begin(),
+      workers.end(),
+      std::back_inserter(sorted_workers),
+      [threshold = idle_worker_killing_memory_threshold_bytes_,
+       &process_memory_snapshot](const std::shared_ptr<WorkerInterface> &worker) -> bool {
+        if (worker->GetGrantedLeaseId().IsNil()) {
+          int64_t used_memory = MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+              process_memory_snapshot, worker->GetProcess().GetId());
+          return used_memory >= threshold;
+        }
+        return true;
+      });
 
   // Sort by:
-  // 1. Retriable tasks first
-  // 2. Most recent next (newest granted lease time)
-  std::sort(sorted_workers.begin(),
-            sorted_workers.end(),
-            [](const std::shared_ptr<WorkerInterface> &left,
-               const std::shared_ptr<WorkerInterface> &right) -> bool {
-              if (left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
-                  !right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
-                return true;
-              }
-              if (!left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
-                  right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
-                return false;
-              }
+  // 1. First, we prioritize killing workers without granted lease larger
+  // than idle worker killing memory threshold. Note that workers without
+  // granted lease under the threshold are not considered for killing.
+  // 2. From there, we prioritize killing workers with leases and are retriable.
+  // 3. Lastly, we tiebreak by the newest worker based on the newest granted lease time.
+  std::sort(
+      sorted_workers.begin(),
+      sorted_workers.end(),
+      [](const std::shared_ptr<WorkerInterface> &left,
+         const std::shared_ptr<WorkerInterface> &right) -> bool {
+        if (left->GetGrantedLeaseId().IsNil() && !right->GetGrantedLeaseId().IsNil()) {
+          return true;
+        }
+        if (right->GetGrantedLeaseId().IsNil() && !left->GetGrantedLeaseId().IsNil()) {
+          return false;
+        }
+        if (left->GetGrantedLeaseId().IsNil() && right->GetGrantedLeaseId().IsNil()) {
+          return false;
+        }
 
-              return left->GetGrantedLeaseTime() > right->GetGrantedLeaseTime();
-            });
+        if (left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
+            !right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
+          return true;
+        }
+        if (!left->GetGrantedLease().GetLeaseSpecification().IsRetriable() &&
+            right->GetGrantedLease().GetLeaseSpecification().IsRetriable()) {
+          return false;
+        }
+
+        return left->GetGrantedLeaseTime() > right->GetGrantedLeaseTime();
+      });
 
   std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>> workers_to_kill;
   // continue to select workers until the memory to free is reached
   auto sorted_worker_it = sorted_workers.begin();
   int64_t memory_to_free_bytes =
-      system_memory_snapshot.used_bytes - computed_threshold_bytes + kill_buffer_bytes_;
+      system_memory_snapshot.used_bytes - threshold_bytes_ + kill_buffer_bytes_;
   int64_t memory_left_to_free = memory_to_free_bytes;
 
   while (memory_left_to_free > 0 && sorted_worker_it != sorted_workers.end()) {
     std::shared_ptr<WorkerInterface> worker_to_kill = *sorted_worker_it;
     bool should_retry =
+        !worker_to_kill->GetGrantedLeaseId().IsNil() &&
         worker_to_kill->GetGrantedLease().GetLeaseSpecification().IsRetriable();
     workers_to_kill.push_back(std::make_pair(worker_to_kill, should_retry));
 
@@ -170,7 +196,8 @@ std::string TimeBasedWorkerKillingPolicy::PolicyDebugString(
       break;
     }
 
-    bool retriable = worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
+    bool retriable = !worker->GetGrantedLeaseId().IsNil() &&
+                     worker->GetGrantedLease().GetLeaseSpecification().IsRetriable();
     worker_debug_strings.push_back(absl::StrFormat(
         "(Worker's Lease ID: %s | Granted time: %s | Retriable: %s | Memory used: %d "
         "bytes)",

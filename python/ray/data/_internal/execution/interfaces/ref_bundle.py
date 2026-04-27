@@ -1,5 +1,4 @@
 import itertools
-import math
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, Iterable, Iterator, List, Optional, Tuple
@@ -12,7 +11,7 @@ from ray.data.block import (
     BlockAccessor,
     BlockMetadata,
     Schema,
-    _make_hashable_schema,
+    _take_first_non_empty_schema,
 )
 from ray.data.context import DataContext
 from ray.types import ObjectRef
@@ -177,7 +176,7 @@ class RefBundle:
             elif metadata.num_rows != block_slice.num_rows:
                 # Partial block - estimate size based on rows
                 per_row = metadata.size_bytes / metadata.num_rows
-                total += max(1, int(math.ceil(per_row * block_slice.num_rows)))
+                total += max(1, round(per_row * block_slice.num_rows))
             else:
                 total += metadata.size_bytes
         return total
@@ -331,7 +330,6 @@ class RefBundle:
             owns_blocks is True only if all input bundles own their blocks.
             schema is the first non-empty schema found.
         """
-        from ray.data.block import _take_first_non_empty_schema
 
         bundles = list(bundles)
         if not bundles:
@@ -365,7 +363,12 @@ class RefBundle:
         return (
             self.blocks == other.blocks
             and self.slices == other.slices
-            and self.schema == other.schema
+            # NOTE: We're establishing a requirement of schemas for `RefBundle`
+            #       to be exactly the same object for it to be considered equal.
+            #
+            #       This is necessary to avoid a full schema equality check that
+            #       is computationally intensive.
+            and self.schema is other.schema
             and self.owns_blocks == other.owns_blocks
             and self.output_split_idx == other.output_split_idx
         )
@@ -373,9 +376,11 @@ class RefBundle:
     def __hash__(self) -> int:
         return hash(
             (
-                *self.blocks,
+                # Only hash block refs
+                *[b for b, _ in self.blocks],
                 *self.slices,
-                _make_hashable_schema(self.schema) if self.schema is not None else None,
+                # Check out comment in ``__eq__``
+                id(self.schema),
                 self.owns_blocks,
                 self.output_split_idx,
             )
