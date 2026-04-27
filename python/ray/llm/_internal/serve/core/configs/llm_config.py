@@ -16,7 +16,6 @@ from pydantic import (
     model_validator,
 )
 
-import ray.util.accelerators.accelerators as accelerators
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.callbacks.base import (
     CallbackBase,
@@ -36,6 +35,15 @@ from ray.llm._internal.serve.constants import (
     DEFAULT_MULTIPLEX_DOWNLOAD_TRIES,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
 )
+from ray.llm._internal.serve.core.configs.accelerators import (
+    TPU_ACCELERATOR_VALUES,
+    AcceleratorType,
+    AnyAcceleratorConfig,
+    CPUConfig,
+    GPUConfig,
+    TPUConfig,
+    infer_hardware_kind_from_bundles,
+)
 from ray.llm._internal.serve.engines.vllm.kv_transfer.factory import (
     KVConnectorBackendFactory,
 )
@@ -44,40 +52,10 @@ from ray.serve._private.config import DeploymentConfig, handle_num_replicas_auto
 
 transformers = try_import("transformers")
 
-
-GPUType = Enum("GPUType", vars(accelerators))
+# TODO(ryanaoleary@): Remove this alias once all downstream files are migrated
+# to use AcceleratorType.
+GPUType = AcceleratorType
 ModelT = TypeVar("ModelT", bound=BaseModel)
-
-
-def _compute_use_gpu(
-    use_cpu: Optional[bool],
-    placement_group_config: Optional[Dict[str, Any]],
-) -> bool:
-    """Returns True if the configuration resolves to GPU usage.
-
-    Priority order:
-    1. Explicit use_cpu flag
-    2. placement_group_config GPU bundles
-    3. Default to True — all supported accelerator types are GPU-capable
-    """
-    # Explicit use_cpu setting takes precedence over all other configurations
-    if isinstance(use_cpu, bool):
-        return not use_cpu
-
-    # Check placement_group_config for explicit GPU specification
-    if placement_group_config:
-        bundle_per_worker = placement_group_config.get("bundle_per_worker")
-        if bundle_per_worker:
-            return bundle_per_worker.get("GPU", 0) > 0
-
-        # Check bundles list (empty list → no GPUs → CPU-only)
-        bundles = placement_group_config.get("bundles")
-        if bundles is not None:
-            return any(bundle.get("GPU", 0) > 0 for bundle in bundles)
-
-    # All supported accelerator types are GPU-capable; default to GPU.
-    return True
-
 
 logger = get_logger(__name__)
 
@@ -198,13 +176,14 @@ class LLMConfig(BaseModelExtended):
 
     accelerator_type: Optional[str] = Field(
         default=None,
-        description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in GPUType])}",
+        description=f"The type of accelerator runs the model on. Only the following values are supported: {str([t.value for t in AcceleratorType])}",
     )
 
-    use_cpu: Optional[bool] = Field(
+    accelerator_config: Optional[AnyAcceleratorConfig] = Field(
         default=None,
         description=(
-            "Whether to use CPU for model inference. If not set, Ray will try to infer based on the available GPU resources. If set to True the model will run on CPU."
+            "Hardware-specific configuration parameters for the chosen accelerator. "
+            "The expected schema is dynamically typed based on the 'kind' discriminator."
         ),
     )
 
@@ -400,11 +379,6 @@ class LLMConfig(BaseModelExtended):
     def max_request_context_length(self) -> Optional[int]:
         return self.engine_kwargs.get("max_model_len")
 
-    @property
-    def use_gpu(self) -> bool:
-        """Returns True if configured to use GPU resources."""
-        return _compute_use_gpu(self.use_cpu, self.placement_group_config)
-
     @field_validator("accelerator_type")
     def validate_accelerator_type(cls, value: Optional[str]):
         if value is None:
@@ -414,7 +388,7 @@ class LLMConfig(BaseModelExtended):
         if value == "A10":
             value = "A10G"
 
-        if value not in [t.value for t in GPUType]:
+        if value not in [t.value for t in AcceleratorType]:
             raise ValueError(f"Unsupported accelerator type: {value}")
 
         return value
@@ -504,20 +478,75 @@ class LLMConfig(BaseModelExtended):
         return self
 
     @model_validator(mode="after")
-    def _validate_accelerator_type_with_gpu_mode(self):
-        """Validate that accelerator_type is not set when use_gpu resolves to False.
+    def _resolve_and_validate_accelerator(self):
+        """Resolves the accelerator configuration and validates it."""
+        self._resolve_accelerator_config()
+        self._check_accelerator_type_matches_hardware()
+        return self
 
-        This catches the case where accelerator_type would be silently ignored because
-        the configuration resolves to CPU-only mode (via use_cpu=True or
-        placement_group_config with no GPUs).
-        """
-        if self.accelerator_type and not self.use_gpu:
+    def _resolve_accelerator_config(self) -> None:
+        """Infers and populates accelerator_config if omitted by the user."""
+        if self.accelerator_config is not None:
+            return
+
+        # Infer hardware from placement_group_config bundles
+        inferred_kind = infer_hardware_kind_from_bundles(self.placement_group_config)
+
+        if inferred_kind == "tpu":
+            self.accelerator_config = TPUConfig(kind="tpu")
+            return
+        if inferred_kind == "gpu":
+            self.accelerator_config = GPUConfig(kind="gpu")
+            return
+        if inferred_kind == "cpu":
+            self.accelerator_config = CPUConfig(kind="cpu")
+            return
+
+        # Infer hardware from accelerator_type string
+        if self.accelerator_type:
+            accel_str = getattr(
+                self.accelerator_type, "value", str(self.accelerator_type)
+            )
+            if accel_str in TPU_ACCELERATOR_VALUES:
+                self.accelerator_config = TPUConfig(kind="tpu")
+                return
+
+            self.accelerator_config = GPUConfig(kind="gpu")
+            return
+
+        # Default to GPUConfig if not otherwise specified
+        self.accelerator_config = GPUConfig(kind="gpu")
+
+    def _check_accelerator_type_matches_hardware(self) -> None:
+        """Validate that accelerator_type aligns with the hardware configuration."""
+        if isinstance(self.accelerator_config, TPUConfig):
+            # For TPU slices, both accelerator_type and topology must be provided.
+            if self.accelerator_config.topology and not self.accelerator_type:
+                raise ValueError(
+                    "accelerator_type must be provided when specifying a TPU topology "
+                    "for TPU slice provisioning."
+                )
+
+        if not self.accelerator_type:
+            return
+
+        if isinstance(self.accelerator_config, CPUConfig):
             raise ValueError(
                 f"accelerator_type='{self.accelerator_type}' cannot be used with "
-                "CPU-only configurations. Either remove accelerator_type, set "
-                "use_cpu=False, or ensure placement_group_config bundles include GPUs."
+                "CPU-only configurations. Either remove accelerator_type, or provide an accelerator_config."
             )
-        return self
+
+        # Determine what hardware kind the string implies to check for kind mismatch
+        accel_str = getattr(self.accelerator_type, "value", str(self.accelerator_type))
+        expected_kind = "tpu" if accel_str in TPU_ACCELERATOR_VALUES else "gpu"
+
+        if self.accelerator_config.kind != expected_kind:
+            raise ValueError(
+                f"Hardware mismatch: accelerator_type='{self.accelerator_type}' requires a "
+                f"{expected_kind.upper()} backend, but the configuration resolved to a "
+                f"{self.accelerator_config.kind.upper()} backend. Please ensure your "
+                f"bundles and accelerator_type align."
+            )
 
     def multiplex_config(self) -> ServeMultiplexConfig:
         multiplex_config = None
