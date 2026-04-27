@@ -727,10 +727,14 @@ class TestGangConstructorFailure:
 
         wait_for_condition(_one_gang_running_and_updating, timeout=30)
 
-        # Re-check after a few retry cycles to confirm the deployment stays
-        # stuck in UPDATING and doesn't transition to HEALTHY or DEPLOY_FAILED.
-        time.sleep(10)
-        assert _one_gang_running_and_updating()
+        # Wait well past the failed-to-start threshold
+        # (max(num_replicas * 3, 6) = 12 for 4 replicas) to prove the
+        # deployment stays stuck in UPDATING.
+        def _enough_retries_and_still_stable() -> bool:
+            failed_gangs = ray.get(failed_replica_store.get_failed_gang_count.remote())
+            return failed_gangs >= 15 and _one_gang_running_and_updating()
+
+        wait_for_condition(_enough_retries_and_still_stable, timeout=90)
         assert serve.status().applications[SERVE_DEFAULT_APP_NAME].status == "DEPLOYING"
 
     def test_transient_constructor_failure(self, ray_shutdown):

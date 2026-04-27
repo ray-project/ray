@@ -1133,13 +1133,22 @@ class FailedReplicaStore:
     def __init__(self, fail_first: bool = False):
         self._fail_first = fail_first
         self._first_caller = False
+        self._fail_count = 0
+
+    def get_fail_count(self) -> int:
+        """Returns the number replica startup failures"""
+        return self._fail_count
 
     def should_fail(self) -> bool:
         """Returns whether this replica should raise in its constructor."""
         if not self._first_caller:
             self._first_caller = True
-            return self._fail_first
-        return not self._fail_first
+            result = self._fail_first
+        else:
+            result = not self._fail_first
+        if result:
+            self._fail_count += 1
+        return result
 
 
 @ray.remote(num_cpus=0)
@@ -1171,13 +1180,17 @@ class FailedGangReplicaStore:
 
     def mark_retry_failing_gang(self, gang_id: str) -> bool:
         """Flags the first replica of each new retry gang.
-        This is called after `mark_first_failing_gang"""
+        This is called after ``mark_first_failing_gang``."""
         if gang_id == self._successful_gang_id:
             return False
         if gang_id not in self._failed_gang_ids:
             self._failed_gang_ids.add(gang_id)
             return True
         return False
+
+    def get_failed_gang_count(self) -> int:
+        """Returns the number of distinct gangs that failed."""
+        return len(self._failed_gang_ids)
 
 
 @ray.remote(num_cpus=0)

@@ -1,5 +1,4 @@
 import sys
-import time
 
 import pytest
 
@@ -73,9 +72,15 @@ def test_deploy_with_partial_constructor_failure(serve_instance):
         return len(deployment_dict.get(deployment_id, [])) == 1
 
     wait_for_condition(_one_replica_running, timeout=30)
-    # Re-check after a few retry cycles to confirm only 1 replica stays running.
-    time.sleep(10)
-    assert _one_replica_running()
+
+    # Wait well past the failed-to-start threshold
+    # (max(num_replicas * 3, 6) = 6 for 2 replicas)
+    # to prove the deployment stays stuck and never transitions.
+    def _enough_retries_and_still_stable() -> bool:
+        fail_count = ray.get(failed_store.get_fail_count.remote())
+        return fail_count >= 8 and _one_replica_running()
+
+    wait_for_condition(_enough_retries_and_still_stable, timeout=90)
 
 
 def test_deploy_with_transient_constructor_failure(serve_instance):
