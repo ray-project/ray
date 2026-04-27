@@ -67,8 +67,8 @@ if TYPE_CHECKING:
     from vllm.entrypoints.openai.speech_to_text.serving import (
         OpenAIServingTranscription,
     )
-    from vllm.entrypoints.pooling.embed.serving import OpenAIServingEmbedding
-    from vllm.entrypoints.pooling.score.serving import ServingScores
+    from vllm.entrypoints.pooling.embed.serving import ServingEmbedding
+    from vllm.entrypoints.pooling.scoring.serving import ServingScores
     from vllm.entrypoints.serve.tokenize.serving import OpenAIServingTokenization
 
 vllm = try_import("vllm")
@@ -260,7 +260,7 @@ class VLLMEngine(LLMEngine):
         self._oai_models: Optional["OpenAIServingModels"] = None
         self._oai_serving_chat: Optional["OpenAIServingChat"] = None
         self._oai_serving_completion: Optional["OpenAIServingCompletion"] = None
-        self._oai_serving_embedding: Optional["OpenAIServingEmbedding"] = None
+        self._oai_serving_embedding: Optional["ServingEmbedding"] = None
         self._oai_serving_transcription: Optional["OpenAIServingTranscription"] = None
         self._oai_serving_scores: Optional["ServingScores"] = None
         self._oai_serving_tokenization: Optional["OpenAIServingTokenization"] = None
