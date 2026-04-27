@@ -1,11 +1,15 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     import pyarrow as pa
 
+from typing_extensions import override
 
-from ray.data._internal.execution.bundle_queue import RebundleQueue
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    RebundleQueue,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -98,6 +102,16 @@ class TaskPoolMapOperator(MapOperator):
         }
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
+
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return [self._block_ref_bundler]
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_queue]
 
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
