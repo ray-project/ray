@@ -26,12 +26,12 @@ def _make_ray_wrapped_fatal_error() -> Exception:
 
 
 @contextmanager
-def _patched_logger_and_time(start: float = 100.0):
+def _patched_logger_and_time():
     """Patch ``time.monotonic`` and the server_utils logger.
 
     Yields (mock_logger, mock_time) via mock_time.return_value = <new_value>.
     """
-    mock_time = MagicMock(return_value=start)
+    mock_time = MagicMock(return_value=100.0)
     with (
         patch.object(server_utils, "logger") as mock_logger,
         patch("time.monotonic", mock_time),
