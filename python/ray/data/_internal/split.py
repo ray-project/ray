@@ -247,7 +247,7 @@ def _generate_global_split_results(
 def _split_at_indices(
     blocks_with_metadata: List[Tuple[ObjectRef[Block], BlockMetadata]],
     indices: List[int],
-    owned_by_consumer: bool = True,
+    owned_by_consumer: bool,
     block_rows: List[int] = None,
 ) -> Tuple[List[List[ObjectRef[Block]]], List[List[BlockMetadata]]]:
     """Split blocks at the provided indices.
