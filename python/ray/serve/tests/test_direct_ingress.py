@@ -927,9 +927,21 @@ def test_crashed_replica_port_is_released_and_reused(
     assert len(after_crash_http_ports) == 4
     assert len(after_crash_grpc_ports) == 4
 
-    # show that smart port selection is working even with crashed ports
-    assert set(after_crash_http_ports) == set(http_ports)
-    assert set(after_crash_grpc_ports) == set(grpc_ports)
+    # Show that smart port selection is working even with crashed ports.
+    # We expect the used ports to be within 4 ports of the original ports since
+    # we have 4 replicas and they can all be in TIME_WAIT state after deletion.
+    assert set(after_crash_http_ports).issubset(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT + 8,
+        )
+    )
+    assert set(after_crash_grpc_ports).issubset(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT + 8,
+        )
+    )
 
     # make requests to the application
     for http_port in http_ports:
