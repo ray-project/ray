@@ -343,38 +343,31 @@ class FailureConfig(FailureConfigV1):
             raise DeprecationWarning(FAIL_FAST_DEPRECATION_MESSAGE)
 
 
-@PublicAPI(stability="stable")
+@PublicAPI(stability="alpha")
 @dataclass
 class LoggingConfig:
     """Configuration for Ray Train's logging behavior.
 
     Args:
         log_level: The log level for Ray Train's internal ``ray.train`` logs
-            on console output and application-level log files. System-level
-            log files always capture all log levels (DEBUG and above).
-
-            Note: This setting does not affect the ``ray`` logger
-            (configured by ``ray.init()``) or the root logger (used by user
-            code in the training function). These three loggers are fully independent.
-
-            Accepts a string (e.g., ``"DEBUG"``, ``"INFO"``, ``"WARNING"``).
-            Defaults to ``"INFO"``.
+            on console output and application-level log files. Accepts standard
+            Python logging level names. Defaults to ``"INFO"``.
+            System-level log files always capture all levels (DEBUG and above),
+            and the ``ray`` logger (set by ``ray.init()``) and root logger
+            are unaffected.
     """
 
     log_level: str = "INFO"
 
     def __post_init__(self):
-        if not isinstance(self.log_level, str) or self.log_level.upper() not in {
-            "DEBUG",
-            "INFO",
-            "WARNING",
-            "ERROR",
-            "CRITICAL",
-        }:
+        valid_levels = set(logging._nameToLevel)
+        if (
+            not isinstance(self.log_level, str)
+            or self.log_level.upper() not in valid_levels
+        ):
             raise ValueError(
                 f"Invalid log_level: {self.log_level!r}. "
-                "Must be a valid logging level string "
-                "(e.g., 'DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL')."
+                f"Must be one of: {', '.join(repr(x) for x in sorted(valid_levels))}."
             )
         self.log_level = self.log_level.upper()
 

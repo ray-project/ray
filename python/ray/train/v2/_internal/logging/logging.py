@@ -149,15 +149,7 @@ class LoggingManager:
     def _get_base_logger_config_dict(
         context: Union[TrainRunContext, TrainContext],
     ) -> dict:
-        """Return the base logging configuration dictionary.
-
-        Args:
-            context: The Train run or train context. The log level is
-                resolved from the RunConfig's LoggingConfig.
-
-        Returns:
-            The base logging configuration dictionary.
-        """
+        """Return the base logging configuration dictionary."""
         log_level = LoggingManager._resolve_log_level(context)
         # Using Ray worker ID as the file identifier where logs are written to.
         file_identifier = ray.get_runtime_context().get_worker_id()
@@ -221,10 +213,7 @@ class LoggingManager:
     def _resolve_log_level(
         context: Union[TrainRunContext, TrainContext],
     ) -> str:
-        """Resolve the log level from RunConfig's LoggingConfig.
-
-        Returns the uppercased log level string from LoggingConfig.
-        """
+        """Returns the log level from RunConfig's LoggingConfig."""
         if isinstance(context, TrainContext):
             run_config = context.train_run_context.get_run_config()
         else:
@@ -237,6 +226,7 @@ class LoggingManager:
         """Return the controller logger configuration dictionary.
 
         On the controller process, only the `ray.train` logger is configured.
+        It is broadly set to level DEBUG, with downstream processing by log handlers.
         This logger emits logs to the following three locations:
             - `file_train_sys_controller`: Ray Train system logs.
             - `file_train_app_controller`: Ray Train application logs.
@@ -263,9 +253,11 @@ class LoggingManager:
 
         First, the `ray.train` logger is configured and emits logs to the
         following three locations:
-            - `file_train_sys_worker`: Ray Train system logs (always DEBUG).
+            - `file_train_sys_worker`: Ray Train system logs.
             - `file_train_app_worker`: Ray Train application logs.
             - `console`: Logs to the console.
+        It is broadly set to level DEBUG, with downstream processing by log handlers.
+
         Second, the root logger is configured and emits logs to the following
         two locations:
             - `console`: Logs to the console.
