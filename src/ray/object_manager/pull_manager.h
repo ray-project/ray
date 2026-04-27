@@ -465,10 +465,6 @@ class PullManager {
   /// The total size of all active objects. An object is active when the
   /// pull manager is responsible for keeping it locally available, regardless
   /// of whether it's already in plasma or hasn't arrived yet.
-  ///
-  /// To avoid starvation, this count minus pinned_objects_size_ (the subset
-  /// already in plasma) stays below the available capacity in the local
-  /// object store.
   int64_t num_active_bytes_ = 0;
 
   /// The total number of bytes that is available to store active objects.
@@ -488,9 +484,8 @@ class PullManager {
   // chunks.
   mutable absl::Mutex active_objects_mu_;
 
-  /// The objects that are currently active. This is a subset of the objects
-  /// that we have been asked to fetch. The total size of these objects
-  /// equals num_active_bytes_.
+  /// The objects that are currently active (passing the quota admission).
+  /// The total size of these objects equals num_active_bytes_.
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<uint64_t>>
       active_object_pull_requests_ ABSL_GUARDED_BY(active_objects_mu_);
 
