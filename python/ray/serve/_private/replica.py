@@ -142,6 +142,7 @@ from ray.serve._private.thirdparty.get_asgi_route_name import (
 from ray.serve._private.tracing_utils import (
     TraceContextManager,
     extract_propagated_context,
+    get_tracing_kwargs,
     is_span_recording,
     is_tracing_enabled,
     set_http_span_attributes,
@@ -1055,6 +1056,7 @@ class Replica:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        tracing_config=None,
     ):
         self._version = version
         self._replica_id = replica_id
@@ -1062,6 +1064,7 @@ class Replica:
         self._deployment_config = deployment_config
         self._ingress = ingress
         self._route_prefix = route_prefix
+        self._tracing_config = tracing_config
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
             self._component_name = (
@@ -1152,10 +1155,12 @@ class Replica:
         self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
 
         try:
+            tracing_kwargs = get_tracing_kwargs(self._tracing_config)
             is_tracing_setup_successful = setup_tracing(
                 component_type=ServeComponentType.REPLICA,
                 component_name=self._component_name,
                 component_id=self._component_id,
+                **tracing_kwargs,
             )
             if is_tracing_setup_successful:
                 logger.info("Successfully set up tracing for replica")
@@ -2709,6 +2714,7 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        tracing_config=None,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -2725,6 +2731,7 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
+            tracing_config=tracing_config,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):

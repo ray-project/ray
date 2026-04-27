@@ -247,6 +247,7 @@ class ApplicationState:
         endpoint_state: EndpointState,
         logging_config: LoggingConfig,
         external_scaler_enabled: bool,
+        tracing_config: Optional["TracingConfig"] = None,  # noqa: F821
     ):
         """
         Initialize an ApplicationState instance.
@@ -259,6 +260,7 @@ class ApplicationState:
             logging_config: Logging configuration schema.
             external_scaler_enabled: Whether external autoscaling is enabled for
                 this application.
+            tracing_config: Tracing configuration for OpenTelemetry tracing.
         """
 
         self._name = name
@@ -287,6 +289,7 @@ class ApplicationState:
             serialized_application_autoscaling_policy_def=None,
         )
         self._logging_config = logging_config
+        self._tracing_config = tracing_config
 
     @property
     def route_prefix(self) -> Optional[str]:
@@ -452,9 +455,9 @@ class ApplicationState:
             code_version=None,
             target_config=target_config,
             deleting=False,
-            external_scaler_enabled=target_config.external_scaler_enabled
-            if target_config
-            else False,
+            external_scaler_enabled=(
+                target_config.external_scaler_enabled if target_config else False
+            ),
         )
 
     def _delete_deployment(self, name: str) -> bool:
@@ -1171,12 +1174,14 @@ class ApplicationStateManager:
         endpoint_state: EndpointState,
         kv_store: KVStoreBase,
         logging_config: LoggingConfig,
+        tracing_config: Optional["TracingConfig"] = None,  # noqa: F821
     ):
         self._deployment_state_manager = deployment_state_manager
         self._autoscaling_state_manager = autoscaling_state_manager
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
+        self._tracing_config = tracing_config
 
         self._shutting_down = False
 
@@ -1210,6 +1215,7 @@ class ApplicationStateManager:
                     self._endpoint_state,
                     self._logging_config,
                     checkpoint_data.external_scaler_enabled,
+                    tracing_config=self._tracing_config,
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
                 self._application_states[app_name] = app_state
@@ -1265,6 +1271,7 @@ class ApplicationStateManager:
                     self._endpoint_state,
                     self._logging_config,
                     external_scaler_enabled,
+                    tracing_config=self._tracing_config,
                 )
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
@@ -1321,6 +1328,7 @@ class ApplicationStateManager:
                     endpoint_state=self._endpoint_state,
                     logging_config=self._logging_config,
                     external_scaler_enabled=app_config.external_scaler_enabled,
+                    tracing_config=self._tracing_config,
                 )
 
             self._application_states[app_config.name].apply_app_config(

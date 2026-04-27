@@ -82,6 +82,7 @@ from ray.serve._private.proxy_request_response import (
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
 from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.tracing_utils import (
+    get_tracing_kwargs,
     is_span_recording,
     set_http_span_attributes,
     set_rpc_span_attributes,
@@ -743,6 +744,7 @@ class gRPCProxy(GenericProxy):
             is received. It wraps the request iterator and calls proxy_request.
             The return value is serialized user defined protobuf bytes.
             """
+
             # Create async iterator wrapper for the request stream
             async def async_request_iterator():
                 async for request in request_iterator:
@@ -781,6 +783,7 @@ class gRPCProxy(GenericProxy):
             request is received. It wraps the request iterator and calls proxy_request.
             The return value is a generator of serialized user defined protobuf bytes.
             """
+
             # Create async iterator wrapper for the request stream
             async def async_request_iterator():
                 async for request in request_iterator:
@@ -939,9 +942,11 @@ class gRPCProxy(GenericProxy):
             set_rpc_span_attributes(
                 system=proxy_request.request_type,
                 method=proxy_request.method,
-                status_code=status.code.name
-                if isinstance(status.code, grpc.StatusCode)
-                else grpc.StatusCode.UNKNOWN.name,
+                status_code=(
+                    status.code.name
+                    if isinstance(status.code, grpc.StatusCode)
+                    else grpc.StatusCode.UNKNOWN.name
+                ),
             )
         self._finalize_proxy_tracing(status=status, exc=exc)
 
@@ -1484,6 +1489,7 @@ class ProxyActorInterface(ABC):
         node_ip_address: str,
         logging_config: LoggingConfig,
         log_buffer_size: int = RAY_SERVE_REQUEST_PATH_LOG_BUFFER_SIZE,
+        tracing_config: Optional["TracingConfig"] = None,  # noqa: F821
     ):
         """Initialize the proxy actor.
 
@@ -1492,11 +1498,13 @@ class ProxyActorInterface(ABC):
             node_ip_address: IP address of the node
             logging_config: Logging configuration
             log_buffer_size: Size of the log buffer
+            tracing_config: Tracing configuration
         """
         self._node_id = node_id
         self._node_ip_address = node_ip_address
         self._logging_config = logging_config
         self._log_buffer_size = log_buffer_size
+        self._tracing_config = tracing_config
 
         self._update_logging_config(logging_config)
 
@@ -1630,11 +1638,13 @@ class ProxyActor(ProxyActorInterface):
         node_ip_address: str,
         logging_config: LoggingConfig,
         long_poll_client: Optional[LongPollClient] = None,
-    ):  # noqa: F821
+        tracing_config: Optional["TracingConfig"] = None,  # noqa: F821
+    ):
         super().__init__(
             node_id=node_id,
             node_ip_address=node_ip_address,
             logging_config=logging_config,
+            tracing_config=tracing_config,
         )
 
         self._grpc_options = grpc_options
@@ -1651,8 +1661,11 @@ class ProxyActor(ProxyActorInterface):
         )
 
         try:
+            tracing_kwargs = get_tracing_kwargs(self._tracing_config)
             is_tracing_setup_successful = setup_tracing(
-                component_name="proxy", component_id=node_ip_address
+                component_name="proxy",
+                component_id=node_ip_address,
+                **tracing_kwargs,
             )
             if is_tracing_setup_successful:
                 logger.info("Successfully set up tracing for proxy")

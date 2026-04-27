@@ -23,7 +23,7 @@ from ray.serve.context import (
 )
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
-from ray.serve.schema import LoggingConfig
+from ray.serve.schema import LoggingConfig, TracingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -56,6 +56,7 @@ def _start_controller(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_tracing_config: Union[None, dict, "TracingConfig"] = None,
     **kwargs,
 ) -> ActorHandle:
     """Start Ray Serve controller.
@@ -95,11 +96,17 @@ def _start_controller(
     elif isinstance(global_logging_config, dict):
         global_logging_config = LoggingConfig(**global_logging_config)
 
+    if global_tracing_config is None:
+        global_tracing_config = TracingConfig()
+    elif isinstance(global_tracing_config, dict):
+        global_tracing_config = TracingConfig(**global_tracing_config)
+
     controller_impl = get_controller_impl()
     controller = controller_impl.remote(
         http_options=http_options,
         grpc_options=grpc_options,
         global_logging_config=global_logging_config,
+        global_tracing_config=global_tracing_config,
     )
 
     proxy_handles = ray.get(controller.get_proxies.remote())
@@ -120,6 +127,7 @@ async def serve_start_async(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_tracing_config: Union[None, dict, "TracingConfig"] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance asynchronously.
@@ -152,7 +160,13 @@ async def serve_start_async(
     controller = (
         await ray.remote(_start_controller)
         .options(num_cpus=0)
-        .remote(http_options, grpc_options, global_logging_config, **kwargs)
+        .remote(
+            http_options,
+            grpc_options,
+            global_logging_config,
+            global_tracing_config,
+            **kwargs,
+        )
     )
 
     client = ServeControllerClient(
@@ -167,6 +181,7 @@ def serve_start(
     http_options: Union[None, dict, HTTPOptions] = None,
     grpc_options: Union[None, dict, gRPCOptions] = None,
     global_logging_config: Union[None, dict, LoggingConfig] = None,
+    global_tracing_config: Union[None, dict, "TracingConfig"] = None,
     **kwargs,
 ) -> ServeControllerClient:
     """Initialize a serve instance.
@@ -227,7 +242,11 @@ def serve_start(
         return client
 
     controller = _start_controller(
-        http_options, grpc_options, global_logging_config, **kwargs
+        http_options,
+        grpc_options,
+        global_logging_config,
+        global_tracing_config,
+        **kwargs,
     )
 
     client = ServeControllerClient(

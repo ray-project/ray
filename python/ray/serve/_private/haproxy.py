@@ -990,6 +990,7 @@ class HAProxyManager(ProxyActorInterface):
         node_ip_address: str,
         logging_config: LoggingConfig,
         long_poll_client: Optional[LongPollClient] = None,
+        tracing_config=None,
     ):  # noqa: F821
         super().__init__(
             node_id=node_id,
