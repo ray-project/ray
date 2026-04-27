@@ -260,14 +260,18 @@ void GcsActorScheduler::LeaseWorkerFromNode(
   static uint32_t lease_id_counter = 0;
   actor->GetMutableLeaseSpec()->set_lease_id(
       LeaseID::FromWorker(WorkerID::FromRandom(), lease_id_counter++).Binary());
+
+  rpc::RequestWorkerLeaseRequest request;
+  request.mutable_lease_spec()->CopyFrom(actor->GetLeaseSpecification().GetMessage());
+  request.set_grant_or_reject(actor->GetGrantOrReject());
+  request.set_backlog_size(0);
+  request.set_is_selected_based_on_locality(false);
   raylet_client->RequestWorkerLease(
-      actor->GetLeaseSpecification().GetMessage(),
-      actor->GetGrantOrReject(),
+      std::move(request),
       [this, actor, node](const Status &status,
                           const rpc::RequestWorkerLeaseReply &reply) {
         HandleWorkerLeaseReply(actor, node, status, reply);
-      },
-      0);
+      });
 }
 
 void GcsActorScheduler::RetryLeasingWorkerFromNode(

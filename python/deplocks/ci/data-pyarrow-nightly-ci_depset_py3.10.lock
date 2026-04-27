@@ -1,5 +1,4 @@
 --index-url https://pypi.org/simple
---extra-index-url https://pypi.fury.io/arrow-nightlies/
 --extra-index-url https://download.pytorch.org/whl/cpu
 --extra-index-url https://download.pytorch.org/whl/cu128
 --find-links https://data.pyg.org/whl/torch-2.7.0+cpu.html
@@ -3402,7 +3401,6 @@ pyarrow==23.0.1 \
     --hash=sha256:fa8e51cb04b9f8c9c5ace6bab63af9a1f88d35c0d6cbf53e8c17c098552285e1 \
     --hash=sha256:fed7020203e9ef273360b9e45be52a2a47d3103caf156a30ace5247ffb51bdbd
     # via
-    #   -r python/requirements/data/pyarrow-nightly.txt
     #   delta-sharing
     #   getdaft
     #   hudi
