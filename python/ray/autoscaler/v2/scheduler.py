@@ -68,6 +68,12 @@ class SchedulingRequest:
     # The cloud resource availability score. A low score indicates that resource
     # allocation for this node type has recently failed.
     cloud_resource_availabilities: Dict[NodeType, float] = field(default_factory=dict)
+    # The recoverable cloud resource availability score.
+    # Similar to cloud_resource_availabilities, but it will recover from 0.0 to 1.0
+    # linearly over RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S seconds.
+    recoverable_resource_availabilities: Dict[NodeType, float] = field(
+        default_factory=dict
+    )
 
 
 @dataclass
@@ -257,6 +263,8 @@ class SchedulingNode:
     launch_config_hash: Optional[str] = None
     # node kind.
     node_kind: NodeKind = NodeKind.WORKER
+    # The priority of the node type.
+    priority: int = 0
 
     def __init__(
         self,
@@ -272,6 +280,7 @@ class SchedulingNode:
         launch_config_hash: str = "",
         node_kind: NodeKind = NodeKind.WORKER,
         termination_request: Optional[TerminationRequest] = None,
+        priority: int = 0,
     ):
         self.node_type = node_type
         self.total_resources = total_resources
@@ -292,6 +301,7 @@ class SchedulingNode:
         self.launch_config_hash = launch_config_hash
         self.node_kind = node_kind
         self.termination_request = termination_request
+        self.priority = priority
 
     def get_available_resources(self, resource_request_source: ResourceRequestSource):
         """Get the available resources for the given resource request source."""
@@ -339,6 +349,8 @@ class SchedulingNode:
         if not SchedulingNode.is_schedulable(instance):
             return None
 
+        node_config = node_type_configs.get(instance.im_instance.instance_type, None)
+
         if instance.im_instance.status == Instance.RAY_RUNNING:
             assert instance.ray_node is not None, (
                 "ray node should not be None "
@@ -365,11 +377,11 @@ class SchedulingNode:
                 idle_duration_ms=instance.ray_node.idle_duration_ms,
                 launch_config_hash=instance.im_instance.launch_config_hash,
                 node_kind=instance.im_instance.node_kind,
+                priority=node_config.priority if node_config else 0,
             )
 
         # This is an instance pending to run ray. Initialize a schedulable node
         # from the node type config.
-        node_config = node_type_configs.get(instance.im_instance.instance_type, None)
         if node_config is None:
             if disable_launch_config_check:
                 # We are not terminating outdated nodes.
@@ -468,6 +480,7 @@ class SchedulingNode:
             im_instance_id=im_instance_id,
             im_instance_status=im_instance_status,
             node_kind=node_kind,
+            priority=node_config.priority,
         )
 
     def __post_init__(self):
@@ -821,12 +834,19 @@ class ResourceDemandScheduler(IResourceScheduler):
         _cloud_resource_availabilities: Dict[NodeType, float] = field(
             default_factory=dict
         )
+        # The recoverable cloud resource availability score.
+        # Similar to _cloud_resource_availabilities, but it will recover from 0.0 to 1.0
+        # linearly over RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S seconds.
+        _recoverable_resource_availabilities: Dict[NodeType, float] = field(
+            default_factory=dict
+        )
 
         def __init__(
             self,
             nodes: List[SchedulingNode],
             node_type_configs: Dict[NodeType, NodeTypeConfig],
             cloud_resource_availabilities: Dict[NodeType, float],
+            recoverable_resource_availabilities: Dict[NodeType, float],
             disable_launch_config_check: bool,
             max_num_nodes: Optional[int] = None,
             idle_timeout_s: Optional[float] = None,
@@ -840,6 +860,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             self._idle_timeout_s = idle_timeout_s
             self._disable_launch_config_check = disable_launch_config_check
             self._cloud_resource_availabilities = cloud_resource_availabilities
+            self._recoverable_resource_availabilities = (
+                recoverable_resource_availabilities
+            )
 
         @classmethod
         def from_schedule_request(
@@ -861,7 +884,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             # Initialize the scheduling nodes.
             for instance in req.current_instances:
                 node = SchedulingNode.new(
-                    instance, node_type_configs, req.disable_launch_config_check
+                    instance,
+                    node_type_configs,
+                    req.disable_launch_config_check,
                 )
                 if node:
                     nodes.append(node)
@@ -870,6 +895,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 nodes=nodes,
                 node_type_configs=node_type_configs,
                 cloud_resource_availabilities=req.cloud_resource_availabilities,
+                recoverable_resource_availabilities=req.recoverable_resource_availabilities,
                 disable_launch_config_check=req.disable_launch_config_check,
                 max_num_nodes=req.max_num_nodes,
                 idle_timeout_s=req.idle_timeout_s,
@@ -954,6 +980,9 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         def get_cloud_resource_availabilities(self) -> Dict[NodeType, float]:
             return copy.deepcopy(self._cloud_resource_availabilities)
+
+        def get_recoverable_resource_availabilities(self) -> Dict[NodeType, float]:
+            return copy.deepcopy(self._recoverable_resource_availabilities)
 
         def update(self, new_nodes: List[SchedulingNode]) -> None:
             """
@@ -1574,6 +1603,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 existing_nodes,
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
+                ctx.get_recoverable_resource_availabilities(),
             )
             if best_node is None:
                 # No existing nodes can schedule any more requests.
@@ -1613,6 +1643,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 node_pools,
                 resource_request_source,
                 ctx.get_cloud_resource_availabilities(),
+                ctx.get_recoverable_resource_availabilities(),
             )
             if best_node is None:
                 break
@@ -1638,14 +1669,19 @@ class ResourceDemandScheduler(IResourceScheduler):
         nodes: List[SchedulingNode],
         resource_request_source: ResourceRequestSource,
         cloud_resource_availabilities: Dict[NodeType, float],
+        recoverable_resource_availabilities: Dict[NodeType, float],
     ) -> Tuple[SchedulingNode, List[ResourceRequest], List[SchedulingNode]]:
         """
         Schedule the requests on the best node.
         A simple greedy algorithm is used to schedule the requests:
             1. Try to schedule the requests on each node.
-            2. Sort the nodes by a score. The sorting includes:
+            2. Sort the nodes by a multi-level score:
                 2.1. UtilizationScore: to maximize resource utilization.
-                2.2. Cloud resource availabilities: prioritize node types with
+                2.2. Recoverable Availability: prioritize node types that have
+                never failed or have recovered from failures.
+                2.3. Priority: prioritize node types with higher user-defined
+                priority.
+                2.4. Cloud resource availabilities: prioritize node types with
                 the most available cloud resources, in order to minimize allocation
                 failures.
             3. Return the node with the highest score.
@@ -1662,6 +1698,9 @@ class ResourceDemandScheduler(IResourceScheduler):
                 pending demands from ray actors/tasks or cluster resource constraints.
             cloud_resource_availabilities: The cloud resource availability score. A low
                 score indicates that allocation for this node type has recently failed.
+            recoverable_resource_availabilities: The recoverable cloud resource availability
+                score. Similar to cloud_resource_availabilities, but it will recover from
+                0.0 to 1.0 linearly over RAY_AUTOSCALER_AVAILABILITY_RECOVERY_S seconds.
 
         Returns:
             best_node: The best node to schedule the requests.
@@ -1719,7 +1758,9 @@ class ResourceDemandScheduler(IResourceScheduler):
             results,
             key=lambda r: (
                 r.score,
-                cloud_resource_availabilities.get(r.node.node_type, 1),
+                recoverable_resource_availabilities.get(r.node.node_type, 1.0),
+                r.node.priority,
+                cloud_resource_availabilities.get(r.node.node_type, 1.0),
             ),
             reverse=True,
         )

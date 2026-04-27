@@ -962,6 +962,59 @@ def test_pg_scheduled_on_node_with_bundle_label_selector(autoscaler_v2):
         cluster.shutdown()
 
 
+def test_priority_selection_e2e():
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "high-priority": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "priority": 10,
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+            "low-priority": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "priority": 0,
+                "min_workers": 0,
+                "max_workers": 1,
+            },
+        },
+        autoscaler_v2=True,
+    )
+
+    try:
+        cluster.start()
+        ray.init("auto")
+        gcs_address = ray.get_runtime_context().gcs_address
+
+        @ray.remote(num_cpus=1)
+        def foo():
+            import time
+
+            time.sleep(5)
+            return True
+
+        # Submit a task
+        foo.remote()
+
+        def high_priority_node_launched():
+            status = get_cluster_status(gcs_address)
+            active_node_types = {
+                node.ray_node_type_name for node in status.active_nodes
+            }
+            assert "low-priority" not in active_node_types
+            return "high-priority" in active_node_types
+
+        # Wait for the high priority node to be launched
+        wait_for_condition(high_priority_node_launched, timeout=30)
+
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
