@@ -214,14 +214,16 @@ void GcsPlacementGroupScheduler::PrepareResources(
       bundles,
       [node_id, bundles, callback](const Status &status,
                                    const rpc::PrepareBundleResourcesReply &reply) {
-        auto result = reply.success() ? Status::OK()
-                                      : Status::IOError("Failed to reserve resource");
+        auto result = !status.ok()      ? status
+                      : reply.success() ? Status::OK()
+                                        : Status::IOError("Failed to reserve resource");
         if (result.ok()) {
           RAY_LOG(INFO) << "Finished leasing resource from " << node_id
                         << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
           RAY_LOG(INFO) << "Failed to lease resource from " << node_id
-                        << " for bundles: " << GetDebugStringForBundles(bundles);
+                        << " for bundles: " << GetDebugStringForBundles(bundles)
+                        << ". Status: " << result;
         }
         callback(result);
       });
@@ -246,7 +248,8 @@ void GcsPlacementGroupScheduler::CommitResources(
                         << " for bundles: " << GetDebugStringForBundles(bundles);
         } else {
           RAY_LOG(INFO) << "Failed to commit resource to " << node_id
-                        << " for bundles: " << GetDebugStringForBundles(bundles);
+                        << " for bundles: " << GetDebugStringForBundles(bundles)
+                        << ". Status: " << status;
         }
         RAY_CHECK(callback);
         callback(status);
