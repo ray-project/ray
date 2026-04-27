@@ -86,7 +86,7 @@ import sys
 import json
 from ray.serve._private.benchmarks.locust_utils import run_locust_master, run_locust_worker, LocustStage
 
-data = sys.argv[1]
+data = json.loads(sys.argv[1])
 results = run_locust_worker(
     master_address="{self.master_address}",
     host_url="{self.host_url}",
