@@ -84,6 +84,12 @@ class NixlTensorTransport(TensorTransportManager):
         """Registers the tensor's memory with NIXL and bumps the reference count so the memory region is never deregistered."""
         self._add_tensor_descs([tensor])
 
+    def deregister_nixl_memory(self, tensor: "torch.Tensor") -> None:
+        """Decrements the reference count for the tensor's NIXL memory registration.
+        If the count reaches 0, the memory is deregistered from NIXL.
+        """
+        self._remove_tensor_descs([tensor])
+
     def get_nixl_agent(self):
         """
         Creates a NIXL agent with UCX backend if not already created.
@@ -299,16 +305,7 @@ class NixlTensorTransport(TensorTransportManager):
             if NIXL_REMOTE_AGENT_CACHE_MAXSIZE == 0 and remote_name:
                 nixl_agent.remove_remote_agent(remote_name)
             if added_tensor_descs:
-                with self._cache_lock:
-                    for tensor in tensors:
-                        key = tensor.untyped_storage().data_ptr()
-                        tensor_desc = self._tensor_desc_cache[key]
-                        tensor_desc.metadata_count -= 1
-
-                        if tensor_desc.metadata_count == 0:
-                            nixl_agent.deregister_memory(tensor_desc.reg_desc)
-                            self._tensor_desc_cache.pop(key)
-                            self._nixl_agent_meta_version += 1
+                self._remove_tensor_descs(tensors)
 
         return tensors
 
@@ -333,15 +330,7 @@ class NixlTensorTransport(TensorTransportManager):
             if obj_id not in self._managed_meta_nixl:
                 return
             self._managed_meta_nixl.pop(obj_id, None)
-            for tensor in tensors:
-                key = tensor.untyped_storage().data_ptr()
-                if key in self._tensor_desc_cache:
-                    tensor_desc = self._tensor_desc_cache[key]
-                    tensor_desc.metadata_count -= 1
-                    if tensor_desc.metadata_count == 0:
-                        self._tensor_desc_cache.pop(key)
-                        self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
-                        self._nixl_agent_meta_version += 1
+            self._remove_tensor_descs(tensors)
 
     def abort_transport(
         self,
@@ -370,6 +359,23 @@ class NixlTensorTransport(TensorTransportManager):
         """
         with self._cache_lock:
             self._managed_meta_nixl[object_id] = meta
+
+    def _remove_tensor_descs(self, tensors: List["torch.Tensor"]):
+        """
+        Decrements the reference count for each tensor. If the count reaches 0,
+        the memory is deregistered from NIXL.
+        """
+        with self._cache_lock:
+            for tensor in tensors:
+                key = tensor.untyped_storage().data_ptr()
+                if key not in self._tensor_desc_cache:
+                    continue
+                tensor_desc = self._tensor_desc_cache[key]
+                tensor_desc.metadata_count -= 1
+                if tensor_desc.metadata_count == 0:
+                    self.get_nixl_agent().deregister_memory(tensor_desc.reg_desc)
+                    self._tensor_desc_cache.pop(key)
+                    self._nixl_agent_meta_version += 1
 
     def _add_tensor_descs(self, tensors: List["torch.Tensor"]):
         """
