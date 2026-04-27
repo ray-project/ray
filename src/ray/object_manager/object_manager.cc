@@ -805,14 +805,6 @@ std::string ObjectManager::DebugString() const {
   std::stringstream result;
   result << "ObjectManager:";
   result << "\n- num local objects: " << local_objects_.size();
-  result << "\n- [karticam] object store used (bytes): " << used_memory_;
-  result << "\n- [karticam] object store capacity (bytes): "
-         << config_.object_store_memory;
-  result << "\n- [karticam] object store used (%): "
-         << (config_.object_store_memory > 0
-                 ? 100.0 * used_memory_ / config_.object_store_memory
-                 : 0)
-         << "%";
   result << "\n- num unfulfilled push requests: " << unfulfilled_push_requests_.size();
   result << "\n- num object pull requests: " << pull_manager_->NumObjectPullRequests();
   result << "\n- num chunks received total: " << num_chunks_received_total_;
