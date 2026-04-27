@@ -3,7 +3,6 @@ import logging
 import os
 import pickle
 import time
-from collections import defaultdict
 from typing import (
     Any,
     Dict,
@@ -60,7 +59,6 @@ from ray.serve._private.default_impl import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
-    DeploymentReplica,
     DeploymentStateManager,
 )
 from ray.serve._private.endpoint_state import EndpointState
@@ -421,12 +419,14 @@ class ServeController:
         return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
-        return self.deployment_state_manager._deployment_states[deployment_id]._replicas
+        return self.deployment_state_manager._dump_replica_states_for_testing(
+            deployment_id
+        )
 
     def _stop_one_running_replica_for_testing(self, deployment_id):
-        self.deployment_state_manager._deployment_states[
+        self.deployment_state_manager._stop_one_running_replica_for_testing(
             deployment_id
-        ]._stop_one_running_replica_for_testing()
+        )
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
@@ -1221,7 +1221,7 @@ class ServeController:
 
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""
-        return self.deployment_state_manager._deployment_states.keys()
+        return self.deployment_state_manager.get_deployment_ids()
 
     def update_deployment_replicas(
         self, deployment_id: DeploymentID, target_num_replicas: int
@@ -1570,24 +1570,7 @@ class ServeController:
         ]
 
     def _get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
-        node_id_to_alive_replica_ids = defaultdict(set)
-        # TODO(abrar): Expose the right APIs in the DeploymentStateManager
-        # to get the alive replicas for a deployment.
-        for ds in self.deployment_state_manager._deployment_states.values():
-            # here we get all the replicas irrespective of their state
-            # unlike in the get_running_replica_infos_for_ingress_deployment
-            # where we only get the replicas that are running, because we dont
-            # wish to agressively cleanup ports for replicas that are not running
-            # and are in the process of being updated or are in the process of
-            # being started.
-            replicas: List[DeploymentReplica] = ds._replicas.get()
-            for replica in replicas:
-                node_id: Optional[str] = replica.actor_node_id
-                if node_id is None:
-                    continue
-                replica_unique_id = replica.replica_id.unique_id
-                node_id_to_alive_replica_ids[node_id].add(replica_unique_id)
-        return node_id_to_alive_replica_ids
+        return self.deployment_state_manager.get_node_id_to_alive_replica_ids()
 
     def allocate_replica_port(
         self, node_id: str, replica_id: str, protocol: RequestProtocol
