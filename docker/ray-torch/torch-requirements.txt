@@ -12,3 +12,4 @@ cupy-cuda12x
 grpcio
 jupytext
 langchain-text-splitters
+gevent

@@ -3,6 +3,10 @@
 # to run the llm sglang release tests
 
 set -exo pipefail
+
+# Install rust
+sudo apt-get update && sudo apt-get install -y rustc cargo && sudo rm -rf /var/lib/apt/lists/*
+
 pip3 uninstall -y vllm
 pip3 install "sglang[all,ray]==0.5.10rc0"
 # Reinstall opentelemetry-proto to regenerate _pb2.py files compatible with
