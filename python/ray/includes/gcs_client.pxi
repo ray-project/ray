@@ -639,9 +639,26 @@ cdef class InnerGcsClient:
             reason: int32_t,
             reason_message: c_string,
             deadline_timestamp_ms: int64_t):
-        """Send the DrainNode request to GCS.
+        """Send a DrainNode request to GCS to gracefully terminate a node.
 
-        This is only for testing.
+        Used by the `ray drain-node` CLI command and by autoscaler v2's
+        ray_stopper for idle and preemption-based node termination.
+
+        Args:
+            node_id: Binary node ID of the target node.
+            reason: A `DrainNodeReason` enum value. `IDLE_TERMINATION`
+                requests are rejectable by the raylet; `PREEMPTION`
+                requests are non-rejectable.
+            reason_message: Human-readable explanation, used for
+                observability.
+            deadline_timestamp_ms: Timestamp (ms) when the node will be
+                force-killed. Used as a hint so workloads can drain
+                before the deadline.
+
+        Returns:
+            Tuple of (is_accepted, rejection_reason_message). When
+            `is_accepted` is False, `rejection_reason_message` describes
+            why the raylet rejected the request.
         """
         cdef:
             int64_t timeout_ms = -1
