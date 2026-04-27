@@ -573,15 +573,21 @@ For accurate percentile calculations, configure bucket boundaries that closely m
 
 ### Metrics export interval
 
-By default, Ray Serve batches metric exports to reduce overhead. You can configure the export interval using the `RAY_SERVE_METRICS_EXPORT_INTERVAL_MS` environment variable:
+By default, Ray Serve batches its in-process metric updates (counters, gauges, histograms recorded by the router and replica) to reduce per-request overhead. You can configure how often Serve flushes these batched updates to the Ray metrics API using the `RAY_SERVE_METRICS_EXPORT_INTERVAL_MS` environment variable:
 
 ```bash
 export RAY_SERVE_METRICS_EXPORT_INTERVAL_MS=500
 ```
 
-**Default**: `100` milliseconds. Set to `0` to disable metric caching entirely and export all metrics eagerly. This interval applies to both the router and replica metric pipelines.
+**Default**: `100` milliseconds. Set to `0` to disable batching entirely and record every metric update eagerly. This interval applies to both the router and replica metric pipelines.
 
-Increasing this value reduces metric export overhead at the cost of less frequent metric updates. Decreasing it provides more up-to-date metrics but increases export frequency.
+Increasing this value reduces the overhead of recording metrics at the cost of less frequent updates. Decreasing it provides more up-to-date values but increases recording frequency.
+
+:::{note}
+`RAY_SERVE_METRICS_EXPORT_INTERVAL_MS` only controls Serve-side batching; it does **not** change how often Ray exports metrics to the Prometheus scrape endpoint. That is controlled separately by Ray Core's `metrics_report_interval_ms` system config (default `10000` ms), which determines how often each Ray process pushes its metrics to the metrics agent that Prometheus scrapes.
+
+The two settings compose: a Serve metric update is first buffered in the router/replica for up to `RAY_SERVE_METRICS_EXPORT_INTERVAL_MS`, then made available at the Prometheus endpoint on the next Ray Core export tick (`metrics_report_interval_ms`). Lowering only `RAY_SERVE_METRICS_EXPORT_INTERVAL_MS` without also lowering `metrics_report_interval_ms` does not make metrics appear in Prometheus any sooner. To change the Ray Core interval, pass it via system config when starting Ray, e.g. `ray start --head --system-config='{"metrics_report_interval_ms": 1000}'`.
+:::
 
 ### Request lifecycle and metrics
 
