@@ -183,6 +183,9 @@ def test_ippr_status_limits_and_can_resize_up():
 
 def test_ippr_status_failure_and_timeout_helpers():
     status = _make_ippr_status()
+    status.raylet_id = "abc"
+    status.desired_cpu = 2.0
+    status.desired_memory = 4
     status.resizing_at = int(time.time()) - 20
     assert status.is_timeout()
 
@@ -192,6 +195,15 @@ def test_ippr_status_failure_and_timeout_helpers():
     status.record_failure("resize failed", failed_at=123)
     assert status.last_failed_at == 123
     assert status.last_failed_reason == "resize failed"
+
+    # K8s resize finished and resources match desired, but raylet sync is still
+    # pending: do not treat as timeout (provider will call GCS to sync).
+    status2 = _make_ippr_status()
+    status2.raylet_id = "abc"
+    status2.resizing_at = int(time.time()) - 20
+    status2.k8s_resize_status = None
+    assert status2.need_sync_with_raylet()
+    assert not status2.is_timeout()
 
 
 if __name__ == "__main__":

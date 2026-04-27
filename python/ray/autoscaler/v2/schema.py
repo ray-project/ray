@@ -478,6 +478,7 @@ class IPPRStatus:
         """
         return (
             self.resizing_at is not None
+            and not self.need_sync_with_raylet()
             and (self.resizing_at + self.spec.resize_timeout) < time.time()
         )
 
