@@ -944,11 +944,11 @@ def test_crashed_replica_port_is_released_and_reused(
     )
 
     # make requests to the application
-    for http_port in http_ports:
+    for http_port in after_crash_http_ports:
         req = httpx.get(f"http://localhost:{http_port}/")
         assert req.status_code == 200
         assert req.text == "Hello world!"
-    for grpc_port in grpc_ports:
+    for grpc_port in after_crash_grpc_ports:
         channel = grpc.insecure_channel(f"localhost:{grpc_port}")
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         assert stub.Method1(serve_pb2.UserDefinedMessage()).greeting == "Hello world!"
