@@ -830,46 +830,34 @@ bool LocalLeaseManager::PinLeaseArgsIfMemoryAvailable(
 void LocalLeaseManager::PinLeaseArgs(const LeaseSpecification &lease_spec,
                                      std::vector<std::unique_ptr<RayObject>> args) {
   const auto &deps = lease_spec.GetDependencyIds();
-  // TODO(swang): This should really be an assertion, but we can sometimes
-  // receive a duplicate lease request if there is a failure and the original
-  // version of the lease has not yet been canceled.
-  auto executed_lease_inserted =
-      granted_lease_args_.emplace(lease_spec.LeaseId(), deps).second;
-  if (executed_lease_inserted) {
-    for (size_t i = 0; i < deps.size(); i++) {
-      auto [it, pinned_lease_inserted] =
-          pinned_lease_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
-      if (pinned_lease_inserted) {
-        // This is the first lease that needed this argument.
-        pinned_lease_arguments_bytes_ += it->second.first->GetSize();
-      }
-      it->second.second++;
+  RAY_CHECK(granted_lease_args_.emplace(lease_spec.LeaseId(), deps).second)
+      << "Duplicate lease " << lease_spec.LeaseId();
+  for (size_t i = 0; i < deps.size(); i++) {
+    auto [it, pinned_lease_inserted] =
+        pinned_lease_arguments_.emplace(deps[i], std::make_pair(std::move(args[i]), 0));
+    if (pinned_lease_inserted) {
+      // This is the first lease that needed this argument.
+      pinned_lease_arguments_bytes_ += it->second.first->GetSize();
     }
-  } else {
-    RAY_LOG(DEBUG) << "Scheduler received duplicate lease " << lease_spec.LeaseId()
-                   << ", most likely because the first execution failed";
+    it->second.second++;
   }
 }
 
 void LocalLeaseManager::ReleaseLeaseArgs(const LeaseID &lease_id) {
   auto it = granted_lease_args_.find(lease_id);
-  // TODO(swang): This should really be an assertion, but we can sometimes
-  // receive a duplicate lease request if there is a failure and the original
-  // version of the lease has not yet been canceled.
-  if (it != granted_lease_args_.end()) {
-    for (auto &arg : it->second) {
-      auto arg_it = pinned_lease_arguments_.find(arg);
-      RAY_CHECK(arg_it != pinned_lease_arguments_.end());
-      RAY_CHECK(arg_it->second.second > 0);
-      arg_it->second.second--;
-      if (arg_it->second.second == 0) {
-        // This is the last lease that needed this argument.
-        pinned_lease_arguments_bytes_ -= arg_it->second.first->GetSize();
-        pinned_lease_arguments_.erase(arg_it);
-      }
+  RAY_CHECK(it != granted_lease_args_.end()) << "Args not pinned for lease: " << lease_id;
+  for (auto &arg : it->second) {
+    auto arg_it = pinned_lease_arguments_.find(arg);
+    RAY_CHECK(arg_it != pinned_lease_arguments_.end());
+    RAY_CHECK(arg_it->second.second > 0);
+    arg_it->second.second--;
+    if (arg_it->second.second == 0) {
+      // This is the last lease that needed this argument.
+      pinned_lease_arguments_bytes_ -= arg_it->second.first->GetSize();
+      pinned_lease_arguments_.erase(arg_it);
     }
-    granted_lease_args_.erase(it);
   }
+  granted_lease_args_.erase(it);
 }
 
 std::vector<std::shared_ptr<internal::Work>> LocalLeaseManager::CancelLeasesWithoutReply(
