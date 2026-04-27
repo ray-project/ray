@@ -134,7 +134,6 @@ from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.widgets import Template
 from ray.widgets.util import repr_with_fallback
 
@@ -492,7 +491,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["default"]] = None,
+        batch_size: Union[int, None, Literal["auto"]] = None,
         compute: Optional[ComputeStrategy] = None,
         batch_format: Optional[str] = "default",
         zero_copy_batch: bool = True,
@@ -561,7 +560,7 @@ class Dataset:
                         {"name": "Rory", "age": 14},
                         {"name": "Scout", "age": 9},
                     ])
-                    .map_batches(add_dog_years)
+                    .map_batches(add_dog_years, batch_size="auto")
                 )
                 ds.show()
 
@@ -585,7 +584,7 @@ class Dataset:
 
                 ds = (
                     ray.data.from_items([1])
-                    .map_batches(map_fn_with_large_output)
+                    .map_batches(map_fn_with_large_output, batch_size="auto")
                 )
 
             If you require stateful transformation,
@@ -629,11 +628,16 @@ class Dataset:
             fn: The function or generator to apply to a record batch, or a class type
                 that can be instantiated to create such a callable. Note ``fn`` must be
                 pickle-able.
-            batch_size: The desired number of rows in each batch, or ``None`` to use
-                entire blocks as batches (blocks may contain different numbers of rows).
+            batch_size: The desired number of rows in each batch. Use ``"auto"`` to
+                dynamically determine batch size based on the per-row size of the data. Use
+                ``None`` to pass entire blocks as batches (blocks may contain different
+                numbers of rows). Default ``batch_size`` is ``None``.
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
-                to a given map task. Default ``batch_size`` is ``None``.
+                to a given map task. When ``num_gpus`` is set, ``batch_size`` must be an
+                explicit integer value, not ``"auto"`` or ``None``. Only use ``None``
+                if you intend to process entire blocks as batches. Otherwise,
+                prefer ``"auto"``, or an explicit batch size (e.g., ``1024``).
             compute: The compute strategy to use for the map operation.
 
                 * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
@@ -727,7 +731,7 @@ class Dataset:
             A new :class:`Dataset` with the transformation applied to each batch.
         """  # noqa: E501
         use_gpus = num_gpus is not None and num_gpus > 0
-        if use_gpus and (batch_size is None or batch_size == "default"):
+        if use_gpus and (batch_size is None or batch_size == "auto"):
             raise ValueError(
                 "You must provide `batch_size` to `map_batches` when requesting GPUs. "
                 "The optimal batch size depends on the model, data, and GPU used. "
@@ -762,7 +766,7 @@ class Dataset:
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
         *,
-        batch_size: Union[int, None, Literal["default"]],
+        batch_size: Union[int, None, Literal["auto"]],
         compute: Optional[ComputeStrategy],
         batch_format: Optional[str],
         zero_copy_batch: bool,
@@ -783,14 +787,10 @@ class Dataset:
         # `batch_size=None`, then `map_batches` raises a value error. So, to allow users
         # to call `map_groups` with  GPUs, we need a separate method that doesn't
         # perform batch size validation.
-
-        if batch_size == "default":
-            warnings.warn(
-                "Passing 'default' to `map_batches` is deprecated and won't be "
-                "supported after September 2025. Use `batch_size=None` instead.",
-                DeprecationWarning,
-            )
-            batch_size = None
+        if batch_size is None or batch_size == "auto":
+            min_rows_per_bundled_input = None
+        else:  # batch size is an int
+            min_rows_per_bundled_input = batch_size
 
         compute = get_compute_strategy(
             fn,
@@ -818,7 +818,7 @@ class Dataset:
             can_modify_num_rows=udf_modifying_row_count,
             batch_format=batch_format,
             zero_copy_batch=zero_copy_batch,
-            min_rows_per_bundled_input=batch_size,
+            min_rows_per_bundled_input=min_rows_per_bundled_input,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -3155,7 +3155,7 @@ class Dataset:
             ...     df["variety"] = df["target"].map(classes)
             ...     return df
             >>> train_ds = ds.map_batches(
-            ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
+            ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas", batch_size="auto")
             >>> train_ds.sort("sepal length (cm)").take(1)  # Sort to make it deterministic
             [{'sepal length (cm)': 4.3, ..., 'variety': 'Setosa'}]
 
@@ -5723,10 +5723,12 @@ class Dataset:
                     "If you're using Ray Client, Ray Data won't schedule write tasks "
                     "on the driver's node."
                 )
-            ray_remote_args["scheduling_strategy"] = NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(),
-                soft=False,
-            )
+            label_selector = ray_remote_args.get("label_selector", {})
+            label_selector[
+                ray._raylet.RAY_NODE_ID_KEY
+            ] = ray.get_runtime_context().get_node_id()
+            ray_remote_args["label_selector"] = label_selector
+            ray_remote_args.pop("scheduling_strategy", None)
 
             _validate_head_node_resources_for_local_scheduling(
                 ray_remote_args,

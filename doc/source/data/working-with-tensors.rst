@@ -92,7 +92,9 @@ Call :meth:`~ray.data.Dataset.map` or :meth:`~ray.data.Dataset.map_batches` to t
         return batch
 
     # Increase the brightness, batch at a time.
-    ds.map_batches(batch_increase_brightness)
+    ds.map_batches(batch_increase_brightness, batch_size="auto")
+
+You can use ``batch_size="auto"`` to let Ray Data automatically pick an appropriate batch size based on the size of your data.
 
 In addition to NumPy ndarrays, Ray Data also treats returned lists of NumPy ndarrays and
 objects implementing ``__array__`` (for example, ``torch.Tensor``) as tensor data.

@@ -23,6 +23,7 @@
 #include <utility>
 
 #include "gtest/gtest.h"
+#include "ray/common/cgroup2/noop_cgroup_manager.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/common/memory_monitor_test_fixture.h"
 #include "ray/common/memory_monitor_utils.h"
@@ -79,8 +80,9 @@ TEST_F(ThresholdMemoryMonitorTest,
 
   std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
 
-  int64_t memory_usage_threshold_bytes =
-      MemoryMonitorUtils::GetMemoryThreshold(cgroup_total_bytes, 0.7f, -1);
+  NoopCgroupManager noop_cgroup_manager;
+  int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
+      cgroup_total_bytes, 0.7f, -1, false, noop_cgroup_manager);
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
@@ -109,8 +111,9 @@ TEST_F(ThresholdMemoryMonitorTest,
   std::shared_ptr<std::atomic<bool>> callback_triggered =
       std::make_shared<std::atomic<bool>>(false);
 
-  int64_t memory_usage_threshold_bytes =
-      MemoryMonitorUtils::GetMemoryThreshold(cgroup_total_bytes, 0.7f, -1);
+  NoopCgroupManager noop_cgroup_manager;
+  int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
+      cgroup_total_bytes, 0.7f, -1, false, noop_cgroup_manager);
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
