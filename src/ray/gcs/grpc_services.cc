@@ -214,6 +214,15 @@ void RayEventExportGrpcService::InitServerCallFactories(
 
 }  // namespace events
 
+void GlobalGCGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id,
+    std::shared_ptr<const AuthenticationToken> auth_token) {
+  RPC_SERVICE_HANDLER(
+      GlobalGCGcsService, TriggerGlobalGCBestEffort, max_active_rpcs_per_handler_)
+}
+
 void HealthCheckGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,

@@ -140,7 +140,6 @@ enum RayletShutdownState : std::uint8_t {
 };
 
 class NodeManager : public rpc::NodeManagerServiceHandler,
-                    public syncer::ReporterInterface,
                     public syncer::ReceiverInterface {
  public:
   /// Create a node manager.
@@ -226,24 +225,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
 
-  // Consume a RaySyncer sync message from another Raylet.
-  //
-  // The two types of messages that are received are:
-  //   - RESOURCE_VIEW: an update of the resources available on another Raylet.
-  //   - COMMANDS: a request to run the Python garbage collector globally across Raylets.
+  // Consume a RaySyncer sync message from another Raylet. The only sync
+  // message type the NodeManager is registered for is RESOURCE_VIEW, which
+  // carries an update of the resources available on another Raylet.
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
 
-  // Generate a RaySyncer sync message to be sent to other Raylets.
-  //
-  // This is currently only used to generate messages for the COMMANDS channel to request
-  // other Raylets to call the Python garbage collector, and is only called on demand
-  // (not periodically polled by the RaySyncer code).
-  std::optional<syncer::RaySyncMessage> CreateSyncMessage(
-      int64_t after_version, syncer::MessageType message_type) const override;
-
-  /// Setup global GC to be triggered at the next gc check, so that references to actors
-  /// or object ids can be freed up across the cluster.
-  void SetShouldGlobalGC();
+  /// Best-effort request to the GCS to broadcast a cluster-wide Python GC.
+  /// The GCS may drop the request if it is within the configured throttling
+  /// window. The reply is ignored.
+  void TriggerGlobalGCBestEffort();
 
   /// Mark the specified objects as failed with the given error type.
   ///
@@ -898,13 +888,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Optional extra information about why the worker failed.
   absl::flat_hash_map<LeaseID, ray::TaskFailureEntry> worker_failure_reasons_;
 
-  /// Whether to trigger global GC at the next gc check.
-  /// This will broadcast a global GC message to all raylets except for this one.
-  bool should_global_gc_ = false;
-
-  /// Set by global gc triggers to trigger local gc when this is checked (every
-  /// raylet_check_gc_period_milliseconds)
-  /// This will trigger gc on all local workers of this raylet.
+  /// Set when the GCS broadcasts a GlobalGC RPC; triggers a local Python GC
+  /// across all of this Raylet's workers on the next gc check.
   bool local_gc_triggered_by_global_gc_ = false;
 
   /// Interval at which local gc will be triggered regardless of global gc
@@ -916,9 +901,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Throttler for local gc
   Throttler local_gc_throttler_;
-
-  /// Throttler for global gc
-  Throttler global_gc_throttler_;
 
   ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 
@@ -967,10 +949,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Ray syncer for synchronization
   syncer::RaySyncer ray_syncer_;
-
-  /// `version` for the RaySyncer COMMANDS channel. Monotonically incremented each time
-  /// we issue a GC command so that none of the messages are dropped.
-  int64_t gc_command_sync_version_ = 0;
 
   /// The Policy for selecting the worker to kill when the node runs out of memory.
   std::unique_ptr<WorkerKillingPolicyInterface> worker_killing_policy_;

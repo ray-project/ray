@@ -77,6 +77,7 @@ class GcsNodeManager;
 class GcsActorManager;
 class GcsJobManager;
 class GcsWorkerManager;
+class GlobalGCManager;
 class GcsPlacementGroupScheduler;
 class GcsPlacementGroupManager;
 class GcsTaskManager;
@@ -183,6 +184,9 @@ class GcsServer {
 
   /// Initialize gcs worker manager.
   void InitGcsWorkerManager();
+
+  /// Initialize the cluster-wide global GC manager.
+  void InitGlobalGCManager();
 
   /// Initialize gcs task manager.
   void InitGcsTaskManager(ray::observability::MetricInterface &task_events_reported_gauge,
@@ -300,6 +304,8 @@ class GcsServer {
   std::unique_ptr<UsageStatsClient> usage_stats_client_;
   /// The gcs worker manager.
   std::unique_ptr<GcsWorkerManager> gcs_worker_manager_;
+  /// The cluster-wide global GC manager.
+  std::unique_ptr<GlobalGCManager> global_gc_manager_;
   /// Runtime env handler.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
   /// GCS PubSub handler.

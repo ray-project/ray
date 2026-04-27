@@ -186,6 +186,9 @@ class GcsRpcClient {
     runtime_env_grpc_client_ = std::make_shared<GrpcClient<RuntimeEnvGcsService>>(
         channel_, client_call_manager, address);
 
+    global_gc_grpc_client_ = std::make_shared<GrpcClient<GlobalGCGcsService>>(
+        channel_, client_call_manager, address);
+
     retryable_grpc_client_ = RetryableGrpcClient::Create(
         channel_,
         client_call_manager.GetMainService(),
@@ -593,6 +596,12 @@ class GcsRpcClient {
                              runtime_env_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
+  /// Best-effort cluster-wide global GC trigger.
+  VOID_GCS_RPC_CLIENT_METHOD(GlobalGCGcsService,
+                             TriggerGlobalGCBestEffort,
+                             global_gc_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
   std::pair<std::string, int64_t> GetAddress() const {
     return std::make_pair(gcs_address_, gcs_port_);
   }
@@ -618,6 +627,7 @@ class GcsRpcClient {
   std::shared_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
   std::shared_ptr<GrpcClient<RayEventExportGcsService>> ray_event_export_grpc_client_;
   std::shared_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;
+  std::shared_ptr<GrpcClient<GlobalGCGcsService>> global_gc_grpc_client_;
   std::shared_ptr<GrpcClient<autoscaler::AutoscalerStateService>>
       autoscaler_state_grpc_client_;
 

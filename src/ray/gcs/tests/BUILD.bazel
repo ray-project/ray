@@ -310,6 +310,22 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "global_gc_manager_test",
+    size = "small",
+    srcs = ["global_gc_manager_test.cc"],
+    tags = ["team:core"],
+    visibility = ["//visibility:private"],
+    deps = [
+        "//:ray_mock",
+        "//src/ray/common:id",
+        "//src/ray/common:status",
+        "//src/ray/common:test_utils",
+        "//src/ray/gcs:global_gc_manager",
+        "//src/ray/raylet_rpc_client:raylet_client_pool",
+    ],
+)
+
+ray_cc_test(
     name = "gcs_resource_manager_test",
     size = "small",
     srcs = [

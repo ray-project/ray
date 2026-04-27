@@ -231,7 +231,6 @@ NodeManager::NodeManager(
       plasma_store_usage_trigger_gc_threshold_(
           RayConfig::instance().plasma_store_usage_trigger_gc_threshold()),
       local_gc_throttler_(RayConfig::instance().local_gc_min_interval_s() * 1e9),
-      global_gc_throttler_(RayConfig::instance().global_gc_min_interval_s() * 1e9),
       memory_manager_worker_eviction_total_count_(
           memory_manager_worker_eviction_total_count),
       node_manager_unexpected_worker_failure_total_count_(
@@ -355,20 +354,6 @@ void NodeManager::RegisterGcs() {
         /* receiver */ this,
         /* pull_from_reporter_interval_ms */
         report_resources_period_ms_);
-
-    // COMMANDS is used only to broadcast a global request to call the Python garbage
-    // collector on all Raylets when the cluster is under memory pressure.
-    //
-    // Periodic collection is disabled, so this command is only broadcasted via
-    // `OnDemandBroadcasting` (which will call NodeManager::CreateSyncMessage).
-    //
-    // NodeManager::ConsumeSyncMessage is called to execute the GC command from other
-    // Raylets.
-    ray_syncer_.Register(
-        /* message_type */ syncer::MessageType::COMMANDS,
-        /* reporter */ this,
-        /* receiver */ this,
-        /* pull_from_reporter_interval_ms */ 0);
 
     auto gcs_channel = gcs_client_.GetGcsRpcClient().GetChannel();
     ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
@@ -859,8 +844,8 @@ void NodeManager::WarnResourceDeadlock() {
   // case resource_deadlock_warned_: >1 => global gc but don't print any warnings
   if (resource_deadlock_warned_++ > 0) {
     // Actor references may be caught in cycles, preventing them from being deleted.
-    // Set should global gc to hopefully free up resource slots.
-    SetShouldGlobalGC();
+    // Ask the GCS to broadcast a cluster-wide GC to hopefully free up resource slots.
+    TriggerGlobalGCBestEffort();
 
     // Suppress duplicates warning messages.
     if (resource_deadlock_warned_ > 2) {
@@ -2878,23 +2863,21 @@ void NodeManager::HandleFormatGlobalMemoryInfo(
 void NodeManager::HandleGlobalGC(rpc::GlobalGCRequest request,
                                  rpc::GlobalGCReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) {
-  SetShouldGlobalGC();
+  // Triggered by the GCS broadcasting a cluster-wide GC; run local Python GC
+  // on the next gc check.
+  local_gc_triggered_by_global_gc_ = true;
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
-  // If plasma store is under high pressure, we should try to schedule a global gc.
+  // If plasma store is under high pressure, ask the GCS to broadcast a
+  // cluster-wide GC. The GCS throttles cluster-wide via global_gc_min_interval_s
+  // and broadcasts back to us, which sets local_gc_triggered_by_global_gc_ via
+  // HandleGlobalGC.
   const bool plasma_high_pressure = object_manager_.GetUsedMemoryPercentage() >
                                     plasma_store_usage_trigger_gc_threshold_;
-  if (plasma_high_pressure && global_gc_throttler_.CheckAndUpdateIfPossible()) {
-    SetShouldGlobalGC();
-  }
-
-  if (should_global_gc_) {
-    // Always increment the sync message version number so it's always triggered once per
-    // call.
-    gc_command_sync_version_++;
-    ray_syncer_.OnDemandBroadcasting(syncer::MessageType::COMMANDS);
-    should_global_gc_ = false;
+  if (plasma_high_pressure) {
+    TriggerGlobalGCBestEffort();
   }
 
   // Trigger local GC if needed.
@@ -2915,12 +2898,6 @@ void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
     }
     local_gc_triggered_by_global_gc_ = false;
   }
-}
-
-void NodeManager::SetShouldGlobalGC() {
-  should_global_gc_ = true;
-  // We won't see our own request, so trigger local GC in the next heartbeat.
-  local_gc_triggered_by_global_gc_ = true;
 }
 
 void NodeManager::HandleGetWorkerPIDs(rpc::GetWorkerPIDsRequest request,
@@ -2995,55 +2972,32 @@ void NodeManager::RecordMetrics() {
   lease_dependency_manager_.RecordMetrics();
 }
 
-void NodeManager::ConsumeSyncMessage(
-    std::shared_ptr<const syncer::RaySyncMessage> message) {
-  if (message->message_type() == syncer::MessageType::RESOURCE_VIEW) {
-    syncer::ResourceViewSyncMessage resource_view_sync_message;
-    resource_view_sync_message.ParseFromString(message->sync_message());
-    NodeID node_id = NodeID::FromBinary(message->node_id());
-    // Set node labels when node added.
-    auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
-    cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
-        scheduling::NodeID(node_id.Binary()), std::move(node_labels));
-    ResourceRequest resources;
-    for (auto &resource_entry : resource_view_sync_message.resources_total()) {
-      resources.Set(scheduling::ResourceID(resource_entry.first),
-                    FixedPoint(resource_entry.second));
-    }
-    const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
-    const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
-    if (capacity_updated || usage_update) {
-      cluster_lease_manager_.ScheduleAndGrantLeases();
-    }
-  } else if (message->message_type() == syncer::MessageType::COMMANDS) {
-    syncer::CommandsSyncMessage commands_sync_message;
-    commands_sync_message.ParseFromString(message->sync_message());
-    if (commands_sync_message.should_global_gc()) {
-      local_gc_triggered_by_global_gc_ = true;
-    }
-  }
+void NodeManager::TriggerGlobalGCBestEffort() {
+  gcs_client_.GetGcsRpcClient().TriggerGlobalGCBestEffort(
+      rpc::TriggerGlobalGCBestEffortRequest{},
+      [](const Status &, const rpc::TriggerGlobalGCBestEffortReply &) {});
 }
 
-std::optional<syncer::RaySyncMessage> NodeManager::CreateSyncMessage(
-    int64_t after_version, syncer::MessageType message_type) const {
-  // This method is only called for the COMMANDS channel, as the RESOURCE_VIEW
-  // channel goes through the LocalResourceManager.
-  RAY_CHECK_EQ(message_type, syncer::MessageType::COMMANDS);
-
-  // Serialize the COMMANDS message to a byte string to be nested inside the sync message.
-  std::string serialized_commands_sync_msg;
-  syncer::CommandsSyncMessage commands_sync_message;
-  commands_sync_message.set_should_global_gc(true);
-  RAY_CHECK(commands_sync_message.SerializeToString(&serialized_commands_sync_msg));
-
-  // Populate the sync message.
-  syncer::RaySyncMessage msg;
-  msg.set_version(gc_command_sync_version_);
-  msg.set_node_id(self_node_id_.Binary());
-  msg.set_message_type(syncer::MessageType::COMMANDS);
-  msg.set_sync_message(std::move(serialized_commands_sync_msg));
-
-  return std::make_optional(std::move(msg));
+void NodeManager::ConsumeSyncMessage(
+    std::shared_ptr<const syncer::RaySyncMessage> message) {
+  RAY_CHECK_EQ(message->message_type(), syncer::MessageType::RESOURCE_VIEW);
+  syncer::ResourceViewSyncMessage resource_view_sync_message;
+  resource_view_sync_message.ParseFromString(message->sync_message());
+  NodeID node_id = NodeID::FromBinary(message->node_id());
+  // Set node labels when node added.
+  auto node_labels = MapFromProtobuf(resource_view_sync_message.labels());
+  cluster_resource_scheduler_.GetClusterResourceManager().SetNodeLabels(
+      scheduling::NodeID(node_id.Binary()), std::move(node_labels));
+  ResourceRequest resources;
+  for (auto &resource_entry : resource_view_sync_message.resources_total()) {
+    resources.Set(scheduling::ResourceID(resource_entry.first),
+                  FixedPoint(resource_entry.second));
+  }
+  const bool capacity_updated = ResourceCreateUpdated(node_id, resources);
+  const bool usage_update = UpdateResourceUsage(node_id, resource_view_sync_message);
+  if (capacity_updated || usage_update) {
+    cluster_lease_manager_.ScheduleAndGrantLeases();
+  }
 }
 
 // Picks the workers and kills the process if the memory usage is above the threshold.

@@ -236,9 +236,10 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
 
   auto from_node_id1 = NodeID::FromRandom();
   auto from_node_id2 = NodeID::FromRandom();
+  auto from_node_id3 = NodeID::FromRandom();
   auto msg1 = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id1);
   auto msg2 = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id2);
-  auto msg3 = MakeMessage(MessageType::COMMANDS, 0, from_node_id2);
+  auto msg3 = MakeMessage(MessageType::RESOURCE_VIEW, 0, from_node_id3);
   auto msg_ptr1 = std::make_shared<RaySyncMessage>(msg1);
   auto msg_ptr2 = std::make_shared<RaySyncMessage>(msg2);
   auto msg_ptr3 = std::make_shared<RaySyncMessage>(msg3);
@@ -259,7 +260,7 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchSizeTriggerSend) {
   EXPECT_TRUE(WaitForCondition(
       [&sync_reactor]() { return sync_reactor.sending_buffer_.size() == 0; }, 1000));
 
-  ASSERT_EQ(2, sync_reactor.node_versions_.size());
+  ASSERT_EQ(3, sync_reactor.node_versions_.size());
 }
 
 TEST_F(RaySyncerTest, RaySyncerBidiReactorBaseBatchTimeoutTriggerSend) {

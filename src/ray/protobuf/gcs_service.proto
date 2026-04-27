@@ -890,4 +890,17 @@ service RayEventExportGcsService {
   rpc AddEvents(events.AddEventsRequest) returns (events.AddEventsReply);
 }
 
+message TriggerGlobalGCBestEffortRequest {}
+message TriggerGlobalGCBestEffortReply {
+  GcsStatus status = 1;
+}
+
+// Service for cluster-wide global GC coordination.
+service GlobalGCGcsService {
+  // Best-effort request to broadcast a global GC to every alive Raylet. The
+  // GCS may drop the request if it is within the configured throttling window.
+  rpc TriggerGlobalGCBestEffort(TriggerGlobalGCBestEffortRequest)
+      returns (TriggerGlobalGCBestEffortReply);
+}
+
 ///////////////////////////////////////////////////////////////////////////////

@@ -25,7 +25,6 @@
 
 namespace ray::syncer {
 
-using ray::rpc::syncer::CommandsSyncMessage;
 using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
 using ray::rpc::syncer::RaySyncMessageBatch;

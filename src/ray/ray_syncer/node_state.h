@@ -31,7 +31,6 @@ namespace ray::syncer {
 struct ReporterInterface;
 struct ReceiverInterface;
 
-using ray::rpc::syncer::CommandsSyncMessage;
 using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
 using ray::rpc::syncer::ResourceViewSyncMessage;

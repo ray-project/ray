@@ -30,6 +30,7 @@
 #include "ray/gcs/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_resource_manager.h"
 #include "ray/gcs/gcs_worker_manager.h"
+#include "ray/gcs/global_gc_manager.h"
 #include "ray/gcs/grpc_services.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/observable_store_client.h"
@@ -291,6 +292,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsActorManager(
       gcs_init_data, metrics_.actor_by_state_gauge, metrics_.gcs_actor_by_state_gauge);
   InitGcsWorkerManager();
+  InitGlobalGCManager();
   InitGcsTaskManager(metrics_.task_events_reported_gauge,
                      metrics_.task_events_dropped_gauge,
                      metrics_.task_events_stored_gauge);
@@ -616,8 +618,6 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       });
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
-  ray_syncer_->Register(
-      syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
   rpc_server_.RegisterService(std::make_unique<syncer::RaySyncerService>(
       *ray_syncer_, ray::rpc::AuthenticationTokenLoader::instance().GetToken()));
 }
@@ -744,6 +744,19 @@ void GcsServer::InitGcsWorkerManager() {
   rpc_server_.RegisterService(std::make_unique<rpc::WorkerInfoGrpcService>(
       io_context_provider_.GetDefaultIOContext(),
       *gcs_worker_manager_,
+      RayConfig::instance().gcs_max_active_rpcs_per_handler()));
+}
+
+void GcsServer::InitGlobalGCManager() {
+  RAY_CHECK(gcs_node_manager_) << "gcs_node_manager_ must be initialized first.";
+  const int64_t min_interval_ns =
+      static_cast<int64_t>(RayConfig::instance().global_gc_min_interval_s()) *
+      static_cast<int64_t>(1e9);
+  global_gc_manager_ = std::make_unique<GlobalGCManager>(
+      *gcs_node_manager_, raylet_client_pool_, min_interval_ns);
+  rpc_server_.RegisterService(std::make_unique<rpc::GlobalGCGrpcService>(
+      io_context_provider_.GetDefaultIOContext(),
+      *global_gc_manager_,
       RayConfig::instance().gcs_max_active_rpcs_per_handler()));
 }
 

@@ -335,6 +335,30 @@ class RayEventExportGrpcService : public GrpcService {
 
 }  // namespace events
 
+class GlobalGCGrpcService : public GrpcService {
+ public:
+  explicit GlobalGCGrpcService(instrumented_io_context &io_service,
+                               GlobalGCGcsServiceHandler &handler,
+                               int64_t max_active_rpcs_per_handler)
+      : GrpcService(io_service),
+        service_handler_(handler),
+        max_active_rpcs_per_handler_(max_active_rpcs_per_handler){};
+
+ protected:
+  grpc::Service &GetGrpcService() override { return service_; }
+
+  void InitServerCallFactories(
+      const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+      std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+      const ClusterID &cluster_id,
+      std::shared_ptr<const AuthenticationToken> auth_token) override;
+
+ private:
+  GlobalGCGcsService::AsyncService service_;
+  GlobalGCGcsServiceHandler &service_handler_;
+  int64_t max_active_rpcs_per_handler_;
+};
+
 /// gRPC Health Check service that dispatches to the threads running boost::asio
 /// event loops to ensure they are alive and not overloaded.
 ///
