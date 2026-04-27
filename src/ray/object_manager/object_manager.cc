@@ -176,10 +176,10 @@ void ObjectManager::HandleObjectAdded(const ObjectInfo &object_info) {
   RAY_CHECK(local_objects_.count(object_id) == 0);
   local_objects_[object_id].object_info = object_info;
   used_memory_ += object_info.data_size + object_info.metadata_size;
-  RAY_LOG(INFO) << "[karticam] Object added " << object_id
-                << " size=" << (object_info.data_size + object_info.metadata_size)
-                << " used_memory=" << used_memory_
-                << " num_local_objects=" << local_objects_.size();
+  // RAY_LOG(INFO) << "[karticam] Object added " << object_id
+  //               << " size=" << (object_info.data_size + object_info.metadata_size)
+  //               << " used_memory=" << used_memory_
+  //               << " num_local_objects=" << local_objects_.size();
   object_directory_->ReportObjectAdded(object_id, self_node_id_, object_info);
 
   // Give the pull manager a chance to pin actively pulled objects.
@@ -209,10 +209,10 @@ void ObjectManager::HandleObjectDeleted(const ObjectID &object_id) {
   local_objects_.erase(it);
   used_memory_ -= object_info.data_size + object_info.metadata_size;
   RAY_CHECK(!local_objects_.empty() || used_memory_ == 0);
-  RAY_LOG(INFO) << "[karticam] Object deleted " << object_id
-                << " size=" << (object_info.data_size + object_info.metadata_size)
-                << " used_memory=" << used_memory_
-                << " num_local_objects=" << local_objects_.size();
+  // RAY_LOG(INFO) << "[karticam] Object deleted " << object_id
+  //               << " size=" << (object_info.data_size + object_info.metadata_size)
+  //               << " used_memory=" << used_memory_
+  //               << " num_local_objects=" << local_objects_.size();
   object_directory_->ReportObjectRemoved(object_id, self_node_id_, object_info);
 
   // Ask the pull manager to fetch this object again as soon as possible, if
@@ -264,9 +264,9 @@ void ObjectManager::CancelPull(uint64_t request_id) {
 void ObjectManager::SendPullRequest(const ObjectID &object_id, const NodeID &client_id) {
   auto rpc_client = GetRpcClient(client_id);
   if (rpc_client) {
-    RAY_LOG(INFO) << "[karticam] SendPullRequest: local_node=" << self_node_id_
-                  << " asking remote_node=" << client_id
-                  << " for object_id=" << object_id;
+    // RAY_LOG(INFO) << "[karticam] SendPullRequest: local_node=" << self_node_id_
+    //               << " asking remote_node=" << client_id
+    //               << " for object_id=" << object_id;
     // Try pulling from the client.
     rpc_service_.post(
         [this, object_id, client_id, rpc_client]() {
@@ -475,10 +475,10 @@ void ObjectManager::PushObjectInternal(const ObjectID &object_id,
   auto num_chunks = chunk_reader->GetNumChunks();
   bool move_semantics_enabled = RayConfig::instance().enable_plasma_move_semantics();
 
-  RAY_LOG(INFO) << "[karticam] Push start from PushObjectInternal: local_node="
-                << self_node_id_ << " sending to remote_node=" << node_id
-                << " object_id=" << object_id << " num_chunks=" << num_chunks
-                << " total_bytes=" << chunk_reader->GetObject().GetObjectSize();
+  // RAY_LOG(INFO) << "[karticam] Push start from PushObjectInternal: local_node="
+  //               << self_node_id_ << " sending to remote_node=" << node_id
+  //               << " object_id=" << object_id << " num_chunks=" << num_chunks
+  //               << " total_bytes=" << chunk_reader->GetObject().GetObjectSize();
 
   if (move_semantics_enabled) {
     auto push_key = std::make_pair(object_id, node_id);
@@ -620,11 +620,11 @@ bool ObjectManager::ReceiveObjectChunk(const NodeID &node_id,
                                        uint64_t chunk_index,
                                        const std::string &data) {
   num_bytes_received_total_ += data.size();
-  if (chunk_index == 0) {
-    RAY_LOG(INFO) << "[karticam] Receive start: local_node=" << self_node_id_
-                  << " receiving from remote_node=" << node_id
-                  << " object_id=" << object_id << " object_size=" << data_size;
-  }
+  // if (chunk_index == 0) {
+  //   RAY_LOG(INFO) << "[karticam] Receive start: local_node=" << self_node_id_
+  //                 << " receiving from remote_node=" << node_id
+  //                 << " object_id=" << object_id << " object_size=" << data_size;
+  // }
   RAY_LOG(DEBUG).WithField(object_id)
       << "ReceiveObjectChunk on " << self_node_id_ << " from " << node_id
       << " of object, chunk index: " << chunk_index
@@ -668,9 +668,9 @@ void ObjectManager::HandlePull(rpc::PullRequest request,
                                rpc::SendReplyCallback send_reply_callback) {
   ObjectID object_id = ObjectID::FromBinary(request.object_id());
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(INFO) << "[karticam] HandlePull: local_node=" << self_node_id_
-                << " received pull request from remote_node=" << node_id
-                << " for object_id=" << object_id;
+  // RAY_LOG(INFO) << "[karticam] HandlePull: local_node=" << self_node_id_
+  //               << " received pull request from remote_node=" << node_id
+  //               << " for object_id=" << object_id;
 
   main_service_->post([this, object_id, node_id]() { Push(object_id, node_id); },
                       "ObjectManager.HandlePull");
@@ -690,12 +690,12 @@ void ObjectManager::HandleFreeObjects(rpc::FreeObjectsRequest request,
 
 void ObjectManager::FreeObjects(const std::vector<ObjectID> &object_ids,
                                 bool local_only) {
-  RAY_LOG(INFO) << "[karticam] ObjectManager::FreeObjects called for "
-                << object_ids.size() << " objects, local_only=" << local_only
-                << " used_memory_before=" << used_memory_;
-  for (const auto &obj_id : object_ids) {
-    RAY_LOG(INFO) << "[karticam] ObjectManager::FreeObjects -> " << obj_id;
-  }
+  // RAY_LOG(INFO) << "[karticam] ObjectManager::FreeObjects called for "
+  //               << object_ids.size() << " objects, local_only=" << local_only
+  //               << " used_memory_before=" << used_memory_;
+  // for (const auto &obj_id : object_ids) {
+  //   RAY_LOG(INFO) << "[karticam] ObjectManager::FreeObjects -> " << obj_id;
+  // }
   buffer_pool_.FreeObjects(object_ids);
   if (!local_only) {
     std::vector<std::pair<NodeID, std::shared_ptr<rpc::ObjectManagerClientInterface>>>

@@ -110,8 +110,8 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
 
 void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool local_only) {
   // Only free the object if it is not already freed.
-  RAY_LOG(INFO) << "[karticam] ReleaseFreedObject called for objectId: " << object_id
-                << " local_only=" << local_only;
+  // RAY_LOG(INFO) << "[karticam] ReleaseFreedObject called for objectId: " << object_id
+  //               << " local_only=" << local_only;
 
   // TODO(karticam): CHECK THESE EDGE CASES:
   // consider driver handling producer and consumer.
@@ -132,18 +132,18 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool loca
   // we still need to broadcast FreeObjectsRequest to other nodes so they can
   // clean up their copies (e.g. the consumer's plasma).
   if (!local_only && moved_out_pending_broadcast_.erase(object_id) > 0) {
-    RAY_LOG(INFO) << "[karticam] Broadcasting delayed FreeObjectsRequest for "
-                  << object_id << " (was released locally via move semantics)";
+    // RAY_LOG(INFO) << "[karticam] Broadcasting delayed FreeObjectsRequest for "
+    //               << object_id << " (was released locally via move semantics)";
     on_objects_freed_({object_id}, /*local_only=*/false);
     return;
   }
 
   auto it = local_objects_.find(object_id);
   if (it == local_objects_.end() || it->second.is_freed_) {
-    RAY_LOG(INFO) << "[karticam] ReleaseFreedObject early return since cond1 = "
-                  << (it == local_objects_.end()) << " and "
-                  << "cond2 = "
-                  << (it != local_objects_.end() ? it->second.is_freed_ : false);
+    // RAY_LOG(INFO) << "[karticam] ReleaseFreedObject early return since cond1 = "
+    //               << (it == local_objects_.end()) << " and "
+    //               << "cond2 = "
+    //               << (it != local_objects_.end() ? it->second.is_freed_ : false);
     return;
   }
   // Mark the object as freed. NOTE(swang): We have to mark this instead of
@@ -152,9 +152,9 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool loca
   // spill is complete.
   it->second.is_freed_ = true;
 
-  RAY_LOG(INFO) << "[karticam] Unpinning object " << object_id
-                << " local_only=" << local_only << " was_pinned="
-                << (pinned_objects_.find(object_id) != pinned_objects_.end());
+  // RAY_LOG(INFO) << "[karticam] Unpinning object " << object_id
+  //               << " local_only=" << local_only << " was_pinned="
+  //               << (pinned_objects_.find(object_id) != pinned_objects_.end());
   // The object should be in one of these states: pinned, spilling, or spilled.
   auto pinned_objects_it = pinned_objects_.find(object_id);
   RAY_CHECK(pinned_objects_it != pinned_objects_.end() ||
@@ -189,9 +189,9 @@ void LocalObjectManager::ReleaseFreedObject(const ObjectID &object_id, bool loca
 
 void LocalObjectManager::FlushFreeObjects(bool local_only) {
   if (!objects_pending_deletion_.empty()) {
-    RAY_LOG(INFO) << "[karticam] FlushFreeObjects freeing "
-                  << objects_pending_deletion_.size()
-                  << " out-of-scope objects, local_only=" << local_only;
+    // RAY_LOG(INFO) << "[karticam] FlushFreeObjects freeing "
+    //               << objects_pending_deletion_.size()
+    //               << " out-of-scope objects, local_only=" << local_only;
     // TODO(irabbani): CORE-1640 will modify as much as the plasma API as is
     // reasonable to remove usage of vectors in favor of sets.
     std::vector<ObjectID> objects_to_delete(objects_pending_deletion_.begin(),

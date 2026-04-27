@@ -182,35 +182,37 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
     auto dependencies = request.PendingDependencies();
     // [karticam] Log that this actor task is now asking its local raylet to
     // fetch its by-ref dependencies (this triggers the pull chain).
-    {
-      std::stringstream deps_ss;
-      for (const auto &dep : dependencies) {
-        deps_ss << ObjectID::FromBinary(dep.object_id()) << " ";
-      }
-      RAY_LOG(INFO) << "[karticam] Actor task requesting deps fetch (unordered): "
-                    << "task_id=" << task_spec.TaskId() << " func=" << task_spec.GetName()
-                    << " deps=[ " << deps_ss.str() << "]";
-    }
+    // {
+    //   std::stringstream deps_ss;
+    //   for (const auto &dep : dependencies) {
+    //     deps_ss << ObjectID::FromBinary(dep.object_id()) << " ";
+    //   }
+    //   RAY_LOG(INFO) << "[karticam] Actor task requesting deps fetch (unordered): "
+    //                 << "task_id=" << task_spec.TaskId() << " func=" <<
+    //                 task_spec.GetName()
+    //                 << " deps=[ " << deps_ss.str() << "]";
+    // }
     auto task_id = task_spec.TaskId();
-    waiter_.AsyncWait(
-        dependencies, [this, request = std::move(request), task_id]() mutable {
-          RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
-          RAY_LOG(INFO)
-              << "[karticam] Actor task deps ready (raylet signaled, unordered): "
-              << "task_id=" << task_id;
+    waiter_.AsyncWait(dependencies,
+                      [this, request = std::move(request), task_id]() mutable {
+                        RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
+                        // RAY_LOG(INFO)
+                        //     << "[karticam] Actor task deps ready (raylet signaled,
+                        //     unordered): "
+                        //     << "task_id=" << task_id;
 
-          const TaskSpecification &task = request.TaskSpec();
-          RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
-              task.TaskId(),
-              task.JobId(),
-              task.AttemptNumber(),
-              task,
-              rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
-              /* include_task_info */ false));
+                        const TaskSpecification &task = request.TaskSpec();
+                        RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+                            task.TaskId(),
+                            task.JobId(),
+                            task.AttemptNumber(),
+                            task,
+                            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+                            /* include_task_info */ false));
 
-          request.MarkDependenciesResolved();
-          RunRequestWithResolvedDependencies(std::move(request));
-        });
+                        request.MarkDependenciesResolved();
+                        RunRequestWithResolvedDependencies(std::move(request));
+                      });
   } else {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
