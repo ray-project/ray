@@ -252,6 +252,8 @@ class DataIterator(abc.ABC):
 
             try:
                 yield from batch_iterator
+                if stats:
+                    stats.iter_total_s.add(time.perf_counter() - time_start)
             finally:
                 # On early exit (e.g. ``break`` in the for-loop), the inner
                 # ``_ClosingIterator`` would only shut down the executor via
@@ -261,9 +263,6 @@ class DataIterator(abc.ABC):
                 # ``shutdown`` is idempotent.
                 if executor is not None:
                     executor.shutdown(force=False)
-
-            if stats:
-                stats.iter_total_s.add(time.perf_counter() - time_start)
 
         return _IterableFromIterator(_create_iterator)
 
