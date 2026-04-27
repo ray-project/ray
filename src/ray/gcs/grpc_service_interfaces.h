@@ -347,10 +347,9 @@ class RayEventExportGcsServiceHandler {
 class GlobalGCGcsServiceHandler {
  public:
   virtual ~GlobalGCGcsServiceHandler() = default;
-  virtual void HandleTriggerGlobalGCBestEffort(
-      TriggerGlobalGCBestEffortRequest request,
-      TriggerGlobalGCBestEffortReply *reply,
-      SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleTriggerGlobalGCBestEffort(TriggerGlobalGCBestEffortRequest request,
+                                               TriggerGlobalGCBestEffortReply *reply,
+                                               SendReplyCallback send_reply_callback) = 0;
 };
 
 }  // namespace rpc

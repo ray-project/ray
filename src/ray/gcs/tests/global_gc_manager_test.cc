@@ -64,10 +64,9 @@ class GlobalGCManagerTest : public ::testing::Test {
         }) {
     gcs_node_manager_ = std::make_unique<MockGcsNodeManager>();
     manager_ = std::make_unique<GlobalGCManager>(
-        *gcs_node_manager_,
-        raylet_client_pool_,
-        kIntervalNs,
-        [this]() { return fake_now_ns_; });
+        *gcs_node_manager_, raylet_client_pool_, kIntervalNs, [this]() {
+          return fake_now_ns_;
+        });
   }
 
   // Returns the registered NodeID so the caller can later remove it if needed.
