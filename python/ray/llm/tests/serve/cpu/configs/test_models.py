@@ -411,9 +411,7 @@ class TestApplyCheckpointInfo:
         return hf_config
 
     def _make_llm_config(self, model_id="org/model"):
-        return LLMConfig(
-            model_loading_config=ModelLoadingConfig(model_id=model_id)
-        )
+        return LLMConfig(model_loading_config=ModelLoadingConfig(model_id=model_id))
 
     @pytest.mark.parametrize(
         "input_id,expected_id",
@@ -432,9 +430,9 @@ class TestApplyCheckpointInfo:
         config.apply_checkpoint_info(input_id)
 
         calls = [call.args[0] for call in mock_from_pretrained.call_args_list]
-        assert all(arg == expected_id for arg in calls), (
-            f"Expected {expected_id!r}, got {calls}"
-        )
+        assert all(
+            arg == expected_id for arg in calls
+        ), f"Expected {expected_id!r}, got {calls}"
 
     @patch("transformers.PretrainedConfig.from_pretrained")
     def test_local_gguf_file_uses_parent_directory(
@@ -448,9 +446,9 @@ class TestApplyCheckpointInfo:
         config.apply_checkpoint_info(gguf_path)
 
         calls = [call.args[0] for call in mock_from_pretrained.call_args_list]
-        assert all(arg == str(tmp_path) for arg in calls), (
-            f"Expected parent directory {str(tmp_path)!r}, got {calls}"
-        )
+        assert all(
+            arg == str(tmp_path) for arg in calls
+        ), f"Expected parent directory {str(tmp_path)!r}, got {calls}"
 
 
 if __name__ == "__main__":
