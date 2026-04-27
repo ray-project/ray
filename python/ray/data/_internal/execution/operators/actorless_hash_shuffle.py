@@ -118,11 +118,7 @@ def _shuffle_map(
         A tuple of ``(BlockMetadata, List[int], Dict)`` and the grouped
         shard dicts.
     """
-    import time as _time
-
     stats = BlockExecStats.builder()
-
-    t0 = _time.perf_counter()
 
     num_groups = (num_partitions + shard_group_size - 1) // shard_group_size
 
@@ -135,8 +131,6 @@ def _shuffle_map(
             block_exec_stats=stats.build(block_ser_time_s=0),
         )
         return (input_block_metadata, [], {}), *([None] * num_groups)
-
-    t1 = _time.perf_counter()
 
     # Hash-partition each block individually to keep peak memory at ~2x one
     # block instead of ~2x all blocks combined. Accumulate per-partition
@@ -180,32 +174,19 @@ def _shuffle_map(
     groups = [None] * num_groups
     non_empty_pids = []
     shard_sizes = {}
-    total_compressed = 0
-    total_uncompressed = 0
     for pid_key, tables in partition_accumulators.items():
         merged = pa.concat_tables(tables) if len(tables) > 1 else tables[0]
         group_idx = pid_key // shard_group_size
         if groups[group_idx] is None:
             groups[group_idx] = {}
-        # Serialize to compressed IPC bytes.
+        # Serialize to ZSTD-compressed Arrow IPC bytes.
         sink = pa.BufferOutputStream()
         writer = pa.ipc.new_stream(sink, merged.schema, options=ipc_write_options)
         writer.write_table(merged)
         writer.close()
-        compressed_buf = sink.getvalue()
-        total_compressed += len(compressed_buf)
-        total_uncompressed += merged.nbytes
-        groups[group_idx][pid_key] = compressed_buf
+        groups[group_idx][pid_key] = sink.getvalue()
         non_empty_pids.append(pid_key)
         shard_sizes[pid_key] = (merged.num_rows, merged.nbytes)
-    if total_uncompressed > 0:
-        logger.info(
-            f"_shuffle_map compression: "
-            f"uncompressed={total_uncompressed / 1e6:.0f}MB, "
-            f"compressed={total_compressed / 1e6:.0f}MB, "
-            f"ratio={total_uncompressed / total_compressed:.1f}x"
-        )
-
     # Build input metadata with totals across all input blocks.
     from dataclasses import replace as _dc_replace
 
@@ -216,50 +197,6 @@ def _shuffle_map(
         input_block_metadata,
         num_rows=total_rows,
         size_bytes=total_bytes,
-    )
-
-    t3 = _time.perf_counter()
-    t4 = t3  # No separate build_shards step
-
-    import os as _os
-
-    def _mem_breakdown():
-        pid = _os.getpid()
-        info = {}
-        try:
-            with open(f"/proc/{pid}/smaps_rollup") as f:
-                for line in f:
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        try:
-                            info[parts[0].rstrip(":")] = int(parts[1]) / 1024
-                        except ValueError:
-                            continue
-        except Exception:
-            pass
-        if not info:
-            try:
-                with open(f"/proc/{pid}/statm") as f:
-                    info["Rss"] = (
-                        int(f.read().split()[1]) * _os.sysconf("SC_PAGE_SIZE") / 1e6
-                    )
-            except Exception:
-                info["Rss"] = -1
-        return info
-
-    sm = _mem_breakdown()
-    # USS = Private_Clean + Private_Dirty (pages unique to this process)
-    uss = sm.get("Private_Clean", 0) + sm.get("Private_Dirty", 0)
-    rss = sm.get("Rss", -1)
-    shared = sm.get("Shared_Clean", 0) + sm.get("Shared_Dirty", 0)
-    anon = sm.get("Anonymous", 0)
-
-    logger.info(
-        f"_shuffle_map memory: rows={total_rows}, blocks={len(blocks)}, "
-        f"prep={t1-t0:.3f}s, partition+merge={t3-t1:.3f}s, "
-        f"total={t4-t0:.3f}s, "
-        f"uss={uss:.0f}MB, rss={rss:.0f}MB, "
-        f"shared={shared:.0f}MB, anon(heap)={anon:.0f}MB"
     )
 
     return (input_block_metadata, non_empty_pids, shard_sizes), *groups
@@ -287,79 +224,25 @@ def _shuffle_reduce(
         should_sort: Whether to sort the output by ``key_columns``.
         key_columns: Columns to sort by (required when ``should_sort=True``).
     """
-    import time as _time
-
-    start_time_s = _time.perf_counter()
+    start_time_s = time.perf_counter()
 
     if not group_refs or not partition_ids:
         return
 
-    t0 = _time.perf_counter()
+    groups = ray.get(group_refs)
 
-    # Per-ref fetch instrumentation: log individual fetch times to
-    # distinguish plasma-resident fetches (~1 GB/s) from de-spilled
-    # fetches (~0.05-0.1 GB/s).  Bimodal distribution = spill is the
-    # bottleneck, not network bandwidth.
-    groups = []
-    fetch_times = []
-    fetch_bytes = []
-    for i, ref in enumerate(group_refs):
-        t_ref_start = _time.perf_counter()
-        group = ray.get(ref)
-        t_ref_end = _time.perf_counter()
-        elapsed = t_ref_end - t_ref_start
-        nbytes = 0
-        if group is not None:
-            nbytes = sum(len(buf) for buf in group.values())
-        fetch_times.append(elapsed)
-        fetch_bytes.append(nbytes)
-        groups.append(group)
-
-    t_fetch = _time.perf_counter()
-
-    # Log per-fetch throughput distribution.
-    if fetch_times:
-        throughputs = [
-            (fb / ft / 1e9 if ft > 0 else float("inf"))
-            for ft, fb in zip(fetch_times, fetch_bytes)
-        ]
-        throughputs_sorted = sorted(throughputs)
-        n = len(throughputs_sorted)
-        slow_count = sum(1 for tp in throughputs if tp < 0.3)  # < 300 MB/s
-        logger.info(
-            f"_shuffle_reduce fetch profile: refs={n}, "
-            f"total_fetch={t_fetch - t0:.2f}s, "
-            f"throughput(GB/s) min={throughputs_sorted[0]:.3f}, "
-            f"p50={throughputs_sorted[n // 2]:.3f}, "
-            f"p90={throughputs_sorted[int(n * 0.9)]:.3f}, "
-            f"max={throughputs_sorted[-1]:.3f}, "
-            f"slow_fetches(<300MB/s)={slow_count}/{n}"
-        )
-
-    # Accumulate shards per partition from all mapper groups.
-    # Shards are LZ4-compressed Arrow IPC buffers — decompress here.
+    # Decompress ZSTD-compressed Arrow IPC shards and accumulate.
     partition_builders: Dict[int, ArrowBlockBuilder] = {
         pid: ArrowBlockBuilder() for pid in partition_ids
     }
 
-    total_shards = 0
-    total_shard_bytes = 0
-    total_compressed_bytes = 0
     for group in groups:
         if group is not None:
             for pid in partition_ids:
                 if pid in group:
-                    compressed_buf = group[pid]
-                    total_compressed_bytes += len(compressed_buf)
-                    reader = pa.ipc.open_stream(compressed_buf)
-                    table = reader.read_all()
-                    partition_builders[pid].add_block(table)
-                    total_shards += 1
-                    total_shard_bytes += table.nbytes
+                    reader = pa.ipc.open_stream(group[pid])
+                    partition_builders[pid].add_block(reader.read_all())
     del groups
-    t_decompress = _time.perf_counter()
-
-    t_accumulate = _time.perf_counter()
 
     # Yield each partition as a separate output block.
     for pid in sorted(partition_ids):
@@ -419,21 +302,6 @@ def _shuffle_reduce(
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
-
-    t_yield = _time.perf_counter()
-
-    logger.info(
-        f"_shuffle_reduce: partitions={len(partition_ids)}, "
-        f"groups={len(group_refs)}, shards={total_shards}, "
-        f"shard_bytes={total_shard_bytes / 1e6:.1f}MB, "
-        f"compressed_bytes={total_compressed_bytes / 1e6:.1f}MB, "
-        f"ratio={total_shard_bytes / max(total_compressed_bytes, 1):.1f}x, "
-        f"fetch={t_fetch - t0:.3f}s, "
-        f"decompress={t_decompress - t_fetch:.3f}s, "
-        f"accumulate={t_accumulate - t_decompress:.3f}s, "
-        f"build+yield={t_yield - t_accumulate:.3f}s, "
-        f"total={t_yield - t0:.3f}s"
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -540,14 +408,15 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         self._pending_reduce_group_ids: Set[int] = set(range(self._num_groups))
 
         # -- Reduce per-task CPU reservation ----------------------------------
+        # Auto-derived at reduce-start time from actual partition sizes.
         # Reserving >1 CPU per reducer limits how many reducers Ray schedules
-        # on the same node, reducing plasma pressure and network contention.
-        # This is the sole mechanism for controlling reducer concurrency —
-        # Ray's scheduler enforces per-node limits via the CPU budget.
-        self._reduce_task_num_cpus: float = data_context.get_config(
+        # on the same node, reducing heap OOM and plasma spill pressure.
+        # Can be overridden via config for manual tuning.
+        self._reduce_task_num_cpus_override: Optional[float] = data_context.get_config(
             "actorless_shuffle_reduce_task_num_cpus",
-            self._DEFAULT_REDUCE_TASK_NUM_CPUS,
+            None,
         )
+        self._reduce_task_num_cpus: float = self._DEFAULT_REDUCE_TASK_NUM_CPUS
 
         # -- Output queue -----------------------------------------------------
         self._output_queue: deque = deque()
@@ -806,6 +675,44 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     def _is_all_reduce_submitted(self) -> bool:
         return len(self._pending_reduce_group_ids) == 0
 
+    def _auto_derive_reduce_cpus(self) -> float:
+        """Derive reduce_task_num_cpus from partition sizes and cluster shape.
+
+        Each reducer decompresses its partition into heap (~2x uncompressed
+        size for input + output during build/yield).  We cap reducers per
+        node so their combined heap fits in the node's available memory.
+        """
+        import math
+
+        if not self._partition_bytes:
+            return self._DEFAULT_REDUCE_TASK_NUM_CPUS
+
+        max_partition = max(self._partition_bytes.values())
+        reducer_heap = max_partition * 2  # decompressed input + output
+
+        # Get per-node resources from cluster.
+        cluster_res = ray.cluster_resources()
+        num_nodes = max(len(ray.nodes()), 1)
+        node_cpus = cluster_res.get("CPU", 8) / num_nodes
+        node_memory = cluster_res.get("memory", 30e9) / num_nodes
+
+        # How many reducers fit per node by heap budget.
+        # Use 80% of node memory to leave room for other tasks / overhead.
+        usable_memory = node_memory * 0.8
+        reducers_per_node = max(1, int(usable_memory / reducer_heap))
+
+        # Convert to CPU reservation.
+        reduce_cpus = max(1.0, math.ceil(node_cpus / reducers_per_node))
+
+        logger.info(
+            f"Auto-derived reduce_cpus={reduce_cpus} "
+            f"(max_partition={max_partition / 1e9:.1f}GB, "
+            f"reducer_heap={reducer_heap / 1e9:.1f}GB, "
+            f"node_memory={node_memory / 1e9:.1f}GB, "
+            f"reducers_per_node={reducers_per_node})"
+        )
+        return float(reduce_cpus)
+
     def _estimate_partition_bytes(self, partition_id: int) -> int:
         """Return the actual in-memory size of a partition's shards."""
         nbytes = self._partition_bytes.get(partition_id, 0)
@@ -849,6 +756,14 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             map_elapsed = self._reduce_start_time - self._start_time
             maps_done = self._next_map_task_idx - len(self._map_tasks)
             maps_total = self._next_map_task_idx
+
+            # Auto-derive reduce_task_num_cpus from actual partition sizes
+            # and cluster resources, unless overridden by config.
+            if self._reduce_task_num_cpus_override is not None:
+                self._reduce_task_num_cpus = self._reduce_task_num_cpus_override
+            else:
+                self._reduce_task_num_cpus = self._auto_derive_reduce_cpus()
+
             logger.info(
                 f"Reduce starting: map_elapsed={map_elapsed:.1f}s, "
                 f"maps_completed={maps_done}/{maps_total}, "
@@ -913,12 +828,14 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                         )
 
             # Estimate memory for all partitions in this group.
+            # Request 2x uncompressed size: decompressed input + output during
+            # build/yield.
             estimated_bytes = sum(
                 self._estimate_partition_bytes(pid) for pid in partition_ids
             )
             reduce_resources = {"num_cpus": self._reduce_task_num_cpus}
             if estimated_bytes > 0:
-                reduce_resources["memory"] = estimated_bytes
+                reduce_resources["memory"] = estimated_bytes * 2
 
             block_gen = _shuffle_reduce.options(
                 **reduce_resources,

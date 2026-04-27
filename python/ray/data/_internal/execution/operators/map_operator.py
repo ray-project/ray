@@ -716,34 +716,6 @@ def _map_task(
 
     blk_exec_stats_builder = BlockExecStats.builder()
 
-    import os as _os
-
-    def _mem_breakdown():
-        pid = _os.getpid()
-        info = {}
-        try:
-            with open(f"/proc/{pid}/smaps_rollup") as f:
-                for line in f:
-                    parts = line.split()
-                    if len(parts) >= 2:
-                        try:
-                            info[parts[0].rstrip(":")] = int(parts[1]) / 1024
-                        except ValueError:
-                            continue
-        except Exception:
-            pass
-        if not info:
-            try:
-                with open(f"/proc/{pid}/statm") as f:
-                    info["Rss"] = (
-                        int(f.read().split()[1]) * _os.sysconf("SC_PAGE_SIZE") / 1e6
-                    )
-            except Exception:
-                info["Rss"] = -1
-        return info
-
-    _mem_start = _mem_breakdown()
-
     logger.debug(
         "Executing map task of operator %s with task index %d",
         ctx.op_name,
@@ -800,22 +772,6 @@ def _map_task(
                         ),
                     ),
                     schema=block_schema if not yielded_schema else None,
-                )
-
-                sm = _mem_breakdown()
-                uss = sm.get("Private_Clean", 0) + sm.get("Private_Dirty", 0)
-                rss = sm.get("Rss", -1)
-                shared = sm.get("Shared_Clean", 0) + sm.get("Shared_Dirty", 0)
-                anon = sm.get("Anonymous", 0)
-                uss_start = _mem_start.get("Private_Clean", 0) + _mem_start.get(
-                    "Private_Dirty", 0
-                )
-                logger.info(
-                    f"_map_task memory: op={ctx.op_name}, task={ctx.task_idx}, "
-                    f"uss_start={uss_start:.0f}MB, uss={uss:.0f}MB, "
-                    f"rss={rss:.0f}MB, shared={shared:.0f}MB, "
-                    f"anon(heap)={anon:.0f}MB, "
-                    f"block_size={block_meta.size_bytes / 1e6:.1f}MB"
                 )
 
                 # Reset trackers
