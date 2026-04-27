@@ -337,11 +337,10 @@ def convert_to_pyarrow_array(
                 f"({type(ace).__name__}); {object_ext_type_detail}. "
                 f"To see the full error, set logging level to DEBUG.",
             )
-
-        logger.debug(
-            f"Full details for Arrow conversion error on column '{column_name}':",
-            exc_info=ace,
-        )
+            logger.debug(
+                f"Full details for Arrow conversion error on column '{column_name}':",
+                exc_info=ace,
+            )
 
         if not object_ext_type_fallback_allowed:
             # If `ArrowPythonObjectType` is not supported raise original exception
