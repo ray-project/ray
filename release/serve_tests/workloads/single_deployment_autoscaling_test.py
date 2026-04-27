@@ -70,7 +70,6 @@ STAGES = [
 STAGE_NAMES = ["warmup", "ramp_up", "sharp_jump", "sustain"]
 
 
-
 def build_results(stats: LocustTestResults, service_id: str) -> Dict[str, Any]:
     results_per_stage = [
         [
@@ -175,8 +174,7 @@ def log_and_assert_results(stats: LocustTestResults) -> None:
             )
         if "rps" in thresholds:
             assert stage_stats.rps >= thresholds["rps"], (
-                f"{name} rps={stage_stats.rps:.0f} "
-                f"below: {thresholds['rps']}."
+                f"{name} rps={stage_stats.rps:.0f} " f"below: {thresholds['rps']}."
             )
 
     if errors > 0:

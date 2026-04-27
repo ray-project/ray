@@ -27,6 +27,7 @@ class PerformanceStats:
     rps: float
     max_latency: float = 0.0
 
+
 @dataclass
 class LocustTestResults:
     history: List[Dict]
