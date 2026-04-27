@@ -446,8 +446,7 @@ class SlicePlacementGroup:
         head_reservation_timeout_s: The maximum time in seconds to wait for each
             TPU head placement group to become ready. Defaults to
             ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``. Pass ``None`` to wait
-            indefinitely. Callers (such as Ray Train) typically override this to
-            align the TPU head wait with their own startup timeout.
+            indefinitely.
 
     Examples:
 
