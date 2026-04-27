@@ -102,7 +102,7 @@ def _enable_tracing():
     _opentelemetry.try_all()
 
 
-def _get_opentelemetry() -> "_OpenTelemetryProxy":
+def _get_opentelemetry() -> Optional["_OpenTelemetryProxy"]:
     """Avoids pickling a stale `_opentelemetry` value into closures."""
     return _opentelemetry
 
