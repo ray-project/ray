@@ -317,10 +317,11 @@ class LLMConfig(BaseModelExtended):
         # that HuggingFace's config loader rejects due to the colon. For local
         # GGUF files the weights path is a .gguf file, not the directory that
         # contains config.json. Normalise both cases before the HF calls.
-        if model_id_or_path.endswith(".gguf"):
-            hf_path = os.path.dirname(model_id_or_path)
-        elif ":" in model_id_or_path:
-            hf_path = get_base_model_id(model_id_or_path)
+        drive, tail = os.path.splitdrive(model_id_or_path)
+        if model_id_or_path.lower().endswith(".gguf"):
+            hf_path = os.path.dirname(model_id_or_path) or "."
+        elif ":" in tail:
+            hf_path = drive + get_base_model_id(tail)
         else:
             hf_path = model_id_or_path
 
