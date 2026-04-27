@@ -39,6 +39,11 @@ class _PendingValidation:
     # None when no timeout applies.
     timeout_s: Optional[float]
 
+    def __post_init__(self):
+        assert (
+            self.timeout_s is None or self.timeout_s > 0
+        ), f"timeout_s needs to be None (for no timeout) or a positive value in seconds. Actual value: {self.timeout_s}"
+
 
 @ray.remote
 def run_validation_fn(
@@ -188,11 +193,15 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         """
         if isinstance(validation, ValidationTaskConfig):
             task_timeout_s = validation.timeout_s
-            if task_timeout_s < 0:
+            # use -1 to overwrite the default for no timeout
+            if task_timeout_s is not None and task_timeout_s < 0:
                 return None
         else:
             task_timeout_s = None
         default_timeout_s = self._validation_config.task_config.timeout_s
+        # -1 for the default should be converted to None
+        if default_timeout_s is not None and default_timeout_s < 0:
+            default_timeout_s = None
         return default_timeout_s if task_timeout_s is None else task_timeout_s
 
     def _kick_off_validations(self) -> int:
