@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import time
+import traceback
 import uuid
 from contextlib import contextmanager
 
@@ -15,11 +16,18 @@ logger = logging.getLogger(__name__)
 
 def _wait_for_condition(condition, timeout=10, retry_interval_s=0.1):
     deadline = time.monotonic() + timeout
+    last_ex = None
     while time.monotonic() <= deadline:
-        if condition():
-            return
+        try:
+            if condition():
+                return
+        except Exception:
+            last_ex = traceback.format_exc()
         time.sleep(retry_interval_s)
-    raise RuntimeError("The condition wasn't met before the timeout expired.")
+    message = "The condition wasn't met before the timeout expired."
+    if last_ex is not None:
+        message += f" Last exception: {last_ex}"
+    raise RuntimeError(message)
 
 
 @contextmanager
