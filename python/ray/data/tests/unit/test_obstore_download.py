@@ -96,6 +96,7 @@ class TestDownloadHelpers:
         with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
             result = _extract_credentials_from_filesystem(mock_retrying)
 
+        assert result is not None
         assert result.get("region") == "eu-west-1"
 
     # _extract_credentials_from_filesystem with S3
@@ -108,6 +109,7 @@ class TestDownloadHelpers:
         except Exception:
             pytest.skip("Cannot instantiate S3FileSystem in this environment")
         result = _extract_credentials_from_filesystem(fs)
+        assert result is not None
         assert result.get("region") == "us-west-2"
         assert "access_key_id" not in result
         assert "skip_signature" not in result
@@ -123,6 +125,7 @@ class TestDownloadHelpers:
         mock_fs.region = None
         with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
             result = _extract_credentials_from_filesystem(mock_fs)
+        assert result is not None
         assert result.get("skip_signature") is True
         assert "access_key_id" not in result
 
@@ -136,6 +139,7 @@ class TestDownloadHelpers:
         mock_fs.region = "us-west-2"
         with patch("pyarrow.fs.S3FileSystem", type(mock_fs)):
             result = _extract_credentials_from_filesystem(mock_fs)
+        assert result is not None
         assert result["access_key_id"] == "AKID"
         assert result["secret_access_key"] == "SECRET"
         assert result["session_token"] == "TOKEN"
@@ -361,6 +365,7 @@ class TestFsspecSessionCreds:
             session, storage_options={"key": "AKIA_EXPLICIT", "secret": "e"}
         )
         result = _extract_credentials_from_filesystem(wrapped)
+        assert result is not None
         assert result["access_key_id"] == "AKIA_EXPLICIT"
         assert result["secret_access_key"] == "e"
         session.get_credentials.assert_not_called()
