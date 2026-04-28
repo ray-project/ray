@@ -587,6 +587,66 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
     ray.shutdown()
 
 
+def _call_build_serve_application(import_path: str):
+    from ray.serve._private.application_state import build_serve_application
+    from ray.serve.schema import LoggingConfig
+
+    return build_serve_application.remote(
+        import_path,
+        "test-code-version",
+        "test_app",
+        {},
+        LoggingConfig(),
+        None,
+        {},
+        {},
+        {},
+    )
+
+
+def test_build_serve_application_retries_on_failure(ray_shutdown, tmp_path):
+    """Application errors raised during the build task are retried up to 3 times."""
+    counter_file = tmp_path / "counter.txt"
+    counter_file.write_text("0")
+
+    os.environ["FLAKY_BUILD_COUNTER_FILE"] = str(counter_file)
+    os.environ["FLAKY_BUILD_FAIL_COUNT"] = "3"
+    try:
+        ray.init(num_cpus=1)
+        obj_ref = _call_build_serve_application(
+            "ray.serve.tests.test_config_files.flaky_build.node"
+        )
+        _, deploy_args, err = ray.get(obj_ref)
+        assert err is None, f"expected success after retries, got {err!r}"
+        assert deploy_args is not None
+        assert int(counter_file.read_text()) == 4
+    finally:
+        os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
+        os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
+
+
+def test_build_serve_application_propagates_after_retries_exhausted(
+    ray_shutdown, tmp_path
+):
+    """If the build task keeps failing, the exception propagates after 3 retries."""
+    counter_file = tmp_path / "counter.txt"
+    counter_file.write_text("0")
+
+    os.environ["FLAKY_BUILD_COUNTER_FILE"] = str(counter_file)
+    os.environ["FLAKY_BUILD_FAIL_COUNT"] = "10"
+    try:
+        ray.init(num_cpus=1)
+        obj_ref = _call_build_serve_application(
+            "ray.serve.tests.test_config_files.flaky_build.node"
+        )
+        with pytest.raises(Exception, match="flaky build failure"):
+            ray.get(obj_ref)
+        assert int(counter_file.read_text()) == 4
+    finally:
+        os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
+        os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
+
+
 @pytest.mark.parametrize(
     "options",
     [

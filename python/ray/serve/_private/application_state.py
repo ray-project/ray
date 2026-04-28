@@ -1536,7 +1536,7 @@ class ApplicationStateManager:
         )
 
 
-@ray.remote(num_cpus=0, max_calls=1)
+@ray.remote(num_cpus=0, max_calls=1, max_retries=3, retry_exceptions=True)
 def build_serve_application(
     import_path: str,
     code_version: str,
@@ -1679,7 +1679,8 @@ def build_serve_application(
         logger.error(
             f"Exception importing application '{name}'.\n{traceback.format_exc()}"
         )
-        return None, None, traceback.format_exc()
+        # Re-raise so Ray's max_retries / retry_exceptions on the decorator apply.
+        raise
 
 
 def override_deployment_info(
