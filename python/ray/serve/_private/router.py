@@ -963,22 +963,20 @@ class AsyncioRouter:
                 resolution_ms = (time.monotonic() - resolution_start) * 1000
                 self._objref_resolution_latency_ms.observe(resolution_ms)
 
-            num_curr_replicas = len(self.request_router.curr_replicas)
-            with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
-                replica = await self.request_router._choose_replica_for_request(
-                    pr, is_retry=is_retry
-                )
+            replica = await self.request_router._choose_replica_for_request(
+                pr, is_retry=is_retry
+            )
 
-                # If the queue len cache is disabled or we're sending a request to Java,
-                # then directly send the query and hand the response back. The replica will
-                # never reject requests in this code path.
-                with_rejection = (
-                    self._enable_strict_max_ongoing_requests
-                    and not replica.is_cross_language
-                )
-                result = replica.try_send_request(pr, with_rejection=with_rejection)
-                # Proactively update the queue length cache.
-                self.request_router.on_send_request(replica.replica_id)
+            # If the queue len cache is disabled or we're sending a request to Java,
+            # then directly send the query and hand the response back. The replica will
+            # never reject requests in this code path.
+            with_rejection = (
+                self._enable_strict_max_ongoing_requests
+                and not replica.is_cross_language
+            )
+            result = replica.try_send_request(pr, with_rejection=with_rejection)
+            # Proactively update the queue length cache.
+            self.request_router.on_send_request(replica.replica_id)
 
             # Keep track of requests that have been sent out to replicas
             if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
@@ -1090,20 +1088,24 @@ class AsyncioRouter:
         await self._request_router_initialized.wait()
 
         is_retry = False
-        while True:
-            result = await self._route_and_send_request_once(
-                pr,
-                response_id,
-                is_retry,
-            )
-            if result is not None:
-                return result
+        # Hold the `num_queued_requests` incremented across all routing retries.
+        # Without this, the counter would oscillate each time a replica rejects.
+        num_curr_replicas = len(self.request_router.curr_replicas)
+        with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
+            while True:
+                result = await self._route_and_send_request_once(
+                    pr,
+                    response_id,
+                    is_retry,
+                )
+                if result is not None:
+                    return result
 
-            # If the replica rejects the request, retry the routing process. The
-            # request will be placed on the front of the queue to avoid tail latencies.
-            # TODO(edoakes): this retry procedure is not perfect because it'll reset the
-            # process of choosing candidates replicas (i.e., for locality-awareness).
-            is_retry = True
+                # If the replica rejects the request, retry the routing process. The
+                # request will be placed on the front of the queue to avoid tail latencies.
+                # TODO(edoakes): this retry procedure is not perfect because it'll reset the
+                # process of choosing candidates replicas (i.e., for locality-awareness).
+                is_retry = True
 
     @tracing_decorator_factory(
         trace_name="route_to_replica",
