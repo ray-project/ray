@@ -91,7 +91,8 @@ def worker_nodes() -> List[Dict]:
     # just on IsHead/head-marker lets through system nodes with CPU=0 that
     # NodeAffinitySchedulingStrategy(soft=False) will reject as infeasible.
     return [
-        n for n in ray.nodes()
+        n
+        for n in ray.nodes()
         if n.get("Alive")
         and "node:__internal_head__" not in n.get("Resources", {})
         and n.get("Resources", {}).get("CPU", 0) >= 1
@@ -122,10 +123,14 @@ def cluster_plasma_used_bytes() -> int:
     return int(max(0.0, total - avail))
 
 
-def wait_for_drain(baseline: int, tolerance: int, timeout_s: int, poll_s: float) -> None:
+def wait_for_drain(
+    baseline: int, tolerance: int, timeout_s: int, poll_s: float
+) -> None:
     target = baseline + tolerance
-    print(f"[drain] waiting for plasma <= {target / 1e9:.3f} GB "
-          f"(baseline={baseline / 1e9:.3f} GB)")
+    print(
+        f"[drain] waiting for plasma <= {target / 1e9:.3f} GB "
+        f"(baseline={baseline / 1e9:.3f} GB)"
+    )
     deadline = time.time() + timeout_s
     last_log = 0.0
     while time.time() < deadline:
@@ -162,10 +167,12 @@ def main():
     consumer_b_node = chosen[2]["NodeID"]
     for role, n in zip(("producer", "consumer_a", "consumer_b"), chosen):
         r = n.get("Resources", {})
-        print(f"[place] {role}={n['NodeID'][:8]} "
-              f"CPU={r.get('CPU', 0)} "
-              f"object_store_memory={r.get('object_store_memory', 0) / 1e9:.2f}GB "
-              f"addr={n.get('NodeManagerAddress')}")
+        print(
+            f"[place] {role}={n['NodeID'][:8]} "
+            f"CPU={r.get('CPU', 0)} "
+            f"object_store_memory={r.get('object_store_memory', 0) / 1e9:.2f}GB "
+            f"addr={n.get('NodeManagerAddress')}"
+        )
     print(f"[place] bystanders={len(nodes) - 3}")
 
     baseline = cluster_plasma_used_bytes()
@@ -180,31 +187,42 @@ def main():
     consumer_b = Consumer.options(scheduling_strategy=pin_on(consumer_b_node)).remote(
         args.object_size_bytes
     )
-    ray.get([
-        producer.__ray_ready__.remote(),
-        consumer_a.__ray_ready__.remote(),
-        consumer_b.__ray_ready__.remote(),
-    ])
+    ray.get(
+        [
+            producer.__ray_ready__.remote(),
+            consumer_a.__ray_ready__.remote(),
+            consumer_b.__ray_ready__.remote(),
+        ]
+    )
     print("[spawn] producer + 2 consumers ready")
 
     print(f"[produce] creating {args.num_objects} x {args.object_size_bytes}B objects")
     n = ray.get(producer.produce.remote(args.num_objects))
-    print(f"[produce] {n} objects live "
-          f"(cluster plasma={cluster_plasma_used_bytes() / 1e9:.3f} GB)")
+    print(
+        f"[produce] {n} objects live "
+        f"(cluster plasma={cluster_plasma_used_bytes() / 1e9:.3f} GB)"
+    )
 
     print("[pull] both consumers pulling in parallel")
-    ray.get([
-        consumer_a.pull.remote(producer, args.pull_batch_size),
-        consumer_b.pull.remote(producer, args.pull_batch_size),
-    ])
-    print(f"[pull] done "
-          f"(cluster plasma={cluster_plasma_used_bytes() / 1e9:.3f} GB)")
+    ray.get(
+        [
+            consumer_a.pull.remote(producer, args.pull_batch_size),
+            consumer_b.pull.remote(producer, args.pull_batch_size),
+        ]
+    )
+    print(
+        f"[pull] done " f"(cluster plasma={cluster_plasma_used_bytes() / 1e9:.3f} GB)"
+    )
 
     print("[clear] dropping producer refs -> owner refcount=0 -> broadcast free")
     ray.get(producer.clear_refs.remote())
 
-    wait_for_drain(baseline, args.drain_tolerance_bytes, args.drain_timeout_s,
-                   args.drain_poll_interval_s)
+    wait_for_drain(
+        baseline,
+        args.drain_tolerance_bytes,
+        args.drain_timeout_s,
+        args.drain_poll_interval_s,
+    )
     print("[done] broadcast free propagated, plasma drained")
 
     # Now that the first broadcast has drained, drive a second round entirely
@@ -213,26 +231,37 @@ def main():
     # broadcast free. This exercises the lazy-free path on the secondary
     # copies that land on the sibling consumer's node (and on any bystander
     # nodes the pull fan-out later touches).
-    print(f"[consumer-produce] each consumer producing {args.num_objects} x "
-          f"{args.object_size_bytes}B")
-    ray.get([
-        consumer_a.produce.remote(args.num_objects),
-        consumer_b.produce.remote(args.num_objects),
-    ])
-    print(f"[consumer-produce] done "
-          f"(cluster plasma={cluster_plasma_used_bytes() / 1e9:.3f} GB)")
+    print(
+        f"[consumer-produce] each consumer producing {args.num_objects} x "
+        f"{args.object_size_bytes}B"
+    )
+    ray.get(
+        [
+            consumer_a.produce.remote(args.num_objects),
+            consumer_b.produce.remote(args.num_objects),
+        ]
+    )
+    print(
+        f"[consumer-produce] done "
+        f"(cluster plasma={cluster_plasma_used_bytes() / 1e9:.3f} GB)"
+    )
 
     print("[consumer-clear] dropping consumer refs -> broadcast free")
-    ray.get([
-        consumer_a.clear_refs.remote(),
-        consumer_b.clear_refs.remote(),
-    ])
+    ray.get(
+        [
+            consumer_a.clear_refs.remote(),
+            consumer_b.clear_refs.remote(),
+        ]
+    )
 
-    wait_for_drain(baseline, args.drain_tolerance_bytes, args.drain_timeout_s,
-                   args.drain_poll_interval_s)
+    wait_for_drain(
+        baseline,
+        args.drain_tolerance_bytes,
+        args.drain_timeout_s,
+        args.drain_poll_interval_s,
+    )
     print("[done] consumer-produced objects freed, plasma drained")
 
 
 if __name__ == "__main__":
     main()
-

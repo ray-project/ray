@@ -38,7 +38,6 @@ import time
 import numpy as np
 
 import ray
-import ray._private.state as state
 from ray.cluster_utils import Cluster
 
 
@@ -61,13 +60,14 @@ def print_plasma_per_node(label):
         )
     )
 
-OBJ_SIZE = 2 * 1024 * 5             # 10 KiB per small object
+
+OBJ_SIZE = 2 * 1024 * 5  # 10 KiB per small object
 STORE_SIZE = 200 * 1024 * 1024 * 5  # 1000 MiB consumer plasma
-PHASE1_COUNT = 60 * 1024            # ~600 MiB of secondaries
+PHASE1_COUNT = 60 * 1024  # ~600 MiB of secondaries
 BIG_OBJ_SIZE = STORE_SIZE * 4 // 5  # 800 MiB primary on consumer
-BATCH_SIZE = 1024                   # refs per pull call
-N_CONSUMERS = 8                     # consumer-actor pool size
-SETTLE_SECONDS = 5                  # let eager free propagate after del primaries
+BATCH_SIZE = 1024  # refs per pull call
+N_CONSUMERS = 8  # consumer-actor pool size
+SETTLE_SECONDS = 5  # let eager free propagate after del primaries
 
 
 @ray.remote(resources={"consumer": 1}, num_cpus=0)
@@ -103,13 +103,12 @@ def main():
     # Driver runs on owner_node (head). ray.put always goes to plasma,
     # so each call creates a real primary in owner-node plasma.
     primaries = [
-        ray.put(np.zeros(OBJ_SIZE, dtype=np.uint8))
-        for _ in range(PHASE1_COUNT)
+        ray.put(np.zeros(OBJ_SIZE, dtype=np.uint8)) for _ in range(PHASE1_COUNT)
     ]
 
     pull_handles = []
     for batch_idx, start in enumerate(range(0, len(primaries), BATCH_SIZE)):
-        batch = primaries[start:start + BATCH_SIZE]
+        batch = primaries[start : start + BATCH_SIZE]
         actor = consumers[batch_idx % N_CONSUMERS]
         pull_handles.append(actor.pull.remote(*batch))
     ray.get(pull_handles)

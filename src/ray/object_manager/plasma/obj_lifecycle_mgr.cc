@@ -17,6 +17,7 @@
 
 #include "ray/object_manager/plasma/obj_lifecycle_mgr.h"
 
+#include <chrono>
 #include <memory>
 #include <string>
 #include <utility>
@@ -47,7 +48,15 @@ std::pair<const LocalObject *, flatbuf::PlasmaError> ObjectLifecycleManager::Cre
   if (object_store_->GetObject(object_info.object_id) != nullptr) {
     return {nullptr, PlasmaError::ObjectExists};
   }
+  const auto start = std::chrono::steady_clock::now();
   auto entry = CreateObjectInternal(object_info, source, fallback_allocator);
+  const auto elapsed_us =
+      std::chrono::duration_cast<std::chrono::microseconds>(
+          std::chrono::steady_clock::now() - start).count();
+  RAY_LOG(ERROR) << "CreateObjectInternal owner_node=" << object_info.owner_node_id
+                << " id=" << object_info.object_id
+                << " size=" << object_info.GetObjectSize() << " took " << elapsed_us
+                << " us";
 
   if (entry == nullptr) {
     return {nullptr, PlasmaError::OutOfMemory};
@@ -196,6 +205,10 @@ const LocalObject *ObjectLifecycleManager::CreateObjectInternal(
     std::vector<ObjectID> objects_to_evict;
     int64_t space_needed =
         eviction_policy_->RequireSpace(object_info.GetObjectSize(), objects_to_evict);
+    RAY_LOG(ERROR) << "RequireSpace owner_node=" << object_info.owner_node_id
+                  << " for " << object_info.GetObjectSize()
+                  << " bytes: evicting " << objects_to_evict.size()
+                  << " victims; space_still_needed=" << space_needed;
     EvictObjects(objects_to_evict);
     // More space is still needed.
     if (space_needed > 0) {
