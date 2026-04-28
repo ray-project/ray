@@ -749,7 +749,7 @@ class SGLangServer:
         self,
         method: str,
         kwargs: Optional[dict] = None,
-    ) -> list:
+    ) -> None:
         """Execute a collective RPC call on all SGLang workers.
 
         This is used for RLHF workflows where a trainer needs to execute methods on all TP/PP workers (e.g., for weight synchronization).
