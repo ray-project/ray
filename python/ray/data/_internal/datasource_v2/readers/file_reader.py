@@ -268,11 +268,12 @@ class FileReader(Reader[FileManifest]):
             if self._columns is not None:
                 # Project/reorder to the caller's requested column order;
                 # drop any that weren't produced (matches V1's lenient
-                # behavior).
+                # behavior). Always select — an empty projection must
+                # narrow the table to zero columns so the stub-column
+                # guard below handles row preservation.
                 produced = set(table.column_names)
                 projected = [c for c in self._columns if c in produced]
-                if projected:
-                    table = table.select(projected)
+                table = table.select(projected)
 
             if table.num_columns == 0 and table.num_rows > 0:
                 # Guards against ``pa.concat_tables`` collapsing rows
