@@ -2649,14 +2649,9 @@ class MultiAgentEpisode:
             # When a specific extra_model_outputs key was requested, the callers
             # may pass the full extra_model_outputs dict (instead of the indexed
             # sub-buffer/value). Ensure both are properly indexed here.
-            if (
-                what == "extra_model_outputs"
-                and extra_model_outputs_key is not None
-            ):
+            if what == "extra_model_outputs" and extra_model_outputs_key is not None:
                 if isinstance(inf_lookback_buffer, dict):
-                    inf_lookback_buffer = inf_lookback_buffer[
-                        extra_model_outputs_key
-                    ]
+                    inf_lookback_buffer = inf_lookback_buffer[extra_model_outputs_key]
                 if hanging_val is not None and isinstance(hanging_val, dict):
                     hanging_val = hanging_val[extra_model_outputs_key]
             return inf_lookback_buffer.get(
