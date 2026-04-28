@@ -286,11 +286,7 @@ def to_proto_scaling_config(
 def _to_proto_execution_options(
     execution_options: ExecutionOptions,
 ) -> ProtoTrainRun.ExecutionOptions:
-    """Convert a single ExecutionOptions schema model to protobuf.
-
-    resource_limits/exclude_resources go through _dict_to_human_readable_struct
-    so non-finite floats (inf) are stringified for JSON compatibility.
-    """
+    """Convert a single ExecutionOptions schema model to protobuf."""
     return ProtoTrainRun.ExecutionOptions(
         resource_limits=_dict_to_human_readable_struct(
             execution_options.resource_limits
