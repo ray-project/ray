@@ -587,60 +587,50 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
     ray.shutdown()
 
 
-def _call_build_serve_application(import_path: str):
-    from ray.serve._private.application_state import build_serve_application
-    from ray.serve.schema import LoggingConfig
-
-    return build_serve_application.remote(
-        import_path,
-        "test-code-version",
-        "test_app",
-        {},
-        LoggingConfig(),
-        None,
-        {},
-        {},
-        {},
+def _deploy_flaky_app(counter_file, fail_count: int):
+    os.environ["FLAKY_BUILD_COUNTER_FILE"] = str(counter_file)
+    os.environ["FLAKY_BUILD_FAIL_COUNT"] = str(fail_count)
+    counter_file.write_text("0")
+    ray.init(num_cpus=1)
+    serve.start()
+    _get_global_client().deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="flaky_app",
+                    route_prefix="/flaky",
+                    import_path="ray.serve.tests.test_config_files.flaky_build.node",
+                )
+            ]
+        )
     )
 
 
-def test_build_serve_application_retries_on_failure(ray_shutdown, tmp_path):
-    """Application errors raised during the build task are retried up to 3 times."""
+def test_build_app_retries_until_success(ray_shutdown, tmp_path):
+    """A flaky build that succeeds on the 4th attempt deploys cleanly."""
     counter_file = tmp_path / "counter.txt"
-    counter_file.write_text("0")
-
-    os.environ["FLAKY_BUILD_COUNTER_FILE"] = str(counter_file)
-    os.environ["FLAKY_BUILD_FAIL_COUNT"] = "3"
     try:
-        ray.init(num_cpus=1)
-        obj_ref = _call_build_serve_application(
-            "ray.serve.tests.test_config_files.flaky_build.node"
+        _deploy_flaky_app(counter_file, fail_count=3)
+        wait_for_condition(
+            lambda: serve.status().applications["flaky_app"].status == "RUNNING",
+            timeout=60,
         )
-        _, deploy_args, err = ray.get(obj_ref)
-        assert err is None, f"expected success after retries, got {err!r}"
-        assert deploy_args is not None
         assert int(counter_file.read_text()) == 4
     finally:
         os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
         os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
 
 
-def test_build_serve_application_propagates_after_retries_exhausted(
-    ray_shutdown, tmp_path
-):
-    """If the build task keeps failing, the exception propagates after 3 retries."""
+def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
+    """If the build keeps failing, the app status surfaces the user error."""
     counter_file = tmp_path / "counter.txt"
-    counter_file.write_text("0")
-
-    os.environ["FLAKY_BUILD_COUNTER_FILE"] = str(counter_file)
-    os.environ["FLAKY_BUILD_FAIL_COUNT"] = "10"
     try:
-        ray.init(num_cpus=1)
-        obj_ref = _call_build_serve_application(
-            "ray.serve.tests.test_config_files.flaky_build.node"
+        _deploy_flaky_app(counter_file, fail_count=10)
+        wait_for_condition(
+            lambda: serve.status().applications["flaky_app"].status == "DEPLOY_FAILED",
+            timeout=60,
         )
-        with pytest.raises(RuntimeError, match="flaky build failure"):
-            ray.get(obj_ref)
+        assert "flaky build failure" in serve.status().applications["flaky_app"].message
         assert int(counter_file.read_text()) == 4
     finally:
         os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
