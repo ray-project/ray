@@ -639,8 +639,9 @@ def test_task_submission_backpressure_from_paused_consumer(
     assert "100 tasks executed" in stats, stats
 
 
+@pytest.mark.parametrize("streaming_split", [False, True])
 def test_output_backpressure_from_paused_consumer(
-    ray_start_10_cpus_shared, restore_data_context
+    ray_start_10_cpus_shared, restore_data_context, streaming_split
 ):
     """The terminal operator's output queue should not grow beyond the
     budget from pulling blocks from in-flight tasks when a consumer is paused."""
@@ -675,6 +676,8 @@ def test_output_backpressure_from_paused_consumer(
     ds = ray.data.range(1, override_num_blocks=1).map_batches(
         generate_many_blocks, batch_size=None
     )
+    if streaming_split:
+        ds = ds.streaming_split(1)[0]
     it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
 
     # Consume first batch to start the pipeline and get the executor.
