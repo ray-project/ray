@@ -17,7 +17,6 @@ class AutoscalingCoordinator(abc.ABC):
     @abc.abstractmethod
     def request_resources(
         self,
-        requester_id: str,
         resources: List[ResourceDict],
         expire_after_s: float,
         request_remaining: bool = False,
@@ -28,10 +27,7 @@ class AutoscalingCoordinator(abc.ABC):
         The requested resources should represent the full set of resources needed,
         not just the incremental amount.
 
-        A request with the same `requester_id` overwrites the previous one.
-
         Args:
-            requester_id: A unique identifier for the component making the request.
             resources: The requested resources. This should match the format accepted
                 by `ray.autoscaler.sdk.request_resources`.
             expire_after_s: Time in seconds after which this request will expire.
@@ -44,20 +40,13 @@ class AutoscalingCoordinator(abc.ABC):
         ...
 
     @abc.abstractmethod
-    def cancel_request(self, requester_id: str):
-        """Cancel the resource request from the given requester.
-
-        Args:
-            requester_id: The unique identifier of the requester.
-        """
+    def cancel_request(self) -> None:
+        """Cancel the resource request from the requester."""
         ...
 
     @abc.abstractmethod
-    def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
-        """Get the allocated resources for the given requester.
-
-        Args:
-            requester_id: The unique identifier of the requester.
+    def get_allocated_resources(self) -> List[ResourceDict]:
+        """Get the allocated resources for the requester.
 
         Returns:
             A list of dictionaries representing the allocated resources bundles.
