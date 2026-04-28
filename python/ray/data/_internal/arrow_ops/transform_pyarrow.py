@@ -75,28 +75,66 @@ def _create_empty_table(schema: "pyarrow.Schema"):
     return pa.table(arrays, schema=schema)
 
 
+def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
+    """Check if any column type becomes unhashable after to_pandas() conversion.
+
+    Nested PyArrow types (struct/list/large_list/fixed_size_list/map/union and
+    their view variants) convert to Python dicts/lists, and Ray's tensor and
+    Python-object extension types convert to numpy arrays / Python objects.
+    None of these are hashable by pandas' hash_pandas_object. We check the
+    schema upfront so the hash algorithm choice is deterministic per schema,
+    not per block data.
+    """
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+
+    tensor_types = get_arrow_extension_tensor_types()
+    for field in schema:
+        # `is_nested` covers struct/list/large_list/map/union and (on pyarrow
+        # 16+) list_view/large_list_view. It does NOT include fixed_size_list
+        # on older pyarrow (<10-ish), so check that explicitly.
+        if pyarrow.types.is_nested(field.type) or pyarrow.types.is_fixed_size_list(
+            field.type
+        ):
+            return True
+        if isinstance(field.type, tensor_types):
+            return True
+        if isinstance(field.type, ArrowPythonObjectType):
+            return True
+    return False
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
 ) -> np.ndarray:
-
-    # NOTE: We special casing-scenario of single column with integer type
+    # NOTE: We special-case single column with integer type,
     #       short-circuiting the need for hashing the column and instead
-    #       using values as is for partitioning
+    #       using values as-is for partitioning.
     if len(table.columns) == 1 and pyarrow.types.is_integer(table.column(0).type):
         target_column = table.column(0)
         partitions = (target_column.to_numpy() % num_partitions).astype(np.int64)
-    else:
-        # Otherwise fallback to invoking __hash__ on Pyarrow scalars filling out
-        # target table
+    elif _has_unhashable_pandas_types(table.schema):
+        # Struct/list/map columns become dicts/lists in pandas, which are
+        # unhashable. Use row-by-row hashing on PyArrow scalars instead.
         partitions = np.zeros((table.num_rows,), dtype=np.int64)
-
         for i in range(table.num_rows):
             _tuple = tuple(c[i] for c in table.columns)
             partitions[i] = hash(_tuple) % num_partitions
+    else:
+        # Use pandas' vectorized hash (xxhash-based) instead of a Python
+        # row-by-row loop.
+        import pandas as pd
 
-    # Convert to ndarray to compute hash partition indices
-    # more efficiently
+        # Use types_mapper=pd.ArrowDtype to keep Arrow-backed extension arrays
+        # in pandas. This avoids int64 -> float64 promotion for nullable integer
+        # columns, which would cause the same value to hash differently across
+        # blocks depending on whether the block contains nulls.
+        hashes = pd.util.hash_pandas_object(
+            table.to_pandas(types_mapper=pd.ArrowDtype), index=False
+        ).values
+        np.mod(hashes, num_partitions, out=hashes)
+        partitions = hashes
+
     return partitions
 
 
