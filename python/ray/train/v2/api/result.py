@@ -33,8 +33,9 @@ class Result(ResultV1):
             via :func:`ray.train.report`.
         checkpoint: The latest checkpoint saved by the training function
             via :func:`ray.train.report`.
-        return_value: The value returned by the training function on the
-            rank-0 worker.
+        return_value: The value returned by the user-defined training function on the
+            rank 0 worker, or ``None`` if no value was returned or if training did
+            not complete successfully. The return value must be serializable.
         metrics_dataframe: A DataFrame of metrics from all checkpoints saved
             during the run. Each row corresponds to a checkpoint.
         best_checkpoints: A list of ``(checkpoint, metrics)`` tuples for the

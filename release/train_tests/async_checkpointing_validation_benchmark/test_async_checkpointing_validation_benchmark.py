@@ -151,24 +151,14 @@ def eval_only_train_func(config_dict):
     test_data_shard = ray.train.get_dataset_shard("test")
     test_dataloader = test_data_shard.iter_torch_batches(batch_size=128)
 
-    # Report metrics with dummy checkpoint
+    # Report metrics
     mean_acc = torchmetrics.Accuracy(task="multiclass", num_classes=10, top_k=1).cuda()
     with torch.no_grad():
         for batch in test_dataloader:
             images, labels = batch["image"], batch["label"]
             outputs = model(images)
             mean_acc(outputs.argmax(1), labels)
-
-    # TODO - Replace with `return {"score": mean_acc.compute().item()}`
-    ray.train.report(
-        metrics={"score": mean_acc.compute().item()},
-        checkpoint=ray.train.Checkpoint(
-            ray.train.get_context()
-            .get_storage()
-            .build_checkpoint_path_from_name("placeholder")
-        ),
-        checkpoint_upload_mode=CheckpointUploadMode.NO_UPLOAD,
-    )
+    return {"score": mean_acc.compute().item()}
 
 
 def validate_with_torch_trainer(checkpoint, parent_run_name, epoch, batch_idx):
@@ -184,8 +174,7 @@ def validate_with_torch_trainer(checkpoint, parent_run_name, epoch, batch_idx):
     )
     result = trainer.fit()
     return {
-        # TODO Update to `result.return_value["score"]`
-        "score": result.metrics["score"],
+        "score": result.return_value["score"],
         "validation_time": time.time() - start_time,
     }
 
@@ -367,20 +356,11 @@ def train_func(config):
                 validate_and_report(model, epoch, i, blocked_times, config, loss)
         validate_and_report(model, epoch, i, blocked_times, config, loss)
 
-    # Report train_func metrics with dummy checkpoint since that is the only way to
-    # return metrics
-    # TODO - Replace with `return metrics`
-    if ray.train.get_context().get_world_rank() == 0:
-        with tempfile.TemporaryDirectory() as temp_dir:
-            ray.train.report(
-                metrics={
-                    "report_blocked_times": blocked_times,
-                    "train_func_return_time": time.time(),
-                },
-                checkpoint=ray.train.Checkpoint.from_directory(temp_dir),
-            )
-    else:
-        ray.train.report({}, None)
+    # Return train_func metrics
+    return {
+        "report_blocked_times": blocked_times,
+        "train_func_return_time": time.time(),
+    }
 
 
 def run_training_with_validation(
@@ -440,7 +420,7 @@ def run_training_with_validation(
     # TODO: consider measuring how long it takes to kick off validation,
     #   how long checkpoint upload takes, distribution of times
     train_func_metrics = result.best_checkpoints[-1][1]
-    metrics = {
+    return {
         "e2e_time": end_time - start_time,
         "final_validation_waiting_time": (
             end_time - train_func_metrics["train_func_return_time"]
@@ -451,7 +431,6 @@ def run_training_with_validation(
         ),
         "final_score": result.best_checkpoints[-2][1]["score"],
     }
-    return metrics
 
 
 def main():
