@@ -63,13 +63,13 @@ class Application:
     def __init__(
         self,
         bound_deployment: "Deployment",
-        *,
-        ingress_request_router: Optional["Application"] = None,
     ):
         # This is used by `build_app`, but made private so users don't use it.
         self._bound_deployment = bound_deployment
         # Optional peer ingress request router for ingress bypass mode.
-        self._ingress_request_router = ingress_request_router
+        # This remains private because the top-level run/config surfaces are the
+        # intended attachment point for now.
+        self._ingress_request_router: Optional["Application"] = None
 
 
 @PublicAPI(stability="stable")

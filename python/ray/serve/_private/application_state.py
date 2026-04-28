@@ -14,7 +14,11 @@ from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
 from ray.exceptions import RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
-from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.build_app import (
+    INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR,
+    BuiltApplication,
+    build_app,
+)
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -27,6 +31,7 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
@@ -736,6 +741,7 @@ class ApplicationState:
                 enable_task_events=RAY_SERVE_ENABLE_TASK_EVENTS,
             ).remote(
                 config.import_path,
+                config.ingress_request_router,
                 config_version,
                 config.name,
                 config.args,
@@ -1537,6 +1543,7 @@ class ApplicationStateManager:
 @ray.remote(num_cpus=0, max_calls=1)
 def build_serve_application(
     import_path: str,
+    ingress_request_router: Optional[str],
     code_version: str,
     name: str,
     args: Dict,
@@ -1550,8 +1557,9 @@ def build_serve_application(
 
     Args:
         import_path: import path to a top-level Serve application object or
-            application builder return value. Any ingress request router peer should
-            already be attached to the imported application.
+            application builder return value.
+        ingress_request_router: optional import path to a bound ingress request
+            router peer built against the same imported application graph.
         code_version: code version inferred from app config. All
             deployment versions are set to this code version.
         name: application name. If specified, application will be deployed
@@ -1585,8 +1593,16 @@ def build_serve_application(
         args_info_str = f" with arguments {args}" if args else ""
         logger.info(f"Importing application '{name}'{args_info_str}.")
 
+        if ingress_request_router is not None and not RAY_SERVE_ENABLE_HA_PROXY:
+            return None, None, INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR
+
         app = call_user_app_builder_with_args_if_necessary(
             import_attr(import_path), args
+        )
+        ingress_request_router_app = (
+            import_attr(ingress_request_router)
+            if ingress_request_router is not None
+            else None
         )
 
         deploy_args_list = []
@@ -1594,6 +1610,7 @@ def build_serve_application(
             app,
             name=name,
             default_runtime_env=ray.get_runtime_context().runtime_env,
+            ingress_request_router=ingress_request_router_app,
         )
 
         def _get_serialized_def(attr_path: str) -> bytes:

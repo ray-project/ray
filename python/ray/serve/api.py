@@ -11,7 +11,10 @@ from starlette.types import ASGIApp
 import ray
 from ray import cloudpickle
 from ray._common.serialization import pickle_dumps
-from ray.serve._private.build_app import build_app
+from ray.serve._private.build_app import (
+    INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR,
+    build_app,
+)
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
@@ -19,6 +22,7 @@ from ray.serve._private.config import (
     prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
@@ -702,6 +706,7 @@ class RunTarget:
     route_prefix: Optional[str] = "/"
     logging_config: Optional[Union[Dict, LoggingConfig]] = None
     external_scaler_enabled: bool = False
+    _ingress_request_router: Optional[Application] = None
 
 
 @DeveloperAPI
@@ -734,6 +739,15 @@ def _run_many(
             raise TypeError(
                 "`serve.run` expects an `Application` returned by `Deployment.bind()`."
             )
+        if t._ingress_request_router is not None and not isinstance(
+            t._ingress_request_router, Application
+        ):
+            raise TypeError(
+                "`_ingress_request_router` must be an `Application` returned by "
+                "`Deployment.bind()`."
+            )
+        if t._ingress_request_router is not None and not RAY_SERVE_ENABLE_HA_PROXY:
+            raise RayServeException(INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR)
 
         validate_route_prefix(t.route_prefix)
 
@@ -750,6 +764,7 @@ def _run_many(
                 if not _local_testing_mode
                 else None,
                 external_scaler_enabled=t.external_scaler_enabled,
+                ingress_request_router=t._ingress_request_router,
             )
         )
 
@@ -797,6 +812,7 @@ def _run(
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
     external_scaler_enabled: bool = False,
+    _ingress_request_router: Optional[Application] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -811,6 +827,7 @@ def _run(
                 route_prefix=route_prefix,
                 logging_config=logging_config,
                 external_scaler_enabled=external_scaler_enabled,
+                _ingress_request_router=_ingress_request_router,
             )
         ],
         wait_for_applications_running=_blocking,
@@ -868,6 +885,7 @@ def run(
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     _local_testing_mode: bool = False,
     external_scaler_enabled: bool = False,
+    _ingress_request_router: Optional[Application] = None,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -893,6 +911,8 @@ def run(
             be applied to all deployments which doesn't have logging config.
         external_scaler_enabled: Whether external autoscaling is enabled for
             this application.
+        _ingress_request_router: Optional internal peer deployment that serves
+            ingress-time replica selection requests for this application.
 
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
@@ -904,6 +924,7 @@ def run(
         logging_config=logging_config,
         _local_testing_mode=_local_testing_mode,
         external_scaler_enabled=external_scaler_enabled,
+        _ingress_request_router=_ingress_request_router,
     )
 
     if blocking:

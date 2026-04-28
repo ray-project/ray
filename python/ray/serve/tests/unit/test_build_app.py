@@ -558,15 +558,12 @@ def test_build_app_with_ingress_request_router_peer():
         pass
 
     ingress_app = Ingress.bind()
-    app = serve.Application(
-        ingress_app._bound_deployment,
-        ingress_request_router=IngressRequestRouter.bind(),
-    )
 
     built_app: BuiltApplication = build_app(
-        app,
+        ingress_app,
         name="default",
         make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        ingress_request_router=IngressRequestRouter.bind(),
     )
 
     assert [deployment.name for deployment in built_app.deployments] == ["Ingress"]
@@ -590,15 +587,12 @@ def test_imperative_ingress_check_ignores_ingress_request_router_peer():
         pass
 
     ingress_app = Ingress.bind()
-    app = serve.Application(
-        ingress_app._bound_deployment,
-        ingress_request_router=IngressRequestRouter.bind(),
-    )
 
     built_app: BuiltApplication = build_app(
-        app,
+        ingress_app,
         name="default",
         make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        ingress_request_router=IngressRequestRouter.bind(),
     )
 
     client = object.__new__(ServeControllerClient)

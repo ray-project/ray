@@ -14,6 +14,11 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 K = TypeVar("K")
 V = TypeVar("V")
 
+INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
+    "`_ingress_request_router` requires HAProxy. "
+    "Set `RAY_SERVE_ENABLE_HA_PROXY=1` before deploying this application."
+)
+
 
 class IDDict(dict, Generic[K, V]):
     """Dictionary that uses id() for keys instead of hash().
@@ -83,6 +88,7 @@ def build_app(
         Callable[[Deployment, str], DeploymentHandle]
     ] = None,
     external_scaler_enabled: bool = False,
+    ingress_request_router: Optional[Application] = None,
 ) -> BuiltApplication:
     """Builds the application into a list of finalized deployments.
 
@@ -97,6 +103,14 @@ def build_app(
     if make_deployment_handle is None:
         make_deployment_handle = _make_deployment_handle_default
 
+    if ingress_request_router is not None and not isinstance(
+        ingress_request_router, Application
+    ):
+        raise TypeError(
+            "`ingress_request_router` must be an `Application` returned by "
+            "`Deployment.bind()`."
+        )
+
     handles = IDDict()
     deployment_names = IDDict()
     deployments = _build_app_recursive(
@@ -108,9 +122,10 @@ def build_app(
         make_deployment_handle=make_deployment_handle,
     )
     ingress_request_router_deployment = None
-    if app._ingress_request_router is not None:
+    ingress_request_router = ingress_request_router or app._ingress_request_router
+    if ingress_request_router is not None:
         ingress_request_router_deployments = _build_app_recursive(
-            app._ingress_request_router,
+            ingress_request_router,
             app_name=name,
             handles=handles,
             deployment_names=deployment_names,
