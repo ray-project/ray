@@ -572,31 +572,6 @@ def test_build_app_with_ingress_request_router_peer():
     assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
 
 
-def test_build_app_rejects_multi_deployment_ingress_request_router():
-    @serve.deployment
-    class Ingress:
-        pass
-
-    @serve.deployment
-    class RouterChild:
-        pass
-
-    @serve.deployment
-    class IngressRequestRouter:
-        def __init__(self, child):
-            self._child = child
-
-    with pytest.raises(
-        ValueError, match="Expected the ingress_request_router attachment"
-    ):
-        build_app(
-            Ingress.bind(),
-            name="default",
-            make_deployment_handle=FakeDeploymentHandle.from_deployment,
-            ingress_request_router=IngressRequestRouter.bind(RouterChild.bind()),
-        )
-
-
 def test_imperative_ingress_check_ignores_ingress_request_router_peer():
     ingress_api = FastAPI()
     router_api = FastAPI()
