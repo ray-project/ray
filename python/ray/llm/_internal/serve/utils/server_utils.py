@@ -26,7 +26,9 @@ T = TypeVar("T")
 
 def _is_fatal_engine_error(e: Exception) -> bool:
     """Detect fatal engine errors via isinstance check."""
-    return VLLM_FATAL_ERRORS and isinstance(e, VLLM_FATAL_ERRORS)
+    if not VLLM_FATAL_ERRORS:
+        return False
+    return isinstance(e, VLLM_FATAL_ERRORS)
 
 
 class _FatalEngineErrorLogHandler:
@@ -67,7 +69,9 @@ class _FatalEngineErrorLogHandler:
         with self._lock:
             now = time.monotonic()
 
-            # If enough quiet time has passed, treat this as a new failure event.
+            # If enough quiet time has passed, treat this as a new failure
+            # event. The suppressed count is intentionally dropped since the
+            # original fatal error's full traceback was already emitted.
             if (
                 self._first_logged
                 and (now - self._last_summary_time) >= 2 * self._cooldown_s
