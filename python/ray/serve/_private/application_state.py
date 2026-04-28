@@ -1626,35 +1626,13 @@ def build_serve_application(
             application_serialized_autoscaling_policy_def = _get_serialized_def(
                 application_autoscaling_policy_function
             )
-        num_ingress_deployments = 0
-        for deployment in built_app.deployments:
-            if inspect.isclass(deployment.func_or_class) and issubclass(
-                deployment.func_or_class, ASGIAppReplicaWrapper
-            ):
-                num_ingress_deployments += 1
 
-        if num_ingress_deployments > 1:
-            return (
-                None,
-                None,
-                (
-                    f'Found multiple FastAPI deployments in application "{built_app.name}". '
-                    "Please only include one deployment with @serve.ingress "
-                    "in your application to avoid this issue."
-                ),
-            )
-
-        deployable_deployments = list(built_app.deployments)
-        if built_app.ingress_request_router_deployment is not None:
-            deployable_deployments.append(built_app.ingress_request_router_deployment)
-
-        for deployment in deployable_deployments:
-            is_ingress = deployment.name == built_app.ingress_deployment_name
-            is_ingress_request_router = (
-                built_app.ingress_request_router_deployment is not None
-                and deployment.name == built_app.ingress_request_router_deployment.name
-            )
-
+        def _append_deploy_args(
+            deployment,
+            *,
+            is_ingress: bool,
+            is_ingress_request_router: bool,
+        ) -> None:
             if deployment._deployment_config.deployment_actors:
                 for cfg in deployment._deployment_config.deployment_actors:
                     if not cfg._serialized_actor_class:
@@ -1695,6 +1673,36 @@ def build_serve_application(
                     serialized_request_router_cls=deployment_to_serialized_request_router_cls,
                     serialized_deployment_actors=serialized_deployment_actors,
                 )
+            )
+
+        num_ingress_deployments = 0
+        for deployment in built_app.deployments:
+            if inspect.isclass(deployment.func_or_class) and issubclass(
+                deployment.func_or_class, ASGIAppReplicaWrapper
+            ):
+                num_ingress_deployments += 1
+            _append_deploy_args(
+                deployment,
+                is_ingress=deployment.name == built_app.ingress_deployment_name,
+                is_ingress_request_router=False,
+            )
+
+        if num_ingress_deployments > 1:
+            return (
+                None,
+                None,
+                (
+                    f'Found multiple FastAPI deployments in application "{built_app.name}". '
+                    "Please only include one deployment with @serve.ingress "
+                    "in your application to avoid this issue."
+                ),
+            )
+
+        if built_app.ingress_request_router_deployment is not None:
+            _append_deploy_args(
+                built_app.ingress_request_router_deployment,
+                is_ingress=False,
+                is_ingress_request_router=True,
             )
         return application_serialized_autoscaling_policy_def, deploy_args_list, None
     except KeyboardInterrupt:
