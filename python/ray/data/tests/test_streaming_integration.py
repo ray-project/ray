@@ -711,29 +711,49 @@ def test_no_output_pileup_with_paused_consumer(
     """The terminal operator's output queue should not grow beyond the
     budget when a consumer is paused."""
     ctx = DataContext.get_current()
-    # Small target block size so each task streams many output blocks,
-    # simulating reading large files.
-    ctx.target_max_block_size = 50_000
+    block_size = 1024
+    ctx.target_max_block_size = block_size
     ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
-        object_store_memory=125_000
+        object_store_memory=block_size
     )
-    # Disable downstream capacity backpressure to isolate the test to the resource budget limit.
+    # Disable downstream capacity backpressure to isolate the test to
+    # the resource budget escape hatch.
     ctx.downstream_capacity_backpressure_ratio = None
 
-    # Few large input blocks — each task streams many small output blocks.
-    ds = ray.data.range(1_000_000, override_num_blocks=5).map_batches(lambda x: x)
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.n = 0
 
-    it = iter(ds.iter_batches())
+        def inc(self):
+            self.n += 1
+
+        def get(self):
+            return self.n
+
+    counter = Counter.remote()
+
+    def generate_many_blocks(batch):
+        while True:
+            ray.get(counter.inc.remote())
+            yield {"data": np.zeros((1, block_size), dtype=np.uint8)}
+
+    ds = ray.data.range(1, override_num_blocks=1).map_batches(
+        generate_many_blocks, batch_size=None
+    )
+    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
 
     # Consume first batch to start the pipeline and get the executor.
     next(it)
 
-    executor = ds._current_executor
-
-    assert executor is not None
-    output_op, output_state = executor._output_node
-
-    wait_for_condition(lambda: output_op._in_task_output_backpressure)
+    # Let the pipeline run and fill up the budget.
+    time.sleep(3)
+    count_before = ray.get(counter.get.remote())
+    # Make sure the consumer is not still pulling -- it should have been throttled by the budget.
+    time.sleep(1)
+    count_after = ray.get(counter.get.remote())
+    growth = count_after - count_before
+    assert growth == 0
 
 
 if __name__ == "__main__":
