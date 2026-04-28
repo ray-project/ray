@@ -561,9 +561,7 @@ def deployment(
             the actor handle. See `DeploymentActorConfig` for options.
         rolling_update_percentage: The fraction of replicas to update at a
             time during a rolling update. Must be in ``(0.0, 1.0]``.
-            Defaults to
-            :data:`~ray.serve._private.constants.DEFAULT_ROLLING_UPDATE_PERCENTAGE`
-            (0.2, i.e. 20%).
+            Defaults to 0.2 (20%).
 
     Returns:
         `Deployment`
