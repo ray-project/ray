@@ -109,6 +109,35 @@
       cluster:
         ray_version: 2.50.0
 
+- name: hello_world_torch
+  python: "3.13"
+  team: reef
+  group: hello_world
+  frequency: nightly
+  working_dir: hello_world_tests
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: hello_world_compute_config.yaml
+
+  run:
+    timeout: 1800
+    script: python hello_world_torch.py
+
+  variations:
+    - __suffix__: cpu
+      cluster:
+        anyscale_sdk_2026: true
+        byod:
+          type: torch-cpu
+        cluster_compute: hello_world_compute_config.yaml
+    - __suffix__: cu130
+      cluster:
+        anyscale_sdk_2026: true
+        byod:
+          type: torch-cu130
+        cluster_compute: hello_world_compute_config_gpu.yaml
+
 - name: hello_world_custom_byod
   python: "3.10"
   team: reef

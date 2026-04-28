@@ -2,6 +2,9 @@ build_arg_sets:
   py310:
     PYTHON_VERSION: "3.10"
     PYTHON_SHORT: "310"
+  py313:
+    PYTHON_VERSION: "3.13"
+    PYTHON_SHORT: "313"
 
 depsets:
   - name: audio_transcription_py${PYTHON_SHORT}
@@ -18,6 +21,7 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py310
+      - py313
   - name: document_embedding_py${PYTHON_SHORT}
     operation: expand
     depsets:
@@ -32,6 +36,7 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py310
+      - py313
   - name: image_classification_py${PYTHON_SHORT}
     operation: expand
     depsets:
@@ -46,6 +51,7 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py310
+      - py313
   - name: large_image_embedding_py${PYTHON_SHORT}
     operation: expand
     depsets:
@@ -60,6 +66,7 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py310
+      - py313
   - name: video_object_detection_py${PYTHON_SHORT}
     operation: expand
     depsets:
@@ -74,3 +81,4 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py310
+      - py313

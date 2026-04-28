@@ -1,5 +1,5 @@
 - name: DEFAULTS
-  python: "3.10"
+  python: "3.13"
   group: data-multimodal-inference-benchmarks
   working_dir: nightly_tests/multimodal_inference_benchmarks
 
@@ -18,7 +18,7 @@
     cluster_compute: image_classification/compute.yaml
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
-      python_depset: image_classification_py3.10.lock
+      python_depset: image_classification_py3.13.lock
 
   run:
     timeout: 3600
@@ -39,7 +39,7 @@
     cluster_compute: large_image_embedding/compute.yaml
     byod:
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
-      python_depset: large_image_embedding_py3.10.lock
+      python_depset: large_image_embedding_py3.13.lock
 
   run:
     timeout: 3600
@@ -59,8 +59,9 @@
   cluster:
     cluster_compute: document_embedding/compute.yaml
     byod:
+      type: torch-cu130
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
-      python_depset: document_embedding_py3.10.lock
+      python_depset: document_embedding_py3.13.lock
 
   run:
     timeout: 3600
@@ -84,9 +85,9 @@
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
-      type: gpu
+      type: torch-cu130
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
-      python_depset: audio_transcription_py3.10.lock
+      python_depset: audio_transcription_py3.13.lock
 
   run:
     timeout: 3600
@@ -109,7 +110,7 @@
       runtime_env:
         - RAYTEST_FAIL_ON_DEAD_NODES=0  # Expect node death during test
       post_build_script: byod_install_multimodal_inference_benchmarks_transcription.sh
-      python_depset: video_object_detection_py3.10.lock
+      python_depset: video_object_detection_py3.13.lock
   run:
     timeout: 3600
 

@@ -3,4 +3,4 @@
 
 set -exo pipefail
 
-pip3 install --no-cache-dir "pyiceberg[glue,s3fs]==0.11.0"
+uv pip install --system --index-strategy unsafe-best-match "pyiceberg[glue,s3fs]==0.11.0"
