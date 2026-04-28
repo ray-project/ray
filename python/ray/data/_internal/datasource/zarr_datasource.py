@@ -100,7 +100,7 @@ def _create_read_fn(
             full_chunk_slices.append(chunk_slices)
             arrays.append(row['array'])
             array_shapes.append(row['meta']['shape'])
-            chunk_shapes.append(chunk_shape)
+            chunk_shapes.append(tuple(chunk_shape))
             dtypes.append(row['meta']['dtype'])
             full_paddings.append(padding)
         
