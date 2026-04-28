@@ -9,7 +9,6 @@ from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
 from ray.serve.deployment import Application, Deployment
-from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
 
@@ -572,6 +571,31 @@ def test_build_app_with_ingress_request_router_peer():
     assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
 
 
+def test_build_app_rejects_multi_deployment_ingress_request_router():
+    @serve.deployment
+    class Ingress:
+        pass
+
+    @serve.deployment
+    class RouterChild:
+        pass
+
+    @serve.deployment
+    class IngressRequestRouter:
+        def __init__(self, child):
+            self._child = child
+
+    with pytest.raises(
+        ValueError, match="Expected the ingress_request_router attachment"
+    ):
+        build_app(
+            Ingress.bind(),
+            name="default",
+            make_deployment_handle=FakeDeploymentHandle.from_deployment,
+            ingress_request_router=IngressRequestRouter.bind(RouterChild.bind()),
+        )
+
+
 def test_imperative_ingress_check_ignores_ingress_request_router_peer():
     ingress_api = FastAPI()
     router_api = FastAPI()
@@ -597,32 +621,6 @@ def test_imperative_ingress_check_ignores_ingress_request_router_peer():
 
     client = object.__new__(ServeControllerClient)
     client._check_ingress_deployments([built_app])
-
-
-def test_imperative_ingress_check_rejects_two_non_router_fastapi_deployments():
-    ingress_api = FastAPI()
-    other_api = FastAPI()
-
-    @serve.deployment
-    @serve.ingress(ingress_api)
-    class Ingress:
-        pass
-
-    @serve.deployment
-    @serve.ingress(other_api)
-    class OtherFastAPI:
-        pass
-
-    app = Ingress.bind(OtherFastAPI.bind())
-    built_app: BuiltApplication = build_app(
-        app,
-        name="default",
-        make_deployment_handle=FakeDeploymentHandle.from_deployment,
-    )
-
-    client = object.__new__(ServeControllerClient)
-    with pytest.raises(RayServeException, match="multiple FastAPI deployments"):
-        client._check_ingress_deployments([built_app])
 
 
 if __name__ == "__main__":

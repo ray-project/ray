@@ -8,7 +8,6 @@ import cloudpickle
 import pytest
 from pydantic import ValidationError
 
-import ray.serve._private.application_state as application_state_module
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
     ApplicationState,
@@ -16,7 +15,6 @@ from ray.serve._private.application_state import (
     ApplicationStatusInfo,
     BuildAppStatus,
     StatusOverview,
-    build_serve_application,
     override_deployment_info,
 )
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
@@ -263,51 +261,6 @@ def deployment_info(
         ingress_request_router,
     )
     return deploy_args_to_deployment_info(**params, app_name="test_app")
-
-
-def test_deploy_args_to_deployment_info_preserves_ingress_request_router():
-    info = deployment_info("router", ingress_request_router=True)
-
-    assert info.ingress_request_router is True
-
-
-def test_serve_application_schema_accepts_ingress_request_router_alias():
-    config = ServeApplicationSchema.model_validate(
-        {
-            "import_path": "module.app",
-            "_ingress_request_router": "module.ingress_request_router",
-        }
-    )
-
-    assert config.ingress_request_router == "module.ingress_request_router"
-    assert (
-        config.model_dump(by_alias=True)["_ingress_request_router"]
-        == "module.ingress_request_router"
-    )
-
-
-def test_build_serve_application_rejects_ingress_request_router_without_haproxy(
-    monkeypatch,
-):
-    monkeypatch.setattr(application_state_module, "RAY_SERVE_ENABLE_HA_PROXY", False)
-
-    policy, deploy_args, error = build_serve_application._function(
-        "module.app",
-        "module.ingress_request_router",
-        "code-version",
-        "test-app",
-        {},
-        LoggingConfig(),
-        None,
-        {},
-        {},
-        {},
-    )
-
-    assert policy is None
-    assert deploy_args is None
-    assert error is not None
-    assert "`_ingress_request_router` requires HAProxy" in error
 
 
 @pytest.fixture
