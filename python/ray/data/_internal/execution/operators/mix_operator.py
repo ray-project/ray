@@ -123,17 +123,17 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
             return
         self._input_buffers[input_index].add(refs)
         self._metrics.on_input_queued(refs, input_index=input_index)
-        self._try_deficit_output()
+        self._try_output()
 
     @override
     def input_done(self, input_index: int) -> None:
         self._input_done_flags[input_index] = True
-        self._try_deficit_output()
+        self._try_output()
 
     @override
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
-        self._try_deficit_output()
+        self._try_output()
 
     @override
     def has_next(self) -> bool:
@@ -171,7 +171,7 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
         return False
 
     # ------------------------------------------------------------------
-    # Deficit-adjusted output selection
+    # Output selection
     # ------------------------------------------------------------------
 
     def _is_input_exhausted(self, index: int) -> bool:
@@ -180,22 +180,44 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
             self._input_done_flags[index] and not self._input_buffers[index].has_next()
         )
 
-    def _try_deficit_output(self) -> None:
-        """Move blocks from input buffers to the output buffer using
-        deficit-adjusted selection.
+    def _select_most_behind_input(self) -> int:
+        """Select which input to pull from next.
 
-        Computes the deficit for each non-exhausted input and selects the
-        one that has fallen furthest behind its target row ratio. If that
-        input has blocks available, one block is moved to the output buffer.
-        If it has no blocks yet (but isn't exhausted), we return and wait
-        rather than outputting from a lower-deficit input — this keeps the
-        output sequence deterministic regardless of block arrival timing.
+        Returns the index of the non-exhausted input that has fallen furthest
+        behind its target row ratio. Ties are broken by weight (prefer higher),
+        then by index. Returns -1 if all inputs are exhausted.
+        """
+        total = sum(self._rows_seen)
+        best_index = -1
+        most_behind = float("-inf")
+        best_weight = -1.0
+
+        for i in range(len(self._input_buffers)):
+            if self._is_input_exhausted(i):
+                continue
+            # How far behind this input is: positive means underrepresented.
+            gap = self._weights[i] * total - self._rows_seen[i]
+            if gap > most_behind or (
+                gap == most_behind and self._weights[i] > best_weight
+            ):
+                most_behind = gap
+                best_weight = self._weights[i]
+                best_index = i
+
+        return best_index
+
+    def _try_output(self) -> None:
+        """Move blocks from input buffers to the output buffer.
+
+        On each iteration, selects the input furthest behind its target ratio.
+        If that input has blocks, one is moved to the output. If not, we wait
+        rather than pulling from a different input — this keeps the output
+        deterministic regardless of block arrival timing.
         """
         if self._stopped:
             return
 
         while True:
-            # Check stopping condition before selecting.
             if self._stopping_condition == MixStoppingCondition.STOP_ON_SHORTEST:
                 if any(
                     self._is_input_exhausted(i) for i in range(len(self._input_buffers))
@@ -204,34 +226,13 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
                     self.mark_execution_finished()
                     return
 
-            # Compute deficits for all non-exhausted inputs.
-            total = sum(self._rows_seen)
-            best_index = -1
-            best_deficit = float("-inf")
-            best_weight = -1.0
-
-            for i in range(len(self._input_buffers)):
-                if self._is_input_exhausted(i):
-                    continue
-
-                deficit = self._weights[i] * total - self._rows_seen[i]
-                # Tiebreak by weight (prefer higher weight), then by index.
-                if deficit > best_deficit or (
-                    deficit == best_deficit and self._weights[i] > best_weight
-                ):
-                    best_deficit = deficit
-                    best_weight = self._weights[i]
-                    best_index = i
-
+            best_index = self._select_most_behind_input()
             if best_index == -1:
-                # All inputs are exhausted.
                 return
 
             if not self._input_buffers[best_index].has_next():
-                # The highest-deficit input has no blocks yet. Wait for
-                # more blocks rather than outputting from a lower-deficit
-                # input, to keep the output sequence deterministic
-                # and weight ratio accurate.
+                # Selected input has no blocks yet — wait rather than
+                # pulling from a lower-deficit input.
                 return
 
             # Move one block from the selected input to the output buffer.
