@@ -255,8 +255,9 @@ class TestReservationOpResourceAllocator:
         # for allocation and don't affect the budgets.
         # o2 uses 5 CPUs while o3 is idle.
         # _update_reservation: reserved=2 per op, _total_shared=4.
-        # First loop: o2 exceeds reserved by 3, so remaining_shared = 4 - 3 = 1.
-        # Second loop (downstream-first): o3 gets 0.5, o2 gets 0.5.
+        # op_shared_usage loop: o2 exceeds reserved by 3,
+        #   total_shared_usage=3 → remaining_shared = max(4-3, 0) = 1.
+        # distribution loop (downstream-first): o3 gets 0.5, o2 gets 0.5.
         # planned_grant[o2] = reserved + op_shared = 2 + 0.5 = 2.5
         # signed_headroom = 2.5 - 5 = -2.5 (over-budget, autoscaler can downscale)
         op_usages[o2] = ExecutionResources(cpu=5, gpu=0, object_store_memory=0)
@@ -278,7 +279,8 @@ class TestReservationOpResourceAllocator:
     def test_allocation_includes_leftover_shared_for_uncapped_op(
         self, restore_data_context
     ):
-        """When capped ops leave shared pool remainder, uncapped op gets budget + allocation."""
+        """When capped ops leave shared pool remainder, the uncapped op absorbs it.
+        Both get_allocation() and get_budget() reflect the full grant."""
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
@@ -320,7 +322,7 @@ class TestReservationOpResourceAllocator:
         allocator.update_budgets(limits=global_limits)
 
         # _op_reserved[o2]=2 (capped), _op_reserved[o3]=4, _total_shared=10.
-        # Second loop: o3 gets 5 shared; o2 gets 5 but capped at max=2 → op_shared=0,
+        # distribution loop: o3 gets 5 shared; o2 gets 5 but capped at max=2 → op_shared=0,
         #   leaving remaining_shared=5.
         # Leftover loop: o3 (uncapped) absorbs the remaining 5.
         # allocation[o3] = 4 + 5 + 5 = 14; budget[o3] = 14 - min(4, 0) = 14.

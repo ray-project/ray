@@ -54,9 +54,18 @@ _BLOCKING_MATERIALIZING_OPERATORS = (
 def terminal_operator_from_topology(topology: "Topology") -> PhysicalOperator:
     """Return the executor sink: the unique op with no in-DAG downstream consumers.
 
-    ``build_streaming_topology`` is rooted at the same node passed to
-    ``StreamingExecutor``; that root is the only operator whose
-    ``output_dependencies`` is empty.
+    The sink is identified by having an empty ``output_dependencies`` list.
+    ``build_streaming_topology`` guarantees exactly one such operator exists.
+
+    Args:
+        topology: The operator topology to search.
+
+    Returns:
+        The unique terminal operator.
+
+    Raises:
+        ValueError: If ``topology`` is empty, has no terminal operator, or has
+            more than one terminal operator.
     """
     if not topology:
         raise ValueError("topology must be non-empty")
@@ -564,10 +573,12 @@ class ResourceManager:
 
 
 def _proportional_share(pool: float, op_usage: float, total_usage: float) -> float:
-    """Return op's proportional share of pool; 0 if not over-subscribed or nothing to divide.
+    """Return op's proportional share of pool; 0 when not applicable.
 
-    Over-subscribed means total_usage > pool. When not over-subscribed, the even-distribution
-    loop in update_budgets handles the dimension normally, so this returns 0.
+    Returns 0 in the following two cases:
+    - Not over-subscribed: total_usage <= pool (the even-distribution loop in
+      update_budgets handles the dimension normally).
+    - Nothing to divide: total_usage == 0 (avoids division by zero).
     """
     if total_usage <= pool or total_usage == 0:
         return 0.0
@@ -971,8 +982,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         Output bytes within _reserved_for_op_outputs are considered pre-paid and
         excluded from this total. This prevents them from:
         (a) counting against the task-execution budget in get_budget(), and
-        (b) inflating op_reserved_exceeded in update_budgets(), which would
-            incorrectly reduce the shared pool available to other operators.
+        (b) inflating op_shared_usage[op] in update_budgets(), which would
+            incorrectly reduce the remaining_shared pool available to other operators.
         """
         op_mem_usage = self._resource_manager.get_mem_op_internal(op)
         op_outputs_usage = self._resource_manager.get_mem_op_outputs(
@@ -1098,10 +1109,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         *,
         limits: ExecutionResources,
     ):
-        # Compute per-op reservations. op_reserved and reserved_for_op_outputs are
-        # stored as instance state for use by get_budget() and related methods.
-
-        # _total_shared is stored for observability but otherwise only needed locally.
+        # Compute per-op reservations. op_reserved, reserved_for_op_outputs, and
+        # _total_shared are stored as instance state: the first two are used by
+        # get_budget() and _get_adjusted_object_store_usage(); _total_shared is
+        # read by _compute_proportional_grants() and exposed for observability.
         (
             self._op_reserved,
             self._reserved_for_op_outputs,
@@ -1193,9 +1204,11 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 to_borrow,
             )
 
-            # Total shared grant: proportional share (over-subscribed dims) + even share (normal dims).
+            # planned_grant = reserved floor + shared grant (proportional for
+            # over-subscribed dims, evenly shared for normal dims).
+            # Note: _op_reserved excludes _reserved_for_op_outputs; the output
+            # reservation is added back in max_task_output_bytes_to_read.
             op_shared_grant = op_proportional.add(op_shared)
-            # _op_reserved excludes _reserved_for_op_outputs (added back in max_task_output_bytes_to_read).
             self._op_planned_grants[op] = self._op_reserved[op].add(op_shared_grant)
 
         # Give any remaining shared resources to the most downstream uncapped op.
