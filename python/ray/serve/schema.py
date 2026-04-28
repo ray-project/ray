@@ -714,8 +714,9 @@ class ServeApplicationSchema(BaseModel):
         default=None,
         alias="_ingress_request_router",
         description=(
-            "Optional import path to a bound ingress request router peer for this "
-            "application. This should resolve directly to a router object, e.g. "
+            "Optional import path to a bound ingress request router peer for "
+            "HAProxy ingress-time replica selection in this application. This "
+            "should resolve directly to a router object, e.g. "
             '"module.ingress_request_router", built against the same imported '
             "application graph. This is an internal-looking attachment point for "
             "Serve LLM ingress bypass."

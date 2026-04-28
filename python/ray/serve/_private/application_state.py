@@ -1559,7 +1559,8 @@ def build_serve_application(
         import_path: import path to a top-level Serve application object or
             application builder return value.
         ingress_request_router: optional import path to a bound ingress request
-            router peer built against the same imported application graph.
+            router peer for HAProxy ingress-time replica selection, built
+            against the same imported application graph.
         code_version: code version inferred from app config. All
             deployment versions are set to this code version.
         name: application name. If specified, application will be deployed
