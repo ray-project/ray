@@ -419,7 +419,7 @@ def run_training_with_validation(
     # Return metrics
     # TODO: consider measuring how long it takes to kick off validation,
     #   how long checkpoint upload takes, distribution of times
-    train_func_metrics = result.best_checkpoints[-1][1]
+    train_func_metrics = result.return_value
     return {
         "e2e_time": end_time - start_time,
         "final_validation_waiting_time": (
