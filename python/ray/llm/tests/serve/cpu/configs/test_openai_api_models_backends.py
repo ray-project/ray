@@ -4,23 +4,13 @@ SGLang fallback tests live in the llm_serve_sglang_e2e release test.
 """
 
 import importlib
+import subprocess
 import sys
+import textwrap
 
 import pytest
 
 _OAI_MODELS_MOD = "ray.llm._internal.serve.core.configs.openai_api_models"
-
-
-class _VLLMImportBlocker:
-    """Meta-path finder that makes every ``vllm.*`` import raise."""
-
-    def find_module(self, fullname, path=None):
-        if fullname == "vllm" or fullname.startswith("vllm."):
-            return self
-        return None
-
-    def load_module(self, fullname):
-        raise ImportError(f"Mocked: {fullname} is not installed")
 
 
 class TestVLLMBackend:
@@ -61,22 +51,52 @@ class TestVLLMBackend:
 
     def test_import_error_when_vllm_blocked(self):
         """SGLang is not installed here either, so blocking vLLM means neither
-        backend is available."""
-        blocker = _VLLMImportBlocker()
-        saved = {
-            k: sys.modules.pop(k)
-            for k in list(sys.modules)
-            if k == "vllm" or k.startswith("vllm.")
-        }
-        sys.modules.pop(_OAI_MODELS_MOD, None)
-        sys.meta_path.insert(0, blocker)
-        try:
-            with pytest.raises(ImportError, match="Neither vLLM nor SGLang"):
-                importlib.import_module(_OAI_MODELS_MOD)
-        finally:
-            sys.meta_path.remove(blocker)
-            sys.modules.pop(_OAI_MODELS_MOD, None)
-            sys.modules.update(saved)
+        backend is available.
+
+        Run in a subprocess: vLLM (>=0.20) calls ``register_opaque_type`` at
+        module-load time, which writes to torch's C-side global registry.
+        Popping ``vllm.*`` from ``sys.modules`` and re-importing in the same
+        process would attempt to re-register and raise ``RuntimeError``.
+        """
+        code = textwrap.dedent(
+            f"""
+            import importlib
+            import importlib.util
+            import sys
+
+            class _VLLMImportBlocker:
+                def find_spec(self, fullname, path, target=None):
+                    if fullname == "vllm" or fullname.startswith("vllm."):
+                        return importlib.util.spec_from_loader(fullname, self)
+                    return None
+
+                def create_module(self, spec):
+                    return None
+
+                def exec_module(self, module):
+                    raise ImportError(
+                        f"Mocked: {{module.__name__}} is not installed"
+                    )
+
+            sys.meta_path.insert(0, _VLLMImportBlocker())
+            try:
+                importlib.import_module({_OAI_MODELS_MOD!r})
+            except ImportError as e:
+                assert "Neither vLLM nor SGLang" in str(e), str(e)
+                sys.exit(0)
+            sys.exit(1)
+            """
+        )
+        result = subprocess.run(
+            [sys.executable, "-c", code],
+            capture_output=True,
+            text=True,
+            timeout=60,
+        )
+        assert result.returncode == 0, (
+            f"returncode={result.returncode}\n"
+            f"stdout: {result.stdout}\nstderr: {result.stderr}"
+        )
 
 
 class TestSanitizeChatCompletionRequest:
