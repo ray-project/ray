@@ -1244,7 +1244,7 @@ def test_schema_to_deployment_deployment_actors_from_dict():
 
 
 def test_get_app_code_version_includes_deployment_actors():
-    """Test that get_app_code_version changes when deployment_actors changes."""
+    """Test get_app_code_version changes when hashed app config fields change."""
     base_config = {
         "import_path": "module.graph",
         "deployments": [{"name": "dep1"}],
@@ -1315,16 +1315,6 @@ def test_get_app_code_version_includes_deployment_actors():
         ServeApplicationSchema.model_validate(reordered_actors)
     )
     assert added_version != reordered_version
-
-
-def test_get_app_code_version_includes_ingress_request_router():
-    base_config = {
-        "import_path": "module.graph",
-    }
-
-    base_version = get_app_code_version(
-        ServeApplicationSchema.model_validate(base_config)
-    )
 
     with_router = copy.deepcopy(base_config)
     with_router["_ingress_request_router"] = "module.ingress_request_router"
