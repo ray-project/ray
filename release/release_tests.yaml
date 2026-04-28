@@ -95,6 +95,12 @@
 
   variations:
     - __suffix__: aws
+      # Force the cu12.3.2-cudnn9 anyscale/ray image so this variation pulls
+      # the anyscalecudabuild--gpucu1232cudnn9-python310 publish step into
+      # RAYCI_SELECT and a cu123 wheel/image is produced.
+      cluster:
+        byod:
+          type: gpu-cu123
     - __suffix__: gce
       env: gce
       cluster:
