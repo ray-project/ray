@@ -246,12 +246,9 @@ ray_cc_library(
         "//src/ray/common/cgroup2:cgroup_manager_interface",
     ] + select({
         "//bazel:is_linux": [
-            ":event_memory_monitor",
             ":memory_monitor_utils",
             ":noop_memory_monitor",
-            ":pressure_memory_monitor",
             ":ray_config",
-            ":status_or",
             ":threshold_memory_monitor",
             "//src/ray/util:logging",
         ],

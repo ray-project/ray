@@ -15,14 +15,11 @@
 #include <memory>
 #include <vector>
 
-#include "ray/common/event_memory_monitor.h"
 #include "ray/common/memory_monitor_factory.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/common/memory_monitor_utils.h"
 #include "ray/common/noop_memory_monitor.h"
-#include "ray/common/pressure_memory_monitor.h"
 #include "ray/common/ray_config.h"
-#include "ray/common/status_or.h"
 #include "ray/common/threshold_memory_monitor.h"
 #include "ray/util/logging.h"
 

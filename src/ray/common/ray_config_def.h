@@ -71,11 +71,11 @@ RAY_CONFIG(uint64_t, raylet_check_gc_period_milliseconds, 100)
 /// memory_usage_threshold and free space is below the min_memory_free_bytes then
 /// it will start killing processes to free up the space.
 /// Note: when resource isolation is enabled, the memory usage threshold is set to
-/// total memory - system reserved memory (can be specified in ray start) -
-/// max(5% of total memory, max_threshold_monitor_reaction_buffer_bytes).
+/// total memory - system reserved memory (can be specified in ray start).
 /// Notice that the formula does not account for object store memory in system reserved
-/// memory. To configure the usage threshold, please adjust the system reserved memory in
-/// ray start command instead. Ranging from [0, 1]
+/// memory. To configure the usage threshold when resource isolation is enabled,
+/// please adjust the system reserved memory in ray start command instead.
+/// Ranging from [0, 1]
 RAY_CONFIG(float, memory_usage_threshold, 0.95)
 
 /// The interval between runs of the memory usage monitor.
@@ -96,15 +96,6 @@ RAY_CONFIG(int64_t, min_memory_free_bytes, (int64_t)-1)
 /// free up to 5% of total memory under the threshold, capping at
 /// max_kill_memory_buffer_bytes.
 RAY_CONFIG(int64_t, max_kill_memory_buffer_bytes, 3ULL * 1024 * 1024 * 1024)  // 3GiB cap
-
-/// The threshold monitor is poll based and may miss memory bursts occurring between
-/// polls. This is the maximum buffer size that can be subtracted from memory.max to give
-/// the threshold monitor time to react before memory max is reached under resource
-/// isolation. The system will by default provide 5% of total memory as reaction buffer,
-/// capping at max_threshold_monitor_reaction_buffer_bytes.
-RAY_CONFIG(int64_t,
-           max_threshold_monitor_reaction_buffer_bytes,
-           2LL * 1024 * 1024 * 1024)  // 2GiB
 
 /// When true, use the legacy group-by-owner worker killing policy instead of the
 /// default time-based policy.

@@ -16,16 +16,12 @@
 
 #include <memory>
 #include <string>
-#include <typeinfo>
 #include <vector>
 
 #include "gtest/gtest.h"
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/cgroup2/cgroup_test_utils.h"
-#include "ray/common/cgroup2/noop_cgroup_manager.h"
-#include "ray/common/event_memory_monitor.h"
 #include "ray/common/memory_monitor_interface.h"
-#include "ray/common/pressure_memory_monitor.h"
 #include "ray/common/threshold_memory_monitor.h"
 
 namespace ray {
@@ -72,9 +68,8 @@ class FakeCgroupManager : public CgroupManagerInterface {
 
 class MemoryMonitorFactoryTest : public ::testing::Test {
  protected:
-  // Large enough that threshold (memory.max - reaction_buffer) is > 0.
   static constexpr int64_t kUserMemoryMaxBytes = 10LL * 1024 * 1024 * 1024;  // 10 GB
-  static constexpr int64_t kUserMemoryHighBytes = 8LL * 1024 * 1024 * 1024;  // 5 GB
+  static constexpr int64_t kUserMemoryHighBytes = 8LL * 1024 * 1024 * 1024;  // 8 GB
 };
 
 TEST_F(MemoryMonitorFactoryTest,

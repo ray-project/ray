@@ -296,9 +296,6 @@ TEST_F(
                             std::move(driver));
   std::unique_ptr<CgroupManager> cgroup_manager = std::move(result.value());
 
-  // Reaction buffer defaults to 5% of total memory. If
-  // kDefaultThresholdMonitorReactionBufferProportion is changed, this should be changed
-  // accordingly.
   int64_t expected_default_mode_threshold = user_memory_high_bytes;
   ASSERT_EQ(MemoryMonitorUtils::GetMemoryThreshold(
                 /*total_memory_bytes=*/16LL * 1024 * 1024 * 1024,
