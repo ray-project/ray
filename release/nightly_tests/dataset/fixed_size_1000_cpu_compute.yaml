@@ -1,18 +1,13 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-advanced_configurations_json:
+advanced_instance_config:
     IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
 
-head_node_type:
-    name: head-node
+head_node:
     instance_type: m5.2xlarge
-    resources:
-      cpu: 0
 
-worker_node_types:
-    - name: worker-node
-      instance_type: m5.2xlarge
-      min_workers: 125
-      max_workers: 125
-      use_spot: false
+worker_nodes:
+    - instance_type: m5.2xlarge
+      min_nodes: 125
+      max_nodes: 125
+      market_type: ON_DEMAND
