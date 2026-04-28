@@ -1626,11 +1626,13 @@ def build_serve_application(
             application_serialized_autoscaling_policy_def = _get_serialized_def(
                 application_autoscaling_policy_function
             )
-        num_ingress_deployments = sum(
-            inspect.isclass(deployment.func_or_class)
-            and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
-            for deployment in built_app.deployments
-        )
+        num_ingress_deployments = 0
+        for deployment in built_app.deployments:
+            if inspect.isclass(deployment.func_or_class) and issubclass(
+                deployment.func_or_class, ASGIAppReplicaWrapper
+            ):
+                num_ingress_deployments += 1
+
         if num_ingress_deployments > 1:
             return (
                 None,
