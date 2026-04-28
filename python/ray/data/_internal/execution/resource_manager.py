@@ -419,11 +419,19 @@ class ResourceManager:
         return self._op_resource_allocator.get_budget(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Return the allocation of the given operator, or None if the operator
-        doesn't have a designated allocation."""
+        """Return the allocation of the given operator (max of planned grant
+        and current usage), or None if the operator has no designated allocation."""
         if self._op_resource_allocator is None:
             return None
         return self._op_resource_allocator.get_allocation(op)
+
+    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return the signed headroom (planned_grant - usage) for the given operator,
+        or None if the operator has no designated allocation. Negative values mean
+        the op is consuming more than its planned grant."""
+        if self._op_resource_allocator is None:
+            return None
+        return self._op_resource_allocator.get_signed_headroom(op)
 
     def is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
@@ -655,8 +663,8 @@ class OpResourceAllocator(ABC):
         Equivalently: Budget = max(Reserved - AdjustedUsage, 0) + SharedPortion.
 
         Note: budget is clamped to zero, so it cannot signal over-allocation.
-        Use get_allocation() and compare against get_op_usage() directly when
-        a signed headroom value is needed (e.g. autoscaler downscaling).
+        Use get_signed_headroom() when a signed value is needed (e.g. autoscaler
+        downscaling).
         """
         ...
 
@@ -669,8 +677,17 @@ class OpResourceAllocator(ABC):
 
     @abstractmethod
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        """Returns allocation for the given operator or `None` if operator's
-        allocation is unlimited."""
+        """Returns the true allocation for the given operator: the greater of the
+        planned grant and current usage. Returns `None` if the operator has no
+        designated allocation."""
+        ...
+
+    @abstractmethod
+    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Returns planned_grant - usage for the given operator (component-wise,
+        can be negative). Negative values mean the op is consuming more than its
+        planned grant. Used by the autoscaler for downscaling decisions.
+        Returns `None` if the operator has no designated allocation."""
         ...
 
     def _get_eligible_ops(self) -> List[PhysicalOperator]:
@@ -811,11 +828,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Stored for observability (tests can inspect it); only consumed locally in
         # update_budgets().
         self._total_shared = ExecutionResources.zero()
-        # Total allocation per operator: _op_reserved[op] + the shared-pool portion
-        # granted in update_budgets(). This is the final resource grant for the round.
-        # Does NOT include _reserved_for_op_outputs; that is added back separately
-        # in max_task_output_bytes_to_read().
-        self._op_allocations: Dict[PhysicalOperator, ExecutionResources] = {}
+        # Planned resource grant per operator: _op_reserved[op] + the shared-pool
+        # portion granted in update_budgets(). Used as the reference point for
+        # get_signed_headroom() and as the basis for get_budget(). Does NOT include
+        # _reserved_for_op_outputs; that is added back separately in
+        # max_task_output_bytes_to_read().
+        self._op_planned_grants: Dict[PhysicalOperator, ExecutionResources] = {}
         # Remaining memory budget for generating new task outputs, per operator.
         self._output_budgets: Dict[PhysicalOperator, float] = {}
 
@@ -931,8 +949,12 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return op_mem_usage
 
     def get_budget(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        allocation = self._op_allocations.get(op)
-        if allocation is None:
+        # NOTE: uses _op_planned_grants directly (not get_allocation) so that budget
+        # is always based on the planned grant, not max(planned_grant, usage). Using
+        # get_allocation here would inflate the budget when an op is over-target,
+        # allowing more task submissions precisely when the op is already over-consuming.
+        planned_grant = self._op_planned_grants.get(op)
+        if planned_grant is None:
             return None
 
         adjusted_usage = self._resource_manager.get_op_usage(op).copy(
@@ -940,8 +962,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         )
 
         # budget = max(reserved - adjusted_usage, 0) + op_shared
-        #        = allocation - min(reserved, adjusted_usage)  [component-wise]
-        budget = allocation.subtract(adjusted_usage.min(self._op_reserved[op]))
+        #        = planned_grant - min(reserved, adjusted_usage)  [component-wise]
+        budget = planned_grant.subtract(adjusted_usage.min(self._op_reserved[op]))
 
         # A blocking materializing operator (e.g. `AllToAllOperator`) must accumulate
         # all of its input data before it can produce any output. This causes its
@@ -956,7 +978,22 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return self._output_budgets.get(op)
 
     def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
-        return self._op_allocations.get(op)
+        planned_grant = self._op_planned_grants.get(op)
+        if planned_grant is None:
+            return None
+        # Allocation = resources currently committed to this op: the greater of
+        # what was planned and what in-flight tasks are already holding (since in-flight
+        # resources cannot be reclaimed until those tasks complete).
+        return planned_grant.max(self._resource_manager.get_op_usage(op))
+
+    def get_signed_headroom(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        planned_grant = self._op_planned_grants.get(op)
+        if planned_grant is None:
+            return None
+        # Signed headroom = planned_grant - usage. Negative means the op is consuming
+        # more than its planned grant (e.g. after a cluster shrink), used by the
+        # autoscaler to decide how many actors to remove.
+        return planned_grant.subtract(self._resource_manager.get_op_usage(op))
 
     def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
         """Get total reserved resources for an operator, including outputs reservation."""
@@ -1007,7 +1044,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         ) = self._update_reservation(limits)
 
         op_budgets = {}
-        self._op_allocations.clear()
+        self._op_planned_grants.clear()
         eligible_ops = self._resource_manager.get_eligible_ops()
         if len(eligible_ops) == 0:
             return
@@ -1087,14 +1124,14 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             # Uses _op_reserved (not _get_total_reserved) because _reserved_for_op_outputs
             # is object-store memory reserved solely for output buffering; it is added
             # back separately in max_task_output_bytes_to_read().
-            self._op_allocations[op] = self._op_reserved[op].add(op_shared)
+            self._op_planned_grants[op] = self._op_reserved[op].add(op_shared)
 
         # Give any remaining shared resources to the most downstream uncapped op.
         # This can happen when some ops have their shared allocation capped.
         if eligible_ops and not remaining_shared.is_zero():
             for op in reversed(eligible_ops):
                 if op_max_resources[op] == ExecutionResources.inf():
-                    self._op_allocations[op] = self._op_allocations[op].add(
+                    self._op_planned_grants[op] = self._op_planned_grants[op].add(
                         remaining_shared
                     )
                     break
