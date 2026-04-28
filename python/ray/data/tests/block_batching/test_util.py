@@ -1,3 +1,4 @@
+import importlib
 import logging
 import random
 import sys
@@ -10,6 +11,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data._internal.block_batching import util as block_batching_util
 from ray.data._internal.block_batching.interfaces import Batch, BatchMetadata
 from ray.data._internal.block_batching.util import (
     _calculate_ref_hits,
@@ -67,6 +69,62 @@ def test_blocks_to_batches(block_size, drop_last):
     assert [batch.metadata.batch_idx for batch in batch_iter] == list(
         range(len(batch_iter))
     )
+
+
+@pytest.fixture
+def async_take_enabled(monkeypatch):
+    monkeypatch.setenv("RAY_DATA_SHUFFLE_BUFFER_ASYNC_TAKE", "1")
+    monkeypatch.setenv("RAY_DATA_SHUFFLE_BUFFER_ASYNC_TAKE_QUEUE_DEPTH", "2")
+    importlib.reload(block_batching_util)
+    yield
+    importlib.reload(block_batching_util)
+
+
+def test_blocks_to_batches_shuffle_async_take(async_take_enabled):
+    """All rows are emitted exactly once when the async-take producer thread
+    drives the shuffling batcher."""
+    num_blocks = 8
+    block_size = 5
+    batch_size = 4
+    block_iter = (
+        pa.table({"foo": list(range(i * block_size, (i + 1) * block_size))})
+        for i in range(num_blocks)
+    )
+
+    batches = list(
+        block_batching_util.blocks_to_batches(
+            block_iter,
+            batch_size=batch_size,
+            shuffle_buffer_min_size=batch_size,
+            shuffle_seed=0,
+        )
+    )
+
+    total_rows = num_blocks * block_size
+    seen = []
+    for batch in batches:
+        seen.extend(batch.data["foo"].to_pylist())
+    assert sorted(seen) == list(range(total_rows))
+    assert [b.metadata.batch_idx for b in batches] == list(range(len(batches)))
+
+
+def test_blocks_to_batches_shuffle_async_take_propagates_errors(async_take_enabled):
+    """Errors raised by the upstream block iterator surface on the consumer."""
+
+    def failing_block_iter():
+        yield pa.table({"foo": [1, 2, 3]})
+        raise RuntimeError("upstream boom")
+
+    it = block_batching_util.blocks_to_batches(
+        failing_block_iter(),
+        batch_size=2,
+        shuffle_buffer_min_size=2,
+        shuffle_seed=0,
+    )
+
+    with pytest.raises(RuntimeError, match="upstream boom"):
+        for _ in it:
+            pass
 
 
 @pytest.mark.parametrize("batch_format", ["pandas", "numpy", "pyarrow"])
