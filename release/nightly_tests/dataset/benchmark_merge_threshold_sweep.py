@@ -16,7 +16,7 @@ import ray
 from ray.data.context import ShuffleStrategy
 
 KEY_COLUMNS = ["column00"]
-APPROX_BYTES_PER_ROW = 128
+APPROX_BYTES_PER_ROW = 145
 DATA_SIZE_GB = 170
 NUM_PARTITIONS = 100
 SF = 1000

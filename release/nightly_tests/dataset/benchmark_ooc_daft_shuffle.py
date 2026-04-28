@@ -31,7 +31,7 @@ KEY_COLUMNS = ["column00"]  # l_orderkey
 
 # Approximate bytes per row for TPC-H lineitem in-memory (Arrow).
 # Measured empirically; used to convert --data-size-gb to a row limit.
-APPROX_BYTES_PER_ROW = 128
+APPROX_BYTES_PER_ROW = 145
 
 # Local temp dir for shuffle output (forces full materialization).
 OUTPUT_DIR = "/tmp/ooc_bench_daft_output"

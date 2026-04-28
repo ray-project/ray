@@ -39,7 +39,7 @@ STRATEGY_MAP = {
 KEY_COLUMNS = ["column00"]  # l_orderkey
 
 # Approximate bytes per row for TPC-H lineitem in-memory (Arrow).
-APPROX_BYTES_PER_ROW = 128
+APPROX_BYTES_PER_ROW = 145
 
 
 def pick_sf(data_size_gb):
