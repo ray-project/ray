@@ -587,7 +587,9 @@ def test_scheduling_progress_when_output_blocked(
     assert [b["id"] for b in it] == [[x] for x in range(1, 100)]
 
 
-def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context):
+def test_task_submission_backpressure_from_paused_consumer(
+    ray_start_10_cpus_shared, restore_data_context
+):
     # Here we set the memory limit low enough so the output getting blocked will
     # actually stall execution.
     block_size = 10 * 1024 * 1024
@@ -635,6 +637,57 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     # Check final stats reporting.
     stats = ds.stats()
     assert "100 tasks executed" in stats, stats
+
+
+def test_output_backpressure_from_paused_consumer(
+    ray_start_10_cpus_shared, restore_data_context
+):
+    """The terminal operator's output queue should not grow beyond the
+    budget from pulling blocks from in-flight tasks when a consumer is paused."""
+    ctx = DataContext.get_current()
+    block_size = 1024
+    ctx.target_max_block_size = block_size
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=block_size
+    )
+    # Disable downstream capacity backpressure to isolate the test to
+    # the resource budget escape hatch.
+    ctx.downstream_capacity_backpressure_ratio = None
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.n = 0
+
+        def inc(self):
+            self.n += 1
+
+        def get(self):
+            return self.n
+
+    counter = Counter.remote()
+
+    def generate_many_blocks(batch):
+        while True:
+            ray.get(counter.inc.remote())
+            yield {"data": np.zeros((1, block_size), dtype=np.uint8)}
+
+    ds = ray.data.range(1, override_num_blocks=1).map_batches(
+        generate_many_blocks, batch_size=None
+    )
+    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
+
+    # Consume first batch to start the pipeline and get the executor.
+    next(it)
+
+    # Let the pipeline run and fill up the budget.
+    time.sleep(3)
+    count_before = ray.get(counter.get.remote())
+    # Make sure the consumer is not still pulling -- it should have been throttled by the budget.
+    time.sleep(1)
+    count_after = ray.get(counter.get.remote())
+    growth = count_after - count_before
+    assert growth == 0
 
 
 def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):
@@ -703,57 +756,6 @@ def test_e2e_liveness_with_output_backpressure_edge_case(
     # This will hang forever if the liveness logic is wrong, since the output
     # backpressure will prevent any operators from running at all.
     assert extract_values("id", ds.take_all()) == list(range(10000))
-
-
-def test_no_output_pileup_with_paused_consumer(
-    ray_start_10_cpus_shared, restore_data_context
-):
-    """The terminal operator's output queue should not grow beyond the
-    budget when a consumer is paused."""
-    ctx = DataContext.get_current()
-    block_size = 1024
-    ctx.target_max_block_size = block_size
-    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
-        object_store_memory=block_size
-    )
-    # Disable downstream capacity backpressure to isolate the test to
-    # the resource budget escape hatch.
-    ctx.downstream_capacity_backpressure_ratio = None
-
-    @ray.remote
-    class Counter:
-        def __init__(self):
-            self.n = 0
-
-        def inc(self):
-            self.n += 1
-
-        def get(self):
-            return self.n
-
-    counter = Counter.remote()
-
-    def generate_many_blocks(batch):
-        while True:
-            ray.get(counter.inc.remote())
-            yield {"data": np.zeros((1, block_size), dtype=np.uint8)}
-
-    ds = ray.data.range(1, override_num_blocks=1).map_batches(
-        generate_many_blocks, batch_size=None
-    )
-    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
-
-    # Consume first batch to start the pipeline and get the executor.
-    next(it)
-
-    # Let the pipeline run and fill up the budget.
-    time.sleep(3)
-    count_before = ray.get(counter.get.remote())
-    # Make sure the consumer is not still pulling -- it should have been throttled by the budget.
-    time.sleep(1)
-    count_after = ray.get(counter.get.remote())
-    growth = count_after - count_before
-    assert growth == 0
 
 
 if __name__ == "__main__":
