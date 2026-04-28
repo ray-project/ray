@@ -231,6 +231,18 @@ class TestEstimateNumMixOutputs:
             == 1000
         )
 
+    def test_single_dataset(self):
+        assert (
+            estimate_num_mix_outputs(
+                [100], [1.0], MixStoppingCondition.STOP_ON_SHORTEST
+            )
+            == 100
+        )
+
+    def test_invalid_stopping_condition(self):
+        with pytest.raises(ValueError, match="Unknown stopping condition"):
+            estimate_num_mix_outputs([100, 200], [0.5, 0.5], "invalid")
+
 
 if __name__ == "__main__":
     import sys

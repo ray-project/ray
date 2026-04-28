@@ -45,12 +45,15 @@ def estimate_num_mix_outputs(
         return None
     if stopping_condition == MixStoppingCondition.STOP_ON_LONGEST_DROP:
         return sum(per_input_counts)
-    # STOP_ON_SHORTEST: limited by whichever input runs out first
-    # relative to its weight.
-    total_weight = sum(weights)
-    return min(
-        int(count / (w / total_weight)) for count, w in zip(per_input_counts, weights)
-    )
+    elif stopping_condition == MixStoppingCondition.STOP_ON_SHORTEST:
+        # Limited by whichever input runs out first relative to its weight.
+        total_weight = sum(weights)
+        return min(
+            int(count / (w / total_weight))
+            for count, w in zip(per_input_counts, weights)
+        )
+    else:
+        raise ValueError(f"Unknown stopping condition: {stopping_condition}")
 
 
 class NAry(LogicalOperator):

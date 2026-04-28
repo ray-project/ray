@@ -225,6 +225,10 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
                     self._stopped = True
                     self.mark_execution_finished()
                     return
+            elif self._stopping_condition != MixStoppingCondition.STOP_ON_LONGEST_DROP:
+                raise ValueError(
+                    f"Unknown stopping condition: {self._stopping_condition}"
+                )
 
             best_index = self._select_most_behind_input()
             if best_index == -1:
