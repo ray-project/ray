@@ -1,6 +1,6 @@
 from typing import List, Optional
 
-from ray.data._internal.execution.bundle_queue import FIFOBundleQueue
+from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
@@ -62,6 +62,14 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
     # ------------------------------------------------------------------
     # InternalQueueOperatorMixin interface
     # ------------------------------------------------------------------
+
+    @property
+    def _input_queues(self) -> List[BaseBundleQueue]:
+        return self._input_buffers
+
+    @property
+    def _output_queues(self) -> List[BaseBundleQueue]:
+        return [self._output_buffer]
 
     def internal_input_queue_num_blocks(self) -> int:
         return sum(q.num_blocks() for q in self._input_buffers)

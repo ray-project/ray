@@ -197,7 +197,7 @@ def get_target_groups(
     app_name: str = SERVE_DEFAULT_APP_NAME,
     from_proxy_manager: bool = False,
 ):
-    client = _get_global_client(_health_check_controller=True)
+    client = _get_global_client()
     target_groups = ray.get(
         client._controller.get_target_groups.remote(app_name, from_proxy_manager)
     )
@@ -404,6 +404,18 @@ def test_multiplexed_model_id(_skip_if_ff_not_enabled, serve_instance):
 
 def test_health_check(_skip_if_ff_not_enabled, serve_instance):
 
+    http_port = RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
+    grpc_port = RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
+
+    # Previous test's replica may still be releasing its port (app status
+    # transitions to NOT_STARTED before the OS fully releases the socket).
+    # Wait for the ports to be free so the new replica actually binds to them.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=[http_port, grpc_port],
+        timeout=120,
+    )
+
     wait_signal = SignalActor.remote()
     fail_hc_signal = SignalActor.remote()
     shutdown_signal = SignalActor.remote()
@@ -421,123 +433,126 @@ def test_health_check(_skip_if_ff_not_enabled, serve_instance):
         ),
         _blocking=False,
     )
-    # Here I am assuming that min port will always be available. But that may be true
-    # since that port maybe occupied by some other parallel test. But we have no way of
-    # knowing which port will be used ahead of replica initialization. May need to revisit
-    # this in the future.
-    http_port = RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
-    grpc_port = RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
+
+    # Reuse persistent HTTP client and gRPC channel across retries to avoid
+    # ephemeral port exhaustion from rapid socket churn in wait_for_condition
+    # loops (each short-lived connection enters TIME_WAIT for 60s).
+    http_client = httpx.Client()
+    grpc_channel = grpc.insecure_channel(f"localhost:{grpc_port}")
+    grpc_stub = serve_pb2_grpc.RayServeAPIServiceStub(grpc_channel)
 
     def _do_grpc_hc() -> Tuple[grpc.StatusCode, str]:
-        channel = grpc.insecure_channel(f"localhost:{grpc_port}")
-        stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
         try:
-            response, call = stub.Healthz.with_call(serve_pb2.HealthzRequest())
+            response, call = grpc_stub.Healthz.with_call(serve_pb2.HealthzRequest())
             return call.code(), response.message
         except grpc.RpcError as e:
             return e.code(), ""
-        finally:
-            channel.close()
 
-    # Wait for replica constructor to start. The direct ingress server should not be
-    # listening on the port at all yet.
-    wait_for_condition(lambda: ray.get(initialize_signal.cur_num_waiters.remote()) == 1)
-    for _ in range(10):
-        with pytest.raises(httpx.ConnectError):
-            httpx.get(f"http://localhost:{http_port}/-/healthz")
+    try:
+        # Wait for replica constructor to start. The direct ingress server should not
+        # be listening on the port at all yet.
+        wait_for_condition(
+            lambda: ray.get(initialize_signal.cur_num_waiters.remote()) == 1
+        )
+        for _ in range(10):
+            with pytest.raises(httpx.ConnectError):
+                http_client.get(f"http://localhost:{http_port}/-/healthz")
 
-        code, _ = _do_grpc_hc()
-        assert code == grpc.StatusCode.UNAVAILABLE
+            code, _ = _do_grpc_hc()
+            assert code == grpc.StatusCode.UNAVAILABLE
 
-    def _verify_health_check(
-        *,
-        passing: bool,
-        message: str,
-    ) -> bool:
-        # Check HTTP health check.
-        expected_status = 200 if passing else 503
-        r = httpx.get(f"http://localhost:{http_port}/-/healthz")
-        assert r.status_code == expected_status
-        assert r.text == message
+        def _verify_health_check(
+            *,
+            passing: bool,
+            message: str,
+        ) -> bool:
+            # Check HTTP health check.
+            expected_status = 200 if passing else 503
+            r = http_client.get(f"http://localhost:{http_port}/-/healthz")
+            assert r.status_code == expected_status
+            assert r.text == message
 
-        # Check gRPC health check.
-        expected_code = grpc.StatusCode.OK if passing else grpc.StatusCode.UNAVAILABLE
-        code, response_message = _do_grpc_hc()
-        assert code == expected_code
-        # NOTE(edoakes): we can't access the response message if the gRPC call fails
-        # due to StatusCode.UNAVAILABLE.
-        if passing:
-            assert response_message == message
+            # Check gRPC health check.
+            expected_code = (
+                grpc.StatusCode.OK if passing else grpc.StatusCode.UNAVAILABLE
+            )
+            code, response_message = _do_grpc_hc()
+            assert code == expected_code
+            # NOTE(edoakes): we can't access the response message if the gRPC call
+            # fails due to StatusCode.UNAVAILABLE.
+            if passing:
+                assert response_message == message
 
-        return True
+            return True
 
-    # Signal the constructor to finish and verify that health checks start to pass.
-    ray.get(initialize_signal.send.remote())
-    wait_for_condition(
-        lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
-    )
+        # Signal the constructor to finish and verify that health checks start to pass.
+        ray.get(initialize_signal.send.remote())
+        wait_for_condition(
+            lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
+        )
 
-    # Signal the health check method to fail and verify that health checks fail.
-    ray.get(fail_hc_signal.send.remote())
-    wait_for_condition(
-        lambda: _verify_health_check(passing=False, message="UNHEALTHY"),
-    )
+        # Signal the health check method to fail and verify that health checks fail.
+        ray.get(fail_hc_signal.send.remote())
+        wait_for_condition(
+            lambda: _verify_health_check(passing=False, message="UNHEALTHY"),
+        )
 
-    # Signal the health check method to pass and verify that health checks pass.
-    ray.get(fail_hc_signal.send.remote(clear=True))
-    wait_for_condition(
-        lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
-    )
+        # Signal the health check method to pass and verify that health checks pass.
+        ray.get(fail_hc_signal.send.remote(clear=True))
+        wait_for_condition(
+            lambda: _verify_health_check(passing=True, message=HEALTHY_MESSAGE),
+        )
 
-    # Initiate graceful shutdown and verify that health checks fail.
-    serve.delete("default", _blocking=False)
-    wait_for_condition(
-        lambda: ray.get(shutdown_signal.cur_num_waiters.remote()) == 1,
-    )
-    for _ in range(10):
-        assert _verify_health_check(passing=False, message="DRAINING")
+        # Initiate graceful shutdown and verify that health checks fail.
+        serve.delete("default", _blocking=False)
+        wait_for_condition(
+            lambda: ray.get(shutdown_signal.cur_num_waiters.remote()) == 1,
+        )
+        for _ in range(10):
+            assert _verify_health_check(passing=False, message="DRAINING")
 
-    ray.get(shutdown_signal.send.remote())
-    wait_for_condition(
-        lambda: len(serve.status().applications) == 0,
-    )
+        ray.get(shutdown_signal.send.remote())
+        wait_for_condition(
+            lambda: len(serve.status().applications) == 0,
+        )
+    finally:
+        http_client.close()
+        grpc_channel.close()
+
+
+def _occupy_ports(ports: list) -> list:
+    """
+    Waits up to 120s for all ports to become bindable (previous replicas may
+    still be shutting down). If some ports remain occupied (e.g. by Ray
+    internal services that were assigned random ephemeral ports), we proceed
+    anyway and bind what we can — those ports are equally blocked for replicas.
+    """
+    deadline = time.monotonic() + 120
+    while True:
+        sockets = []
+        for port in ports:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("localhost", port))
+                sock.listen(1)
+                sockets.append(sock)
+            except OSError:
+                sock.close()
+        if len(sockets) == len(ports) or time.monotonic() >= deadline:
+            return sockets
+        for s in sockets:
+            s.close()
+        time.sleep(1)
 
 
 def test_port_retry_logic(_skip_if_ff_not_enabled, serve_instance):
     """Test that replicas retry port allocation when ports are in use."""
-    import socket
-
-    # Create a function to occupy a port
-    def occupy_port(port: int, max_attempts: int = 10):
-        import errno
-
-        attempts = 0
-        while attempts < max_attempts:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-
-            try:
-                sock.bind(("localhost", port))
-                sock.listen(1)
-                return sock
-            except OSError as exc:
-                sock.close()
-                # If the port is already in use, try the next one; otherwise
-                # re-raise unexpected errors.
-                if exc.errno != errno.EADDRINUSE:
-                    raise
-
-                attempts += 1
-                # backoff to wait for the port to be released
-                time.sleep(0.5)
-
-        raise RuntimeError(
-            f"Unable to bind a socket after {max_attempts} attempts at port {port}."
-        )
 
     # Start occupying the min HTTP and gRPC ports
-    http_sock = occupy_port(RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT)
-    grpc_sock = occupy_port(RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT)
+    sockets = _occupy_ports(
+        [RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT, RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT]
+    )
 
     try:
         # Deploy an app - it should retry port allocation and eventually fall back
@@ -570,29 +585,24 @@ def test_port_retry_logic(_skip_if_ff_not_enabled, serve_instance):
         assert r.text == "Hello world!"
 
     finally:
-        # Clean up the sockets
-        http_sock.close()
-        grpc_sock.close()
+        for s in sockets:
+            s.close()
 
 
 def test_replica_gives_up_after_max_port_retries_for_http(
     _skip_if_ff_not_enabled, serve_instance
 ):
     """Test that replicas give up after max port retries."""
-    import socket
 
-    occupied_ports = []
     # TODO(sheikh): Control env variables
-    for port in range(
-        RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
-        RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
-        + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
-    ):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("localhost", port))
-        sock.listen(1)
-        occupied_ports.append(sock)
+    ports = list(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
+            + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
+        )
+    )
+    _ = _occupy_ports(ports)
 
     serve._run(Hybrid.bind(message="Hello world!"), _blocking=False)
 
@@ -618,23 +628,15 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
     _skip_if_ff_not_enabled, serve_instance
 ):
     """Test that replicas give up after max port retries."""
-    import socket
 
-    occupied_ports = []
-    for port in range(
-        RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
-        RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
-        + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
-    ):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        try:
-            sock.bind(("localhost", port))
-            sock.listen(1)
-        except socket.error:
-            # Port may already be in use, continue to next port
-            pass
-        occupied_ports.append(sock)
+    ports = list(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT
+            + RAY_SERVE_DIRECT_INGRESS_PORT_RETRY_COUNT,
+        )
+    )
+    _ = _occupy_ports(ports)
 
     serve._run(Hybrid.bind(message="Hello world!"), _blocking=False)
 
@@ -658,16 +660,14 @@ def test_replica_gives_up_after_max_port_retries_for_grpc(
 
 def test_no_port_available(_skip_if_ff_not_enabled, serve_instance):
     """Test that replicas give up after max port retries."""
-    import socket
 
-    occupied_ports = []
-    for port in range(
-        RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT, RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT
-    ):
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.bind(("localhost", port))
-        sock.listen(1)
-        occupied_ports.append(sock)
+    ports = list(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
+        )
+    )
+    _ = _occupy_ports(ports)
 
     """Test that multiple replicas on the same node occupy unique ports."""
     serve._run(
@@ -744,11 +744,14 @@ def test_replica_releases_ports_on_shutdown(_skip_if_ff_not_enabled, serve_insta
     # Shutdown the replica
     serve.delete("default", _blocking=True)
 
-    # Check that the ports are released
-    for http_port in http_ports:
-        assert not _is_port_in_use(http_port)
-    for grpc_port in grpc_ports:
-        assert not _is_port_in_use(grpc_port)
+    # Wait until ports are fully out of TIME_WAIT before redeploying, otherwise
+    # the port allocator may skip a port that is still in TIME_WAIT and the
+    # expected port set won't match on the second deployment.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
 
     # redeploy the application
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
@@ -858,6 +861,13 @@ def test_crashed_replica_port_is_released_and_reused(
     # delete the application
     serve.delete("default", _blocking=True)
 
+    # Wait until ports are fully out of TIME_WAIT before redeploying.
+    wait_for_condition(
+        all_ports_can_be_bound,
+        ports=list(expected_http_ports) + list(expected_grpc_ports),
+        timeout=120,
+    )
+
     # run the deployment again
     serve.run(Hybrid.options(num_replicas=4).bind(message="Hello world!"))
 
@@ -924,16 +934,28 @@ def test_crashed_replica_port_is_released_and_reused(
     assert len(after_crash_http_ports) == 4
     assert len(after_crash_grpc_ports) == 4
 
-    # show that smart port selection is working even with crashed ports
-    assert set(after_crash_http_ports) == set(http_ports)
-    assert set(after_crash_grpc_ports) == set(grpc_ports)
+    # Show that smart port selection is working even with crashed ports.
+    # We expect the used ports to be within 4 ports of the original ports since
+    # we have 4 replicas and they can all be in TIME_WAIT state after deletion.
+    assert set(after_crash_http_ports).issubset(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT + 8,
+        )
+    )
+    assert set(after_crash_grpc_ports).issubset(
+        range(
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT,
+            RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT + 8,
+        )
+    )
 
     # make requests to the application
-    for http_port in http_ports:
+    for http_port in after_crash_http_ports:
         req = httpx.get(f"http://localhost:{http_port}/")
         assert req.status_code == 200
         assert req.text == "Hello world!"
-    for grpc_port in grpc_ports:
+    for grpc_port in after_crash_grpc_ports:
         channel = grpc.insecure_channel(f"localhost:{grpc_port}")
         stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
         assert stub.Method1(serve_pb2.UserDefinedMessage()).greeting == "Hello world!"

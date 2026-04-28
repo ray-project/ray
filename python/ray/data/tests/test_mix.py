@@ -33,7 +33,7 @@ def _mix_datasets(datasets, weights=None, stopping_condition=None):
 
     stats = DatasetStats(
         metadata={"Mix": []},
-        parent=[d._plan.stats() for d in datasets],
+        parent=[d._raw_stats() for d in datasets],
     )
     return Dataset(
         ExecutionPlan(stats, datasets[0].context.copy()),

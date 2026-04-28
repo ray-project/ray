@@ -10,6 +10,7 @@
       runtime_env:
         # Enable verbose stats for resource manager (to troubleshoot autoscaling)
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        # Fail the test if a worker OOMs
         - RAYTEST_FAIL_ON_WORKER_OOM=1
         # Fail the test if a node dies
         - RAYTEST_FAIL_ON_DEAD_NODES=1
@@ -25,6 +26,7 @@
 - name: "read_parquet_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -41,11 +43,12 @@
 - name: "read_large_parquet_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=0  # Allow worker OOM during test
-        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -62,6 +65,7 @@
 - name: "read_images_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -76,6 +80,8 @@
 
 - name: read_tfrecords
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 3600
     script: >
@@ -86,6 +92,7 @@
 - name: "read_from_uris_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -102,6 +109,8 @@
 
 - name: write_parquet
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 3600
     script: >
@@ -134,6 +143,7 @@
 - name: "count_parquet_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -180,13 +190,8 @@
       columns:
         - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
-
   cluster:
-    byod:
-      runtime_env:
-        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -207,6 +212,7 @@
         - "column02 column14"  # 7M groups
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -241,6 +247,7 @@
 - name: joins_{{dataset}}_{{join_type}}
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: fixed_size_100_cpu_compute.yaml
 
   matrix:
@@ -266,6 +273,7 @@
 - name: wide_schema_pipeline_{{data_type}}
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         # Preserve the default verbose stats for resource manager.
@@ -292,6 +300,8 @@
 
 - name: streaming_split
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 300
     wait_for_nodes:
@@ -416,6 +426,8 @@
 
 - name: "iter_batches_{{format}}"
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   matrix:
     setup:
       format: [numpy, pandas, pyarrow]
@@ -429,6 +441,8 @@
 
 - name: to_tf
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 2400
     script: >
@@ -454,12 +468,16 @@
 
 - name: map
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 1800
     script: python map_benchmark.py --api map --sf 100
 
 - name: flat_map
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 100
@@ -494,9 +512,12 @@
           repeat_map_batches: once
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
         - RAYTEST_FAIL_ON_WORKER_OOM=0
+        - RAYTEST_FAIL_ON_DEAD_NODES=1
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   run:
@@ -509,6 +530,7 @@
   python: "3.10"
   frequency: weekly
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: fixed_size_1000_cpu_compute.yaml
 
   matrix:
@@ -534,6 +556,7 @@
       scaling: [fixed_size]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -547,6 +570,7 @@
   working_dir: nightly_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -573,6 +597,7 @@
       # TODO: https://github.com/anyscale/ray/issues/727
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -588,6 +613,7 @@
   frequency: manual
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -617,11 +643,12 @@
   group: data-batch-inference
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
-        - RAYTEST_FAIL_ON_WORKER_OOM=1
-        - RAYTEST_FAIL_ON_DEAD_NODES=0  # Allow node death during test
+        - RAYTEST_FAIL_ON_WORKER_OOM=0
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
     cluster_compute: heterogeneous_memory_compute.yaml
 
   run:
@@ -734,6 +761,7 @@
           fail_on_dead_nodes: 0
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
@@ -780,6 +808,7 @@
           fail_on_dead_nodes: 0
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
@@ -808,7 +837,7 @@
           case: fixed_size
           cluster_type: fixed_size
           args: --inference-concurrency 100 100
-          fail_on_dead_nodes: 0 # Allow node death during test
+          fail_on_dead_nodes: 1
       - with:
           case: autoscaling
           cluster_type: autoscaling
@@ -821,6 +850,7 @@
           fail_on_dead_nodes: 0
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
@@ -854,7 +884,7 @@
     script: >
       python model_inference_pipeline_benchmark.py
       --input-path s3://ray-benchmark-data/tpch/parquet/sf100/lineitem
-      --preprocessing-batch-size 4096
+      --preprocessing-batch-size "auto"
       --inference-batch-size 1024
       --inference-min-actors 1
       --inference-max-actors 300
@@ -870,11 +900,12 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
-    script: python tpch/tpch_q1.py --sf 100
+    script: python tpch/tpch_q1.py --sf 1000
 
 - name: "tpch_q2_{{scaling}}"
   python: "3.10"
@@ -883,6 +914,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -896,11 +928,26 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
     script: python tpch/tpch_q3.py --sf 100
+
+- name: "tpch_q4_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q4.py --sf 100
 
 - name: "tpch_q6_{{scaling}}"
   python: "3.10"
@@ -909,6 +956,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -922,6 +970,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -935,6 +984,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -957,6 +1007,7 @@
           frequency: nightly
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -970,6 +1021,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -983,11 +1035,26 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
     script: python tpch/tpch_q13.py --sf 100
+
+- name: "tpch_q17_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q17.py --sf 100
 
 - name: "tpch_q18_{{scaling}}"
   python: "3.10"
@@ -996,11 +1063,54 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
     timeout: 5400
     script: python tpch/tpch_q18.py --sf 100
+
+- name: "tpch_q20_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q20.py --sf 100
+
+- name: "tpch_q21_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q21.py --sf 100
+
+- name: "tpch_q22_{{scaling}}"
+  python: "3.10"
+  matrix:
+    setup:
+      scaling: [fixed_size, autoscaling]
+
+  cluster:
+    anyscale_sdk_2026: true
+    cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
+
+  run:
+    timeout: 5400
+    script: python tpch/tpch_q22.py --sf 100
 
 #################################################
 # Cross-AZ RPC fault tolerance test
@@ -1081,6 +1191,8 @@
 
 - name: does_not_over_provision
   group: data-autoscaling
+  # Set to manual because this is expected to fail with the
+  # `DefaultClusterAutoscalerV2`.
   frequency: manual
 
   cluster:

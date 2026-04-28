@@ -247,7 +247,9 @@ Increasing ``batch_size`` improves the performance of vectorized transformations
 as performance of model inference. However, if your batch size is too large, your
 program might run into out-of-memory (OOM) errors.
 
-If you encounter an OOM errors, try decreasing your ``batch_size``.
+Use ``batch_size="auto"`` to let Ray Data automatically determine an appropriate batch
+size based on the size of your data. For GPU workloads, you must specify an explicit
+integer batch size. If you encounter OOM errors with an explicit batch size, try decreasing it.
 
 .. _stateful_transforms:
 

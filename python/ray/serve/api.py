@@ -49,9 +49,12 @@ from ray.serve.config import (
     gRPCOptions,
 )
 from ray.serve.context import (
+    DeploymentActorContext,
     ReplicaContext,
+    _check_cached_client_alive,
     _get_deployment_actor,
     _get_global_client,
+    _get_internal_deployment_actor_context,
     _get_internal_replica_context,
     _set_global_client,
 )
@@ -116,14 +119,26 @@ def shutdown():
     Deletes all applications and shuts down Serve system actors.
     """
 
-    try:
-        client = _get_global_client()
-    except RayServeException:
-        logger.info(
-            "Nothing to shut down. There's no Serve application "
-            "running on this Ray cluster."
-        )
-        return
+    client, had_cached = _check_cached_client_alive()
+    if client is None:
+        if had_cached:
+            # Cached client was unreachable — GCS is likely dead.
+            # Don't call _get_global_client() which would hang on dead GCS.
+            logger.info(
+                "Nothing to shut down. There's no Serve application "
+                "running on this Ray cluster."
+            )
+            return
+        # No cached client (fresh process). Try to discover a running
+        # controller via _connect().
+        try:
+            client = _get_global_client()
+        except RayServeException:
+            logger.info(
+                "Nothing to shut down. There's no Serve application "
+                "running on this Ray cluster."
+            )
+            return
 
     client.shutdown()
     _set_global_client(None)
@@ -136,14 +151,22 @@ async def shutdown_async():
     Deletes all applications and shuts down Serve system actors.
     """
 
-    try:
-        client = _get_global_client()
-    except RayServeException:
-        logger.info(
-            "Nothing to shut down. There's no Serve application "
-            "running on this Ray cluster."
-        )
-        return
+    client, had_cached = _check_cached_client_alive()
+    if client is None:
+        if had_cached:
+            logger.info(
+                "Nothing to shut down. There's no Serve application "
+                "running on this Ray cluster."
+            )
+            return
+        try:
+            client = _get_global_client()
+        except RayServeException:
+            logger.info(
+                "Nothing to shut down. There's no Serve application "
+                "running on this Ray cluster."
+            )
+            return
 
     await client.shutdown_async()
     _set_global_client(None)
@@ -179,6 +202,25 @@ def get_replica_context() -> ReplicaContext:
             "Ray Serve deployment."
         )
     return internal_replica_context
+
+
+@DeveloperAPI
+def get_deployment_actor_context() -> DeploymentActorContext:
+    """Returns deployment metadata from within a deployment actor at runtime.
+
+    Returns:
+        DeploymentActorContext for the current deployment actor.
+
+    Raises:
+        RayServeException: if not called from within a deployment actor.
+    """
+    internal_context = _get_internal_deployment_actor_context()
+    if internal_context is None:
+        raise RayServeException(
+            "`serve.get_deployment_actor_context()` may only be called from within "
+            "a Ray Serve deployment actor."
+        )
+    return internal_context
 
 
 @DeveloperAPI

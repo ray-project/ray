@@ -349,8 +349,3 @@ TEST_F(ObjectLifecycleManagerTest, RemoveReferenceOneRefEagerlyDeletion) {
   EXPECT_EQ(expect_notified_ids, notify_deleted_ids_);
 }
 }  // namespace plasma
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
