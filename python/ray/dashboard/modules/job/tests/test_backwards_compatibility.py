@@ -2,8 +2,6 @@ import logging
 import os
 import subprocess
 import sys
-import time
-import traceback
 import uuid
 from contextlib import contextmanager
 
@@ -12,22 +10,6 @@ import pytest
 from ray.job_submission import JobStatus, JobSubmissionClient
 
 logger = logging.getLogger(__name__)
-
-
-def _wait_for_condition(condition, timeout=10, retry_interval_s=0.1):
-    deadline = time.monotonic() + timeout
-    last_ex = None
-    while time.monotonic() <= deadline:
-        try:
-            if condition():
-                return
-        except Exception:
-            last_ex = traceback.format_exc()
-        time.sleep(retry_interval_s)
-    message = "The condition wasn't met before the timeout expired."
-    if last_ex is not None:
-        message += f" Last exception: {last_ex}"
-    raise RuntimeError(message)
 
 
 @contextmanager
@@ -89,13 +71,17 @@ def test_error_message():
     """
     Check that we get a good error message when running against an old server version.
     """
+    # Import lazily so the module still loads when the compatibility script
+    # installs an older Ray that does not expose `ray._common`.
+    from ray._common.test_utils import wait_for_condition
+
     client = JobSubmissionClient("http://127.0.0.1:8265")
 
     # Check that a basic job successfully runs.
     job_id = client.submit_job(
         entrypoint="echo 'hello world'",
     )
-    _wait_for_condition(lambda: client.get_job_status(job_id) == JobStatus.SUCCEEDED)
+    wait_for_condition(lambda: client.get_job_status(job_id) == JobStatus.SUCCEEDED)
 
     # `entrypoint_num_cpus`, `entrypoint_num_gpus`, `entrypoint_resources`, and
     # `entrypoint_label_selector`
