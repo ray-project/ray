@@ -23,7 +23,7 @@ depsets:
       - py310
       - py312
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
 
   - name: ci_ml_build_depset_${PYTHON_SHORT}
     operation: expand

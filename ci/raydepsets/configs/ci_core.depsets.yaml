@@ -28,7 +28,7 @@ depsets:
       - py310
       - py312
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
 
   - name: core_gpu_ci_depset_${PYTHON_SHORT}
     operation: expand
@@ -72,4 +72,4 @@ depsets:
       - py310
       - py312
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}

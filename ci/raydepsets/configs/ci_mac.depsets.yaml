@@ -22,5 +22,5 @@ depsets:
     build_arg_sets:
       - py310
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
     include_setuptools: true

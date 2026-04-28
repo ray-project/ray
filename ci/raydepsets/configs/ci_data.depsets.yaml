@@ -32,7 +32,7 @@ depsets:
       - py311
       - py312
     pre_hooks:
-      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
 
   - name: relaxed_data_ci_depset_${PYTHON_SHORT}
     operation: relax
