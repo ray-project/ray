@@ -1,16 +1,16 @@
 from typing import Optional
 
-from ray.llm._internal.serve.config_generator.utils.gpu import GPUType
 from ray.llm._internal.serve.config_generator.utils.models import (
     TextCompletionLoraModelConfig,
     TextCompletionModelConfig,
 )
+from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
 
 
 def convert_inputs_to_text_completion_model(
     *,
     model_id: str,
-    gpu_type: GPUType,
+    gpu_type: AcceleratorType,
     tensor_parallelism: int,
     hf_token: Optional[str] = None,
     remote_storage_uri: Optional[str] = None,

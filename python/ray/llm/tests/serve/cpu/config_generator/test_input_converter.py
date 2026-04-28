@@ -3,13 +3,14 @@ from typing import Optional
 
 import pytest
 
-from ray.llm._internal.serve.config_generator.utils.gpu import ALL_GPU_TYPES, GPUType
+from ray.llm._internal.serve.config_generator.utils.gpu import ALL_GPU_TYPES
 from ray.llm._internal.serve.config_generator.utils.input_converter import (
     convert_inputs_to_text_completion_model,
 )
 from ray.llm._internal.serve.config_generator.utils.models import (
     TextCompletionLoraModelConfig,
 )
+from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
 
 _MODEL_ID = "test-model-id"
 
@@ -30,7 +31,7 @@ class TestTextCompletionModelConverter:
         self,
         hf_token: Optional[str],
         remote_storage_uri: Optional[str],
-        gpu_type: GPUType,
+        gpu_type: AcceleratorType,
         tensor_parallelism: int,
         lora_config: Optional[TextCompletionLoraModelConfig],
         reference_model_id: Optional[str],

@@ -52,9 +52,6 @@ from ray.serve._private.config import DeploymentConfig, handle_num_replicas_auto
 
 transformers = try_import("transformers")
 
-# TODO(ryanaoleary@): Remove this alias once all downstream files are migrated
-# to use AcceleratorType.
-GPUType = AcceleratorType
 ModelT = TypeVar("ModelT", bound=BaseModel)
 
 logger = get_logger(__name__)
