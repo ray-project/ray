@@ -330,7 +330,10 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
-    setup_spec.extras["train"] = tune_base_deps + pydantic_deps
+    # Train currently depends on Tune, so keep it as a superset of the Tune
+    # extra. If Tune drops its temporary pydantic dependency in the future,
+    # add `pydantic_deps` explicitly here as part of that refactor.
+    setup_spec.extras["train"] = list(setup_spec.extras["tune"])
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
