@@ -258,7 +258,6 @@ class ZarrV2Datasource(Datasource):
             }
         )
     
-    @staticmethod
     def _sizeof_batch(self, obj, seen=None):
         if seen is None:
             seen = set()
