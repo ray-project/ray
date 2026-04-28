@@ -124,8 +124,15 @@ class Zip(NAry):
         return total_num_outputs
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class Mix(NAry):
     """Logical operator for weighted dataset mixing."""
+
+    _name: str = field(init=False, repr=False)
+    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
+    weights: List[float] = field(init=False, repr=False)
+    stopping_condition: MixStoppingCondition = field(init=False, repr=False)
 
     def __init__(
         self,
@@ -133,17 +140,43 @@ class Mix(NAry):
         weights: List[float],
         stopping_condition: MixStoppingCondition = MixStoppingCondition.STOP_ON_SHORTEST,
     ):
-        self.weights = weights
-        self.stopping_condition = stopping_condition
-
         if len(input_ops) != len(weights):
             raise ValueError(
-                f"Number of input operators ({len(input_ops)}) must match number of weights ({len(weights)})."
+                f"Number of input operators ({len(input_ops)}) must match "
+                f"number of weights ({len(weights)})."
             )
         if any(weight <= 0 for weight in weights):
             raise ValueError(f"Weights must be positive. Got weights: {weights}")
 
-        super().__init__(*input_ops)
+        for input_op in input_ops:
+            assert isinstance(input_op, LogicalOperator), input_op
+        object.__setattr__(self, "_name", self.__class__.__name__)
+        object.__setattr__(self, "_input_dependencies", list(input_ops))
+        object.__setattr__(self, "_num_outputs", None)
+        object.__setattr__(self, "weights", weights)
+        object.__setattr__(self, "stopping_condition", stopping_condition)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_inputs = [
+            input_op._apply_transform(transform) for input_op in self.input_dependencies
+        ]
+        target: LogicalOperator
+        if all(
+            transformed_input is input_op
+            for transformed_input, input_op in zip(
+                transformed_inputs, self.input_dependencies
+            )
+        ):
+            target = self
+        else:
+            target = Mix(
+                *transformed_inputs,
+                weights=self.weights,
+                stopping_condition=self.stopping_condition,
+            )
+        return transform(target)
 
     def estimated_num_outputs(self) -> Optional[int]:
         return estimate_num_mix_outputs(
