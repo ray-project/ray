@@ -80,25 +80,37 @@ def _create_read_fn(
         chunk_shapes = []
         dtypes = []
         full_chunk_slices = []
+        full_paddings = []
         
         for row in batch:
             chunk_slices = []
-            for i, size, chunk in zip(row['chunk_index'], row['meta']['shape'], row['meta']['chunks']):
+            padding = []
+            chunk_shape = list(row["meta"]["chunks"])
+            for dim, (i, size, chunk) in enumerate(zip(row['chunk_index'], row['meta']['shape'], row['meta']['chunks'])):
                 start = i * chunk
                 stop = min((i + 1) * chunk, size)
                 chunk_slices.append((start, stop))
+                
+                if start + chunk > size:
+                    padding_slice = start + chunk - size
+                    chunk_shape[dim] = stop - start
+                else:
+                    padding_slice = 0
+                padding.append(padding_slice)
             full_chunk_slices.append(chunk_slices)
             arrays.append(row['array'])
             array_shapes.append(row['meta']['shape'])
-            chunk_shapes.append(row['meta']['chunks'])
+            chunk_shapes.append(chunk_shape)
             dtypes.append(row['meta']['dtype'])
+            full_paddings.append(padding)
         
         yield pd.DataFrame({
             "array": arrays,
             "array_shape": array_shapes,
             "chunk_shape": chunk_shapes,
             "dtype": dtypes,
-            "chunk_slices": full_chunk_slices
+            "chunk_slices": full_chunk_slices,
+            "padding": full_paddings
         })
                 
 

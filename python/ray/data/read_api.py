@@ -656,12 +656,13 @@ def read_zarrv2(
     """Creates a :class:`~ray.data.Dataset` from a Zarr v2 store.
 
     Each row in the resulting dataset describes a single chunk from one of the
-    selected arrays in the store. The returned rows contain chunk metadata and
-    per-dimension slice bounds that can be used to query the chunk, but the
-    datasource doesn't materialize any array or chunk data.
+    selected arrays in the store. The returned rows contain chunk metadata,
+    per-dimension slice bounds that can be used to query the chunk, and
+    per-dimension padding for truncated edge chunks, but the datasource
+    doesn't materialize any array or chunk data.
 
     The column names are ``"array"``, ``"array_shape"``, ``"chunk_shape"``,
-    ``"dtype"``, and ``"chunk_slices"``.
+    ``"dtype"``, ``"chunk_slices"``, and ``"padding"``.
 
     Examples:
         >>> import ray
@@ -707,7 +708,8 @@ def read_zarrv2(
 
     Returns:
         A :class:`~ray.data.Dataset` where each row contains the selected array
-        path, array metadata, and per-dimension chunk slice bounds for one chunk.
+        path, array metadata, per-dimension chunk slice bounds, and
+        per-dimension trailing padding for one chunk.
     """
     datasource = ZarrV2Datasource(
         path = path,
