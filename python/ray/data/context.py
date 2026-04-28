@@ -227,6 +227,10 @@ DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
 
 DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
 
+DEFAULT_TASK_RETRIED_USER_ERRORS: Union[bool, List[str]] = False
+
+DEFAULT_TASK_MAX_RETRIES = 3
+
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
 )
@@ -553,6 +557,13 @@ class DataContext:
         actor_init_max_retries: Maximum number of consecutive retries for actor
             initialization failures. The counter resets when an actor successfully
             initializes. Default is 3. Set to -1 for infinite retries.
+        task_retried_user_errors: Controls which user exceptions are retried in map
+            tasks. ``False`` (default) disables retries. ``True`` retries any user
+            exception. A list of strings retries only when the exception message
+            contains one of the substrings. Bounded by ``task_max_retries``.
+        task_max_retries: Maximum number of retry attempts per map task for user
+            exceptions. Default is 3. Ignored if ``task_retried_user_errors`` is
+            empty.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
         op_resource_reservation_ratio: The ratio of the total resources to reserve for
@@ -756,6 +767,8 @@ class DataContext:
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
+    task_retried_user_errors: Union[bool, List[str]] = DEFAULT_TASK_RETRIED_USER_ERRORS
+    task_max_retries: int = DEFAULT_TASK_MAX_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
