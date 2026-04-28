@@ -521,28 +521,36 @@ def test_health_check(_skip_if_ff_not_enabled, serve_instance):
 
 
 def _occupy_ports(ports: list) -> list:
-    """Wait for ports to be free, then bind and return the sockets.
-
-    Previous tests' replica actors may still be shutting down (the Serve
-    application status transitions to NOT_STARTED before the OS releases the
-    socket), so we wait for all ports to be bindable first.
     """
-    wait_for_condition(all_ports_can_be_bound, ports=ports, timeout=120)
-    sockets = []
-    for port in ports:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("localhost", port))
-        sock.listen(1)
-        sockets.append(sock)
-    return sockets
+    Waits up to 120s for all ports to become bindable (previous replicas may
+    still be shutting down). If some ports remain occupied (e.g. by Ray
+    internal services that were assigned random ephemeral ports), we proceed
+    anyway and bind what we can — those ports are equally blocked for replicas.
+    """
+    deadline = time.monotonic() + 120
+    while True:
+        sockets = []
+        for port in ports:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            try:
+                sock.bind(("localhost", port))
+                sock.listen(1)
+                sockets.append(sock)
+            except OSError:
+                sock.close()
+        if len(sockets) == len(ports) or time.monotonic() >= deadline:
+            return sockets
+        for s in sockets:
+            s.close()
+        time.sleep(1)
 
 
 def test_port_retry_logic(_skip_if_ff_not_enabled, serve_instance):
     """Test that replicas retry port allocation when ports are in use."""
 
     # Start occupying the min HTTP and gRPC ports
-    http_sock, grpc_sock = _occupy_ports(
+    sockets = _occupy_ports(
         [RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT, RAY_SERVE_DIRECT_INGRESS_MIN_GRPC_PORT]
     )
 
@@ -577,9 +585,8 @@ def test_port_retry_logic(_skip_if_ff_not_enabled, serve_instance):
         assert r.text == "Hello world!"
 
     finally:
-        # Clean up the sockets
-        http_sock.close()
-        grpc_sock.close()
+        for s in sockets:
+            s.close()
 
 
 def test_replica_gives_up_after_max_port_retries_for_http(
