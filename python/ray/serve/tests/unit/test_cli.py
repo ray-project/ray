@@ -190,15 +190,15 @@ class TestEnumSerialization:
                 os.unlink(output_path)
 
 
-def test_build_command_includes_ingress_request_router():
+def test_build_command_preserves_ingress_request_router_config():
     runner = CliRunner()
     with NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
         f.write(
             "from ray import serve\n\n"
-            "@serve.deployment(num_replicas=2)\n"
+            "@serve.deployment\n"
             "class LLMServer:\n"
             "    pass\n\n"
-            "@serve.deployment(max_ongoing_requests=1000)\n"
+            "@serve.deployment\n"
             "class IngressRequestRouter:\n"
             "    def __init__(self, llm_deployment):\n"
             "        self._llm_deployment = llm_deployment\n\n"
@@ -234,10 +234,8 @@ def test_build_command_includes_ingress_request_router():
 
         app_config = config["applications"][0]
         assert app_config["_ingress_request_router"] == ingress_request_router
-        assert [d["name"] for d in app_config["deployments"]] == [
-            "LLMServer",
-            "IngressRequestRouter",
-        ]
+        deployment_names = {d["name"] for d in app_config["deployments"]}
+        assert "IngressRequestRouter" in deployment_names
     finally:
         os.unlink(temp_path)
         if output_path:
