@@ -29,7 +29,7 @@ def _make_azure_fs(url: str) -> tuple[Any, Any]:
     Returns:
         A tuple of (FsspecStore, AzureStore).
     """
-    _check_import(_make_azure_fs, module="obstore", package="obstore")
+    _check_import(module="obstore", package="obstore")
 
     from obstore.fsspec import FsspecStore
     from obstore.store import AzureStore
@@ -66,7 +66,7 @@ def _resolve_store(path: str) -> tuple[Any, str]:
 
     # Public S3
     if parsed.scheme == "s3":
-        fs = fsspec.filesystem("s3", anon=True)
+        fs = fsspec.filesystem("s3")
         return fs, path.rstrip("/")
 
     # Generic fallback
@@ -133,7 +133,7 @@ class ZarrV2Datasource(Datasource):
         if chunk_shape:
             for val in chunk_shape:
                 if val <= 0 or not isinstance(val, int):
-                    raise ValueError("chunk shape must only contain positive integerse")
+                    raise ValueError("chunk shape must only contain positive integers")
 
         self.paths = [str(path)]
         self.chunk_shape = tuple(chunk_shape) if chunk_shape else chunk_shape
@@ -190,7 +190,7 @@ class ZarrV2Datasource(Datasource):
         
         return {path: arrays[path] for path in selected_paths}
     
-    def _gen_grid_shape(self):
+    def _gen_grid_shape(self) -> dict[str, dict[str, object]]:
         grid_shape_dict = {}
         for array, meta in self._selected_arrays.items():
             shape = tuple(meta['shape'])
@@ -212,15 +212,53 @@ class ZarrV2Datasource(Datasource):
         
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
-        full_bytes_estimate = 0
-        for _, meta in self._selected_arrays.items():
-            shape = tuple(meta['shape'])
-            dtype = np.dtype(meta["dtype"])
-            bytes_estimate = int(prod(shape) * dtype.itemsize)
-            full_bytes_estimate += bytes_estimate
-        
-        return full_bytes_estimate
+        arrays = []
+        array_shapes = []
+        chunk_shapes = []
+        dtypes = []
+        full_chunk_slices = []
+        full_paddings = []
+
+        for array, data in self._grid_shape_dict.items():
+            meta = data["meta"]
+            for chunk_index in product(*(range(n) for n in data["grid_shape"])):
+                chunk_slices = []
+                padding = []
+                chunk_shape = list(meta["chunks"])
+
+                for dim, (i, size, chunk) in enumerate(
+                    zip(chunk_index, meta["shape"], meta["chunks"])
+                ):
+                    start = i * chunk
+                    stop = min((i + 1) * chunk, size)
+                    chunk_slices.append((start, stop))
+
+                    if start + chunk > size:
+                        padding_slice = start + chunk - size
+                        chunk_shape[dim] = stop - start
+                    else:
+                        padding_slice = 0
+                    padding.append(padding_slice)
+
+                arrays.append(array)
+                array_shapes.append(meta["shape"])
+                chunk_shapes.append(tuple(chunk_shape))
+                dtypes.append(meta["dtype"])
+                full_chunk_slices.append(chunk_slices)
+                full_paddings.append(padding)
+
+        return self._sizeof_batch(
+            {
+                "array": arrays,
+                "array_shape": array_shapes,
+                "chunk_shape": chunk_shapes,
+                "dtype": dtypes,
+                "chunk_slices": full_chunk_slices,
+                "padding": full_paddings,
+            }
+        )
     
+    @staticmethod
     def _sizeof_batch(self, obj, seen=None):
         if seen is None:
             seen = set()
