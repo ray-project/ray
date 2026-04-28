@@ -1264,10 +1264,7 @@ def test_rolling_update_percentage_proto_roundtrip():
     proto_without_field = DeploymentConfigProto(num_replicas=1)
     assert not proto_without_field.HasField("rolling_update_percentage")
     deserialized = DeploymentConfig.from_proto(proto_without_field)
-    assert (
-        deserialized.rolling_update_percentage
-        == DEFAULT_ROLLING_UPDATE_PERCENTAGE
-    )
+    assert deserialized.rolling_update_percentage == DEFAULT_ROLLING_UPDATE_PERCENTAGE
 
 
 @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
