@@ -1602,7 +1602,7 @@ def build_serve_application(
         )
         ingress_request_router_app = (
             call_user_app_builder_with_args_if_necessary(
-                import_attr(ingress_request_router), args
+                import_attr(ingress_request_router), {}
             )
             if ingress_request_router is not None
             else None

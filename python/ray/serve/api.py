@@ -4,7 +4,7 @@ import logging
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Sequence, Type, Union
 
-from attr import dataclass
+from attr import dataclass, field
 from fastapi import APIRouter, FastAPI
 from starlette.types import ASGIApp
 
@@ -706,7 +706,10 @@ class RunTarget:
     route_prefix: Optional[str] = "/"
     logging_config: Optional[Union[Dict, LoggingConfig]] = None
     external_scaler_enabled: bool = False
-    _ingress_request_router: Optional[Application] = None
+    _ingress_request_router: Optional[Application] = field(
+        default=None,
+        alias="_ingress_request_router",
+    )
 
 
 @DeveloperAPI
