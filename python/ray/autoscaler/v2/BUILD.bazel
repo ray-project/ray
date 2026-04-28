@@ -22,6 +22,7 @@ py_test_module_list(
         "tests/test_instance_manager.py",
         "tests/test_instance_storage.py",
         "tests/test_instance_util.py",
+        "tests/test_ippr_provider.py",
         "tests/test_metrics_reporter.py",
         "tests/test_node_provider.py",
         "tests/test_ray_installer.py",

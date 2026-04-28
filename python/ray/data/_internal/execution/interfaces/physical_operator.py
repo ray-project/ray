@@ -77,7 +77,6 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
-
         is_actor_task = not self.get_task_id().actor_id().is_nil()
 
         ray.cancel(
@@ -939,7 +938,15 @@ class PhysicalOperator(Operator):
 
     def get_actor_info(self) -> ActorPoolInfo:
         """Returns the current status of actors being used by the operator"""
-        return ActorPoolInfo(running=0, pending=0, restarting=0)
+        return ActorPoolInfo(
+            running=0,
+            restarting=0,
+            pending=0,
+            active=0,
+            idle=0,
+            pool_utilization=0,
+            tasks_in_flight=0,
+        )
 
     def _cancel_active_tasks(self, force: bool):
         tasks: List[OpTask] = self.get_active_tasks()

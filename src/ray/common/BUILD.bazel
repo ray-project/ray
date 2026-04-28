@@ -1,5 +1,24 @@
 load("//bazel:ray.bzl", "ray_cc_library")
 
+# Default main function that configures the Ray logger and sets up failure signal
+# handling to aid with debugging.
+#
+# Included by default in ray_cc_test (see bazel/ray.bzl for ray_cc_test definition).
+# To use a custom main function instead (like `gtest_main`), set
+# `use_ray_gtest_main = False` in the `ray_cc_test` target.
+ray_cc_library(
+    name = "ray_gtest_main",
+    testonly = True,
+    srcs = ["ray_gtest_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "//src/ray/util:logging",
+        "//src/ray/util:path_utils",
+        "//src/ray/util:raii",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
 ray_cc_library(
     name = "constants",
     hdrs = ["constants.h"],
@@ -116,6 +135,8 @@ ray_cc_library(
     ],
     deps = [
         ":memory_monitor_interface",
+        ":ray_config",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
         "//src/ray/util:compat",
         "//src/ray/util:logging",
         "@boost//:algorithm",
@@ -155,6 +176,29 @@ ray_cc_library(
     visibility = [":__subpackages__"],
     deps = [
         ":memory_monitor_interface",
+    ],
+)
+
+ray_cc_library(
+    name = "event_memory_monitor",
+    srcs = [
+        "event_memory_monitor.cc",
+    ],
+    hdrs = [
+        "event_memory_monitor.h",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    visibility = [":__subpackages__"],
+    deps = [
+        ":memory_monitor_interface",
+        ":memory_monitor_utils",
+        ":status",
+        "//src/ray/util:logging",
+        "//src/ray/util:thread_utils",
+        "@boost//:algorithm",
+        "@com_google_absl//absl/strings:str_format",
     ],
 )
 
@@ -200,8 +244,10 @@ ray_cc_library(
     deps = [
         ":memory_monitor_interface",
         ":noop_memory_monitor",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
     ] + select({
         "//bazel:is_linux": [
+            ":memory_monitor_utils",
             ":ray_config",
             ":threshold_memory_monitor",
             "//src/ray/util:logging",
