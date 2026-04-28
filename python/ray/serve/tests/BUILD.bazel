@@ -753,11 +753,11 @@ py_test_module_list(
 
 py_test_module_list(
     size = "large",
+    timeout = "eternal",
     files = [
-        "test_direct_ingress_standalone.py",
+        "test_per_request_headers.py",
     ],
     tags = [
-        "direct_ingress",
         "exclusive",
         "team:serve",
     ],
@@ -789,13 +789,13 @@ py_test_module_list(
 
 py_test_module_list(
     size = "large",
+    timeout = "eternal",
     env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
     files = [
-        "test_direct_ingress_standalone.py",
+        "test_per_request_headers.py",
     ],
     name_suffix = "_with_grpc",
     tags = [
-        "direct_ingress",
         "exclusive",
         "team:serve",
     ],

@@ -263,32 +263,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
-    def internal_input_queue_num_blocks(self) -> int:
-        return self._block_ref_bundler.num_blocks()
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return self._block_ref_bundler.estimate_size_bytes()
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return self._output_queue.num_blocks()
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return self._output_queue.estimate_size_bytes()
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queue (block ref bundler)."""
-        self._block_ref_bundler.finalize()
-        while self._block_ref_bundler.has_next():
-            _, input_bundles = self._block_ref_bundler.get_next_with_original()
-            for input_bundle in input_bundles:
-                self._metrics.on_input_dequeued(input_bundle, input_index=0)
-
-    def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue."""
-        while self._output_queue.has_next():
-            bundle = self._output_queue.get_next()
-            self._metrics.on_output_dequeued(bundle)
-
     @property
     def name(self) -> str:
         name = super().name
@@ -366,7 +340,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             map_transformer = _wrap_transformer_with_limit(
                 map_transformer, per_block_limit
             )
-
         if isinstance(compute_strategy, TaskPoolStrategy):
             from ray.data._internal.execution.operators import (
                 get_task_pool_map_operator_cls,
@@ -542,6 +515,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             self._metrics.on_task_output_generated(task_index, output)
+
+            # Notify output queue that the task has produced an new output.
             self._output_queue.add(output, key=task_index)
             self._metrics.on_output_queued(output)
 
@@ -731,6 +706,13 @@ def _map_task(
 
         blocks_iter = _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
 
+        # NOTE: We avoid the cost of deduping schemas in the task because
+        # each yielded block should have the same schema, since each one
+        # is a slice of the UDF's single output block, and we know that
+        # slicing preserves the schema (so all yielded blocks will have
+        # the same schema)
+        yielded_schema: bool = False
+
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in map_transformer.apply_transform(blocks_iter, ctx):
                 block_meta = BlockAccessor.for_block(block).get_metadata()
@@ -764,11 +746,11 @@ def _map_task(
                             task_wall_time_s=task_dur_s
                         ),
                     ),
-                    # TODO only pass schema w/ the first block
-                    schema=block_schema,
+                    schema=block_schema if not yielded_schema else None,
                 )
 
                 # Reset trackers
+                yielded_schema = True
                 blk_exec_stats_builder = BlockExecStats.builder()
                 profiler.reset()
 

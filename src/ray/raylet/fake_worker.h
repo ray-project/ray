@@ -48,13 +48,18 @@ class FakeWorker : public WorkerInterface {
   rpc::WorkerType GetWorkerType() const override { return rpc::WorkerType::WORKER; }
   int Port() const override { return port_; }
   void SetOwnerAddress(const rpc::Address &address) override {}
-  void GrantLease(const RayLease &granted_lease) override {}
+  void GrantLease(const RayLease &granted_lease) override {
+    granted_lease_ = granted_lease;
+  }
   void GrantLeaseId(const LeaseID &lease_id) override { lease_id_ = lease_id; }
-  const RayLease &GetGrantedLease() const override { return granted_lease_; }
+  const RayLease &GetGrantedLease() const override {
+    RAY_CHECK(granted_lease_.has_value());
+    return *granted_lease_;
+  }
   absl::Time GetGrantedLeaseTime() const override { return absl::InfiniteFuture(); }
   std::optional<bool> GetIsGpu() const override { return std::nullopt; }
   std::optional<bool> GetIsActorWorker() const override { return std::nullopt; }
-  const std::string IpAddress() const override { return "127.0.0.1"; }
+  std::string IpAddress() const override { return "127.0.0.1"; }
   void AsyncNotifyGCSRestart() override {}
   void SetAllocatedInstances(
       const std::shared_ptr<TaskResourceInstances> &allocated_instances) override {}
@@ -97,7 +102,6 @@ class FakeWorker : public WorkerInterface {
   void ClearLifetimeAllocatedInstances() override {}
   const BundleID &GetBundleId() const override { return bundle_id_; }
   void SetBundleId(const BundleID &bundle_id) override { bundle_id_ = bundle_id; }
-  RayLease &GetGrantedLease() override { return granted_lease_; }
   bool IsRegistered() override { return false; }
   rpc::CoreWorkerClientInterface *rpc_client() override { return nullptr; }
   bool IsAvailableForScheduling() const override { return true; }
@@ -113,7 +117,7 @@ class FakeWorker : public WorkerInterface {
   BundleID bundle_id_;
   std::unique_ptr<ProcessInterface> proc_;
   std::shared_ptr<ClientConnection> connection_;
-  RayLease granted_lease_;
+  std::optional<RayLease> granted_lease_;
   JobID job_id_;
   ActorID actor_id_;
   rpc::Address owner_address_;

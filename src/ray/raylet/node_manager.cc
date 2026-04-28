@@ -1428,11 +1428,6 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
         << "Disconnecting driver, graceful=" << std::boolalpha << graceful
         << ", disconnect_type=" << disconnect_type;
   } else {
-    if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
-      node_manager_unexpected_worker_failure_total_count_.Record(
-          1, {{"Type", "Raylet.UnexpectedIdleWorkerFailure.Total"}, {"Name", ""}});
-    }
-
     RAY_LOG(INFO) << "Got disconnect message from an unregistered client, ignoring.";
     return;
   }
@@ -1474,8 +1469,7 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
       // If the worker was an actor, it'll be cleaned by GCS.
       if (actor_id.IsNil()) {
         // Return the resources that were being used by this worker.
-        RayLease lease;
-        local_lease_manager_.CleanupLease(worker, &lease);
+        local_lease_manager_.CleanupLease(worker);
       }
 
       if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
@@ -1518,6 +1512,11 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
               {{"Type", "Raylet.UnexpectedActorFailure.Total"},
                {"Name", ray_lease.GetLeaseSpecification().GetTaskName()}});
         }
+      }
+    } else if (lease_id.IsNil() && actor_id.IsNil() && !worker->IsDead()) {
+      if (disconnect_type == rpc::WorkerExitType::SYSTEM_ERROR) {
+        node_manager_unexpected_worker_failure_total_count_.Record(
+            1, {{"Type", "Raylet.UnexpectedIdleWorkerFailure.Total"}, {"Name", ""}});
       }
     }
 
@@ -2378,13 +2377,10 @@ bool NodeManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
   LeaseID lease_id = worker->GetGrantedLeaseId();
   RAY_LOG(DEBUG).WithField(lease_id) << "Cleaning up lease ";
 
-  RayLease lease;
-  local_lease_manager_.CleanupLease(worker, &lease);
-
-  const auto &lease_spec = lease.GetLeaseSpecification();
+  const auto &lease_spec = worker->GetGrantedLease().GetLeaseSpecification();
   if ((lease_spec.IsActorCreationTask())) {
     // If this was an actor or actor creation task, convert the worker to an actor.
-    ConvertWorkerToActor(worker, lease);
+    ConvertWorkerToActor(worker, lease_spec);
   } else {
     // If this was a non-actor lease, cancel any ray.wait calls that were
     // made during the lease execution.
@@ -2397,14 +2393,14 @@ bool NodeManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
     worker->GrantLeaseId(LeaseID::Nil());
     worker->SetOwnerAddress(rpc::Address());
   }
+  local_lease_manager_.CleanupLease(worker);
   // Actors will be assigned tasks via the core worker and therefore are not idle.
   return !lease_spec.IsActorCreationTask();
 }
 
 void NodeManager::ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
-                                       const RayLease &lease) {
+                                       const LeaseSpecification &lease_spec) {
   RAY_LOG(DEBUG) << "Converting worker to actor";
-  const LeaseSpecification &lease_spec = lease.GetLeaseSpecification();
   ActorID actor_id = lease_spec.ActorId();
 
   // This was an actor creation task. Convert the worker to an actor.
