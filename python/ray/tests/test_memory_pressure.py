@@ -52,10 +52,6 @@ def ray_with_memory_monitor(shutdown_only):
             "task_oom_retries": task_oom_retries,
             "min_memory_free_bytes": -1,
             "task_oom_retry_delay_base_ms": 0,
-            # PR #62643 flipped the default OOM killing policy to the
-            # time-based multi-worker policy; these tests assert on
-            # single-worker, owner-group semantics.
-            "worker_killing_policy_by_group": True,
         },
     ) as addr:
         yield addr
@@ -74,7 +70,6 @@ def ray_with_memory_monitor_no_oom_retry(shutdown_only):
             "task_oom_retries": 0,
             "min_memory_free_bytes": -1,
             "task_oom_retry_delay_base_ms": 0,
-            "worker_killing_policy_by_group": True,
         },
     ) as addr:
         yield addr
