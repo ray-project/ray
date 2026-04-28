@@ -13,3 +13,9 @@ grpcio
 jupytext
 langchain-text-splitters
 gevent
+validators
+locust
+sglang[all]
+vllm[audio]>=0.19.0
+nixl>=1.0.0
+anyio>=4.5.0
