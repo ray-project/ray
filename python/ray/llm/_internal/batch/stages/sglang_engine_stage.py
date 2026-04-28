@@ -112,15 +112,41 @@ class SGLangEngineWrapper:
         kwargs["skip_tokenizer_init"] = self.skip_tokenizer_init
 
         try:
-            import sglang
+            from sglang.srt.ray.engine import RayEngine as Engine
         except ImportError as e:
             raise ImportError(
-                "SGLang is not installed or failed to import. Please run "
-                "`pip install sglang[all]` to install required dependencies."
+                "SGLang with Ray backend is not installed or failed to import. "
+                "Please run `pip install sglang[all, ray]` to install required "
+                "dependencies."
             ) from e
 
         # Initialize the SGLang engine
-        self.engine = sglang.Engine(**kwargs)
+        self.engine = Engine(**kwargs)
+
+        # RayEngine auto-creates a placement group during Engine(**kwargs)
+        # when no outer PG is detected and schedules its SchedulerActors
+        # into it. That PG is owned by the job (not by this actor), so
+        # without explicit removal it keeps its GPU bundles reserved for
+        # the lifetime of the session — blocking subsequent engines from
+        # allocating GPUs. RayEngine doesn't expose the PG handle, but the
+        # SchedulerActor names encode the PG id as
+        # `sglang_scheduler_..._pg<hex>_bundle<idx>`, so parse the hex out
+        # of the named-actors list so we can remove_placement_group on it
+        # in shutdown().
+        import ray
+
+        self._owned_pg_ids = set()
+        marker = "_pg"
+        try:
+            for entry in ray.util.list_named_actors(all_namespaces=True):
+                aname = entry["name"] if isinstance(entry, dict) else entry
+                if marker not in aname or not aname.startswith("sglang_scheduler"):
+                    continue
+                pg_hex = aname.rsplit(marker, 1)[1].split("_", 1)[0]
+                if pg_hex:
+                    self._owned_pg_ids.add(pg_hex)
+        except Exception:
+            logger.exception("Failed to enumerate SGLang scheduler actors")
 
         # The performance gets really bad if there are too many requests in the pending queue.
         # We work around it with semaphore to limit the number of concurrent requests in the engine.
@@ -220,10 +246,35 @@ class SGLangEngineWrapper:
         )
 
     def shutdown(self):
-        """Shutdown the SGLang engine."""
+        """Shutdown the SGLang engine and release the PG it created."""
         if hasattr(self.engine, "shutdown"):
             logger.info("Shutting down SGLang engine")
             self.engine.shutdown()
+
+        # RayEngine's auto-created placement group outlives Engine.shutdown
+        # and keeps its GPU bundles reserved until the job exits. Remove it
+        # here so the next stage / test can allocate those GPUs.
+        owned = getattr(self, "_owned_pg_ids", None) or set()
+        if not owned:
+            return
+        try:
+            from ray._raylet import PlacementGroupID
+            from ray.util.placement_group import (
+                PlacementGroup,
+                remove_placement_group,
+            )
+
+            for pg_id_hex in owned:
+                try:
+                    remove_placement_group(
+                        PlacementGroup(PlacementGroupID(bytes.fromhex(pg_id_hex)))
+                    )
+                except Exception:
+                    logger.exception(
+                        "Failed to remove SGLang placement group %s", pg_id_hex
+                    )
+        except Exception:
+            logger.exception("Failed to import placement_group helpers during shutdown")
 
 
 class SGLangEngineStageUDF(StatefulStageUDF):
@@ -356,19 +407,16 @@ class SGLangEngineStage(StatefulStage):
         """
         map_batches_kwargs = values["map_batches_kwargs"]
         accelerator_type = map_batches_kwargs.get("accelerator_type", "")
-        fn_constructor_kwargs = values["fn_constructor_kwargs"]
-        engine_kwargs = fn_constructor_kwargs.get("engine_kwargs", {})
 
         ray_remote_args = {}
         if accelerator_type:
             ray_remote_args["accelerator_type"] = accelerator_type
 
-        # Set up num_gpus required
-        tp_size = engine_kwargs.get("tp_size", 1)
-        dp_size = engine_kwargs.get("dp_size", 1)
-        num_gpus = tp_size * dp_size
-
-        ray_remote_args["num_gpus"] = num_gpus
+        # RayEngine spawns its own SchedulerActors that claim the GPUs via a
+        # placement group, so the outer Ray Data actor must request zero GPUs —
+        # otherwise the outer actor's reservation and the inner SchedulerActors'
+        # reservations double-count and deadlock on GPU-tight clusters.
+        ray_remote_args["num_gpus"] = 0
         map_batches_kwargs.update(ray_remote_args)
         return values
 

@@ -71,7 +71,9 @@ def test_sglang_engine_processor(gpu_type, model_llama_3_2_216M):
         "zero_copy_batch": True,
         "max_concurrency": 4,
         "accelerator_type": gpu_type,
-        "num_gpus": 4,  # Based on tp_size=2, dp_size=2 in engine_kwargs
+        # RayEngine claims GPUs via its own placement group, so the outer
+        # Ray Data actor must request zero GPUs to avoid double-counting.
+        "num_gpus": 0,
     }
 
 
