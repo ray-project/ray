@@ -87,13 +87,15 @@ def _convert_config_dicts(merged: dict) -> dict:
     which lack the default field values, causing AttributeError when vLLM code
     tries to access those fields.
     """
-    type_hints = typing.get_type_hints(AsyncEngineArgs)
+    fields_by_name = {f.name: f for f in dataclasses.fields(AsyncEngineArgs)}
 
     for key, value in list(merged.items()):
-        if not isinstance(value, dict) or key not in type_hints:
+        if not isinstance(value, dict) or key not in fields_by_name:
             continue
 
-        hint = type_hints[key]
+        hint = fields_by_name[key].type
+        if isinstance(hint, str):
+            continue
 
         # Handle Optional[X] (Union[X, None]) -> X
         origin = typing.get_origin(hint)
