@@ -158,8 +158,8 @@ ray health-check --address $FQ_RAY_IP:6379
 echo $? # 0
 
 # The head certificate doesn't include $RAY_IP in its SAN entries, so TLS verification fails.
-# You should see an error similar to:
-# "Peer name raycluster-tls-head-svc is not in peer certificate".
+# You should see a TLS verification error.
+# The error will indicate that the pod IP ($RAY_IP) is not in the certificate.
 ray health-check --address $RAY_IP:6379
 
 # If you add `DNS.3 = $RAY_IP` to the [alt_names] section in `gencert_head.sh`,
