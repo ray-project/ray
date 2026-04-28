@@ -206,6 +206,15 @@ class TestDeploymentConfig:
         with pytest.raises(ValidationError):
             b.num_replicas = -1
 
+    def test_ingress_request_router_is_python_only_config_field(self):
+        config = DeploymentConfig()
+        config.ingress_request_router = True
+
+        deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+
+        assert config.ingress_request_router is True
+        assert deserialized.ingress_request_router is False
+
     def test_from_default(self):
         """Check from_default() method behavior."""
 

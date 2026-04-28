@@ -199,6 +199,10 @@ class DeploymentConfig(BaseModel):
     # the deployment use.
     deployment_language: Any = DeploymentLanguage.PYTHON
 
+    # Internal runtime flag set on router replicas for ingress bypass.
+    # This is not part of the public deployment config/protobuf schema.
+    ingress_request_router: bool = False
+
     version: Optional[str] = Field(
         default=None,
         update_type=DeploymentOptionUpdateType.HeavyWeight,
@@ -409,8 +413,8 @@ class DeploymentConfig(BaseModel):
             data["deployment_actors"] = deployment_actors_proto
         else:
             data.pop("deployment_actors", None)
-        # router is a Python-only field, not in the protobuf schema.
-        data.pop("router", None)
+        # ingress_request_router is a Python-only field, not in the protobuf schema.
+        data.pop("ingress_request_router", None)
         return DeploymentConfigProto(**data)
 
     def to_proto_bytes(self):
