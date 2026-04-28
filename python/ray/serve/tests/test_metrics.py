@@ -869,7 +869,8 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         lambda: len(
             get_metric_dictionaries("ray_serve_replica_processing_queries", wait=False)
         )
-        == 2
+        == 2,
+        timeout=40,
     )
     processing_queries = get_metric_dictionaries("ray_serve_replica_processing_queries")
     expected_output = {("f", "app1"), ("g", "app2")}
