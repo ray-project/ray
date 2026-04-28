@@ -232,14 +232,24 @@ class RDTStore:
             rdt_object: A list of tensors representing the RDT object.
             is_primary: Whether the RDT object is the primary copy.
         """
+        import time as _time
+
+        from ray._private.worker import _rdt_profile_timings
+
+        _f_start = _time.perf_counter()
+
         with self._object_present_cv:
             if isinstance(rdt_object, Exception):
                 self._rdt_store[obj_id].append(
                     _RDTObject([], is_primary, error=rdt_object)
                 )
             else:
+                _g_start = _time.perf_counter()
                 for tensor in rdt_object:
                     self._tensor_to_object_ids[id(tensor)].add(obj_id)
+                _rdt_profile_timings["A3g_tensor_to_object_ids_loop"] = (
+                    _time.perf_counter() - _g_start
+                )
                 # Append to the queue instead of overwriting
                 self._rdt_store[obj_id].append(
                     _RDTObject(
@@ -248,6 +258,8 @@ class RDTStore:
                     )
                 )
             self._object_present_cv.notify_all()
+
+        _rdt_profile_timings["A3f_add_object_total"] = _time.perf_counter() - _f_start
 
     def add_object_primary(
         self, obj_id: str, tensors: List[Any], tensor_transport: str
