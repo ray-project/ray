@@ -149,6 +149,9 @@ _TEMPLATE_COLLECTIONS = {
     "pytorch-profiling": {
         "target": "train/examples/pytorch/pytorch-profiling",
     },
+    "tensor_parallel_autotp": {
+        "target": "train/examples/pytorch/tensor_parallel_autotp",
+    },
     "tensor_parallel_dtensor": {
         "target": "train/examples/pytorch/tensor_parallel_dtensor",
     },
