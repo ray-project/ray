@@ -101,7 +101,9 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
 
         # Map from validation task to checkpoint
         # Finished validations that have yet to be processed
-        self._finished_validations = OrderedDict()
+        self._finished_validations: "OrderedDict[ray.ObjectRef, Checkpoint]" = (
+            OrderedDict()
+        )
 
         self._requeue_incomplete_validations()
 
@@ -138,9 +140,10 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         """
         now = time.monotonic()
         for task, pending in list(self._pending_validations.items()):
-            if pending.timeout_s is None:
-                continue
-            if now - pending.start_time < pending.timeout_s:
+            if (
+                pending.timeout_s is None
+                or now - pending.start_time < pending.timeout_s
+            ):
                 continue
             self._pending_validations.pop(task)
             logger.info(
@@ -172,8 +175,8 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
                 f"Staged validations for checkpoint(s): {[tr.checkpoint for tr in self._training_report_queue]}."
             )
 
-        # Process finished validations
-        while self._finished_validations:
+        # Process finished validations (one at a time)
+        if self._finished_validations:
             task, checkpoint = self._finished_validations.popitem(last=False)
             update = self._process_finished_validation(task, checkpoint)
             if update is not None:
@@ -191,18 +194,18 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         Per-task ``timeout_s=None`` falls back to the ValidationConfig default.
         ``timeout_s=-1`` disables the timeout even if a default is set.
         """
-        if isinstance(validation, ValidationTaskConfig):
-            task_timeout_s = validation.timeout_s
-            # use -1 to overwrite the default for no timeout
-            if task_timeout_s is not None and task_timeout_s < 0:
+        if (
+            isinstance(validation, ValidationTaskConfig)
+            and validation.timeout_s is not None
+        ):
+            if validation.timeout_s is None or validation.timeout_s < 0:
                 return None
-        else:
-            task_timeout_s = None
+            return validation.timeout_s
+
         default_timeout_s = self._validation_config.task_config.timeout_s
-        # -1 for the default should be converted to None
-        if default_timeout_s is not None and default_timeout_s < 0:
-            default_timeout_s = None
-        return default_timeout_s if task_timeout_s is None else task_timeout_s
+        if default_timeout_s is None or default_timeout_s < 0:
+            return None
+        return default_timeout_s
 
     def _kick_off_validations(self) -> int:
         """Kick off validations and return the number of pending validations."""

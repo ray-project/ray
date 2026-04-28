@@ -17,7 +17,7 @@ class ReportedCheckpointStatus(Enum):
     * VALIDATED: The checkpoint is saved, and validation is complete.
     * VALIDATION_TIMEOUT: The checkpoint is saved, and validation is timed out according to
         `ValidationTaskConfig(..., timeout_s=N)`.
-    * VALIDATION_FAILED: The checkpoint is saved, and validation failed / canceled.
+    * VALIDATION_FAILED: The checkpoint is saved, and validation failed.
     """
 
     COMMITTED = "COMMITTED"
