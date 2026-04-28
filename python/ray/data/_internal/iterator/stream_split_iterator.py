@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -16,13 +16,13 @@ from ray.types import ObjectRef
 from ray.util.debug import log_once
 
 if TYPE_CHECKING:
-
     from ray.data.dataset import Dataset, Schema
 
 logger = logging.getLogger(__name__)
 
-
 BLOCKED_CLIENT_WARN_TIMEOUT = 30
+
+SplitIdx = int
 
 
 class StreamSplitDataIterator(DataIterator):
@@ -49,7 +49,14 @@ class StreamSplitDataIterator(DataIterator):
             },
         ).remote(base_dataset, n, locality_hints)
 
-        return [StreamSplitDataIterator(coord_actor, i, n) for i in range(n)]
+        return [
+            StreamSplitDataIterator(
+                coord_actor=coord_actor,
+                output_split_idx=split_idx,
+                world_size=n,
+            )
+            for split_idx in range(n)
+        ]
 
     def __init__(
         self,
@@ -70,14 +77,13 @@ class StreamSplitDataIterator(DataIterator):
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool, None]:
         def gen_blocks() -> Iterator[RefBundle]:
             logger.debug(f"Split {self._output_split_idx}: requesting new epoch.")
-            cur_epoch = ray.get(
-                self._coord_actor.start_epoch.remote(self._output_split_idx)
-            )
-            logger.debug(f"Split {self._output_split_idx}: epoch {cur_epoch} started")
-
+            # Signal that this consumer is ready for the next epoch.
+            # Blocks until all consumers have signaled and the executor starts.
+            ray.get(self._coord_actor.signal_new_epoch.remote(self._output_split_idx))
+            logger.debug(f"Split {self._output_split_idx} started")
             # Initial get with 0 prefetched bytes.
             future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
-                cur_epoch, self._output_split_idx, 0
+                self._output_split_idx, 0
             )
             last_log_time = 0.0
             while True:
@@ -93,7 +99,6 @@ class StreamSplitDataIterator(DataIterator):
                         + block_ref_and_md.size_bytes()
                     )
                     future = self._coord_actor.get.remote(
-                        cur_epoch,
                         self._output_split_idx,
                         prefetched_bytes,
                     )
@@ -108,11 +113,11 @@ class StreamSplitDataIterator(DataIterator):
                     if now - last_log_time >= self.YIELD_LOG_INTERVAL_S:
                         last_log_time = now
                         logger.debug(
-                            f"Split {self._output_split_idx} epoch {cur_epoch}: "
+                            f"Split {self._output_split_idx}: "
                             f"consumer resumed after yield"
                         )
 
-            logger.debug(f"Split {self._output_split_idx}: epoch {cur_epoch} exhausted")
+            logger.debug(f"Split {self._output_split_idx} exhausted")
 
         # Return None for executor since StreamSplitDataIterator has its own
         # mechanism for reporting prefetched bytes via SplitCoordinator.
@@ -152,6 +157,26 @@ class SplitCoordinator:
 
     This actor runs a streaming executor locally on its main thread. Clients can
     retrieve results via actor calls running on other threads.
+
+    Epoch lifecycle (each split consumer; ``StreamSplitDataIterator`` issues these
+    RPCs)::
+
+        signal_new_epoch(split_idx)
+                 |
+                 |  wait under Condition until all ``num_splits`` consumers
+                 |  have signaled; then start executor + output iterator
+                 v
+        +------------------------+
+        | get(split_idx, bytes)  |----+
+        |   -> RefBundle         |    | repeat until stream exhausted
+        +------------------------+    |
+                 |                    |
+                 v                    |
+        +------------------------+    |
+        | get(...) -> None       |<---+
+        +------------------------+
+                 |
+                 +---- next pass: signal_new_epoch again
     """
 
     DISPATCH_LOG_INTERVAL_S = 10
@@ -159,10 +184,9 @@ class SplitCoordinator:
     def __init__(
         self,
         dataset: "Dataset",
-        n: int,
+        num_splits: int,
         locality_hints: Optional[List[NodeIdStr]],
     ):
-
         # Set current DataContext.
         # This needs to be a deep copy so that updates to the base dataset's
         # context does not affect this process's global DataContext.
@@ -170,39 +194,54 @@ class SplitCoordinator:
         ray.data.DataContext._set_current(self._data_context)
 
         self._base_dataset = dataset
-        self._n = n
+        self._num_splits = num_splits
         self._locality_hints = locality_hints
-        self._lock = threading.RLock()
+
+        # ===== Begin: state guarded by self._cond =====
+        # Epoch synchronization state. Consumers wait on this condition in
+        # signal_new_epoch() until all `num_splits` splits have arrived; the
+        # last arrival starts the next epoch and notifies the rest. Per-epoch
+        # dispatch bookkeeping is also mutated under self._cond by get().
+        self._cond = threading.Condition()
+        # Consumers that have called signal_new_epoch() for the current epoch
+        # transition. Once all unique split indices arrive, the next epoch starts.
+        self._ready_consumers: Set[SplitIdx] = set()
+        # Incremented at the start of each epoch; used for per-epoch logging.
+        self._cur_epoch = -1
+        # Leftover blocks cached across get() calls, keyed by split index.
+        self._next_bundle: Dict[SplitIdx, RefBundle] = {}
+        # Prefetched bytes reported by each client (from BatchIterator).
+        self._client_prefetched_bytes: Dict[int, int] = {}
+        # Per-split row dispatch counters (reset each epoch in _start_executor).
+        self._num_rows_dispatched: Dict[int, int] = dict.fromkeys(range(num_splits), 0)
+        self._last_dispatch_log_time: float = 0.0
+        # Coordinator RPC overhead; accumulated in get(), read racily by stats().
+        self._coordinator_overhead_s = 0.0
+        # ===== End: state guarded by self._cond =====
+
+        # ===== Begin: state guarded by self._dataset_state_lock =====
+        # Lazy schema cache. Kept on a separate lock so schema() doesn't
+        # contend with active dispatch on self._cond.
         self._dataset_state_lock = threading.Lock()
         self._schema = None
+        # ===== End: state guarded by self._dataset_state_lock =====
+
+        # Executor and its output iterator are (re)created in _start_executor()
+        # under self._cond. Reads from stats() and get() are intentionally
+        # unlocked — get() relies on the executor reference being stable for
+        # the duration of an epoch.
         self._current_executor = None
-
-        # Guarded by self._lock.
-        self._next_bundle: Dict[int, RefBundle] = {}
-        self._unfinished_clients_in_epoch = n
-        self._cur_epoch = -1
-
-        # Track prefetched bytes reported by each client (from BatchIterator).
-        # Guarded by self._lock.
-        self._client_prefetched_bytes: Dict[int, int] = {}
-
-        # Add a new stats field to track coordinator overhead
-        self._coordinator_overhead_s = 0.0
-
-        # Per-split row dispatch counters (reset each epoch in _barrier).
-        self._num_rows_dispatched: Dict[int, int] = dict.fromkeys(range(n), 0)
-        self._last_dispatch_log_time: float = 0.0
-
         self._output_iterator = None
-        # Store the error raised from the `gen_epoch` call.
+        # Error raised from the most recent _start_executor() call; re-raised
+        # to all consumers waiting in signal_new_epoch().
         self._gen_epoch_error: Optional[Exception] = None
 
-        logger.debug(f"SplitCoordinator created: {n=}, {locality_hints=}")
+        logger.debug(f"SplitCoordinator created: {num_splits=}, {locality_hints=}")
 
     def get_dataset_context(self) -> DataContext:
         return self._data_context
 
-    def get_dataset_tag(self, output_split_idx: int) -> str:
+    def get_dataset_tag(self, output_split_idx: SplitIdx) -> str:
         return f"{self._base_dataset.get_dataset_id()}_split_{output_split_idx}"
 
     def get_dataset_schema(self):
@@ -218,76 +257,91 @@ class SplitCoordinator:
             self._schema = self._base_dataset.schema()
             return self._schema
 
-    def stats(self) -> DatasetStats:
-        """Returns stats from the base dataset."""
-        if self._current_executor:
-            stats = self._current_executor.get_stats()
-        else:
-            stats = self._base_dataset._raw_stats()
+    def _start_executor(self):
+        """Start a new streaming executor for the current epoch.
 
-        # Set the tracked overhead time
-        stats.streaming_split_coordinator_s.add(self._coordinator_overhead_s)
-
-        return stats
-
-    def start_epoch(self, split_idx: int) -> str:
-        """Called to start an epoch.
-
-        Returns:
-            UUID for the epoch, which must be used when accessing results via get().
+        Must be called while holding self._cond.
         """
+        self._next_bundle.clear()
+        self._client_prefetched_bytes.clear()
+        self._num_rows_dispatched = dict.fromkeys(range(self._num_splits), 0)
+        self._gen_epoch_error = None
 
-        # Wait for all clients to arrive at the barrier before starting a new epoch.
-        epoch_id = self._barrier(split_idx)
-        return epoch_id
+        try:
+            if self._current_executor is not None:
+                self._current_executor.shutdown(force=True)
 
-    def _try_start_new_epoch(self, starting_epoch: int):
-        with self._lock:
-            # This check gates that we start epoch only once
-            if self._cur_epoch == starting_epoch:
-                # Reset state
-                self._reset_state()
-                # Ratchet epoch
+            plan = self._base_dataset._plan
+            # Re-execute dataset
+            self._current_executor = plan.create_executor()
+            self._output_iterator = execute_to_legacy_bundle_iterator(
+                self._current_executor, plan
+            )
+            logger.debug(
+                f"Starting epoch {self._cur_epoch} (all {self._num_splits} clients "
+                "synced)."
+            )
+        except Exception as e:
+            logger.warning(f"Error creating executor for epoch {self._cur_epoch}: {e}")
+            self._gen_epoch_error = e
+
+    def signal_new_epoch(self, split_idx: SplitIdx) -> None:
+        """Signal that this consumer is done with the current epoch and ready
+        for the next one. Blocks until all consumers have signaled.
+
+        Uses Condition.wait() instead of spin-wait — zero CPU while waiting.
+        """
+        with self._cond:
+            self._ready_consumers.add(split_idx)
+
+            if len(self._ready_consumers) == self._num_splits:
+                # Last consumer to arrive — start the next epoch.
+                self._ready_consumers.clear()
                 self._cur_epoch += 1
-
-                try:
-                    # Force executor shutdown if present
-                    if self._current_executor is not None:
-                        self._current_executor.shutdown(force=True)
-
-                    plan = self._base_dataset._plan
-                    # Re-execute dataset
-                    self._current_executor = plan.create_executor()
-                    self._output_iterator = execute_to_legacy_bundle_iterator(
-                        self._current_executor, plan
-                    )
-                    logger.debug(
-                        f"Starting epoch {self._cur_epoch} (all {self._n} clients "
-                        "synced)."
-                    )
-
-                except Exception as e:
-                    logger.warning(
-                        f"Error creating executor for epoch {self._cur_epoch}: {e}"
-                    )
-                    self._gen_epoch_error = e
+                self._start_executor()
+                self._cond.notify_all()
+            else:
+                # Wait for all other consumers to arrive.
+                # Use a timeout so we can log a warning for blocked clients.
+                target_epoch = self._cur_epoch + 1
+                while not self._cond.wait_for(
+                    lambda: self._cur_epoch >= target_epoch,
+                    timeout=BLOCKED_CLIENT_WARN_TIMEOUT,
+                ):
+                    if log_once(f"stream_split_blocked_{split_idx}_{target_epoch}"):
+                        ready = sorted(self._ready_consumers)
+                        pending = sorted(
+                            set(range(self._num_splits)) - self._ready_consumers
+                        )
+                        logger.warning(
+                            f"StreamSplitDataIterator(split={split_idx}) "
+                            f"blocked waiting on other clients for at least "
+                            f"{BLOCKED_CLIENT_WARN_TIMEOUT}s. "
+                            f"Ready splits: {ready}; waiting on splits: "
+                            f"{pending}. All clients must read from the "
+                            "DataIterator splits at the same time."
+                        )
 
         if self._gen_epoch_error is not None:
             # If there was an error when advancing to the next epoch,
             # re-raise it for all threads.
             raise self._gen_epoch_error
 
-    def _reset_state(self):
-        self._unfinished_clients_in_epoch = self._n
-        self._next_bundle.clear()
-        self._gen_epoch_error = None
-        # Reset per-split dispatch counters for the new epoch.
-        self._num_rows_dispatched = dict.fromkeys(range(self._n), 0)
+    def stats(self) -> DatasetStats:
+        """Returns stats from the base dataset."""
+        executor = self._current_executor
+        coordinator_overhead_s = self._coordinator_overhead_s
+        if executor:
+            stats = executor.get_stats()
+        else:
+            stats = self._base_dataset._raw_stats()
+
+        stats.streaming_split_coordinator_s.add(coordinator_overhead_s)
+        return stats
 
     def get(
         self,
-        epoch_id: int,
-        output_split_idx: int,
+        output_split_idx: SplitIdx,
         client_prefetched_bytes: int = 0,
     ) -> Optional[RefBundle]:
         """Blocking get operation.
@@ -295,7 +349,6 @@ class SplitCoordinator:
         This is intended to be called concurrently from multiple clients.
 
         Args:
-            epoch_id: The epoch ID from start_epoch().
             output_split_idx: The output split index for this client.
             client_prefetched_bytes: The prefetched bytes reported by the
                 client's BatchIterator, used for resource accounting.
@@ -304,23 +357,18 @@ class SplitCoordinator:
             The next RefBundle for this split, or None if the epoch is done.
         """
         start_time = time.perf_counter()
-        if epoch_id != self._cur_epoch:
-            raise ValueError(
-                "Invalid iterator: the dataset has moved on to another epoch."
-            )
-
         returned_normally = False
         try:
-            # Ensure there is at least one bundle.
-            with self._lock:
-                if output_split_idx in self._next_bundle:
-                    next_bundle = self._next_bundle[output_split_idx]
-                else:
-                    next_bundle = None
+            if self._gen_epoch_error is not None:
+                raise self._gen_epoch_error
+            # Check for cached leftover blocks from a previous get().
+            with self._cond:
+                next_bundle = self._next_bundle.get(output_split_idx)
 
             # Fetch next bundle if needed.
+            # This is a BLOCKING call (goes through get_output_blocking),
+            # so do it outside the lock.
             while next_bundle is None or not next_bundle.blocks:
-                # This is a BLOCKING call, so do it outside the lock.
                 next_bundle = self._output_iterator.get_next(output_split_idx)
 
             schema = next_bundle.schema
@@ -333,7 +381,7 @@ class SplitCoordinator:
             )
 
             # Accumulate any remaining blocks in next_bundle map as needed.
-            with self._lock:
+            with self._cond:
                 self._next_bundle[output_split_idx] = next_bundle
                 if not next_bundle.blocks:
                     del self._next_bundle[output_split_idx]
@@ -352,7 +400,6 @@ class SplitCoordinator:
 
             self._maybe_log_dispatch(
                 split_idx=output_split_idx,
-                epoch_id=epoch_id,
                 num_rows_dispatched=num_rows_dispatched,
                 client_prefetched_bytes=client_prefetched_bytes,
             )
@@ -362,35 +409,31 @@ class SplitCoordinator:
                 [(block, metadata)], schema=schema, owns_blocks=next_bundle.owns_blocks
             )
         except StopIteration:
-            with self._lock:
+            with self._cond:
                 num_rows = self._num_rows_dispatched[output_split_idx]
             logger.debug(
-                f"Split {output_split_idx} epoch {epoch_id} finished, dispatched "
-                f"{num_rows} rows."
+                f"Split {output_split_idx} finished, dispatched {num_rows} rows."
             )
             return None
+
         except Exception as e:
-            with self._lock:
+            with self._cond:
                 num_rows = self._num_rows_dispatched[output_split_idx]
             logger.warning(
-                f"Split {output_split_idx} epoch {epoch_id} get() failed after "
-                f"{num_rows} rows: {e}"
+                f"Split {output_split_idx} get() failed after {num_rows} rows: {e}"
             )
             raise
         finally:
-            # Clear prefetched bytes on any exit (StopIteration or other
-            # exceptions) to avoid stale backpressure data.
-            if not returned_normally:
-                with self._lock:
+            with self._cond:
+                if not returned_normally:
                     self._client_prefetched_bytes[output_split_idx] = 0
                     self._report_prefetched_bytes_to_executor()
-            # Track overhead time in the instance variable
-            self._coordinator_overhead_s += time.perf_counter() - start_time
+                self._coordinator_overhead_s += time.perf_counter() - start_time
 
     def _get_total_prefetched_bytes(self) -> int:
         """Get the total prefetched bytes including coordinator buffer and clients.
 
-        Must be called while holding self._lock.
+        Must be called while holding self._cond.
         """
         # Bytes buffered in the coordinator.
         total = sum(bundle.size_bytes() for bundle in self._next_bundle.values())
@@ -401,22 +444,26 @@ class SplitCoordinator:
     def _report_prefetched_bytes_to_executor(self) -> None:
         """Report total prefetched bytes to the executor's resource manager.
 
-        Must be called while holding self._lock.
+        Must be called while holding self._cond.
         """
         if self._current_executor is not None:
             total_bytes = self._get_total_prefetched_bytes()
-            self._current_executor.set_external_consumer_bytes(total_bytes)
+            try:
+                self._current_executor.set_external_consumer_bytes(total_bytes)
+            except AttributeError:
+                # The executor may have been shut down or not fully initialized
+                # (e.g., _resource_manager is only set during execute()).
+                pass
 
     def get_client_prefetched_bytes(self) -> Dict[int, int]:
         """Get prefetched bytes for each client (for testing)."""
-        with self._lock:
+        with self._cond:
             return dict(self._client_prefetched_bytes)
 
     def _maybe_log_dispatch(
         self,
         *,
         split_idx: int,
-        epoch_id: int,
         num_rows_dispatched: int,
         client_prefetched_bytes: int,
     ) -> None:
@@ -426,63 +473,20 @@ class SplitCoordinator:
         messages.
         """
         now = time.time()
-        with self._lock:
+        with self._cond:
             if now - self._last_dispatch_log_time < self.DISPATCH_LOG_INTERVAL_S:
                 return
             self._last_dispatch_log_time = now
 
         logger.debug(
-            f"Split {split_idx} epoch {epoch_id} returned block: "
+            f"Split {split_idx} returned block: "
             f"{num_rows_dispatched=}, {client_prefetched_bytes=}"
         )
 
     def shutdown_executor(self):
         """Shuts down the internal data executor."""
         logger.debug(f"Shutting down executor (epoch={self._cur_epoch}).")
-        with self._lock:
+        with self._cond:
             # Call shutdown on the executor
             if self._current_executor is not None:
                 self._current_executor.shutdown(force=False)
-
-    def _barrier(self, split_idx: int) -> int:
-        """Arrive and block until the start of the given epoch."""
-        # Decrement and await all clients to arrive here.
-        with self._lock:
-            logger.debug(
-                f"Split {split_idx} arriving at barrier for epoch "
-                f"{self._cur_epoch + 1}."
-            )
-            starting_epoch = self._cur_epoch
-            self._unfinished_clients_in_epoch -= 1
-
-        start_time = time.time()
-        while (
-            self._cur_epoch == starting_epoch and self._unfinished_clients_in_epoch != 0
-        ):
-            if time.time() - start_time > BLOCKED_CLIENT_WARN_TIMEOUT:
-                if log_once(f"stream_split_blocked_{split_idx}_{starting_epoch}"):
-                    logger.warning(
-                        f"StreamSplitDataIterator(epoch={starting_epoch}, "
-                        f"split={split_idx}) blocked waiting on other clients "
-                        f"for more than {BLOCKED_CLIENT_WARN_TIMEOUT}s. All "
-                        "clients must read from the DataIterator splits at "
-                        "the same time. This warning will not be printed again "
-                        "for this epoch."
-                    )
-            time.sleep(0.1)
-
-        # Advance to the next epoch
-        self._try_start_new_epoch(starting_epoch)
-
-        if self._output_iterator is None:
-            raise ValueError(
-                "Invalid iterator: output iterator is not initialized. "
-                "This may indicate too many concurrent consumers."
-            )
-        if self._cur_epoch != starting_epoch + 1:
-            raise ValueError(
-                f"Invalid iterator: too many concurrent consumers detected. "
-                f"Expected epoch {starting_epoch + 1}, got {self._cur_epoch}."
-            )
-
-        return self._cur_epoch
