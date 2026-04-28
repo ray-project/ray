@@ -27,7 +27,7 @@ from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
-from ray.data._internal.datasource.zarr_datasource import ZarrV2Datasource
+from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.databricks_credentials import (
@@ -640,7 +640,8 @@ def read_audio(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
-    
+
+@PublicAPI(stability="alpha")
 def read_zarrv2(
     path: str,
     chunk_shape: List[int] | None = None,
