@@ -263,32 +263,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def set_additional_split_factor(self, k: int):
         self._additional_split_factor = k
 
-    def internal_input_queue_num_blocks(self) -> int:
-        return self._block_ref_bundler.num_blocks()
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return self._block_ref_bundler.estimate_size_bytes()
-
-    def internal_output_queue_num_blocks(self) -> int:
-        return self._output_queue.num_blocks()
-
-    def internal_output_queue_num_bytes(self) -> int:
-        return self._output_queue.estimate_size_bytes()
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queue (block ref bundler)."""
-        self._block_ref_bundler.finalize()
-        while self._block_ref_bundler.has_next():
-            _, input_bundles = self._block_ref_bundler.get_next_with_original()
-            for input_bundle in input_bundles:
-                self._metrics.on_input_dequeued(input_bundle, input_index=0)
-
-    def clear_internal_output_queue(self) -> None:
-        """Clear internal output queue."""
-        while self._output_queue.has_next():
-            bundle = self._output_queue.get_next()
-            self._metrics.on_output_dequeued(bundle)
-
     @property
     def name(self) -> str:
         name = super().name
@@ -366,7 +340,6 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             map_transformer = _wrap_transformer_with_limit(
                 map_transformer, per_block_limit
             )
-
         if isinstance(compute_strategy, TaskPoolStrategy):
             from ray.data._internal.execution.operators import (
                 get_task_pool_map_operator_cls,
@@ -542,6 +515,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             # Since output is streamed, it should only contain one block.
             assert len(output) == 1
             self._metrics.on_task_output_generated(task_index, output)
+
+            # Notify output queue that the task has produced an new output.
             self._output_queue.add(output, key=task_index)
             self._metrics.on_output_queued(output)
 
