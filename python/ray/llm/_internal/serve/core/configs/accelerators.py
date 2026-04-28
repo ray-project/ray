@@ -92,6 +92,15 @@ class AcceleratorBackend(ABC):
         pass
 
     @property
+    def requires_deferred_placement_group(self) -> bool:
+        """
+        If True, Ray Serve will not provision a placement group for the deployment.
+        Instead, creation is deferred to the replica at runtime.
+        Defaults to False.
+        """
+        return False
+
+    @property
     @abstractmethod
     def requires_remote_initialization(self) -> bool:
         """Boolean indicating whether this backend needs a remote Ray task to query hardware during init."""
@@ -229,6 +238,16 @@ class TPUAccelerator(AcceleratorBackend):
             name=name,
         )
         return self._slice_pg_wrapper.placement_group
+
+    @property
+    def requires_deferred_placement_group(self) -> bool:
+        """
+        If a TPU topology is specified, we defer PG creation so the replica can
+        provision a `SlicePlacementGroup` at runtime. This ensures multi-host
+        TPU slices are gang-scheduled atomically according to their physical
+        topology rather than fragmented across the cluster.
+        """
+        return bool(self._config.topology)
 
     @property
     def requires_remote_initialization(self) -> bool:
