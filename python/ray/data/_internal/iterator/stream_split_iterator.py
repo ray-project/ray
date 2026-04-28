@@ -197,36 +197,43 @@ class SplitCoordinator:
         self._num_splits = num_splits
         self._locality_hints = locality_hints
 
-        # Condition variable protects epoch synchronization state.
+        # ===== Begin: state guarded by self._cond =====
+        # Epoch synchronization state. Consumers wait on this condition in
+        # signal_new_epoch() until all `num_splits` splits have arrived; the
+        # last arrival starts the next epoch and notifies the rest. Per-epoch
+        # dispatch bookkeeping is also mutated under self._cond by get().
         self._cond = threading.Condition()
-        self._dataset_state_lock = threading.Lock()
-        self._schema = None
-        self._current_executor = None
-
         # Consumers that have called signal_new_epoch() for the current epoch
         # transition. Once all unique split indices arrive, the next epoch starts.
-        # Guarded by self._cond.
         self._ready_consumers: Set[SplitIdx] = set()
-
         # Incremented at the start of each epoch; used for per-epoch logging.
         self._cur_epoch = -1
-
-        # Guarded by self._cond.
+        # Leftover blocks cached across get() calls, keyed by split index.
         self._next_bundle: Dict[SplitIdx, RefBundle] = {}
-
-        # Track prefetched bytes reported by each client (from BatchIterator).
-        # Guarded by self._cond.
+        # Prefetched bytes reported by each client (from BatchIterator).
         self._client_prefetched_bytes: Dict[int, int] = {}
-
-        # Add a new stats field to track coordinator overhead
-        self._coordinator_overhead_s = 0.0
-
         # Per-split row dispatch counters (reset each epoch in _start_executor).
         self._num_rows_dispatched: Dict[int, int] = dict.fromkeys(range(num_splits), 0)
         self._last_dispatch_log_time: float = 0.0
+        # Coordinator RPC overhead; accumulated in get(), read racily by stats().
+        self._coordinator_overhead_s = 0.0
+        # ===== End: state guarded by self._cond =====
 
+        # ===== Begin: state guarded by self._dataset_state_lock =====
+        # Lazy schema cache. Kept on a separate lock so schema() doesn't
+        # contend with active dispatch on self._cond.
+        self._dataset_state_lock = threading.Lock()
+        self._schema = None
+        # ===== End: state guarded by self._dataset_state_lock =====
+
+        # Executor and its output iterator are (re)created in _start_executor()
+        # under self._cond. Reads from stats() and get() are intentionally
+        # unlocked — get() relies on the executor reference being stable for
+        # the duration of an epoch.
+        self._current_executor = None
         self._output_iterator = None
-        # Store the error raised from the `_start_executor` call.
+        # Error raised from the most recent _start_executor() call; re-raised
+        # to all consumers waiting in signal_new_epoch().
         self._gen_epoch_error: Optional[Exception] = None
 
         logger.debug(f"SplitCoordinator created: {num_splits=}, {locality_hints=}")
