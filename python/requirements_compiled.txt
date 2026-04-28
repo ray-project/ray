@@ -1115,7 +1115,7 @@ mlflow-skinny==3.1.4
     # via mlflow
 mmh3==4.1.0
     # via pyiceberg
-modin==0.31.0
+modin==0.37.1
     # via -r python/requirements/ml/data-requirements.txt
 monotonic==1.6
     # via
@@ -1471,7 +1471,7 @@ packaging==24.2
     #   transformers
     #   utilsforecast
     #   wandb
-pandas==2.2.3
+pandas==2.3.3
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/ml/data-requirements.txt
