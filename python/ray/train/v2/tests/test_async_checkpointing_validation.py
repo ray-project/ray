@@ -755,7 +755,7 @@ def test_report_validation_fn_resumption_on_train_fn_error(
     assert result.metrics == {"score": expected_score}
 
 
-def test_trainer_resumption_with_checkpoint_status(tmp_path):
+def test_report_validation_fn_resumption_checkpoint_status(tmp_path):
     def validation_fn(checkpoint, name):
         if name == "timeout":
             while True:
@@ -841,73 +841,6 @@ def test_trainer_resumption_with_checkpoint_status(tmp_path):
         ),
     ).fit()
     assert len(result.best_checkpoints) == 4
-
-
-def test_report_validation_fn_resumption_checkpoint_status(tmp_path):
-    """When a train_func does it remember all previous validation_fn status and metrics."""
-
-    def validation_fn(checkpoint, score):
-        return {"score": score}
-
-    def train_fn_first():
-        with create_dict_checkpoint({}) as cp:
-            ray.train.report(
-                metrics={"score": 1},
-                checkpoint=cp,
-                validation=False,
-            )
-
-        with create_dict_checkpoint({}) as cp:
-            ray.train.report(
-                metrics={},
-                checkpoint=cp,
-                validation=ValidationTaskConfig(fn_kwargs={"score": 2}),
-            )
-
-        raise RuntimeError("train_fn failed intentionally")
-
-    def train_fn_second():
-        rc = ray.train.get_all_reported_checkpoints(
-            consistency_mode=CheckpointConsistencyMode.VALIDATED
-        )
-        assert len(rc) == 2
-        assert rc[0].status == ReportedCheckpointStatus.COMMITTED
-        assert rc[0].metrics == {"score": 1}
-        assert rc[1].status == ReportedCheckpointStatus.VALIDATED
-        assert rc[1].metrics == {"score": 2}
-
-        with create_dict_checkpoint({}) as cp:
-            ray.train.report(
-                metrics={},
-                checkpoint=cp,
-                validation=ValidationTaskConfig(fn_kwargs={"score": 3}),
-            )
-
-        rc = ray.train.get_all_reported_checkpoints(
-            consistency_mode=CheckpointConsistencyMode.VALIDATED
-        )
-        assert len(rc) == 3
-        assert rc[2].status == ReportedCheckpointStatus.VALIDATED
-        assert rc[2].metrics == {"score": 3}
-
-    run_config = RunConfig(
-        name="validation_fn_resumption_checkpoint_status",
-        storage_path=str(tmp_path),
-    )
-
-    with pytest.raises(WorkerGroupError):
-        DataParallelTrainer(
-            train_fn_first,
-            validation_config=ValidationConfig(fn=validation_fn),
-            run_config=run_config,
-        ).fit()
-
-    result = DataParallelTrainer(
-        train_fn_second,
-        validation_config=ValidationConfig(fn=validation_fn),
-        run_config=run_config,
-    ).fit()
-    assert result.metrics == {"score": 3}
 
 
 def test_report_checkpoint_upload_fn(tmp_path):
