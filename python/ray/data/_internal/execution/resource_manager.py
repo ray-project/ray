@@ -51,6 +51,29 @@ _BLOCKING_MATERIALIZING_OPERATORS = (
 )
 
 
+def terminal_operator_from_topology(topology: "Topology") -> PhysicalOperator:
+    """Return the executor sink: the unique op with no in-DAG downstream consumers.
+
+    ``build_streaming_topology`` is rooted at the same node passed to
+    ``StreamingExecutor``; that root is the only operator whose
+    ``output_dependencies`` is empty.
+    """
+    if not topology:
+        raise ValueError("topology must be non-empty")
+    sinks = [op for op in topology if not op.output_dependencies]
+    if len(sinks) == 1:
+        return sinks[0]
+    if not sinks:
+        raise ValueError(
+            "No terminal operator found in topology (expected exactly one "
+            "operator with empty output_dependencies)"
+        )
+    raise ValueError(
+        "Expected exactly one terminal operator in topology, found "
+        f"{len(sinks)}: {sinks!r}"
+    )
+
+
 class ResourceManager:
     """A class that manages the resource usage of a streaming executor."""
 
@@ -105,7 +128,7 @@ class ResourceManager:
         # Executor sink (DAG root: unique op with no output_dependencies).
         # Iterator/streaming_split prefetch bytes are charged on this
         # operator's output usage.
-        self._output_operator = self._terminal_operator_from_topology(topology)
+        self._output_operator = terminal_operator_from_topology(topology)
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
@@ -119,30 +142,6 @@ class ResourceManager:
                 if self.op_resource_allocator_enabled()
                 else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_NO_RESERVATION
             )
-        )
-
-    def _terminal_operator_from_topology(
-        self, topology: "Topology"
-    ) -> PhysicalOperator:
-        """Return the executor sink: the unique op with no in-DAG downstream consumers.
-
-        ``build_streaming_topology`` is rooted at the same node passed to
-        ``StreamingExecutor``; that root is the only operator whose
-        ``output_dependencies`` is empty.
-        """
-        if not topology:
-            raise ValueError("topology must be non-empty")
-        sinks = [op for op in topology if not op.output_dependencies]
-        if len(sinks) == 1:
-            return sinks[0]
-        if not sinks:
-            raise ValueError(
-                "No terminal operator found in topology (expected exactly one "
-                "operator with empty output_dependencies)"
-            )
-        raise ValueError(
-            "Expected exactly one terminal operator in topology, found "
-            f"{len(sinks)}: {sinks!r}"
         )
 
     @property
@@ -734,10 +733,11 @@ class OpResourceAllocator(ABC):
         if not downstream_eligible_ops:
             if not self._resource_manager.has_external_consumer:
                 return True
-            # Check the DAG output rather than the last eligible op because consumers fetch
-            # blocks from the output op (e.g., OutputSplitter or LimitOperator).
-            # The output op state tracks the number of starving consumers.
-            output_op_state = self._topology[self._resource_manager._output_operator]
+            # Check the DAG root rather than the last eligible op because
+            # consumers block in get_output_blocking on the root's OpState,
+            # which may differ (e.g., OutputSplitter or LimitOperator).
+            output_op = terminal_operator_from_topology(self._topology)
+            output_op_state = self._topology[output_op]
             return output_op_state.num_waiting_consumers > 0
 
         for downstream_op in downstream_eligible_ops:
