@@ -1,5 +1,7 @@
 from typing import List, Optional
 
+from typing_extensions import override
+
 from ray.data._internal.execution.bundle_queue import BaseBundleQueue, FIFOBundleQueue
 from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
@@ -64,31 +66,39 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
     # ------------------------------------------------------------------
 
     @property
+    @override
     def _input_queues(self) -> List[BaseBundleQueue]:
         return self._input_buffers
 
     @property
+    @override
     def _output_queues(self) -> List[BaseBundleQueue]:
         return [self._output_buffer]
 
+    @override
     def internal_input_queue_num_blocks(self) -> int:
         return sum(q.num_blocks() for q in self._input_buffers)
 
+    @override
     def internal_input_queue_num_bytes(self) -> int:
         return sum(q.estimate_size_bytes() for q in self._input_buffers)
 
+    @override
     def internal_output_queue_num_blocks(self) -> int:
         return self._output_buffer.num_blocks()
 
+    @override
     def internal_output_queue_num_bytes(self) -> int:
         return self._output_buffer.estimate_size_bytes()
 
+    @override
     def clear_internal_input_queue(self) -> None:
         for idx, input_buffer in enumerate(self._input_buffers):
             while input_buffer:
                 bundle = input_buffer.get_next()
                 self._metrics.on_input_dequeued(bundle, input_index=idx)
 
+    @override
     def clear_internal_output_queue(self) -> None:
         while self._output_buffer:
             bundle = self._output_buffer.get_next()
@@ -98,12 +108,14 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
     # PhysicalOperator interface
     # ------------------------------------------------------------------
 
+    @override
     def mark_execution_finished(self) -> None:
         # Override InternalQueueOperatorMixin's version to preserve the
         # output buffer for draining. Only clear input queues.
         PhysicalOperator.mark_execution_finished(self)
         self.clear_internal_input_queue()
 
+    @override
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.has_completed()
         assert 0 <= input_index < len(self._input_dependencies), input_index
@@ -113,22 +125,27 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
         self._metrics.on_input_queued(refs, input_index=input_index)
         self._try_deficit_output()
 
+    @override
     def input_done(self, input_index: int) -> None:
         self._input_done_flags[input_index] = True
         self._try_deficit_output()
 
+    @override
     def all_inputs_done(self) -> None:
         super().all_inputs_done()
         self._try_deficit_output()
 
+    @override
     def has_next(self) -> bool:
         return len(self._output_buffer) > 0
 
+    @override
     def _get_next_inner(self) -> RefBundle:
         refs = self._output_buffer.get_next()
         self._metrics.on_output_dequeued(refs)
         return refs
 
+    @override
     def num_outputs_total(self) -> Optional[int]:
         return estimate_num_mix_outputs(
             [op.num_outputs_total() for op in self.input_dependencies],
@@ -136,6 +153,7 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
             self._stopping_condition,
         )
 
+    @override
     def num_output_rows_total(self) -> Optional[int]:
         return estimate_num_mix_outputs(
             [op.num_output_rows_total() for op in self.input_dependencies],
@@ -143,9 +161,11 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
             self._stopping_condition,
         )
 
+    @override
     def get_stats(self) -> StatsDict:
         return self._stats
 
+    @override
     def throttling_disabled(self) -> bool:
         # TODO: Disable throttling along with Union once NAry operator resource accounting is fixed.
         return False
