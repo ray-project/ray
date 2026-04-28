@@ -18,19 +18,22 @@ from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
-from obstore.fsspec import FsspecStore
-from obstore.store import AzureStore
 import fsspec
 import fsspec.core
 
 
-def _make_azure_fs(url: str) -> tuple[FsspecStore, AzureStore]:
+def _make_azure_fs(url: str) -> tuple[Any, Any]:
     """Create an authenticated Azure FsspecStore and AzureStore from a URL.
     Args:
         url: The Azure Blob Storage URL (abfs://...).
     Returns:
         A tuple of (FsspecStore, AzureStore).
     """
+    _check_import(_make_azure_fs, module="obstore", package="obstore")
+
+    from obstore.fsspec import FsspecStore
+    from obstore.store import AzureStore
+
     store = AzureStore.from_url(
         url=url,
     )
@@ -126,7 +129,6 @@ class ZarrV2Datasource(Datasource):
         array_paths: List[str] | None = None,
     ) -> None:
         super().__init__()
-        _check_import(self, module="zarr", package="zarr")
         
         if chunk_shape:
             for val in chunk_shape:
