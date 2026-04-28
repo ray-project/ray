@@ -1557,13 +1557,14 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            is_retryable = match is None or any(pattern in str(e) for pattern in match)
+            error_str = str(e) + (f" {e.__cause__}" if e.__cause__ is not None else "")
+            is_retryable = match is None or any(pattern in error_str for pattern in match)
             if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()
                 logger.debug(
-                    f"Retrying {attempt+1} attempts to {description} "
-                    f"after {backoff} seconds."
+                    f"Retrying attempt {attempt + 1} to {description} "
+                    f"after {backoff:.1f}s due to: {e}"
                 )
                 time.sleep(backoff)
             else:
