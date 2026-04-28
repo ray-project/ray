@@ -953,16 +953,7 @@ class AsyncioRouter:
         replica: Optional[RunningReplica] = None
         callback_registered = False
         try:
-            # Resolve request arguments BEFORE incrementing queued requests.
-            # This ensures that queue metrics reflect actual pending work,
-            # not time spent waiting for upstream DeploymentResponse arguments.
-            # See: https://github.com/ray-project/ray/issues/60624
-            if not pr.resolved:
-                resolution_start = time.monotonic()
-                await self._resolve_request_arguments(pr)
-                resolution_ms = (time.monotonic() - resolution_start) * 1000
-                self._objref_resolution_latency_ms.observe(resolution_ms)
-
+            # Request arguments are always already resolved at this point
             replica = await self.request_router._choose_replica_for_request(
                 pr, is_retry=is_retry
             )
@@ -1052,10 +1043,6 @@ class AsyncioRouter:
                     # won't help. Propagate immediately so the caller gets
                     # a fast error.
                     raise self._make_upstream_crash_error(e)
-            elif not pr.resolved:
-                # ActorDiedError during argument resolution — same upstream
-                # cause as above, caught before a replica was even chosen.
-                raise self._make_upstream_crash_error(e)
         except ActorUnavailableError:
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
@@ -1086,6 +1073,22 @@ class AsyncioRouter:
         """
         # Wait for the router to be initialized before sending the request.
         await self._request_router_initialized.wait()
+
+        # Resolve request arguments BEFORE incrementing queued requests so that
+        # queue metrics reflect actual pending work, not time spent waiting for
+        # upstream DeploymentResponse arguments.
+        # See: https://github.com/ray-project/ray/issues/60624
+        if not pr.resolved:
+            try:
+                resolution_start = time.monotonic()
+                await self._resolve_request_arguments(pr)
+                resolution_ms = (time.monotonic() - resolution_start) * 1000
+                self._objref_resolution_latency_ms.observe(resolution_ms)
+            except ActorDiedError as e:
+                # ActorDiedError during argument resolution — a chained
+                # DeploymentResponse whose source actor died. Surface
+                # immediately; retrying won't help.
+                raise self._make_upstream_crash_error(e)
 
         is_retry = False
         # Hold the `num_queued_requests` incremented across all routing retries.
