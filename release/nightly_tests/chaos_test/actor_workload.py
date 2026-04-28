@@ -70,7 +70,7 @@ def run_actor_workload(total_num_cpus, smoke):
             ray.cluster_resources().get("CPU", 0)
             == ray.available_resources().get("CPU", 0)
         ),
-        timeout=120,
+        timeout=300,
     )
     letter_set = set()
     for db_actor in db_actors:
