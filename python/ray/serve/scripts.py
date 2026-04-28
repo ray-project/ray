@@ -895,84 +895,31 @@ def controller_health(address: str, output_json: bool):
     help="Servicer function for adding the method handler to the gRPC server. "
     "Defaults to an empty list and no gRPC server is started.",
 )
-@click.option(
-    "--ingress-request-router",
-    "ingress_request_router_paths",
-    default=[],
-    required=False,
-    multiple=True,
-    hidden=True,
-    help=(
-        "Internal import path for an ingress request router Application. "
-        "If specified, pass once per application import path."
-    ),
-)
 def build(
     import_paths: Tuple[str],
     app_dir: str,
     output_path: Optional[str],
     grpc_servicer_functions: List[str],
-    ingress_request_router_paths: Tuple[str],
 ):
     sys.path.insert(0, app_dir)
 
-    if ingress_request_router_paths and len(ingress_request_router_paths) != len(
-        import_paths
-    ):
-        raise click.ClickException(
-            "Expected --ingress-request-router to be passed once per import path, "
-            f"got {len(ingress_request_router_paths)} router path(s) for "
-            f"{len(import_paths)} import path(s)."
-        )
-
-    def build_app_config(
-        import_path: str,
-        *,
-        name: str = None,
-        ingress_request_router: Optional[str] = None,
-    ):
+    def build_app_config(import_path: str, name: str = None):
         app: Application = import_attr(import_path)
         if not isinstance(app, Application):
             raise TypeError(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        ingress_request_router_app = None
-        if ingress_request_router is not None:
-            ingress_request_router_app = import_attr(ingress_request_router)
-            if not isinstance(ingress_request_router_app, Application):
-                raise TypeError(
-                    f"Expected '{ingress_request_router}' to be an Application "
-                    f"but got {type(ingress_request_router_app)}."
-                )
-
-        built_app: BuiltApplication = build_app(
-            app,
+        built_app: BuiltApplication = build_app(app, name=name)
+        schema = ServeApplicationSchema(
             name=name,
-            ingress_request_router=ingress_request_router_app,
+            route_prefix="/" if len(import_paths) == 1 else f"/{name}",
+            import_path=import_path,
+            runtime_env={},
+            deployments=[deployment_to_schema(d) for d in built_app.deployments],
         )
-        deployments = list(built_app.deployments)
-        if built_app.ingress_request_router_deployment is not None:
-            deployments.append(built_app.ingress_request_router_deployment)
-        schema_kwargs = {
-            "name": name,
-            "route_prefix": "/" if len(import_paths) == 1 else f"/{name}",
-            "import_path": import_path,
-            "runtime_env": {},
-            "deployments": [deployment_to_schema(d) for d in deployments],
-        }
-        if ingress_request_router is not None:
-            schema_kwargs["ingress_request_router"] = ingress_request_router
 
-        schema = ServeApplicationSchema(**schema_kwargs)
-
-        schema_dict = schema.model_dump(exclude_unset=True)
-        if ingress_request_router is not None:
-            schema_dict["_ingress_request_router"] = schema_dict.pop(
-                "ingress_request_router"
-            )
-
-        return schema_dict
+        return schema.model_dump(exclude_unset=True)
 
     config_str = (
         "# This file was generated using the `serve build` command "
@@ -981,18 +928,7 @@ def build(
 
     app_configs = []
     for app_index, import_path in enumerate(import_paths):
-        ingress_request_router = (
-            ingress_request_router_paths[app_index]
-            if ingress_request_router_paths
-            else None
-        )
-        app_configs.append(
-            build_app_config(
-                import_path,
-                name=f"app{app_index + 1}",
-                ingress_request_router=ingress_request_router,
-            )
-        )
+        app_configs.append(build_app_config(import_path, name=f"app{app_index + 1}"))
 
     deploy_config = {
         "proxy_location": "EveryNode",

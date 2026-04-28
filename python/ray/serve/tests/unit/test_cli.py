@@ -190,57 +190,5 @@ class TestEnumSerialization:
                 os.unlink(output_path)
 
 
-def test_build_command_preserves_ingress_request_router_config():
-    runner = CliRunner()
-    with NamedTemporaryFile(mode="w", suffix=".py", delete=False) as f:
-        f.write(
-            "from ray import serve\n\n"
-            "@serve.deployment\n"
-            "class LLMServer:\n"
-            "    pass\n\n"
-            "@serve.deployment\n"
-            "class IngressRequestRouter:\n"
-            "    def __init__(self, llm_deployment):\n"
-            "        self._llm_deployment = llm_deployment\n\n"
-            "llm_server = LLMServer.bind()\n"
-            "ingress_request_router = IngressRequestRouter.bind(llm_server)\n"
-        )
-        temp_path = f.name
-
-    output_path = None
-    try:
-        module_name = pathlib.Path(temp_path).stem
-        import_path = f"{module_name}:llm_server"
-        ingress_request_router = f"{module_name}:ingress_request_router"
-        with NamedTemporaryFile(mode="w", suffix=".yaml", delete=False) as output_file:
-            output_path = output_file.name
-
-        result = runner.invoke(
-            build,
-            [
-                import_path,
-                "--app-dir",
-                str(pathlib.Path(temp_path).parent),
-                "--output-path",
-                output_path,
-                "--ingress-request-router",
-                ingress_request_router,
-            ],
-        )
-        assert result.exit_code == 0, result.output
-
-        with open(output_path, "r") as f:
-            config = yaml.safe_load(f)
-
-        app_config = config["applications"][0]
-        assert app_config["_ingress_request_router"] == ingress_request_router
-        deployment_names = {d["name"] for d in app_config["deployments"]}
-        assert "IngressRequestRouter" in deployment_names
-    finally:
-        os.unlink(temp_path)
-        if output_path:
-            os.unlink(output_path)
-
-
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
