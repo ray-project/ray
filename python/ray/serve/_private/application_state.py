@@ -1930,9 +1930,7 @@ def override_deployment_info(
 
     # Validate that at most one deployment is marked as the ingress request router.
     ingress_request_router_deployments = [
-        name
-        for name, info in deployment_infos.items()
-        if info.deployment_config.ingress_request_router
+        name for name, info in deployment_infos.items() if info.ingress_request_router
     ]
     if len(ingress_request_router_deployments) > 1:
         raise ValueError(

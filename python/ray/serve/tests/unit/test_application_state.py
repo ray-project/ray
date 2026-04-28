@@ -1437,6 +1437,22 @@ class TestOverrideDeploymentInfo:
         assert updated_info.deployment_config.health_check_period_s == 20
         assert updated_info.deployment_config.health_check_timeout_s == 60
 
+    def test_rejects_multiple_ingress_request_router_deployments(self):
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+        )
+        deployment_infos = {
+            "A": deployment_info("A", ingress_request_router=True),
+            "B": deployment_info("B", ingress_request_router=True),
+        }
+
+        with pytest.raises(
+            ValueError,
+            match="Multiple deployments marked as ingress_request_router",
+        ):
+            override_deployment_info(deployment_infos, config)
+
     def test_override_autoscaling_config(self, info):
         config = ServeApplicationSchema(
             name="default",
