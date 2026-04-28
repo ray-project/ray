@@ -1,3 +1,4 @@
+# ruff: noqa
 import packaging.version
 
 # Pydantic is a dependency of `ray["default"]` but not the minimal installation,
