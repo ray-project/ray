@@ -8,6 +8,7 @@ from ray.core.generated import autoscaler_pb2
 from ray.data._internal.cluster_autoscaler.default_cluster_autoscaler_v2 import (
     DefaultClusterAutoscalerV2,
     _get_node_resource_spec_and_count,
+    _NodeGroupInfo,
     _NodeResourceSpec,
 )
 from ray.data._internal.cluster_autoscaler.fake_autoscaling_coordinator import (
@@ -103,17 +104,17 @@ class TestClusterAutoscaling:
                 cpu=self._node_type1["CPU"],
                 gpu=self._node_type1.get("GPU", 0),
                 mem=self._node_type1["memory"],
-            ): 2,
+            ): _NodeGroupInfo(count=2, max_count=-1),
             _NodeResourceSpec.of(
                 cpu=self._node_type2["CPU"],
                 gpu=self._node_type2.get("GPU", 0),
                 mem=self._node_type2["memory"],
-            ): 1,
+            ): _NodeGroupInfo(count=1, max_count=-1),
             _NodeResourceSpec.of(
                 cpu=self._node_type3["CPU"],
                 gpu=self._node_type3.get("GPU", 0),
                 mem=self._node_type3["memory"],
-            ): 1,
+            ): _NodeGroupInfo(count=1, max_count=-1),
         }
 
         # Patch cluster config to return None
@@ -137,8 +138,8 @@ class TestClusterAutoscaling:
             cpu=cpu_util, gpu=gpu_util, object_store_memory=mem_util
         )
         fake_coordinator = FakeAutoscalingCoordinator()
-        resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000)
-        resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=1, mem=1000)
+        resource_spec1 = _NodeResourceSpec.of(cpu=4, gpu=0, mem=8 * GiB)
+        resource_spec2 = _NodeResourceSpec.of(cpu=8, gpu=1, mem=8 * GiB)
 
         autoscaler = DefaultClusterAutoscalerV2(
             resource_manager=MagicMock(),
@@ -149,7 +150,10 @@ class TestClusterAutoscaling:
             cluster_scaling_up_util_threshold=scale_up_threshold,
             min_gap_between_autoscaling_requests_s=0,
             autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {resource_spec1: 2, resource_spec2: 1},
+            get_node_counts=lambda: {
+                resource_spec1: _NodeGroupInfo(count=2, max_count=-1),
+                resource_spec2: _NodeGroupInfo(count=1, max_count=-1),
+            },
         )
 
         autoscaler.try_trigger_scaling()
@@ -164,20 +168,38 @@ class TestClusterAutoscaling:
         if not should_scale_up:
             assert resources_allocated == ExecutionResources.zero()
         else:
-            expected_num_resource_spec1_requested = 2 + scale_up_delta
-            expected_num_resource_spec2_requested = 1 + scale_up_delta
+            # With bottleneck-aware scaling, only node types carrying the
+            # bottleneck resource get the delta.  resource_spec1 has cpu
+            # only; resource_spec2 has both cpu and gpu.
+            #
+            # - cpu bottleneck  → both specs get delta (both have cpu > 0)
+            # - gpu bottleneck  → only spec2 gets delta (spec1 has gpu == 0)
+            # - mem bottleneck (object_store_memory mapped to memory dim)
+            #                   → both specs get delta (both have mem > 0)
+            spec1_requested = 2  # existing count always included
+            spec2_requested = 1
+
+            if cpu_util >= scale_up_threshold or mem_util >= scale_up_threshold:
+                spec1_requested += scale_up_delta
+            if (
+                gpu_util >= scale_up_threshold
+                or cpu_util >= scale_up_threshold
+                or mem_util >= scale_up_threshold
+            ):
+                spec2_requested += scale_up_delta
+
             expected_resources = ExecutionResources(
                 cpu=(
-                    resource_spec1.cpu * expected_num_resource_spec1_requested
-                    + resource_spec2.cpu * expected_num_resource_spec2_requested
+                    resource_spec1.cpu * spec1_requested
+                    + resource_spec2.cpu * spec2_requested
                 ),
                 gpu=(
-                    resource_spec1.gpu * expected_num_resource_spec1_requested
-                    + resource_spec2.gpu * expected_num_resource_spec2_requested
+                    resource_spec1.gpu * spec1_requested
+                    + resource_spec2.gpu * spec2_requested
                 ),
                 memory=(
-                    resource_spec1.mem * expected_num_resource_spec1_requested
-                    + resource_spec2.mem * expected_num_resource_spec2_requested
+                    resource_spec1.mem * spec1_requested
+                    + resource_spec2.mem * spec2_requested
                 ),
             )
 
@@ -213,8 +235,12 @@ class TestClusterAutoscaling:
         cluster_config.node_group_configs.append(node_group_config2)
 
         expected = {
-            _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000): 0,
-            _NodeResourceSpec.of(cpu=8, gpu=2, mem=2000): 0,
+            _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000): _NodeGroupInfo(
+                count=0, max_count=10
+            ),
+            _NodeResourceSpec.of(cpu=8, gpu=2, mem=2000): _NodeGroupInfo(
+                count=0, max_count=5
+            ),
         }
 
         with patch("ray.nodes", return_value=node_table):
@@ -247,8 +273,8 @@ class TestClusterAutoscaling:
             min_gap_between_autoscaling_requests_s=0,
             autoscaling_coordinator=fake_coordinator,
             get_node_counts=lambda: {
-                resource_spec1: 0,
-                resource_spec2: 0,
+                resource_spec1: _NodeGroupInfo(count=0, max_count=-1),
+                resource_spec2: _NodeGroupInfo(count=0, max_count=-1),
             },
         )
 
@@ -292,7 +318,9 @@ class TestClusterAutoscaling:
             resource_utilization_calculator=FakeUtilizationGauge(),
             min_gap_between_autoscaling_requests_s=0,
             autoscaling_coordinator=FakeAutoscalingCoordinator(),
-            get_node_counts=lambda: {node_resource_spec: 0},
+            get_node_counts=lambda: {
+                node_resource_spec: _NodeGroupInfo(count=0, max_count=-1),
+            },
         )
 
         # Trigger scaling with high utilization. The cluster autoscaler should request
@@ -341,7 +369,9 @@ class TestClusterAutoscaling:
             min_gap_between_autoscaling_requests_s=0,
             low_util_request_release_delay_s=100,
             autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {node_resource_spec: 0},
+            get_node_counts=lambda: {
+                node_resource_spec: _NodeGroupInfo(count=0, max_count=-1),
+            },
             get_time=get_time,
         )
         autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
@@ -386,7 +416,9 @@ class TestClusterAutoscaling:
             min_gap_between_autoscaling_requests_s=0,
             low_util_request_release_delay_s=100,
             autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {node_resource_spec: 0},
+            get_node_counts=lambda: {
+                node_resource_spec: _NodeGroupInfo(count=0, max_count=-1),
+            },
             get_time=get_time,
         )
         autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
@@ -430,7 +462,9 @@ class TestClusterAutoscaling:
 
         # Only the first node type should be discovered
         expected = {
-            _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000): 0,
+            _NodeResourceSpec.of(cpu=4, gpu=0, mem=1000): _NodeGroupInfo(
+                count=0, max_count=10
+            ),
         }
 
         with patch("ray.nodes", return_value=node_table):
@@ -461,7 +495,11 @@ class TestClusterAutoscaling:
         ]
 
         # Expect everything to default to 0
-        expected = {_NodeResourceSpec.of(cpu=0, gpu=0, mem=0): 1}
+        expected = {
+            _NodeResourceSpec.of(cpu=0, gpu=0, mem=0): _NodeGroupInfo(
+                count=1, max_count=-1
+            ),
+        }
 
         with (
             patch("ray.nodes", return_value=node_table),
@@ -533,7 +571,9 @@ class TestClusterAutoscaling:
             cluster_scaling_up_util_threshold=scale_up_threshold,
             min_gap_between_autoscaling_requests_s=0,
             autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {node_spec: existing_nodes},
+            get_node_counts=lambda: {
+                node_spec: _NodeGroupInfo(count=existing_nodes, max_count=-1),
+            },
         )
 
         autoscaler.try_trigger_scaling()
@@ -566,8 +606,8 @@ class TestClusterAutoscaling:
         # Node types available: large (8 CPUs) and small (4 CPUs)
         def get_heterogeneous_nodes():
             return {
-                large_node_spec: 0,  # 0 existing large nodes
-                small_node_spec: 1,  # 1 existing small node (4 CPUs)
+                large_node_spec: _NodeGroupInfo(count=0, max_count=-1),
+                small_node_spec: _NodeGroupInfo(count=1, max_count=-1),
             }
 
         autoscaler = DefaultClusterAutoscalerV2(
@@ -629,8 +669,8 @@ class TestClusterAutoscaling:
         # Scale-up delta: 2 (want to add 2 of each node type)
         def get_node_counts():
             return {
-                large_node_spec: 1,  # 1 existing large node (6 CPUs)
-                small_node_spec: 0,  # 0 existing small nodes
+                large_node_spec: _NodeGroupInfo(count=1, max_count=-1),
+                small_node_spec: _NodeGroupInfo(count=0, max_count=-1),
             }
 
         autoscaler = DefaultClusterAutoscalerV2(
@@ -678,7 +718,9 @@ class TestClusterAutoscaling:
                 resource_utilization_calculator=StubUtilizationGauge(utilization),
                 min_gap_between_autoscaling_requests_s=0,
                 autoscaling_coordinator=fake_coordinator,
-                get_node_counts=lambda: {node_spec: 1},
+                get_node_counts=lambda: {
+                    node_spec: _NodeGroupInfo(count=1, max_count=-1),
+                },
             )
 
         with caplog.at_level(logging.INFO):
@@ -687,7 +729,8 @@ class TestClusterAutoscaling:
         expected_message = (
             "The utilization of one or more logical resource is higher than the "
             "specified threshold of 75%: CPU=100%, GPU=100%, memory=0%, "
-            "object_store_memory=100%. Requesting 1 node(s) of each shape: "
+            "object_store_memory=100%. Requesting up to 1 node(s) "
+            "of bottleneck-resource shapes (capped by maxReplicas): "
             "[{CPU: 1, GPU: 0, memory: 8.0GiB}: 1 -> 2]"
         )
         log_messages = [record.message for record in caplog.records]
@@ -721,7 +764,9 @@ class TestClusterAutoscaling:
                 resource_utilization_calculator=StubUtilizationGauge(utilization),
                 min_gap_between_autoscaling_requests_s=0,
                 autoscaling_coordinator=fake_coordinator,
-                get_node_counts=lambda: {node_spec: 2},
+                get_node_counts=lambda: {
+                    node_spec: _NodeGroupInfo(count=2, max_count=-1),
+                },
             )
 
         with caplog.at_level(logging.DEBUG):

@@ -1,5 +1,6 @@
 import logging
 import math
+import sys
 import time
 from collections import Counter, defaultdict
 from dataclasses import dataclass
@@ -69,9 +70,26 @@ class _NodeResourceSpec:
         return {"CPU": self.cpu, "GPU": self.gpu, "memory": self.mem}
 
 
-def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
-    """Get the unique node resource specs and their count in the cluster."""
-    nodes_resource_spec_count = defaultdict(int)
+@dataclass(frozen=True)
+class _NodeGroupInfo:
+    """Per-node-type bookkeeping: current count and max replicas."""
+
+    count: int
+    max_count: int  # -1 means unlimited
+
+    @property
+    def available(self) -> int:
+        """Number of additional nodes that can still be launched."""
+        if self.max_count == -1:
+            return sys.maxsize
+        return max(0, self.max_count - self.count)
+
+
+def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, _NodeGroupInfo]:
+    """Get the unique node resource specs, their running count, and max
+    replicas from the cluster config."""
+    nodes_resource_spec_count: Dict[_NodeResourceSpec, int] = defaultdict(int)
+    nodes_resource_spec_max: Dict[_NodeResourceSpec, int] = {}
 
     cluster_config = ray._private.state.state.get_cluster_config()
     if cluster_config and cluster_config.node_group_configs:
@@ -83,6 +101,13 @@ def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
                 node_group_config.resources
             )
             nodes_resource_spec_count[node_resource_spec] = 0
+            # Sum max_count across groups that share the same resource spec
+            prev = nodes_resource_spec_max.get(node_resource_spec, 0)
+            cur = node_group_config.max_count
+            if cur == -1 or prev == -1:
+                nodes_resource_spec_max[node_resource_spec] = -1
+            else:
+                nodes_resource_spec_max[node_resource_spec] = prev + cur
 
     # Filter out the head node.
     node_resources = [
@@ -95,7 +120,13 @@ def _get_node_resource_spec_and_count() -> Dict[_NodeResourceSpec, int]:
         node_resource_spec = _NodeResourceSpec.from_bundle(r)
         nodes_resource_spec_count[node_resource_spec] += 1
 
-    return nodes_resource_spec_count
+    default_max_count = -1 if cluster_config is None else 0
+    result: Dict[_NodeResourceSpec, _NodeGroupInfo] = {}
+    for spec, count in nodes_resource_spec_count.items():
+        max_count = nodes_resource_spec_max.get(spec, default_max_count)
+        result[spec] = _NodeGroupInfo(count=count, max_count=max_count)
+
+    return result
 
 
 class DefaultClusterAutoscalerV2(ClusterAutoscaler):
@@ -162,7 +193,7 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
         min_gap_between_autoscaling_requests_s: float = MIN_GAP_BETWEEN_AUTOSCALING_REQUESTS,  # noqa: E501
         low_util_request_release_delay_s: float = DEFAULT_LOW_UTIL_REQUEST_RELEASE_DELAY_S,  # noqa: E501
         autoscaling_coordinator: Optional[AutoscalingCoordinator] = None,
-        get_node_counts: Callable[[], Dict[_NodeResourceSpec, int]] = (
+        get_node_counts: Callable[[], Dict[_NodeResourceSpec, _NodeGroupInfo]] = (
             _get_node_resource_spec_and_count
         ),
         get_time: Callable[[], float] = time.time,
@@ -238,20 +269,43 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             self._send_resource_request(None)
             return
 
+        # Determine which resource dimensions are bottlenecks.
+        bottleneck_cpu = util.cpu >= self._cluster_scaling_up_util_threshold
+        bottleneck_gpu = util.gpu >= self._cluster_scaling_up_util_threshold
+        bottleneck_memory = (
+            util.memory >= self._cluster_scaling_up_util_threshold
+            or util.object_store_memory >= self._cluster_scaling_up_util_threshold
+        )
+
         # We separate active bundles (existing nodes) from pending bundles (scale-up delta)
         # to ensure existing nodes' resources are never crowded out by scale-up requests.
-        # TODO(hchen): We scale up all nodes by the same delta for now.
+        # TODO(hchen): We only scale node types that are related to a bottleneck
+        # resource, applying the same delta to all selected types.
         # We may want to distinguish different node types based on their individual
         # utilization.
         active_bundles = []
         pending_bundles = []
-        node_resource_spec_count = self._get_node_counts()
-        for node_resource_spec, count in node_resource_spec_count.items():
+        node_resource_spec_info = self._get_node_counts()
+        for node_resource_spec, group_info in node_resource_spec_info.items():
             bundle = node_resource_spec.to_bundle()
-            # Bundles for existing nodes -> active (must include)
-            active_bundles.extend([bundle] * count)
-            # Bundles for scale-up delta -> pending (best-effort)
-            pending_bundles.extend([bundle] * self._cluster_scaling_up_delta)
+            # Bundles for existing nodes -> active (always include)
+            active_bundles.extend([bundle] * group_info.count)
+
+            # Only request scale-up for node types that carry the bottleneck
+            # resource. A node is relevant if it provides a resource whose
+            # utilization exceeds the threshold.
+            has_bottleneck_resource = (
+                (bottleneck_gpu and node_resource_spec.gpu > 0)
+                or (bottleneck_cpu and node_resource_spec.cpu > 0)
+                or (bottleneck_memory and node_resource_spec.mem > 0)
+            )
+            if not has_bottleneck_resource:
+                continue
+
+            # Cap the delta by the remaining capacity (maxReplicas - current).
+            delta = min(self._cluster_scaling_up_delta, group_info.available)
+            if delta > 0:
+                pending_bundles.extend([bundle] * delta)
 
         # Cap the resource request to respect user-configured limits.
         # Active bundles (existing nodes) are always included; pending bundles
@@ -277,7 +331,8 @@ class DefaultClusterAutoscalerV2(ClusterAutoscaler):
             f"CPU={current_utilization.cpu:.0%}, GPU={current_utilization.gpu:.0%}, "
             f"memory={current_utilization.memory:.0%}, "
             f"object_store_memory={current_utilization.object_store_memory:.0%}. "
-            f"Requesting {self._cluster_scaling_up_delta} node(s) of each shape:"
+            f"Requesting up to {self._cluster_scaling_up_delta} node(s) "
+            f"of bottleneck-resource shapes (capped by maxReplicas):"
         )
 
         current_node_counts = Counter(
