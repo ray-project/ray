@@ -20,6 +20,29 @@ from ray.data._internal.planner.sort import generate_sort_fn
 from ray.data.context import DataContext, ShuffleStrategy
 
 
+def _plan_gpu_shuffle_repartition(
+    data_context: DataContext,
+    logical_op: Repartition,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    from ray.data._internal.gpu_shuffle.hash_shuffle import GPUShuffleOperator
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+    normalized_key_columns = SortKey(logical_op.keys).get_columns()
+
+    schema = logical_op.infer_schema()
+    columns = list(schema.names) if schema is not None else None
+
+    return GPUShuffleOperator(
+        input_physical_op,
+        data_context,
+        key_columns=tuple(normalized_key_columns),
+        columns=columns,
+        num_partitions=logical_op.num_outputs,
+        should_sort=logical_op.sort,
+    )
+
+
 def _plan_hash_shuffle_repartition(
     data_context: DataContext,
     logical_op: Repartition,
@@ -82,7 +105,7 @@ def plan_all_to_all_op(
     input_physical_dag = physical_children[0]
 
     if isinstance(op, RandomizeBlocks):
-        fn = generate_randomize_blocks_fn(op)
+        fn = generate_randomize_blocks_fn(op, data_context)
         # Randomize block order does not actually compute anything, so we
         # want to inherit the upstream op's target max block size.
 
@@ -92,7 +115,7 @@ def plan_all_to_all_op(
         )
         fn = generate_random_shuffle_fn(
             data_context,
-            op.seed,
+            op.seed_config,
             op.num_outputs,
             op.ray_remote_args,
             debug_limit_shuffle_execution_to_num_blocks,
@@ -100,14 +123,19 @@ def plan_all_to_all_op(
 
     elif isinstance(op, Repartition):
         if op.keys:
-            if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+            if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
+                return _plan_gpu_shuffle_repartition(
+                    data_context, op, input_physical_dag
+                )
+            elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
                 return _plan_hash_shuffle_repartition(
                     data_context, op, input_physical_dag
                 )
             else:
                 raise ValueError(
                     "Key-based repartitioning only supported for "
-                    f"`DataContext.shuffle_strategy=HASH_SHUFFLE` "
+                    f"`DataContext.shuffle_strategy=HASH_SHUFFLE` or "
+                    f"`DataContext.shuffle_strategy=GPU_SHUFFLE` "
                     f"(got {data_context.shuffle_strategy})"
                 )
 
@@ -137,7 +165,10 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Aggregate):
-        if data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+        if data_context.shuffle_strategy in (
+            ShuffleStrategy.HASH_SHUFFLE,
+            ShuffleStrategy.GPU_SHUFFLE,
+        ):
             return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
 
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(

@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 import subprocess
 import sys
 import threading
@@ -767,7 +768,7 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
     Expectations:
     - With two servers per backend, healthz returns 200 (all backends have a primary UP).
     - Disabling one primary in each backend keeps health at 200 (the other primary is UP).
-    - Disabling all servers in each backend results in healthz 503.
+    - Disabling all servers in each backend results in healthz 200 (the fallback proxy is UP).
     """
     ray.init(num_cpus=8)
     serve.start()
@@ -783,16 +784,17 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return f"http-{app}"
 
     def haproxy_show_stat() -> str:
-        result = subprocess.run(
-            f'echo "show stat" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to query HAProxy stats: {result.stderr}")
-        return result.stdout
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(b"show stat\n")
+            chunks = []
+            while True:
+                data = s.recv(4096)
+                if not data:
+                    break
+                chunks.append(data)
+        return b"".join(chunks).decode("utf-8", errors="ignore")
 
     def list_primary_servers(backend_name: str) -> list:
         lines = haproxy_show_stat().strip().split("\n")
@@ -810,12 +812,10 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return servers
 
     def set_server_state(backend: str, server: str, state: str) -> None:
-        subprocess.run(
-            f'echo "set server {backend}/{server} state {state}" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            timeout=5,
-        )
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(f"set server {backend}/{server} state {state}\n".encode())
 
     def wait_health(expected: int, timeout: float = 15.0) -> None:
         wait_for_condition(
@@ -856,7 +856,7 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
 
     wait_health(200, timeout=20)
 
-    # Disable the remaining primary per backend, should become unhealthy (no servers UP)
+    # Disable the remaining primary per backend, should remain healthy (the fallback proxy is UP).
     disabled_all = []
     for be in backends:
         servers = list_primary_servers(be)
@@ -867,9 +867,10 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
                 disabled_all.append((be, sv))
                 break
 
-    wait_health(503, timeout=20)
+    # The fallback proxy is UP.
+    wait_health(200, timeout=20)
 
-    # Re-enable all servers and expect health back to 200
+    # Re-enable all servers and expect health to be 200.
     for be, sv in disabled_servers + disabled_all:
         set_server_state(be, sv, "ready")
     wait_health(200, timeout=20)
@@ -961,6 +962,78 @@ def test_fallback_proxy_starts_with_native_proxy_on_head_node(
         return True
 
     wait_for_condition(check_proxies, timeout=30)
+
+    serve.shutdown()
+
+
+def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
+    """Test that a request to an app scaled to zero succeeds via the fallback proxy.
+
+    Flow:
+    1. Deploy an app with autoscaling min_replicas=0
+    2. Wait for it to scale down to 0 replicas
+    3. Send an HTTP request through HAProxy
+    4. HAProxy routes to the fallback Serve proxy (backup server) since
+       there are no ingress replicas
+    5. The fallback proxy queues the request and triggers upscaling
+    6. Once a replica starts, the request completes successfully
+    """
+    ray.init(num_cpus=4)
+    serve.start()
+
+    @serve.deployment(
+        autoscaling_config={
+            "min_replicas": 0,
+            "max_replicas": 1,
+            "metrics_interval_s": 0.1,
+            "look_back_period_s": 0.2,
+            "downscale_delay_s": 5,
+            "upscale_delay_s": 0,
+        },
+    )
+    class ScaleToZeroApp:
+        def __call__(self):
+            return "hello from scale-to-zero"
+
+    serve.run(ScaleToZeroApp.bind(), name="s2z_app", route_prefix="/s2z")
+
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/routes").status_code == 200,
+    )
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/-/healthz").status_code == 200,
+    )
+
+    # Wait for the app to be running and initially serve a request
+    wait_for_condition(
+        lambda: httpx.get("http://localhost:8000/s2z").status_code == 200,
+        timeout=30,
+    )
+    assert httpx.get("http://localhost:8000/s2z").text == "hello from scale-to-zero"
+
+    # Wait for the app to scale down to 0 replicas
+    def check_zero_replicas():
+        actors = list_actors(
+            filters=[
+                ("ray_namespace", "=", SERVE_NAMESPACE),
+                ("state", "=", "ALIVE"),
+                ("class_name", "=", "ServeReplica:s2z_app:ScaleToZeroApp"),
+            ],
+        )
+        return len(actors) == 0
+
+    wait_for_condition(check_zero_replicas, timeout=30)
+
+    # Now send a request. HAProxy has no primary servers for this backend,
+    # so it should route to the fallback Serve proxy (backup server).
+    # The fallback proxy will queue the request and trigger upscaling.
+    # The request should eventually succeed once a replica starts.
+    response = httpx.get("http://localhost:8000/s2z", timeout=30)
+    assert response.status_code == 200, (
+        f"Expected 200 after scale-from-zero, got {response.status_code}: "
+        f"{response.text}"
+    )
+    assert response.text == "hello from scale-to-zero"
 
     serve.shutdown()
 

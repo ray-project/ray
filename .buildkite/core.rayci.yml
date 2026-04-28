@@ -1,7 +1,7 @@
 group: core tests
 depends_on:
   - forge
-  - ray-core-build
+  - ray-core-build(*)
   - ray-dashboard-build
 steps:
   # builds
@@ -16,13 +16,13 @@ steps:
       PYTHON: "{{matrix}}"
       BASE_TYPE: "build"
       BUILD_VARIANT: "build"
-    depends_on: oss-ci-base_build-multipy
+    depends_on: oss-ci-base_build-multipy(*)
 
   - name: coregpubuild-multipy
     label: "wanda: coregpubuild-py{{matrix}}"
     wanda: ci/docker/core.build.wanda.yaml
     tags: cibase
-    depends_on: oss-ci-base_gpu-multipy
+    depends_on: oss-ci-base_gpu-multipy(*)
     env:
       PYTHON: "{{matrix}}"
       BASE_TYPE: "gpu"
@@ -31,10 +31,23 @@ steps:
     matrix:
       - "3.10"
 
+  - name: coregpu-cu130-build-multipy
+    label: "wanda: coregpu-cu130-build-py{{matrix}}"
+    wanda: ci/docker/core.build.wanda.yaml
+    tags: cibase
+    depends_on: oss-ci-base_cu130-multipy(*)
+    env:
+      PYTHON: "{{matrix}}"
+      BASE_TYPE: "cu130"
+      BUILD_VARIANT: "gpu-cu130-build"
+      RAYCI_IS_GPU_BUILD: "true"
+    matrix:
+      - "3.10"
+
   - name: minbuild-core
     label: "wanda: minbuild-core-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_test-multipy
+    depends_on: oss-ci-base_test-multipy(*)
     tags: cibase
     matrix:
       - "3.10"
@@ -179,9 +192,9 @@ steps:
         python/ray/util/dask/... core
         --install-mask all-ray-libraries
         --python-version 3.12
-        --build-name databuild-py3.12
+        --build-name datalbuild-py3.12
     depends_on:
-      - databuild-multipy
+      - datalbuild-multipy
       - forge
 
   - label: ":ray: core: modin tests"
@@ -191,7 +204,6 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker --
         python/ray/tests/modin/... core
-        --install-mask all-ray-libraries
         --python-version 3.10
         --build-name datalbuild-py3.10
     depends_on:
@@ -256,7 +268,7 @@ steps:
       - manylinux-x86_64
       - corebuild-multipy
       - forge
-      - ray-wheel-build
+      - ray-wheel-build(*)
 
   - label: ":ray: core: minimal tests {{matrix}}"
     tags:
@@ -432,7 +444,7 @@ steps:
       # cpp worker tests has one that tests cross-language with Java.
       - RAY_INSTALL_JAVA=1 ci/ci.sh build
       - ci/ci.sh test_cpp
-    depends_on: oss-ci-base_build-multipy
+    depends_on: oss-ci-base_build-multipy(*)
     job_env: oss-ci-base_build-py3.10
 
   - label: ":ray: core: java worker tests"
@@ -460,7 +472,7 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase
+      - raycpubase(*)
       - corebuild-multipy
 
   - label: ":ray: core: runtime env container tests"
@@ -482,7 +494,7 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase
+      - raycpubase(*)
       - corebuild-multipy
 
   - label: ":core: core: spark-on-ray tests"
@@ -524,3 +536,20 @@ steps:
     depends_on:
       - block-core-gpu-tests
       - coregpubuild-multipy
+
+  - label: ":ray: core: multi gpu cu130 tests"
+    key: core-multi-gpu-cu130-tests
+    tags:
+      - cgraphs_direct_transport
+      - gpu
+    instance_type: gpu-large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... //doc/... core
+        --gpus 4
+        --build-name coregpu-cu130-build-py3.10
+        --python-version 3.10
+        --only-tags multi_gpu
+        --install-mask all-ray-libraries
+    depends_on:
+      - block-core-gpu-tests
+      - coregpu-cu130-build-multipy

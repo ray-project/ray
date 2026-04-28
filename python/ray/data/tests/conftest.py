@@ -312,7 +312,14 @@ def disable_fallback_to_object_extension(request, restore_data_context):
     )
 
 
-@pytest.fixture(params=[s for s in ShuffleStrategy])  # noqa: C416
+@pytest.fixture(
+    params=[
+        s
+        for s in ShuffleStrategy
+        if s != ShuffleStrategy.GPU_SHUFFLE
+        or os.environ.get("RAY_PYTEST_USE_GPU") == "1"
+    ]
+)
 def configure_shuffle_method(request):
     shuffle_strategy = request.param
 
@@ -320,19 +327,24 @@ def configure_shuffle_method(request):
 
     original_shuffle_strategy = ctx.shuffle_strategy
     original_default_hash_shuffle_parallelism = ctx.default_hash_shuffle_parallelism
+    original_gpu_shuffle_num_actors = ctx.gpu_shuffle_num_actors
 
     ctx.shuffle_strategy = shuffle_strategy
 
     # NOTE: We override default parallelism for hash-based shuffling to
     #       avoid excessive partitioning of the data (to achieve desired
     #       parallelism
-    if shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
+    if shuffle_strategy in [ShuffleStrategy.HASH_SHUFFLE, ShuffleStrategy.GPU_SHUFFLE]:
         ctx.default_hash_shuffle_parallelism = 8
+
+    if shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
+        ctx.gpu_shuffle_num_actors = 1
 
     yield request.param
 
     ctx.shuffle_strategy = original_shuffle_strategy
     ctx.default_hash_shuffle_parallelism = original_default_hash_shuffle_parallelism
+    ctx.gpu_shuffle_num_actors = original_gpu_shuffle_num_actors
 
 
 @pytest.fixture(params=[True, False])
@@ -486,18 +498,18 @@ def op_two_block():
     block_delay = 20
     block_meta_list = []
     for i in range(len(block_params["num_rows"])):
-        block_exec_stats = BlockExecStats()
+        start_time_s = time.perf_counter() + i * block_delay
         # The blocks are executing from [0, 5] and [20, 30].
-        block_exec_stats.start_time_s = time.perf_counter() + i * block_delay
-        block_exec_stats.end_time_s = (
-            block_exec_stats.start_time_s + block_params["wall_time"][i]
+        block_exec_stats = BlockExecStats(
+            start_time_s=start_time_s,
+            end_time_s=start_time_s + block_params["wall_time"][i],
+            wall_time_s=block_params["wall_time"][i],
+            cpu_time_s=block_params["cpu_time"][i],
+            udf_time_s=block_params["udf_time"][i],
+            node_id=block_params["node_id"][i],
+            max_uss_bytes=block_params["uss_bytes"][i],
+            task_idx=block_params["task_idx"][i],
         )
-        block_exec_stats.wall_time_s = block_params["wall_time"][i]
-        block_exec_stats.cpu_time_s = block_params["cpu_time"][i]
-        block_exec_stats.udf_time_s = block_params["udf_time"][i]
-        block_exec_stats.node_id = block_params["node_id"][i]
-        block_exec_stats.max_uss_bytes = block_params["uss_bytes"][i]
-        block_exec_stats.task_idx = block_params["task_idx"][i]
         block_meta_list.append(
             BlockMetadata(
                 num_rows=block_params["num_rows"][i],

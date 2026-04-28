@@ -4,6 +4,7 @@ import warnings
 import pytest
 from pydantic import ValidationError
 
+import ray
 from ray import cloudpickle, serve
 from ray._common.utils import import_attr
 from ray.serve._private.config import (
@@ -15,12 +16,16 @@ from ray.serve._private.config import (
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
+    RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
+    RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
+    RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
 )
 from ray.serve._private.request_router import PowerOfTwoChoicesRequestRouter
 from ray.serve._private.utils import DEFAULT
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.config import (
     AutoscalingConfig,
+    DeploymentActorConfig,
     DeploymentMode,
     GangPlacementStrategy,
     GangRuntimeFailurePolicy,
@@ -52,6 +57,22 @@ def fake_policy():
 
 class FakeRequestRouter:
     ...
+
+
+@ray.remote
+class _TestDummyActor:
+    """Used for deployment_actors import path test."""
+
+    pass
+
+
+@ray.remote
+class _TestRayActor:
+    """Used for deployment_actors proto roundtrip test (needs __ray_actor_class__)."""
+
+    def ping(self):
+        """Dummy method to verify class is deserialized correctly."""
+        return "pong"
 
 
 def test_autoscaling_config_validation():
@@ -254,6 +275,181 @@ class TestDeploymentConfig:
             deployment_config.request_router_config.get_request_router_class()
             == PowerOfTwoChoicesRequestRouter
         )
+
+    def test_backoff_params_imperative(self):
+        """Check that custom backoff params are set via the imperative path."""
+        custom_initial = 0.1
+        custom_multiplier = 3.0
+        custom_max = 2.0
+
+        deployment_config = DeploymentConfig.from_default(
+            request_router_config=RequestRouterConfig(
+                initial_backoff_s=custom_initial,
+                backoff_multiplier=custom_multiplier,
+                max_backoff_s=custom_max,
+            )
+        )
+
+        assert (
+            deployment_config.request_router_config.initial_backoff_s == custom_initial
+        )
+        assert (
+            deployment_config.request_router_config.backoff_multiplier
+            == custom_multiplier
+        )
+        assert deployment_config.request_router_config.max_backoff_s == custom_max
+
+    def test_backoff_params_defaults_imperative(self):
+        """Check that backoff params use defaults when not specified."""
+        deployment_config = DeploymentConfig.from_default()
+
+        assert (
+            deployment_config.request_router_config.initial_backoff_s
+            == RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S
+        )
+        assert (
+            deployment_config.request_router_config.backoff_multiplier
+            == RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER
+        )
+        assert (
+            deployment_config.request_router_config.max_backoff_s
+            == RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S
+        )
+
+    def test_backoff_params_declarative_schema(self):
+        """Check that backoff params can be set via the declarative schema."""
+        schema = DeploymentSchema(
+            name="test-deployment",
+            request_router_config=RequestRouterConfig(
+                initial_backoff_s=0.1,
+                backoff_multiplier=3.0,
+                max_backoff_s=2.0,
+            ),
+        )
+
+        assert schema.request_router_config.initial_backoff_s == 0.1
+        assert schema.request_router_config.backoff_multiplier == 3.0
+        assert schema.request_router_config.max_backoff_s == 2.0
+
+    def test_deployment_actors_config(self):
+        """Test deployment_actors config and proto roundtrip."""
+
+        @ray.remote
+        class DummyActor:
+            pass
+
+        actor_config = DeploymentActorConfig(
+            name="prefix_tree",
+            actor_class=DummyActor,
+            init_kwargs={"max_depth": 100},
+            actor_options={"num_cpus": 0.1},
+        )
+        config = DeploymentConfig(
+            num_replicas=1,
+            deployment_actors=[actor_config],
+        )
+        assert config.deployment_actors is not None
+        assert len(config.deployment_actors) == 1
+        assert config.deployment_actors[0].name == "prefix_tree"
+        assert isinstance(config.deployment_actors[0].actor_class, str)
+        assert config.deployment_actors[0]._serialized_actor_class
+        assert (
+            config.deployment_actors[0].get_actor_class().__ray_actor_class__.__name__
+            == "DummyActor"
+        )
+        assert config.deployment_actors[0].init_kwargs == {"max_depth": 100}
+
+        deserialized = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+        assert deserialized.deployment_actors is not None
+        assert len(deserialized.deployment_actors) == 1
+        assert deserialized.deployment_actors[0].name == "prefix_tree"
+        assert isinstance(deserialized.deployment_actors[0].actor_class, str)
+        assert deserialized.deployment_actors[0]._serialized_actor_class
+        assert (
+            deserialized.deployment_actors[0]
+            .get_actor_class()
+            .__ray_actor_class__.__name__
+            == "DummyActor"
+        )
+        assert deserialized.deployment_actors[0].init_kwargs == {"max_depth": 100}
+
+    def test_deployment_actors_config_duplicate_names_raise(self):
+        """Test that duplicate deployment_actor names raise ValueError."""
+        with pytest.raises(ValueError, match="unique names"):
+            DeploymentConfig(
+                num_replicas=1,
+                deployment_actors=[
+                    DeploymentActorConfig(
+                        name="dup",
+                        actor_class=_TestDummyActor,
+                        init_kwargs={},
+                    ),
+                    DeploymentActorConfig(
+                        name="dup",
+                        actor_class=_TestDummyActor,
+                        init_kwargs={},
+                    ),
+                ],
+            )
+
+    def test_deployment_actors_config_import_path(self):
+        """actor_class stays as string until _serialize_actor_class() is called
+        (happens in the build task where user code is importable).
+        """
+        actor_config_str = DeploymentActorConfig(
+            name="actor_from_path",
+            actor_class="ray.serve.tests.unit.test_config._TestDummyActor",
+            init_kwargs={"max_depth": 50},
+        )
+        assert isinstance(actor_config_str.actor_class, str)
+        assert not actor_config_str._serialized_actor_class
+
+        # Simulate what build_serve_application does
+        actor_config_str._serialize_actor_class()
+        assert actor_config_str._serialized_actor_class
+
+        config_str = DeploymentConfig(
+            num_replicas=1,
+            deployment_actors=[actor_config_str],
+        )
+        proto = config_str.to_proto()
+        assert len(proto.deployment_actors) == 1
+        assert proto.deployment_actors[0].name == "actor_from_path"
+        assert proto.deployment_actors[0].actor_class_name != ""
+
+        deserialized_str = DeploymentConfig.from_proto_bytes(
+            config_str.to_proto_bytes()
+        )
+        resolved_str = deserialized_str.deployment_actors[0].get_actor_class()
+        assert (
+            resolved_str.__ray_actor_class__.__name__
+            == _TestDummyActor.__ray_actor_class__.__name__
+        )
+
+    def test_proto_roundtrip_preserves_actor_class(self):
+        """DeploymentActorConfig survives proto serialization and can
+        reconstruct the actor class via get_actor_class().
+        """
+        cfg = DeploymentActorConfig(
+            name="counter",
+            actor_class=_TestRayActor,
+            init_kwargs={},
+        )
+        dc = DeploymentConfig(num_replicas=1, deployment_actors=[cfg])
+
+        deserialized = DeploymentConfig.from_proto_bytes(dc.to_proto_bytes())
+        actor_cfg = deserialized.deployment_actors[0]
+
+        assert actor_cfg._serialized_actor_class
+        assert isinstance(actor_cfg.actor_class, str)
+
+        resolved = actor_cfg.get_actor_class()
+        assert resolved.__ray_actor_class__.__name__ == "_TestRayActor"
+
+        # Verify we can instantiate and invoke methods (class serialized properly)
+        underlying = resolved.__ray_actor_class__
+        instance = underlying()
+        assert instance.ping() == "pong"
 
 
 class TestReplicaConfig:

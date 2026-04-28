@@ -302,6 +302,7 @@ py_test_run_all_subdirectory(
         "source/serve/doc_code/cross_node_parallelism_example.py",
         "source/serve/doc_code/llm/llm_yaml_config_example.py",
         "source/serve/doc_code/llm/qwen_example.py",
+        "source/serve/doc_code/capacity_queue_request_router_app.py",
     ],
     extra_srcs = [],
     tags = [
@@ -347,7 +348,10 @@ filegroup(
 py_test_run_all_subdirectory(
     size = "large",
     include = ["source/llm/doc_code/serve/**/*.py"],
-    exclude = ["source/llm/doc_code/serve/multi_gpu/**/*.py"],
+    exclude = [
+        "source/llm/doc_code/serve/multi_gpu/**/*.py",
+        "source/llm/doc_code/serve/sglang/**/*.py",
+    ],
     extra_srcs = [],
     data = ["source/llm/doc_code/serve/qwen/llm_config_example.yaml"],
     tags = [
@@ -599,6 +603,8 @@ doctest_each(
     ),
     pytest_plugin_file = "//python/ray/data:tests/doctest_pytest_plugin.py",
     tags = ["team:data"],
+    # Adding to use keras 2 & tensorflow >= 2.16 (https://keras.io/getting_started)
+    env = {"TF_USE_LEGACY_KERAS": "1"},
 )
 
 doctest(
@@ -623,9 +629,6 @@ doctest(
         ],
         exclude = [
             "source/rllib/getting-started.rst",
-            "source/rllib/algorithm-config.rst",
-            "source/rllib/checkpoints.rst",
-            "source/rllib/connector-v2.rst",
         ],
     ),
     tags = ["team:rllib"],
@@ -633,16 +636,14 @@ doctest(
 
 doctest(
     name = "doctest[rllib2]",
-    size = "large",
+    size = "enormous",
     files = glob(
         include = [
             "source/rllib/getting-started.rst",
-            "source/rllib/algorithm-config.rst",
-            "source/rllib/checkpoints.rst",
-            "source/rllib/connector-v2.rst",
         ],
     ),
-    tags = ["team:rllib"],
+    # TODO(elliot-barn): Re-enable once getting-started.rst doctest hang is fixed.
+    tags = ["manual", "team:rllib"],
 )
 
 doctest(
@@ -666,7 +667,10 @@ doctest(
 doctest(
     name = "doctest[train]",
     # TODO: [V2] Migrate
-    env = {"RAY_TRAIN_V2_ENABLED": "0"},
+    env = {
+        "RAY_TRAIN_V2_ENABLED": "0",
+        "TF_USE_LEGACY_KERAS": "1",
+    },
     files = glob(
         include = [
             "source/train/**/*.md",
@@ -677,7 +681,7 @@ doctest(
             "source/train/horovod.rst",
             # These tests run on GPU (see below).
             "source/train/user-guides/data-loading-preprocessing.rst",
-            "source/train/user-guides/using-gpus.rst",
+            "source/train/user-guides/using-accelerators.rst",
         ],
     ),
     tags = ["team:ml"],
@@ -687,7 +691,7 @@ doctest(
     name = "doctest[train-gpu]",
     files = [
         "source/train/user-guides/data-loading-preprocessing.rst",
-        "source/train/user-guides/using-gpus.rst",
+        "source/train/user-guides/using-accelerators.rst",
     ],
     env = {"RAY_TRAIN_V2_ENABLED": "0"},
     tags = ["team:ml"],

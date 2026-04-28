@@ -136,7 +136,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
       [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
 
   node_manager.HandleUnregisterNode(
-      unregister_request, &unregister_reply, send_reply_callback);
+      unregister_request, &unregister_reply, send_reply_callback, "");
   io_service_.poll();
 
   std::vector<std::string> vc;
@@ -150,8 +150,3 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

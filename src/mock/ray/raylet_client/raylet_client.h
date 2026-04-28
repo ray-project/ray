@@ -19,18 +19,13 @@ class MockRayletClientInterface : public RayletClientInterface {
   MOCK_METHOD(std::shared_ptr<grpc::Channel>, GetChannel, (), (const));
   MOCK_METHOD(void,
               ReportWorkerBacklog,
-              (const WorkerID &worker_id,
-               const std::vector<rpc::WorkerBacklogReport> &backlog_reports),
+              (const rpc::ReportWorkerBacklogRequest &request),
               (override));
-  MOCK_METHOD(
-      void,
-      RequestWorkerLease,
-      (const rpc::LeaseSpec &lease_spec,
-       bool grant_or_reject,
-       const ray::rpc::ClientCallback<ray::rpc::RequestWorkerLeaseReply> &callback,
-       const int64_t backlog_size,
-       const bool is_selected_based_on_locality),
-      (override));
+  MOCK_METHOD(void,
+              RequestWorkerLease,
+              (rpc::RequestWorkerLeaseRequest && request,
+               const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback),
+              (override));
   MOCK_METHOD(void,
               ReturnWorkerLease,
               (int worker_port,
@@ -130,6 +125,12 @@ class MockRayletClientInterface : public RayletClientInterface {
                int64_t draining_deadline_timestamp_ms,
                const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
               (override));
+  MOCK_METHOD(
+      void,
+      ResizeLocalResourceInstances,
+      ((google::protobuf::Map<std::string, double>)resources,
+       const rpc::ClientCallback<rpc::ResizeLocalResourceInstancesReply> &callback),
+      (override));
   MOCK_METHOD(
       void,
       CancelLeasesWithResourceShapes,

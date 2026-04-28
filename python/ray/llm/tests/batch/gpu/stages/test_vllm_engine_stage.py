@@ -134,7 +134,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
-            # This is overriden in the processor, so it remains unchanged when we bypass
+            # This is overridden in the processor, so it remains unchanged when we bypass
             # the processor and pass it directly to the stage via vLLMEngineStageUDF.
             "task_type": vLLMTaskType.EMBED,
             "max_num_seqs": 100,
@@ -343,7 +343,6 @@ async def test_vllm_wrapper_embed(model_opt_125m):
     wrapper.shutdown()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "pooling_params,tokenization_kwargs,expect_same_output",
     [
@@ -354,6 +353,7 @@ async def test_vllm_wrapper_embed(model_opt_125m):
         (None, {"truncation": True, "max_length": 3}, False),
     ],
 )
+@pytest.mark.asyncio
 async def test_vllm_wrapper_embed_pooling_params(
     model_opt_125m, pooling_params, tokenization_kwargs, expect_same_output
 ):
@@ -408,7 +408,6 @@ async def test_vllm_wrapper_embed_pooling_params(
     wrapper.shutdown()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize(
     "pooling_params,tokenization_kwargs",
     [
@@ -419,6 +418,7 @@ async def test_vllm_wrapper_embed_pooling_params(
     ],
     ids=["truncate_prompt_tokens_compat", "tokenization_kwargs"],
 )
+@pytest.mark.asyncio
 async def test_vllm_wrapper_embed_long_prompt(
     model_opt_125m, pooling_params, tokenization_kwargs
 ):
@@ -507,8 +507,8 @@ async def test_vllm_wrapper_lora(model_llama_3_2_216M, model_llama_3_2_216M_lora
     wrapper.shutdown()
 
 
-@pytest.mark.asyncio
 @pytest.mark.parametrize("param_key", ["guided_decoding", "structured_outputs"])
+@pytest.mark.asyncio
 async def test_vllm_wrapper_json(model_llama_3_2_1B_instruct, param_key):
     """Test the JSON output with xgrammar backend.
 

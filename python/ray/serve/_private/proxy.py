@@ -55,6 +55,8 @@ from ray.serve._private.http_util import (
     configure_http_middlewares,
     convert_object_to_asgi_messages,
     get_http_response_status,
+    parse_disconnect_disabled_header,
+    parse_request_timeout_header,
     receive_http_body,
     send_http_response_on_exception,
     start_asgi_http_server,
@@ -63,6 +65,7 @@ from ray.serve._private.logging_utils import (
     access_log_msg,
     configure_component_logger,
     configure_component_memory_profiler,
+    format_client_address,
     get_component_logger_file_path,
 )
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
@@ -519,6 +522,7 @@ class GenericProxy(ABC):
                     route=request_context.route,
                     status=str(status.code),
                     latency_ms=latency_ms,
+                    client=format_client_address(proxy_request.client),
                 ),
                 extra=self._access_log_context,
             )
@@ -840,6 +844,7 @@ class gRPCProxy(GenericProxy):
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
+            "_client": proxy_request.client,
         }
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(**request_context_info)
@@ -1223,9 +1228,16 @@ class HTTPProxy(GenericProxy):
             "app_name": app_name,
             "_internal_request_id": internal_request_id,
             "is_http_request": True,
+            "_client": format_client_address(proxy_request.client),
         }
         for key, value in proxy_request.headers:
-            if key.decode() == SERVE_MULTIPLEXED_MODEL_ID:
+            # Normalize the header key: lowercase and replace hyphens with
+            # underscores so that both "serve_multiplexed_model_id" and
+            # "serve-multiplexed-model-id" (the form produced by proxies such
+            # as nginx / AWS API Gateway that convert underscores to hyphens)
+            # are recognised correctly.
+            normalized_key = key.decode().lower().replace("-", "_")
+            if normalized_key == SERVE_MULTIPLEXED_MODEL_ID:
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
@@ -1336,10 +1348,20 @@ class HTTPProxy(GenericProxy):
             self.proxy_asgi_receive(proxy_request.receive, receive_queue)
         )
 
+        # Per-request headers override the global HTTPOptions timeout and disconnect
+        # policy, enabling HAProxy (or other callers) to pass per-request hints.
+        request_headers = dict(proxy_request.headers)
+        request_timeout_s = parse_request_timeout_header(
+            request_headers, self.request_timeout_s
+        )
+        request_disconnect_disabled = parse_disconnect_disabled_header(request_headers)
+
         response_generator = ProxyResponseGenerator(
             handle.remote(handle_arg_bytes),
-            timeout_s=self.request_timeout_s,
-            disconnected_task=proxy_asgi_receive_task,
+            timeout_s=request_timeout_s,
+            disconnected_task=(
+                None if request_disconnect_disabled else proxy_asgi_receive_task
+            ),
             result_callback=result_callback,
         )
 
@@ -1397,7 +1419,7 @@ class HTTPProxy(GenericProxy):
                     yield asgi_message
                     response_started = True
         except BaseException as e:
-            status = get_http_response_status(e, self.request_timeout_s, request_id)
+            status = get_http_response_status(e, request_timeout_s, request_id)
             for asgi_message in send_http_response_on_exception(
                 status, response_started
             ):

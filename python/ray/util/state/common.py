@@ -520,6 +520,8 @@ class ActorState(StateSchema):
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the actor.
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
+    #: The fallback options for the label selector.
+    fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -549,6 +551,20 @@ class PlacementGroupState(StateSchema):
     is_detached: Optional[bool] = state_column(filterable=True, detail=True)
     #: The scheduling stats of the placement group.
     stats: Optional[dict] = state_column(filterable=False, detail=True)
+    #: The node label key used for label-domain scheduling
+    #: (e.g. "ray.io/gpu-domain"). Empty string if the placement group
+    #: does not use label-domain scheduling.
+    #:
+    #: NOTE: This field is experimental and may change in the future.
+    label_domain_key: Optional[str] = state_column(filterable=False, detail=True)
+    #: The selected label domain values for label-domain-aware scheduling.
+    #: Maps the domain label key to the chosen value
+    #: (e.g. {"ray.io/gpu-domain": "rack-1"}).
+    #:
+    #: NOTE: This field is experimental and may change in the future.
+    label_domain_assignments: Optional[dict] = state_column(
+        filterable=False, detail=True
+    )
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -817,6 +833,7 @@ class TaskState(StateSchema):
     call_site: Optional[str] = state_column(detail=True, filterable=False)
     #: The label selector for the task.
     label_selector: Optional[dict] = state_column(detail=True, filterable=False)
+    fallback_strategy: Optional[dict] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1638,6 +1655,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
                 "placement_group_id",
                 "call_site",
                 "label_selector",
+                "fallback_strategy",
             ],
         ),
         (task_attempt, ["task_id", "attempt_number", "job_id"]),

@@ -89,7 +89,11 @@ def __ray_recv__(
         if target_buffers:
             # Currently only torch tensors are supported as target buffers. We could make this
             # more generic in the future by adding a pluggable buffer validation function.
-            validate_tensor_buffers(target_buffers, tensor_transport_meta.tensor_meta, tensor_transport_meta.tensor_device)
+            validate_tensor_buffers(
+                target_buffers,
+                tensor_transport_meta.tensor_meta,
+                tensor_transport_meta.tensor_device,
+            )
         tensors = tensor_transport_manager.recv_multiple_tensors(
             obj_id,
             tensor_transport_meta,
@@ -236,10 +240,25 @@ class RDTStore:
     def add_object_primary(
         self, obj_id: str, tensors: List[Any], tensor_transport: str
     ) -> TensorTransportMetadata:
-        self.add_object(obj_id, tensors, is_primary=True)
+        with self._object_present_cv:
+            # A primary entry may already exist from a prior attempt of the
+            # same task (e.g., a task that succeeded and populated the RDT
+            # store but whose reply was lost, then got retried). Keep the
+            # existing primary — do not re-store — and return metadata
+            # derived from it so the metadata matches what `__ray_send__`
+            # will actually transmit.
+            queue = self._rdt_store.get(obj_id)
+            if queue:
+                tensors_to_describe = queue[0].data
+            else:
+                self.add_object(obj_id, tensors, is_primary=True)
+                tensors_to_describe = tensors
+
         tensor_transport_manager = get_tensor_transport_manager(tensor_transport)
         tensor_transport_meta = (
-            tensor_transport_manager.extract_tensor_transport_metadata(obj_id, tensors)
+            tensor_transport_manager.extract_tensor_transport_metadata(
+                obj_id, tensors_to_describe
+            )
         )
 
         if tensor_transport_meta.tensor_meta and not device_match_transport(

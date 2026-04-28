@@ -5,6 +5,7 @@ import pandas as pd
 import pytest
 
 import ray
+from ray.data._internal.execution.bundle_queue import EstimateSize
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
@@ -46,7 +47,7 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared_2_cpus):
         lambda x: x,
     )
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -71,7 +72,7 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared_2_cpus):
     map3 = FlatMap(map2, lambda x: x)
     map4 = Filter(map3, fn=lambda x: x)
     logical_plan = LogicalPlan(map4, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -119,7 +120,7 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
         logical_plan = LogicalPlan(op, ctx)
 
-        physical_plan = planner.plan(logical_plan)
+        physical_plan, _ = planner.plan(logical_plan)
         optimized_physical_plan = PhysicalOptimizer().optimize(physical_plan)
         physical_op = optimized_physical_plan.dag
 
@@ -155,6 +156,11 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         ({"resources": {"custom1": 1}}, {"resources": {"custom2": 1}}),
         # Different scheduling strategies.
         ({"scheduling_strategy": "SPREAD"}, {"scheduling_strategy": "PACK"}),
+        # Label selectors targeting different ray.io/node-id.
+        (
+            {"label_selector": {ray._raylet.RAY_NODE_ID_KEY: "node_A"}},
+            {"label_selector": {ray._raylet.RAY_NODE_ID_KEY: "node_B"}},
+        ),
     ]
     for up_remote_args, down_remote_args in incompatible_remote_args_pairs:
         planner = create_planner()
@@ -164,7 +170,7 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
         logical_plan = LogicalPlan(op, ctx)
-        physical_plan = planner.plan(logical_plan)
+        physical_plan, _ = planner.plan(logical_plan)
         physical_plan = PhysicalOptimizer().optimize(physical_plan)
         physical_op = physical_plan.dag
 
@@ -196,7 +202,7 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     op = MapBatches(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -217,7 +223,7 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
     read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -239,7 +245,7 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     op = MapBatches(op, lambda x: x)
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
@@ -266,7 +272,7 @@ def test_read_with_map_batches_fused_successfully(
 
     mapped_ds = ds.map_batches(lambda x: x).map_batches(lambda x: x)
 
-    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_plan, _ = get_execution_plan(mapped_ds._logical_plan)
 
     physical_op = physical_plan.dag
     assert isinstance(physical_op, MapOperator)
@@ -281,7 +287,9 @@ def test_read_with_map_batches_fused_successfully(
     )
 
     # # Target min-rows requirement is not set
-    assert physical_op._block_ref_bundler._min_rows_per_bundle is None
+    strategy = physical_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert strategy._min_rows_per_bundle is None
 
 
 @pytest.mark.parametrize(
@@ -343,7 +351,7 @@ def test_map_batches_batch_size_fusion(
         lambda x: x, batch_size=5
     )
 
-    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_plan, _ = get_execution_plan(mapped_ds._logical_plan)
 
     physical_op = physical_plan.dag
 
@@ -364,7 +372,9 @@ def test_map_batches_batch_size_fusion(
         )
 
     # Target min-rows requirement is set to max of upstream and downstream
-    assert physical_op._block_ref_bundler._min_rows_per_bundle == 5
+    strategy = physical_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert strategy._min_rows_per_bundle == 5
     assert len(physical_op.input_dependencies) == 1
 
 
@@ -389,7 +399,7 @@ def test_map_batches_with_batch_size_specified_fusion(
         batch_size=downstream_batch_size,
     )
 
-    physical_plan = get_execution_plan(mapped_ds._logical_plan)
+    physical_plan, _ = get_execution_plan(mapped_ds._logical_plan)
 
     root_op = physical_plan.dag
     assert isinstance(root_op, MapOperator)
@@ -414,9 +424,9 @@ def test_map_batches_with_batch_size_specified_fusion(
     assert expected_plan_str == actual_plan_str
 
     # Target min-rows requirement is set to max of upstream and downstream
-    assert (
-        expected_min_rows_per_bundle == root_op._block_ref_bundler._min_rows_per_bundle
-    )
+    strategy = root_op._block_ref_bundler._strategy
+    assert isinstance(strategy, EstimateSize)
+    assert expected_min_rows_per_bundle == strategy._min_rows_per_bundle
 
 
 def test_read_map_batches_operator_fusion_with_randomize_blocks_operator(
@@ -712,7 +722,7 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(
     read_op = get_parquet_read_logical_op()
     op = MapBatches(read_op, lambda x: x)
     logical_plan = LogicalPlan(op, ctx)
-    physical_plan = planner.plan(logical_plan)
+    physical_plan, _ = planner.plan(logical_plan)
 
     # Before optimization, there should be a map op and and read op.
     # And they should have the following transform_fns.
