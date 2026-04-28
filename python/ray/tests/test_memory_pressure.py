@@ -56,24 +56,6 @@ def ray_with_memory_monitor(shutdown_only):
         yield addr
 
 
-@pytest.fixture
-def ray_with_memory_monitor_no_oom_retry(shutdown_only):
-    with ray.init(
-        num_cpus=1,
-        object_store_memory=100 * 1024 * 1024,
-        _system_config={
-            "memory_usage_threshold": memory_usage_threshold,
-            "memory_monitor_refresh_ms": memory_monitor_refresh_ms,
-            "metrics_report_interval_ms": 100,
-            "task_failure_entry_ttl_ms": 2 * 60 * 1000,
-            "task_oom_retries": 0,
-            "min_memory_free_bytes": -1,
-            "task_oom_retry_delay_base_ms": 0,
-        },
-    ) as addr:
-        yield addr
-
-
 @ray.remote
 def allocate_memory(
     allocate_bytes: int,
