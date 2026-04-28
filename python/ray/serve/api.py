@@ -559,9 +559,12 @@ def deployment(
             Each actor is shared across all replicas of this deployment. Use
             `serve.get_deployment_actor(actor_name)` from within a replica to get
             the actor handle. See `DeploymentActorConfig` for options.
-        rolling_update_percentage: The percentage of replicas to update at a time
-            during a rolling update. Must be between 0.0 (exclusive) and 1.0
-            (inclusive). Defaults to 0.2 (20%).
+        rolling_update_percentage: The fraction of replicas to update at a
+            time during a rolling update. Must be in ``(0.0, 1.0]``.
+            Defaults to
+            :data:`~ray.serve._private.constants.DEFAULT_ROLLING_UPDATE_PERCENTAGE`
+            (0.2, i.e. 20%).
+
     Returns:
         `Deployment`
     """

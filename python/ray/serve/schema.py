@@ -30,6 +30,7 @@ from ray.serve._private.constants import (
     DEFAULT_CONSUMER_CONCURRENCY,
     DEFAULT_GRPC_PORT,
     DEFAULT_MAX_ONGOING_REQUESTS,
+    DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_LOG_ENCODING,
     SERVE_DEFAULT_APP_NAME,
@@ -466,9 +467,10 @@ class DeploymentSchema(BaseModel):
     rolling_update_percentage: float = Field(
         default=DEFAULT.VALUE,
         description=(
-            "The percentage of replicas to update at a time during a "
-            "rolling update. Must be between 0.0 and 1.0 (exclusive of 0). "
-            "Defaults to 0.2 (20%)."
+            "The fraction of replicas to update at a time during a "
+            "rolling update. Must be in (0.0, 1.0]. "
+            f"Defaults to {DEFAULT_ROLLING_UPDATE_PERCENTAGE} "
+            f"({int(DEFAULT_ROLLING_UPDATE_PERCENTAGE * 100)}%)."
         ),
         gt=0.0,
         le=1.0,
