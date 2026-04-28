@@ -547,7 +547,7 @@ def test_ingress_name_got_modified():
     assert built_app.deployments[-1].name == "D_2"
 
 
-def test_build_app_with_ingress_request_router_peer():
+def test_build_app_keeps_ingress_request_router_separate_from_app_deployments():
     @serve.deployment
     class Ingress:
         pass
@@ -571,7 +571,7 @@ def test_build_app_with_ingress_request_router_peer():
     assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
 
 
-def test_build_app_rejects_multi_deployment_ingress_request_router():
+def test_build_app_requires_ingress_request_router_to_be_single_deployment():
     @serve.deployment
     class Ingress:
         pass
@@ -596,7 +596,7 @@ def test_build_app_rejects_multi_deployment_ingress_request_router():
         )
 
 
-def test_imperative_ingress_check_ignores_ingress_request_router_peer():
+def test_ingress_validation_excludes_ingress_request_router_fastapi_app():
     ingress_api = FastAPI()
     router_api = FastAPI()
 
