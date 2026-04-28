@@ -152,6 +152,7 @@ def train_func():
         "MEGASCALE_COORDINATOR_ADDRESS": os.environ.get(
             "MEGASCALE_COORDINATOR_ADDRESS"
         ),
+        "MEGASCALE_PORT": os.environ.get("MEGASCALE_PORT"),
     }
 
     train.report(
@@ -331,6 +332,10 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
     for r in reports:
         assert r["MEGASCALE_COORDINATOR_ADDRESS"] == expected_coordinator_ip
         assert r["MEGASCALE_NUM_SLICES"] == "2"
+        # When the user does not set MEGASCALE_PORT in their pod spec, Ray
+        # Train falls back to the default port from
+        # ``get_tpu_coordinator_env_vars``.
+        assert r["MEGASCALE_PORT"] == "8081"
 
     # Validate MEGASCALE_SLICE_ID set based on indexed TPU Pod name.
     slice_a_reports = [r for r in reports if r["slice_name"] == "slice-A"]
@@ -342,8 +347,8 @@ def test_tpu_multi_slice_multi_host(ray_tpu_multi_host, tmp_path):
 
 def test_tpu_multi_slice_overrides_stale_megascale_env(ray_tpu_multi_host, tmp_path):
     """
-    Tests that JaxTrainer overrides stale MEGASCALE_* env vars that may have
-    been baked into worker pods by the TPU node provider.
+    Tests JaxTrainer's MEGASCALE_* env var handling when the underlying TPU
+    node provider has already baked values into the pod environment.
 
     This simulates the multi-slice fault tolerance scenario where one slice was
     preempted and the replacement pods were provisioned by the TPU node
@@ -354,6 +359,8 @@ def test_tpu_multi_slice_overrides_stale_megascale_env(ray_tpu_multi_host, tmp_p
     """
     actor_name = "test_tpu_multi_slice_overrides_stale_megascale_env"
     verify_actor = VerificationActor.options(name=actor_name).remote()
+
+    user_port_override = "9999"
 
     trainer = JaxTrainer(
         train_loop_per_worker=train_func,
@@ -369,12 +376,16 @@ def test_tpu_multi_slice_overrides_stale_megascale_env(ray_tpu_multi_host, tmp_p
             worker_runtime_env={
                 "env_vars": {
                     "JAX_PLATFORMS": "cpu",
-                    # Inject stale megascale values, as the TPU node provider
-                    # would on a freshly-provisioned replacement slice.
+                    # Stale values, as the TPU node provider would inject on
+                    # a freshly-provisioned replacement slice. These should
+                    # all be overridden by Ray Train.
                     "MEGASCALE_COORDINATOR_ADDRESS": "stale-coordinator:9999",
-                    "MEGASCALE_PORT": "9999",
                     "MEGASCALE_NUM_SLICES": "3",
                     "MEGASCALE_SLICE_ID": "2",
+                    # User-customized port (e.g. set in pod spec to avoid a
+                    # conflict with another process). This should be
+                    # preserved by Ray Train, NOT overridden.
+                    "MEGASCALE_PORT": user_port_override,
                 }
             },
         ),
@@ -402,6 +413,12 @@ def test_tpu_multi_slice_overrides_stale_megascale_env(ray_tpu_multi_host, tmp_p
             "Expected MEGASCALE_NUM_SLICES to be overridden to the actual "
             f"slice count (2), but worker {r['worker_id']} still has stale "
             f"value {r['MEGASCALE_NUM_SLICES']}"
+        )
+        assert r["MEGASCALE_PORT"] == user_port_override, (
+            "Expected MEGASCALE_PORT to preserve the user-provided pod-spec "
+            f"value '{user_port_override}', but worker {r['worker_id']} has "
+            f"value '{r['MEGASCALE_PORT']}'. Ray Train should not override "
+            "user-customized ports."
         )
 
     # Validate MEGASCALE_SLICE_ID was overridden per slice (0 / 1) rather than

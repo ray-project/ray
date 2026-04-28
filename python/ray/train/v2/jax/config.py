@@ -29,7 +29,6 @@ logger = logging.getLogger(__name__)
 _JAX_MULTISLICE_OVERRIDE_KEYS = frozenset(
     {
         "MEGASCALE_COORDINATOR_ADDRESS",
-        "MEGASCALE_PORT",
         "MEGASCALE_NUM_SLICES",
         "MEGASCALE_SLICE_ID",
     }
