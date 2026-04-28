@@ -10,6 +10,7 @@ import time
 import urllib
 import urllib.parse
 import warnings
+from collections import deque
 from datetime import datetime
 from typing import List, Optional, Set, Tuple
 
@@ -68,6 +69,67 @@ import psutil
 logger = logging.getLogger(__name__)
 
 
+def _tail_file(path: str, max_lines: int = 200) -> str:
+    with open(path, encoding="utf-8", errors="replace") as f:
+        return "".join(deque(f, maxlen=max_lines))
+
+
+def _log_unexpected_subprocess_exit_details(
+    unexpected_deceased, logs_dir: str, process_exit_logger
+) -> None:
+    """Log unexpected subprocess exits to both structured and console outputs."""
+    lines_for_file = []
+    exit_codes_by_process_type = {}
+    with cli_logger.indented():
+        for process_type, process in unexpected_deceased:
+            cli_logger.error(
+                "{}",
+                cf.bold(str(process_type)),
+                _tags={"exit code": str(process.returncode)},
+            )
+            rc = getattr(process, "returncode", None)
+            rc_str = format_returncode(rc)
+            exit_codes_by_process_type.setdefault(str(process_type), set()).add(rc_str)
+            lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
+    try:
+        file_msg = "Some Ray subprocesses exited unexpectedly:\n" + "\n".join(
+            lines_for_file
+        )
+        process_exit_logger.error("%s", file_msg)
+    except Exception as e:
+        cli_logger.warning("Failed to write process exit log: {}", e)
+
+    process_types = sorted({str(t) for t, _p in unexpected_deceased})
+    for process_type in process_types:
+        exit_codes = sorted(exit_codes_by_process_type[process_type])
+        exit_codes_display = ", ".join(exit_codes)
+        for fname in (f"{process_type}.err", f"{process_type}.out"):
+            began_tail_output = False
+            try:
+                fpath = os.path.join(logs_dir, fname)
+                if not os.path.exists(fpath) or os.path.getsize(fpath) == 0:
+                    continue
+                cli_logger.newline()
+                cli_logger.error(
+                    "----- BEGIN {} tail (exit code(s)={}) -----",
+                    fname,
+                    exit_codes_display,
+                )
+                began_tail_output = True
+                cli_logger.newline()
+                cli_logger.error("{}", _tail_file(fpath))
+            except Exception as e:
+                cli_logger.error("Failed to tail process log {}: {}", fname, e)
+            finally:
+                if began_tail_output:
+                    cli_logger.newline()
+                    cli_logger.error(
+                        "----- END {} tail (exit code(s)={}) -----",
+                        fname,
+                        exit_codes_display,
+                    )
+
+
 def _check_ray_version(gcs_client):
     import ray._common.usage.usage_lib as ray_usage_lib
 
@@ -80,7 +142,53 @@ def _check_ray_version(gcs_client):
         )
 
 
-@click.group()
+class RayCLI(click.Group):
+    """Custom click.Group that groups observability commands (State CLI commands) in help output.
+
+    This overrides format_commands to split subcommands into "Observability"
+    and "Commands" sections for better readability of ray --help output.
+    """
+
+    def format_commands(self, ctx, formatter):
+        commands = []
+        for subcommand in self.list_commands(ctx):
+            cmd = self.get_command(ctx, subcommand)
+            if cmd is None:
+                continue
+            if cmd.hidden:
+                continue
+            commands.append((subcommand, cmd))
+
+        if len(commands):
+            limit = formatter.width - 6 - max(len(cmd[0]) for cmd in commands)
+
+            observability_commands = []
+            other_commands = []
+
+            observability_names = {
+                "summary",
+                "list",
+                "get",
+                "logs",
+            }
+
+            for subcommand, cmd in commands:
+                help = cmd.get_short_help_str(limit)
+                if subcommand in observability_names:
+                    observability_commands.append((subcommand, help))
+                else:
+                    other_commands.append((subcommand, help))
+
+            if other_commands:
+                with formatter.section("Commands"):
+                    formatter.write_dl(other_commands)
+
+            if observability_commands:
+                with formatter.section("Observability"):
+                    formatter.write_dl(observability_commands)
+
+
+@click.group(cls=RayCLI)
 @click.option(
     "--logging-level",
     required=False,
@@ -1199,29 +1307,15 @@ def start(
             if len(unexpected_deceased) > 0:
                 cli_logger.newline()
                 cli_logger.error("Some Ray subprocesses exited unexpectedly:")
-
-                lines_for_file = []
-                with cli_logger.indented():
-                    for process_type, process in unexpected_deceased:
-                        cli_logger.error(
-                            "{}",
-                            cf.bold(str(process_type)),
-                            _tags={"exit code": str(process.returncode)},
-                        )
-                        rc = getattr(process, "returncode", None)
-                        rc_str = format_returncode(rc)
-                        lines_for_file.append(f"  {process_type} [exit code={rc_str}]")
-                try:
-                    file_msg = (
-                        "Some Ray subprocesses exited unexpectedly:\n"
-                        + "\n".join(lines_for_file)
-                    )
-                    process_exit_logger.error("%s", file_msg)
-                except Exception as e:
-                    cli_logger.warning("Failed to write process exit log: {}", e)
+                _log_unexpected_subprocess_exit_details(
+                    unexpected_deceased,
+                    logs_dir,
+                    process_exit_logger,
+                )
 
                 cli_logger.newline()
                 cli_logger.error("Remaining processes will be killed.")
+                cli_logger.flush()
 
                 # explicitly kill all processes since atexit handlers
                 # will not exit with errors.
@@ -2546,10 +2640,14 @@ def drain_node(
     reason_message: str,
     deadline_remaining_seconds: int,
 ):
-    """
-    This is NOT a public API.
+    """Manually drain a worker node.
 
-    Manually drain a worker node.
+    This is a developer-facing command used to request that GCS gracefully
+    drain a node (e.g., before manual termination). The same underlying API
+    is invoked by autoscaler v2 for idle and preemption-based termination.
+
+    The command is hidden from the top-level `ray --help` output and its
+    interface is not covered by Ray's public API stability guarantees.
     """
     # This should be before get_runtime_context() so get_runtime_context()
     # doesn't start a new worker here.

@@ -28,10 +28,16 @@ Single-signal feedback alignment with **KTO** and **LoRA** for lightweight, scal
 ### [CPT with DeepSpeed](./notebooks/cpt_deepspeed.ipynb)
 Continued pre-training on raw text with **full fine-tuning** and **DeepSpeed ZeRO** for efficient, reproducible multi-GPU training.
 
+---
+
+### [Run as an Anyscale Job](./notebooks/run_as_job.ipynb)
+Submit LLaMA-Factory fine-tuning as a production **Anyscale job** with a custom container image and job config.
+
 ## Repository layout
 
-- **`notebooks/`**: End-to-end executable templates for SFT, DPO, and KTO.
+- **`notebooks/`**: End-to-end executable templates for SFT, DPO, KTO, CPT, and Anyscale jobs.
 - **`train-configs/`**: Configuration files for models, adapters, and hyperparameters.
+- **`job-configs/`**: Anyscale job configuration files for production runs.
 - **`dataset-configs/`**: Dataset metadata and registries that the templates reference.
 - **`deepspeed-configs/`**: DeepSpeed ZeRO presets for scaling and memory efficiency.
 

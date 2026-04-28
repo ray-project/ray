@@ -14,12 +14,16 @@ from .base_autoscaling_coordinator import (
     ResourceDict,
     ResourceRequestPriority,
 )
-from ray.autoscaler._private.constants import env_integer
+from ray._common.utils import env_bool
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
 
 HEAD_NODE_RESOURCE_LABEL = "node:__internal_head__"
+
+RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK = env_bool(
+    "RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK", True
+)
 
 
 @dataclass
@@ -50,188 +54,102 @@ class OngoingRequest:
         return self.first_request_time < other.first_request_time
 
 
-def handle_timeout_errors(
-    failure_counter_attr: str,
-    operation_name: str,
-    requester_id_param: str = "requester_id",
-    error_msg_suffix: Optional[str] = None,
-    on_error_return: Optional[Callable] = None,
-):
-    """Decorator to handle GetTimeoutError with consecutive failure tracking.
+class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
+    """Non-blocking client-side proxy for the _AutoscalingCoordinatorActor.
 
-    Args:
-        failure_counter_attr: Name of the instance attribute that tracks
-            consecutive failures.
-        operation_name: Name of the operation for error messages (e.g.,
-            "send resource request", "cancel resource request").
-        requester_id_param: Name of the parameter that contains the
-            requester_id.
-        error_msg_suffix: Optional suffix to append to the error message.
-            If None, uses a default message.
-        on_error_return: Optional callable that takes (self, requester_id)
-            and returns a value to return on error. If None, no value is
-            returned (method should return None).
+    Not thread-safe; all methods must be called from a single thread.
 
-    Returns:
-        A decorator that wraps methods to handle timeout errors.
+    Create one instance per requester. Multiple instances sharing the same
+    ``requester_id`` will have diverging caches and break the FIFO ordering
+    guarantee that ``request_resources`` and ``get_allocated_resources`` rely on.
     """
 
-    def decorator(func):
-        @functools.wraps(func)
-        def wrapper(self, *args, **kwargs):
-            # Extract requester_id from args or kwargs
-            requester_id = kwargs.get(requester_id_param)
-            if requester_id is None:
-                # Try to get from args by checking function signature
-                import inspect
-
-                sig = inspect.signature(func)
-                param_names = list(sig.parameters.keys())
-                if requester_id_param in param_names:
-                    param_index = param_names.index(requester_id_param) - 1
-                    if param_index < len(args):
-                        requester_id = args[param_index]
-
-            failure_counter = getattr(self, failure_counter_attr)
-
-            try:
-                result = func(self, *args, **kwargs)
-                # Reset counter on success
-                setattr(self, failure_counter_attr, 0)
-                return result
-            except ray.exceptions.GetTimeoutError as exc:
-                failure_counter += 1
-                setattr(self, failure_counter_attr, failure_counter)
-
-                consecutive_msg = (
-                    f" (consecutive failures: {failure_counter})"
-                    if failure_counter > 1
-                    else ""
-                )
-
-                # Build error message
-                base_msg = (
-                    f"Failed to {operation_name} for {requester_id}.{consecutive_msg}"
-                )
-                if error_msg_suffix is not None:
-                    msg = f"{base_msg} {error_msg_suffix}"
-                else:
-                    msg = (
-                        f"{base_msg}"
-                        " If this only happens transiently during network"
-                        " partition or CPU being overloaded, it's safe to"
-                        " ignore this error."
-                        " If this error persists, file a GitHub issue."
-                    )
-
-                # Check max failures and raise if exceeded
-                if failure_counter >= self.MAX_CONSECUTIVE_FAILURES:
-                    raise RuntimeError(
-                        f"Failed to {operation_name} for {requester_id} "
-                        f"after {failure_counter} consecutive failures."
-                    ) from exc
-
-                logger.warning(msg)
-                logger.debug(
-                    f"Traceback for {operation_name} failure for {requester_id}:",
-                    exc_info=True,
-                )
-
-                # Return value on error if callback provided
-                if on_error_return is not None:
-                    return on_error_return(self, requester_id)
-
-        return wrapper
-
-    return decorator
-
-
-class DefaultAutoscalingCoordinator(AutoscalingCoordinator):
-    AUTOSCALING_REQUEST_GET_TIMEOUT_S = env_integer(
-        "RAY_DATA_AUTOSCALING_COORDINATOR_REQUEST_GET_TIMEOUT_S", 5
-    )
-    MAX_CONSECUTIVE_FAILURES = env_integer(
-        "RAY_DATA_AUTOSCALING_COORDINATOR_MAX_CONSECUTIVE_FAILURES", 10
-    )
-
-    def __init__(self):
-        self._cached_allocated_resources: Dict[str, List[ResourceDict]] = {}
-        self._consecutive_failures_request_resources: int = 0
-        self._consecutive_failures_cancel_request: int = 0
-        self._consecutive_failures_get_allocated_resources: int = 0
+    def __init__(
+        self,
+        requester_id: str,
+        autoscaling_coordinator_actor=None,  # For testing only: injects an actor instead of using the shared named singleton.
+    ):
+        self._requester_id = requester_id
+        self._cached_allocated_resources: List[ResourceDict] = []
+        # In-flight get_allocated_resources ref, or None if no request is pending.
+        self._pending_allocated_resources: Optional[ray.ObjectRef] = None
+        if autoscaling_coordinator_actor is not None:
+            # Bypass the cached_property by injecting the actor directly.
+            # Used in tests to avoid the shared named actor.
+            self.__dict__["_autoscaling_coordinator"] = autoscaling_coordinator_actor
 
     @functools.cached_property
     def _autoscaling_coordinator(self):
         # Create the coordinator actor lazily rather than eagerly in the constructor.
         return get_or_create_autoscaling_coordinator()
 
-    @handle_timeout_errors(
-        failure_counter_attr="_consecutive_failures_request_resources",
-        operation_name="send resource request",
-        error_msg_suffix=(
-            "If this only happens transiently during network partition"
-            " or CPU being overloaded, it's safe to ignore this error."
-            " If this error persists, file a GitHub issue."
-        ),
-    )
     def request_resources(
         self,
-        requester_id: str,
         resources: List[ResourceDict],
         expire_after_s: float,
         request_remaining: bool = False,
         priority: ResourceRequestPriority = ResourceRequestPriority.MEDIUM,
     ) -> None:
-        ray.get(
-            self._autoscaling_coordinator.request_resources.remote(
-                requester_id=requester_id,
-                resources=resources,
-                expire_after_s=expire_after_s,
-                request_remaining=request_remaining,
-                priority=priority,
-            ),
-            timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
+        """Fire-and-forget: submit a resource request to the coordinator actor.
+
+        Actor-side errors are not surfaced to the caller.
+        """
+        self._autoscaling_coordinator.request_resources.remote(
+            requester_id=self._requester_id,
+            resources=resources,
+            expire_after_s=expire_after_s,
+            request_remaining=request_remaining,
+            priority=priority,
         )
 
-    @handle_timeout_errors(
-        failure_counter_attr="_consecutive_failures_cancel_request",
-        operation_name="cancel resource request",
-        error_msg_suffix=(
-            "If this only happens transiently during network partition"
-            " or CPU being overloaded, it's safe to ignore this error."
-            " If this error persists, file a GitHub issue."
-        ),
-    )
-    def cancel_request(self, requester_id: str):
-        ray.get(
-            self._autoscaling_coordinator.cancel_request.remote(
-                requester_id,
-            ),
-            timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
-        )
+    def cancel_request(self) -> None:
+        """Fire-and-forget: cancel a resource request on the coordinator actor.
 
-    @handle_timeout_errors(
-        failure_counter_attr="_consecutive_failures_get_allocated_resources",
-        operation_name="get allocated resources",
-        error_msg_suffix=(
-            "Returning cached value."
-            " If this only happens transiently during network partition"
-            " or CPU being overloaded, it's safe to ignore this error."
-            " If this error persists, file a GitHub issue."
-        ),
-        on_error_return=lambda self, requester_id: (
-            self._cached_allocated_resources.get(requester_id, [])
-        ),
-    )
-    def get_allocated_resources(self, requester_id: str) -> List[ResourceDict]:
-        result = ray.get(
-            self._autoscaling_coordinator.get_allocated_resources.remote(
-                requester_id,
-            ),
-            timeout=self.AUTOSCALING_REQUEST_GET_TIMEOUT_S,
-        )
-        self._cached_allocated_resources[requester_id] = result
-        return result
+        Also clears client-side state (pending ref and cached allocation) so
+        a subsequent ``get_allocated_resources`` call returns a fresh result
+        rather than stale data from a prior pipeline run.
+        """
+        self._pending_allocated_resources = None
+        self._cached_allocated_resources = []
+        self._autoscaling_coordinator.cancel_request.remote(self._requester_id)
+
+    def get_allocated_resources(self) -> List[ResourceDict]:
+        """Return allocated resources without blocking.
+
+        Submits an async RPC and immediately returns the last cached result.
+        The cache is updated the next time the pending RPC completes.
+
+        Because the actor processes calls in FIFO order, the result always
+        reflects state after all previously submitted ``request_resources`` calls
+        to the same actor.
+
+        On actor errors, returns the cached value and logs a warning; never raises.
+        """
+        ref = self._pending_allocated_resources
+        if ref is not None:
+            ready, _ = ray.wait([ref], timeout=0)
+            if ready:
+                self._pending_allocated_resources = None
+                try:
+                    self._cached_allocated_resources = ray.get(ref, timeout=0)
+                except ray.exceptions.RayError:
+                    logger.warning(
+                        f"Failed to get allocated resources for {self._requester_id};"
+                        " falling back to the cached value."
+                        " If this persists, file a GitHub issue.",
+                        exc_info=RAY_DATA_AUTOSCALING_COORDINATOR_LOG_TRACEBACK,
+                    )
+
+        # Submit a new request if none is currently in-flight
+        # (first call, or the previous request completed or errored).
+        if self._pending_allocated_resources is None:
+            self._pending_allocated_resources = (
+                self._autoscaling_coordinator.get_allocated_resources.remote(
+                    self._requester_id,
+                )
+            )
+
+        return self._cached_allocated_resources
 
 
 class _AutoscalingCoordinatorActor:
@@ -247,9 +165,9 @@ class _AutoscalingCoordinatorActor:
     def __init__(
         self,
         get_current_time: Callable[[], float] = time.time,
-        send_resources_request: Callable[
-            [List[ResourceDict]], None
-        ] = lambda bundles: ray.autoscaler.sdk.request_resources(bundles=bundles),
+        send_resources_request: Callable[[List[ResourceDict]], None] = lambda bundles: (
+            ray.autoscaler.sdk.request_resources(bundles=bundles)
+        ),
         get_cluster_nodes: Callable[[], List[Dict]] = ray.nodes,
     ):
         self._get_current_time = get_current_time

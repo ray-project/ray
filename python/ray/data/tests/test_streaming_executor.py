@@ -12,7 +12,7 @@ import numpy as np
 import pytest
 
 import ray
-from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray._private.test_utils import run_string_as_driver_nonblocking, wait_for_condition
 from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.parquet_datasource import ParquetDatasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -784,6 +784,74 @@ class OpBufferQueueTest(unittest.TestCase):
         assert q.memory_usage == 0
 
 
+class GetOutputBlockingTest(unittest.TestCase):
+    def test_num_waiting_consumers_tracking(self):
+        """num_waiting_consumers is incremented/decremented by get_output_blocking."""
+        o1 = InputDataBuffer(ray.data.DataContext.get_current(), [])
+        o2 = LimitOperator(1, o1, ray.data.DataContext.get_current())
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        state = topo[o2]
+
+        assert state.num_waiting_consumers == 0
+
+        # Consumer blocks — counter should be 1.
+        t = threading.Thread(target=state.get_output_blocking, args=(None,))
+        t.start()
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        # Unblock by adding a bundle — counter should go back to 0.
+        bundle = make_ref_bundles([[0]])[0]
+        state.output_queue.append(bundle)
+        t.join()
+        assert state.num_waiting_consumers == 0
+
+        # Counter is decremented after StopIteration.
+        def get_until_stop():
+            with pytest.raises(StopIteration):
+                state.get_output_blocking(None)
+
+        t2 = threading.Thread(target=get_until_stop)
+        t2.start()
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        state.mark_finished()
+        t2.join()
+        assert state.num_waiting_consumers == 0
+
+    def test_num_waiting_consumers_concurrent(self):
+        """num_waiting_consumers reflects multiple blocked consumers.
+        For example, this happens for multiple streaming_split iterators."""
+        o1 = InputDataBuffer(ray.data.DataContext.get_current(), [])
+        o2 = LimitOperator(1, o1, ray.data.DataContext.get_current())
+        topo = build_streaming_topology(o2, ExecutionOptions())
+        state = topo[o2]
+
+        def blocking_consumer():
+            try:
+                state.get_output_blocking(None)
+            except StopIteration:
+                pass
+
+        t1 = threading.Thread(target=blocking_consumer)
+        t2 = threading.Thread(target=blocking_consumer)
+        t1.start()
+        t2.start()
+
+        wait_for_condition(lambda: state.num_waiting_consumers == 2)
+
+        # Unblock one consumer.
+        state.output_queue.append(make_ref_bundles([[0]])[0])
+        wait_for_condition(lambda: state.num_waiting_consumers == 1)
+
+        # Unblock the other consumer.
+        state.mark_finished()
+        wait_for_condition(lambda: state.num_waiting_consumers == 0)
+
+        t1.join()
+        t2.join()
+        assert state.num_waiting_consumers == 0
+
+
 def test_exception_concise_stacktrace():
     driver_script = """
 import ray
@@ -808,7 +876,7 @@ def test_streaming_exec_schedule_s(ray_start_regular_shared):
     for _ in ds.iter_batches():
         continue
 
-    ds_stats = ds._plan.stats()
+    ds_stats = ds._raw_stats()
     assert ds_stats.streaming_exec_schedule_s.get() > 0
 
 

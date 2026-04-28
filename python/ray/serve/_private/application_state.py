@@ -1504,8 +1504,6 @@ class ApplicationStateManager:
         for app_state in self._application_states.values():
             app_state.delete()
 
-        self._kv_store.delete(CHECKPOINT_KEY)
-
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all applications have shut down.
 
@@ -1515,6 +1513,10 @@ class ApplicationStateManager:
         return self._shutting_down and all(
             app_state.is_deleted() for app_state in self._application_states.values()
         )
+
+    def delete_checkpoint(self) -> None:
+        """Delete the application state checkpoint from KV store."""
+        self._kv_store.delete(CHECKPOINT_KEY)
 
     def save_checkpoint(self) -> None:
         """Write a checkpoint of all application states."""

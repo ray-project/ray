@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -27,7 +28,9 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
+    RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
     RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_DOWNINTER,
@@ -57,6 +60,7 @@ from ray.serve._private.haproxy_templates import (
 from ray.serve._private.logging_utils import get_component_logger_file_path
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.proxy import ProxyActorInterface
+from ray.serve._private.utils import get_head_node_id
 from ray.serve.config import HTTPOptions, gRPCOptions
 from ray.serve.schema import (
     LoggingConfig,
@@ -65,6 +69,57 @@ from ray.serve.schema import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def get_haproxy_binary() -> str:
+    """Return the path to the HAProxy binary.
+
+    When RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY is disabled (default), returns
+    RAY_SERVE_HAPROXY_BINARY_PATH (defaults to "haproxy", i.e. system PATH).
+
+    When enabled, resolution order:
+      1. ``RAY_SERVE_HAPROXY_BINARY_PATH`` if explicitly set to an absolute path.
+      2. The binary bundled in the ``ray-haproxy`` package.
+      3. ``haproxy`` on the system PATH (fallback).
+
+    Raises ``FileNotFoundError`` if no usable binary is found.
+    """
+    if not RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY:
+        return RAY_SERVE_HAPROXY_BINARY_PATH
+
+    # 1. If RAY_SERVE_HAPROXY_BINARY_PATH was explicitly set (not the default),
+    # use it as an override.
+    if RAY_SERVE_HAPROXY_BINARY_PATH != "haproxy":
+        if os.path.isfile(RAY_SERVE_HAPROXY_BINARY_PATH) and os.access(
+            RAY_SERVE_HAPROXY_BINARY_PATH, os.X_OK
+        ):
+            return RAY_SERVE_HAPROXY_BINARY_PATH
+        raise FileNotFoundError(
+            f"RAY_SERVE_HAPROXY_BINARY_PATH={RAY_SERVE_HAPROXY_BINARY_PATH!r} "
+            "does not point to an executable file."
+        )
+
+    # 2. Bundled binary from the ray-haproxy package.
+    try:
+        from ray_haproxy import get_haproxy_binary as _pip_binary
+
+        return _pip_binary()
+    except ImportError:
+        pass
+    except OSError:
+        pass
+
+    # 3. System PATH fallback.
+    system_haproxy = shutil.which("haproxy")
+    if system_haproxy:
+        return system_haproxy
+
+    raise FileNotFoundError(
+        "Could not find an HAProxy binary. "
+        "Install 'ray[haproxy]' for the bundled binary, "
+        "set RAY_SERVE_HAPROXY_BINARY_PATH, "
+        "or ensure 'haproxy' is on PATH."
+    )
 
 
 @dataclass
@@ -388,6 +443,8 @@ class HAProxyConfig:
 
     balance_algorithm: str = RAY_SERVE_HAPROXY_BALANCE_ALGORITHM
 
+    is_head: bool = False
+
     @property
     def frontend_host(self) -> str:
         if self.http_options.host is None or self.http_options.host == "0.0.0.0":
@@ -407,12 +464,12 @@ class HAProxyConfig:
         if not self.has_received_routes:
             router_ready_for_traffic = False
             router_message = NO_ROUTES_MESSAGE
-        elif not self.has_received_servers:
-            router_ready_for_traffic = False
-            router_message = NO_REPLICAS_MESSAGE
-        else:
+        elif self.is_head or self.has_received_servers:
             router_ready_for_traffic = True
             router_message = ""
+        else:
+            router_ready_for_traffic = False
+            router_message = NO_REPLICAS_MESSAGE
 
         if not self.pass_health_checks:
             healthy = False
@@ -542,7 +599,8 @@ class HAProxyApi(ProxyApi):
         self, *extra_args: str, timeout_s: int = 5
     ) -> asyncio.subprocess.Process:
         # Build command args
-        args = ["haproxy", "-db", "-f", self.config_file_path]
+        haproxy_bin = get_haproxy_binary()
+        args = [haproxy_bin, "-db", "-f", self.config_file_path]
 
         if not self.cfg.enable_so_reuseport:
             args.append("-dR")
@@ -559,7 +617,7 @@ class HAProxyApi(ProxyApi):
         )
 
         try:
-            await self._wait_for_hap_availability(proc)
+            await self._wait_for_hap_availability(proc, timeout_s=timeout_s)
         except Exception:
             # If startup fails, ensure the process is killed to avoid orphaned processes
             if proc.returncode is None:
@@ -757,43 +815,40 @@ class HAProxyApi(ProxyApi):
         server_stats = await self.get_all_stats()
         return HAProxyStats(backend_to_servers=server_stats)
 
-    # TODO: use socket library instead of subprocess
     async def _send_socket_command(self, command: str) -> str:
-        """Send a command to the HAProxy stats socket via subprocess."""
+        """Send a command to the HAProxy stats socket via Unix domain socket."""
         try:
-            # Check if a socket file exists
             if not os.path.exists(self.cfg.socket_path):
                 raise RuntimeError(
                     f"HAProxy socket file does not exist: {self.cfg.socket_path}."
                 )
 
-            proc = await asyncio.create_subprocess_exec(
-                "socat",
-                "-",
-                f"UNIX-CONNECT:{self.cfg.socket_path}",
-                stdin=asyncio.subprocess.PIPE,
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE,
-            )
-
             try:
-                stdout, stderr = await asyncio.wait_for(
-                    proc.communicate(f"{command}\n".encode("utf-8")), timeout=5.0
+                reader, writer = await asyncio.wait_for(
+                    asyncio.open_unix_connection(self.cfg.socket_path),
+                    timeout=5.0,
                 )
             except asyncio.TimeoutError:
-                proc.kill()
-                await proc.wait()
                 raise RuntimeError(
-                    f"Timeout while sending command '{command}' to HAProxy socket"
+                    f"Timeout connecting to HAProxy socket: {self.cfg.socket_path}"
                 )
 
-            if proc.returncode != 0:
-                err = stderr.decode("utf-8", errors="ignore").strip()
-                raise RuntimeError(
-                    f"Command '{command}' failed with code {proc.returncode}: {err}"
-                )
+            try:
+                writer.write(f"{command}\n".encode("utf-8"))
+                await writer.drain()
 
-            result = stdout.decode("utf-8", errors="ignore")
+                # Read until EOF (HAProxy closes connection after response)
+                try:
+                    result_bytes = await asyncio.wait_for(reader.read(), timeout=5.0)
+                except asyncio.TimeoutError:
+                    raise RuntimeError(
+                        f"Timeout while sending command '{command}' to HAProxy socket"
+                    )
+            finally:
+                writer.close()
+                await writer.wait_closed()
+
+            result = result_bytes.decode("utf-8", errors="ignore")
             logger.debug(f"Socket command '{command}' returned {len(result)} chars.")
             return result
         except Exception as e:
@@ -974,6 +1029,8 @@ class HAProxyManager(ProxyActorInterface):
             call_in_event_loop=self.event_loop,
         )
 
+        is_head = self._node_id == get_head_node_id()
+
         startup_msg = f"HAProxy starting on node {self._node_id} (HTTP port: {self._http_options.port})."
         logger.info(startup_msg)
         logger.debug(
@@ -981,7 +1038,9 @@ class HAProxyManager(ProxyActorInterface):
             f"logger with logging config: {logging_config}"
         )
 
-        self._haproxy = HAProxyApi(cfg=HAProxyConfig(http_options=http_options))
+        self._haproxy = HAProxyApi(
+            cfg=HAProxyConfig(http_options=http_options, is_head=is_head)
+        )
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
     async def shutdown(self) -> None:

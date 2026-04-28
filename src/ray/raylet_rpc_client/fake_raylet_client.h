@@ -39,11 +39,9 @@ class FakeRayletClient : public RayletClientInterface {
                     const ObjectID &generator_id,
                     const ClientCallback<PinObjectIDsReply> &callback) override {}
 
-  void RequestWorkerLease(const LeaseSpec &lease_spec,
-                          bool grant_or_reject,
-                          const ClientCallback<RequestWorkerLeaseReply> &callback,
-                          const int64_t backlog_size = -1,
-                          const bool is_selected_based_on_locality = false) override {
+  void RequestWorkerLease(
+      rpc::RequestWorkerLeaseRequest &&request,
+      const ClientCallback<RequestWorkerLeaseReply> &callback) override {
     num_workers_requested += 1;
     callbacks.push_back(callback);
   }
@@ -235,9 +233,7 @@ class FakeRayletClient : public RayletClientInterface {
     }
   }
 
-  void ReportWorkerBacklog(
-      const WorkerID &worker_id,
-      const std::vector<WorkerBacklogReport> &backlog_reports) override {}
+  void ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) override {}
 
   void GetResourceLoad(const ClientCallback<GetResourceLoadReply> &callback) override {}
 

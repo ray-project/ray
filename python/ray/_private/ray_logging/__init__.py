@@ -32,7 +32,7 @@ def setup_logger(
         formatter = logging.Formatter(logging_format)
         for handler in logger.handlers:
             handler.setFormatter(formatter)
-    if type(logging_level) is str:
+    if isinstance(logging_level, str):
         logging_level = logging.getLevelName(logging_level.upper())
     logger.setLevel(logging_level)
 
@@ -69,7 +69,7 @@ def setup_component_logger(
             If empty, logs will go to stderr.
         max_bytes: Same argument as RotatingFileHandler's maxBytes.
         backup_count: Same argument as RotatingFileHandler's backupCount.
-        logger_name: Used to create or get the correspoding
+        logger_name: Used to create or get the corresponding
             logger in getLogger call. It will get the root logger by default.
         propagate: Whether to propagate the log to the parent logger.
     Returns:
@@ -215,7 +215,7 @@ class DedupState:
     # Timestamp of the earliest log message seen of this pattern.
     timestamp: int
 
-    # The number of un-printed occurrances for this pattern.
+    # The number of un-printed occurrences for this pattern.
     count: int
 
     # Latest instance of this log pattern.
