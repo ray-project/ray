@@ -100,7 +100,7 @@
       # RAYCI_SELECT and a cu123 wheel/image is produced.
       cluster:
         byod:
-          type: gpu-cu123
+          type: cu123
     - __suffix__: gce
       env: gce
       cluster:
