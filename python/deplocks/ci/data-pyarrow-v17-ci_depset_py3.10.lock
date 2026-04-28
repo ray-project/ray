@@ -160,6 +160,7 @@ aiohttp==3.13.3 \
     #   aiobotocore
     #   aiohttp-cors
     #   delta-sharing
+    #   fsspec
     #   taskiq
     #   torch-geometric
 aiohttp-cors==0.7.0 \
@@ -1022,6 +1023,10 @@ dask==2025.5.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   distributed
+datasets==4.0.0 \
+    --hash=sha256:7ef95e62025fd122882dbce6cb904c8cd3fbc829de6669a5eb939c77d50e203d \
+    --hash=sha256:9657e7140a9050db13443ba21cb5de185af8af944479b00e7ff1e00a61c8dbf1
+    # via -r python/requirements/data/pyarrow-v17.txt
 datasketches==5.2.0 \
     --hash=sha256:0208fb7bf40edca3f8cfcd9d1acdb95798abc10b685341b39557f59eb5bd862e \
     --hash=sha256:177e9545aafd7359c44e7935b995b0b0f9b08704a78f53e7840a7125d2d1fc9e \
@@ -1103,6 +1108,7 @@ dill==0.3.7 \
     --hash=sha256:cc1c8b182eb3013e24bd475ff2e9295af86c1a38eb1aff128dac8962a9ce3c03
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   datasets
     #   multiprocess
 distlib==0.3.7 \
     --hash=sha256:2e24928bc811348f0feb63014e97aaae3037f2cf48712d51ae61df7fd6075057 \
@@ -1280,6 +1286,7 @@ filelock==3.17.0 \
     --hash=sha256:ee4e77401ef576ebb38cd7f13b9b28893194acc20a8e68e18730ba9c0e54660e
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   datasets
     #   huggingface-hub
     #   ray
     #   snowflake-connector-python
@@ -1389,6 +1396,7 @@ fsspec==2023.12.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   dask
+    #   datasets
     #   delta-sharing
     #   etils
     #   getdaft
@@ -1795,7 +1803,9 @@ hudi==0.4.0 \
 huggingface-hub==0.36.0 \
     --hash=sha256:47b3f0e2539c39bf5cde015d63b72ec49baff67b6931c3d97f3f84532e2b8d25 \
     --hash=sha256:7bcc9ad17d5b3f07b57c78e79d527102d08313caa278a641993acddcb894548d
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   datasets
 idna==3.7 \
     --hash=sha256:028ff3aadf0609c1fd278d8ea3089299412a7a8b9bd005dd08b9f8285bcb5cfc \
     --hash=sha256:82fee1fc78add43492d3a1898bfa6d8a904cc97d8427f683ed8e798d07761aa0
@@ -2482,7 +2492,9 @@ multiprocess==0.70.15 \
     --hash=sha256:e73f497e6696a0f5433ada2b3d599ae733b87a6e8b008e387c62ac9127add177 \
     --hash=sha256:f20eed3036c0ef477b07a4177cf7c1ba520d9a2677870a4f47fe026f0cd6787e \
     --hash=sha256:f7d4a1629bccb433114c3b4885f69eccc200994323c80f6feee73b0edc9199c5
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   datasets
 namex==0.1.0 \
     --hash=sha256:117f03ccd302cc48e3f5c58a296838f6b89c83455ab8683a1e85f2a430aa4306 \
     --hash=sha256:e2012a474502f1e2251267062aae3114611f07df4224b6e06334c57b0f2ce87c
@@ -2653,9 +2665,11 @@ numpy==2.2.6 \
     --hash=sha256:fe27749d33bb772c80dcd84ae7e8df2adc920ae8297400dabec45f0dedb3f6de \
     --hash=sha256:fee4236c876c4e8369388054d02d0e9bb84821feb1a64dd59e137e6511a551f8
     # via
+    #   -r python/requirements/data/pyarrow-v17.txt
     #   bokeh
     #   contourpy
     #   cupy-cuda12x
+    #   datasets
     #   datasketches
     #   decord
     #   dm-tree
@@ -2972,6 +2986,7 @@ packaging==24.2 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   bokeh
     #   dask
+    #   datasets
     #   distributed
     #   google-cloud-bigquery
     #   huggingface-hub
@@ -3032,6 +3047,7 @@ pandas==2.2.3 \
     # via
     #   -r python/requirements/data/pyarrow-v17.txt
     #   bokeh
+    #   datasets
     #   delta-sharing
     #   modin
     #   pymars
@@ -3376,6 +3392,7 @@ pyarrow==17.0.0 \
     --hash=sha256:fa3c246cc58cb5a4a5cb407a18f193354ea47dd0648194e6265bd24177982fe8
     # via
     #   -r python/requirements/data/pyarrow-v17.txt
+    #   datasets
     #   delta-sharing
     #   getdaft
     #   hudi
@@ -4056,6 +4073,7 @@ pyyaml==6.0.3 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   bokeh
     #   dask
+    #   datasets
     #   distributed
     #   huggingface-hub
     #   pymars
@@ -4076,8 +4094,10 @@ requests==2.32.5 \
     --hash=sha256:dbba0bac56e100853db0ea71b82b4dfd5fe2bf6d3754a8893c3af500cec7d7cf
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   datasets
     #   delta-sharing
     #   docker
+    #   fsspec
     #   google-api-core
     #   google-cloud-bigquery
     #   huggingface-hub
@@ -4676,6 +4696,7 @@ tqdm==4.67.1 \
     --hash=sha256:f8aef9c52c08c13a65f30ea34f4e5aac3fd1a34959879d7e59e63027286627f2
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   datasets
     #   etils
     #   getdaft
     #   huggingface-hub
@@ -5129,7 +5150,9 @@ xxhash==3.4.1 \
     --hash=sha256:fd79d4087727daf4d5b8afe594b37d611ab95dc8e29fe1a7517320794837eb7d \
     --hash=sha256:fd7bddb3a5b86213cc3f2c61500c16945a1b80ecd572f3078ddbbe68f9dabdfb \
     --hash=sha256:fe0a98d990e433013f41827b62be9ab43e3cf18e08b1483fcc343bda0d691182
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   datasets
 xyzservices==2025.11.0 \
     --hash=sha256:2fc72b49502b25023fd71e8f532fb4beddbbf0aa124d90ea25dba44f545e17ce \
     --hash=sha256:de66a7599a8d6dad63980b77defd1d8f5a5a9cb5fc8774ea1c6e89ca7c2a3d2f

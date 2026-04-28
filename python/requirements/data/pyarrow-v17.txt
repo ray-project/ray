@@ -1,4 +1,6 @@
 pyarrow==17.0.0
+numpy
+datasets
 hudi
 pylance
 modin==0.31.0
