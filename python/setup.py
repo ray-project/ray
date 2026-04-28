@@ -227,6 +227,14 @@ if setup_spec.type == SetupType.RAY:
         "pydantic>=2.5.0,<3; python_version < '3.14'",
         "pydantic>=2.13.0,<3; python_version >= '3.14'",
     ]
+    tune_base_deps = [
+        "pandas",
+        "tensorboardX>=1.9",
+        "requests",
+        *pyarrow_deps,
+        "fsspec",
+    ]
+
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -273,13 +281,9 @@ if setup_spec.type == SetupType.RAY:
             "watchfiles",
         ],
         "tune": [
-            "pandas",
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
+            *tune_base_deps,
             *pydantic_deps,
-            "tensorboardX>=1.9",
-            "requests",
-            *pyarrow_deps,
-            "fsspec",
         ],
     }
 
@@ -326,9 +330,7 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
-    setup_spec.extras["train"] = setup_spec.extras["tune"] + [
-        dep for dep in pydantic_deps if dep not in setup_spec.extras["tune"]
-    ]
+    setup_spec.extras["train"] = tune_base_deps + pydantic_deps
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
