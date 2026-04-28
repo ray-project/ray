@@ -16,6 +16,7 @@ from ray.serve._private.config import (
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_GRPC_PORT,
+    DEFAULT_ROLLING_UPDATE_PERCENTAGE,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -1242,6 +1243,31 @@ def test_with_proto():
     # Test user_config object
     config = DeploymentConfig(user_config={"python": ("native", ["objects"])})
     assert config == DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+
+
+def test_rolling_update_percentage_proto_roundtrip():
+    """Ensure `rolling_update_percentage` survives to_proto/from_proto.
+
+    Because the proto field is declared `optional double`, an explicit value
+    must round-trip losslessly, and an absent field (simulating an older
+    controller during a rolling upgrade) must fall back to the Python-level
+    default instead of a proto3 zero default.
+    """
+    # Explicit non-default value survives the round-trip.
+    config = DeploymentConfig(rolling_update_percentage=0.5)
+    roundtripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
+    assert roundtripped.rolling_update_percentage == 0.5
+
+    # A proto from an "older controller" will not carry this field. Simulate by
+    # constructing a proto without setting `rolling_update_percentage`, then
+    # deserializing — the Python default must kick in.
+    proto_without_field = DeploymentConfigProto(num_replicas=1)
+    assert not proto_without_field.HasField("rolling_update_percentage")
+    deserialized = DeploymentConfig.from_proto(proto_without_field)
+    assert (
+        deserialized.rolling_update_percentage
+        == DEFAULT_ROLLING_UPDATE_PERCENTAGE
+    )
 
 
 @pytest.mark.parametrize("use_deprecated_smoothing_factor", [True, False])
