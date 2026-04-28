@@ -12,7 +12,7 @@ from typing import Dict, List, Optional, Tuple
 import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
-from ray.exceptions import RuntimeEnvSetupError
+from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
@@ -862,6 +862,14 @@ class ApplicationState:
                 + traceback.format_exc()
             )
             return None, None, BuildAppStatus.FAILED, error_msg
+        except RayTaskError:
+            return (
+                None,
+                None,
+                BuildAppStatus.FAILED,
+                f"Deploying app '{self._name}' failed with exception:\n"
+                f"{traceback.format_exc()}",
+            )
         except Exception:
             error_msg = (
                 f"Unexpected error occurred while deploying application "
@@ -1676,9 +1684,9 @@ def build_serve_application(
         )
         return None, None, None
     except Exception:
-        logger.error(
-            f"Exception importing application '{name}'.\n{traceback.format_exc()}"
-        )
+        # Ray's task retry machinery already logs the full traceback on each
+        # attempt, so emit a brief warning here to avoid 4× duplicate tracebacks.
+        logger.warning(f"Exception importing application '{name}'.")
         # Re-raise so Ray's max_retries / retry_exceptions on the decorator apply.
         raise
 

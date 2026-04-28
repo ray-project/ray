@@ -639,7 +639,7 @@ def test_build_serve_application_propagates_after_retries_exhausted(
         obj_ref = _call_build_serve_application(
             "ray.serve.tests.test_config_files.flaky_build.node"
         )
-        with pytest.raises(Exception, match="flaky build failure"):
+        with pytest.raises(RuntimeError, match="flaky build failure"):
             ray.get(obj_ref)
         assert int(counter_file.read_text()) == 4
     finally:
