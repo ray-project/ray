@@ -1243,7 +1243,7 @@ def test_schema_to_deployment_deployment_actors_from_dict():
     assert dep.num_replicas == 2
 
 
-def test_get_app_code_version_includes_deployment_actors():
+def test_get_app_code_version_includes_hashed_app_config_fields():
     """Test get_app_code_version changes when hashed app config fields change."""
     base_config = {
         "import_path": "module.graph",
