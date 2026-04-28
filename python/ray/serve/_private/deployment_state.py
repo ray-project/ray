@@ -5354,24 +5354,19 @@ class DeploymentStateManager:
         for deployment_state in self._deployment_states.values():
             deployment_state.delete()
 
-        # TODO(jiaodong): This might not be 100% safe since we deleted
-        # everything without ensuring all shutdown goals are completed
-        # yet. Need to address in follow-up PRs.
-        self._kv_store.delete(CHECKPOINT_KEY)
-
         # TODO(jiaodong): Need to add some logic to prevent new replicas
         # from being created once shutdown signal is sent.
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all deployments are shutdown.
 
-        Check there are no deployment states and no checkpoints.
+        Check there are no deployment states.
         """
-        return (
-            self._shutting_down
-            and len(self._deployment_states) == 0
-            and self._kv_store.get(CHECKPOINT_KEY) is None
-        )
+        return self._shutting_down and len(self._deployment_states) == 0
+
+    def delete_checkpoint(self) -> None:
+        """Delete the deployment state checkpoint from KV store."""
+        self._kv_store.delete(CHECKPOINT_KEY)
 
     def save_checkpoint(self) -> None:
         """Write a checkpoint of all deployment states."""
@@ -5483,6 +5478,30 @@ class DeploymentStateManager:
             alive_replica_actor_ids |= ds.get_alive_replica_actor_ids()
 
         return alive_replica_actor_ids
+
+    def get_deployment_ids(self) -> List[DeploymentID]:
+        return list(self._deployment_states.keys())
+
+    def get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
+        node_id_to_alive_replica_ids = defaultdict(set)
+        for deployment_state in self._deployment_states.values():
+            # Keep replicas that are alive even if they are not yet fully running so
+            # ingress cleanup does not aggressively prune their allocated ports.
+            for replica in deployment_state._replicas.get():
+                if replica.actor_node_id is not None:
+                    node_id_to_alive_replica_ids[replica.actor_node_id].add(
+                        replica.replica_id.unique_id
+                    )
+
+        return dict(node_id_to_alive_replica_ids)
+
+    def _dump_replica_states_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> ReplicaStateContainer:
+        return self._deployment_states[deployment_id]._replicas
+
+    def _stop_one_running_replica_for_testing(self, deployment_id: DeploymentID):
+        self._deployment_states[deployment_id]._stop_one_running_replica_for_testing()
 
     def deploy(
         self,
