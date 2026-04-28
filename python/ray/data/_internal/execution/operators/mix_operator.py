@@ -244,8 +244,8 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
             self._metrics.on_input_dequeued(bundle, input_index=best_index)
 
             num_rows = bundle.num_rows()
-            if num_rows is not None:
-                self._rows_seen[best_index] += num_rows
+            assert num_rows is not None
+            self._rows_seen[best_index] += num_rows
 
             self._output_buffer.add(bundle)
             self._metrics.on_output_queued(bundle)
