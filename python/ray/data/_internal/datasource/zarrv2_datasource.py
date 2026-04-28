@@ -22,14 +22,14 @@ import fsspec
 import fsspec.core
 
 
-def _make_azure_fs(url: str) -> tuple[Any, Any]:
+def _make_azure_fs(url: str, obj: Any) -> tuple[Any, Any]:
     """Create an authenticated Azure FsspecStore and AzureStore from a URL.
     Args:
         url: The Azure Blob Storage URL (abfs://...).
     Returns:
         A tuple of (FsspecStore, AzureStore).
     """
-    _check_import(_make_azure_fs, module="obstore", package="obstore")
+    _check_import(obj, module="obstore", package="obstore")
 
     from obstore.fsspec import FsspecStore
     from obstore.store import AzureStore
@@ -42,7 +42,7 @@ def _make_azure_fs(url: str) -> tuple[Any, Any]:
         protocol="abfs",
     ), store
 
-def _resolve_store(path: str) -> tuple[Any, str]:
+def _resolve_store(path: str, obj: Any) -> tuple[Any, str]:
     """
     Return a filesystem-like object and a rooted path prefix for the Zarr store.
     Works for:
@@ -55,7 +55,7 @@ def _resolve_store(path: str) -> tuple[Any, str]:
 
     # Azure
     if parsed.scheme in ("abfs", "abfss", "az"):
-        fs, _ = _make_azure_fs(path)
+        fs, _ = _make_azure_fs(path, obj)
         return fs, path.rstrip("/")
 
     # Local
@@ -142,7 +142,7 @@ class ZarrV2Datasource(Datasource):
         self._grid_shape_dict = self._gen_grid_shape()
 
     def _load_consolidated_metadata(self) -> dict:
-        fs, store_path = _resolve_store(self.paths[0])
+        fs, store_path = _resolve_store(self.paths[0], self)
         if store_path:
             meta_path = f"{store_path.rstrip('/')}/.zmetadata"
         else:
