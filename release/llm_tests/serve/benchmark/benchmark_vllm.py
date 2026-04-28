@@ -242,6 +242,7 @@ def main(pargs):
         "service_name": "",
         "py_version": f"py{sys.version_info.major}{sys.version_info.minor}",
         "tag": tag,
+        "vllm_engine": "V1",
     }
 
     # Post the results to S3
