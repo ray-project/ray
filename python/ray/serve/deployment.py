@@ -60,10 +60,7 @@ class Application:
 
     """
 
-    def __init__(
-        self,
-        bound_deployment: "Deployment",
-    ):
+    def __init__(self, bound_deployment: "Deployment"):
         # This is used by `build_app`, but made private so users don't use it.
         self._bound_deployment = bound_deployment
 
