@@ -1317,6 +1317,30 @@ def test_get_app_code_version_includes_deployment_actors():
     assert added_version != reordered_version
 
 
+def test_get_app_code_version_includes_ingress_request_router():
+    base_config = {
+        "import_path": "module.graph",
+    }
+
+    base_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(base_config)
+    )
+
+    with_router = copy.deepcopy(base_config)
+    with_router["_ingress_request_router"] = "module.ingress_request_router"
+    with_router_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(with_router)
+    )
+    assert base_version != with_router_version
+
+    changed_router = copy.deepcopy(with_router)
+    changed_router["_ingress_request_router"] = "module.other_ingress_request_router"
+    changed_router_version = get_app_code_version(
+        ServeApplicationSchema.model_validate(changed_router)
+    )
+    assert with_router_version != changed_router_version
+
+
 def test_serve_instance_details_is_json_serializable():
     """Test that ServeInstanceDetails is json serializable."""
     serialized_policy_def = (

@@ -122,7 +122,6 @@ def build_app(
         make_deployment_handle=make_deployment_handle,
     )
     ingress_request_router_deployment = None
-    ingress_request_router = ingress_request_router or app._ingress_request_router
     if ingress_request_router is not None:
         ingress_request_router_deployments = _build_app_recursive(
             ingress_request_router,
