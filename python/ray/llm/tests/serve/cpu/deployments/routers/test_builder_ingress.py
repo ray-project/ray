@@ -19,6 +19,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     LLMServingArgs,
     build_openai_app,
+    build_openai_ingress_request_router,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
 from ray.serve.config import AutoscalingConfig
@@ -370,6 +371,26 @@ class TestBuildOpenaiApp:
         autoscaling_config = deployment._deployment_config.autoscaling_config
         assert autoscaling_config is not None
         assert autoscaling_config.target_ongoing_requests == user_target
+
+    def test_direct_streaming_builds_ingress_and_router_separately(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+
+        app = build_openai_app(LLMServingArgs(llm_configs=[llm_config]))
+        ingress_request_router = build_openai_ingress_request_router(
+            LLMServingArgs(llm_configs=[llm_config])
+        )
+
+        assert app._bound_deployment.name == "LLMServer:test-model"
+        assert ingress_request_router._bound_deployment.name == "LLMRouter"
+        assert ingress_request_router._bound_deployment.init_kwargs[
+            "llm_deployment_names"
+        ] == ["LLMServer:test-model"]
 
 
 class TestIngressScaleToZero:

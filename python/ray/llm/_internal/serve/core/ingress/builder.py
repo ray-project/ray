@@ -25,6 +25,41 @@ from ray.serve.deployment import Application
 logger = get_logger(__name__)
 
 
+def _get_llm_deployment_names(llm_deployments: List[Application]) -> List[str]:
+    return [app._bound_deployment.name for app in llm_deployments]
+
+
+def build_openai_ingress_request_router(builder_config: dict) -> Application:
+    """Build the ingress request router peer for OpenAI compatible LLM apps.
+
+    The returned Application should be passed to Serve through the top-level
+    ``_ingress_request_router`` attachment point.
+    """
+    builder_config = LLMServingArgs.model_validate(builder_config)
+    llm_configs = builder_config.llm_configs
+    llm_deployments = [build_llm_deployment(c) for c in llm_configs]
+
+    from ray.llm._internal.serve.core.ingress.router import LLMRouter
+
+    num_ingress_request_router_replicas = 1
+    logger.info(
+        "Creating "
+        f"{num_ingress_request_router_replicas} ingress request router "
+        "replicas (LLMRouter)"
+    )
+
+    # Late-bind by deployment name to avoid pulling LLMServer Applications into
+    # the router's recursive build.
+    return serve.deployment(
+        LLMRouter,
+        num_replicas=num_ingress_request_router_replicas,
+        max_ongoing_requests=1000,
+    ).bind(
+        llm_deployment_names=_get_llm_deployment_names(llm_deployments),
+        llm_configs_pre=llm_configs,
+    )
+
+
 class IngressClsConfig(BaseModelExtended):
     ingress_cls: Union[str, Type[OpenAiIngress]] = Field(
         default=OpenAiIngress,
@@ -135,40 +170,15 @@ def build_openai_app(builder_config: dict) -> Application:
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
-    # If direct streaming is enabled via env var, create a dedicated HTTP
-    # router deployment backed by LLMRouter. It handles
-    # /internal/route for HAProxy Lua routing decisions.
+    # If direct streaming is enabled, the LLMServer deployment is the ingress
+    # app. The ingress request router is attached separately through
+    # serve.run(..., _ingress_request_router=...) or declarative config.
     if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
-        from ray.llm._internal.serve.core.ingress.router import LLMRouter
-
         logger.info(
             "Direct streaming enabled: "
-            "LLMServer=ingress, LLMRouter=ingress_request_router"
+            "LLMServer=ingress, attach LLMRouter via _ingress_request_router"
         )
-
-        num_ingress_request_router_replicas = 1
-        logger.info(
-            "Creating "
-            f"{num_ingress_request_router_replicas} ingress request router "
-            "replicas (LLMRouter)"
-        )
-        # Late-bind by deployment name to avoid pulling LLMServer Apps into
-        # the router's recursive build (which produces phantom duplicates).
-        from ray.llm._internal.serve.core.server.builder import _get_deployment_name
-        _llm_router_names = [
-            "LLMServer:" + _get_deployment_name(c) for c in llm_configs
-        ]
-        ingress_request_router_app = serve.deployment(
-            LLMRouter,
-            num_replicas=num_ingress_request_router_replicas,
-            max_ongoing_requests=1000,
-        ).bind(llm_deployment_names=_llm_router_names, llm_configs_pre=llm_configs)
-
-        ingress_app = llm_deployments[0]
-        return serve.Application(
-            ingress_app._bound_deployment,
-            ingress_request_router=ingress_request_router_app,
-        )
+        return llm_deployments[0]
 
     app = serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
