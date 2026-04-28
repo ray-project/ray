@@ -78,7 +78,6 @@ class OpTask(ABC):
         ...
 
     def _cancel(self, force: bool):
-
         is_actor_task = not self.get_task_id().actor_id().is_nil()
 
         ray.cancel(

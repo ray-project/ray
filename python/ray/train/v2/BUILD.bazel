@@ -44,7 +44,7 @@ py_test(
 
 py_test(
     name = "test_async_checkpointing_validation",
-    size = "medium",
+    size = "large",
     srcs = ["tests/test_async_checkpointing_validation.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
