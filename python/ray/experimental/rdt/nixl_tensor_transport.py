@@ -56,8 +56,8 @@ class NixlFetchRequest(FetchRequest):
     Returned by fetch_multiple_tensors and consumed by wait_fetch_complete.
 
     Args:
-        obj_id: The object ID for the transfer, used for abort checks and cleanup.
-        tensors: Pre-allocated output tensors (populated before the transfer starts).
+        obj_id: Inherited. The object ID for the transfer, used for abort checks and cleanup.
+        tensors: Inherited. Pre-allocated output tensors (populated before the transfer starts).
         xfer_handle: NIXL transfer request handle.
         nixl_agent: Reference to the NIXL agent.
         remote_name: Name of the remote NIXL agent.
@@ -273,8 +273,7 @@ class NixlTensorTransport(TensorTransportManager):
         xfer_handle = None
         added_tensor_descs = False
 
-        if not tensors:
-            return NixlFetchRequest(tensors=tensors, obj_id=obj_id)
+        assert tensors
 
         try:
             nixl_agent = self.get_nixl_agent()
@@ -332,6 +331,8 @@ class NixlTensorTransport(TensorTransportManager):
             self._cleanup_transfer(
                 obj_id, tensors, xfer_handle, remote_name, added_tensor_descs
             )
+            # TODO(swang): There is a circular import error because ray.util
+            # currently depends on ray.experimental.internal_kv.
             from ray.exceptions import RayDirectTransportError
 
             raise RayDirectTransportError(
@@ -366,7 +367,7 @@ class NixlTensorTransport(TensorTransportManager):
             # Check the state of the transfer continuously.
             deadline = None if timeout < 0 else time.monotonic() + timeout
             while True:
-                state = fetch_request.nixl_agent.check_xfer_state(
+                state = self.get_nixl_agent().check_xfer_state(
                     fetch_request.xfer_handle
                 )
                 if state == "ERR":

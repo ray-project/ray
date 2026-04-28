@@ -6,6 +6,7 @@ from typing import Any, List
 
 import pytest
 
+from ray.exceptions import GetTimeoutError
 from ray.experimental import (
     CommunicatorMetadata,
     TensorTransportManager,
@@ -14,7 +15,6 @@ from ray.experimental import (
 )
 from ray.experimental.rdt.rdt_manager import RDTManager, RDTMeta
 from ray.experimental.rdt.tensor_transport_manager import FetchRequest
-from ray.exceptions import GetTimeoutError
 
 _BACKEND_NAME = "TEST_PIPELINE"
 _TWO_SIDED_BACKEND_NAME = "TEST_TWO_SIDED"
@@ -84,6 +84,7 @@ class _PipelineCheckingTransport(TensorTransportManager):
     ) -> List[Any]:
         if self.__class__.wait_delay > 0:
             import time
+
             time.sleep(self.__class__.wait_delay)
         self.__class__.call_log.append(("wait", fetch_request.obj_id))
         if fetch_request.obj_id in self.__class__.fail_on_wait:
@@ -151,11 +152,15 @@ class _TwoSidedTransport(TensorTransportManager):
 def register_test_transports():
     """Register both test transports once for the lifetime of the module."""
     try:
-        register_tensor_transport(_BACKEND_NAME, ["cpu"], _PipelineCheckingTransport, list)
+        register_tensor_transport(
+            _BACKEND_NAME, ["cpu"], _PipelineCheckingTransport, list
+        )
     except ValueError:
         pass  # already registered (e.g. test module loaded more than once)
     try:
-        register_tensor_transport(_TWO_SIDED_BACKEND_NAME, ["cpu"], _TwoSidedTransport, list)
+        register_tensor_transport(
+            _TWO_SIDED_BACKEND_NAME, ["cpu"], _TwoSidedTransport, list
+        )
     except ValueError:
         pass
 
@@ -212,9 +217,9 @@ def test_fetch_and_get():
     # calls.
     assert len(fetch_indices) == len(object_ids), f"call_log={call_log}"
     assert len(wait_indices) == len(object_ids), f"call_log={call_log}"
-    assert max(fetch_indices) < min(wait_indices), (
-        f"Expected all fetches before all waits, got call_log={call_log}"
-    )
+    assert max(fetch_indices) < min(
+        wait_indices
+    ), f"Expected all fetches before all waits, got call_log={call_log}"
 
     # One entry per requested object ID.
     assert set(result.keys()) == set(object_ids)
@@ -229,26 +234,28 @@ def test_fetch_and_get():
 
 
 def test_primary_copy_objects_skip_fetch():
-    """Objects already in the store as primary copies must not trigger a fetch."""
+    """Objects already in the store must not trigger a fetch."""
     secondary_ids = ["secondary1", "secondary2"]
     primary_id = "primary1"
     manager = _build_manager(secondary_ids + [primary_id])
 
-    # Add the primary-copy object to the store directly. Phase 1 of
-    # fetch_and_get_rdt_objects skips objects whose is_primary_copy() returns True.
+    # Add the primary-copy and one secondary-copy object to the store directly.
+    # Phase 1 of fetch_and_get_rdt_objects skips objects in store.
     manager.rdt_store.add_object(primary_id, ["primary_value"], is_primary=True)
+    manager.rdt_store.add_object(secondary_ids[0], ["secondary"], is_primary=False)
     result = manager.fetch_and_get_rdt_objects(secondary_ids + [primary_id])
 
     call_log = _PipelineCheckingTransport.call_log
     fetched = [oid for kind, oid in call_log if kind == "fetch"]
-    assert set(fetched) == set(secondary_ids), (
-        f"Primary-copy objects should not be fetched; got fetched={fetched}"
-    )
+    assert set(fetched) == set(
+        secondary_ids[1:]
+    ), f"objects in store should not be fetched; got fetched={fetched}"
     # One fetch + one wait for each secondary object; zero for the primary one.
-    assert len(call_log) == len(secondary_ids) * 2, f"call_log={call_log}"
+    assert len(call_log) == 2, f"call_log={call_log}"
     # All objects should be returned in the results.
     assert set(result.keys()) == set(secondary_ids + [primary_id])
     assert result[primary_id] == ["primary_value"]
+    assert result[secondary_ids[0]] == ["secondary"]
 
 
 def test_empty_object_list_returns_empty_dict():
@@ -306,6 +313,7 @@ def test_object_fetch_timed_out_error():
         # timeout=None means no user timeout, so only RDT timeout applies.
         # We monkeypatch the constant to a very small value.
         import ray._private.ray_constants as rc
+
         original = rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS
         rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS = 0.1
         try:
@@ -324,6 +332,7 @@ def test_get_timed_out_error():
     # Check that user timeout triggers before fetch fail timeout.
     with pytest.raises(GetTimeoutError):
         import ray._private.ray_constants as rc
+
         original = rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS
         rc.RDT_FETCH_FAIL_TIMEOUT_SECONDS = 1
         try:

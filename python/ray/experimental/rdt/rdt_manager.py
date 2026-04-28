@@ -17,12 +17,13 @@ from typing import (
     Tuple,
     Union,
 )
-from ray.experimental.rdt.tensor_transport_manager import FetchRequest
 
 import ray
 from ray._private import ray_constants
 from ray._raylet import ObjectRef
+from ray.experimental.rdt.tensor_transport_manager import FetchRequest
 from ray.util.annotations import PublicAPI
+
 
 @dataclass
 class ObjectStoreFetchRequest(FetchRequest):
@@ -468,11 +469,10 @@ class RDTManager:
     ) -> FetchRequest:
         """
         Start fetching an RDT object.
-        
+
         If the specified transport supports async fetches, this will trigger the
         fetch without blocking. Note that this always triggers a fetch, even if
-        the object is already in the store, since each caller consumes exactly
-        one copy from the store.
+        the object is already in the store.
 
         Args:
             obj_id: The object ID of the RDT object.
@@ -503,7 +503,9 @@ class RDTManager:
             object_ref = src_actor.__ray_call__.options(
                 concurrency_group="_ray_system"
             ).remote(__ray_fetch_rdt_object__, obj_id)
-            return ObjectStoreFetchRequest(obj_id=obj_id, object_ref=object_ref, tensors=[])
+            return ObjectStoreFetchRequest(
+                obj_id=obj_id, object_ref=object_ref, tensors=[]
+            )
         else:
             tensor_transport = rdt_meta.tensor_transport_backend
             if not is_one_sided_transport(tensor_transport):
@@ -830,18 +832,16 @@ class RDTManager:
                 except TimeoutError:
                     pass
 
-        # For remaining objects, trigger fetches. Each fetch request produces
-        # exactly one secondary copy, even if another secondary copy of the
-        # object is already in the local store.
+        # For remaining objects, trigger fetches.
         fetch_requests: Dict[str, "FetchRequest"] = {}
         for object_id in object_ids:
             if object_id in result:
                 continue
-            assert self.is_managed_object(object_id), f"No metadata found for {object_id}"
+            assert self.is_managed_object(
+                object_id
+            ), f"No metadata found for {object_id}"
 
-            fetch_requests[object_id] = self._trigger_fetch(
-                object_id, use_object_store
-            )
+            fetch_requests[object_id] = self._trigger_fetch(object_id, use_object_store)
 
         # Wait for all in-flight fetches to complete.
         while fetch_requests:
@@ -849,10 +849,11 @@ class RDTManager:
             remaining = deadline - time.time()
             if remaining < 0:
                 if user_timeout_is_smaller:
-                    raise GetTimeoutError(
-                        f"ray.get timed out after {timeout}s."
-                    )
+                    # User passed a timeout to ray.get that expired.
+                    raise GetTimeoutError(f"ray.get timed out after {timeout}s.")
                 else:
+                    # Object fetch timeout expired. Throw an error in case we
+                    # hung.
                     raise ObjectFetchTimedOutError(
                         object_ref_hex=object_id,
                         owner_address="",
@@ -864,9 +865,7 @@ class RDTManager:
                 )
             except (TimeoutError, GetTimeoutError):
                 if user_timeout_is_smaller:
-                    raise GetTimeoutError(
-                        f"ray.get timed out after {timeout}s."
-                    )
+                    raise GetTimeoutError(f"ray.get timed out after {timeout}s.")
                 else:
                     raise ObjectFetchTimedOutError(
                         object_ref_hex=object_id,

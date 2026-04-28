@@ -19,7 +19,6 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
 from typing import (
-    TYPE_CHECKING,
     Any,
     AnyStr,
     Callable,
@@ -38,9 +37,6 @@ from typing import (
     overload,
 )
 from urllib.parse import urlparse
-
-if TYPE_CHECKING:
-    pass
 
 import colorama
 
@@ -944,9 +940,10 @@ class Worker:
         rdt_objects: Optional[Dict[str, List[Any]]] = None,
     ):
         if rdt_objects is None:
-            # Get the RDT objects. The _ray_system concurrency group is
-            # responsible for fetching these in the background. Here, we just
-            # wait for the objects to appear locally.
+            # ObjectRefs were passed by task argument instead of ray.get.
+            # Get the RDT objects from the local store. The _ray_system
+            # concurrency group is responsible for fetching these in the
+            # background. Here, we just wait for the objects to appear locally.
             rdt_objects = {}
             rdt_ids = self._get_rdt_ids(serialized_objects, object_refs)
             if rdt_ids:
@@ -1028,6 +1025,9 @@ class Worker:
         rdt_objects = {}
         rdt_ids = self._get_rdt_ids(serialized_objects, object_refs)
         if rdt_ids:
+            # TODO(swang): Some of the timeout may have already passed. Pass in
+            # the remaining timeout, but the error message should still reflect
+            # the user's timeout.
             rdt_objects = self.rdt_manager.fetch_and_get_rdt_objects(
                 rdt_ids,
                 timeout=timeout,

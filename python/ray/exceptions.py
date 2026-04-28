@@ -669,7 +669,7 @@ class ObjectLostError(RayError):
 
 
 @PublicAPI
-class ObjectFetchTimedOutError(ObjectLostError, TimeoutError):
+class ObjectFetchTimedOutError(ObjectLostError):
     """Indicates that an object fetch timed out.
 
     Args:
