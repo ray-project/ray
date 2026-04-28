@@ -10,11 +10,11 @@ from ray.llm._internal.serve.config_generator.utils.constants import (
 )
 from ray.llm._internal.serve.config_generator.utils.gpu import (
     DEFAULT_MODEL_ID_TO_GPU,
-    GPUType,
 )
 from ray.llm._internal.serve.config_generator.utils.models import (
     TextCompletionModelConfig,
 )
+from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
 
 
@@ -27,7 +27,7 @@ def get_model_default_config(model_id: str) -> Dict[str, Any]:
 
 
 @cache
-def get_default_llm_config(model_id: str, gpu_type: GPUType) -> LLMConfig:
+def get_default_llm_config(model_id: str, gpu_type: AcceleratorType) -> LLMConfig:
     file_path = os.path.join(TEMPLATE_DIR, DEFAULT_DEPLOYMENT_CONFIGS_FILE)
     with open(file_path, "r") as stream:
         configs = yaml.safe_load(stream)
