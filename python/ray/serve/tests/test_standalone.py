@@ -587,6 +587,56 @@ def test_build_app_task_uses_zero_cpus(ray_shutdown):
     ray.shutdown()
 
 
+def _deploy_flaky_app(counter_file, fail_count: int):
+    os.environ["FLAKY_BUILD_COUNTER_FILE"] = str(counter_file)
+    os.environ["FLAKY_BUILD_FAIL_COUNT"] = str(fail_count)
+    counter_file.write_text("0")
+    ray.init(num_cpus=1)
+    serve.start()
+    _get_global_client().deploy_apps(
+        ServeDeploySchema(
+            applications=[
+                ServeApplicationSchema(
+                    name="flaky_app",
+                    route_prefix="/flaky",
+                    import_path="ray.serve.tests.test_config_files.flaky_build.node",
+                )
+            ]
+        )
+    )
+
+
+def test_build_app_retries_until_success(ray_shutdown, tmp_path):
+    """A flaky build that succeeds on the 4th attempt deploys cleanly."""
+    counter_file = tmp_path / "counter.txt"
+    try:
+        _deploy_flaky_app(counter_file, fail_count=3)
+        wait_for_condition(
+            lambda: serve.status().applications["flaky_app"].status == "RUNNING",
+            timeout=60,
+        )
+        assert int(counter_file.read_text()) == 4
+    finally:
+        os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
+        os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
+
+
+def test_build_app_fails_after_retries_exhausted(ray_shutdown, tmp_path):
+    """If the build keeps failing, the app status surfaces the user error."""
+    counter_file = tmp_path / "counter.txt"
+    try:
+        _deploy_flaky_app(counter_file, fail_count=10)
+        wait_for_condition(
+            lambda: serve.status().applications["flaky_app"].status == "DEPLOY_FAILED",
+            timeout=60,
+        )
+        assert "flaky build failure" in serve.status().applications["flaky_app"].message
+        assert int(counter_file.read_text()) == 4
+    finally:
+        os.environ.pop("FLAKY_BUILD_COUNTER_FILE", None)
+        os.environ.pop("FLAKY_BUILD_FAIL_COUNT", None)
+
+
 @pytest.mark.parametrize(
     "options",
     [
