@@ -29,7 +29,7 @@ def _make_azure_fs(url: str) -> tuple[Any, Any]:
     Returns:
         A tuple of (FsspecStore, AzureStore).
     """
-    _check_import(module="obstore", package="obstore")
+    _check_import(_make_azure_fs, module="obstore", package="obstore")
 
     from obstore.fsspec import FsspecStore
     from obstore.store import AzureStore
