@@ -1684,11 +1684,13 @@ def build_serve_application(
         )
         return None, None, None
     except Exception:
-        # Ray's task retry machinery already logs the full traceback on each
-        # attempt, so emit a brief warning here to avoid 4× duplicate tracebacks.
+        # Wrap the user traceback in a RuntimeError so that user exceptions
+        # which are unpickleable (e.g. NonserializableException) or lose detail
+        # through Ray's serialization round-trip (e.g. SyntaxError) still
+        # propagate their original traceback intact through Ray's retry path.
+        err_str = traceback.format_exc()
         logger.warning(f"Exception importing application '{name}'.")
-        # Re-raise so Ray's max_retries / retry_exceptions on the decorator apply.
-        raise
+        raise RuntimeError(err_str) from None
 
 
 def override_deployment_info(
