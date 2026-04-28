@@ -678,6 +678,20 @@ class TestGetDeploymentOptions:
             in serve_options["ray_actor_options"]["runtime_env"]
         )
 
+    def test_deferred_placement_group_for_tpu_topology(self):
+        """Test that Serve skips PG creation when deferred placement group is required."""
+        llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
+            accelerator_type="TPU-V6E",
+            accelerator_config={"kind": "tpu", "topology": "4x4"},
+            llm_engine="vLLM",
+        )
+
+        serve_options = LLMServer.get_deployment_options(llm_config)
+
+        assert "placement_group_bundles" not in serve_options
+        assert "placement_group_strategy" not in serve_options
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))
