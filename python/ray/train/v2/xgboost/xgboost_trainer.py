@@ -114,7 +114,7 @@ class XGBoostTrainer(DataParallelTrainer):
 
     def __init__(
         self,
-        train_loop_per_worker: Union[Callable[[], None], Callable[[Dict], None]],
+        train_loop_per_worker: Union[Callable[[], Any], Callable[[Dict], Any]],
         *,
         train_loop_config: Optional[Dict] = None,
         xgboost_config: Optional["XGBoostConfig"] = None,

@@ -26,11 +26,34 @@ logger = logging.getLogger(__name__)
 
 @dataclass
 class Result(ResultV1):
-    """The output of a Ray Train run."""
+    """The output of ``trainer.fit()``.
+
+    Attributes:
+        metrics: The latest set of metrics reported by the training function
+            via :func:`ray.train.report`.
+        checkpoint: The latest checkpoint saved by the training function
+            via :func:`ray.train.report`.
+        return_value: The value returned by the user-defined training function on the
+            rank 0 worker, or ``None`` if no value was returned or if training did
+            not complete successfully. The return value must be serializable.
+        metrics_dataframe: A DataFrame of metrics from all checkpoints saved
+            during the run. Each row corresponds to a checkpoint.
+        best_checkpoints: A list of ``(checkpoint, metrics)`` tuples for the
+            best checkpoints saved during the run. The checkpoints retained
+            are determined by :class:`~ray.train.CheckpointConfig`
+            (by default, all checkpoints are kept).
+        path: Path pointing to the run output directory on persistent storage.
+            This can point to a remote storage location (e.g. S3) or to a
+            local location on the head node.
+        error: The execution error of the training run, if the run finished
+            in error. This is a :class:`~ray.train.v2.api.exceptions.TrainingFailedError`
+            wrapping the original exception.
+    """
 
     checkpoint: Optional[Checkpoint]
     error: Optional[TrainingFailedError]
     best_checkpoints: Optional[List[Tuple[Checkpoint, Dict[str, Any]]]] = None
+    return_value: Optional[Any] = None
 
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(
