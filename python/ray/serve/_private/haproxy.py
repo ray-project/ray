@@ -1197,6 +1197,8 @@ class HAProxyManager(ProxyActorInterface):
 
     def _target_to_server(self, target: Target) -> ServerConfig:
         """Convert a target to a server."""
+        # Use localhost if target is on the same node as HAProxy
+        host = get_localhost_ip() if target.ip == self._node_ip_address else target.ip
         return ServerConfig(
             # The server name is derived from the replica's actor name, with the
             # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
@@ -1204,8 +1206,7 @@ class HAProxyManager(ProxyActorInterface):
             # Special characters in the names are converted to comply with haproxy
             # config's allowed characters, e.g. `#` -> `-`.
             name=self.get_safe_name(target.name),
-            # Use localhost if target is on the same node as HAProxy
-            host=get_localhost_ip() if target.ip == self._node_ip_address else target.ip,
+            host=host,
             port=target.port,
         )
 
