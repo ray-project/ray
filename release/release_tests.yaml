@@ -1474,6 +1474,8 @@
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    byod:
+      type: torch-cpu
 
   run:
     timeout: 7200
@@ -1502,6 +1504,8 @@
     cluster_compute: compute_tpl_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    byod:
+      type: torch-cpu
 
   run:
     timeout: 7200
@@ -1572,6 +1576,7 @@
         # to use that here.
         - RAY_SERVE_ENABLE_HA_PROXY=1
         - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+      type: torch-cpu
     cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1603,6 +1608,8 @@
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+    byod:
+      type: torch-cpu
 
   run:
     timeout: 7200
@@ -1633,6 +1640,7 @@
         - RAY_SERVE_THROUGHPUT_OPTIMIZED=1
         - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         - RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
+      type: torch-cpu
     cluster_compute: compute_tpl_single_node_16_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
