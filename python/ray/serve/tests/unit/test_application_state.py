@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from ray import serve
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
+    CHECKPOINT_KEY,
     ApplicationState,
     ApplicationStateManager,
     ApplicationStatusInfo,
@@ -1344,6 +1345,55 @@ def test_is_ready_for_shutdown(mocked_application_state_manager):
     app_state_manager.update()
     assert app_state.is_deleted()
     assert app_state_manager.is_ready_for_shutdown()
+
+
+def test_shutdown_does_not_delete_checkpoint(mocked_application_state_manager):
+    """Tests checkpoint survives `shutdown() and `is_ready_for_shutdown(). Only an
+    explicit `delete_checkpoint() call should remove it.
+    """
+    (
+        app_state_manager,
+        deployment_state_manager,
+        kv_store,
+    ) = mocked_application_state_manager
+    app_name = "test_app"
+    deployment_name = "d1"
+    deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
+
+    # Deploy an application and bring it to RUNNING.
+    params = deployment_params(deployment_name)
+    app_state_manager.deploy_app(
+        app_name, [params], ApplicationArgsProto(external_scaler_enabled=False)
+    )
+    app_state_manager.update()
+    deployment_state_manager.set_deployment_healthy(deployment_id)
+    app_state_manager.update()
+    app_state_manager.save_checkpoint()
+
+    # Checkpoint should exist after save.
+    assert kv_store.get(CHECKPOINT_KEY) is not None
+
+    # shutdown() must NOT delete the checkpoint.
+    app_state_manager.shutdown()
+    assert kv_store.get(CHECKPOINT_KEY) is not None
+
+    # save_checkpoint() after shutdown should be a no-op.
+    pre_shutdown_checkpoint = kv_store.get(CHECKPOINT_KEY)
+    app_state_manager.save_checkpoint()
+    assert kv_store.get(CHECKPOINT_KEY) is pre_shutdown_checkpoint
+
+    # Delete deployments so is_ready_for_shutdown() is True.
+    deployment_state_manager.delete_deployment(deployment_id)
+    deployment_state_manager.set_deployment_deleted(deployment_id)
+    app_state_manager.update()
+    assert app_state_manager.is_ready_for_shutdown()
+
+    # is_ready_for_shutdown() must NOT delete the checkpoint.
+    assert kv_store.get(CHECKPOINT_KEY) is not None
+
+    # Only delete_checkpoint() should remove it.
+    app_state_manager.delete_checkpoint()
+    assert kv_store.get(CHECKPOINT_KEY) is None
 
 
 class TestOverrideDeploymentInfo:

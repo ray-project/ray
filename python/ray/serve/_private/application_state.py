@@ -11,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
-from ray.exceptions import RuntimeEnvSetupError
+from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
@@ -860,6 +860,14 @@ class ApplicationState:
                 + traceback.format_exc()
             )
             return None, None, BuildAppStatus.FAILED, error_msg
+        except RayTaskError:
+            return (
+                None,
+                None,
+                BuildAppStatus.FAILED,
+                f"Deploying app '{self._name}' failed with exception:\n"
+                f"{traceback.format_exc()}",
+            )
         except Exception:
             error_msg = (
                 f"Unexpected error occurred while deploying application "
@@ -1502,8 +1510,6 @@ class ApplicationStateManager:
         for app_state in self._application_states.values():
             app_state.delete()
 
-        self._kv_store.delete(CHECKPOINT_KEY)
-
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all applications have shut down.
 
@@ -1513,6 +1519,10 @@ class ApplicationStateManager:
         return self._shutting_down and all(
             app_state.is_deleted() for app_state in self._application_states.values()
         )
+
+    def delete_checkpoint(self) -> None:
+        """Delete the application state checkpoint from KV store."""
+        self._kv_store.delete(CHECKPOINT_KEY)
 
     def save_checkpoint(self) -> None:
         """Write a checkpoint of all application states."""
@@ -1532,7 +1542,7 @@ class ApplicationStateManager:
         )
 
 
-@ray.remote(num_cpus=0, max_calls=1)
+@ray.remote(num_cpus=0, max_calls=1, max_retries=3, retry_exceptions=True)
 def build_serve_application(
     import_path: str,
     code_version: str,
@@ -1680,10 +1690,13 @@ def build_serve_application(
         )
         return None, None, None
     except Exception:
-        logger.error(
-            f"Exception importing application '{name}'.\n{traceback.format_exc()}"
-        )
-        return None, None, traceback.format_exc()
+        # Wrap the user traceback in a RuntimeError so that user exceptions
+        # which are unpickleable (e.g. NonserializableException) or lose detail
+        # through Ray's serialization round-trip (e.g. SyntaxError) still
+        # propagate their original traceback intact through Ray's retry path.
+        err_str = traceback.format_exc()
+        logger.warning(f"Exception importing application '{name}'.")
+        raise RuntimeError(err_str) from None
 
 
 def override_deployment_info(

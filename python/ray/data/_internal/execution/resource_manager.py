@@ -51,6 +51,29 @@ _BLOCKING_MATERIALIZING_OPERATORS = (
 )
 
 
+def terminal_operator_from_topology(topology: "Topology") -> PhysicalOperator:
+    """Return the executor sink: the unique op with no in-DAG downstream consumers.
+
+    ``build_streaming_topology`` is rooted at the same node passed to
+    ``StreamingExecutor``; that root is the only operator whose
+    ``output_dependencies`` is empty.
+    """
+    if not topology:
+        raise ValueError("topology must be non-empty")
+    sinks = [op for op in topology if not op.output_dependencies]
+    if len(sinks) == 1:
+        return sinks[0]
+    if not sinks:
+        raise ValueError(
+            "No terminal operator found in topology (expected exactly one "
+            "operator with empty output_dependencies)"
+        )
+    raise ValueError(
+        "Expected exactly one terminal operator in topology, found "
+        f"{len(sinks)}: {sinks!r}"
+    )
+
+
 class ResourceManager:
     """A class that manages the resource usage of a streaming executor."""
 
@@ -100,10 +123,12 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
+        self._has_external_consumer: bool = False
+
         # Executor sink (DAG root: unique op with no output_dependencies).
         # Iterator/streaming_split prefetch bytes are charged on this
         # operator's output usage.
-        self._output_operator = self._terminal_operator_from_topology(topology)
+        self._output_operator = terminal_operator_from_topology(topology)
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
@@ -119,29 +144,10 @@ class ResourceManager:
             )
         )
 
-    def _terminal_operator_from_topology(
-        self, topology: "Topology"
-    ) -> PhysicalOperator:
-        """Return the executor sink: the unique op with no in-DAG downstream consumers.
-
-        ``build_streaming_topology`` is rooted at the same node passed to
-        ``StreamingExecutor``; that root is the only operator whose
-        ``output_dependencies`` is empty.
-        """
-        if not topology:
-            raise ValueError("topology must be non-empty")
-        sinks = [op for op in topology if not op.output_dependencies]
-        if len(sinks) == 1:
-            return sinks[0]
-        if not sinks:
-            raise ValueError(
-                "No terminal operator found in topology (expected exactly one "
-                "operator with empty output_dependencies)"
-            )
-        raise ValueError(
-            "Expected exactly one terminal operator in topology, found "
-            f"{len(sinks)}: {sinks!r}"
-        )
+    @property
+    def has_external_consumer(self) -> bool:
+        """Return whether there is any external consumer."""
+        return self._has_external_consumer
 
     def set_external_consumer_bytes(self, num_bytes: int) -> None:
         """Set the bytes buffered by external consumers."""
@@ -149,6 +155,7 @@ class ResourceManager:
             num_bytes >= 0
         ), f"external consumer bytes must be non-negative, got {num_bytes}"
         self._external_consumer_bytes = num_bytes
+        self._has_external_consumer = True
 
     def get_external_consumer_bytes(self) -> int:
         """Get the bytes buffered by external consumers."""
@@ -716,10 +723,22 @@ class OpResourceAllocator(ABC):
     ) -> bool:
         downstream_eligible_ops = list(self._get_downstream_eligible_ops(op))
 
-        # NOTE: If this operator is a terminal one, extracting outputs from it
-        #       should not be throttled
+        # If this operator is a terminal one (no downstream eligible ops):
+        # - No external consumer (e.g., write pipelines where we control draining):
+        #   always unblock to maintain liveness.
+        # - External consumer (iter_batches, streaming_split): only unblock if
+        #   consumers are starving (blocked waiting in get_output_blocking). This
+        #   prevents blocks from piling up when consumers are slow, while still
+        #   maintaining liveness when the budget is too small for even one block.
         if not downstream_eligible_ops:
-            return True
+            if not self._resource_manager.has_external_consumer:
+                return True
+            # Check the DAG root rather than the last eligible op because
+            # consumers block in get_output_blocking on the root's OpState,
+            # which may differ (e.g., OutputSplitter or LimitOperator).
+            output_op = terminal_operator_from_topology(self._topology)
+            output_op_state = self._topology[output_op]
+            return output_op_state.num_waiting_consumers > 0
 
         for downstream_op in downstream_eligible_ops:
             # To maintain liveness of the pipeline, we relax output backpressure

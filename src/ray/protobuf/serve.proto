@@ -243,6 +243,12 @@ message DeploymentConfig {
 
   // Deployment-scoped actors managed by the controller.
   repeated DeploymentActorConfig deployment_actors = 22;
+
+  // The fraction of replicas to update at a time during a rolling update.
+  // Declared `optional` so that unset (e.g. from an older controller during a
+  // rolling upgrade) is distinguishable from an explicit value. When unset,
+  // the Python side falls back to DEFAULT_ROLLING_UPDATE_PERCENTAGE (0.2).
+  optional double rolling_update_percentage = 23;
 }
 
 // Deployment language.
