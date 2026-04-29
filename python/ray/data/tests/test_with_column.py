@@ -394,6 +394,7 @@ def test_with_column_mixed_udf_and_regular_expressions(
             "comparison": [False, False, False, False, False],  # times_three > plus_ten
         }
     )
+    expected_df = expected_df.astype(result_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(result_df, expected_df)
 

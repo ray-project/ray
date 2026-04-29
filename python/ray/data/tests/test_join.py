@@ -66,6 +66,7 @@ def test_simple_inner_join(
 
     # Sort resulting frame and reset index (to be able to compare with expected one)
     joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -165,6 +166,9 @@ def test_simple_left_right_outer_semi_anti_join(
         # Sort resulting frame and reset index (to be able to compare with expected one)
         joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
         expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+        expected_pd_sorted = expected_pd_sorted.astype(
+            joined_pd_sorted.dtypes.to_dict()
+        )
 
         pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -226,6 +230,9 @@ def test_simple_full_outer_join(
         # Sort resulting frame and reset index (to be able to compare with expected one)
         joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
         expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+        expected_pd_sorted = expected_pd_sorted.astype(
+            joined_pd_sorted.dtypes.to_dict()
+        )
 
         pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -389,6 +396,7 @@ def test_anti_join_no_matches(
     # Should get all rows from the respective table
     joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
     expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
