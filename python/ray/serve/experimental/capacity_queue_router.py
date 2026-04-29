@@ -2,10 +2,8 @@
 
 import asyncio
 import logging
-import random
 import time
 from typing import Dict, List, Optional
-
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.common import ReplicaID
