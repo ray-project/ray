@@ -19,7 +19,6 @@ from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     LLMServingArgs,
     build_openai_app,
-    build_openai_ingress_request_router,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
 from ray.serve._private.http_util import ASGIAppReplicaWrapper
