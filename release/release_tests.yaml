@@ -1531,7 +1531,7 @@
   group: Serve tests
   working_dir: serve_tests
 
-  frequency: weekly
+  frequency: nightly
   team: serve
 
   cluster:
