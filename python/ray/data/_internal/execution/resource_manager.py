@@ -1118,6 +1118,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                     u.object_store_memory,
                     total_shared_usage.object_store_memory,
                 ),
+                memory=_proportional_share(
+                    self._total_shared.memory, u.memory, total_shared_usage.memory
+                ),
             )
         return grants
 
