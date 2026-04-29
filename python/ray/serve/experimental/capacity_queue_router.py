@@ -81,8 +81,8 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
         self._cq_acquire_duration_histogram = metrics.Histogram(
             "serve_cq_acquire_duration_ms",
             description=(
-                "Time in milliseconds to successfully acquire a capacity token from the "
-                "CQ actor."
+                "Time in milliseconds for a single attempt to acquire a capacity token "
+                "from the CQ actor."
             ),
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=("deployment", "application"),
@@ -263,6 +263,7 @@ class CapacityQueueRouter(LocalityMixin, MultiplexMixin, RequestRouter):
                     # intentionally NOT released.
                     self._pending_tokens[internal_request_id] = acquired_replica_id
                     self._cq_routing_requests_counter.inc(tags={"route": "cq"})
+                    self._record_queue_wait_time(pending_request)
                     acquired_replica_id = None
                     fault_attempt = 0
                     capacity_depleted_attempt = 0
