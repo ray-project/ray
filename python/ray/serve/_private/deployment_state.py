@@ -2872,7 +2872,7 @@ class DeploymentState:
         self._in_transition = True
 
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
-        self._last_broadcasted_availability: bool = True
+        self._last_broadcasted_availability: Optional[bool] = None
         self._last_broadcasted_deployment_config = None
 
         self._docs_path: Optional[str] = None
