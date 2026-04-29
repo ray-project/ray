@@ -40,9 +40,7 @@ def _is_scaling_in_flight(ctx) -> bool:
     if ctx.current_num_replicas == 0 or ctx.target_num_replicas == 0:
         return False
     delta = abs(ctx.current_num_replicas - ctx.target_num_replicas)
-    threshold = max(
-        1, int(_INFLIGHT_SCALING_TOLERANCE_RATIO * ctx.target_num_replicas)
-    )
+    threshold = max(1, int(_INFLIGHT_SCALING_TOLERANCE_RATIO * ctx.target_num_replicas))
     return delta > threshold
 
 
