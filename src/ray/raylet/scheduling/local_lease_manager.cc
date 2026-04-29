@@ -545,7 +545,7 @@ bool LocalLeaseManager::TrySpillback(const std::shared_ptr<internal::Work> &work
 }
 
 bool LocalLeaseManager::PoppedWorkerHandler(
-    const std::shared_ptr<WorkerInterface> worker,
+    const std::shared_ptr<WorkerInterface> &worker,
     PopWorkerStatus status,
     const LeaseID &lease_id,
     SchedulingClass scheduling_class,
@@ -571,13 +571,6 @@ bool LocalLeaseManager::PoppedWorkerHandler(
   }
 
   // Erases the work from lease_to_grant_ queue, also removes the lease dependencies.
-  //
-  // IDEA(ryw): Make an RAII class to wrap the a shared_ptr<internal::Work> and
-  // requests lease dependency upon ctor, and remove lease dependency upon dtor.
-  // I tried this, it works, but we expose the map via GetLeasesToGrant() used in
-  // scheduler_resource_reporter.cc. Maybe we can use `boost::any_range` to only expose
-  // a view of the Work ptrs, but I got dependency issues
-  // (can't include boost/range/any_range.hpp).
   auto erase_from_leases_to_grant_queue_fn =
       [this](const std::shared_ptr<internal::Work> &work_to_erase,
              const SchedulingClass &_scheduling_class) {
@@ -598,11 +591,9 @@ bool LocalLeaseManager::PoppedWorkerHandler(
           leases_to_grant_.erase(shapes_it);
         }
         RAY_CHECK(erased);
-
-        const auto &_lease = work_to_erase->lease_;
-        if (!_lease.GetLeaseSpecification().GetDependencies().empty()) {
-          lease_dependency_manager_.RemoveLeaseDependencies(
-              _lease.GetLeaseSpecification().LeaseId());
+        const auto &lease_spec = work_to_erase->lease_.GetLeaseSpecification();
+        if (!lease_spec.GetDependencies().empty()) {
+          lease_dependency_manager_.RemoveLeaseDependencies(lease_spec.LeaseId());
         }
       };
 
@@ -655,11 +646,29 @@ bool LocalLeaseManager::PoppedWorkerHandler(
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
       } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
         cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
+        work->IncrementPopWorkerRetries();
       } else {
         RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
                        << status;
       }
-      work->SetStateWaiting(cause);
+
+      auto max_retries = RayConfig::instance().pop_worker_max_retries();
+      if (max_retries >= 0 && work->GetPopWorkerRetries() > max_retries) {
+        // In case of too many retries, we cancel this task
+        // directly and raise a `RaySystemError` exception to user
+        // eventually. The task will be removed from dispatch queue in
+        // `CancelTask`.
+        CancelLeases(
+            [lease_id](const auto &w) {
+              return lease_id == w->lease_.GetLeaseSpecification().LeaseId();
+            },
+            rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_WORKER_STARTUP_FAILED,
+            absl::StrCat("Failed to startup worker after retrying ",
+                         RayConfig::instance().pop_worker_max_retries(),
+                         " times."));
+      } else {
+        work->SetStateWaiting(cause);
+      }
     }
   } else {
     // A worker has successfully popped for a valid lease. Grant the lease to
@@ -748,13 +757,12 @@ void LocalLeaseManager::RemoveFromGrantedLeasesIfExists(const RayLease &lease) {
   }
 }
 
-void LocalLeaseManager::CleanupLease(std::shared_ptr<WorkerInterface> worker,
-                                     RayLease *lease) {
-  RAY_CHECK(worker != nullptr && lease != nullptr);
-  *lease = worker->GetGrantedLease();
-  RemoveFromGrantedLeasesIfExists(*lease);
+void LocalLeaseManager::CleanupLease(const std::shared_ptr<WorkerInterface> &worker) {
+  RAY_CHECK(worker != nullptr);
+  const auto &lease = worker->GetGrantedLease();
+  RemoveFromGrantedLeasesIfExists(lease);
 
-  ReleaseLeaseArgs(lease->GetLeaseSpecification().LeaseId());
+  ReleaseLeaseArgs(lease.GetLeaseSpecification().LeaseId());
   if (worker->GetAllocatedInstances() != nullptr) {
     ReleaseWorkerResources(worker);
   }
@@ -973,7 +981,7 @@ const RayLease *LocalLeaseManager::AnyPendingLeasesForResourceAcquisition(
 }
 
 void LocalLeaseManager::Grant(
-    std::shared_ptr<WorkerInterface> worker,
+    const std::shared_ptr<WorkerInterface> &worker,
     absl::flat_hash_map<LeaseID, std::shared_ptr<WorkerInterface>> &leased_workers,
     const std::shared_ptr<TaskResourceInstances> &allocated_instances,
     const RayLease &lease,
@@ -986,6 +994,7 @@ void LocalLeaseManager::Grant(
   } else {
     worker->SetAllocatedInstances(allocated_instances);
   }
+
   worker->GrantLease(lease);
 
   // Pass the contact info of the worker to use.
@@ -1029,6 +1038,7 @@ void LocalLeaseManager::Grant(
       }
     }
   }
+
   // Send the result back to the clients.
   for (const auto &reply_callback : reply_callbacks) {
     reply_callback.send_reply_callback_(Status::OK(), nullptr, nullptr);
@@ -1046,16 +1056,20 @@ void LocalLeaseManager::ClearWorkerBacklog(const WorkerID &worker_id) {
   }
 }
 
-void LocalLeaseManager::SetWorkerBacklog(SchedulingClass scheduling_class,
-                                         const WorkerID &worker_id,
-                                         int64_t backlog_size) {
-  if (backlog_size == 0) {
-    backlog_tracker_[scheduling_class].erase(worker_id);
-    if (backlog_tracker_[scheduling_class].empty()) {
-      backlog_tracker_.erase(scheduling_class);
+void LocalLeaseManager::SetWorkerBacklog(rpc::ReportWorkerBacklogRequest request) {
+  const WorkerID worker_id = WorkerID::FromBinary(request.worker_id());
+
+  ClearWorkerBacklog(worker_id);
+
+  for (auto &backlog_report : *request.mutable_backlog_reports()) {
+    // Have to recreate the LeaseSpecification to create the raylet-side scheduling
+    // class because the worker-side scheduling class int is local to the worker.
+    const SchedulingClass scheduling_class =
+        LeaseSpecification(std::move(*backlog_report.mutable_lease_spec()))
+            .GetSchedulingClass();
+    if (backlog_report.backlog_size() > 0) {
+      backlog_tracker_[scheduling_class][worker_id] = backlog_report.backlog_size();
     }
-  } else {
-    backlog_tracker_[scheduling_class][worker_id] = backlog_size;
   }
 }
 
@@ -1150,37 +1164,6 @@ bool LocalLeaseManager::ReturnCpuResourcesToUnblockedWorker(
   } else {
     return false;
   }
-}
-
-ResourceSet LocalLeaseManager::CalcNormalTaskResources() const {
-  ResourceSet total_normal_task_resources;
-  for (auto &entry : leased_workers_) {
-    std::shared_ptr<WorkerInterface> worker = entry.second;
-    auto &lease_spec = worker->GetGrantedLease().GetLeaseSpecification();
-    if (!lease_spec.PlacementGroupBundleId().first.IsNil()) {
-      continue;
-    }
-
-    auto actor_id = worker->GetActorId();
-    if (!actor_id.IsNil() && lease_spec.IsActorCreationTask()) {
-      // This task ID corresponds to an actor creation task.
-      continue;
-    }
-
-    if (auto allocated_instances = worker->GetAllocatedInstances()) {
-      auto resource_set = allocated_instances->ToResourceSet();
-      // Blocked normal task workers have temporarily released its allocated CPU.
-      if (worker->IsBlocked()) {
-        for (const auto &resource_id : allocated_instances->ResourceIds()) {
-          if (IsCPUOrPlacementGroupCPUResource(resource_id)) {
-            resource_set.Set(resource_id, 0);
-          }
-        }
-      }
-      total_normal_task_resources += resource_set;
-    }
-  }
-  return total_normal_task_resources;
 }
 
 uint64_t LocalLeaseManager::MaxGrantedLeasesPerSchedulingClass(

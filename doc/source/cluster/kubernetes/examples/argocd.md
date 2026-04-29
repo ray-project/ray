@@ -34,7 +34,7 @@ spec:
     namespace: ray-cluster
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.5.1  # update this as necessary
+    targetRevision: v1.6.0  # update this as necessary
     path: helm-chart/kuberay-operator/crds
   syncPolicy:
     automated:
@@ -83,7 +83,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.5.1  # update this as necessary
+    targetRevision: v1.6.0  # update this as necessary
     path: helm-chart/kuberay-operator
     helm:
       skipCrds: true   # CRDs are already installed in Step 1
@@ -157,7 +157,7 @@ spec:
   source:
     repoURL: https://ray-project.github.io/kuberay-helm/
     chart: ray-cluster
-    targetRevision: "1.5.1"
+    targetRevision: "1.6.0"
     helm:
       releaseName: raycluster
       valuesObject:
@@ -396,7 +396,7 @@ spec:
     namespace: ray-cluster
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.5.1  # update this as necessary
+    targetRevision: v1.6.0  # update this as necessary
     path: helm-chart/kuberay-operator/crds
   syncPolicy:
     automated:
@@ -417,7 +417,7 @@ spec:
   project: default
   source:
     repoURL: https://github.com/ray-project/kuberay
-    targetRevision: v1.5.1  # update this as necessary
+    targetRevision: v1.6.0  # update this as necessary
     path: helm-chart/kuberay-operator
     helm:
       skipCrds: true   # CRDs are installed in the first Application

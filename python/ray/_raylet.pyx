@@ -974,8 +974,7 @@ cdef store_task_errors(
         proctitle,
         const CAddress &caller_address,
         c_vector[c_pair[CObjectID, shared_ptr[CRayObject]]] *returns,
-        c_string* application_error,
-        optional[c_string] c_tensor_transport):
+        c_string* application_error):
     cdef:
         CoreWorker core_worker = worker.core_worker
 
@@ -1025,7 +1024,7 @@ cdef store_task_errors(
         caller_address,
         returns,
         None,  # ref_generator_id
-        c_tensor_transport)
+        NULL_TENSOR_TRANSPORT)
 
     if (<int>task_type == <int>TASK_TYPE_ACTOR_CREATION_TASK):
         raise ActorDiedError.from_task_error(failure_object)
@@ -1601,8 +1600,7 @@ cdef create_generator_error_object(
                 function_name, task_type, title,
                 caller_address,
                 &intermediate_result,
-                application_error,
-                NULL_TENSOR_TRANSPORT)
+                application_error)
 
     error_object[0] = intermediate_result.back()
 
@@ -1671,8 +1669,7 @@ cdef execute_dynamic_generator_and_store_task_outputs(
                         None,  # actor id
                         function_name, task_type, title, caller_address,
                         dynamic_returns,
-                        application_error,
-                        NULL_TENSOR_TRANSPORT)
+                        application_error)
             if num_errors_stored == 0:
                 assert is_reattempt
                 # TODO(swang): The generator task failed and we
@@ -2049,7 +2046,7 @@ cdef void execute_task(
         except BaseException as e:
             num_errors_stored = store_task_errors(
                     worker, e, task_exception, actor, actor_id, function_name,
-                    task_type, title, caller_address, returns, application_error, c_tensor_transport)
+                    task_type, title, caller_address, returns, application_error)
             if returns[0].size() > 0 and num_errors_stored == 0:
                 logger.exception(
                         "Unhandled error: Task threw exception, but all "
@@ -2203,8 +2200,7 @@ cdef execute_task_with_cancellation_handler(
                 returns,
                 # application_error: we are passing NULL since we don't want the
                 # cancel tasks to fail.
-                NULL,
-                NULL_TENSOR_TRANSPORT)
+                NULL)
     finally:
         with current_task_id_lock:
             current_task_id = None
@@ -2233,15 +2229,15 @@ cdef void free_actor_object_callback(const CObjectID &c_object_id) nogil:
     # Expected to be called on the owner process. Will free on the primary copy holder.
     with gil:
         object_id = c_object_id.Hex().decode()
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.queue_or_free_object_primary_copy(object_id)
+        rdt_manager = ray._private.worker.global_worker.rdt_manager
+        rdt_manager.queue_or_free_object_primary_copy(object_id)
 
 cdef void set_direct_transport_metadata(const CObjectID &c_object_id, const c_string &c_direct_transport_metadata) nogil:
     with gil:
         object_id = c_object_id.Hex().decode()
         tensor_transport_meta = ray_pickle.loads(c_direct_transport_metadata)
-        gpu_object_manager = ray._private.worker.global_worker.gpu_object_manager
-        gpu_object_manager.set_tensor_transport_metadata_and_trigger_queued_operations(object_id, tensor_transport_meta)
+        rdt_manager = ray._private.worker.global_worker.rdt_manager
+        rdt_manager.set_tensor_transport_metadata_and_trigger_queued_operations(object_id, tensor_transport_meta)
 
 cdef shared_ptr[LocalMemoryBuffer] ray_error_to_memory_buf(ray_error):
     cdef bytes py_bytes = ray_error.to_bytes()
@@ -3788,7 +3784,8 @@ cdef class CoreWorker:
                           c_string concurrency_group_name,
                           int64_t generator_backpressure_num_objects,
                           c_bool enable_task_events,
-                          tensor_transport: Optional[str]):
+                          tensor_transport: Optional[str],
+                          dict labels=None):
 
         cdef:
             CActorID c_actor_id = actor_id.native()
@@ -3822,6 +3819,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
                 c_resources[b"CPU"] = num_method_cpus
+            prepare_labels(labels, &c_labels)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -4296,9 +4294,9 @@ cdef class CoreWorker:
             # GPU object-related logic does not affect the normal object serialization logic.
             if tensor_transport is not None:
                 # `output` contains tensors. We need to retrieve these tensors from `output`
-                # and store them in the GPUObjectManager.
-                serialized_object, tensors = context.serialize_gpu_objects(output, tensor_transport)
-                pickled_rdt_metadata = context.store_gpu_objects(
+                # and store them in the RDTManager.
+                serialized_object, tensors = context.serialize_rdt_objects(output, tensor_transport)
+                pickled_rdt_metadata = context.store_rdt_objects(
                     return_id.Hex().decode("ascii"), tensors, tensor_transport)
                 # One copy from python bytes object to C++ string
                 c_pickled_rdt_metadata = pickled_rdt_metadata

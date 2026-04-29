@@ -5,12 +5,22 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import numpy as np
+import pyarrow as pa
 import pytest
+from packaging.version import Version
 from pandas.api.types import is_float_dtype, is_int64_dtype, is_object_dtype
+
+if Version(pa.__version__) < Version("17.0.0"):
+    if __name__ == "__main__":
+        sys.exit(0)
+    pytest.skip(
+        "TFX-BSL test environments currently pin pyarrow<11, "
+        "but Ray Data requires pyarrow>=17.",
+        allow_module_level=True,
+    )
 
 import ray
 from ray.data._internal.datasource.tfrecords_datasource import TFXReadOptions
-from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.tests.conftest import *  # noqa: F401,F403
 
@@ -668,15 +678,12 @@ def test_readback_tfrecords_empty_features(
         _ds_eq_streaming(ds, readback_ds)
 
 
-@pytest.mark.parametrize("tensor_format", ["v1", "v2"])
 def test_write_tfrecords_tensor(
-    ray_start_regular_shared_2_cpus, tmp_path, restore_data_context, tensor_format
+    ray_start_regular_shared_2_cpus, tmp_path, tensor_format_context
 ):
     """Test that write_tfrecords handles tensor data by serializing
     tensors to bytes via tf.io.serialize_tensor, preserving shape and dtype."""
     import tensorflow as tf
-
-    DataContext.get_current().use_arrow_tensor_v2 = tensor_format == "v2"
 
     ds = ray.data.range_tensor(3, shape=(2, 2))
 

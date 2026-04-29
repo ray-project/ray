@@ -1,17 +1,22 @@
 # Source:
 # https://github.com/kubernetes-client/python/blob/master/kubernetes/utils/quantity.py
 from decimal import Decimal, InvalidOperation
-from functools import reduce
 from typing import Optional
+
+from ray._private.accelerators.tpu import (
+    get_num_chips_from_topology,
+    get_tpu_cores_per_chip,
+)
 
 # Mapping used to get generation for TPU-{accelerator}-head resource
 # https://cloud.google.com/kubernetes-engine/docs/how-to/tpus#run
 gke_tpu_accelerator_to_generation = {
     "tpu-v4-podslice": "v4",
-    "tpu-v5-lite-device": "v5e",
-    "tpu-v5-lite-podslice": "v5e",
+    "tpu-v5-lite-device": "v5litepod",
+    "tpu-v5-lite-podslice": "v5litepod",
     "tpu-v5p-slice": "v5p",
     "tpu-v6e-slice": "v6e",
+    "tpu7x": "v7x",
 }
 
 
@@ -98,13 +103,10 @@ def tpu_node_selectors_to_type(topology: str, accelerator: str) -> Optional[str]
         A string, accelerator_type, e.g. "v4-8".
     """
     if topology and accelerator:
-        generation = gke_tpu_accelerator_to_generation[accelerator]
-        # Reduce e.g. "2x2x2" to 8
-        chip_dimensions = [int(chip_count) for chip_count in topology.split("x")]
-        num_chips = reduce(lambda x, y: x * y, chip_dimensions)
-        default_num_cores_per_chip = 1
-        if generation == "v4" or generation == "v5p":
-            default_num_cores_per_chip = 2
-        num_cores = num_chips * default_num_cores_per_chip
+        generation = gke_tpu_accelerator_to_generation.get(accelerator)
+        if not generation:
+            return None
+        num_chips = get_num_chips_from_topology(topology)
+        num_cores = num_chips * get_tpu_cores_per_chip(generation)
         return f"{generation}-{num_cores}"
     return None

@@ -186,6 +186,50 @@ def _die_on_error(result):
     _fail_if_false(result.exit_code == 0, result.output)
 
 
+def test_log_unexpected_subprocess_exit_details(monkeypatch, tmp_path):
+    logs_dir = tmp_path
+    (logs_dir / "gcs_server.err").write_text("sentinel_tail_line\n", encoding="utf-8")
+
+    emitted_errors = []
+
+    class _IndentedContext:
+        def __enter__(self):
+            return None
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+    def _render_message(message, args):
+        try:
+            return str(message).format(*args)
+        except Exception:
+            return f"{message} {' '.join(map(str, args))}"
+
+    def _capture_error(message, *args, **kwargs):
+        emitted_errors.append(_render_message(message, args))
+
+    monkeypatch.setattr(scripts.cli_logger, "indented", lambda: _IndentedContext())
+    monkeypatch.setattr(scripts.cli_logger, "error", _capture_error)
+    monkeypatch.setattr(scripts.cli_logger, "warning", lambda *args, **kwargs: None)
+    monkeypatch.setattr(scripts.cli_logger, "newline", lambda *args, **kwargs: None)
+
+    process_exit_logger = MagicMock()
+    fake_process = MagicMock(returncode=137)
+
+    scripts._log_unexpected_subprocess_exit_details(
+        [("gcs_server", fake_process)],
+        str(logs_dir),
+        process_exit_logger,
+    )
+
+    process_exit_logger.error.assert_called_once()
+    logged_message = process_exit_logger.error.call_args.args[1]
+    assert "Some Ray subprocesses exited unexpectedly:" in logged_message
+    assert "gcs_server [exit code=" in logged_message
+    assert any("BEGIN gcs_server.err tail (exit code(s)=" in x for x in emitted_errors)
+    assert any("sentinel_tail_line" in x for x in emitted_errors)
+
+
 def _debug_check_line_by_line(result, expected_lines):
     """Print the result and expected output line-by-line."""
     output_lines = result.output.split("\n")
@@ -1020,8 +1064,6 @@ def test_ray_submit(configure_lang, configure_aws, _unlink_test_ssh_key):
 
 @pytest.mark.parametrize("enable_v2", [True, False])
 def test_ray_status(shutdown_only, monkeypatch, enable_v2):
-    import ray
-
     address = ray.init(
         num_cpus=3, _system_config={"enable_autoscaler_v2": enable_v2}
     ).get("address")
@@ -1522,6 +1564,95 @@ def test_kill_actor_by_name_via_cli(ray_start_regular):
     wait_for_condition(
         lambda: ray.util.list_named_actors(all_namespaces=True) == [], timeout=10
     )
+
+
+# Check if ray.serve is available (it's an optional dependency)
+try:
+    import ray.serve.scripts  # noqa: F401
+
+    SERVE_AVAILABLE = True
+except ImportError:
+    SERVE_AVAILABLE = False
+
+
+@pytest.mark.skipif(not SERVE_AVAILABLE, reason="ray.serve is not installed")
+def test_serve_cli_registered():
+    """Test that serve CLI is properly registered with the main ray CLI."""
+    # Verify 'serve' command is registered
+    assert "serve" in scripts.cli.commands, "serve command should be registered"
+
+    # Verify serve subcommands are accessible
+    serve_cli = scripts.cli.commands["serve"]
+    expected_commands = {
+        "start",
+        "deploy",
+        "run",
+        "config",
+        "status",
+        "shutdown",
+        "build",
+    }
+    assert expected_commands.issubset(set(serve_cli.commands.keys()))
+
+
+@pytest.mark.skipif(not SERVE_AVAILABLE, reason="ray.serve is not installed")
+def test_ray_serve_help():
+    """Test that 'ray serve --help' works correctly."""
+    runner = CliRunner()
+    result = runner.invoke(scripts.cli, ["serve", "--help"])
+    assert result.exit_code == 0, result.output
+    assert "CLI for managing Serve applications" in result.output
+    assert "deploy" in result.output
+    assert "run" in result.output
+
+
+@pytest.mark.skipif(sys.platform != "win32", reason="Windows-only agent cleanup test")
+def test_ray_stop_terminates_agents_on_windows(cleanup_ray):
+    """Verify that `ray stop` terminates dashboard and runtime_env agent
+    processes on Windows, where setproctitle does not change the process
+    name or command line visible to psutil.
+
+    See https://github.com/ray-project/ray/issues/61452
+    """
+    runner = CliRunner(env={"RAY_USAGE_STATS_PROMPT_ENABLED": "0"})
+
+    # Start a Ray head node with the dashboard enabled.
+    result = runner.invoke(
+        scripts.start,
+        ["--head", "--include-dashboard=true"],
+    )
+    _die_on_error(result)
+
+    agent_keywords = [
+        os.path.join("dashboard", "agent.py"),
+        os.path.join("runtime_env", "agent", "main.py"),
+    ]
+
+    def _find_agent_procs():
+        """Return agent processes whose cmdline contains one of the keywords."""
+        agents = []
+        for proc in psutil.process_iter(["pid", "cmdline"]):
+            try:
+                cmdline_str = " ".join(proc.cmdline())
+            except (psutil.NoSuchProcess, psutil.AccessDenied):
+                continue
+            if any(kw in cmdline_str for kw in agent_keywords):
+                agents.append(proc)
+        return agents
+
+    # Wait for both agents to be running.
+    wait_for_condition(lambda: len(_find_agent_procs()) >= 2, timeout=30)
+
+    # Stop Ray.
+    stop_result = runner.invoke(scripts.stop)
+    _die_on_error(stop_result)
+
+    # Verify that all agent processes have exited.
+    def _agents_gone():
+        remaining = _find_agent_procs()
+        return len(remaining) == 0
+
+    wait_for_condition(_agents_gone, timeout=30)
 
 
 if __name__ == "__main__":
