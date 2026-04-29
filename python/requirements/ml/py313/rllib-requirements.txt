@@ -8,3 +8,4 @@ rich==13.7.1
 msgpack
 msgpack-numpy
 ormsgpack
+tf_keras

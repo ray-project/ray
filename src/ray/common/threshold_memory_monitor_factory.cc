@@ -12,10 +12,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <algorithm>
 #include <memory>
 
 #include "ray/common/memory_monitor_factory.h"
 #include "ray/common/memory_monitor_interface.h"
+#include "ray/common/memory_monitor_utils.h"
 #include "ray/common/noop_memory_monitor.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/threshold_memory_monitor.h"
@@ -24,18 +26,31 @@
 namespace ray {
 
 std::unique_ptr<MemoryMonitorInterface> MemoryMonitorFactory::Create(
-    KillWorkersCallback kill_workers_callback) {
+    KillWorkersCallback kill_workers_callback,
+    bool resource_isolation_enabled,
+    const CgroupManagerInterface &cgroup_manager) {
+  int64_t memory_usage_threshold_bytes;
+
   uint64_t monitor_interval_ms = RayConfig::instance().memory_monitor_refresh_ms();
   if (monitor_interval_ms <= 0) {
     RAY_LOG(INFO) << "MemoryMonitor disabled. Specify "
                   << "`RAY_memory_monitor_refresh_ms` > 0 to enable the monitor.";
     return std::make_unique<NoopMemoryMonitor>();
   }
-  return std::make_unique<ThresholdMemoryMonitor>(
-      std::move(kill_workers_callback),
+
+  int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemorySnapshot(
+                                   MemoryMonitorInterface::kDefaultCgroupPath)
+                                   .total_bytes;
+  memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
+      total_memory_bytes,
       RayConfig::instance().memory_usage_threshold(),
       RayConfig::instance().min_memory_free_bytes(),
-      RayConfig::instance().memory_monitor_refresh_ms());
+      resource_isolation_enabled,
+      cgroup_manager);
+
+  return std::make_unique<ThresholdMemoryMonitor>(std::move(kill_workers_callback),
+                                                  memory_usage_threshold_bytes,
+                                                  monitor_interval_ms);
 }
 
 }  // namespace ray

@@ -31,7 +31,7 @@ from ray.data._internal.execution.interfaces.ref_bundle import (
 from ray.data._internal.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
-from ray.data._internal.util import rows_same
+from ray.data._internal.util import explain_plan, rows_same
 from ray.data._internal.utils.arrow_utils import get_pyarrow_version
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -139,6 +139,146 @@ def test_include_paths_with_column_projection(
     for row in rows:
         assert "path" in row
         assert row["path"] == path
+
+
+def test_include_row_hash(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"animals": ["cat", "dog", "bird"]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_row_hash=True)
+
+    schema_names = ds.schema().names
+    assert "row_hash" in schema_names
+
+    rows = ds.take_all()
+    hashes = [row["row_hash"] for row in rows]
+    assert len(hashes) == 3
+    assert len(set(hashes)) == 3, "Hashes must be unique"
+    assert all(isinstance(h, int) for h in hashes)
+
+
+def test_include_row_hash_reproducible(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"val": list(range(10))})
+    pq.write_table(table, path)
+
+    hashes1 = [
+        row["row_hash"]
+        for row in ray.data.read_parquet(path, include_row_hash=True).take_all()
+    ]
+    hashes2 = [
+        row["row_hash"]
+        for row in ray.data.read_parquet(path, include_row_hash=True).take_all()
+    ]
+    assert hashes1 == hashes2, "Hashes must be reproducible across reads"
+
+
+def test_include_row_hash_unique_across_files(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    for i in range(3):
+        path = os.path.join(tmp_path, f"file{i}.parquet")
+        table = pa.Table.from_pydict({"val": [i * 10, i * 10 + 1]})
+        pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(str(tmp_path), include_row_hash=True)
+    rows = ds.take_all()
+    hashes = [row["row_hash"] for row in rows]
+    assert len(hashes) == 6
+    assert len(set(hashes)) == 6, "Hashes must be unique across files"
+
+
+def test_include_row_hash_same_data_different_files(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """Files with identical content must produce different hashes because
+    the hash is derived from the file path, not the data."""
+    table = pa.Table.from_pydict({"val": [1, 2, 3]})
+    for name in ("a.parquet", "b.parquet", "c.parquet"):
+        pq.write_table(table, os.path.join(tmp_path, name))
+
+    ds = ray.data.read_parquet(str(tmp_path), include_row_hash=True)
+    rows = ds.take_all()
+    hashes = [row["row_hash"] for row in rows]
+    assert len(hashes) == 9
+    assert (
+        len(set(hashes)) == 9
+    ), "Identical data in different files must produce distinct hashes"
+
+
+def test_include_row_hash_with_column_projection(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"a": [1, 2], "b": [3, 4]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, columns=["a"], include_row_hash=True)
+    schema_names = ds.schema().names
+    assert "a" in schema_names
+    assert "b" not in schema_names
+    assert "row_hash" in schema_names
+
+    rows = ds.take_all()
+    assert len(rows) == 2
+    assert all("row_hash" in row and "a" in row and "b" not in row for row in rows)
+
+
+def test_include_row_hash_with_include_paths(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"val": [1, 2]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_paths=True, include_row_hash=True)
+    schema_names = ds.schema().names
+    assert "path" in schema_names
+    assert "row_hash" in schema_names
+
+    df = ds.to_pandas()
+    assert "path" in df.columns
+    assert len(set(df["row_hash"])) == 2
+
+
+def test_include_row_hash_existing_column(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """When the file already has a 'row_hash' column, it should be
+    overwritten by the generated one without crashing."""
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"val": [1, 2, 3], "row_hash": [100, 200, 300]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, include_row_hash=True)
+    rows = ds.take_all()
+    hashes = [row["row_hash"] for row in rows]
+    assert len(hashes) == 3
+    assert len(set(hashes)) == 3, "Hashes must be unique"
+    assert all(
+        h not in (100, 200, 300) for h in hashes
+    ), "Generated hashes must overwrite the original column values"
+
+
+def test_include_row_hash_existing_column_with_projection(
+    ray_start_regular_shared, tmp_path, target_max_block_size_infinite_or_default
+):
+    """Column projection + pre-existing row_hash column should work."""
+    path = os.path.join(tmp_path, "test.parquet")
+    table = pa.Table.from_pydict({"val": [1, 2], "row_hash": [10, 20]})
+    pq.write_table(table, path)
+
+    ds = ray.data.read_parquet(path, columns=["val"], include_row_hash=True)
+    schema_names = ds.schema().names
+    assert "val" in schema_names
+    assert "row_hash" in schema_names
+    rows = ds.take_all()
+    assert all(row["row_hash"] not in (10, 20) for row in rows)
 
 
 @pytest.mark.parametrize(
@@ -557,9 +697,9 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
     assert ds.count() == 150
 
     # Test projection pushed down into read op
-    ds = ray.data.read_parquet(path).select_columns("variety")
+    ds = ray.data.read_parquet(path, override_num_blocks=1).select_columns("variety")
 
-    assert ds._plan.explain().strip() == (
+    assert explain_plan(ds._logical_plan).strip() == (
         "-------- Logical Plan --------\n"
         "Project[Project]\n"
         "+- Read[ReadParquet]\n"
@@ -580,9 +720,9 @@ def test_projection_pushdown_non_partitioned(ray_start_regular_shared, temp_dir)
     assert ds.count() == 150
 
     # Assert empty projection is reading no data
-    ds = ray.data.read_parquet(path).select_columns([])
+    ds = ray.data.read_parquet(path, override_num_blocks=1).select_columns([])
 
-    summary = ds.materialize()._plan.stats().to_summary()
+    summary = ds.materialize()._raw_stats().to_summary()
 
     assert "ReadParquet" in summary.base_name
     assert summary.extra_metrics["bytes_task_outputs_generated"] == 0
@@ -688,7 +828,6 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             1000, shape=(1000,), override_num_blocks=10
         ).write_parquet(tensor_output_path)
         ds = ray.data.read_parquet(tensor_output_path)
-        assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
             data_size >= 6_000_000 and data_size <= 10_000_000
@@ -716,7 +855,6 @@ def test_parquet_reader_estimate_data_size(shutdown_only, tmp_path):
             text_output_path
         )
         ds = ray.data.read_parquet(text_output_path)
-        assert ds._plan.initial_num_blocks() > 1
         data_size = ds.size_bytes()
         assert (
             data_size >= 700_000 and data_size <= 2_200_000
@@ -780,7 +918,9 @@ def test_parquet_write_ignore_save_mode(ray_start_regular_shared, local_path):
     assert in_memory_table.equals(on_disk_table)
 
 
-def test_parquet_write_error_save_mode(ray_start_regular_shared, local_path):
+def test_parquet_write_error_save_mode_simple_write(
+    ray_start_regular_shared, local_path
+):
     data_path = local_path
     path = os.path.join(data_path, "test_parquet_dir")
     os.mkdir(path)
@@ -798,6 +938,21 @@ def test_parquet_write_error_save_mode(ray_start_regular_shared, local_path):
     on_disk_table = pq.read_table(path)
 
     assert in_memory_table.equals(on_disk_table)
+
+
+def test_parquet_write_error_save_mode_concurrent_write(
+    ray_start_regular_shared, local_path
+):
+    path = os.path.join(local_path, "test_parquet_dir")
+    ds = ray.data.range(1000, override_num_blocks=4)
+    # Should succeed, data should not exist before write
+    ds.write_parquet(path, mode="error")
+    # Verify that data was written correctly
+    assert ray.data.read_parquet(path).count() == 1000
+
+    with pytest.raises(ValueError, match="already exists"):
+        ds.write_parquet(path, mode="error")
+    shutil.rmtree(path)
 
 
 def test_parquet_write_append_save_mode(ray_start_regular_shared, local_path):
@@ -2660,7 +2815,7 @@ def test_fsspec_filesystem(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_parquet([path1, path2], filesystem=fs)
 
     # Test metadata-only parquet ops.
-    assert not ds._plan.has_started_execution
+    assert not ds.has_started_execution
     assert ds.count() == 6
 
     out_path = os.path.join(tmp_path, "out")
@@ -2700,22 +2855,21 @@ class TestParquetFragmentBatchSizeCoercion:
             assert _coerce_pyarrow_fragment_batch_size(raw) == expected
 
     @pytest.mark.parametrize(
-        "batch_size,to_batches_kwargs,expected_batch_size_passed_to_to_batches",
+        "to_batches_kwargs,expected_batch_size_passed_to_to_batches",
         [
-            (10**12, None, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
-            (None, {"batch_size": 2**31}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
-            (10_000, None, 10_000),
-            (None, {"batch_size": np.int64(10_000)}, 10_000),
-            (0, None, ValueError),
-            (-3, None, ValueError),
-            (None, {"batch_size": 0}, ValueError),
-            (None, {"batch_size": -1}, ValueError),
+            ({"batch_size": 10**12}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            ({"batch_size": 2**31}, _MAX_PYARROW_TO_BATCHES_BATCH_SIZE),
+            ({"batch_size": 10_000}, 10_000),
+            ({"batch_size": np.int64(10_000)}, 10_000),
+            ({"batch_size": 0}, ValueError),
+            ({"batch_size": -3}, ValueError),
+            ({"batch_size": -1}, ValueError),
         ],
     )
     def test_read_batches_from_coerces_fragment_batch_size_to_c_int_range(
-        self, batch_size, to_batches_kwargs, expected_batch_size_passed_to_to_batches
+        self, to_batches_kwargs, expected_batch_size_passed_to_to_batches
     ):
-        """``batch_size`` passed to ``fragment.to_batches`` is coerced for PyArrow's C int."""
+        """``batch_size`` in ``to_batches_kwargs`` is coerced for PyArrow's C int."""
 
         captured: dict = {}
 
@@ -2728,6 +2882,7 @@ class TestParquetFragmentBatchSizeCoercion:
         fragment = MagicMock()
         fragment.path = "/tmp/test.parquet"
         fragment.to_batches = fake_to_batches
+        fragment.physical_schema = pa.schema([("x", pa.int64())])
 
         schema = pa.schema([("x", pa.int64())])
 
@@ -2740,7 +2895,6 @@ class TestParquetFragmentBatchSizeCoercion:
                     data_columns_rename_map=None,
                     partition_columns=None,
                     partitioning=Partitioning("hive"),
-                    batch_size=batch_size,
                     to_batches_kwargs=to_batches_kwargs,
                 )
             )
@@ -2751,6 +2905,146 @@ class TestParquetFragmentBatchSizeCoercion:
         else:
             assert run_read() == []
             assert captured["batch_size"] == expected_batch_size_passed_to_to_batches
+
+
+def test_get_safe_batch_size_skips_zero_uncompressed_row_groups(tmp_path):
+    """Regression: a row group whose selected columns have zero uncompressed
+    size (e.g. all-null nested data) should not cause ZeroDivisionError."""
+    import pyarrow.parquet as pq
+
+    from ray.data._internal.datasource.parquet_datasource import (
+        _get_safe_batch_size_for_nested_types,
+    )
+
+    table = pa.table({"x": pa.array([[1, 2]], type=pa.list_(pa.int64()))})
+    path = str(tmp_path / "test.parquet")
+    pq.write_table(table, path)
+
+    pf = pq.ParquetFile(path)
+    # Pass empty column_indices so _row_group_uncompressed_size returns 0
+    # for a row group with non-zero rows — should not raise ZeroDivisionError.
+    batch_size = _get_safe_batch_size_for_nested_types(pf, column_indices=[])
+    assert batch_size >= 1
+
+
+@pytest.fixture(scope="module")
+def nested_parquet_exceeding_2gb(tmp_path_factory):
+    """Create a Parquet file with nested columns (list<struct>) whose string
+    data in a single row group exceeds Arrow's ~2GB chunking threshold.
+
+    This triggers ARROW-5030 / ArrowNotImplementedError when read via the
+    Arrow Dataset Scanner (fragment.to_batches).
+    """
+    tmp_path = tmp_path_factory.mktemp("nested_parquet")
+
+    num_rows = 2500
+    items_per_row = 10
+    payload_size = 50_000  # os.urandom bytes -> 100KB hex string per item
+
+    ids = list(range(num_rows))
+    nested_data = [
+        [
+            {
+                "key": f"item_{i}_{j}",
+                "payload": os.urandom(payload_size).hex(),
+                "value": j,
+            }
+            for j in range(items_per_row)
+        ]
+        for i in ids
+    ]
+
+    schema = pa.schema(
+        [
+            ("id", pa.int64()),
+            (
+                "nested_col",
+                pa.list_(
+                    pa.struct(
+                        [
+                            ("key", pa.string()),
+                            ("payload", pa.string()),
+                            ("value", pa.int64()),
+                        ]
+                    )
+                ),
+            ),
+        ]
+    )
+
+    table = pa.table({"id": ids, "nested_col": nested_data}, schema=schema)
+    file_path = os.path.join(str(tmp_path), "data.parquet")
+    pq.write_table(table, file_path, row_group_size=num_rows, use_dictionary=False)
+    return str(tmp_path), file_path, num_rows, schema
+
+
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("16.0.0"),
+    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
+)
+@pytest.mark.timeout(300)
+def test_read_parquet_nested_type_arrow_not_implemented_fallback(
+    ray_start_regular_shared, nested_parquet_exceeding_2gb
+):
+    """Test that read_parquet succeeds on Parquet files with nested column types
+    whose data exceeds Arrow's ~2GB chunking threshold, by falling back to
+    pq.ParquetFile.iter_batches.
+
+    Regression test for https://github.com/ray-project/ray/issues/61675
+    See also: https://github.com/apache/arrow/issues/21526 (ARROW-5030)
+    """
+    data_dir, _, num_rows, schema = nested_parquet_exceeding_2gb
+    ds = ray.data.read_parquet(data_dir)
+    total_rows = 0
+    for batch in ds.iter_batches(batch_format="pyarrow", batch_size=100):
+        total_rows += batch.num_rows
+        assert "id" in batch.column_names
+        assert "nested_col" in batch.column_names
+    assert total_rows == num_rows
+
+
+@pytest.mark.skipif(
+    parse_version(pa.__version__) < parse_version("16.0.0"),
+    reason="PyArrow < 16 cannot construct >2 GB nested arrays from Python lists",
+)
+@pytest.mark.timeout(300)
+def test_read_parquet_nested_fallback_skipped_when_only_flat_columns_selected(
+    ray_start_regular_shared, nested_parquet_exceeding_2gb
+):
+    """When only non-nested columns are requested from a file that also contains
+    large nested columns, the fallback reader should NOT be triggered because the
+    selected columns do not contain susceptible nested types.
+    """
+    from unittest.mock import patch
+
+    from ray.data._internal.datasource.parquet_datasource import (
+        _needs_nested_type_fallback,
+    )
+
+    data_dir, file_path, num_rows, _ = nested_parquet_exceeding_2gb
+
+    # Verify that the fallback IS needed when all columns are considered.
+    import pyarrow.dataset as pds
+
+    fragment = next(pds.dataset(file_path, format="parquet").get_fragments())
+    assert _needs_nested_type_fallback(fragment) is True
+    # But NOT needed when only the flat "id" column is requested.
+    assert _needs_nested_type_fallback(fragment, columns=["id"]) is False
+
+    # End-to-end: reading only "id" should use the normal scanner path, not
+    # the fallback.  Patch to detect whether fallback is invoked.
+    with patch(
+        "ray.data._internal.datasource.parquet_datasource"
+        "._get_safe_batch_size_for_nested_types"
+    ) as mock_safe:
+        ds = ray.data.read_parquet(data_dir, columns=["id"])
+        total_rows = 0
+        for batch in ds.iter_batches(batch_format="pyarrow", batch_size=100):
+            total_rows += batch.num_rows
+            assert batch.column_names == ["id"]
+        assert total_rows == num_rows
+        # The fallback batch-size helper should never have been called.
+        mock_safe.assert_not_called()
 
 
 if __name__ == "__main__":

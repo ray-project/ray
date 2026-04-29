@@ -25,7 +25,6 @@ from ray.data._internal.execution.operators.hash_shuffle import (
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
 from ray.data._internal.execution.util import memory_string
-from ray.data._internal.util import GiB
 from ray.data.context import DataContext
 from ray.util.debug import log_once
 
@@ -50,6 +49,29 @@ _BLOCKING_MATERIALIZING_OPERATORS = (
     # TODO remove after zip made fully streaming
     ZipOperator,
 )
+
+
+def terminal_operator_from_topology(topology: "Topology") -> PhysicalOperator:
+    """Return the executor sink: the unique op with no in-DAG downstream consumers.
+
+    ``build_streaming_topology`` is rooted at the same node passed to
+    ``StreamingExecutor``; that root is the only operator whose
+    ``output_dependencies`` is empty.
+    """
+    if not topology:
+        raise ValueError("topology must be non-empty")
+    sinks = [op for op in topology if not op.output_dependencies]
+    if len(sinks) == 1:
+        return sinks[0]
+    if not sinks:
+        raise ValueError(
+            "No terminal operator found in topology (expected exactly one "
+            "operator with empty output_dependencies)"
+        )
+    raise ValueError(
+        "Expected exactly one terminal operator in topology, found "
+        f"{len(sinks)}: {sinks!r}"
+    )
 
 
 class ResourceManager:
@@ -101,10 +123,12 @@ class ResourceManager:
         # - ds.iter_batches -> one iterator
         # - streaming_split -> multiple iterators
         self._external_consumer_bytes: int = 0
+        self._has_external_consumer: bool = False
+
         # Executor sink (DAG root: unique op with no output_dependencies).
         # Iterator/streaming_split prefetch bytes are charged on this
         # operator's output usage.
-        self._output_operator = self._terminal_operator_from_topology(topology)
+        self._output_operator = terminal_operator_from_topology(topology)
 
         self._op_resource_allocator: Optional[
             "OpResourceAllocator"
@@ -120,60 +144,10 @@ class ResourceManager:
             )
         )
 
-        self._warn_about_object_store_memory_if_needed()
-
-    def _terminal_operator_from_topology(
-        self, topology: "Topology"
-    ) -> PhysicalOperator:
-        """Return the executor sink: the unique op with no in-DAG downstream consumers.
-
-        ``build_streaming_topology`` is rooted at the same node passed to
-        ``StreamingExecutor``; that root is the only operator whose
-        ``output_dependencies`` is empty.
-        """
-        if not topology:
-            raise ValueError("topology must be non-empty")
-        sinks = [op for op in topology if not op.output_dependencies]
-        if len(sinks) == 1:
-            return sinks[0]
-        if not sinks:
-            raise ValueError(
-                "No terminal operator found in topology (expected exactly one "
-                "operator with empty output_dependencies)"
-            )
-        raise ValueError(
-            "Expected exactly one terminal operator in topology, found "
-            f"{len(sinks)}: {sinks!r}"
-        )
-
-    def _warn_about_object_store_memory_if_needed(self):
-        """Warn if object store memory is configured below 50% of total memory."""
-        import ray
-        from ray.data.context import WARN_PREFIX
-        from ray.util.debug import log_once
-
-        if not ray.is_initialized():
-            return
-
-        cluster_resources = ray.cluster_resources()
-        total_memory = cluster_resources.get("memory", 0)
-        object_store_memory = cluster_resources.get("object_store_memory", 0)
-
-        # Check if we have actual numeric values (not mocks or None)
-        if total_memory > 0:
-            object_store_fraction = object_store_memory / total_memory
-
-            if object_store_fraction < 0.5 and log_once(
-                "ray_data_object_store_memory_warning"
-            ):
-                logger.warning(
-                    f"{WARN_PREFIX} Ray's object store is configured to use only "
-                    f"{object_store_fraction:.1%} of available memory ({object_store_memory / GiB:.1f}GiB "
-                    f"out of {total_memory / GiB:.1f}GiB total). For optimal Ray Data performance, "
-                    f"we recommend setting the object store to at least 50% of available memory. "
-                    f"You can do this by setting the 'object_store_memory' parameter when calling "
-                    f"ray.init() or by setting the RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION environment variable."
-                )
+    @property
+    def has_external_consumer(self) -> bool:
+        """Return whether there is any external consumer."""
+        return self._has_external_consumer
 
     def set_external_consumer_bytes(self, num_bytes: int) -> None:
         """Set the bytes buffered by external consumers."""
@@ -181,6 +155,7 @@ class ResourceManager:
             num_bytes >= 0
         ), f"external consumer bytes must be non-negative, got {num_bytes}"
         self._external_consumer_bytes = num_bytes
+        self._has_external_consumer = True
 
     def get_external_consumer_bytes(self) -> int:
         """Get the bytes buffered by external consumers."""
@@ -450,6 +425,13 @@ class ResourceManager:
             return None
         return self._op_resource_allocator.get_budget(op)
 
+    def get_allocation(self, op: PhysicalOperator) -> Optional[ExecutionResources]:
+        """Return the allocation of the given operator, or None if the operator
+        doesn't have a designated allocation."""
+        if self._op_resource_allocator is None:
+            return None
+        return self._op_resource_allocator.get_allocation(op)
+
     def is_op_eligible(self, op: PhysicalOperator) -> bool:
         """Whether the op is eligible for memory reservation."""
         return (
@@ -492,8 +474,10 @@ class ResourceManager:
             else:
                 yield from self.get_downstream_eligible_ops(next_op)
 
-    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> int:
-        return self._op_resource_allocator.max_task_output_bytes_to_read(op)
+    def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
+        if self._op_resource_allocator is not None:
+            return self._op_resource_allocator.max_task_output_bytes_to_read(op)
+        return None
 
     def _get_completed_ops_usage(self) -> ExecutionResources:
         """
@@ -739,10 +723,22 @@ class OpResourceAllocator(ABC):
     ) -> bool:
         downstream_eligible_ops = list(self._get_downstream_eligible_ops(op))
 
-        # NOTE: If this operator is a terminal one, extracting outputs from it
-        #       should not be throttled
+        # If this operator is a terminal one (no downstream eligible ops):
+        # - No external consumer (e.g., write pipelines where we control draining):
+        #   always unblock to maintain liveness.
+        # - External consumer (iter_batches, streaming_split): only unblock if
+        #   consumers are starving (blocked waiting in get_output_blocking). This
+        #   prevents blocks from piling up when consumers are slow, while still
+        #   maintaining liveness when the budget is too small for even one block.
         if not downstream_eligible_ops:
-            return True
+            if not self._resource_manager.has_external_consumer:
+                return True
+            # Check the DAG root rather than the last eligible op because
+            # consumers block in get_output_blocking on the root's OpState,
+            # which may differ (e.g., OutputSplitter or LimitOperator).
+            output_op = terminal_operator_from_topology(self._topology)
+            output_op_state = self._topology[output_op]
+            return output_op_state.num_waiting_consumers > 0
 
         for downstream_op in downstream_eligible_ops:
             # To maintain liveness of the pipeline, we relax output backpressure

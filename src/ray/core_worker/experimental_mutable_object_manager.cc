@@ -33,16 +33,25 @@ namespace experimental {
 
 namespace {
 
+// POSIX requires sem_open() names to start with '/'. glibc is lenient and
+// strips a missing leading slash, but stricter implementations (musl, some
+// older libcs) fail with EINVAL. Always prepend '/' for portability.
+
+// `Init()` already caps `name.size()` to PSEMNAMLEN, so these checks are
+// defense-in-depth. If a name somehow slips through oversized, `sem_open()`
+// returns SEM_FAILED (ENAMETOOLONG on macOS) and the RAY_CHECK_NE below catches
+// it. We deliberately check `name.size()` rather than the final prefixed
+// string: on 64-bit Linux with pid_max=4194304 a 7-digit PID can produce a
+// 27-byte `name`, and `/obj` + `name` = 31 bytes would falsely trip a tighter
+// check even though Linux sem_open accepts much longer names.
 std::string GetSemaphoreObjectName(const std::string &name) {
-  std::string ret = absl::StrCat("/obj", name);
-  RAY_CHECK_LE(ret.size(), PSEMNAMLEN);
-  return ret;
+  RAY_CHECK_LE(name.size(), PSEMNAMLEN);
+  return absl::StrCat("/obj", name);
 }
 
 std::string GetSemaphoreHeaderName(const std::string &name) {
-  std::string ret = absl::StrCat("/hdr", name);
-  RAY_CHECK_LE(ret.size(), PSEMNAMLEN);
-  return ret;
+  RAY_CHECK_LE(name.size(), PSEMNAMLEN);
+  return absl::StrCat("/hdr", name);
 }
 
 }  // namespace
@@ -171,6 +180,13 @@ void MutableObjectManager::OpenSemaphores(const ObjectID &object_id,
            PlasmaObjectHeader::SemaphoresCreationLevel::kDone) {
       sched_yield();
     }
+    // Use O_CREAT without O_EXCL so that this works for both the intra-node and
+    // cross-node cases:
+    // - Intra-node: the semaphores already exist (created by the writer on this machine),
+    //   so sem_open opens them and ignores the initial value.
+    // - Cross-node: the writer set semaphores_created=kDone in shared memory that is
+    //   visible here, but the named semaphores were never created on this machine.
+    //   O_CREAT creates them locally with the correct initial value of 1.
     semaphores.object_sem = sem_open(GetSemaphoreObjectName(name).c_str(),
                                      /*oflag=*/O_CREAT,
                                      /*mode=*/0644,

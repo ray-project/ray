@@ -1,10 +1,10 @@
 name: "ray-wheel-py$PYTHON_VERSION$ARCH_SUFFIX"
 disable_caching: true
 froms:
-  - "rayproject/manylinux2014:$MANYLINUX_VERSION-jdk-$HOSTTYPE"
+  - "rayproject/manylinux2014:$MANYLINUX_VERSION$JDK_SUFFIX-$HOSTTYPE"
   - "cr.ray.io/rayproject/ray-core-py$PYTHON_VERSION$ARCH_SUFFIX"     # C++ binaries (ray_pkg.zip)
-  - "cr.ray.io/rayproject/ray-java-build$ARCH_SUFFIX"                 # Java JARs
-  - "cr.ray.io/rayproject/ray-dashboard$ARCH_SUFFIX"                  # Dashboard
+  - "$RAY_JAVA_IMAGE"                                                 # Java JARs (scratch to skip)
+  - "$RAY_DASHBOARD_IMAGE"                                            # Dashboard (scratch to skip)
 dockerfile: ci/docker/ray-wheel.Dockerfile
 srcs:
   - pyproject.toml
@@ -14,14 +14,13 @@ srcs:
   - rllib/
 build_args:
   - PYTHON_VERSION
-  - MANYLINUX_VERSION
-  - HOSTTYPE
   - BUILDKITE_COMMIT
   - ARCH_SUFFIX
   - WHEEL_TYPE=ray
+  - MANYLINUX_IMAGE=rayproject/manylinux2014:$MANYLINUX_VERSION$JDK_SUFFIX-$HOSTTYPE
   - RAY_CORE_IMAGE=cr.ray.io/rayproject/ray-core-py$PYTHON_VERSION$ARCH_SUFFIX
-  - RAY_JAVA_IMAGE=cr.ray.io/rayproject/ray-java-build$ARCH_SUFFIX
-  - RAY_DASHBOARD_IMAGE=cr.ray.io/rayproject/ray-dashboard$ARCH_SUFFIX
+  - RAY_JAVA_IMAGE
+  - RAY_DASHBOARD_IMAGE
 artifacts:
   - src: "/opt/artifacts/"
     dst: "./"

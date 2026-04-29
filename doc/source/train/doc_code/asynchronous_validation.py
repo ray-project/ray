@@ -1,5 +1,4 @@
 # __validation_fn_simple_start__
-
 import os
 import torch
 
@@ -26,8 +25,6 @@ def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
             outputs = model(images)
             total_accuracy += (outputs.argmax(1) == labels).sum().item()
     return {"score": total_accuracy / len(validation_dataset)}
-
-
 # __validation_fn_simple_end__
 
 # __validation_fn_torch_trainer_start__
@@ -37,7 +34,7 @@ from torch.nn import CrossEntropyLoss
 import ray.train.torch
 
 
-def eval_only_train_fn(config_dict: dict) -> None:
+def eval_only_train_fn(config_dict: dict) -> dict:
     # Load the checkpoint
     model = ...
     with config_dict["checkpoint"].as_directory() as checkpoint_dir:
@@ -51,22 +48,14 @@ def eval_only_train_fn(config_dict: dict) -> None:
     test_data_shard = ray.train.get_dataset_shard("validation")
     test_dataloader = test_data_shard.iter_torch_batches(batch_size=128)
 
-    # Compute and report metric
+    # Compute metric and return it directly from the train function
     with torch.no_grad():
         for batch in test_dataloader:
             images, labels = batch["image"], batch["label"]
             outputs = model(images)
             loss = criterion(outputs, labels)
             mean_valid_loss(loss)
-    ray.train.report(
-        metrics={"score": mean_valid_loss.compute().item()},
-        checkpoint=ray.train.Checkpoint(
-            ray.train.get_context()
-            .get_storage()
-            .build_checkpoint_path_from_name("placeholder")
-        ),
-        checkpoint_upload_mode=ray.train.CheckpointUploadMode.NO_UPLOAD,
-    )
+    return {"score": mean_valid_loss.compute().item()}
 
 
 def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: int) -> dict:
@@ -76,22 +65,20 @@ def validation_fn(checkpoint: ray.train.Checkpoint, train_run_name: str, epoch: 
         scaling_config=ray.train.ScalingConfig(
             num_workers=2, use_gpu=True, accelerator_type="A10G"
         ),
-        # Name validation run to easily associate it with training run
+        # Give unique name to validation run so it does not attempt to load placeholder checkpoint.
+        # Also allows you to better associate training runs with validation runs.
         run_config=ray.train.RunConfig(
             name=f"{train_run_name}_validation_epoch_{epoch}"
         ),
-        # User weaker GPUs for validation
+        # Use weaker GPUs for validation
         datasets={"validation": validation_dataset},
     )
     result = trainer.fit()
-    return result.metrics
-
-
+    # return_value holds the value returned by train function of worker 0
+    return result.return_value
 # __validation_fn_torch_trainer_end__
 
 # __validation_fn_map_batches_start__
-
-
 class Predictor:
     def __init__(self, checkpoint: ray.train.Checkpoint):
         self.model = ...
@@ -121,8 +108,6 @@ def validation_fn(checkpoint: ray.train.Checkpoint) -> dict:
     return {
         "score": mean,
     }
-
-
 # __validation_fn_map_batches_end__
 
 # __validation_fn_report_start__
@@ -173,8 +158,6 @@ def run_trainer() -> ray.train.Result:
         ),
     )
     return trainer.fit()
-
-
 # __validation_fn_report_end__
 
 # __exp_tracking_same_run_wandb_start__
