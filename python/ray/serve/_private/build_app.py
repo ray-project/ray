@@ -1,11 +1,14 @@
+import inspect
 import logging
 from copy import deepcopy
 from dataclasses import dataclass
 from typing import Any, Callable, Dict, Generic, List, Optional, TypeVar, Union
 
 from ray.dag.py_obj_scanner import _PyObjScanner
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import RAY_SERVE_ENABLE_HA_PROXY, SERVE_LOGGER_NAME
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve.deployment import Application, Deployment
+from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 from ray.serve.schema import LoggingConfig
 
@@ -16,7 +19,7 @@ V = TypeVar("V")
 
 INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
     "`ingress_request_router` requires HAProxy. "
-    "Set `RAY_SERVE_ENABLE_HA_PROXY=1` before deploying this application."
+    "Set `RAY_SERVE_ENABLE_HA_PROXY=1` in the Ray controller's environment."
 )
 
 
@@ -67,6 +70,20 @@ class BuiltApplication:
     # When set, this deployment serves /internal/route for HAProxy Lua routing.
     ingress_request_router_deployment: Optional[Deployment] = None
 
+    def validate_single_fastapi_ingress(self) -> None:
+        """Validate that the application has at most one FastAPI ingress."""
+        num_ingress_deployments = sum(
+            inspect.isclass(deployment.func_or_class)
+            and issubclass(deployment.func_or_class, ASGIAppReplicaWrapper)
+            for deployment in self.deployments
+        )
+        if num_ingress_deployments > 1:
+            raise RayServeException(
+                f'Found multiple FastAPI deployments in application "{self.name}". '
+                "Please only include one deployment with @serve.ingress "
+                "in your application to avoid this issue."
+            )
+
 
 def _make_deployment_handle_default(
     deployment: Deployment, app_name: str
@@ -110,6 +127,8 @@ def build_app(
             "`ingress_request_router` must be an `Application` returned by "
             "`Deployment.bind()`."
         )
+    if ingress_request_router is not None and not RAY_SERVE_ENABLE_HA_PROXY:
+        raise RayServeException(INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR)
 
     handles = IDDict()
     deployment_names = IDDict()
@@ -131,10 +150,19 @@ def build_app(
             default_runtime_env=default_runtime_env,
             make_deployment_handle=make_deployment_handle,
         )
-        if len(ingress_request_router_deployments) != 1:
+        # TODO(eicherseiji): The current ingress-bypass design only supports a
+        # standalone single-deployment router. Revisit this once routers can
+        # compose helper deployments.
+        if len(ingress_request_router_deployments) == 0:
             raise ValueError(
-                "Expected the ingress_request_router attachment to build into "
-                f"exactly one deployment, got {len(ingress_request_router_deployments)}."
+                "The deployment used as `ingress_request_router` is also part "
+                "of the main application graph; it must be standalone."
+            )
+        if len(ingress_request_router_deployments) > 1:
+            raise ValueError(
+                "Expected `ingress_request_router` to build into exactly one "
+                "standalone deployment, got "
+                f"{len(ingress_request_router_deployments)}."
             )
         ingress_request_router_deployment = ingress_request_router_deployments[0]
 

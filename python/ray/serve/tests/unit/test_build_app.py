@@ -547,7 +547,11 @@ def test_ingress_name_got_modified():
     assert built_app.deployments[-1].name == "D_2"
 
 
-def test_build_app_keeps_ingress_request_router_separate_from_app_deployments():
+def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
+    monkeypatch,
+):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
     @serve.deployment
     class Ingress:
         pass
@@ -574,7 +578,11 @@ def test_build_app_keeps_ingress_request_router_separate_from_app_deployments():
     assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
 
 
-def test_build_app_requires_ingress_request_router_to_be_single_deployment():
+def test_build_app_requires_ingress_request_router_to_be_single_deployment(
+    monkeypatch,
+):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
     @serve.deployment
     class Ingress:
         pass
@@ -589,7 +597,11 @@ def test_build_app_requires_ingress_request_router_to_be_single_deployment():
             self._child = child
 
     with pytest.raises(
-        ValueError, match="Expected the ingress_request_router attachment"
+        ValueError,
+        match=(
+            "`ingress_request_router` to build into exactly one standalone "
+            "deployment"
+        ),
     ):
         ingress_app = Ingress.bind()
         app = serve.Application(
@@ -603,7 +615,39 @@ def test_build_app_requires_ingress_request_router_to_be_single_deployment():
         )
 
 
-def test_ingress_validation_excludes_ingress_request_router_fastapi_app():
+def test_build_app_rejects_ingress_request_router_in_main_app_graph(monkeypatch):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment
+    class IngressRequestRouter:
+        pass
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, router):
+            self._router = router
+
+    ingress_request_router = IngressRequestRouter.bind()
+    ingress_app = Ingress.bind(ingress_request_router)
+    app = serve.Application(
+        ingress_app._bound_deployment,
+        ingress_request_router=ingress_request_router,
+    )
+
+    with pytest.raises(
+        ValueError,
+        match=("also part of the main application graph; it must be standalone"),
+    ):
+        build_app(
+            app,
+            name="default",
+            make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        )
+
+
+def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypatch):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
     ingress_api = FastAPI()
     router_api = FastAPI()
 

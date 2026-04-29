@@ -1,4 +1,3 @@
-import inspect
 import json
 import logging
 import os
@@ -14,11 +13,7 @@ from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
 from ray.exceptions import RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
-from ray.serve._private.build_app import (
-    INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR,
-    BuiltApplication,
-    build_app,
-)
+from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
     DeploymentID,
     DeploymentStatus,
@@ -31,7 +26,6 @@ from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
-    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_ENABLE_TASK_EVENTS,
     RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
@@ -53,7 +47,6 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
 )
-from ray.serve.api import ASGIAppReplicaWrapper
 from ray.serve.config import (
     AutoscalingConfig,
     AutoscalingPolicy,
@@ -1592,8 +1585,6 @@ def build_serve_application(
         app = call_user_app_builder_with_args_if_necessary(
             import_attr(import_path), args
         )
-        if app._ingress_request_router is not None and not RAY_SERVE_ENABLE_HA_PROXY:
-            return None, None, INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR
 
         deploy_args_list = []
         built_app: BuiltApplication = build_app(
@@ -1601,6 +1592,7 @@ def build_serve_application(
             name=name,
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
+        built_app.validate_single_fastapi_ingress()
 
         def _get_serialized_def(attr_path: str) -> bytes:
             module, attr = import_module_and_attr(attr_path)
@@ -1663,27 +1655,11 @@ def build_serve_application(
                 )
             )
 
-        num_ingress_deployments = 0
         for deployment in built_app.deployments:
-            if inspect.isclass(deployment.func_or_class) and issubclass(
-                deployment.func_or_class, ASGIAppReplicaWrapper
-            ):
-                num_ingress_deployments += 1
             _append_deploy_args(
                 deployment,
                 is_ingress=deployment.name == built_app.ingress_deployment_name,
                 is_ingress_request_router=False,
-            )
-
-        if num_ingress_deployments > 1:
-            return (
-                None,
-                None,
-                (
-                    f'Found multiple FastAPI deployments in application "{built_app.name}". '
-                    "Please only include one deployment with @serve.ingress "
-                    "in your application to avoid this issue."
-                ),
             )
 
         if built_app.ingress_request_router_deployment is not None:
@@ -1693,6 +1669,8 @@ def build_serve_application(
                 is_ingress_request_router=True,
             )
         return application_serialized_autoscaling_policy_def, deploy_args_list, None
+    except RayServeException as e:
+        return None, None, str(e)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.

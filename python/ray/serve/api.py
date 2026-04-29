@@ -11,10 +11,7 @@ from starlette.types import ASGIApp
 import ray
 from ray import cloudpickle
 from ray._common.serialization import pickle_dumps
-from ray.serve._private.build_app import (
-    INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR,
-    build_app,
-)
+from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
@@ -22,7 +19,6 @@ from ray.serve._private.config import (
     prepare_imperative_http_options,
 )
 from ray.serve._private.constants import (
-    RAY_SERVE_ENABLE_HA_PROXY,
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     SERVE_DEFAULT_APP_NAME,
     SERVE_LOGGER_NAME,
@@ -738,18 +734,6 @@ def _run_many(
             raise TypeError(
                 "`serve.run` expects an `Application` returned by `Deployment.bind()`."
             )
-        if t.target._ingress_request_router is not None and not isinstance(
-            t.target._ingress_request_router, Application
-        ):
-            raise TypeError(
-                "`ingress_request_router` must be an `Application` returned by "
-                "`Deployment.bind()`."
-            )
-        if (
-            t.target._ingress_request_router is not None
-            and not RAY_SERVE_ENABLE_HA_PROXY
-        ):
-            raise RayServeException(INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR)
 
         validate_route_prefix(t.route_prefix)
 

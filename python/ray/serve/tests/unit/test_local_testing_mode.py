@@ -6,7 +6,6 @@ import sys
 import pytest
 
 from ray import serve
-from ray.serve import api as serve_api
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -132,10 +131,11 @@ def test_ingress_request_router_requires_haproxy(monkeypatch):
     class IngressRequestRouter:
         pass
 
-    monkeypatch.setattr(serve_api, "RAY_SERVE_ENABLE_HA_PROXY", False)
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", False)
 
     with pytest.raises(
-        RayServeException, match="`ingress_request_router` requires HAProxy"
+        RayServeException,
+        match="Ray controller's environment",
     ):
         llm_server = LLMServer.bind()
         app = serve.Application(

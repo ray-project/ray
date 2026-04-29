@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import logging
 import random
 import time
@@ -28,7 +27,6 @@ from ray.serve._private.constants import (
 from ray.serve._private.controller import ServeController
 from ray.serve._private.deploy_utils import get_deploy_args
 from ray.serve._private.deployment_info import DeploymentInfo
-from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve._private.utils import get_random_string
 from ray.serve.config import HTTPOptions
 from ray.serve.exceptions import RayServeException
@@ -483,19 +481,7 @@ class ServeControllerClient:
             is found among deployments in any single application.
         """
         for app in built_apps:
-            num_ingress_deployments = 0
-            for deployment in app.deployments:
-                if inspect.isclass(deployment.func_or_class) and issubclass(
-                    deployment.func_or_class, ASGIAppReplicaWrapper
-                ):
-                    num_ingress_deployments += 1
-
-            if num_ingress_deployments > 1:
-                raise RayServeException(
-                    f'Found multiple FastAPI deployments in application "{app.name}".'
-                    "Please only include one deployment with @serve.ingress "
-                    "in your application to avoid this issue."
-                )
+            app.validate_single_fastapi_ingress()
 
     @_ensure_connected
     def delete_apps(self, names: List[str], blocking: bool = True):

@@ -6,6 +6,7 @@ from unittest.mock import Mock, PropertyMock, patch
 
 import cloudpickle
 import pytest
+from fastapi import FastAPI
 from pydantic import ValidationError
 
 from ray import serve
@@ -265,12 +266,17 @@ def deployment_info(
     return deploy_args_to_deployment_info(**params, app_name="test_app")
 
 
-def test_build_serve_application_uses_router_attached_to_imported_app():
+def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
+    ingress_api = FastAPI()
+    router_api = FastAPI()
+
     @serve.deployment
+    @serve.ingress(ingress_api)
     class LLMServer:
         pass
 
     @serve.deployment
+    @serve.ingress(router_api)
     class IngressRequestRouter:
         pass
 
@@ -290,7 +296,7 @@ def test_build_serve_application_uses_router_attached_to_imported_app():
             return_value=runtime_context,
         ),
         patch("ray.serve._private.application_state.configure_component_logger"),
-        patch("ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY", True),
+        patch("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True),
     ):
         _, deploy_args, error = build_serve_application._function(
             "module.app",
