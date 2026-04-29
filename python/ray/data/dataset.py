@@ -5854,6 +5854,17 @@ class Dataset:
                 ...
                 {'image': array([[[[...]]]], dtype=uint8)}
 
+        .. note::
+
+            Breaking out of the for-loop above shuts the streaming executor
+            down so it stops producing blocks into the object store. If you
+            keep your own reference to the iterator (``it = iter(...)``),
+            cleanup is deferred until that reference is dropped — call
+            ``it.close()`` to release resources eagerly. Some libraries
+            (for example PyTorch Lightning's batch fetchers) keep an
+            ``iter()`` reference internally; in those cases prefer calling
+            ``close()`` when you stop reading early.
+
         Time complexity: O(1)
 
         Args:

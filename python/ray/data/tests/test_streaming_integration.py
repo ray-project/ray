@@ -398,6 +398,87 @@ def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
     assert len(ready) == 2
 
 
+def test_streaming_split_early_exit_shuts_down_executor(ray_start_10_cpus_shared):
+    """When every split breaks out of ``iter_batches`` early, the executor
+    on the SplitCoordinator should be shut down so it stops producing blocks
+    into the object store. Without this, the executor's worker thread keeps
+    running long after consumers have stopped reading."""
+
+    num_splits = 2
+    ds = ray.data.range(1000, override_num_blocks=20)
+    splits = ds.streaming_split(num_splits, equal=True)
+
+    threads = []
+    for split in splits:
+
+        def consume(it=split):
+            for i, _ in enumerate(it.iter_batches(batch_size=10, prefetch_batches=0)):
+                if i == 0:
+                    break
+
+        t = threading.Thread(target=consume)
+        t.start()
+        threads.append(t)
+
+    for t in threads:
+        t.join()
+
+    # The shutdown is fire-and-forget from the iterator; wait for the
+    # coordinator to process the last ``client_disengaged`` call.
+    coord = splits[0]._coord_actor
+    wait_for_condition(
+        lambda: ray.get(coord.is_executor_shutdown.remote()),
+        timeout=10,
+    )
+
+
+def test_streaming_split_partial_early_exit_keeps_executor(
+    ray_start_10_cpus_shared,
+):
+    """When only some splits exit early, the executor must stay alive so
+    the remaining splits can continue iterating."""
+
+    num_splits = 2
+    num_blocks_per_split = 20
+    total_rows = num_splits * num_blocks_per_split * 10
+    ds = ray.data.range(
+        total_rows, override_num_blocks=num_splits * num_blocks_per_split
+    )
+    i1, i2 = ds.streaming_split(num_splits, equal=True)
+
+    other_count = [0]
+
+    def break_early():
+        for i, _ in enumerate(i1.iter_batches(batch_size=10, prefetch_batches=0)):
+            if i == 0:
+                break
+
+    def consume_all():
+        for _ in i2.iter_batches(batch_size=10, prefetch_batches=0):
+            other_count[0] += 1
+
+    t1 = threading.Thread(target=break_early)
+    t2 = threading.Thread(target=consume_all)
+    # Both threads must call iter_batches concurrently — streaming_split
+    # has a barrier that requires every split to start an epoch before any
+    # split can pull blocks.
+    t1.start()
+    t2.start()
+    t1.join(timeout=30)
+    t2.join(timeout=30)
+
+    # The remaining split iterated to completion — the executor stayed
+    # alive even after the first split disengaged.
+    assert other_count[0] == num_blocks_per_split, other_count[0]
+
+    # And once both splits disengaged, the executor was shut down.
+    coord = i1._coord_actor
+    wait_for_condition(
+        lambda: ray.get(coord.is_executor_shutdown.remote()),
+        timeout=10,
+    )
+
+
 def test_streaming_split_error_propagation(
     ray_start_10_cpus_shared, restore_data_context
 ):

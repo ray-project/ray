@@ -75,44 +75,58 @@ class StreamSplitDataIterator(DataIterator):
             )
             logger.debug(f"Split {self._output_split_idx}: epoch {cur_epoch} started")
 
-            # Initial get with 0 prefetched bytes.
-            future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
-                cur_epoch, self._output_split_idx, 0
-            )
-            last_log_time = 0.0
-            while True:
-                block_ref_and_md: Optional[RefBundle] = ray.get(future)
-                if not block_ref_and_md:
-                    break
-                else:
-                    # Calculate prefetched bytes: BatchIterator's current prefetch
-                    # plus the block we just received (which will be added to
-                    # BatchIterator's sliding window when we yield it).
-                    prefetched_bytes = (
-                        self._iter_stats.iter_prefetched_bytes
-                        + block_ref_and_md.size_bytes()
-                    )
-                    future = self._coord_actor.get.remote(
-                        cur_epoch,
-                        self._output_split_idx,
-                        prefetched_bytes,
-                    )
-                    yield RefBundle(
-                        blocks=block_ref_and_md.blocks,
-                        owns_blocks=False,
-                        schema=block_ref_and_md.schema,
-                    )
-
-                    # Log dispatch progress.
-                    now = time.time()
-                    if now - last_log_time >= self.YIELD_LOG_INTERVAL_S:
-                        last_log_time = now
-                        logger.debug(
-                            f"Split {self._output_split_idx} epoch {cur_epoch}: "
-                            f"consumer resumed after yield"
+            try:
+                # Initial get with 0 prefetched bytes.
+                future: ObjectRef[Optional[RefBundle]] = self._coord_actor.get.remote(
+                    cur_epoch, self._output_split_idx, 0
+                )
+                last_log_time = 0.0
+                while True:
+                    block_ref_and_md: Optional[RefBundle] = ray.get(future)
+                    if not block_ref_and_md:
+                        break
+                    else:
+                        # Calculate prefetched bytes: BatchIterator's current
+                        # prefetch plus the block we just received (which will
+                        # be added to BatchIterator's sliding window when we
+                        # yield it).
+                        prefetched_bytes = (
+                            self._iter_stats.iter_prefetched_bytes
+                            + block_ref_and_md.size_bytes()
+                        )
+                        future = self._coord_actor.get.remote(
+                            cur_epoch,
+                            self._output_split_idx,
+                            prefetched_bytes,
+                        )
+                        yield RefBundle(
+                            blocks=block_ref_and_md.blocks,
+                            owns_blocks=False,
+                            schema=block_ref_and_md.schema,
                         )
 
-            logger.debug(f"Split {self._output_split_idx}: epoch {cur_epoch} exhausted")
+                        # Log dispatch progress.
+                        now = time.time()
+                        if now - last_log_time >= self.YIELD_LOG_INTERVAL_S:
+                            last_log_time = now
+                            logger.debug(
+                                f"Split {self._output_split_idx} epoch "
+                                f"{cur_epoch}: consumer resumed after yield"
+                            )
+
+                logger.debug(
+                    f"Split {self._output_split_idx}: epoch {cur_epoch} exhausted"
+                )
+            finally:
+                # Tell the coordinator this split has stopped consuming for
+                # ``cur_epoch`` (normal exhaustion, ``break`` in the consumer
+                # loop, or an exception). Once every split has disengaged,
+                # the coordinator shuts the executor down so it stops
+                # producing blocks into the object store. Fire-and-forget:
+                # we don't block the consumer thread on this call.
+                self._coord_actor.client_disengaged.remote(
+                    cur_epoch, self._output_split_idx
+                )
 
         # Return None for executor since StreamSplitDataIterator has its own
         # mechanism for reporting prefetched bytes via SplitCoordinator.
@@ -180,6 +194,12 @@ class SplitCoordinator:
         # Guarded by self._lock.
         self._next_bundle: Dict[int, RefBundle] = {}
         self._unfinished_clients_in_epoch = n
+        # Number of splits still consuming the current epoch's executor.
+        # Reset to ``n`` when a new epoch starts; decremented when a split's
+        # iterator exits (normally or via early break / exception). When it
+        # reaches 0 the executor is shut down so it stops producing blocks
+        # into the object store. Guarded by self._lock.
+        self._active_clients_in_epoch = 0
         self._cur_epoch = -1
 
         # Track prefetched bytes reported by each client (from BatchIterator).
@@ -281,6 +301,7 @@ class SplitCoordinator:
 
     def _reset_state(self):
         self._unfinished_clients_in_epoch = self._n
+        self._active_clients_in_epoch = self._n
         self._next_bundle.clear()
         self._gen_epoch_error = None
         # Reset per-split dispatch counters for the new epoch.
@@ -414,6 +435,15 @@ class SplitCoordinator:
         with self._lock:
             return dict(self._client_prefetched_bytes)
 
+    def is_executor_shutdown(self) -> bool:
+        """Whether the current executor (if any) has been shut down.
+
+        For testing only.
+        """
+        with self._lock:
+            executor = self._current_executor
+        return executor is not None and executor._shutdown
+
     def _maybe_log_dispatch(
         self,
         *,
@@ -445,6 +475,46 @@ class SplitCoordinator:
             # Call shutdown on the executor
             if self._current_executor is not None:
                 self._current_executor.shutdown(force=False)
+
+    def client_disengaged(self, epoch_id: int, split_idx: int) -> None:
+        """Called by a split iterator when it stops consuming for ``epoch_id``.
+
+        Triggered from the iterator's ``finally`` block on normal exhaustion,
+        early ``break``, or an exception in the consumer. Clears this split's
+        prefetch state so resource accounting is accurate for the remaining
+        consumers, and shuts down the executor once every split has
+        disengaged from the current epoch.
+        """
+        executor_to_shutdown = None
+        with self._lock:
+            # Stale notification from a prior epoch: the executor that was
+            # running when this iterator started has already been replaced
+            # by ``_try_start_new_epoch``. Nothing to clean up here.
+            if epoch_id != self._cur_epoch:
+                return
+
+            self._client_prefetched_bytes[split_idx] = 0
+            # Drop any blocks buffered for this split — the consumer won't
+            # read them and they'd otherwise pin memory until the next epoch.
+            self._next_bundle.pop(split_idx, None)
+            self._report_prefetched_bytes_to_executor()
+
+            self._active_clients_in_epoch -= 1
+            if (
+                self._active_clients_in_epoch <= 0
+                and self._current_executor is not None
+            ):
+                executor_to_shutdown = self._current_executor
+
+        # Shut down outside the lock: ``StreamingExecutor.shutdown`` joins
+        # the scheduling thread (up to 2s) and we don't want to block other
+        # coordinator calls in the meantime. ``shutdown`` is idempotent.
+        if executor_to_shutdown is not None:
+            logger.debug(
+                f"All splits disengaged from epoch {epoch_id}; shutting "
+                "down executor."
+            )
+            executor_to_shutdown.shutdown(force=False)
 
     def _barrier(self, split_idx: int) -> int:
         """Arrive and block until the start of the given epoch."""
