@@ -2619,6 +2619,23 @@ networkx==3.2.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   torch
+nixl==1.0.0 ; sys_platform != 'darwin' \
+    --hash=sha256:d4f2944e592358e53607276cdb4cc9d0827e11d5d6a8737edf020a134c3dca60
+    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+nixl-cu12==1.0.1 ; sys_platform != 'darwin' \
+    --hash=sha256:0143bc14d7b969c7519639821c126d3ba47cbaf38281c5d85656a348f65e06a4 \
+    --hash=sha256:24c676c81f06dabb05e81ae17ee1236bfa9b6abbad3f4a37299b7658f4bfd782 \
+    --hash=sha256:40804fadf847df8906f1a0249d9ced6574bbab25e72fd8914e4e0f5f26787519 \
+    --hash=sha256:44ac2eeecc1a27dbe54f1df8e3568e4d142f0a881afca9d15dff0bb75838594c \
+    --hash=sha256:7548417b8089078689d8f3ee56dd174991c06c621d3440fb0c8a967e35e39ff6 \
+    --hash=sha256:85d3709edc6741023c4cfadc015bce822da7488bcc4cc6871cf7c078b5a719f9 \
+    --hash=sha256:a0fae78732a70d00c229c987917052f54c7ff581f83c772e05d546d211e6828d \
+    --hash=sha256:ceb3d6243d1f5333c6d505c645d9ae18f96f61ff644af3b275e9115e65012e8f \
+    --hash=sha256:cfeeac742a81545e7124d03dd6c7ce79bb9a70d679a22a8bd5c04fb9649034a2 \
+    --hash=sha256:e2fef21327f5ddf715e00b73ab7e1eac8cf8a529d18590f010cbbc22792e71a6
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   nixl
 nixl-cu13==1.0.0 ; sys_platform != 'darwin' \
     --hash=sha256:27645aba4a9ceceff3efe8cea4c02832cd04e03aa0bea1a1e1cbd7a70e5180a1 \
     --hash=sha256:310f276057d2a321055c0906024419104d8cdf3fc1ebaa5351f34edb8196b47b \
@@ -2762,6 +2779,7 @@ numpy==2.2.6 \
     #   jaxlib
     #   keras
     #   ml-dtypes
+    #   nixl-cu12
     #   nixl-cu13
     #   numexpr
     #   pandas
@@ -4912,6 +4930,7 @@ torch==2.7.0+cu128 \
     --hash=sha256:fa05ac6ebed4777de7a5eff398c1f17b697c02422516748ce66a8151873e5a0e
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   nixl-cu12
     #   nixl-cu13
     #   torchmetrics
     #   torchtext
