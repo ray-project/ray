@@ -14,6 +14,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple
 from jinja2 import Environment
 
 import ray
+from ray._common.network_utils import get_localhost_ip
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import (
     NodeId,
@@ -448,7 +449,10 @@ class HAProxyConfig:
 
     @property
     def frontend_host(self) -> str:
-        if self.http_options.host is None or self.http_options.host == "0.0.0.0":
+        if self.http_options.host is None or self.http_options.host in (
+            "0.0.0.0",
+            "::",
+        ):
             return "*"
 
         return self.http_options.host
@@ -1201,7 +1205,7 @@ class HAProxyManager(ProxyActorInterface):
             # config's allowed characters, e.g. `#` -> `-`.
             name=self.get_safe_name(target.name),
             # Use localhost if target is on the same node as HAProxy
-            host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
+            host=get_localhost_ip() if target.ip == self._node_ip_address else target.ip,
             port=target.port,
         )
 

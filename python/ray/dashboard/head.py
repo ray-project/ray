@@ -103,7 +103,7 @@ class DashboardHead:
             self.serve_frontend = False
         # Public attributes are accessible for all head modules.
         # Walkaround for issue: https://github.com/ray-project/ray/issues/7084
-        self.http_host = get_localhost_ip() if http_host == "localhost" else http_host
+        self.http_host = get_localhost_ip() if is_localhost(http_host) else http_host
         self.http_port = http_port
         self.http_port_retries = http_port_retries
         self._modules_to_load = modules_to_load
