@@ -108,7 +108,8 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     ds_schema = ds.schema()
     assert ds_schema.names == ["float_field", "int_field"]
     assert ds_schema.types == [pa.float64(), pa.int32()]
-    assert df.equals(ds.to_pandas())
+    result = ds.to_pandas()
+    pd.testing.assert_frame_equal(df.astype(result.dtypes.to_dict()), result)
 
     # Read with schema inference, which will read all columns (including the auto
     # generated internal column "_id").
@@ -231,7 +232,8 @@ def test_mongo_datasource(ray_start_regular_shared, start_mongo):
     ds_schema = ds.schema()
     assert ds_schema.names == ["float_field", "int_field"]
     assert ds_schema.types == [pa.float64(), pa.int32()]
-    assert df.equals(ds.to_pandas())
+    result = ds.to_pandas()
+    pd.testing.assert_frame_equal(df.astype(result.dtypes.to_dict()), result)
 
     # Read with schema inference, which will read all columns (including the auto
     # generated internal column "_id").

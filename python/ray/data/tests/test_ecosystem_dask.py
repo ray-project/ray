@@ -93,9 +93,15 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     ds = ray.data.from_blocks([df1, df2])
     if ds_format == "arrow":
         ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
+        # After Arrow round-trip the string column comes back as string[pyarrow],
+        # so meta and the expected df must match that.
+        two_meta_dtype = pd.ArrowDtype(pa.string())
+        df = df.astype({"two": two_meta_dtype})
+    else:
+        two_meta_dtype = pd.StringDtype()
     ddf = ds.to_dask(
         meta=pd.DataFrame(
-            {"one": pd.Series(dtype=np.int16), "two": pd.Series(dtype=pd.StringDtype())}
+            {"one": pd.Series(dtype=np.int16), "two": pd.Series(dtype=two_meta_dtype)}
         ),
     )
 
@@ -104,7 +110,7 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     assert isinstance(meta, pd.DataFrame)
     assert meta.empty
     assert list(meta.columns) == ["one", "two"]
-    assert list(meta.dtypes) == [np.int16, pd.StringDtype()]
+    assert list(meta.dtypes) == [np.int16, two_meta_dtype]
 
     # Explicit Dask-on-Ray
     result = ddf.compute(scheduler=ray_dask_get)
@@ -134,6 +140,8 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     print("Expected: ", df)
     print("Result (1): ", result)
 
+    if ds_format == "arrow":
+        df = df.astype(result.dtypes.to_dict())
     pd.testing.assert_frame_equal(df, result)
 
     # Implicit Dask-on-Ray.
@@ -141,6 +149,8 @@ def test_to_dask(ray_start_regular_shared, ds_format):
 
     print("Result (2): ", result)
 
+    if ds_format == "arrow":
+        df = df.astype(result.dtypes.to_dict())
     pd.testing.assert_frame_equal(df, result)
 
 

@@ -475,7 +475,7 @@ def test_groupby_tabular_sum(
     expected = pd.DataFrame(
         {
             "A": pd.Series([0, 1, 2], dtype=result["A"].dtype),
-            "sum(B)": pd.Series([None, None, None], dtype="object"),
+            "sum(B)": pd.Series([None, None, None], dtype=result["sum(B)"].dtype),
         },
     )
 

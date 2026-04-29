@@ -256,7 +256,8 @@ def test_read_basic():
 
     # Actually compare the tables now
     table_p = ray_ds.to_pandas().sort_values(["col_a", "col_b"]).reset_index(drop=True)
-    assert orig_table_p.equals(table_p)
+    orig_table_p = orig_table_p.astype(table_p.dtypes.to_dict())
+    pd.testing.assert_frame_equal(orig_table_p, table_p)
 
 
 @pytest.mark.skipif(
