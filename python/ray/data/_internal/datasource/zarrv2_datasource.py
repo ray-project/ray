@@ -43,10 +43,14 @@ def _make_azure_fs(url: str, obj: Any) -> tuple[Any, Any]:
     store = AzureStore.from_url(
         url=url,
     )
-    return FsspecStore(
-        config=store.config,
-        protocol="abfs",
-    ), store
+    return (
+        FsspecStore(
+            config=store.config,
+            protocol="abfs",
+        ),
+        store,
+    )
+
 
 def _resolve_store(path: str, obj: Any) -> tuple[Any, str]:
     """
@@ -79,10 +83,10 @@ def _resolve_store(path: str, obj: Any) -> tuple[Any, str]:
     fs, root = fsspec.core.url_to_fs(path)
     return fs, root.rstrip("/")
 
+
 def _create_read_fn(
     batch: list[dict[str, object]],
 ) -> Callable[[], Iterable[pd.DataFrame]]:
-
     def read_fn() -> Iterable[pd.DataFrame]:
         arrays = []
         array_shapes = []
@@ -95,7 +99,9 @@ def _create_read_fn(
             chunk_slices = []
             padding = []
             chunk_shape = list(row["meta"]["chunks"])
-            for dim, (i, size, chunk) in enumerate(zip(row["chunk_index"], row["meta"]["shape"], row["meta"]["chunks"])):
+            for dim, (i, size, chunk) in enumerate(
+                zip(row["chunk_index"], row["meta"]["shape"], row["meta"]["chunks"])
+            ):
                 start = i * chunk
                 stop = min((i + 1) * chunk, size)
                 chunk_slices.append((start, stop))
@@ -113,17 +119,19 @@ def _create_read_fn(
             dtypes.append(row["meta"]["dtype"])
             full_paddings.append(padding)
 
-        yield pd.DataFrame({
-            "array": arrays,
-            "array_shape": array_shapes,
-            "chunk_shape": chunk_shapes,
-            "dtype": dtypes,
-            "chunk_slices": full_chunk_slices,
-            "padding": full_paddings
-        })
-
+        yield pd.DataFrame(
+            {
+                "array": arrays,
+                "array_shape": array_shapes,
+                "chunk_shape": chunk_shapes,
+                "dtype": dtypes,
+                "chunk_slices": full_chunk_slices,
+                "padding": full_paddings,
+            }
+        )
 
     return read_fn
+
 
 class ZarrV2Datasource(Datasource):
     """Datasource for reading Zarr arrays."""
@@ -163,8 +171,7 @@ class ZarrV2Datasource(Datasource):
         return consolidated["metadata"]
 
     def _select_array_metadata(
-        self,
-        array_paths: Iterable[str] | None
+        self, array_paths: Iterable[str] | None
     ) -> dict[str, dict[str, object]]:
         """Pick a single array's metadata from the consolidated metadata."""
         arrays: dict[str, dict[str, object]] = {}
@@ -206,16 +213,16 @@ class ZarrV2Datasource(Datasource):
                 meta["chunks"] = chunk_shape
 
             if len(shape) != len(chunk_shape):
-                raise ValueError(f"chunk shape must have same dimension length as the array: {array}")
+                raise ValueError(
+                    f"chunk shape must have same dimension length as the array: {array}"
+                )
 
             grid_shape = tuple(
-                math.ceil(size / chunk)
-                for size, chunk in zip(shape, chunk_shape)
+                math.ceil(size / chunk) for size, chunk in zip(shape, chunk_shape)
             )
 
             grid_shape_dict[array] = {"meta": meta, "grid_shape": grid_shape}
         return grid_shape_dict
-
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         arrays = []
@@ -276,12 +283,14 @@ class ZarrV2Datasource(Datasource):
         size = sys.getsizeof(obj)
 
         if isinstance(obj, dict):
-            size += sum(self._sizeof_batch(k, seen) + self._sizeof_batch(v, seen) for k, v in obj.items())
+            size += sum(
+                self._sizeof_batch(k, seen) + self._sizeof_batch(v, seen)
+                for k, v in obj.items()
+            )
         elif isinstance(obj, (list, tuple, set, frozenset)):
             size += sum(self._sizeof_batch(x, seen) for x in obj)
 
         return size
-
 
     def get_read_tasks(
         self,
@@ -293,47 +302,42 @@ class ZarrV2Datasource(Datasource):
         read_tasks: List[ReadTask] = []
         batch: list[dict[str, object]] = []
 
-        num_chunks = sum(prod(value["grid_shape"]) for _, value in self._grid_shape_dict.items())
+        num_chunks = sum(
+            prod(value["grid_shape"]) for _, value in self._grid_shape_dict.items()
+        )
         parallelism = min(parallelism, num_chunks) if num_chunks > 0 else 1
         batch_size = math.ceil(num_chunks / parallelism)
 
         for array, data in self._grid_shape_dict.items():
             for chunk_index in product(*(range(n) for n in data["grid_shape"])):
 
-                batch.append({"array": array, "meta": data["meta"], "chunk_index": chunk_index})
+                batch.append(
+                    {"array": array, "meta": data["meta"], "chunk_index": chunk_index}
+                )
 
                 if len(batch) >= batch_size:
                     read_tasks.append(
                         ReadTask(
-                            _create_read_fn(
-                                batch
-                            ),
+                            _create_read_fn(batch),
                             BlockMetadata(
-                                num_rows = len(batch),
-                                size_bytes = self._sizeof_batch(batch),
-                                input_files = (self.paths[0],),
-                                exec_stats = None
-                            )
+                                num_rows=len(batch),
+                                size_bytes=self._sizeof_batch(batch),
+                                input_files=(self.paths[0],),
+                                exec_stats=None,
+                            ),
                         )
                     )
                     batch = []
         if batch:
             read_tasks.append(
                 ReadTask(
-                    _create_read_fn(
-                        batch
-                    ),
+                    _create_read_fn(batch),
                     BlockMetadata(
-                        num_rows = len(batch),
-                        size_bytes = self._sizeof_batch(batch),
-                        input_files = (self.paths[0],),
-                        exec_stats = None
-                    )
+                        num_rows=len(batch),
+                        size_bytes=self._sizeof_batch(batch),
+                        input_files=(self.paths[0],),
+                        exec_stats=None,
+                    ),
                 )
             )
         return read_tasks
-
-
-
-
-

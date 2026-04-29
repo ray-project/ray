@@ -110,9 +110,7 @@ def test_zarrv2_datasource_applies_chunk_shape_override(zarrv2_store):
     assert len(rows) == 4
 
     truncated_chunk = next(
-        row
-        for row in rows
-        if row["chunk_slices"] == [(4, 5), (2, 4)]
+        row for row in rows if row["chunk_slices"] == [(4, 5), (2, 4)]
     )
     assert truncated_chunk["chunk_shape"] == (1, 2)
     assert truncated_chunk["padding"] == [3, 0]

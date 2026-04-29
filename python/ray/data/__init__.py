@@ -80,7 +80,7 @@ from ray.data.read_api import (  # noqa: F401
     read_unity_catalog,
     read_videos,
     read_webdataset,
-    read_zarrv2
+    read_zarrv2,
 )
 
 # Module-level cached global functions for callable classes. It needs to be defined here
@@ -192,5 +192,5 @@ __all__ = [
     "KafkaAuthConfig",
     "Preprocessor",
     "TFXReadOptions",
-    "read_zarrv2"
+    "read_zarrv2",
 ]

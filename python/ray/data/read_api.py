@@ -641,6 +641,7 @@ def read_audio(
         override_num_blocks=override_num_blocks,
     )
 
+
 @PublicAPI(stability="alpha")
 def read_zarrv2(
     path: str,
@@ -713,9 +714,7 @@ def read_zarrv2(
         per-dimension trailing padding for one chunk.
     """
     datasource = ZarrV2Datasource(
-        path = path,
-        chunk_shape = chunk_shape,
-        array_paths = array_paths
+        path=path, chunk_shape=chunk_shape, array_paths=array_paths
     )
     return read_datasource(
         datasource,
@@ -726,7 +725,6 @@ def read_zarrv2(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
-
 
 
 @PublicAPI(stability="alpha")
