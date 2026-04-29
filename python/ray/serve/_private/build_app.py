@@ -155,8 +155,11 @@ def build_app(
         # compose helper deployments.
         if len(ingress_request_router_deployments) == 0:
             raise ValueError(
-                "The deployment used as `ingress_request_router` is also part "
-                "of the main application graph; it must be standalone."
+                "Expected `ingress_request_router` to build into one standalone "
+                "deployment, but it did not produce any new deployments. This "
+                "usually means the same bound router deployment is also reachable "
+                "from the main application graph; attach it only as "
+                "`ingress_request_router`."
             )
         if len(ingress_request_router_deployments) > 1:
             raise ValueError(

@@ -636,7 +636,7 @@ def test_build_app_rejects_ingress_request_router_in_main_app_graph(monkeypatch)
 
     with pytest.raises(
         ValueError,
-        match=("also part of the main application graph; it must be standalone"),
+        match="did not produce any new deployments",
     ):
         build_app(
             app,
