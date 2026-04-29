@@ -27,6 +27,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/id.h"
+#include "ray/common/scheduling/label_selector.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/common/lease/lease.h"
@@ -265,6 +266,8 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
   local_node_resources[ray::kCPU_ResourceLabel] = num_cpus;
   local_node_resources[ray::kGPU_ResourceLabel] = num_gpus;
   local_node_resources[ray::kMemory_ResourceLabel] = 128;
+  absl::flat_hash_map<std::string, std::string> local_node_labels = {
+      {kLabelKeyNodeID, NodeID::FromBinary(id).Hex()}};
   static instrumented_io_context io_context;
   auto scheduler = std::make_shared<ClusterResourceScheduler>(
       io_context,
@@ -275,7 +278,11 @@ std::shared_ptr<ClusterResourceScheduler> CreateSingleNodeScheduler(
         return gcs_client.Nodes().IsNodeAlive(NodeID::FromBinary(node_id.Binary()));
       },
       resource_usage_gauge,
-      clock);
+      clock,
+      /*get_used_object_store_memory=*/nullptr,
+      /*get_pull_manager_at_capacity=*/nullptr,
+      /*shutdown_raylet_gracefully=*/nullptr,
+      local_node_labels);
 
   return scheduler;
 }
@@ -286,7 +293,9 @@ RayLease CreateLease(
     std::vector<ObjectID> args = {},
     const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
     rpc::SchedulingStrategy scheduling_strategy = rpc::SchedulingStrategy(),
-    const LeaseID &lease_id = LeaseID::FromRandom()) {
+    const LeaseID &lease_id = LeaseID::FromRandom(),
+    const LabelSelector &label_selector = {},
+    const std::vector<FallbackOption> &fallback_strategy = {}) {
   TaskSpecBuilder spec_builder;
   TaskID id = RandomTaskId();
   JobID job_id = RandomJobId();
@@ -313,7 +322,12 @@ RayLease CreateLease(
                                  0,
                                  TaskID::Nil(),
                                  "",
-                                 runtime_env_info);
+                                 runtime_env_info,
+                                 /*concurrency_group_name=*/"",
+                                 /*enable_task_events=*/true,
+                                 /*labels=*/{},
+                                 label_selector,
+                                 fallback_strategy);
 
   if (!args.empty()) {
     for (auto &arg : args) {
@@ -1864,6 +1878,87 @@ TEST_F(ClusterLeaseManagerTest, ResourceReportForNodeAffinitySchedulingStrategyT
   ASSERT_EQ(demand.num_infeasible_requests_queued(), 1);
   ASSERT_EQ(demand.num_ready_requests_queued(), 0);
   ASSERT_EQ(demand.shape().at("GPU"), 1);
+}
+
+TEST_F(ClusterLeaseManagerTest,
+       ResourceReportSuppressesNodeAffinityLabelSelectorWithoutFallback) {
+  rpc::RequestWorkerLeaseReply reply;
+  auto callback = [](Status, std::function<void()>, std::function<void()>) {};
+
+  RayLease task_with_node_id_label_selector = CreateLease(
+      {{ray::kCPU_ResourceLabel, 2}},
+      0,
+      {},
+      nullptr,
+      rpc::SchedulingStrategy(),
+      LeaseID::FromRandom(),
+      LabelSelector(
+          std::unordered_map<std::string, std::string>{{kLabelKeyNodeID, id_.Hex()}}));
+  lease_manager_.QueueAndScheduleLease(
+      task_with_node_id_label_selector,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  rpc::ResourcesData data;
+  lease_manager_.FillResourceUsage(data);
+  auto resource_load_by_shape = data.resource_load_by_shape();
+  ASSERT_EQ(resource_load_by_shape.resource_demands().size(), 0);
+}
+
+TEST_F(ClusterLeaseManagerTest,
+       ResourceReportIncludesNodeAffinityLabelSelectorWithFallback) {
+  rpc::RequestWorkerLeaseReply reply;
+  auto callback = [](Status, std::function<void()>, std::function<void()>) {};
+
+  const auto primary_node_id_selector = LabelSelector(
+      std::unordered_map<std::string, std::string>{{kLabelKeyNodeID, id_.Hex()}});
+  const auto fallback_accelerator_selector =
+      LabelSelector(std::unordered_map<std::string, std::string>{
+          {kLabelKeyNodeAcceleratorType, "A100"}});
+  const std::vector<FallbackOption> fallback_strategy = {
+      FallbackOption(fallback_accelerator_selector)};
+
+  RayLease task_with_scale_upable_fallback = CreateLease({{ray::kCPU_ResourceLabel, 2}},
+                                                         0,
+                                                         {},
+                                                         nullptr,
+                                                         rpc::SchedulingStrategy(),
+                                                         LeaseID::FromRandom(),
+                                                         primary_node_id_selector,
+                                                         fallback_strategy);
+  lease_manager_.QueueAndScheduleLease(
+      task_with_scale_upable_fallback,
+      false,
+      false,
+      std::vector<internal::ReplyCallback>{internal::ReplyCallback(callback, &reply)});
+
+  ASSERT_EQ(leased_workers_.size(), 0);
+  ASSERT_EQ(pool_.workers.size(), 0);
+
+  rpc::ResourcesData data;
+  lease_manager_.FillResourceUsage(data);
+  auto resource_load_by_shape = data.resource_load_by_shape();
+  ASSERT_EQ(resource_load_by_shape.resource_demands().size(), 1);
+  auto demand = resource_load_by_shape.resource_demands()[0];
+  ASSERT_EQ(demand.num_infeasible_requests_queued(), 0);
+  ASSERT_EQ(demand.shape().at("CPU"), 2);
+  ASSERT_EQ(demand.label_selectors().size(), 2);
+  ASSERT_EQ(demand.label_selectors(0).label_constraints().size(), 1);
+  const auto &node_id_constraint = demand.label_selectors(0).label_constraints(0);
+  ASSERT_EQ(node_id_constraint.label_key(), kLabelKeyNodeID);
+  ASSERT_EQ(node_id_constraint.label_values().size(), 1);
+  ASSERT_EQ(node_id_constraint.label_values(0), id_.Hex());
+  // The non-node-id fallback selector from fallback_strategy is reported after the
+  // primary hard node-id selector, so autoscaler sees the scale-up-able alternative.
+  ASSERT_EQ(demand.label_selectors(1).label_constraints().size(), 1);
+  const auto &fallback_constraint = demand.label_selectors(1).label_constraints(0);
+  ASSERT_EQ(fallback_constraint.label_key(), kLabelKeyNodeAcceleratorType);
+  ASSERT_EQ(fallback_constraint.label_values().size(), 1);
+  ASSERT_EQ(fallback_constraint.label_values(0), "A100");
 }
 
 TEST_F(ClusterLeaseManagerTest, BacklogReportTest) {
