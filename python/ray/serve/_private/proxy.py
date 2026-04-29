@@ -1419,9 +1419,11 @@ class HTTPProxy(GenericProxy):
                     yield asgi_message
                     response_started = True
         except BaseException as e:
-            status = get_http_response_status(e, request_timeout_s, request_id)
+            error_status = get_http_response_status(e, request_timeout_s, request_id)
+            if status is None:
+                status = error_status
             for asgi_message in send_http_response_on_exception(
-                status, response_started
+                error_status, response_started
             ):
                 yield asgi_message
             exc = e
