@@ -4,30 +4,36 @@ from __future__ import annotations
 
 import json
 import math
+import sys
 from collections.abc import Callable, Iterable
 from itertools import product
 from math import prod
 from pathlib import Path
-from typing import Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional
 from urllib.parse import urlsplit
-import sys
 
-import numpy as np
+import fsspec
+import fsspec.core
 import pandas as pd
+
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
 from ray.data.datasource.datasource import Datasource, ReadTask
 
-import fsspec
-import fsspec.core
+if TYPE_CHECKING:
+    from ray.data.context import DataContext
 
 
 def _make_azure_fs(url: str, obj: Any) -> tuple[Any, Any]:
     """Create an authenticated Azure FsspecStore and AzureStore from a URL.
+
     Args:
-        url: The Azure Blob Storage URL (abfs://...).
+        url: The Azure URL to parse.
+        obj: The original filesystem/storage options object used to construct
+            the authenticated Azure store.
+
     Returns:
-        A tuple of (FsspecStore, AzureStore).
+        A tuple containing the authenticated fsspec filesystem and Azure store.
     """
     _check_import(obj, module="obstore", package="obstore")
 
@@ -305,7 +311,7 @@ class ZarrV2Datasource(Datasource):
                             BlockMetadata(
                                 num_rows = len(batch),
                                 size_bytes = self._sizeof_batch(batch),
-                                input_files = [self.paths[0]],
+                                input_files = (self.paths[0],),
                                 exec_stats = None
                             )
                         )
@@ -320,7 +326,7 @@ class ZarrV2Datasource(Datasource):
                     BlockMetadata(
                         num_rows = len(batch),
                         size_bytes = self._sizeof_batch(batch),
-                        input_files = [self.paths[0]],
+                        input_files = (self.paths[0],),
                         exec_stats = None
                     )
                 )
