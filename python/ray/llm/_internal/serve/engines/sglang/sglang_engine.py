@@ -60,7 +60,8 @@ class SGLangPauseConfig(BaseModel):
 class SGLangSleepConfig(BaseModel):
     """SGLang-specific configuration for sleep operation"""
 
-    tags: list[Literal["kv_cache", "weights", "cuda_graph"]] | None = None
+    tags: Optional[List[Literal["kv_cache", "weights", "cuda_graph"]]] = None
+
     """Sleep tags:
     - "kv_cache": Discard KV cache
     - "weights": Offload to CPU RAM
@@ -72,7 +73,7 @@ class SGLangSleepConfig(BaseModel):
 class SGLangWakeupConfig(BaseModel):
     """SGLang-specific configuration for wakeup operation"""
 
-    tags: list[Literal["kv_cache", "weights", "cuda_graph"]] | None = None
+    tags: Optional[List[Literal["kv_cache", "weights", "cuda_graph"]]] = None
     """Optional tags to selectively wake up components:
     - "kv_cache": Restore KV cache only
     - "weights": Restore weights only
@@ -739,13 +740,15 @@ class SGLangServer:
         """
         return self._is_sleeping
 
-    async def reset_prefix_cache(self, timeout: Optional[float]) -> None:
+    async def reset_prefix_cache(self, timeout: Optional[float] = None) -> None:
         assert self.engine is not None, "server is not initialized"
         await self.engine.flush_cache(timeout)
 
     async def collective_rpc(
         self,
         method: str,
+        timeout: Optional[float] = None,
+        args: tuple = (),
         kwargs: Optional[dict] = None,
     ) -> None:
         """Execute a collective RPC call on all SGLang workers.
