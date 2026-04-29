@@ -90,16 +90,16 @@ def _create_read_fn(
         dtypes = []
         full_chunk_slices = []
         full_paddings = []
-        
+
         for row in batch:
             chunk_slices = []
             padding = []
             chunk_shape = list(row["meta"]["chunks"])
-            for dim, (i, size, chunk) in enumerate(zip(row['chunk_index'], row['meta']['shape'], row['meta']['chunks'])):
+            for dim, (i, size, chunk) in enumerate(zip(row["chunk_index"], row["meta"]["shape"], row["meta"]["chunks"])):
                 start = i * chunk
                 stop = min((i + 1) * chunk, size)
                 chunk_slices.append((start, stop))
-                
+
                 if start + chunk > size:
                     padding_slice = start + chunk - size
                     chunk_shape[dim] = stop - start
@@ -107,12 +107,12 @@ def _create_read_fn(
                     padding_slice = 0
                 padding.append(padding_slice)
             full_chunk_slices.append(chunk_slices)
-            arrays.append(row['array'])
-            array_shapes.append(row['meta']['shape'])
+            arrays.append(row["array"])
+            array_shapes.append(row["meta"]["shape"])
             chunk_shapes.append(tuple(chunk_shape))
-            dtypes.append(row['meta']['dtype'])
+            dtypes.append(row["meta"]["dtype"])
             full_paddings.append(padding)
-        
+
         yield pd.DataFrame({
             "array": arrays,
             "array_shape": array_shapes,
@@ -121,7 +121,7 @@ def _create_read_fn(
             "chunk_slices": full_chunk_slices,
             "padding": full_paddings
         })
-                
+
 
     return read_fn
 
@@ -135,7 +135,7 @@ class ZarrV2Datasource(Datasource):
         array_paths: List[str] | None = None,
     ) -> None:
         super().__init__()
-        
+
         if chunk_shape:
             for val in chunk_shape:
                 if val <= 0 or not isinstance(val, int):
@@ -178,7 +178,7 @@ class ZarrV2Datasource(Datasource):
 
         if not arrays:
             raise ValueError("No arrays found in consolidated metadata.")
-        
+
         if array_paths is None:
             requested_paths = [p.strip("/") for p in arrays.keys()]
             normalized_paths = [p if p != "." else "" for p in requested_paths]
@@ -193,29 +193,29 @@ class ZarrV2Datasource(Datasource):
                     f"Array(s) not found: {', '.join(missing)}. Available: {available}"
                 )
             selected_paths = normalized_paths
-        
+
         return {path: arrays[path] for path in selected_paths}
-    
+
     def _gen_grid_shape(self) -> dict[str, dict[str, object]]:
         grid_shape_dict = {}
         for array, meta in self._selected_arrays.items():
-            shape = tuple(meta['shape'])
-            chunk_shape = tuple(meta['chunks'])
+            shape = tuple(meta["shape"])
+            chunk_shape = tuple(meta["chunks"])
             if self.chunk_shape:
                 chunk_shape = self.chunk_shape
-                meta['chunks'] = chunk_shape
-            
+                meta["chunks"] = chunk_shape
+
             if len(shape) != len(chunk_shape):
                 raise ValueError(f"chunk shape must have same dimension length as the array: {array}")
-            
+
             grid_shape = tuple(
                 math.ceil(size / chunk)
                 for size, chunk in zip(shape, chunk_shape)
             )
-            
+
             grid_shape_dict[array] = {"meta": meta, "grid_shape": grid_shape}
         return grid_shape_dict
-        
+
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         arrays = []
@@ -263,7 +263,7 @@ class ZarrV2Datasource(Datasource):
                 "padding": full_paddings,
             }
         )
-    
+
     def _sizeof_batch(self, obj, seen=None):
         if seen is None:
             seen = set()
@@ -281,27 +281,27 @@ class ZarrV2Datasource(Datasource):
             size += sum(self._sizeof_batch(x, seen) for x in obj)
 
         return size
-    
-    
+
+
     def get_read_tasks(
         self,
         parallelism: int,
         per_task_row_limit: Optional[int] = None,
         data_context: Optional["DataContext"] = None,
     ) -> List[ReadTask]:
-        
+
         read_tasks: List[ReadTask] = []
         batch: list[dict[str, object]] = []
-        
-        num_chunks = sum(prod(value['grid_shape']) for _, value in self._grid_shape_dict.items())
+
+        num_chunks = sum(prod(value["grid_shape"]) for _, value in self._grid_shape_dict.items())
         parallelism = min(parallelism, num_chunks) if num_chunks > 0 else 1
         batch_size = math.ceil(num_chunks / parallelism)
-        
+
         for array, data in self._grid_shape_dict.items():
-            for chunk_index in product(*(range(n) for n in data['grid_shape'])):
-                
-                batch.append({"array": array, "meta": data['meta'], "chunk_index": chunk_index})
-                
+            for chunk_index in product(*(range(n) for n in data["grid_shape"])):
+
+                batch.append({"array": array, "meta": data["meta"], "chunk_index": chunk_index})
+
                 if len(batch) >= batch_size:
                     read_tasks.append(
                         ReadTask(
@@ -332,8 +332,8 @@ class ZarrV2Datasource(Datasource):
                 )
             )
         return read_tasks
-        
-                
-        
-    
-    
+
+
+
+
+

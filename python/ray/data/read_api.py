@@ -27,7 +27,6 @@ from ray.data._internal.datasource.audio_datasource import AudioDatasource
 from ray.data._internal.datasource.avro_datasource import AvroDatasource
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
 from ray.data._internal.datasource.binary_datasource import BinaryDatasource
-from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
 from ray.data._internal.datasource.clickhouse_datasource import ClickHouseDatasource
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.databricks_credentials import (
@@ -67,6 +66,7 @@ from ray.data._internal.datasource.torch_datasource import TorchDatasource
 from ray.data._internal.datasource.uc_datasource import UnityCatalogConnector
 from ray.data._internal.datasource.video_datasource import VideoDatasource
 from ray.data._internal.datasource.webdataset_datasource import WebDatasetDatasource
+from ray.data._internal.datasource.zarrv2_datasource import ZarrV2Datasource
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators import (
@@ -726,7 +726,7 @@ def read_zarrv2(
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
     )
-    
+
 
 
 @PublicAPI(stability="alpha")
