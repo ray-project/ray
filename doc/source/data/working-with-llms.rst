@@ -441,6 +441,22 @@ To resume from a checkpoint, run the same code again. Ray Data discovers the che
 Advanced configuration
 ----------------------
 
+CPU-only batch inference
+~~~~~~~~~~~~~~~~~~~~~~~~
+
+Ray Data LLM can run vLLM batch inference on CPUs if your environment has a **CPU-enabled vLLM installation**. Use the multiprocessing executor (``distributed_executor_backend="mp"``) and request only CPU resources in ``placement_group_config``:
+
+.. literalinclude:: doc_code/working-with-llms/basic_llm_example.py
+    :language: python
+    :start-after: __cpu_inference_config_example_start__
+    :end-before: __cpu_inference_config_example_end__
+
+.. important::
+    CPU-only inference is not available out of the box in Ray LLM GPU images because those environments typically install GPU-enabled vLLM wheels. Install CPU-compatible PyTorch wheels and a CPU-enabled vLLM build for your target CPU before running this configuration.
+
+.. note::
+    If your environment has native library incompatibilities while importing or starting vLLM, set ``LD_LIBRARY_PATH`` through ``runtime_env={"env_vars": {...}}``. See :ref:`c-cpp-runtime-dependencies-incompatibility` for an example workaround.
+
 Model parallelism
 ~~~~~~~~~~~~~~~~~
 
@@ -611,6 +627,8 @@ Then reference the remote path in your config:
 
 C/C++ runtime dependencies incompatibility
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _c-cpp-runtime-dependencies-incompatibility:
 
 .. admonition:: Known issue
 

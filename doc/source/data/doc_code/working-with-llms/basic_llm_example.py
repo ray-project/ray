@@ -404,6 +404,25 @@ config = vLLMEngineProcessorConfig(
 )
 # __custom_placement_group_strategy_config_example_end__
 
+# __cpu_inference_config_example_start__
+# CPU-only vLLM configuration
+# Requires a CPU-enabled vLLM installation and CPU-compatible PyTorch wheels.
+cpu_config = vLLMEngineProcessorConfig(
+    model_source="facebook/opt-125m",
+    engine_kwargs={
+        "distributed_executor_backend": "mp",
+        "enforce_eager": True,
+        "max_model_len": 2048,
+    },
+    batch_size=32,
+    concurrency=1,
+    placement_group_config={
+        "bundles": [{"CPU": 4, "GPU": 0}],
+        "strategy": "PACK",
+    },
+)
+# __cpu_inference_config_example_end__
+
 # __concurrent_config_example_start__
 config = vLLMEngineProcessorConfig(
     model_source="unsloth/Llama-3.1-8B-Instruct",
