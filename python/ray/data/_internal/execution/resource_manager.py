@@ -1043,7 +1043,24 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Signed headroom = planned_grant - usage. Negative means the op is consuming
         # more than its planned grant (e.g. after a cluster shrink), used by the
         # autoscaler to decide how many actors to remove.
-        return planned_grant.subtract(self._resource_manager.get_op_usage(op))
+        headroom = planned_grant.subtract(self._resource_manager.get_op_usage(op))
+
+        # Clamp dimensions where planned_grant is 0 to 0 rather than returning a
+        # spurious negative value. A zero planned grant means the dimension is not
+        # tracked by the allocator (e.g. limits.memory was not set). Actors can still
+        # have non-zero usage for such dimensions (e.g. ray_remote_args={"memory": X}),
+        # which would otherwise produce a false negative headroom and trigger spurious
+        # autoscaler downscaling.
+        return ExecutionResources(
+            cpu=headroom.cpu if planned_grant.cpu > 0 else 0,
+            gpu=headroom.gpu if planned_grant.gpu > 0 else 0,
+            object_store_memory=(
+                headroom.object_store_memory
+                if planned_grant.object_store_memory > 0
+                else 0
+            ),
+            memory=headroom.memory if planned_grant.memory > 0 else 0,
+        )
 
     def _get_total_reserved(self, op: PhysicalOperator) -> ExecutionResources:
         """Get total reserved resources for an operator, including outputs reservation."""
@@ -1152,11 +1169,16 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             ExecutionResources.zero()
         )
 
-        # For over-subscribed dimensions (collective usage > shared pool, e.g. after a
-        # cluster shrink), distribute the shared pool proportionally to each op's usage.
-        op_proportional_grants = self._compute_proportional_grants(
-            eligible_ops, op_shared_usage, total_shared_usage
-        )
+        # Short-circuit in the common case (no over-subscription) to avoid allocating
+        # N ExecutionResources objects whose values would all be zero anyway.
+        if not total_shared_usage.satisfies_limit(self._total_shared):
+            # For over-subscribed dimensions (collective usage > shared pool, e.g. after a
+            # cluster shrink), distribute the shared pool proportionally to each op's usage.
+            op_proportional_grants = self._compute_proportional_grants(
+                eligible_ops, op_shared_usage, total_shared_usage
+            )
+        else:
+            op_proportional_grants = {}
 
         # Cache per-op max requirements for consistent cap values across both loops below.
         op_max_resources = {
@@ -1167,7 +1189,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         for i, op in enumerate(reversed(eligible_ops)):
             # op_proportional and op_shared are mutually exclusive per dimension:
             # when over-subscribed, remaining_shared = 0 so op_shared = 0.
-            op_proportional = op_proportional_grants[op]
+            op_proportional = op_proportional_grants.get(op, ExecutionResources.zero())
             # By default, divide the remaining shared resources equally.
             op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
 

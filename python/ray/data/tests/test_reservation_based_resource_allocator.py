@@ -276,6 +276,54 @@ class TestReservationOpResourceAllocator:
         allocator.update_budgets(limits=global_limits)
         assert allocator.get_signed_headroom(o2).cpu == 0.5
 
+    def test_get_signed_headroom_untracked_memory_dimension(self, restore_data_context):
+        """Actors declaring logical memory should not trigger spurious downscaling when
+        limits.memory is 0 (memory dimension not tracked by the allocator)."""
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1, "memory": 1_000_000})
+        o3 = LimitOperator(1, o2, DataContext.get_current())
+
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+        )
+
+        topo = build_streaming_topology(o3, ExecutionOptions())
+        # limits has no memory dimension (memory=None → 0), as is common when
+        # users specify explicit resource limits or in test setups.
+        global_limits = ExecutionResources(cpu=8, gpu=0, object_store_memory=1000)
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        resource_manager.get_op_usage = MagicMock(
+            side_effect=lambda op: ExecutionResources(
+                cpu=2, memory=2_000_000  # actor is running and using memory
+            )
+            if op is o2
+            else ExecutionResources.zero()
+        )
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3], 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        allocator.update_budgets(limits=global_limits)
+
+        headroom = allocator.get_signed_headroom(o2)
+        assert headroom is not None
+        # planned_grant.memory = 0 (not tracked), usage.memory = 2MB.
+        # Without the fix: headroom.memory = -2MB → spurious downscaling.
+        # With the fix: headroom.memory = 0 (clamped).
+        assert headroom.memory == 0, headroom
+        # CPU headroom should still work normally (planned_grant.cpu > 0).
+        assert headroom.cpu > 0, headroom
+
     def test_allocation_includes_leftover_shared_for_uncapped_op(
         self, restore_data_context
     ):
