@@ -452,7 +452,7 @@ Ray Data LLM can run vLLM batch inference on CPUs if your environment has a **CP
     :end-before: __cpu_inference_config_example_end__
 
 .. important::
-    CPU-only inference is not available out of the box in Ray LLM GPU images because those environments typically install GPU-enabled vLLM wheels. Install CPU-compatible PyTorch wheels and a CPU-enabled vLLM build for your target CPU before running this configuration.
+    CPU-only inference is not available out of the box in Ray LLM GPU images because those environments typically install GPU-enabled vLLM wheels. Before using this configuration, install CPU-compatible PyTorch wheels and a CPU-enabled vLLM build for your target CPU and operating system.
 
 .. note::
     If your environment has native library incompatibilities while importing or starting vLLM, set ``LD_LIBRARY_PATH`` through ``runtime_env={"env_vars": {...}}``. See :ref:`c-cpp-runtime-dependencies-incompatibility` for an example workaround.
