@@ -279,11 +279,15 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # types_mapper preserves Arrow dtypes through the pandas round-trip:
         # - Standard Arrow types become pd.ArrowDtype, so pa.Table.from_pandas()
         #   can reconstruct them exactly without lossy numpy conversion.
-        # - Ray extension types (ArrowTensorType, ArrowPythonObjectType, etc.)
-        #   return None, falling back to their own to_pandas_dtype() hooks which
-        #   produce TensorDtype / PythonObjectDtype as appropriate.
+        # - Extension types (Ray's ArrowTensorType / ArrowPythonObjectType and
+        #   pyarrow's native FixedShapeTensorType) return None, falling back to
+        #   their own to_pandas_dtype() hooks. Note: native FixedShapeTensorType
+        #   subclasses BaseExtensionType but not ExtensionType, so we check the
+        #   broader BaseExtensionType.
         def _types_mapper(t):
-            if isinstance(t, pyarrow.ExtensionType) or pyarrow.types.is_dictionary(t):
+            if isinstance(t, pyarrow.BaseExtensionType) or pyarrow.types.is_dictionary(
+                t
+            ):
                 return None
             return pd.ArrowDtype(t)
 
