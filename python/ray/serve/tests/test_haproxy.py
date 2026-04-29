@@ -606,9 +606,6 @@ def test_haproxy_metrics(ray_shutdown):
 
     assert httpx.get("http://localhost:8000/").text == "hello1"
 
-    # HAProxy soft-reloads when the backend config changes (e.g. replica set
-    # settles), which spawns a new worker with zeroed counters. Poll until a
-    # request and metrics scrape land on the same process.
     metric_prefix = (
         'haproxy_backend_http_responses_total{proxy="http-default",code="2xx"} '
     )
