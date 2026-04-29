@@ -7,15 +7,14 @@ transformers
 datasets
 daft
 sentence-transformers
-vllm==0.19.0
-cupy-cuda12x
+vllm[audio] @ https://github.com/vllm-project/vllm/releases/download/v0.19.0/vllm-0.19.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl
+cupy-cuda13x
 grpcio
 jupytext
 langchain-text-splitters
 gevent
 validators
 locust
-sglang[all]
-vllm[audio]>=0.19.0
 nixl>=1.0.0
 anyio>=4.5.0
+urllib3>=2.0
