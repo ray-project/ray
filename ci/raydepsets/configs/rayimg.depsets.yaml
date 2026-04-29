@@ -163,7 +163,7 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
-      - --index https://storage.googleapis.com/libtpu-releases/index.html
+      - --find-links https://storage.googleapis.com/libtpu-releases/index.html
     build_arg_sets:
       - py310
       - py311

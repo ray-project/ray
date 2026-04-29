@@ -1,1 +1,17 @@
-jax[tpu]
+# Pin to satisfy both cupy (needs <2.3) and JAX (needs >2.0)
+numpy<2.3
+
+# Minimum version for tpu7x compatibility
+jax[tpu]>=0.8.2
+
+# Standard JAX ecosystem dependencies
+flax
+optax
+orbax-checkpoint
+ml-collections
+
+# TPU profiling & telemetry
+cloud-tpu-diagnostics
+tensorboard-plugin-profile
+ml-goodput-measurement
+tpu-info
