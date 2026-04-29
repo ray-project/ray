@@ -1210,6 +1210,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             max_resource_usage = op_max_resources[op]
             if max_resource_usage != ExecutionResources.inf():
                 total_reserved = self._get_total_reserved(op)
+                # Cap op_proportional so planned_grant = reserved + proportional + shared
+                # never exceeds max_resource_usage. Without this, over-subscribed proportional
+                # grants can push planned_grant past the cap, suppressing correct downscaling.
+                max_proportional = max_resource_usage.subtract(total_reserved).max(
+                    ExecutionResources.zero()
+                )
+                op_proportional = op_proportional.min(max_proportional)
                 op_usage = self._resource_manager.get_op_usage(op)
                 # current_allocation accounts for the proportional grant already given.
                 current_allocation = total_reserved.add(op_proportional).max(op_usage)

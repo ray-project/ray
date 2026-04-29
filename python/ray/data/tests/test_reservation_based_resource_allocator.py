@@ -1464,6 +1464,71 @@ class TestReservationOpResourceAllocator:
         assert abs(pg2.object_store_memory - 375) < 1, pg2.object_store_memory
         assert abs(pg3.object_store_memory - 375) < 1, pg3.object_store_memory
 
+    def test_proportional_grant_capped_by_max_resource_usage(
+        self, restore_data_context
+    ):
+        """Over-subscribed proportional grants must be capped by max_resource_usage.
+
+        Without the fix, op_proportional can exceed max_resource_usage - total_reserved,
+        causing planned_grant > max_resource_usage and suppressing correct downscaling
+        (signed_headroom stays 0 instead of going negative).
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1})
+        o4 = LimitOperator(1, o3, DataContext.get_current())
+
+        # o2 has a hard cap of 2 CPUs total; o3 is uncapped.
+        o2.min_max_resource_requirements = MagicMock(
+            return_value=(
+                ExecutionResources.zero(),
+                ExecutionResources(cpu=2, gpu=0, object_store_memory=float("inf")),
+            )
+        )
+        o3.min_max_resource_requirements = MagicMock(
+            return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+        )
+
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
+        topo = build_streaming_topology(o4, ExecutionOptions())
+        # 4 CPUs: 50% reserved → _op_reserved = 0.5 per op, _total_shared = 2.
+        global_limits = ExecutionResources(cpu=4, gpu=0, object_store_memory=1000)
+
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = dict.fromkeys([o1, o2, o3, o4], 0)
+        resource_manager._mem_op_outputs = dict.fromkeys([o1, o2, o3, o4], 0)
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+
+        # Simulate cluster shrink: ops are over-subscribed on CPU.
+        # o2 uses 5 CPUs (shared usage = 4.5), o3 uses 0.5 CPUs (shared usage = 0).
+        # Total shared usage = 4.5 >> _total_shared = 2 → over-subscribed.
+        op_usages[o2] = ExecutionResources(cpu=5, gpu=0, object_store_memory=0)
+        op_usages[o3] = ExecutionResources(cpu=0.5, gpu=0, object_store_memory=0)
+
+        allocator.update_budgets(limits=global_limits)
+
+        pg2 = allocator._op_planned_grants[o2]
+
+        # planned_grant[o2] must not exceed max_resource_usage.cpu = 2.
+        assert (
+            pg2.cpu <= 2.0 + 1e-9
+        ), f"planned_grant[o2].cpu={pg2.cpu} exceeds max_resource_usage.cpu=2"
+
+        # signed_headroom[o2] should be negative (over-budget → downscaling signal).
+        headroom2 = allocator.get_signed_headroom(o2)
+        assert headroom2 is not None
+        assert (
+            headroom2.cpu < 0
+        ), f"Expected negative signed_headroom for o2 (over max), got {headroom2.cpu}"
+
 
 if __name__ == "__main__":
     import sys
