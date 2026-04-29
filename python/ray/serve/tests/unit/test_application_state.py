@@ -289,6 +289,7 @@ def test_build_serve_application_uses_router_attached_to_imported_app():
             "ray.serve._private.application_state.ray.get_runtime_context",
             return_value=runtime_context,
         ),
+        patch("ray.serve._private.application_state.configure_component_logger"),
         patch("ray.serve._private.application_state.RAY_SERVE_ENABLE_HA_PROXY", True),
     ):
         _, deploy_args, error = build_serve_application._function(
