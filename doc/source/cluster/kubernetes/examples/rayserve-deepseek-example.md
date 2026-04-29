@@ -1,13 +1,9 @@
-(kuberay-rayservice-deepseek-example)=
-
-# Serve Deepseek R1 using Ray Serve LLM
+# Serve Deepseek R1 using Ray Serve
 
 This guide provides a step-by-step guide for deploying a Large Language Model (LLM) using Ray Serve LLM on Kubernetes. Leveraging KubeRay, Ray Serve, and vLLM, this guide deploys the  `deepseek-ai/DeepSeek-R1` model from Hugging Face, enabling scalable, efficient, and OpenAI-compatible LLM serving within a Kubernetes environment. See [Serving LLMs](serving-llms) for information on Ray Serve LLM.
 
 ## Prerequisites
-A DeepSeek model requires 2 nodes, each equipped with 8 H100 80 GB GPUs.
-It should be deployable on Kubernetes clusters that meet this requirement.
-This guide provides instructions for setting up a GKE cluster using [A3 High](https://cloud.google.com/compute/docs/gpus#a3-high) or [A3 Mega](https://cloud.google.com/compute/docs/gpus#a3-mega) machine types.
+A DeepSeek model requires 2 nodes, each equipped with 8 H100 80 GB GPUs. It should be deployable on Kubernetes clusters that meet this requirement. This guide provides instructions for setting up a GKE cluster using [A3 High](https://cloud.google.com/compute/docs/gpus#a3-high) or [A3 Mega](https://cloud.google.com/compute/docs/gpus#a3-mega) machine types.
 
 Before creating the cluster, ensure that your project has sufficient [quota](https://console.cloud.google.com/iam-admin/quotas) for the required accelerators.
 
@@ -37,7 +33,6 @@ gcloud beta container node-pools create gpu-node-pool \
 ```
 
 The `--accelerator` flag specifies the type and number of GPUs for each node in the node pool. This example uses the [A3 High](https://cloud.google.com/compute/docs/gpus#a3-high) GPU. The machine type `a3-highgpu-8g` has 8 GPU, 640 GB GPU Memory, 208 vCPUs, and 1872 GB RAM.
-
 
 ```{admonition} Note
 :class: note
@@ -80,9 +75,6 @@ serveConfigV2: |
             autoscaling_config:
               min_replicas: 1
               max_replicas: 1
-          runtime_env:
-            env_vars:
-              VLLM_USE_V1: "1"
           engine_kwargs:
             tensor_parallel_size: 8
             pipeline_parallel_size: 2
@@ -106,7 +98,6 @@ In particular, this configuration loads the model from `deepseek-ai/DeepSeek-R1`
 - `pipeline_parallel_size: 2`
   
   This setting enables pipeline parallelism, dividing the model's entire set of layers into 2 sequential stages. Adjust this variable according to cluster worker node numbers.
-
 
 The `deployment_config` section sets the desired number of engine replicas. See [Serving LLMs](serving-llms) and the [Ray Serve config documentation](serve-in-production-config-file) for more information.
 
@@ -198,5 +189,10 @@ The output should be in the following format:
 }
 ```
 
+---
+orphan: true
+---
 
+(kuberay-rayservice-deepseek-example)=
 
+# Serve Deepseek R1 using Ray Serve
