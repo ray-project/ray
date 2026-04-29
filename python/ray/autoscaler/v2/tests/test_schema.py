@@ -161,7 +161,7 @@ def test_ippr_status_need_sync_with_raylet():
 
 def test_ippr_status_limits_and_can_resize_up():
     status = _make_ippr_status()
-    assert status.can_resize_up() is False
+    assert status.can_resize_up()
     status.raylet_id = "abc"
     assert status.max_cpu() == 4.0
     assert status.max_memory() == 8

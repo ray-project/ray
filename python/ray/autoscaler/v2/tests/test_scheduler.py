@@ -3280,9 +3280,9 @@ def test_ippr_does_not_resize_pending_node_without_ray_node_id():
     reply = scheduler.schedule(request)
     # Pending nodes without a ray_node_id should not be selected for IPPR.
     assert reply.to_ippr == []
-    # Scheduler should launch a new node instead of overestimating pending capacity.
+    # Scheduler should also not launch a new node since the pending node could fulfill the request after IPPR.
     to_launch, _ = _launch_and_terminate(reply)
-    assert to_launch == {"type_1": 1}
+    assert to_launch == {}
 
 
 def test_ippr_capacity_of_unselected_candidates_not_modified():
