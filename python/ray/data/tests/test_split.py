@@ -1035,6 +1035,175 @@ def test_streaming_splits_schema_access(ray_start_regular_shared_2_cpus):
     assert expected_schema.equals(iter_1.schema().base_schema)
 
 
+# ---------------------------------------------------------------------
+# 2PC reservation/ack/abort tests for SplitCoordinator.
+#
+# These instantiate SplitCoordinator's underlying class directly (not as
+# a Ray actor) so we can inspect its state precisely. The actor wrapper
+# is exercised end-to-end via the Ray Train integration test.
+# ---------------------------------------------------------------------
+
+
+def _drain_block(ref_bundle):
+    """Helper: ray.get a single-block RefBundle's payload as a Python list."""
+    block_ref, _ = ref_bundle.blocks[0]
+    block = ray.get(block_ref)
+    return block.column("id").to_pylist()
+
+
+def _new_coord_local(ds, n, enable_2pc=True):
+    """Instantiate SplitCoordinator's underlying class directly (bypassing
+    the @ray.remote wrapper). State methods can then be inspected
+    synchronously.
+    """
+    from ray.data._internal.iterator.stream_split_iterator import (
+        SplitCoordinator,
+    )
+
+    cls = SplitCoordinator.__ray_actor_class__
+    return cls(ds, n, None, enable_2pc)
+
+
+def test_streaming_split_2pc_reserve_and_ack_drops_reservation(
+    ray_start_regular_shared_2_cpus,
+):
+    """get reserves under split_idx; ack with offset==num_rows drops the
+    entry from the front of the reservation deque."""
+    ds = ray.data.range(20, override_num_blocks=4)
+    coord = _new_coord_local(ds, n=1)
+
+    # Single client → barrier passes immediately.
+    epoch_id = coord.start_epoch(0)
+    bundle = coord.get(epoch_id, 0)
+    assert bundle is not None
+    block_hex = bundle.blocks[0][0].hex()
+    num_rows = bundle.blocks[0][1].num_rows
+
+    # Reservation recorded for split 0.
+    assert 0 in coord._reserved
+    assert len(coord._reserved[0]) == 1
+    assert coord._reserved[0][0][0] == block_hex
+    assert coord._reserved[0][0][1] == 0  # offset starts at 0
+
+    # Full ack drops the reservation.
+    coord.ack(0, [(block_hex, num_rows)])
+    assert 0 not in coord._reserved
+
+
+def test_streaming_split_2pc_partial_ack_advances_offset(
+    ray_start_regular_shared_2_cpus,
+):
+    """ack with offset<num_rows updates the entry's offset in place
+    without dropping it; the front-of-deque entry's offset reflects
+    cumulative consumption."""
+    ds = ray.data.range(20, override_num_blocks=4)
+    coord = _new_coord_local(ds, n=1)
+
+    epoch_id = coord.start_epoch(0)
+    bundle = coord.get(epoch_id, 0)
+    block_hex = bundle.blocks[0][0].hex()
+    num_rows = bundle.blocks[0][1].num_rows
+    assert num_rows >= 2
+
+    # Ack 1 row of partial consumption.
+    coord.ack(0, [(block_hex, 1)])
+    assert 0 in coord._reserved
+    assert len(coord._reserved[0]) == 1
+    assert coord._reserved[0][0][1] == 1  # offset updated
+
+    # Ack one more row.
+    coord.ack(0, [(block_hex, 2)])
+    assert coord._reserved[0][0][1] == 2
+
+    # Idempotency: re-ack the same offset shouldn't change anything.
+    coord.ack(0, [(block_hex, 2)])
+    assert coord._reserved[0][0][1] == 2
+
+
+def test_streaming_split_2pc_abort_slices_at_offset_and_pushes_to_requeue(
+    ray_start_regular_shared_2_cpus,
+):
+    """Aborting a partial reservation pushes the unconsumed remainder onto the
+    requeue, sliced at the last-acked offset. The next get() returns exactly
+    those rows for whichever consumer asks next."""
+    ds = ray.data.range(40, override_num_blocks=4)
+    coord = _new_coord_local(ds, n=1)
+
+    epoch_id = coord.start_epoch(0)
+    bundle = coord.get(epoch_id, 0)
+    rows_in_block = _drain_block(bundle)
+    block_hex = bundle.blocks[0][0].hex()
+    num_rows = len(rows_in_block)
+    assert num_rows >= 4
+
+    # Pretend the consumer ack'd only the first half of the block, then died.
+    half = num_rows // 2
+    coord.ack(0, [(block_hex, half)])
+    assert coord._reserved[0][0][1] == half  # offset reflected before abort
+
+    coord.abort(0)
+    assert 0 not in coord._reserved
+    assert len(coord._requeue[0]) == 1
+
+    # Replacement's first get drains the requeue. Rows match the unconsumed
+    # tail of the original block.
+    requeued_bundle = coord.get(epoch_id, 0)
+    assert requeued_bundle is not None
+    requeued_rows = _drain_block(requeued_bundle)
+    assert requeued_rows == rows_in_block[half:]
+    # Requeue is empty post-drain; the new reservation was created for the
+    # replacement under the same split key.
+    assert len(coord._requeue[0]) == 0
+    assert 0 in coord._reserved
+    assert coord._reserved[0][0][1] == 0  # fresh reservation, offset=0
+
+
+def test_streaming_split_2pc_get_drains_requeue_before_next_bundle(
+    ray_start_regular_shared_2_cpus,
+):
+    """When the requeue is non-empty, get() returns from it before pulling
+    new blocks from the upstream pipeline."""
+    ds = ray.data.range(40, override_num_blocks=4)
+    coord = _new_coord_local(ds, n=1)
+
+    epoch_id = coord.start_epoch(0)
+
+    # Pull and abort one full block (offset=0 → original bundle goes to
+    # the requeue without re-slicing).
+    pulled = coord.get(epoch_id, 0)
+    pulled_rows = _drain_block(pulled)
+    coord.abort(0)
+    assert len(coord._requeue[0]) == 1
+
+    # Replacement's first get returns the requeued bundle, NOT a fresh
+    # upstream block.
+    first = coord.get(epoch_id, 0)
+    first_rows = _drain_block(first)
+    assert first_rows == pulled_rows
+    assert len(coord._requeue[0]) == 0
+
+
+def test_streaming_split_2pc_disabled_preserves_old_get_semantics(
+    ray_start_regular_shared_2_cpus,
+):
+    """Backward compat: with enable_2pc=False, get() commits the cursor
+    immediately and never registers a reservation. ack/abort are no-ops."""
+    ds = ray.data.range(20, override_num_blocks=4)
+    coord = _new_coord_local(ds, n=1, enable_2pc=False)
+
+    epoch_id = coord.start_epoch(0)
+    bundle = coord.get(epoch_id, 0)
+    assert bundle is not None
+
+    # No reservation tracked.
+    assert coord._reserved == {}
+    # ack/abort are safe no-ops.
+    coord.ack(0, [(bundle.blocks[0][0].hex(), bundle.blocks[0][1].num_rows)])
+    coord.abort(0)
+    assert coord._reserved == {}
+    assert len(coord._requeue[0]) == 0
+
+
 if __name__ == "__main__":
     import sys
 

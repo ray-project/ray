@@ -95,6 +95,24 @@ class DataParallelTrainer:
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
 
+        # Auto-link DataConfig.enable_2pc_batch_consumption_tracking to the
+        # backend's has_replica_groups: replacement-capable backends (e.g.,
+        # torchft) need the SplitCoordinator running in 2PC mode so a dead
+        # worker's pulled-but-unacked blocks can be requeued for the
+        # replacement instead of silently dropped. Other backends keep the
+        # default fast-path. We set it then assert as a sanity check, in
+        # case a user passed a custom DataConfig that pre-set the flag.
+        has_replica_groups = self.backend_config.backend_cls.has_replica_groups
+        self.data_config.enable_2pc_batch_consumption_tracking = has_replica_groups
+        assert (
+            self.data_config.enable_2pc_batch_consumption_tracking == has_replica_groups
+        ), (
+            "DataConfig.enable_2pc_batch_consumption_tracking must match "
+            "backend_config.backend_cls.has_replica_groups: "
+            f"{self.data_config.enable_2pc_batch_consumption_tracking} != "
+            f"{has_replica_groups}"
+        )
+
         self.running_in_local_mode = self.scaling_config.num_workers == 0
 
         self.train_run_context = TrainRunContext(

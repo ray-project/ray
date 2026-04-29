@@ -198,7 +198,14 @@ class DatasetsCallback(WorkerGroupCallback, ReplicaGroupCallback, ControllerCall
 
     def before_replica_group_shutdown(self, replica_group: ReplicaGroup):
         # Mark the shard provider slots for this replica's ranks as inactive
-        # so they can be handed to replacement workers.
+        # so they can be handed to replacement workers, and abort each
+        # streaming_split iterator's reservations on the SplitCoordinator
+        # so any blocks the predecessor pulled-but-didn't-fully-ack are
+        # sliced into the requeue for the replacement to consume.
+        from ray.data._internal.iterator.stream_split_iterator import (
+            StreamSplitDataIterator,
+        )
+
         for w in replica_group.get_workers():
             assert w.distributed_context is not None, (
                 "Worker in replica group is missing distributed_context in "
@@ -209,6 +216,18 @@ class DatasetsCallback(WorkerGroupCallback, ReplicaGroupCallback, ControllerCall
                 f"Outgoing worker has world_rank={rank} outside of the "
                 f"range [0, {len(self._shard_provider_active)})."
             )
+            provider = self._shard_providers[rank]
+            for ds_iter in provider._dataset_iterators.values():
+                if isinstance(ds_iter, StreamSplitDataIterator):
+                    # Synchronous so the requeue is populated before the
+                    # replacement comes online and calls coord.get. The
+                    # coord ignores abort() when 2PC tracking is off, so
+                    # this is safe to call unconditionally.
+                    ray.get(
+                        ds_iter._coord_actor.abort.remote(
+                            ds_iter._output_split_idx,
+                        )
+                    )
             self._shard_provider_active[rank] = False
 
     def before_init_train_context_on_replica_group(

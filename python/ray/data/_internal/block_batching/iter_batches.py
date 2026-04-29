@@ -9,6 +9,7 @@ from ray.data._internal.block_batching.interfaces import Batch, BlockPrefetcher
 from ray.data._internal.block_batching.util import (
     ActorBlockPrefetcher,
     WaitBlockPrefetcher,
+    _BatchingIteratorWithProvenance,
     blocks_to_batches,
     collate,
     finalize_batches,
@@ -98,6 +99,19 @@ class BatchIterator:
             formatting to be overlapped with the UDF. Defaults to 1.
         prefetch_bytes_callback: A callback to report prefetched bytes to the executor's
             resource manager.
+        block_iter_with_ids: If True, run in replacement-capable mode: the block
+            iterator yields ``(block_ref_hex, block)`` tuples instead of bare
+            blocks, and the batcher attaches per-batch source-block provenance to
+            each emitted ``Batch.provenance``. Used by streaming_split under Ray
+            Train when ``backend_config.has_replica_groups=True`` (e.g., torchft)
+            so the consumer can ack rows back to the SplitCoordinator before
+            yielding each batch. Incompatible with ``shuffle_buffer_min_size``.
+            Defaults to False.
+        on_yield: Optional callback invoked synchronously with each ``Batch``
+            right before its data is yielded to user code. Used by 2PC
+            consumption tracking to fire ``coord.ack(...)`` for the rows in the
+            imminent batch; the yield only happens once the callback returns.
+            Defaults to None (no callback).
     """
 
     UPDATE_METRICS_INTERVAL_S: float = 5.0
@@ -119,7 +133,27 @@ class BatchIterator:
         ensure_copy: bool = False,
         prefetch_batches: int = 1,
         prefetch_bytes_callback: Optional[Callable[[int], None]] = None,
+        block_iter_with_ids: bool = False,
+        on_yield: Optional[Callable[["Batch"], None]] = None,
     ):
+        # Replacement-capable iteration (used by streaming_split with
+        # DataConfig.enable_2pc_batch_consumption_tracking=True, automatically
+        # enabled by Ray Train when backend_config.has_replica_groups=True
+        # (e.g., torchft) requires per-block provenance to flow through the
+        # pipeline. The local-shuffle path reorders rows out of FIFO block
+        # order and breaks the provenance invariant, so reject the
+        # combination at construction time.
+        if block_iter_with_ids and shuffle_buffer_min_size is not None:
+            raise ValueError(
+                "local_shuffle_buffer_size is incompatible with "
+                "DataConfig.enable_2pc_batch_consumption_tracking=True "
+                "(automatically enabled when backend_config.has_replica_groups="
+                "True, e.g., for torchft replacement-capable iteration). The "
+                "shuffle buffer reorders rows out of source-block order, which "
+                "breaks the FIFO row provenance the SplitCoordinator's "
+                "reservation tracking relies on. Disable one of the two flags."
+            )
+
         self._ref_bundles = ref_bundles
         self._stats = stats
         self._dataset_tag = dataset_tag
@@ -133,6 +167,8 @@ class BatchIterator:
         self._ensure_copy = ensure_copy
         self._prefetch_batches = prefetch_batches
         self._prefetch_bytes_callback = prefetch_bytes_callback
+        self._block_iter_with_ids = block_iter_with_ids
+        self._on_yield = on_yield
         self._eager_free = (
             clear_block_after_read and DataContext.get_current().eager_free
         )
@@ -168,10 +204,30 @@ class BatchIterator:
 
     def _resolve_block_refs(
         self, block_refs: Iterator[ObjectRef[Block]]
-    ) -> Iterator[Block]:
-        return resolve_block_refs(block_ref_iter=block_refs, stats=self._stats)
+    ) -> Iterator[Any]:
+        # When 2PC consumption tracking is on, we yield (block_id, block)
+        # tuples downstream instead of bare blocks; the matching batcher in
+        # `_blocks_to_batches` knows how to consume both shapes.
+        return resolve_block_refs(
+            block_ref_iter=block_refs,
+            stats=self._stats,
+            with_id=self._block_iter_with_ids,
+        )
 
-    def _blocks_to_batches(self, blocks: Iterator[Block]) -> Iterator[Batch]:
+    def _blocks_to_batches(self, blocks: Iterator[Any]) -> Iterator[Batch]:
+        # Two batchers, one selected by the 2PC flag. The provenance batcher
+        # consumes (block_id, block) pairs and attaches per-batch provenance;
+        # the default batcher consumes bare blocks and is unchanged.
+        if self._block_iter_with_ids:
+            return _BatchingIteratorWithProvenance(
+                blocks,
+                stats=self._stats,
+                batch_size=self._batch_size,
+                drop_last=self._drop_last,
+                shuffle_buffer_min_size=self._shuffle_buffer_min_size,
+                shuffle_seed=self._shuffle_seed,
+                ensure_copy=self._ensure_copy,
+            )
         return blocks_to_batches(
             block_iter=blocks,
             stats=self._stats,
@@ -250,6 +306,14 @@ class BatchIterator:
                     batch = next(async_batch_iter)
                 except StopIteration:
                     break
+            # Replacement-capable mode: notify the consumer of the imminent
+            # yield so it can synchronously commit (ack) the rows in this
+            # batch back to the SplitCoordinator BEFORE user code sees them.
+            # This gives at-most-once semantics: a worker dying after the
+            # ack but before yield drops the batch (no replay), keeping the
+            # cursor consistent with what live peers' allreduce expects.
+            if self._on_yield is not None:
+                self._on_yield(batch)
             with self.yield_batch_context(batch):
                 yield batch.data
 

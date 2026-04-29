@@ -1,9 +1,20 @@
+import collections
 import dataclasses
 import functools
 import logging
 import threading
 from contextlib import nullcontext
-from typing import Any, Callable, Generic, Iterator, List, Optional, Tuple, TypeVar
+from typing import (
+    Any,
+    Callable,
+    Deque,
+    Generic,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    TypeVar,
+)
 
 import ray
 from ray.actor import ActorHandle
@@ -64,18 +75,27 @@ def _calculate_ref_hits(refs: List[ObjectRef[Any]]) -> Tuple[int, int, int]:
 def resolve_block_refs(
     block_ref_iter: Iterator[ObjectRef[Block]],
     stats: Optional[DatasetStats] = None,
-) -> Iterator[Block]:
+    with_id: bool = False,
+) -> Iterator[Any]:
     """Resolves the block references for each logical batch.
 
     Args:
         block_ref_iter: An iterator over block object references.
         stats: An optional stats object to recording block hits and misses.
+        with_id: If True, yield ``(block_ref_hex, block)`` pairs instead of
+            bare blocks. Used by replacement-capable streaming_split
+            iteration so the downstream batcher can record per-batch
+            provenance and the consumer can ack rows back to the
+            SplitCoordinator. The hex is captured before ``ray.get`` so it
+            survives even though the original ObjectRef is dropped after
+            resolution.
     """
     hits = 0
     misses = 0
     unknowns = 0
 
     for block_ref in block_ref_iter:
+        block_id = block_ref.hex() if with_id else None
         current_hit, current_miss, current_unknown = _calculate_ref_hits([block_ref])
         hits += current_hit
         misses += current_miss
@@ -85,7 +105,7 @@ def resolve_block_refs(
         # `ray.get()` call.
         with stats.iter_get_s.timer() if stats else nullcontext():
             block = ray.get(block_ref)
-        yield block
+        yield (block_id, block) if with_id else block
 
     if stats:
         stats.iter_blocks_local = hits
@@ -186,6 +206,58 @@ class _BatchingIterator(Iterator[Batch]):
                 #
                 # We stop the iteration
                 raise StopIteration
+
+
+class _BatchingIteratorWithProvenance(_BatchingIterator):
+    """Variant of ``_BatchingIterator`` that records per-batch provenance.
+
+    Wraps an iterator of ``(block_id, block)`` tuples. As blocks are added to
+    the underlying ``Batcher``, a parallel ``_block_contribs`` deque tracks
+    how many rows from each block remain unyielded. Each emitted ``Batch``
+    has its ``provenance`` field populated with a list of
+    ``(block_id, rows_taken)`` entries that sums to ``len(batch.data)`` and
+    preserves source-block insertion order.
+
+    Correctness invariant: the underlying ``Batcher`` is FIFO over ``add``
+    order; rows leave the batcher in the same block-by-block order they
+    entered. The contribs deque is also FIFO. We drain it in lockstep with
+    the row count of each emitted batch. ``ShufflingBatcher`` breaks this
+    invariant and is rejected by ``BatchIterator.__init__`` when
+    ``block_iter_with_ids`` is enabled.
+    """
+
+    def __init__(
+        self,
+        block_iter_with_ids: Iterator[Tuple[str, Block]],
+        **kwargs,
+    ):
+        # Save the raw (id, block) iterator and feed the parent only plain
+        # blocks, recording each add in the contribs deque.
+        self._raw_iter = block_iter_with_ids
+        self._block_contribs: Deque[List] = collections.deque()
+        super().__init__(self._unwrap_block_iter(), **kwargs)
+
+    def _unwrap_block_iter(self) -> Iterator[Block]:
+        for block_id, block in self._raw_iter:
+            self._block_contribs.append(
+                [block_id, BlockAccessor.for_block(block).num_rows()]
+            )
+            yield block
+
+    def __next__(self) -> Batch:
+        batch = super().__next__()
+        rows_remaining = BlockAccessor.for_block(batch.data).num_rows()
+        provenance: List[Tuple[str, int]] = []
+        while rows_remaining > 0:
+            head = self._block_contribs[0]
+            take = min(head[1], rows_remaining)
+            provenance.append((head[0], take))
+            head[1] -= take
+            rows_remaining -= take
+            if head[1] == 0:
+                self._block_contribs.popleft()
+        batch.provenance = provenance
+        return batch
 
 
 def _format_batch(

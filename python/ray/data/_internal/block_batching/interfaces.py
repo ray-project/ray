@@ -1,6 +1,6 @@
 import abc
-from dataclasses import dataclass
-from typing import Any, List
+from dataclasses import dataclass, field
+from typing import Any, List, Optional, Tuple
 
 from ray.data.block import Block, DataBatch
 from ray.types import ObjectRef
@@ -25,10 +25,17 @@ class Batch:
     Attributes:
         metadata: Metadata associated with this batch.
         data: The batch of data.
+        provenance: Optional list of (block_id, rows_taken) describing which
+            source blocks contributed how many rows to this batch's data.
+            Populated only when the batching pipeline is run in
+            replacement-capable mode (see BatchIterator.block_iter_with_ids).
+            The list is ordered by source-block insertion order, and the row
+            counts sum to the number of rows in ``data``.
     """
 
     metadata: BatchMetadata
     data: DataBatch
+    provenance: Optional[List[Tuple[str, int]]] = field(default=None)
 
 
 class CollatedBatch(Batch):

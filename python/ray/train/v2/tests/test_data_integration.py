@@ -209,6 +209,7 @@ def test_configure_locality(enable_shard_locality):
         world_size,
         equal=True,
         locality_hints=worker_node_ids if enable_shard_locality else None,
+        enable_2pc_batch_consumption_tracking=False,
     )
 
 
@@ -837,9 +838,14 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
 
 def test_shard_provider_reused_across_replica_group_replacement(ray_start_4_cpus):
     """When a replica group is replaced (torchft-style), the replacement worker
-    should inherit the same per-rank RayDatasetShardProvider as its predecessor,
-    so that the DataIterator's cursor on the shared coordinator actor is
-    preserved and no rows are dropped or duplicated.
+    resumes data delivery exactly where the predecessor's last ack landed —
+    no duplicates ever reach user code (at-most-once contract).
+
+    Backed by the SplitCoordinator's 2PC reservation/ack/abort protocol:
+    each batch yielded synchronously commits its rows via coord.ack before
+    user code sees them, and DatasetsCallback.before_replica_group_shutdown
+    aborts the predecessor's outstanding reservations into a per-split
+    requeue that the replacement drains first.
     """
     import os
 
@@ -861,38 +867,23 @@ def test_shard_provider_reused_across_replica_group_replacement(ray_start_4_cpus
 
     collector = Collector.remote()
 
-    # One-row blocks so the atomic unit the SplitCoordinator hands out matches
-    # what the consumer processes synchronously. Combined with no-lookahead
-    # below, this guarantees a dying worker has at most the row it's currently
-    # processing in memory (and that row is already in the collector by the
-    # time the raise fires).
-    train_ds = ray.data.range(NUM_ROWS, override_num_blocks=NUM_ROWS)
+    # Default block sizes; no overrides needed. With 2PC, prefetched-but-not-
+    # yet-yielded blocks become reservations that the abort path slices into
+    # the requeue, so any layer of in-worker buffering is safe.
+    train_ds = ray.data.range(NUM_ROWS)
 
     def train_fn():
-        # Disable all lookahead between the SplitCoordinator and the consumer
-        # so rows stay in the coord's queue until the consumer explicitly
-        # asks for them; anything the worker has pulled into RAM would
-        # otherwise be lost if the worker dies (the coord has already popped
-        # it off the split's queue).
-        # - RAY_STREAM_SPLIT_NO_LOOKAHEAD=1: skip gen_blocks' 1-block
-        #   prefetch of the NEXT block (SplitCoordinator layer).
-        # - We bypass iter_batches entirely and iterate the raw ref-bundle
-        #   stream by hand, because iter_batches wraps the pipeline in
-        #   make_async_gen which eagerly pulls batches in a background
-        #   thread even with prefetch_batches=0.
-        os.environ["RAY_STREAM_SPLIT_NO_LOOKAHEAD"] = "1"
         worker_tag = os.getpid()
         shard = ray.train.get_dataset_shard("train")
-        ref_bundles, _, _, _ = shard._to_ref_bundle_iterator()
-        for bundle in ref_bundles:
-            for block_ref in bundle.block_refs:
-                block = ray.get(block_ref)
-                for row_idx in range(block.num_rows):
-                    row = int(block.column("id")[row_idx].as_py())
-                    ray.get(collector.add.remote(worker_tag, row))
-                    # Only 1 worker should see row 50 and fail once.
-                    if row == 50:
-                        raise RuntimeError("Injected failure after consuming row 50.")
+        for batch in shard.iter_batches(batch_size=1):
+            row = int(batch["id"][0])
+            ray.get(collector.add.remote(worker_tag, row))
+            # Only 1 worker should see row 50 and fail once. With 2PC's
+            # sync-ack-before-yield, this row has already been committed at
+            # the coord by the time the raise fires; the replacement
+            # resumes from row 51's block onward.
+            if row == 50:
+                raise RuntimeError("Injected failure after consuming row 50.")
 
     trainer = DataParallelTrainer(
         train_fn,

@@ -434,6 +434,104 @@ def test_calculate_ref_hits(ray_start_regular_shared):
         )
 
 
+# ---------------------------------------------------------------------
+# Provenance tests for _BatchingIteratorWithProvenance.
+#
+# The provenance pipeline emits Batch objects whose `provenance` field is
+# `[(block_id, rows_from_block), ...]`, summing to the batch row count
+# and preserving source-block insertion order. Used by streaming_split
+# replacement-capable iteration to ack rows back to the SplitCoordinator.
+# ---------------------------------------------------------------------
+
+
+def _id_block_iter(blocks):
+    """Yield (block_id, block) pairs from a list of pyarrow tables."""
+    for i, blk in enumerate(blocks):
+        yield (f"blk{i}", blk)
+
+
+def test_provenance_batch_iterator_single_block():
+    """Batches that fit within one block carry provenance entries that
+    name only that block."""
+    from ray.data._internal.block_batching.util import (
+        _BatchingIteratorWithProvenance,
+    )
+
+    block = pa.table({"x": list(range(8))})
+    it = _BatchingIteratorWithProvenance(
+        _id_block_iter([block]),
+        batch_size=4,
+        drop_last=False,
+    )
+    batches = list(it)
+    assert len(batches) == 2
+    for batch in batches:
+        assert batch.provenance is not None
+        # All rows came from the single block.
+        assert batch.provenance == [("blk0", 4)]
+
+
+def test_provenance_batch_iterator_spans_multiple_blocks():
+    """A batch that spans multiple blocks emits one provenance entry per
+    contributing block, in source order, with row counts summing to the
+    batch size."""
+    from ray.data._internal.block_batching.util import (
+        _BatchingIteratorWithProvenance,
+    )
+
+    blocks = [
+        pa.table({"x": list(range(0, 4))}),  # 4 rows
+        pa.table({"x": list(range(4, 8))}),  # 4 rows
+        pa.table({"x": list(range(8, 12))}),  # 4 rows
+    ]
+    it = _BatchingIteratorWithProvenance(
+        _id_block_iter(blocks),
+        batch_size=10,
+        drop_last=False,
+    )
+    batches = list(it)
+    # 12 rows / batch_size=10 → 1 batch of 10 + 1 trailing batch of 2.
+    assert len(batches) == 2
+    # First batch: 4 from blk0 + 4 from blk1 + 2 from blk2.
+    assert batches[0].provenance == [("blk0", 4), ("blk1", 4), ("blk2", 2)]
+    # Trailing batch: remaining 2 rows from blk2.
+    assert batches[1].provenance == [("blk2", 2)]
+
+
+def test_provenance_batch_iterator_partial_last_batch():
+    """drop_last=False: the trailing partial batch's provenance still sums
+    to its actual row count (not batch_size)."""
+    from ray.data._internal.block_batching.util import (
+        _BatchingIteratorWithProvenance,
+    )
+
+    block = pa.table({"x": list(range(7))})
+    it = _BatchingIteratorWithProvenance(
+        _id_block_iter([block]),
+        batch_size=3,
+        drop_last=False,
+    )
+    batches = list(it)
+    assert len(batches) == 3
+    assert batches[0].provenance == [("blk0", 3)]
+    assert batches[1].provenance == [("blk0", 3)]
+    assert batches[2].provenance == [("blk0", 1)]
+
+
+def test_batch_iterator_block_iter_with_ids_rejects_local_shuffle():
+    """When the replacement-capable provenance pipeline is enabled,
+    local_shuffle_buffer_size must be unset; otherwise the FIFO row
+    invariant the SplitCoordinator's ack tracking depends on is broken."""
+    from ray.data._internal.block_batching.iter_batches import BatchIterator
+
+    with pytest.raises(ValueError, match="local_shuffle_buffer_size"):
+        BatchIterator(
+            ref_bundles=iter([]),
+            block_iter_with_ids=True,
+            shuffle_buffer_min_size=10,
+        )
+
+
 if __name__ == "__main__":
     import sys
 

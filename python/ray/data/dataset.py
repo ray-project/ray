@@ -2046,6 +2046,7 @@ class Dataset:
         *,
         equal: bool = False,
         locality_hints: Optional[List["NodeIdStr"]] = None,
+        enable_2pc_batch_consumption_tracking: bool = False,
     ) -> List[DataIterator]:
         """Returns ``n`` :class:`DataIterators <ray.data.DataIterator>` that can
         be used to read disjoint subsets of the dataset in parallel.
@@ -2119,6 +2120,14 @@ class Dataset:
                 iterator output locations. This list must have length ``n``. You can
                 get the current node id of a task or actor by calling
                 ``ray.get_runtime_context().get_node_id()``.
+            enable_2pc_batch_consumption_tracking: If True, the underlying
+                ``SplitCoordinator`` runs in replacement-capable mode: blocks served
+                via ``coord.get`` are reserved per split until the consumer acks
+                them with row-level offsets, and ``coord.abort(split)`` rewinds the
+                unconsumed remainder into a per-split requeue for a replacement
+                consumer. Required for torchft-style replacement-resilient
+                iteration in Ray Train. Defaults to False (legacy semantics: each
+                ``coord.get`` commits the cursor immediately).
 
         Returns:
             The output iterator splits. These iterators are Ray-serializable and can
@@ -2141,7 +2150,14 @@ class Dataset:
         split_dataset = Dataset(plan, logical_plan)
         split_dataset._set_uuid(self._uuid)
 
-        return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
+        return StreamSplitDataIterator.create(
+            split_dataset,
+            n,
+            locality_hints,
+            enable_2pc_batch_consumption_tracking=(
+                enable_2pc_batch_consumption_tracking
+            ),
+        )
 
     @ConsumptionAPI
     @PublicAPI(api_group=SMJ_API_GROUP)

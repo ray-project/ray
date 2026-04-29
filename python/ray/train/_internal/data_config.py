@@ -25,6 +25,7 @@ class DataConfig:
             Union["ExecutionOptions", Dict[str, "ExecutionOptions"]]
         ] = None,
         enable_shard_locality: bool = True,
+        enable_2pc_batch_consumption_tracking: bool = False,
     ):
         """Construct a DataConfig.
 
@@ -40,6 +41,16 @@ class DataConfig:
                 base your options off ``DataConfig.default_ingest_options()``.
             enable_shard_locality: If true, dataset sharding across Train workers will
                 consider locality to minimize cross-node data transfer. Enabled by default.
+            enable_2pc_batch_consumption_tracking: If true, the streaming_split
+                ``SplitCoordinator`` runs in replacement-capable mode: each block it
+                hands to a worker is reserved against that worker's split until the
+                worker synchronously acks the rows it consumed (right before yielding
+                each batch to user code). On worker death, ``DatasetsCallback``
+                aborts the dead split's outstanding reservations and the unconsumed
+                remainder is requeued for the replacement worker. Required for
+                torchft-style replacement (and auto-enabled by ``DataParallelTrainer``
+                when ``backend_config.has_replica_groups=True``); incompatible with
+                ``local_shuffle_buffer_size``. Defaults to False.
         """
         from ray.data import ExecutionOptions
 
@@ -64,9 +75,20 @@ class DataConfig:
             self._execution_options.update(execution_options)
 
         self._enable_shard_locality = enable_shard_locality
+        self._enable_2pc_batch_consumption_tracking = (
+            enable_2pc_batch_consumption_tracking
+        )
 
         self._num_train_cpus = 0.0
         self._num_train_gpus = 0.0
+
+    @property
+    def enable_2pc_batch_consumption_tracking(self) -> bool:
+        return self._enable_2pc_batch_consumption_tracking
+
+    @enable_2pc_batch_consumption_tracking.setter
+    def enable_2pc_batch_consumption_tracking(self, value: bool) -> None:
+        self._enable_2pc_batch_consumption_tracking = value
 
     def set_train_total_resources(self, num_train_cpus: float, num_train_gpus: float):
         """Set the total number of CPUs and GPUs used by training.
@@ -140,7 +162,12 @@ class DataConfig:
             if name in datasets_to_split:
                 for i, split in enumerate(
                     ds.streaming_split(
-                        world_size, equal=True, locality_hints=locality_hints
+                        world_size,
+                        equal=True,
+                        locality_hints=locality_hints,
+                        enable_2pc_batch_consumption_tracking=(
+                            self._enable_2pc_batch_consumption_tracking
+                        ),
                     )
                 ):
                     output[i][name] = split
