@@ -1691,7 +1691,8 @@ class ResourceDemandScheduler(IResourceScheduler):
                 target_nodes.append(node)
 
         original_ippr_candidates = {
-            node.im_instance_id: copy.deepcopy(node) for node in ippr_candidates
+            node.ippr_status.cloud_instance_id: copy.deepcopy(node)
+            for node in ippr_candidates
         }
         for node in ippr_candidates:
             # Expose per-node maximums so binpacking can evaluate placing more work
@@ -1724,7 +1725,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 desired_memory=best_node.ippr_status.max_memory(),
             )
             target_nodes.append(best_node)
-            original_ippr_candidates.pop(best_node.im_instance_id, None)
+            original_ippr_candidates.pop(best_node.ippr_status.cloud_instance_id, None)
 
         # Keep unselected IPPR candidates at their original resources because no
         # resize request was issued for them in this scheduling pass.
