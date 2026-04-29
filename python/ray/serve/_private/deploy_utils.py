@@ -128,7 +128,6 @@ def get_app_code_version(app_config: ServeApplicationSchema) -> str:
     encoded = json.dumps(
         {
             "import_path": app_config.import_path,
-            "ingress_request_router": app_config.ingress_request_router,
             "runtime_env": app_config.runtime_env,
             "args": app_config.args,
             # NOTE: trigger a change in the code version when

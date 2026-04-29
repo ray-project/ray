@@ -683,8 +683,6 @@ class ServeApplicationSchema(BaseModel):
     config to deploy a single application to a Ray cluster.
     """
 
-    model_config = ConfigDict(populate_by_name=True)
-
     name: str = Field(
         default=SERVE_DEFAULT_APP_NAME,
         description=(
@@ -709,18 +707,6 @@ class ServeApplicationSchema(BaseModel):
             'dag_node". Only works with Python '
             "applications. This field is REQUIRED when deploying Serve config "
             "to a Ray cluster."
-        ),
-    )
-    ingress_request_router: Optional[str] = Field(
-        default=None,
-        alias="_ingress_request_router",
-        description=(
-            "Optional import path to a bound ingress request router peer for "
-            "HAProxy ingress-time replica selection in this application. This "
-            "should resolve directly to a router object, e.g. "
-            '"module.ingress_request_router", built against the same imported '
-            "application graph. This is an internal-looking attachment point for "
-            "Serve LLM ingress bypass."
         ),
     )
     runtime_env: dict = Field(
@@ -814,7 +800,7 @@ class ServeApplicationSchema(BaseModel):
 
         return v
 
-    @field_validator("import_path", "ingress_request_router")
+    @field_validator("import_path")
     @classmethod
     def import_path_format_valid(cls, v: str):
         if v is None:

@@ -557,12 +557,15 @@ def test_build_app_keeps_ingress_request_router_separate_from_app_deployments():
         pass
 
     ingress_app = Ingress.bind()
+    app = serve.Application(
+        ingress_app._bound_deployment,
+        ingress_request_router=IngressRequestRouter.bind(),
+    )
 
     built_app: BuiltApplication = build_app(
-        ingress_app,
+        app,
         name="default",
         make_deployment_handle=FakeDeploymentHandle.from_deployment,
-        ingress_request_router=IngressRequestRouter.bind(),
     )
 
     assert [deployment.name for deployment in built_app.deployments] == ["Ingress"]
@@ -588,11 +591,15 @@ def test_build_app_requires_ingress_request_router_to_be_single_deployment():
     with pytest.raises(
         ValueError, match="Expected the ingress_request_router attachment"
     ):
+        ingress_app = Ingress.bind()
+        app = serve.Application(
+            ingress_app._bound_deployment,
+            ingress_request_router=IngressRequestRouter.bind(RouterChild.bind()),
+        )
         build_app(
-            Ingress.bind(),
+            app,
             name="default",
             make_deployment_handle=FakeDeploymentHandle.from_deployment,
-            ingress_request_router=IngressRequestRouter.bind(RouterChild.bind()),
         )
 
 
@@ -611,12 +618,15 @@ def test_ingress_validation_excludes_ingress_request_router_fastapi_app():
         pass
 
     ingress_app = Ingress.bind()
+    app = serve.Application(
+        ingress_app._bound_deployment,
+        ingress_request_router=IngressRequestRouter.bind(),
+    )
 
     built_app: BuiltApplication = build_app(
-        ingress_app,
+        app,
         name="default",
         make_deployment_handle=FakeDeploymentHandle.from_deployment,
-        ingress_request_router=IngressRequestRouter.bind(),
     )
 
     client = object.__new__(ServeControllerClient)

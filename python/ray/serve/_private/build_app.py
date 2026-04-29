@@ -15,7 +15,7 @@ K = TypeVar("K")
 V = TypeVar("V")
 
 INGRESS_REQUEST_ROUTER_REQUIRES_HAPROXY_ERROR = (
-    "`_ingress_request_router` requires HAProxy. "
+    "`ingress_request_router` requires HAProxy. "
     "Set `RAY_SERVE_ENABLE_HA_PROXY=1` before deploying this application."
 )
 
@@ -88,7 +88,6 @@ def build_app(
         Callable[[Deployment, str], DeploymentHandle]
     ] = None,
     external_scaler_enabled: bool = False,
-    ingress_request_router: Optional[Application] = None,
 ) -> BuiltApplication:
     """Builds the application into a list of finalized deployments.
 
@@ -103,6 +102,7 @@ def build_app(
     if make_deployment_handle is None:
         make_deployment_handle = _make_deployment_handle_default
 
+    ingress_request_router = app._ingress_request_router
     if ingress_request_router is not None and not isinstance(
         ingress_request_router, Application
     ):

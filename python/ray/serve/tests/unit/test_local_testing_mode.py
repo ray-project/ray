@@ -135,11 +135,15 @@ def test_ingress_request_router_requires_haproxy(monkeypatch):
     monkeypatch.setattr(serve_api, "RAY_SERVE_ENABLE_HA_PROXY", False)
 
     with pytest.raises(
-        RayServeException, match="`_ingress_request_router` requires HAProxy"
+        RayServeException, match="`ingress_request_router` requires HAProxy"
     ):
+        llm_server = LLMServer.bind()
+        app = serve.Application(
+            llm_server._bound_deployment,
+            ingress_request_router=IngressRequestRouter.bind(),
+        )
         serve.run(
-            LLMServer.bind(),
-            _ingress_request_router=IngressRequestRouter.bind(),
+            app,
             _local_testing_mode=True,
         )
 

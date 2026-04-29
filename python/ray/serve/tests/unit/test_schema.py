@@ -1243,8 +1243,8 @@ def test_schema_to_deployment_deployment_actors_from_dict():
     assert dep.num_replicas == 2
 
 
-def test_get_app_code_version_includes_hashed_app_config_fields():
-    """Test get_app_code_version changes when hashed app config fields change."""
+def test_get_app_code_version_includes_deployment_actors():
+    """Test that get_app_code_version changes when deployment_actors changes."""
     base_config = {
         "import_path": "module.graph",
         "deployments": [{"name": "dep1"}],
@@ -1315,20 +1315,6 @@ def test_get_app_code_version_includes_hashed_app_config_fields():
         ServeApplicationSchema.model_validate(reordered_actors)
     )
     assert added_version != reordered_version
-
-    with_router = copy.deepcopy(base_config)
-    with_router["_ingress_request_router"] = "module.ingress_request_router"
-    with_router_version = get_app_code_version(
-        ServeApplicationSchema.model_validate(with_router)
-    )
-    assert base_version != with_router_version
-
-    changed_router = copy.deepcopy(with_router)
-    changed_router["_ingress_request_router"] = "module.other_ingress_request_router"
-    changed_router_version = get_app_code_version(
-        ServeApplicationSchema.model_validate(changed_router)
-    )
-    assert with_router_version != changed_router_version
 
 
 def test_serve_instance_details_is_json_serializable():
