@@ -704,7 +704,7 @@ def _map_task(
             ctx.target_max_block_size_override
         )
 
-        retry_on = data_context.task_retried_user_errors
+        retry_on = data_context.retried_udf_errors
 
         # NOTE: We avoid the cost of deduping schemas in the task because
         # each yielded block should have the same schema, since each one
@@ -725,7 +725,7 @@ def _map_task(
                 transform_iter_factory,
                 description="apply UDF transform",
                 match=None if retry_on is True else retry_on,
-                max_attempts=data_context.task_max_retries + 1,
+                max_attempts=data_context.max_udf_retries + 1,
             )
         else:
             blocks_iter = _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)

@@ -236,8 +236,8 @@ def test_task_retry_on_errors_succeeds(
     ray.init(num_cpus=2)
 
     ctx = DataContext.get_current()
-    ctx.task_retried_user_errors = ["transient error"]
-    ctx.task_max_retries = 3
+    ctx.retried_udf_errors = ["transient error"]
+    ctx.max_udf_retries = 3
 
     # Use one block so the call_count dict is shared within the same task process.
     call_count = {"n": 0}
@@ -258,8 +258,8 @@ def test_task_retry_on_errors_exhausted(
     ray.init(num_cpus=2)
 
     ctx = DataContext.get_current()
-    ctx.task_retried_user_errors = ["persistent bug"]
-    ctx.task_max_retries = 2
+    ctx.retried_udf_errors = ["persistent bug"]
+    ctx.max_udf_retries = 2
 
     def always_fails(batch):
         raise ValueError("persistent bug")
@@ -274,7 +274,7 @@ def test_task_retry_non_matching_exception_not_retried(
     ray.init(num_cpus=2)
 
     ctx = DataContext.get_current()
-    ctx.task_retried_user_errors = ["rate limit"]
+    ctx.retried_udf_errors = ["rate limit"]
 
     def udf(batch):
         raise ValueError("not a retryable error")
@@ -289,8 +289,8 @@ def test_task_retry_true_retries_any_exception(
     ray.init(num_cpus=2)
 
     ctx = DataContext.get_current()
-    ctx.task_retried_user_errors = True
-    ctx.task_max_retries = 3
+    ctx.retried_udf_errors = True
+    ctx.max_udf_retries = 3
 
     call_count = {"n": 0}
 
