@@ -290,6 +290,11 @@ def test_torch_conversion_default_collate_fn_threading(
                 assert torch.equal(t1, t2)
 
 
+def test_to_torch_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(DeprecationWarning):
+        ray.data.range(1).iterator().to_torch()
+
+
 @pytest.mark.parametrize("should_equalize", [True, False])
 def test_iterator_to_materialized_dataset(ray_start_regular_shared, should_equalize):
     """Tests that `DataIterator.materialize` fully consumes the

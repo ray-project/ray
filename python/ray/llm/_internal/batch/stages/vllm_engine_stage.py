@@ -524,7 +524,7 @@ class vLLMEngineWrapper:
             multi_modal_data = request.multimodal_data
 
         if request.prompt_token_ids is not None:
-            llm_prompt = vllm.inputs.data.TokensPrompt(
+            llm_prompt = vllm.inputs.TokensPrompt(
                 prompt_token_ids=request.prompt_token_ids,
                 multi_modal_data=multi_modal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
@@ -532,7 +532,7 @@ class vLLMEngineWrapper:
             )
         else:
             assert request.prompt
-            llm_prompt = vllm.inputs.data.TextPrompt(
+            llm_prompt = vllm.inputs.TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=multi_modal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,

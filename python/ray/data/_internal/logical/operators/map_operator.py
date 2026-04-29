@@ -2,7 +2,7 @@ import functools
 import inspect
 import logging
 from dataclasses import InitVar, dataclass, field, replace
-from typing import Any, Callable, Dict, Iterable, Optional
+from typing import Any, Callable, Dict, Iterable, Literal, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import (
@@ -190,7 +190,7 @@ class MapBatches(AbstractUDFMap):
     input_op: InitVar[LogicalOperator]
     fn: UserDefinedFunction
     can_modify_num_rows: bool = False
-    batch_size: Optional[int] = None
+    batch_size: Union[Optional[int], Literal["auto"]] = None
     batch_format: Optional[str] = "default"
     zero_copy_batch: bool = True
     fn_args: Optional[Iterable[Any]] = None
@@ -486,7 +486,7 @@ class FlatMap(AbstractUDFMap):
 
 
 @dataclass(frozen=True, repr=False, eq=False)
-class StreamingRepartition(AbstractMap):
+class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for streaming repartition operation.
 
     Args:
@@ -540,3 +540,8 @@ class StreamingRepartition(AbstractMap):
         else:
             target = replace(self, input_op=transformed_input)
         return transform(target)
+
+    def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
+        # StreamingRepartition only re-bundles rows into different block sizes.
+        # It doesn't modify schema or filter rows, so filters can safely pass through.
+        return PredicatePassThroughBehavior.PASSTHROUGH

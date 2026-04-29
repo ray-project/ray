@@ -122,10 +122,12 @@ Example: validation with Ray Train TorchTrainer
 Here is a ``validation_fn`` that uses a ``TorchTrainer`` to calculate average cross entropy
 loss on a validation set. Note the following about this example:
 
-* It ``report``\s a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
-* While you typically use the ``TorchTrainer`` for training, you can use it solely for validation like in this example.
-* Because training generally has a higher GPU memory requirement than inference, you can set different
-  resource requirements for training and validation, for example, A100 for training and A10G for validation.
+* ``TorchTrainer`` is typically used for training, but you can use it for validation like in this
+  example allowing different resource requirements for training and validation, for example,
+  A100 for training and A10G for validation.
+* The validation train function returns its metrics directly from worker 0 rather than calling
+  ``ray.train.report`` which is accessible via ``result.return_value``. These values can't be torch
+  tensors and must be python based like ``ray.train.report``.
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
@@ -143,6 +145,33 @@ calculate average accuracy on a validation set. To learn more about how to use
     :language: python
     :start-after: __validation_fn_map_batches_start__
     :end-before: __validation_fn_map_batches_end__
+
+Tuning asynchronous validation
+------------------------------
+
+Overlapping validation and training
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Asynchronous validation is most beneficial when training and validation fully overlap. If one
+finishes before the other, some workers sit idle. :ref:`Autoscaling <vms-autoscaling>` lets you
+spin up workers only for the duration of validation, which mitigates this but doesn't fully
+eliminate the gap.
+
+You can tune the following knobs to overlap validation and training as closely as possible:
+
+* **Number of workers**: Tune the number of validation workers relative to training workers so that
+  the two phases overlap as closely as possible.
+* **Batch size**: A larger batch size typically improves throughput, but it can negatively impact
+  training convergence and may lead to out-of-memory (OOM) errors.
+* **Validation frequency**: Choose a validation cadence and dataset size that balance overlap with
+  training. Validating too frequently or over too many rows can create a long validation tail.
+  Also note that breaking early from a Ray Data iterator may lead to resource leaks - this will be
+  fixed in a future release.
+
+Ray Data production vs consumption
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+See :ref:`balancing-data-production-consumption` for tips on balancing data production and consumption rates.
 
 Checkpoint metrics lifecycle
 -----------------------------
