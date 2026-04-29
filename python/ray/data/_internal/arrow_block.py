@@ -492,7 +492,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 _is_native_tensor_type(column.type) for column in table.columns
             )
             for batch in table.to_batches(max_chunksize=self._max_chunk_size):
-
                 if contains_native_tensor_columns:
                     # HACK: For v1 and v2 tensors, we can control what is returned
                     # by overriding ExtensionScalar.as_py (see ArrowTensorScalar).
