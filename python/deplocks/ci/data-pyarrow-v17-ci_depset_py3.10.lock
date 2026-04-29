@@ -159,6 +159,7 @@ aiohttp==3.13.5 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   aiobotocore
     #   aiohttp-cors
+    #   delta-sharing
     #   fsspec
     #   taskiq
     #   torch-geometric
@@ -1146,7 +1147,13 @@ delta-kernel-rust-sharing-wrapper==0.3.1 \
     --hash=sha256:cc7e018ff750748ae4c4d243c1570fb9e237f41deb0f56f237c039603c464698 \
     --hash=sha256:d7cc3160f9d58de4419b27339bcc9bf8ef84f1a91383aa66322b6f20f3f1ca9f \
     --hash=sha256:f3c8851904e0b8942d563f6b110e3a10930209ac77a17dc12e2761798a5df36f
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   delta-sharing
+delta-sharing==1.4.1 \
+    --hash=sha256:0698efd7745097d4c7cc506021243bc2d5b6b89bab659568855af151f80f9f8a \
+    --hash=sha256:8132124399a9b94312a332fdb65c88037ec69b070bb81f3316b0f8ebec518587
+    # via -r python/requirements/data/pyarrow-v17.txt
 deltalake==1.5.0 \
     --hash=sha256:2ad8f11a64c0477be57d310aa9b470a7c3c3ba2a4e4e86ad92c7ca3554c539f2 \
     --hash=sha256:7baa94c7f8234c0840627e8f2f5e3f88a02ff011a2991b8e034c187ffafcb3a0 \
@@ -1531,6 +1538,7 @@ fsspec==2023.12.1 \
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   dask
     #   datasets
+    #   delta-sharing
     #   etils
     #   getdaft
     #   huggingface-hub
@@ -2018,7 +2026,9 @@ jsonschema-specifications==2025.9.1 \
 jwcrypto==1.5.7 \
     --hash=sha256:70204d7cca406eda8c82352e3c41ba2d946610dafd19e54403f0a1f4f18633c6 \
     --hash=sha256:729463fefe28b6de5cf1ebfda3e94f1a1b41d2799148ef98a01cb9678ebe2bb0
-    # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    # via
+    #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
+    #   delta-sharing
 keras==3.12.0 \
     --hash=sha256:02b69e007d5df8042286c3bcc2a888539e3e487590ffb08f6be1b4354df50aa8 \
     --hash=sha256:536e3f8385a05ae04e82e08715a1a59988578087e187b04cb0a6fad11743f07f
@@ -3192,6 +3202,7 @@ pandas==2.2.3 \
     #   -r python/requirements/data/pyarrow-v17.txt
     #   bokeh
     #   datasets
+    #   delta-sharing
     #   modin
     #   pymars
     #   raydp
@@ -3585,6 +3596,7 @@ pyarrow==17.0.0 \
     # via
     #   -r python/requirements/data/pyarrow-v17.txt
     #   datasets
+    #   delta-sharing
     #   getdaft
     #   hudi
     #   pylance
@@ -4301,6 +4313,7 @@ requests==2.33.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   datasets
+    #   delta-sharing
     #   docker
     #   fsspec
     #   google-api-core
@@ -5582,6 +5595,7 @@ yarl==1.23.0 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   aiohttp
+    #   delta-sharing
 zict==3.0.0 \
     --hash=sha256:5796e36bd0e0cc8cf0fbc1ace6a68912611c1dbd74750a3f3026b9b9d6a327ae \
     --hash=sha256:e321e263b6a97aafc0790c3cfb3c04656b7066e6738c37fffcca95d803c9fba5
