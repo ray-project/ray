@@ -11,8 +11,6 @@ else
     echo "conda exists"
 fi
 
-pip install --upgrade pip
-
 # This is required to use conda activate
 source "$(conda info --base)/etc/profile.d/conda.sh"
 
@@ -45,10 +43,11 @@ do
     # predates that module.
     conda create -y -n "${env_name}" python="${PYTHON_VERSION}" pip=25.2
     conda activate "${env_name}"
+    python -m pip install --upgrade pip
 
     # Pin pydantic version due to: https://github.com/ray-project/ray/issues/36990.
     # ray<2.9 is only compatible with pydantic<2 and setuptools < 70.
-    pip install -U "pydantic<2" ray=="${RAY_VERSION}" ray[default]=="${RAY_VERSION}" setuptools==69.5.1
+    python -m pip install -U "pydantic<2" ray=="${RAY_VERSION}" ray[default]=="${RAY_VERSION}" setuptools==69.5.1
 
     printf "\n\n\n"
     echo "========================================================="

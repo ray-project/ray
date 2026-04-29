@@ -27,11 +27,11 @@ class SGLangEngineRequest(BaseModel):
     # The index of the request in the batch.
     idx_in_batch: int
     # The input prompt.
-    prompt: Optional[str]
+    prompt: Optional[str] = None
     # Alternative to text. Specify the input as token IDs instead of text.
-    prompt_token_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]] = None
     # The sampling parameters (more details can be seen in https://docs.sglang.ai/backend/sampling_params.html).
-    params: Optional[Dict[str, Any]]
+    params: Optional[Dict[str, Any]] = None
 
     class Config:
         validate_assignment = True
@@ -41,13 +41,13 @@ class SGLangEngineRequest(BaseModel):
 class SGLangOutputData(BaseModel):
     """The output of the SGLang engine."""
 
-    prompt: Optional[str]
-    prompt_token_ids: Optional[List[int]]
+    prompt: Optional[str] = None
+    prompt_token_ids: Optional[List[int]] = None
     num_input_tokens: int
 
     # Generate fields.
-    generated_tokens: Optional[List[int]]
-    generated_text: Optional[str]
+    generated_tokens: Optional[List[int]] = None
+    generated_text: Optional[str] = None
     num_generated_tokens: int
 
     # Metrics fields.

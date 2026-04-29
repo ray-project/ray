@@ -71,14 +71,14 @@ class vLLMEngineRequest(BaseModel):
     # DEPRECATED: The images inputs for the multimodal model. Use Any to avoid importing PIL.
     images: List[Any]
     # The multimodal data for the multimodal model.
-    multimodal_data: Optional[MultiModalDataDict]
+    multimodal_data: Optional[MultiModalDataDict] = None
     # The kwargs for the multimodal processor.
-    mm_processor_kwargs: Optional[Dict[str, Any]]
+    mm_processor_kwargs: Optional[Dict[str, Any]] = None
     # The uuids for the multimodal data.
-    multimodal_uuids: Optional[Dict[str, Any]]
+    multimodal_uuids: Optional[Dict[str, Any]] = None
     # The tokenized prompt IDs. If None, then the string prompt will be
     # tokenized by the LLM engine. This is not recommended for performance reasons.
-    prompt_token_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]] = None
     # The sampling or pooling parameters. Use Any to avoid importing vLLM.
     params: Any
     # The kwargs for tokenization.
@@ -133,7 +133,7 @@ class vLLMOutputData(BaseModel):
     """The output of the vLLM engine."""
 
     prompt: str
-    prompt_token_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]] = None
     num_input_tokens: int
 
     # Generate fields.

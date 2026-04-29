@@ -30,22 +30,51 @@ from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
+def _get_status_section(
+    status_output: str, headers: List[str], next_headers: List[str]
+) -> str:
+    lines = status_output.splitlines()
+    start_index = None
+    header_set = set(headers)
+    next_header_set = set(next_headers)
+
+    for index, line in enumerate(lines):
+        if line.strip() in header_set:
+            start_index = index + 1
+            break
+
+    if start_index is None:
+        return ""
+
+    section_lines = []
+    for line in lines[start_index:]:
+        if line.strip() in next_header_set:
+            break
+        if not section_lines and not line.strip():
+            continue
+        section_lines.append(line.rstrip())
+
+    return "\n".join(section_lines).strip()
+
+
 def get_ray_status_output(address):
     gcs_client = ray._raylet.GcsClient(address=address)
     internal_kv._initialize_internal_kv(gcs_client)
     status = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_STATUS)
     error = internal_kv._internal_kv_get(DEBUG_AUTOSCALING_ERROR)
-    print(debug_status(status, error, address=address))
+    status_output = debug_status(status, error, address=address)
+    print(status_output)
     return {
-        "demand": debug_status(status, error, address=address)
-        .split("Demands:")[1]
-        .strip("\n")
-        .strip(" "),
-        "usage": debug_status(status, error, address=address)
-        .split("Demands:")[0]
-        .split("Usage:")[1]
-        .strip("\n")
-        .strip(" "),
+        "demand": _get_status_section(
+            status_output,
+            headers=["Demands:", "Pending Demands:"],
+            next_headers=[],
+        ),
+        "usage": _get_status_section(
+            status_output,
+            headers=["Usage:", "Total Usage:"],
+            next_headers=["Demands:", "Pending Demands:"],
+        ),
     }
 
 

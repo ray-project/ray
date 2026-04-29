@@ -7,7 +7,6 @@ from contextlib import contextmanager
 
 import pytest
 
-from ray._common.test_utils import wait_for_condition
 from ray.job_submission import JobStatus, JobSubmissionClient
 
 logger = logging.getLogger(__name__)
@@ -72,6 +71,10 @@ def test_error_message():
     """
     Check that we get a good error message when running against an old server version.
     """
+    # Import lazily so the module still loads when the compatibility script
+    # installs an older Ray that does not expose `ray._common`.
+    from ray._common.test_utils import wait_for_condition
+
     client = JobSubmissionClient("http://127.0.0.1:8265")
 
     # Check that a basic job successfully runs.
