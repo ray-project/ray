@@ -1,5 +1,6 @@
 import functools
 import logging
+import pickle
 import time
 import typing
 from typing import (
@@ -198,9 +199,10 @@ class GPUShuffleActor:
             block_meta = BlockMetadataWithSchema.from_block(
                 block, block_exec_stats=exec_stats
             )
-            yield BlockMetadataWithSchema.from_metadata(
+            bm = BlockMetadataWithSchema.from_metadata(
                 block_meta.metadata, schema=tagged_schema
             )
+            yield pickle.dumps(bm)
 
 
 def _wait_for_refs_with_timeout(
