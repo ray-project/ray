@@ -4,8 +4,9 @@
 
 set -exo pipefail
 
-# Install rust
-sudo apt-get update && sudo apt-get install -y rustc cargo && sudo rm -rf /var/lib/apt/lists/*
+# Install rust via rustup (apt's rustc 1.75 is too old for crates requiring edition2024, e.g. idna_adapter)
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
+export PATH="$HOME/.cargo/bin:$PATH"
 
 pip3 uninstall -y vllm
 pip3 install "sglang[all,ray]==0.5.10rc0"
