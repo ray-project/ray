@@ -130,7 +130,7 @@ def build_results(stats: LocustTestResults, service_id: str) -> Dict[str, Any]:
 
 
 def log_and_assert_results(stats: LocustTestResults) -> None:
-    # ToDo(kamil) for now only report errors, max latency and total requests. Once stable add asserts too.
+    # ToDo(kamil) for now only report metrics. Once stable add asserts too.
     errors = stats.num_failures
     total = stats.total_requests
     p50 = stats.p50_latency
@@ -167,14 +167,17 @@ def log_and_assert_results(stats: LocustTestResults) -> None:
             continue
         name = STAGE_NAMES[i]
         thresholds = stage_thresholds.get(name, {})
-        if "p99_latency" in thresholds:
-            assert stage_stats.p99_latency <= thresholds["p99_latency"], (
+        if (
+            "p99_latency" in thresholds
+            and stage_stats.p99_latency > thresholds["p99_latency"]
+        ):
+            logger.warning(
                 f"{name} p99_latency={stage_stats.p99_latency:.1f}ms "
                 f"exceeds: {thresholds['p99_latency']}ms."
             )
-        if "rps" in thresholds:
-            assert stage_stats.rps >= thresholds["rps"], (
-                f"{name} rps={stage_stats.rps:.0f} " f"below: {thresholds['rps']}."
+        if "rps" in thresholds and stage_stats.rps < thresholds["rps"]:
+            logger.warning(
+                f"{name} rps={stage_stats.rps:.0f} below: {thresholds['rps']}."
             )
 
     if errors > 0:

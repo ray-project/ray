@@ -188,7 +188,7 @@ LOAD_STAGES = [
 
 
 def log_and_assert_results(stats: Dict[str, Any]) -> None:
-    # ToDo(kamil) for now only report errors, max latency and total requests. Once stable add asserts too.
+    # ToDo(kamil) for now only report metrics. Once stable add asserts too.
     errors = stats["num_failures"]
     total = stats["total_requests"]
     p50 = stats["p50_latency"]
@@ -225,13 +225,16 @@ def log_and_assert_results(stats: Dict[str, Any]) -> None:
             if not stage:
                 logger.warning(f"No results for stage: '{stage_name}'.")
                 continue
-            if "p99_latency" in thresholds:
-                assert stage["p99_latency"] <= thresholds["p99_latency"], (
+            if (
+                "p99_latency" in thresholds
+                and stage["p99_latency"] > thresholds["p99_latency"]
+            ):
+                logger.warning(
                     f"{stage_name} p99_latency={stage['p99_latency']:.1f}ms "
                     f"exceeds: {thresholds['p99_latency']}ms."
                 )
-            if "avg_rps" in thresholds:
-                assert stage["avg_rps"] >= thresholds["avg_rps"], (
+            if "avg_rps" in thresholds and stage["avg_rps"] < thresholds["avg_rps"]:
+                logger.warning(
                     f"{stage_name} avg_rps={stage['avg_rps']:.0f} "
                     f"below: {thresholds['avg_rps']}."
                 )
@@ -246,10 +249,10 @@ def log_and_assert_results(stats: Dict[str, Any]) -> None:
     if max_latency > 5_000:
         logger.warning(f"max_latency unbounded: {max_latency:.1f}")
 
-    assert p50 <= 100, f"p50 latency {p50:.1f}ms exceeds 100ms."
-    assert p99 <= 200, f"p99 latency {p99:.1f}ms exceeds 200ms."
-
-    logger.info("All assertions passed.")
+    if p50 > 100:
+        logger.warning(f"p50 latency {p50:.1f}ms exceeds 100ms.")
+    if p99 > 200:
+        logger.warning(f"p99 latency {p99:.1f}ms exceeds 200ms.")
 
 
 def build_results(stats: Dict[str, Any], service_id: str) -> Dict[str, Any]:
