@@ -26,10 +26,10 @@ from ray.llm._internal.serve.engines.sglang.sglang_engine import (  # noqa: E402
     SGLangWakeupConfig,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_llm_config() -> LLMConfig:
     return LLMConfig(
@@ -71,6 +71,7 @@ def server(mock_engine: AsyncMock) -> SGLangServer:
 # SGLangPauseConfig
 # ---------------------------------------------------------------------------
 
+
 class TestSGLangPauseConfig:
     def test_default_mode(self):
         cfg = SGLangPauseConfig()
@@ -89,6 +90,7 @@ class TestSGLangPauseConfig:
 # ---------------------------------------------------------------------------
 # SGLangSleepConfig
 # ---------------------------------------------------------------------------
+
 
 class TestSGLangSleepConfig:
     def test_default_tags_is_none(self):
@@ -121,6 +123,7 @@ class TestSGLangSleepConfig:
 # SGLangWakeupConfig
 # ---------------------------------------------------------------------------
 
+
 class TestSGLangWakeupConfig:
     def test_default_tags_is_none(self):
         cfg = SGLangWakeupConfig()
@@ -148,6 +151,7 @@ class TestSGLangWakeupConfig:
 # SGLangServer — initial state
 # ---------------------------------------------------------------------------
 
+
 class TestSGLangServerInitialState:
     @pytest.mark.asyncio
     async def test_is_paused_starts_false(self, server: SGLangServer):
@@ -160,11 +164,13 @@ class TestSGLangServerInitialState:
     @pytest.mark.asyncio
     async def test_is_paused_is_async(self, server: SGLangServer):
         import inspect
+
         assert inspect.iscoroutinefunction(server.is_paused)
 
     @pytest.mark.asyncio
     async def test_is_sleeping_is_async(self, server: SGLangServer):
         import inspect
+
         assert inspect.iscoroutinefunction(server.is_sleeping)
 
 
@@ -172,9 +178,12 @@ class TestSGLangServerInitialState:
 # SGLangServer.pause / resume
 # ---------------------------------------------------------------------------
 
+
 class TestPauseResume:
     @pytest.mark.asyncio
-    async def test_pause_sets_is_paused(self, server: SGLangServer, mock_engine: AsyncMock):
+    async def test_pause_sets_is_paused(
+        self, server: SGLangServer, mock_engine: AsyncMock
+    ):
         await server.pause()
         assert await server.is_paused() is True
 
@@ -230,6 +239,7 @@ class TestPauseResume:
 # ---------------------------------------------------------------------------
 # SGLangServer.sleep / wakeup
 # ---------------------------------------------------------------------------
+
 
 class TestSleepWakeup:
     @pytest.mark.asyncio
@@ -308,6 +318,7 @@ class TestSleepWakeup:
 # SGLangServer.reset_prefix_cache
 # ---------------------------------------------------------------------------
 
+
 class TestResetPrefixCache:
     @pytest.mark.asyncio
     async def test_calls_flush_cache_with_timeout(
@@ -335,11 +346,10 @@ class TestResetPrefixCache:
 # SGLangServer.collective_rpc
 # ---------------------------------------------------------------------------
 
+
 class TestCollectiveRpc:
     @pytest.mark.asyncio
-    async def test_returns_none(
-        self, server: SGLangServer, mock_engine: AsyncMock
-    ):
+    async def test_returns_none(self, server: SGLangServer, mock_engine: AsyncMock):
         result = await server.collective_rpc("update_weights")
         assert result is None
 

@@ -486,9 +486,9 @@ class TestSGLangProtocolDecoupling:
 # collective_rpc. All require a running GPU-backed SGLang deployment.
 # ---------------------------------------------------------------------------
 
+
 def _get_llm_handle(model_id: str = RAY_MODEL_ID):
     """Return a Ray Serve handle to the LLMServer deployment for model_id."""
-    from ray.serve.handle import DeploymentHandle
     deployment_name = model_id.replace("/", "--").replace(".", "_")
     return serve.get_deployment_handle(deployment_name, SERVE_DEFAULT_APP_NAME)
 
@@ -581,7 +581,10 @@ async def test_sglang_reset_prefix_cache(sglang_client):
 
     # Warm the cache with a request.
     sglang_client.completions.create(
-        model=RAY_MODEL_ID, prompt="The capital of France is", max_tokens=8, temperature=0.0
+        model=RAY_MODEL_ID,
+        prompt="The capital of France is",
+        max_tokens=8,
+        temperature=0.0,
     )
 
     # Flush the cache.
@@ -589,7 +592,10 @@ async def test_sglang_reset_prefix_cache(sglang_client):
 
     # Inference must still work after cache flush.
     resp = sglang_client.completions.create(
-        model=RAY_MODEL_ID, prompt="The capital of France is", max_tokens=8, temperature=0.0
+        model=RAY_MODEL_ID,
+        prompt="The capital of France is",
+        max_tokens=8,
+        temperature=0.0,
     )
     assert resp.choices[0].text.strip()
 

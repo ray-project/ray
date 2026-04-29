@@ -32,10 +32,10 @@ from ray.llm._internal.serve.engines.sglang.sglang_engine import (  # noqa: E402
     SGLangWakeupConfig,
 )
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
+
 
 def _make_llm_config() -> LLMConfig:
     return LLMConfig(
@@ -83,6 +83,7 @@ def server(mock_engine: AsyncMock) -> SGLangServer:
 # Verify import chain with real sglang
 # ---------------------------------------------------------------------------
 
+
 class TestImports:
     def test_sglang_protocol_types_importable(self):
         """openai_api_models must resolve correctly against the installed sglang."""
@@ -92,6 +93,7 @@ class TestImports:
             EmbeddingRequest,
             TokenizeResponse,
         )
+
         assert ChatCompletionRequest is not None
         assert CompletionRequest is not None
         assert EmbeddingRequest is not None
@@ -106,6 +108,7 @@ class TestImports:
 # ---------------------------------------------------------------------------
 # Verify SGLangServer.__init__ calls sglang.Engine
 # ---------------------------------------------------------------------------
+
 
 class TestServerInit:
     def test_engine_constructed_with_llm_config_kwargs(self):
@@ -130,6 +133,7 @@ class TestServerInit:
 # SGLangPauseConfig — with real pydantic + real sglang types in scope
 # ---------------------------------------------------------------------------
 
+
 class TestSGLangPauseConfig:
     def test_default_mode(self):
         assert SGLangPauseConfig().mode == "abort"
@@ -147,16 +151,20 @@ class TestSGLangPauseConfig:
 # SGLangSleepConfig
 # ---------------------------------------------------------------------------
 
+
 class TestSGLangSleepConfig:
     def test_default_tags_is_none(self):
         assert SGLangSleepConfig().tags is None
 
-    @pytest.mark.parametrize("tags", [
-        ["kv_cache"],
-        ["weights"],
-        ["cuda_graph"],
-        ["kv_cache", "weights", "cuda_graph"],
-    ])
+    @pytest.mark.parametrize(
+        "tags",
+        [
+            ["kv_cache"],
+            ["weights"],
+            ["cuda_graph"],
+            ["kv_cache", "weights", "cuda_graph"],
+        ],
+    )
     def test_valid_tags(self, tags):
         assert SGLangSleepConfig(tags=tags).tags == tags
 
@@ -169,16 +177,20 @@ class TestSGLangSleepConfig:
 # SGLangWakeupConfig
 # ---------------------------------------------------------------------------
 
+
 class TestSGLangWakeupConfig:
     def test_default_tags_is_none(self):
         assert SGLangWakeupConfig().tags is None
 
-    @pytest.mark.parametrize("tags", [
-        ["kv_cache"],
-        ["weights"],
-        ["cuda_graph"],
-        ["kv_cache", "weights"],
-    ])
+    @pytest.mark.parametrize(
+        "tags",
+        [
+            ["kv_cache"],
+            ["weights"],
+            ["cuda_graph"],
+            ["kv_cache", "weights"],
+        ],
+    )
     def test_valid_tags(self, tags):
         assert SGLangWakeupConfig(tags=tags).tags == tags
 
@@ -191,9 +203,12 @@ class TestSGLangWakeupConfig:
 # pause / resume
 # ---------------------------------------------------------------------------
 
+
 class TestPauseResume:
     @pytest.mark.asyncio
-    async def test_pause_sets_is_paused(self, server: SGLangServer, mock_engine: AsyncMock):
+    async def test_pause_sets_is_paused(
+        self, server: SGLangServer, mock_engine: AsyncMock
+    ):
         await server.pause()
         assert await server.is_paused() is True
 
@@ -250,6 +265,7 @@ class TestPauseResume:
 # sleep / wakeup
 # ---------------------------------------------------------------------------
 
+
 class TestSleepWakeup:
     @pytest.mark.asyncio
     async def test_sleep_sets_is_sleeping(
@@ -299,7 +315,9 @@ class TestSleepWakeup:
         self, server: SGLangServer, mock_engine: AsyncMock
     ):
         await server.wakeup(tags=["cuda_graph"])
-        mock_engine.resume_memory_occupation.assert_awaited_once_with(tags=["cuda_graph"])
+        mock_engine.resume_memory_occupation.assert_awaited_once_with(
+            tags=["cuda_graph"]
+        )
 
     @pytest.mark.asyncio
     async def test_wakeup_rejects_invalid_tags(self, server: SGLangServer):
@@ -324,6 +342,7 @@ class TestSleepWakeup:
 # ---------------------------------------------------------------------------
 # reset_prefix_cache
 # ---------------------------------------------------------------------------
+
 
 class TestResetPrefixCache:
     @pytest.mark.asyncio
@@ -352,11 +371,10 @@ class TestResetPrefixCache:
 # collective_rpc
 # ---------------------------------------------------------------------------
 
+
 class TestCollectiveRpc:
     @pytest.mark.asyncio
-    async def test_returns_none(
-        self, server: SGLangServer, mock_engine: AsyncMock
-    ):
+    async def test_returns_none(self, server: SGLangServer, mock_engine: AsyncMock):
         result = await server.collective_rpc("update_weights")
         assert result is None
 
