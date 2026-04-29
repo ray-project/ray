@@ -254,11 +254,12 @@ class DataExecutionOptions(BaseModel):
 class DataConfig(BaseModel):
     """Configuration for dataset splitting and execution options within Ray Train."""
 
-    # NOTE: `execution_options: Dict` was removed, replaced by `data_execution_options` below;
-    # do not reintroduce it.
-
     datasets_to_split: Union[Literal["all"], List[str]] = Field(
         description="Which datasets to split; either 'all' or a list of dataset names."
+    )
+    # TODO: Add Pydantic deprecation annotation to execution_options once Pydantic V1 is removed in PR #62716
+    execution_options: Optional[Dict] = Field(
+        description="DEPRECATED: Use data_execution_options instead."
     )
     data_execution_options: DataExecutionOptions = Field(
         description="Data execution options"

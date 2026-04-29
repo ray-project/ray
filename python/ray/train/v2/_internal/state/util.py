@@ -59,10 +59,11 @@ def is_actor_alive(actor_id: str, timeout: int) -> bool:
 def construct_data_config(data_config: DataConfig) -> DataConfigSchema:
     """Serialize a user-facing DataConfig into the exportable schema.
 
-    Assumption: data_config._execution_options (a defaultdict) hasn't been
-    read since __init__, since any read materializes a per-dataset key and
-    flips the exported shape. Safe today because construct_data_config runs
-    in after_controller_start, before DatasetsCallback invokes configure().
+    Note: This function assumes data_config._execution_options (a defaultdict)
+    hasn't been read between initialization of the field and this function call.
+    Any read materializes a dataset key and affects the data config shape,
+    wrongly capturing a per dataset execution options even if the user only
+    provided a default.
     """
     exec_options = data_config._execution_options
 
