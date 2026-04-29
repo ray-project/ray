@@ -2032,6 +2032,17 @@ class Replica:
 
         grpc_enabled = is_grpc_enabled(self._grpc_options)
 
+        # Direct ingress ports are HAProxy backends: HAProxy instances on other
+        # nodes connect to these ports to route user traffic to replicas.
+        # Binding to the user-facing HTTPOptions.host (default 127.0.0.1) would
+        # make cross-node routing impossible, so override to 0.0.0.0.
+        if self._http_options.host not in (None, "0.0.0.0"):
+            logger.warning(
+                f"Overriding HTTPOptions.host={self._http_options.host!r} to "
+                "'0.0.0.0' for direct ingress backend ports. These ports must "
+                "be reachable from HAProxy instances on other nodes."
+            )
+
         # Allocate and start HTTP server
         async def start_http_server(port):
             options = configure_http_middlewares(
@@ -2040,11 +2051,6 @@ class Replica:
                         **{
                             **self._http_options.model_dump(),
                             "port": port,
-                            # Direct ingress ports are HAProxy backends: HAProxy
-                            # instances on other nodes connect to these ports
-                            # to route user traffic to replicas. Binding to the
-                            # user-facing HTTPOptions.host (default 127.0.0.1)
-                            # would make cross-node routing impossible.
                             "host": "0.0.0.0",
                         }
                     )
