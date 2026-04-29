@@ -251,13 +251,6 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
-        from vllm import envs as vllm_envs
-
-        if hasattr(vllm_envs, "VLLM_USE_V1") and not vllm_envs.VLLM_USE_V1:
-            logger.error(
-                "vLLM v0 is fully deprecated. As a result in Ray Serve LLM only v1 is supported."
-            )
-
         self.llm_config.setup_engine_backend()
 
         self._running = False
