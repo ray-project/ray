@@ -1,6 +1,0 @@
-pyarrow==9.0.0
-pandas==1.5.3
-datasets==2.14.4
-modin
-pylance
-delta-sharing
