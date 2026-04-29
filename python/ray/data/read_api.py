@@ -74,7 +74,9 @@ from ray.data._internal.logical.operators import (
     FromItems,
     FromNumpy,
     FromPandas,
+    ListFiles,
     Read,
+    ReadFiles,
 )
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -136,6 +138,7 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 
 logger = logging.getLogger(__name__)
+INT32_MAX = 2**31 - 1
 
 
 @DeveloperAPI
@@ -387,6 +390,203 @@ def range_tensor(
     )
 
 
+def _resolve_read_remote_args(
+    datasource: Datasource,
+    ray_remote_args: Optional[Dict[str, Any]],
+    num_cpus: Optional[float],
+    num_gpus: Optional[float],
+    memory: Optional[float],
+    ctx: DataContext,
+) -> Dict[str, Any]:
+    """Common ``ray_remote_args`` setup shared between ``read_datasource`` and
+    ``_read_datasource_v2``.
+
+    Local-scheme reads (``local://...``) must run on the driver so tasks can
+    see the driver's filesystem. We use the ``ray.io/node-id`` label selector
+    rather than ``NodeAffinitySchedulingStrategy(soft=False)`` — matches the
+    Ray-wide migration in PR #54940. ``supports_distributed_reads`` is
+    captured on the datasource against the original (pre-resolution) paths,
+    so the check survives the scheme-stripping done by
+    ``_resolve_paths_and_filesystem``.
+
+    Callers handle datasource-specific guards (Ray Client rejection,
+    ``_validate_head_node_resources_for_local_scheduling``) themselves since
+    they sit in different positions in the V1 and V2 flows.
+    """
+    if ray_remote_args is None:
+        ray_remote_args = {}
+    if not datasource.supports_distributed_reads:
+        label_selector = ray_remote_args.get("label_selector", {})
+        label_selector[
+            ray._raylet.RAY_NODE_ID_KEY
+        ] = ray.get_runtime_context().get_node_id()
+        ray_remote_args["label_selector"] = label_selector
+        ray_remote_args.pop("scheduling_strategy", None)
+    if (
+        "scheduling_strategy" not in ray_remote_args
+        and "label_selector" not in ray_remote_args
+    ):
+        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+    return merge_resources_to_ray_remote_args(
+        num_cpus,
+        num_gpus,
+        memory,
+        ray_remote_args,
+    )
+
+
+@wrap_auto_init
+def _read_datasource_v2(
+    datasource,
+    *,
+    parallelism: int = -1,
+    num_cpus: Optional[float] = None,
+    num_gpus: Optional[float] = None,
+    memory: Optional[float] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    compute: Optional[ComputeStrategy] = None,
+    partition_filter: Optional[PathPartitionFilter] = None,
+    block_udf: Optional[Callable[[Any], Any]] = None,
+) -> Dataset:
+    """Internal entry point for ``DataSourceV2`` reads.
+
+    Wires a ``ListFiles → ReadFiles`` logical chain:
+
+    - :class:`ListFiles` owns listing (via the datasource's ``FileIndexer``),
+      optional global shuffle (``FileShuffleConfig``), and size-balanced
+      bucketing (``RoundRobinPartitioner``). Its physical planner
+      parallelizes listing across path shards and emits manifest blocks.
+    - :class:`ReadFiles` consumes the manifest blocks and reads each bucket
+      via ``scanner.create_reader().read(manifest)``.
+
+    Schema inference happens once on the driver by sampling the first
+    file — no caching layer needed.
+    """
+    import time
+
+    from ray.data._internal.datasource_v2.listing.listing_utils import (
+        _build_pruners,
+        sample_files,
+    )
+    from ray.data._internal.datasource_v2.partitioners.round_robin_partitioner import (
+        RoundRobinPartitioner,
+    )
+    from ray.data.datasource.file_based_datasource import FileShuffleConfig
+
+    ctx = DataContext.get_current()
+
+    if not datasource.supports_distributed_reads:
+        import ray.util.client
+
+        if ray.util.client.ray.is_connected():
+            raise ValueError(
+                "Because you're using Ray Client, read tasks scheduled on the "
+                "Ray cluster can't access your local files. To fix this issue, "
+                "store files in cloud storage or a distributed filesystem like "
+                "NFS."
+            )
+
+    ray_remote_args = _resolve_read_remote_args(
+        datasource,
+        ray_remote_args,
+        num_cpus,
+        num_gpus,
+        memory,
+        ctx,
+    )
+
+    pruners = _build_pruners(datasource.file_extensions, partition_filter)
+
+    indexer = datasource._get_file_indexer()
+
+    # Sample a few files for schema inference. Listed again (cheaply) during
+    # execution inside the ListFiles op — no caching layer needed.
+    sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
+    schema = datasource.infer_schema(sample)
+    # NOTE: ``block_udf``'s schema effect (e.g. a
+    # ``tensor_column_schema``-derived cast) is probed lazily in
+    # ``ReadFiles.infer_schema``, not here. We keep the *pre-UDF* schema
+    # on the scanner so ``FileReader`` hands pyarrow the raw on-disk
+    # types; the UDF runs post-read to produce the transformed types.
+    # Resolve any path-discovered partitioning field names from the sample
+    # and pass the result through to the scanner. Keeping the discovery
+    # here (rather than mutating ``datasource._partitioning`` inside
+    # ``infer_schema``) leaves the datasource instance immutable across
+    # reads.
+    resolved_partitioning = datasource.resolve_partitioning(sample)
+    scanner = datasource.create_scanner(
+        schema=schema,
+        filesystem=datasource.filesystem,
+        partitioning=resolved_partitioning,
+    )
+
+    # Size-balanced bucketing for the listing output. The partitioner is
+    # captured in a pickled closure and runs inside worker tasks, so its
+    # estimator must be I/O-free and pickle-safe — use the datasource's
+    # canonical estimator (``ParquetInMemorySizeEstimator`` is a fixed
+    # encoding-ratio multiplier). ``num_buckets`` is a hint;
+    # ``RoundRobinPartitioner`` honors ``[min, max]`` block-size limits
+    # first, so the actual bucket count scales with total data size.
+    # ``target_*_block_size`` can be ``None`` (block sizing disabled); fall
+    # back to sentinel bounds so the partitioner just rolls every file
+    # into a single bucket.
+    import sys
+
+    min_bucket_size = ctx.target_min_block_size or 0
+    max_bucket_size = (
+        ctx.target_max_block_size
+        if ctx.target_max_block_size is not None
+        else sys.maxsize
+    )
+    partitioner = RoundRobinPartitioner(
+        in_memory_size_estimator=datasource.get_size_estimator(),
+        min_bucket_size=min_bucket_size,
+        max_bucket_size=max_bucket_size,
+        num_buckets=ctx.read_op_min_num_blocks,
+    )
+
+    # NOTE: We're using shuffle config factory to fix the seed at the planning
+    #       time, rather than at the composition time (for backward-compatibility)
+    shuffle = getattr(datasource, "shuffle", None)
+
+    def _shuffle_config_factory() -> Optional[FileShuffleConfig]:
+        return (
+            FileShuffleConfig(seed=time.time_ns() % INT32_MAX)
+            if shuffle == "files"
+            else shuffle
+        )
+
+    list_files_op = ListFiles(
+        paths=list(datasource.paths),
+        file_indexer=indexer,
+        filesystem=datasource.filesystem,
+        source_paths=list(datasource.paths),
+        file_partitioner=partitioner,
+        file_extensions=datasource.file_extensions,
+        partition_filter=partition_filter,
+        shuffle_config_factory=_shuffle_config_factory,
+    )
+
+    compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)
+
+    read_op = ReadFiles(
+        input_op=list_files_op,
+        datasource=datasource,
+        scanner=scanner,
+        schema=schema,
+        parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        compute=compute_strategy,
+        block_udf=block_udf,
+    )
+
+    stats = DatasetStats(metadata={"Read": []}, parent=None)
+    execution_plan = ExecutionPlan(stats, DataContext.get_current().copy())
+    logical_plan = LogicalPlan(read_op, execution_plan._context)
+    return Dataset(plan=execution_plan, logical_plan=logical_plan)
+
+
 @PublicAPI
 @wrap_auto_init
 def read_datasource(
@@ -457,28 +657,13 @@ def read_datasource(
 
     ctx = DataContext.get_current()
 
-    if ray_remote_args is None:
-        ray_remote_args = {}
-
-    if not datasource.supports_distributed_reads:
-        label_selector = ray_remote_args.get("label_selector", {})
-        label_selector[
-            ray._raylet.RAY_NODE_ID_KEY
-        ] = ray.get_runtime_context().get_node_id()
-        ray_remote_args["label_selector"] = label_selector
-        ray_remote_args.pop("scheduling_strategy", None)
-
-    if (
-        "scheduling_strategy" not in ray_remote_args
-        and "label_selector" not in ray_remote_args
-    ):
-        ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
-
-    ray_remote_args = merge_resources_to_ray_remote_args(
+    ray_remote_args = _resolve_read_remote_args(
+        datasource,
+        ray_remote_args,
         num_cpus,
         num_gpus,
         memory,
-        ray_remote_args,
+        ctx,
     )
 
     if not datasource.supports_distributed_reads:
@@ -1022,9 +1207,8 @@ def read_parquet(
             # row filtering down to the file scan.
             ds = ray.data.read_parquet(
                 "s3://anonymous@ray-example-data/iris.parquet",
-                columns=["sepal.length", "variety"],
                 filter=pa.dataset.field("sepal.length") > 5.0,
-            )
+            ).select_columns(["sepal.length", "variety"])
 
             ds.show(2)
 
@@ -1116,6 +1300,67 @@ def read_parquet(
     dataset_kwargs = arrow_parquet_args.pop("dataset_kwargs", None)
     _block_udf = arrow_parquet_args.pop("_block_udf", None)
     schema = arrow_parquet_args.pop("schema", None)
+
+    ctx = DataContext.get_current()
+    if ctx.use_datasource_v2:
+        # ``tensor_column_schema`` is folded into ``_block_udf`` by
+        # ``_resolve_parquet_args`` above; passing that transform through
+        # ``ReadFiles.block_udf`` covers both features.
+        if dataset_kwargs:
+            raise NotImplementedError(
+                "`dataset_kwargs` is not yet supported on the DataSourceV2 path."
+            )
+        if columns is not None:
+            # TODO(datasource-v2): remove `columns=` from `read_parquet` once
+            # the projection-pushdown rule dispatches to `ReadFiles`. Callers
+            # should use `ray.data.read_parquet(path).select_columns([...])`.
+            #
+            # Caveat for the ``include_paths=True`` migration: V1
+            # ``columns=[...]`` implicitly retained the synthetic ``"path"``
+            # column (see ``ParquetDatasource.read_fragments`` /
+            # ``get_current_projection``), but ``select_columns([...])`` is
+            # literal and will drop ``"path"`` unless it's listed explicitly.
+            # Callers passing both must add ``"path"`` to their projection
+            # when migrating; the message below flags that case.
+            hint = (
+                " Note: when combined with `include_paths=True`, V1 implicitly"
+                " retained the `path` column — add `'path'` to your"
+                " `select_columns([...])` list to preserve it."
+                if include_paths
+                else ""
+            )
+            raise NotImplementedError(
+                "`columns=` on `read_parquet` is deprecated on the DataSourceV2 "
+                "path. Use `ray.data.read_parquet(path).select_columns([...])` "
+                "instead." + hint
+            )
+
+        from ray.data._internal.datasource_v2.parquet_datasource_v2 import (
+            ParquetDatasourceV2,
+        )
+
+        datasource_v2 = ParquetDatasourceV2(
+            paths,
+            filesystem=filesystem,
+            partitioning=partitioning,
+            file_extensions=file_extensions,
+            include_paths=include_paths,
+            shuffle=shuffle,
+            arrow_parquet_args=arrow_parquet_args,
+            schema=schema,
+        )
+        return _read_datasource_v2(
+            datasource_v2,
+            parallelism=_get_num_output_blocks(parallelism, override_num_blocks),
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            memory=memory,
+            ray_remote_args=ray_remote_args,
+            concurrency=concurrency,
+            partition_filter=partition_filter,
+            block_udf=_block_udf,
+        )
+
     datasource = ParquetDatasource(
         paths,
         columns=columns,

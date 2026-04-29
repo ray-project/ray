@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import List, Optional
+from typing import TYPE_CHECKING, Iterator, List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -9,8 +9,12 @@ from pyarrow import compute as pc
 from pyarrow.fs import FileSystem
 from typing_extensions import override
 
+if TYPE_CHECKING:
+    from ray.data.datasource.partitioning import Partitioning
+
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
+    _SUPPORTS_FRAGMENT_BATCH_READAHEAD,
     FileFormat,
     FileReader,
 )
@@ -18,6 +22,7 @@ from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
 )
 from ray.util.annotations import DeveloperAPI
+from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
 
@@ -135,10 +140,11 @@ class ParquetFileReader(FileReader):
         predicate: Optional[pc.Expression] = None,
         limit: Optional[int] = None,
         filesystem: Optional[FileSystem] = None,
-        partitioning: Optional[pds.Partitioning] = None,
+        partitioning: "Optional[Partitioning]" = None,
         ignore_prefixes: Optional[List[str]] = None,
         target_block_size: Optional[int] = None,
         include_paths: bool = False,
+        schema: Optional[pa.Schema] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -149,12 +155,16 @@ class ParquetFileReader(FileReader):
             predicate: PyArrow compute expression for filtering.
             limit: Maximum number of rows to read.
             filesystem: Filesystem for reading files.
-            partitioning: PyArrow partitioning for reading files.
+            partitioning: Ray ``Partitioning`` for synthesizing partition
+                columns from file paths.
             ignore_prefixes: Prefixes to ignore when reading files.
             target_block_size: Target in-memory size per batch in bytes.
                 Used for adaptive batch sizing when ``batch_size`` is not set.
             include_paths: If True, include the source file path in a
                 ``'path'`` column for each row.
+            schema: Caller-supplied unified schema forwarded to the base
+                :class:`FileReader` for per-fragment inference override
+                and partition-column type casting.
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -166,6 +176,7 @@ class ParquetFileReader(FileReader):
             partitioning=partitioning,
             ignore_prefixes=ignore_prefixes,
             include_paths=include_paths,
+            schema=schema,
         )
         self._explicit_batch_size = batch_size
         self._target_block_size = target_block_size
@@ -217,6 +228,91 @@ class ParquetFileReader(FileReader):
         self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
 
     @override
+    def _iter_fragment_tables(
+        self,
+        fragment: pds.Fragment,
+        scanner_kwargs: dict,
+    ) -> "Iterator[pa.Table]":
+        """Use V1's nested-type fallback path when the fragment has nested
+        columns whose row-group size exceeds Arrow's ~2GB chunking limit
+        (ARROW-5030).
+        """
+        from ray.data._internal.datasource.parquet_datasource import (
+            _get_safe_batch_size_for_nested_types,
+            _needs_nested_type_fallback,
+            _resolve_leaf_column_indices,
+        )
+
+        columns = scanner_kwargs.get("columns")
+        if not _needs_nested_type_fallback(fragment, columns):
+            yield from super()._iter_fragment_tables(fragment, scanner_kwargs)
+            return
+
+        if log_once(f"parquet_nested_fallback_v2:{fragment.path}"):
+            logger.warning(
+                "Using pyarrow.parquet row-level batched reader for '%s' due "
+                "to Arrow nested type chunking limitation (ARROW-5030). "
+                "Consider writing Parquet files with smaller row group sizes "
+                "to avoid this.",
+                fragment.path,
+            )
+
+        filter_expr = scanner_kwargs.get("filter")
+        batch_size = scanner_kwargs.get("batch_size")
+
+        pf = pq.ParquetFile(
+            fragment.path,
+            filesystem=fragment.filesystem,  # pyrefly: ignore[unexpected-keyword]
+        )
+
+        # Scope the safe batch-size calculation to the columns actually being
+        # decoded so we don't shrink batches based on columns we won't read.
+        leaf_indices = (
+            _resolve_leaf_column_indices(pf.metadata, columns)
+            if columns is not None and pf.metadata.num_row_groups > 0
+            else None
+        )
+        safe_batch_size = _get_safe_batch_size_for_nested_types(pf, leaf_indices)
+        fallback_batch_size = (
+            min(batch_size, safe_batch_size) if batch_size else safe_batch_size
+        )
+
+        # Apply row-group-level predicate pushdown via fragment.subset; the
+        # row-level filter is applied per-batch below since iter_batches
+        # doesn't accept a filter expression.
+        subset = (
+            fragment.subset(filter=filter_expr) if filter_expr is not None else fragment
+        )
+        row_groups = (
+            [rg.id for rg in subset.row_groups]
+            if subset.row_groups is not None
+            else None
+        )
+        if row_groups is not None and len(row_groups) == 0:
+            return
+
+        # When a filter is present we can't reliably extract its referenced
+        # columns from a pyarrow.compute Expression, so read all columns and
+        # project after filtering. With no filter, the caller-supplied
+        # ``columns`` already excludes synthesized partition/path columns.
+        read_columns = None if filter_expr is not None else columns
+
+        for batch in pf.iter_batches(
+            batch_size=fallback_batch_size,
+            columns=read_columns,
+            use_threads=False,
+            row_groups=row_groups,
+        ):
+            table = pa.Table.from_batches([batch])
+            if filter_expr is not None:
+                table = table.filter(filter_expr)
+                if columns is not None:
+                    table = table.select(
+                        [c for c in columns if c in table.column_names]
+                    )
+            yield table
+
+    @override
     def _arrow_scanner_kwargs(self) -> dict:
         # pre_buffer=True (pyarrow default) holds a whole fragment's worth of
         # decoded column chunks resident before yielding batches, so
@@ -226,10 +322,15 @@ class ParquetFileReader(FileReader):
         # while keeping throughput equal to the default. batch_readahead=1
         # (inherited from FileReader base kwargs) plus fragment_readahead=1
         # is enough to keep decode pipelined. See apache/arrow#39808.
-        return {
+        kwargs: dict = {
             "fragment_scan_options": pds.ParquetFragmentScanOptions(
                 pre_buffer=False,
                 use_buffered_stream=True,
             ),
-            "fragment_readahead": 1,
         }
+        # ``fragment_readahead`` on ``Fragment.scanner`` only exists on
+        # pyarrow 12.0+; older wheels raise ``TypeError`` even though
+        # ``Dataset.scanner`` has always accepted it.
+        if _SUPPORTS_FRAGMENT_BATCH_READAHEAD:
+            kwargs["fragment_readahead"] = 1
+        return kwargs
