@@ -281,6 +281,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # We specify ignore_metadata=True because pyarrow will use the metadata
         # to build the Table. This is handled incorrectly for older pyarrow versions
         ctx = DataContext.get_current()
+        table = self._table
+        arrow_schema = table.schema
 
         # types_mapper preserves Arrow dtypes through the pandas round-trip:
         # - Standard Arrow types become pd.ArrowDtype, so pa.Table.from_pandas()
@@ -297,12 +299,16 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 return None
             return pd.ArrowDtype(t)
 
-        df = self._table.to_pandas(
+        df = table.to_pandas(
             ignore_metadata=ctx.pandas_block_ignore_metadata,
+            split_blocks=True,
+            self_destruct=True,
             types_mapper=_types_mapper,
         )
+        del self._table
+        del table
         if ctx.enable_tensor_extension_casting:
-            df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=self._table.schema)
+            df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=arrow_schema)
         return df
 
     def to_numpy(
