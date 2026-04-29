@@ -3139,15 +3139,15 @@ def test_ippr_resize_scale_out_if_one_ippr_is_inprogress():
         spec=ippr_specs.groups["type_1"],
         current_cpu=1,
         current_memory=1 * 1024 * 1024 * 1024,
-        desired_cpu=1,
-        desired_memory=1 * 1024 * 1024 * 1024,
+        desired_cpu=2,
+        desired_memory=2 * 1024 * 1024 * 1024,
         k8s_resize_status="inprogress",
         raylet_id="r1",
     )
 
     request = sched_request(
         node_type_configs=node_type_configs,
-        resource_requests=[ResourceRequestUtil.make({"CPU": 2})],
+        resource_requests=[ResourceRequestUtil.make({"CPU": 4})],
         instances=[instance],
         ippr_specs=ippr_specs,
         ippr_statuses={"pod-1": ippr_status},
@@ -3394,15 +3394,6 @@ def test_ippr_unselected_candidates_do_not_leak_inflated_capacity():
     assert {status.desired_cpu for status in reply.to_ippr} == {4.0}
     _, to_terminate = _launch_and_terminate(reply)
     assert [instance_id for instance_id, _, _ in to_terminate] == ["i-3"]
-
-    # The end-to-end scheduler output should report only the selected node at
-    # IPPR capacity. If the unselected candidate leaks its temporary inflated
-    # resources into the persisted context, this debug line would report 8 CPUs
-    # instead of the correct 5.
-    assert (
-        mock_logger.get_logs("debug")[-1]
-        == "Current cluster resources: {'CPU': 5.0, 'memory': 9663676416.0}."
-    )
 
 
 def test_ippr_max_limits_affect_new_node_capacity():

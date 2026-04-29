@@ -1643,10 +1643,7 @@ class ResourceDemandScheduler(IResourceScheduler):
 
         for node in existing_nodes:
             if node.ippr_status is not None:
-                if (  # Reflect finished / ongoing IPPR in node capacity
-                    node.ippr_status.is_k8s_resize_finished()
-                    or node.ippr_status.is_in_progress()
-                ):
+                if node.ippr_status.is_in_progress():
                     # While a resize is ongoing or just completed, use desired values
                     # as the node's capacity so binpacking can consider the change.
                     node.update_total_resources(
