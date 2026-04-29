@@ -757,6 +757,8 @@ class SGLangServer:
 
         Args:
             method: Name of the worker method to execute.
+            timeout: not supported by SGLang
+            args: not supported by SGLang
             kwargs: Keyword arguments to pass to worker method.
         """
 
