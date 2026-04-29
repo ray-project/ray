@@ -786,6 +786,12 @@ def _create_typed_dataframe(data_dict: Dict[str, List[Any]]) -> pd.DataFrame:
     if "col_c" in df.columns:
         # Use nullable Int32 to support NaN values
         df["col_c"] = df["col_c"].astype("Int32")
+    # Cast object/string columns to a nullable string dtype so ``None`` is
+    # represented as ``<NA>``, matching the Arrow-backed ``string[pyarrow]``
+    # produced by ``read_iceberg().to_pandas()``.
+    for column in df.columns:
+        if df[column].dtype == object:
+            df[column] = df[column].astype("string")
     return df
 
 

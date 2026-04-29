@@ -1829,14 +1829,20 @@ def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
             )
         return False
 
-    # Cast Arrow-backed scalar columns to their numpy equivalents — pandas's
-    # multi-column ``sort_values`` builds an ordered Categorical per key column,
-    # which rejects floats containing both ``-0.0`` and ``0.0`` ("categories must
-    # be unique") when they're Arrow-backed but compare equal under numpy.
+    # Cast Arrow-backed *float* columns to numpy floats — pandas's multi-column
+    # ``sort_values`` builds an ordered Categorical per key column, which rejects
+    # arrow-backed floats containing both ``-0.0`` and ``0.0`` ("categories must
+    # be unique") because they're stored distinctly but compare equal under
+    # numpy. We deliberately leave other Arrow scalar types alone: int columns
+    # may contain ``<NA>`` (which can't fit in numpy ``int64``), and string
+    # columns sort ``<NA>`` first whereas object-with-``None`` sorts last,
+    # which would diverge from the expected DataFrame on the other side.
     arrow_to_numpy = {}
     for col in df.columns:
         dtype = df[col].dtype
-        if isinstance(dtype, pd.ArrowDtype) and not needs_proxy(dtype):
+        if isinstance(dtype, pd.ArrowDtype) and pyarrow.types.is_floating(
+            dtype.pyarrow_dtype
+        ):
             numpy_dtype = getattr(dtype, "numpy_dtype", None)
             if numpy_dtype is not None:
                 arrow_to_numpy[col] = numpy_dtype
