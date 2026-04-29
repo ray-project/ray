@@ -7478,7 +7478,14 @@ class Schema:
     @property
     def names(self) -> List[str]:
         """Lists the columns of this Dataset."""
-        return list(self.base_schema.names)
+        from ray.data._internal.arrow_block import _is_user_visible_column
+
+        # ``__bsp_stub`` is a physical placeholder the read path injects
+        # into zero-column blocks so ``pa.concat_tables`` doesn't collapse
+        # the row count. It's not part of the user-visible schema.
+        return [
+            name for name in self.base_schema.names if _is_user_visible_column(name)
+        ]
 
     @property
     def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:
@@ -7490,6 +7497,7 @@ class Schema:
         import pyarrow as pa
         from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
+        from ray.data._internal.arrow_block import _is_user_visible_column
         from ray.data._internal.tensor_extensions.arrow import (
             create_arrow_fixed_shape_tensor_type,
         )
@@ -7508,10 +7516,16 @@ class Schema:
             return pa.from_numpy_dtype(dtype)
 
         if isinstance(self.base_schema, pa.lib.Schema):
-            return list(self.base_schema.types)
+            return [
+                t
+                for name, t in zip(self.base_schema.names, self.base_schema.types)
+                if _is_user_visible_column(name)
+            ]
 
         arrow_types = []
-        for dtype in self.base_schema.types:
+        for name, dtype in zip(self.base_schema.names, self.base_schema.types):
+            if not _is_user_visible_column(name):
+                continue
             if isinstance(dtype, TensorDtype):
                 pa_dtype = _convert_to_pa_type(dtype._dtype)
                 if any(dim is None for dim in dtype._shape):
