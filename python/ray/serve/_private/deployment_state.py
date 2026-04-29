@@ -3670,7 +3670,12 @@ class DeploymentState:
         # Maximum number of replicas that can be updating at any given time.
         # There should never be more than rollout_size old replicas stopping
         # or rollout_size new replicas starting.
-        rollout_size = max(int(0.2 * self._target_state.target_num_replicas), 1)
+        rolling_update_percentage = (
+            self._target_state.info.deployment_config.rolling_update_percentage
+        )
+        rollout_size = max(
+            int(rolling_update_percentage * self._target_state.target_num_replicas), 1
+        )
 
         # For gang deployments, ensure rollout_size is at least a multiple of
         # gang_size so that we always stop and start complete gangs.
