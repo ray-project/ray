@@ -8,7 +8,7 @@ import ray
 from ray import serve
 from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import SERVE_DEPLOYMENT_ACTOR_PREFIX, SERVE_NAMESPACE
-from ray.serve._private.test_utils import check_running
+from ray.serve._private.test_utils import check_running, get_metric_dictionaries
 from ray.serve.config import DeploymentActorConfig, RequestRouterConfig
 from ray.serve.context import _get_internal_replica_context
 from ray.serve.experimental.capacity_queue import (
@@ -874,6 +874,83 @@ class TestCapacityQueueRouterFailures:
         assert isinstance(result, str)
 
         ray.kill(signal)
+
+
+class TestCapacityQueueRouterMetrics:
+    """Tests that CQ specific metrics are emitted correctly."""
+
+    def test_cq_route_metric_on_success(self, serve_instance):
+        """Successful CQ routing should emit serve_cq_routing_requests_total{route=cq}."""
+        handle = _deploy_capacity_queue_app(num_replicas=2)
+        wait_for_condition(check_running, timeout=30)
+
+        for _ in range(5):
+            handle.remote().result(timeout_s=10)
+
+        def _check_cq_route_metric():
+            metrics = get_metric_dictionaries(
+                "ray_serve_cq_routing_requests_total", wait=False
+            )
+            for m in metrics:
+                if m.get("route") == "cq":
+                    return True
+            return False
+
+        wait_for_condition(_check_cq_route_metric, timeout=30)
+
+    def test_cq_acquire_duration_metric(self, serve_instance):
+        """Successful acquires should record serve_cq_acquire_duration_ms."""
+        handle = _deploy_capacity_queue_app(num_replicas=2)
+        wait_for_condition(check_running, timeout=30)
+
+        for _ in range(3):
+            handle.remote().result(timeout_s=10)
+
+        def _check_acquire_duration():
+            metrics = get_metric_dictionaries(
+                "ray_serve_cq_acquire_duration_ms_count", wait=False
+            )
+            return len(metrics) > 0
+
+        wait_for_condition(_check_acquire_duration, timeout=30)
+
+    def test_cq_fallback_and_retry_metrics(self, serve_instance):
+        """Killing the CQ should emit fallback and retry metrics."""
+        handle = _deploy_capacity_queue_app(num_replicas=2)
+        wait_for_condition(check_running, timeout=30)
+
+        queue = _find_capacity_queue_handle()
+        wait_for_condition(
+            lambda: ray.get(queue.get_stats.remote()).num_replicas == 2,
+            timeout=15,
+        )
+
+        # Kill the CQ actor.
+        ray.kill(queue)
+
+        # Requests should succeed via Pow2 fallback.
+        for _ in range(3):
+            resp = handle.remote().result(timeout_s=15)
+            assert isinstance(resp, str)
+
+        def _check_fallback_metric():
+            metrics = get_metric_dictionaries(
+                "ray_serve_cq_routing_requests_total", wait=False
+            )
+            for m in metrics:
+                if m.get("route") == "pow2_fallback":
+                    return True
+            return False
+
+        def _check_retry_fault_metric():
+            metrics = get_metric_dictionaries("ray_serve_cq_retry_total", wait=False)
+            for m in metrics:
+                if m.get("reason") == "fault":
+                    return True
+            return False
+
+        wait_for_condition(_check_fallback_metric, timeout=30)
+        wait_for_condition(_check_retry_fault_metric, timeout=30)
 
 
 if __name__ == "__main__":
