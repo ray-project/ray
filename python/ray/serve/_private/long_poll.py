@@ -224,7 +224,11 @@ class LongPollClient:
         if self.event_loop.is_running():
             self.event_loop.call_soon_threadsafe(callback)
         else:
-            logger.error("The event loop is closed, shutting down long poll client.")
+            logger.error(
+                "LongPollClient cannot deliver controller updates and has been "
+                "disabled: its bound asyncio event loop is closed. Keep the loop "
+                "running for the lifetime of this process."
+            )
             self.is_running = False
 
     def _process_update(self, updates: Dict[str, UpdatedObject]):
