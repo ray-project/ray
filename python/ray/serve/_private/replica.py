@@ -2039,8 +2039,9 @@ class Replica:
         if self._http_options.host not in (None, "0.0.0.0"):
             logger.warning(
                 f"Overriding HTTPOptions.host={self._http_options.host!r} to "
-                "'0.0.0.0' for direct ingress backend ports. These ports must "
-                "be reachable from HAProxy instances on other nodes."
+                "'0.0.0.0' for direct ingress backend ports because "
+                "RAY_SERVE_ENABLE_DIRECT_INGRESS=1. These ports must be "
+                "reachable from HAProxy instances on other nodes."
             )
 
         # Allocate and start HTTP server
