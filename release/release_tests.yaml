@@ -4052,6 +4052,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4073,6 +4074,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4095,6 +4097,7 @@
       type: llm-cu128
       runtime_env:
         - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
+    anyscale_sdk_2026: true
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -4112,6 +4115,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -4150,6 +4154,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4170,6 +4175,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4288,6 +4294,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4308,6 +4315,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4329,6 +4337,7 @@
     byod:
       type: llm-cu128
       post_build_script: byod_llm_lmcache_test.sh
+    anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
@@ -4411,6 +4420,7 @@
   cluster:
     byod:
       type: llm-cu128
+    anyscale_sdk_2026: true
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
