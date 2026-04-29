@@ -585,6 +585,27 @@ def _proportional_share(pool: float, op_usage: float, total_usage: float) -> flo
     return pool * op_usage / total_usage
 
 
+def _is_any_dimension_over_subscribed(
+    usage: "ExecutionResources", pool: "ExecutionResources"
+) -> bool:
+    """Return True iff any tracked dimension (pool > 0) has usage > pool.
+
+    Dimensions where pool == 0 are untracked (e.g. limits.memory not configured)
+    and must be ignored; otherwise actors declaring ray_remote_args={"memory": X}
+    would defeat the short-circuit in update_budgets even though there is nothing
+    meaningful to distribute for that dimension.
+    """
+    return (
+        (pool.cpu > 0 and usage.cpu > pool.cpu)
+        or (pool.gpu > 0 and usage.gpu > pool.gpu)
+        or (
+            pool.object_store_memory > 0
+            and usage.object_store_memory > pool.object_store_memory
+        )
+        or (pool.memory > 0 and usage.memory > pool.memory)
+    )
+
+
 def _get_first_pending_materializing_op(topology: "Topology") -> int:
     for idx, op in enumerate(topology):
         if isinstance(op, _BLOCKING_MATERIALIZING_OPERATORS) and not op.has_completed():
@@ -1174,7 +1195,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
 
         # Short-circuit in the common case (no over-subscription) to avoid allocating
         # N ExecutionResources objects whose values would all be zero anyway.
-        if not total_shared_usage.satisfies_limit(self._total_shared):
+        if _is_any_dimension_over_subscribed(total_shared_usage, self._total_shared):
             # For over-subscribed dimensions (collective usage > shared pool, e.g. after a
             # cluster shrink), distribute the shared pool proportionally to each op's usage.
             op_proportional_grants = self._compute_proportional_grants(
