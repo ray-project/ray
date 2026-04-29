@@ -299,6 +299,8 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 return None
             return pd.ArrowDtype(t)
 
+        # Context on split_blocks and self_destruct: https://arrow.apache.org/docs/python/pandas.html#memory-usage-and-zero-copy
+        # Self destruct: Goes column by column, converts and then destructs the memory held in the arrow memory pool.
         df = table.to_pandas(
             ignore_metadata=ctx.pandas_block_ignore_metadata,
             split_blocks=True,
