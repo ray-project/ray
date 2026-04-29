@@ -54,13 +54,16 @@ TEST_F(ThresholdMemoryMonitorTest, TestMonitorTriggerCanDetectMemoryUsage) {
   MakeThresholdMemoryMonitor(
       0 /*memory_usage_threshold_bytes*/,
       1 /*refresh_interval_ms*/,
-      [has_checked_once](SystemMemorySnapshot system_memory) {
+      [has_checked_once](SystemMemorySnapshot system_memory, int64_t threshold_bytes) {
         ASSERT_GT(system_memory.total_bytes, 0)
             << "Reported total bytes from cgroup is <= 0. Is the system memory snapshot "
                "taken correctly?";
         ASSERT_GE(system_memory.used_bytes, 0)
             << "Reported used bytes from cgroup is < 0. Is the system memory snapshot "
                "taken correctly?";
+        ASSERT_EQ(threshold_bytes, 0)
+            << "Threshold bytes propagated to the callback should match the value the "
+               "monitor was constructed with.";
         has_checked_once->count_down();
       },
       "" /*root_cgroup_path*/);
@@ -86,10 +89,14 @@ TEST_F(ThresholdMemoryMonitorTest,
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
-      [has_checked_once, cgroup_total_bytes](SystemMemorySnapshot system_memory) {
+      [has_checked_once, cgroup_total_bytes, memory_usage_threshold_bytes](
+          SystemMemorySnapshot system_memory, int64_t threshold_bytes) {
         ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes)
             << "Unexpected total bytes read from cgroup. Are we correctly reading memory "
                "from the cgroup?";
+        ASSERT_EQ(threshold_bytes, memory_usage_threshold_bytes)
+            << "Threshold bytes propagated to the callback should match the value the "
+               "monitor was constructed with.";
         has_checked_once->count_down();
       },
       cgroup_dir /*root_cgroup_path*/);
@@ -117,7 +124,7 @@ TEST_F(ThresholdMemoryMonitorTest,
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
-      [callback_triggered](SystemMemorySnapshot system_memory) {
+      [callback_triggered](SystemMemorySnapshot system_memory, int64_t threshold_bytes) {
         callback_triggered->store(true);
       },
       cgroup_dir /*root_cgroup_path*/);
