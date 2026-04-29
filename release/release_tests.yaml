@@ -1707,7 +1707,6 @@
         # Fail the test if a worker OOMs
         - RAYTEST_FAIL_ON_WORKER_OOM=1
 
-      # 'type: gpu' means: use the 'ray-ml' image.
       type: torch-cu130
     cluster_compute: compute_configs/compute_gpu_4x4_aws.yaml
 
@@ -2115,10 +2114,12 @@
   cluster:
     byod:
       type: torch-cu130
+      post_build_script: byod_huggingface_transformers_test.sh
     cluster_compute: compute_aws.yaml
 
   run:
     timeout: 1800
+
     script: RAY_TRAIN_V2_ENABLED=1 python test_huggingface_accelerate.py
 
 - name: "{{framework}}_train_batch_inference_benchmark_{{size}}"
