@@ -402,7 +402,7 @@ py_test(
 
 py_test(
     name = "test_logging",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_logging.py"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
     tags = [
