@@ -68,13 +68,19 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     ds = ray.data.from_blocks([df1, df2])
     if ds_format == "arrow":
         ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
+        # ArrowBlockAccessor.to_pandas() preserves Arrow dtypes via types_mapper,
+        # so the dask partitions (and inferred meta) come back Arrow-backed.
+        expected_dtypes = [pd.ArrowDtype(pa.int64()), pd.ArrowDtype(pa.string())]
+        df = df.astype(dict(zip(df.columns, expected_dtypes)))
+    else:
+        expected_dtypes = [np.int64, object]
     ddf = ds.to_dask()
     meta = ddf._meta
     # Check metadata.
     assert isinstance(meta, pd.DataFrame)
     assert meta.empty
     assert list(meta.columns) == ["one", "two"]
-    assert list(meta.dtypes) == [np.int64, object]
+    assert list(meta.dtypes) == expected_dtypes
     # Explicit Dask-on-Ray
     assert df.equals(ddf.compute(scheduler=ray_dask_get))
     # Implicit Dask-on-Ray.
