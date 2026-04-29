@@ -1,7 +1,7 @@
 import logging
 import threading
 import time
-from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, Iterator, List, Optional, Set, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import (
@@ -61,6 +61,16 @@ class StreamSplitDataIterator(DataIterator):
         self._output_split_idx = output_split_idx
         self._world_size = world_size
         self._iter_stats = DatasetStats(metadata={}, parent=None)
+        # Epoch this split is currently consuming, set by ``gen_blocks`` once
+        # ``start_epoch`` returns and read by ``_on_iteration_end`` on the
+        # consumer thread. The iterator-side ``finally`` runs on the consumer
+        # thread, while ``gen_blocks`` runs in the async-prefetch filling
+        # worker thread, so the read/write happen on different threads — but
+        # they're ordered: ``start_epoch`` must return before any item is
+        # yielded, which must happen before the consumer can ``break``. Plain
+        # attribute access (no lock) so this iterator stays picklable, since
+        # users pass split iterators to ``@ray.remote`` tasks.
+        self._active_epoch: Optional[int] = None
         logger.debug(
             f"StreamSplitDataIterator created: split={output_split_idx}, {world_size=}"
         )
@@ -74,6 +84,8 @@ class StreamSplitDataIterator(DataIterator):
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
             logger.debug(f"Split {self._output_split_idx}: epoch {cur_epoch} started")
+
+            self._active_epoch = cur_epoch
 
             try:
                 # Initial get with 0 prefetched bytes.
@@ -119,18 +131,39 @@ class StreamSplitDataIterator(DataIterator):
                 )
             finally:
                 # Tell the coordinator this split has stopped consuming for
-                # ``cur_epoch`` (normal exhaustion, ``break`` in the consumer
-                # loop, or an exception). Once every split has disengaged,
-                # the coordinator shuts the executor down so it stops
-                # producing blocks into the object store. Fire-and-forget:
-                # we don't block the consumer thread on this call.
+                # ``cur_epoch`` (normal exhaustion, an exception, or — once
+                # ``gen_blocks`` is eventually closed — early ``break``).
+                # Once every split has disengaged, the coordinator shuts the
+                # executor down. Idempotent on the coordinator side, so it's
+                # safe to fire this in addition to ``_on_iteration_end``.
+                # Fire-and-forget: don't block the producer thread.
                 self._coord_actor.client_disengaged.remote(
                     cur_epoch, self._output_split_idx
                 )
+                if self._active_epoch == cur_epoch:
+                    self._active_epoch = None
 
         # Return None for executor since StreamSplitDataIterator has its own
         # mechanism for reporting prefetched bytes via SplitCoordinator.
         return gen_blocks(), self._iter_stats, False, None
+
+    def _on_iteration_end(self) -> None:
+        """Fire ``client_disengaged`` from the consumer's thread.
+
+        ``gen_blocks`` runs in the async-prefetch filling worker thread, so
+        on early ``break`` its ``finally`` only fires when GC reclaims the
+        generator — which can be arbitrarily delayed (especially under CI
+        load). The consumer-side ``_iter_batches`` ``finally`` runs
+        synchronously on the consumer's thread, so calling this hook there
+        gives us a deterministic shutdown path. ``client_disengaged`` is
+        idempotent per ``(epoch, split_idx)``, so it's safe to fire here
+        even when ``gen_blocks`` will eventually fire it too.
+        """
+        epoch = self._active_epoch
+        if epoch is None:
+            # Iteration never started, or already cleaned up.
+            return
+        self._coord_actor.client_disengaged.remote(epoch, self._output_split_idx)
 
     def stats(self) -> str:
         """Implements DataIterator."""
@@ -194,12 +227,14 @@ class SplitCoordinator:
         # Guarded by self._lock.
         self._next_bundle: Dict[int, RefBundle] = {}
         self._unfinished_clients_in_epoch = n
-        # Number of splits still consuming the current epoch's executor.
-        # Reset to ``n`` when a new epoch starts; decremented when a split's
-        # iterator exits (normally or via early break / exception). When it
-        # reaches 0 the executor is shut down so it stops producing blocks
-        # into the object store. Guarded by self._lock.
-        self._active_clients_in_epoch = 0
+        # Splits that have already disengaged from the current epoch.
+        # Cleared whenever a new epoch starts. Once every split has
+        # disengaged, the executor is shut down so it stops producing blocks
+        # into the object store. Tracked as a set so ``client_disengaged``
+        # is idempotent per ``(epoch, split_idx)`` — both the iterator-side
+        # ``_on_iteration_end`` and ``gen_blocks``'s own ``finally`` can fire
+        # it without double-counting. Guarded by self._lock.
+        self._disengaged_splits_in_epoch: Set[int] = set()
         self._cur_epoch = -1
 
         # Track prefetched bytes reported by each client (from BatchIterator).
@@ -301,7 +336,7 @@ class SplitCoordinator:
 
     def _reset_state(self):
         self._unfinished_clients_in_epoch = self._n
-        self._active_clients_in_epoch = self._n
+        self._disengaged_splits_in_epoch.clear()
         self._next_bundle.clear()
         self._gen_epoch_error = None
         # Reset per-split dispatch counters for the new epoch.
@@ -435,7 +470,7 @@ class SplitCoordinator:
         with self._lock:
             return dict(self._client_prefetched_bytes)
 
-    def is_executor_shutdown(self) -> bool:
+    def _is_executor_shutdown(self) -> bool:
         """Whether the current executor (if any) has been shut down.
 
         For testing only.
@@ -483,7 +518,8 @@ class SplitCoordinator:
         early ``break``, or an exception in the consumer. Clears this split's
         prefetch state so resource accounting is accurate for the remaining
         consumers, and shuts down the executor once every split has
-        disengaged from the current epoch.
+        disengaged from the current epoch. Idempotent per
+        ``(epoch_id, split_idx)``.
         """
         executor_to_shutdown = None
         with self._lock:
@@ -492,6 +528,12 @@ class SplitCoordinator:
             # by ``_try_start_new_epoch``. Nothing to clean up here.
             if epoch_id != self._cur_epoch:
                 return
+            if split_idx in self._disengaged_splits_in_epoch:
+                # Already processed for this epoch — both the iterator-side
+                # ``_on_iteration_end`` and ``gen_blocks``'s own ``finally``
+                # may fire this; skip the duplicate.
+                return
+            self._disengaged_splits_in_epoch.add(split_idx)
 
             self._client_prefetched_bytes[split_idx] = 0
             # Drop any blocks buffered for this split — the consumer won't
@@ -499,9 +541,8 @@ class SplitCoordinator:
             self._next_bundle.pop(split_idx, None)
             self._report_prefetched_bytes_to_executor()
 
-            self._active_clients_in_epoch -= 1
             if (
-                self._active_clients_in_epoch <= 0
+                len(self._disengaged_splits_in_epoch) >= self._n
                 and self._current_executor is not None
             ):
                 executor_to_shutdown = self._current_executor

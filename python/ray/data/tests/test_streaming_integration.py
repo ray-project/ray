@@ -400,12 +400,24 @@ def test_streaming_split_independent_finish(ray_start_10_cpus_shared):
 
 def test_streaming_split_early_exit_shuts_down_executor(ray_start_10_cpus_shared):
     """When every split breaks out of ``iter_batches`` early, the executor
-    on the SplitCoordinator should be shut down so it stops producing blocks
-    into the object store. Without this, the executor's worker thread keeps
-    running long after consumers have stopped reading."""
+    on the SplitCoordinator should be shut down promptly — much faster than
+    the dataset would naturally finish.
+
+    The shutdown signal must come from the consumer's thread (via
+    ``_on_iteration_end``), not from the inner ``gen_blocks`` generator's
+    ``finally``: that generator runs inside the async-prefetch filling
+    worker thread, so on early ``break`` its cleanup is GC-bound and may
+    not fire within the test's timeout under load (CI flake)."""
 
     num_splits = 2
-    ds = ray.data.range(1000, override_num_blocks=20)
+    # A slow per-block map ensures natural completion is much slower than
+    # our wait_for_condition timeout. If the shutdown were waiting on the
+    # producer to drain naturally, this test would time out.
+    def slow_map(row):
+        time.sleep(0.5)
+        return row
+
+    ds = ray.data.range(1000, override_num_blocks=20).map(slow_map)
     splits = ds.streaming_split(num_splits, equal=True)
 
     threads = []
@@ -423,11 +435,13 @@ def test_streaming_split_early_exit_shuts_down_executor(ray_start_10_cpus_shared
     for t in threads:
         t.join()
 
-    # The shutdown is fire-and-forget from the iterator; wait for the
-    # coordinator to process the last ``client_disengaged`` call.
+    # Shutdown is fire-and-forget from the iterator; wait for the
+    # coordinator to process the last ``client_disengaged`` call. Tight
+    # timeout to catch the regression where shutdown waits for the slow
+    # producer to drain naturally.
     coord = splits[0]._coord_actor
     wait_for_condition(
-        lambda: ray.get(coord.is_executor_shutdown.remote()),
+        lambda: ray.get(coord._is_executor_shutdown.remote()),
         timeout=10,
     )
 
@@ -474,7 +488,7 @@ def test_streaming_split_partial_early_exit_keeps_executor(
     # And once both splits disengaged, the executor was shut down.
     coord = i1._coord_actor
     wait_for_condition(
-        lambda: ray.get(coord.is_executor_shutdown.remote()),
+        lambda: ray.get(coord._is_executor_shutdown.remote()),
         timeout=10,
     )
 

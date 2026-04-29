@@ -120,6 +120,20 @@ class DataIterator(abc.ABC):
         """
         ...
 
+    def _on_iteration_end(self) -> None:
+        """Hook fired from the consumer's thread when iteration ends.
+
+        Called from the ``finally`` in ``_iter_batches`` on normal
+        exhaustion, early ``break``, or an exception. The default is a
+        no-op; the local iterator path shuts the executor down via the
+        ``executor`` returned by ``_to_ref_bundle_iterator``.
+        ``StreamSplitDataIterator`` overrides this to signal the
+        ``SplitCoordinator`` actor on the consumer thread, since its inner
+        block-fetching generator runs in a separate prefetch thread whose
+        cleanup is GC-bound and therefore not deterministic.
+        """
+        pass
+
     @PublicAPI
     def iter_batches(
         self,
@@ -288,6 +302,10 @@ class DataIterator(abc.ABC):
                 # ``shutdown`` is idempotent.
                 if executor is not None:
                     executor.shutdown(force=False)
+                # ``StreamSplitDataIterator`` uses this hook to disengage
+                # from the remote ``SplitCoordinator``; the local path is a
+                # no-op (executor shutdown above already handles cleanup).
+                self._on_iteration_end()
 
         return _IterableFromIterator(_create_iterator)
 
