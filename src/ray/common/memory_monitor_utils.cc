@@ -318,30 +318,26 @@ int64_t MemoryMonitorUtils::GetMemoryThreshold(
   }
 
   if (resource_isolation_enabled) {
-    StatusOr<std::string> user_memory_max_bytes_or =
-        cgroup_manager.GetUserCgroupConstraintValue("memory.max");
-    RAY_CHECK(user_memory_max_bytes_or.ok()) << absl::StrFormat(
-        "Failed to get user cgroup memory limit when setting up memory monitor: %s",
-        user_memory_max_bytes_or.ToString());
-    std::string user_memory_max_bytes_str = user_memory_max_bytes_or.value();
+    StatusOr<std::string> user_slice_upper_bound_bytes_or =
+        cgroup_manager.GetUserCgroupConstraintValue("memory.high");
+    RAY_CHECK(user_slice_upper_bound_bytes_or.ok()) << absl::StrFormat(
+        "Failed to get user cgroup memory limit from user cgroup %s "
+        "when setting up memory monitor: %s. "
+        "Does the cgroup path exist and/or matches the resource isolation hierarchy?",
+        cgroup_manager.GetUserCgroupPath(),
+        user_slice_upper_bound_bytes_or.ToString());
+    std::string user_slice_upper_bound_bytes_str =
+        user_slice_upper_bound_bytes_or.value();
+    RAY_CHECK(!user_slice_upper_bound_bytes_str.empty()) << absl::StrFormat(
+        "Failed to get upper bound memory constraints from user cgroup %s. "
+        "Does the cgroup path exist and/or matches the resource isolation hierarchy?",
+        cgroup_manager.GetUserCgroupPath());
 
-    if (!user_memory_max_bytes_str.empty() &&
-        std::all_of(user_memory_max_bytes_str.begin(),
-                    user_memory_max_bytes_str.end(),
+    if (!user_slice_upper_bound_bytes_str.empty() &&
+        std::all_of(user_slice_upper_bound_bytes_str.begin(),
+                    user_slice_upper_bound_bytes_str.end(),
                     ::isdigit)) {
-      int64_t user_memory_max_bytes = std::stoll(user_memory_max_bytes_str);
-      int64_t reaction_buffer_bytes =
-          std::min(static_cast<int64_t>(total_memory_bytes *
-                                        kDefaultThresholdMonitorReactionBufferProportion),
-                   RayConfig::instance().max_threshold_monitor_reaction_buffer_bytes());
-      resolved_memory_threshold_bytes = user_memory_max_bytes - reaction_buffer_bytes;
-      RAY_CHECK_GE(resolved_memory_threshold_bytes, 0) << absl::StrFormat(
-          "Available user task memory is less than the kill memory buffer bytes: "
-          "%d < %d. This means the available memory for user proceses is likely "
-          "less than 5%% of total memory. Please consider decreasing the proportion "
-          "of reserved system memory if it was custom set.",
-          user_memory_max_bytes,
-          reaction_buffer_bytes);
+      resolved_memory_threshold_bytes = std::stoll(user_slice_upper_bound_bytes_str);
     }
   }
 

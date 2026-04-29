@@ -192,8 +192,7 @@ void EventMemoryMonitor::MonitoringThreadMain() {
 
       if (high_modified && IsEnabled()) {
         Disable();
-        kill_workers_callback_(
-            MemoryMonitorUtils::TakeSystemMemorySnapshot(cgroup_path_));
+        kill_workers_callback_();
       }
     } else {
       RAY_LOG(ERROR) << absl::StrFormat(
