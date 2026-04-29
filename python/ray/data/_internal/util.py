@@ -1829,6 +1829,20 @@ def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
             )
         return False
 
+    # Cast Arrow-backed scalar columns to their numpy equivalents — pandas's
+    # multi-column ``sort_values`` builds an ordered Categorical per key column,
+    # which rejects floats containing both ``-0.0`` and ``0.0`` ("categories must
+    # be unique") when they're Arrow-backed but compare equal under numpy.
+    arrow_to_numpy = {}
+    for col in df.columns:
+        dtype = df[col].dtype
+        if isinstance(dtype, pd.ArrowDtype) and not needs_proxy(dtype):
+            numpy_dtype = getattr(dtype, "numpy_dtype", None)
+            if numpy_dtype is not None:
+                arrow_to_numpy[col] = numpy_dtype
+    if arrow_to_numpy:
+        df = df.astype(arrow_to_numpy)
+
     sort_cols = []
     temp_cols = []
     # Sort by all columns to ensure deterministic order.

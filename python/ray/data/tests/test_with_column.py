@@ -351,6 +351,7 @@ def test_with_column_udf_multiple_udfs(
             ],  # ((id + 1) * 2) / 3
         }
     )
+    expected_df = expected_df.astype(result_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(result_df, expected_df)
 
