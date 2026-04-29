@@ -697,8 +697,7 @@ class SGLangServer:
         await self.engine.continue_generation()
         self._is_paused = False
 
-    @property
-    def is_paused(self) -> bool:
+    async def is_paused(self) -> bool:
         """Check whether the SGLang server is currently paused.
 
         Returns:
@@ -732,8 +731,7 @@ class SGLangServer:
         await self.engine.resume_memory_occupation(tags=config.tags)
         self._is_sleeping = False
 
-    @property
-    def is_sleeping(self) -> bool:
+    async def is_sleeping(self) -> bool:
         """Check whether the SGLang server is currently sleeping.
 
         Returns:

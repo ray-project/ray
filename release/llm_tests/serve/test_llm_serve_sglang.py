@@ -481,5 +481,135 @@ class TestSGLangProtocolDecoupling:
         assert issubclass(ScoreRequest, ScoringRequest)
 
 
+# ---------------------------------------------------------------------------
+# Lifecycle method E2E tests — pause/resume, sleep/wakeup, reset_prefix_cache,
+# collective_rpc. All require a running GPU-backed SGLang deployment.
+# ---------------------------------------------------------------------------
+
+def _get_llm_handle(model_id: str = RAY_MODEL_ID):
+    """Return a Ray Serve handle to the LLMServer deployment for model_id."""
+    from ray.serve.handle import DeploymentHandle
+    deployment_name = model_id.replace("/", "--").replace(".", "_")
+    return serve.get_deployment_handle(deployment_name, SERVE_DEFAULT_APP_NAME)
+
+
+@pytest.mark.asyncio
+async def test_sglang_pause_resume(sglang_client):
+    """Verify pause/resume lifecycle: server accepts requests before and after."""
+    handle = _get_llm_handle()
+
+    # Baseline: inference works before pause.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+    # Pause with default mode ("abort").
+    await handle.pause.remote()
+    assert await handle.is_paused.remote() is True
+
+    # Resume and confirm state clears.
+    await handle.resume.remote()
+    assert await handle.is_paused.remote() is False
+
+    # Inference must work again after resume.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+
+@pytest.mark.asyncio
+async def test_sglang_pause_resume_modes(sglang_client):
+    """Verify all three pause modes are accepted without error."""
+    handle = _get_llm_handle()
+
+    for mode in ("abort", "in_place", "retract"):
+        await handle.pause.remote(mode=mode)
+        assert await handle.is_paused.remote() is True
+        await handle.resume.remote()
+        assert await handle.is_paused.remote() is False
+
+
+@pytest.mark.asyncio
+async def test_sglang_sleep_wakeup(sglang_client):
+    """Verify sleep/wakeup lifecycle: GPU memory released then restored."""
+    handle = _get_llm_handle()
+
+    # Baseline inference.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+    # Sleep (release all GPU memory).
+    await handle.sleep.remote()
+    assert await handle.is_sleeping.remote() is True
+
+    # Wakeup and confirm state clears.
+    await handle.wakeup.remote()
+    assert await handle.is_sleeping.remote() is False
+
+    # Inference must work again after wakeup.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+
+@pytest.mark.asyncio
+async def test_sglang_sleep_wakeup_with_tags(sglang_client):
+    """Verify selective sleep/wakeup using component tags."""
+    handle = _get_llm_handle()
+
+    await handle.sleep.remote(tags=["kv_cache"])
+    assert await handle.is_sleeping.remote() is True
+
+    await handle.wakeup.remote(tags=["kv_cache"])
+    assert await handle.is_sleeping.remote() is False
+
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="Hello", max_tokens=4, temperature=0.0
+    )
+    assert resp.choices[0].text is not None
+
+
+@pytest.mark.asyncio
+async def test_sglang_reset_prefix_cache(sglang_client):
+    """Verify reset_prefix_cache completes and inference continues to work."""
+    handle = _get_llm_handle()
+
+    # Warm the cache with a request.
+    sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="The capital of France is", max_tokens=8, temperature=0.0
+    )
+
+    # Flush the cache.
+    await handle.reset_prefix_cache.remote()
+
+    # Inference must still work after cache flush.
+    resp = sglang_client.completions.create(
+        model=RAY_MODEL_ID, prompt="The capital of France is", max_tokens=8, temperature=0.0
+    )
+    assert resp.choices[0].text.strip()
+
+
+@pytest.mark.asyncio
+async def test_sglang_collective_rpc(sglang_client):
+    """Verify collective_rpc infrastructure reaches TP workers without error.
+
+    Uses 'get_weights_by_name' — the standard RLHF weight-inspection method
+    available on SGLang TP workers. Passing an empty list of weight names is
+    a lightweight no-op that exercises the RPC path without loading tensors.
+    """
+    handle = _get_llm_handle()
+
+    # collective_rpc returns None on SGLangServer; we verify it completes cleanly.
+    result = await handle.collective_rpc.remote(
+        method="get_weights_by_name", kwargs={"names": []}
+    )
+    assert result is None
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-xvs", __file__]))
