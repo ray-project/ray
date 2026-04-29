@@ -138,9 +138,8 @@ def test_ingress_request_router_requires_haproxy(monkeypatch):
         match="Ray controller's environment",
     ):
         llm_server = LLMServer.bind()
-        app = serve.Application(
-            llm_server._bound_deployment,
-            ingress_request_router=IngressRequestRouter.bind(),
+        app = llm_server._with_ingress_request_router(
+            IngressRequestRouter.bind(llm_deployment=llm_server)
         )
         serve.run(
             app,

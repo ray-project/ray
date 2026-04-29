@@ -281,9 +281,8 @@ def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
         pass
 
     llm_server = LLMServer.bind()
-    app = serve.Application(
-        llm_server._bound_deployment,
-        ingress_request_router=IngressRequestRouter.bind(),
+    app = llm_server._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=llm_server)
     )
     runtime_context = Mock()
     runtime_context.runtime_env = {}

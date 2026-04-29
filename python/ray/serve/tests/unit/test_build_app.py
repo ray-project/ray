@@ -561,9 +561,8 @@ def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
         pass
 
     ingress_app = Ingress.bind()
-    app = serve.Application(
-        ingress_app._bound_deployment,
-        ingress_request_router=IngressRequestRouter.bind(),
+    app = ingress_app._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=ingress_app)
     )
 
     built_app: BuiltApplication = build_app(
@@ -604,9 +603,8 @@ def test_build_app_requires_ingress_request_router_to_be_single_deployment(
         ),
     ):
         ingress_app = Ingress.bind()
-        app = serve.Application(
-            ingress_app._bound_deployment,
-            ingress_request_router=IngressRequestRouter.bind(RouterChild.bind()),
+        app = ingress_app._with_ingress_request_router(
+            IngressRequestRouter.bind(RouterChild.bind())
         )
         build_app(
             app,
@@ -629,10 +627,7 @@ def test_build_app_rejects_ingress_request_router_in_main_app_graph(monkeypatch)
 
     ingress_request_router = IngressRequestRouter.bind()
     ingress_app = Ingress.bind(ingress_request_router)
-    app = serve.Application(
-        ingress_app._bound_deployment,
-        ingress_request_router=ingress_request_router,
-    )
+    app = ingress_app._with_ingress_request_router(ingress_request_router)
 
     with pytest.raises(
         ValueError,
@@ -662,9 +657,8 @@ def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypa
         pass
 
     ingress_app = Ingress.bind()
-    app = serve.Application(
-        ingress_app._bound_deployment,
-        ingress_request_router=IngressRequestRouter.bind(),
+    app = ingress_app._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=ingress_app)
     )
 
     built_app: BuiltApplication = build_app(
