@@ -1558,7 +1558,9 @@ def iterate_with_retry(
             return
         except Exception as e:
             error_str = str(e) + (f" {e.__cause__}" if e.__cause__ is not None else "")
-            is_retryable = match is None or any(pattern in error_str for pattern in match)
+            is_retryable = match is None or any(
+                pattern in error_str for pattern in match
+            )
             if is_retryable and attempt + 1 < max_attempts:
                 # Retry with binary expoential backoff with random jitter.
                 backoff = min((2 ** (attempt + 1)), max_backoff_s) * random.random()

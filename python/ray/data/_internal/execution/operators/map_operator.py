@@ -728,7 +728,9 @@ def _map_task(
                 max_attempts=data_context.max_udf_retries + 1,
             )
         else:
-            blocks_iter = _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
+            blocks_iter = (
+                _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
+            )
             block_iter = map_transformer.apply_transform(blocks_iter, ctx)
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
