@@ -221,6 +221,8 @@ nitpick_ignore_regex = [
     ("py:obj", r"ray\.serve\.config\.\w+\.all fields"),
     ("py:obj", r"ray\.serve\.config\.GangSchedulingConfig\._validate_runtime_failure_policy"),
     ("py:obj", r"ray\.serve\.schema\.\w+\.all fields"),
+    # autodoc_pydantic also emits invalid field refs for these dashboard job models.
+    ("py:obj", r"ray\.dashboard\.modules\.job\.pydantic_models\.(DriverInfo|JobDetails)\.\w+"),
 ]
 
 # Cache notebook outputs in _build/.jupyter_cache

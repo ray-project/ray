@@ -38,7 +38,7 @@ depsets:
     operation: relax
     source_depset: data_base_ci_depset_${PYTHON_SHORT}
     packages:
-    # these packages have conflicts when compiling v9 depsets
+    # these packages are relaxed for alternate fixed-pyarrow depsets
       - pyarrow
       - numpy
       - datasets
@@ -67,13 +67,13 @@ depsets:
       - py310
       - py312
 
-  - name: data_pyarrow_v9_depset_${PYTHON_SHORT}
+  - name: data_pyarrow_v17_depset_${PYTHON_SHORT}
     operation: expand
     depsets:
       - relaxed_data_ci_depset_${PYTHON_SHORT}
     requirements:
-      - python/requirements/data/pyarrow-v9.txt
-    output: python/deplocks/ci/data-pyarrow-v9-ci_depset_py${PYTHON_VERSION}.lock
+      - python/requirements/data/pyarrow-v17.txt
+    output: python/deplocks/ci/data-pyarrow-v17-ci_depset_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/cpu
       - --python-version=${PYTHON_VERSION}
@@ -116,7 +116,7 @@ depsets:
     operation: relax
     source_depset: data_base_ci_depset_${PYTHON_SHORT}
     packages:
-    # these packages have conflicts when compiling v9 depsets
+    # these packages are relaxed for alternate fixed-pyarrow depsets
       - datasets
       - tensorflow-metadata
       - tensorflow
