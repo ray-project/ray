@@ -89,6 +89,8 @@ class SchedulingReply:
     to_ippr: List[IPPRStatus] = field(default_factory=list)
     # To terminate.
     to_terminate: List[TerminationRequest] = field(default_factory=list)
+    # The aggregate cluster resources after scheduling.
+    cluster_resources: Dict[str, float] = field(default_factory=dict)
     # The infeasible resource bundles.
     infeasible_resource_requests: List[ResourceRequest] = field(default_factory=list)
     # The infeasible gang resource bundles.
@@ -1136,6 +1138,8 @@ class ResourceDemandScheduler(IResourceScheduler):
         # not needed by min_worker count, etc.)
         ResourceDemandScheduler._enforce_idle_termination(ctx)
 
+        cluster_resources = ctx.get_cluster_resources()
+
         # Compute the number of nodes to launch.
         reply = SchedulingReply(
             infeasible_resource_requests=infeasible_requests,
@@ -1144,6 +1148,7 @@ class ResourceDemandScheduler(IResourceScheduler):
             to_launch=ctx.get_launch_requests(),
             to_ippr=ctx.get_ippr_requests(),
             to_terminate=ctx.get_terminate_requests(),
+            cluster_resources=cluster_resources,
         )
 
         if self._event_logger is not None:
@@ -1154,7 +1159,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     infeasible_requests=infeasible_requests,
                     infeasible_gang_requests=infeasible_gang_requests,
                     infeasible_cluster_resource_constraints=infeasible_constraints,
-                    cluster_resources=ctx.get_cluster_resources(),
+                    cluster_resources=cluster_resources,
                 )
             except Exception:
                 logger.exception("Failed to emit event logs.")

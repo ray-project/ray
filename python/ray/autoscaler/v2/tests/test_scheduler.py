@@ -3020,6 +3020,7 @@ def test_ippr_resize_to_maximum_capacity():
     assert reply.to_ippr[0].cloud_instance_id == "pod-1"
     assert reply.to_ippr[0].desired_cpu == 4.0
     assert reply.to_ippr[0].desired_memory == 8 * 1024 * 1024 * 1024
+    assert reply.to_launch == []
 
 
 def test_ippr_resize_scale_out_if_one_ippr_is_new():
@@ -3284,9 +3285,8 @@ def test_ippr_does_not_resize_pending_node_without_ray_node_id():
     assert to_launch == {"type_1": 1}
 
 
-def test_ippr_unselected_candidates_do_not_leak_inflated_capacity():
-    mock_logger = MockEventLogger(logger)
-    scheduler = ResourceDemandScheduler(AutoscalerEventLogger(mock_logger))
+def test_ippr_capacity_of_unselected_candidates_not_modified():
+    scheduler = ResourceDemandScheduler(event_logger)
 
     node_type_configs = {
         "type_1": NodeTypeConfig(
@@ -3394,6 +3394,9 @@ def test_ippr_unselected_candidates_do_not_leak_inflated_capacity():
     assert {status.desired_cpu for status in reply.to_ippr} == {4.0}
     _, to_terminate = _launch_and_terminate(reply)
     assert [instance_id for instance_id, _, _ in to_terminate] == ["i-3"]
+    # if pod-2 is accidentally selected for IPPR (it should not be),
+    # the cluster resources should be bigger than 5.0
+    assert reply.cluster_resources["CPU"] == 5.0
 
 
 def test_ippr_max_limits_affect_new_node_capacity():
