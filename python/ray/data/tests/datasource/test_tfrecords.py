@@ -479,10 +479,11 @@ def test_read_tfrecords(
     if with_tf_schema:
         assert isinstance(df["float_item"], pd.Series)
         assert df["float_item"].tolist() == [[1.0]]
+        assert df["float_partial"].tolist() == [[1.0]]
     else:
         assert list(df["float_item"]) == [1.0]
+        assert list(df["float_partial"]) == [1.0]
     assert np.array_equal(df["float_list"][0], np.array([2.0, 3.0, 4.0]))
-    assert list(df["float_partial"]) == [1.0]
     assert np.array_equal(df["float_empty"][0], np.array([], dtype=np.float32))
 
     if with_tf_schema:

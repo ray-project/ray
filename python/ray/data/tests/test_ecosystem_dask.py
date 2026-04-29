@@ -93,10 +93,10 @@ def test_to_dask(ray_start_regular_shared, ds_format):
     ds = ray.data.from_blocks([df1, df2])
     if ds_format == "arrow":
         ds = ds.map_batches(lambda df: df, batch_format="pyarrow", batch_size=None)
-        # After Arrow round-trip the string column comes back as string[pyarrow],
-        # so meta and the expected df must match that.
+        # After Arrow round-trip both columns come back Arrow-backed via
+        # types_mapper, so the expected df must match that.
         two_meta_dtype = pd.ArrowDtype(pa.string())
-        df = df.astype({"two": two_meta_dtype})
+        df = df.astype({"one": pd.ArrowDtype(pa.int64()), "two": two_meta_dtype})
     else:
         two_meta_dtype = pd.StringDtype()
     ddf = ds.to_dask(

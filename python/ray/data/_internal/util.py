@@ -1815,13 +1815,27 @@ def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
             return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
         return x
 
+    def needs_proxy(dtype: "np.dtype | pd.api.extensions.ExtensionDtype") -> bool:
+        if dtype == "object":
+            return True
+        if isinstance(dtype, pd.ArrowDtype):
+            pa_type = dtype.pyarrow_dtype
+            return (
+                pyarrow.types.is_list(pa_type)
+                or pyarrow.types.is_large_list(pa_type)
+                or pyarrow.types.is_fixed_size_list(pa_type)
+                or pyarrow.types.is_struct(pa_type)
+                or pyarrow.types.is_map(pa_type)
+            )
+        return False
+
     sort_cols = []
     temp_cols = []
     # Sort by all columns to ensure deterministic order.
     columns = sorted(df.columns)
 
     for col in columns:
-        if df[col].dtype == "object":
+        if needs_proxy(df[col].dtype):
             # Create a temporary column for sorting to handle unhashable types.
             # Use UUID to avoid collisions with existing column names.
             temp_col = f"__sort_proxy_{uuid.uuid4().hex}_{col}__"

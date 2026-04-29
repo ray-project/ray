@@ -484,6 +484,7 @@ def test_anti_join_multi_key(
         drop=True
     )
     joined_pd_sorted = joined_pd.sort_values(by=expected_cols).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
