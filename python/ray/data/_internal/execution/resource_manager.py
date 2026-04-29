@@ -718,7 +718,7 @@ class OpResourceAllocator(ABC):
         has unlimited budget. Budget is the remaining capacity an operator can
         consume before hitting backpressure:
 
-            Budget = Allocation - min(Reserved, AdjustedUsage)   [component-wise, ≥ 0]
+            Budget = Allocation - min(Reserved, AdjustedUsage)   (component-wise, ≥ 0)
 
         where AdjustedUsage is the operator's internal object-store memory plus
         the portion of output memory that exceeds the output-only reservation.
