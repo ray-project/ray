@@ -10,7 +10,17 @@ from collections import defaultdict
 from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
-from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
+from typing import (
+    Any,
+    Callable,
+    DefaultDict,
+    Dict,
+    Iterable,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray._common.utils import get_or_create_event_loop
@@ -439,23 +449,36 @@ class LongPollHost:
             timeout=random.uniform(*self._listen_for_change_request_timeout_s),
         )
 
+        # Collect per-namespace decrements, flush the gauge once per
+        # unique tag after the loop — a single timed-out poll over many
+        # keys can otherwise do N redundant metric writes for the same
+        # namespace.
+        affected_namespaces = set()
         for task in not_done:
             task.cancel()
+            event = async_task_to_events[task]
+            key = async_task_to_watched_keys[task]
+            # .get() avoids resurrecting a defaultdict entry for a key
+            # evicted while we were parked.
+            events_set = self.notifier_events.get(key)
+            if events_set is None:
+                continue
             try:
-                event = async_task_to_events[task]
-                key = async_task_to_watched_keys[task]
-                self.notifier_events[key].remove(event)
-                # Update aggregate pending clients gauge after removing
-                namespace_tag = _get_metric_namespace_tag(key)
-                self._pending_clients_by_namespace[namespace_tag] -= 1
-                self.pending_clients_gauge.set(
-                    self._pending_clients_by_namespace[namespace_tag],
-                    tags={"namespace": namespace_tag},
-                )
+                events_set.remove(event)
             except KeyError:
-                # Because we use `FIRST_COMPLETED` above, a task in `not_done` may
-                # actually have had its event removed in `notify_changed`.
-                pass
+                # FIRST_COMPLETED: a sibling wake may have popped this
+                # event via notify_changed.
+                continue
+            if not events_set:
+                self.notifier_events.pop(key, None)
+            namespace_tag = _get_metric_namespace_tag(key)
+            self._pending_clients_by_namespace[namespace_tag] -= 1
+            affected_namespaces.add(namespace_tag)
+        for namespace_tag in affected_namespaces:
+            self.pending_clients_gauge.set(
+                self._pending_clients_by_namespace[namespace_tag],
+                tags={"namespace": namespace_tag},
+            )
 
         if len(done) == 0:
             self._count_send(LongPollState.TIME_OUT)
@@ -464,6 +487,9 @@ class LongPollHost:
             updated_objects = {}
             for task in done:
                 updated_object_key = async_task_to_watched_keys[task]
+                # Evicted via remove_keys while parked; skip.
+                if updated_object_key not in self.snapshot_ids:
+                    continue
                 updated_objects[updated_object_key] = UpdatedObject(
                     self.object_snapshots[updated_object_key],
                     self.snapshot_ids[updated_object_key],
@@ -601,3 +627,34 @@ class LongPollHost:
                 )
             for event in events_to_notify:
                 event.set()
+
+    def remove_keys(self, keys: Iterable[KeyType]) -> None:
+        """Evict per-key state and wake any parked listeners.
+
+        Do NOT evict a key in the same sync call as ``notify_changed``
+        on it — the waiter only runs after the call returns, by which
+        point ``listen_for_change``'s done-branch guard would drop the
+        payload.
+        """
+        affected_namespaces = set()
+        for key in keys:
+            self.snapshot_ids.pop(key, None)
+            self.object_snapshots.pop(key, None)
+            self._notify_timestamps.pop(key, None)
+            events_to_notify = self.notifier_events.pop(key, set())
+            if events_to_notify:
+                # Decrement before waking: the listen_for_change timeout
+                # cleanup would otherwise skip the decrement on the now-
+                # missing notifier_events entry.
+                namespace_tag = _get_metric_namespace_tag(key)
+                self._pending_clients_by_namespace[namespace_tag] -= len(
+                    events_to_notify
+                )
+                affected_namespaces.add(namespace_tag)
+            for event in events_to_notify:
+                event.set()
+        for namespace_tag in affected_namespaces:
+            self.pending_clients_gauge.set(
+                self._pending_clients_by_namespace[namespace_tag],
+                tags={"namespace": namespace_tag},
+            )

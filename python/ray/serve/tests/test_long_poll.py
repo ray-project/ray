@@ -8,7 +8,7 @@ import pytest
 
 import ray
 import ray.serve._private.long_poll as long_poll_module
-from ray._common.test_utils import async_wait_for_condition
+from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray._common.utils import get_or_create_event_loop
 from ray.serve._private.common import (
     DeploymentID,
@@ -504,6 +504,127 @@ async def test_pending_clients_gauge_non_compact_mode(serve_instance):
     assert (
         counter_b_timeout == 0
     ), f"Expected 0 after timeout for {tag_b}, got {counter_b_timeout}"
+
+
+def test_remove_keys_evicts_per_key_state(serve_instance):
+    """After remove_keys, a poll with a stale snapshot id must time out
+    instead of returning the stale snapshot."""
+    host = ray.remote(LongPollHost).remote(
+        listen_for_change_request_timeout_s=(0.2, 0.2)
+    )
+    key = (LongPollNamespace.DEPLOYMENT_CONFIG, "app1:deploy1")
+
+    ray.get(host.notify_changed.remote({key: "config-v1"}))
+
+    initial = ray.get(host.listen_for_change.remote({key: -1}))
+    assert key in initial
+    stale_snapshot_ids = {key: initial[key].snapshot_id}
+
+    ray.get(host.remove_keys.remote([key]))
+
+    poll_result = ray.get(host.listen_for_change.remote(stale_snapshot_ids))
+    assert poll_result == LongPollState.TIME_OUT
+
+
+def test_remove_keys_wakes_parked_waiters(serve_instance):
+    """Parked RPCs return promptly after remove_keys (not at the 30 s
+    timeout); the evicted key is filtered out of the returned dict."""
+    host = ray.remote(LongPollHost).remote(listen_for_change_request_timeout_s=(30, 30))
+    key = (LongPollNamespace.DEPLOYMENT_CONFIG, "app:deploy")
+
+    ray.get(host.notify_changed.remote({key: "v1"}))
+    initial = ray.get(host.listen_for_change.remote({key: -1}))
+    snapshot_id = initial[key].snapshot_id
+
+    parked_ref = host.listen_for_change.remote({key: snapshot_id})
+    wait_for_condition(
+        lambda: ray.get(host._get_num_notifier_events.remote()) == 1,
+        timeout=5,
+    )
+
+    ray.get(host.remove_keys.remote([key]))
+
+    start = time.time()
+    result = ray.get(parked_ref, timeout=5)
+    elapsed = time.time() - start
+    assert elapsed < 5, f"parked RPC took {elapsed:.2f}s; should have woken"
+    assert result == {}, f"expected empty dict, got {result}"
+    assert ray.get(host._get_num_notifier_events.remote()) == 0
+
+
+def test_remove_keys_decrements_pending_clients_gauge(serve_instance):
+    """Gauge must return to 0 after remove_keys wakes parked waiters.
+    Otherwise the listen_for_change timeout cleanup skips the decrement
+    on the now-missing notifier_events entry and inflates the gauge."""
+    host = (
+        ray.remote(LongPollHost)
+        .options(
+            runtime_env={"env_vars": {"RAY_SERVE_COMPACT_LONG_POLL_METRIC_TAGS": "1"}}
+        )
+        .remote(listen_for_change_request_timeout_s=(30, 30))
+    )
+    key = (LongPollNamespace.DEPLOYMENT_CONFIG, "app:deploy")
+
+    ray.get(host.notify_changed.remote({key: "v1"}))
+    initial = ray.get(host.listen_for_change.remote({key: -1}))
+    snapshot_id = initial[key].snapshot_id
+
+    parked_ref = host.listen_for_change.remote({key: snapshot_id})
+
+    wait_for_condition(
+        lambda: ray.get(
+            host._get_pending_clients_by_namespace.remote("DEPLOYMENT_CONFIG")
+        )
+        == 1,
+        timeout=5,
+    )
+
+    ray.get(host.remove_keys.remote([key]))
+    ray.get(parked_ref, timeout=5)
+
+    assert (
+        ray.get(host._get_pending_clients_by_namespace.remote("DEPLOYMENT_CONFIG")) == 0
+    )
+
+
+def test_delete_tombstone_reaches_parked_subscriber(serve_instance):
+    """Parked subscriber must receive the DEPLOYMENT_TARGETS tombstone.
+
+    Evicting the tombstoned key in the same sync tick would race the
+    waiter: it wakes after update() returns, sees the key gone, and
+    drops the tombstone.
+    """
+    host = ray.remote(LongPollHost).remote(listen_for_change_request_timeout_s=(30, 30))
+
+    targets_key = (LongPollNamespace.DEPLOYMENT_TARGETS, "d1")
+    config_key = (LongPollNamespace.DEPLOYMENT_CONFIG, "d1")
+
+    target_info_initial = DeploymentTargetInfo(is_available=True, running_replicas=[])
+    ray.get(
+        host.notify_changed.remote(
+            {targets_key: target_info_initial, config_key: "config-v1"}
+        )
+    )
+
+    initial = ray.get(host.listen_for_change.remote({targets_key: -1, config_key: -1}))
+    targets_snapshot_id = initial[targets_key].snapshot_id
+
+    parked_ref = host.listen_for_change.remote({targets_key: targets_snapshot_id})
+    wait_for_condition(
+        lambda: ray.get(host._get_num_notifier_events.remote()) == 1,
+        timeout=5,
+    )
+
+    # Simulate the delete path: tombstone TARGETS, evict only CONFIG.
+    tombstone = DeploymentTargetInfo(is_available=False, running_replicas=[])
+    ray.get(host.notify_changed.remote({targets_key: tombstone}))
+    ray.get(host.remove_keys.remote([config_key]))
+
+    result = ray.get(parked_ref, timeout=5)
+    assert targets_key in result, f"Subscriber missed the tombstone: {result}"
+    delivered = result[targets_key].object_snapshot
+    assert delivered.is_available is False
+    assert delivered.running_replicas == []
 
 
 if __name__ == "__main__":
