@@ -621,7 +621,7 @@ def test_haproxy_metrics(ray_shutdown):
         last_metrics[0] = resp.text
         for line in resp.text.splitlines():
             if line.startswith(metric_prefix):
-                return int(line[len(metric_prefix) :]) >= 1
+                return float(line[len(metric_prefix) :]) >= 1
         return False
 
     try:
