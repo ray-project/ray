@@ -32,8 +32,8 @@ def _get_llm_deployment_names(llm_deployments: List[Application]) -> List[str]:
 def build_openai_ingress_request_router(builder_config: dict) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
-    The returned Application should be passed to Serve through the top-level
-    ``_ingress_request_router`` attachment point.
+    The returned Application should be attached to the ingress application with
+    ``Application._with_ingress_request_router``.
     """
     builder_config = LLMServingArgs.model_validate(builder_config)
     llm_configs = builder_config.llm_configs
@@ -171,14 +171,16 @@ def build_openai_app(builder_config: dict) -> Application:
     logger.info(pprint.pformat(ingress_options))
 
     # If direct streaming is enabled, the LLMServer deployment is the ingress
-    # app. The ingress request router is attached separately through
-    # serve.run(..., _ingress_request_router=...) or declarative config.
+    # app. Attach LLMRouter to that app so imperative and declarative deploys
+    # consume the same composed Application.
     if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
         logger.info(
             "Direct streaming enabled: "
-            "LLMServer=ingress, attach LLMRouter via _ingress_request_router"
+            "LLMServer=ingress, LLMRouter=ingress_request_router"
         )
-        return llm_deployments[0]
+        return llm_deployments[0]._with_ingress_request_router(
+            build_openai_ingress_request_router(builder_config)
+        )
 
     app = serve.deployment(ingress_cls, **ingress_options).bind(
         llm_deployments=llm_deployments, **ingress_cls_config.ingress_extra_kwargs
