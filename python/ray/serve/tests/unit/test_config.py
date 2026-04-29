@@ -1258,12 +1258,15 @@ def test_rolling_update_percentage_proto_roundtrip():
     roundtripped = DeploymentConfig.from_proto_bytes(config.to_proto_bytes())
     assert roundtripped.rolling_update_percentage == 0.5
 
-    # A proto from an "older controller" will not carry this field. Simulate by
-    # constructing a proto without setting `rolling_update_percentage`, then
-    # deserializing — the Python default must kick in.
-    proto_without_field = DeploymentConfigProto(num_replicas=1)
-    assert not proto_without_field.HasField("rolling_update_percentage")
-    deserialized = DeploymentConfig.from_proto(proto_without_field)
+    # Simulate an older controller that didn't carry this field: start from a
+    # valid proto (so the other non-optional fields satisfy Pydantic's
+    # validators on deserialization) and clear just `rolling_update_percentage`.
+    # Clearing the optional field makes HasField() return False, mimicking a
+    # proto serialized before this field existed.
+    proto = DeploymentConfig().to_proto()
+    proto.ClearField("rolling_update_percentage")
+    assert not proto.HasField("rolling_update_percentage")
+    deserialized = DeploymentConfig.from_proto(proto)
     assert deserialized.rolling_update_percentage == DEFAULT_ROLLING_UPDATE_PERCENTAGE
 
 
