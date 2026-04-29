@@ -182,7 +182,7 @@ Below is a screenshot example of the Serve page in the Ray dashboard.
 ```sh
 # Step 6.1: Run a curl Pod.
 # If you already have a curl Pod, you can use `kubectl exec -it <curl-pod> -- sh` to access the Pod.
-kubectl run curl --image=curlimages/curl:latest -i --tty -- sh
+kubectl run curl --image=curlimages/curl:8.8.0 -i --tty -- sh
 
 # Step 6.2: Send a request to the fruit stand app.
 curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:8000/fruit/ -d '["MANGO", 2]'
