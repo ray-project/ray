@@ -624,11 +624,10 @@ Then reference the remote path in your config:
     :start-after: __s3_config_example_start__
     :end-before: __s3_config_example_end__
 
+.. _c-cpp-runtime-dependencies-incompatibility:
 
 C/C++ runtime dependencies incompatibility
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-.. _c-cpp-runtime-dependencies-incompatibility:
 
 .. admonition:: Known issue
 
