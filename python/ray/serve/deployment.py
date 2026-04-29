@@ -69,6 +69,8 @@ class Application:
     def _with_ingress_request_router(
         self, ingress_request_router: "Application"
     ) -> "Application":
+        # Internal-only, unstable hook for the Serve LLM direct-ingress stack.
+        # This is not a stable public Serve API.
         self._ingress_request_router = ingress_request_router
         return self
 
