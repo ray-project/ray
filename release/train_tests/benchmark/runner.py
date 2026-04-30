@@ -147,6 +147,12 @@ class TrainLoopRunner:
             if ray.train.get_context().get_world_rank() == 0:
                 logger.info(f"Skipping {self._num_batches_to_skip} batches...")
 
+            # Zero before the skip loop drives the wrapper, which would
+            # otherwise double-count against the value restored from the
+            # checkpoint. After the skip, _train_batch_idx is rebuilt to
+            # _num_batches_to_skip — matching the restored value.
+            self._train_batch_idx = 0
+
             for _ in range(self._num_batches_to_skip):
                 with self._metrics["train/iter_skip_batch"].timer():
                     next(train_dataloader)
@@ -176,6 +182,12 @@ class TrainLoopRunner:
 
             if self._should_log_metrics():
                 logger.info(pprint.pformat(self.get_metrics(), indent=2))
+
+            if (
+                self.benchmark_config.max_train_batches > 0
+                and self._train_batch_idx >= self.benchmark_config.max_train_batches
+            ):
+                break
 
         self._train_epoch_idx += 1
         self._train_batch_idx = 0
