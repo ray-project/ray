@@ -960,6 +960,7 @@ def read_parquet(
     partitioning: Optional[Partitioning] = Partitioning("hive"),
     shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
     include_paths: bool = False,
+    include_row_hash: bool = False,
     file_extensions: Optional[List[str]] = ParquetDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
@@ -1072,6 +1073,12 @@ def read_parquet(
             shuffle the input files. Defaults to not shuffle with ``None``.
         include_paths: If ``True``, include the path to each file. File paths are
             stored in the ``'path'`` column.
+        include_row_hash: If ``True``, include a deterministic hash for each row.
+            The hash is a uint64 computed from the source file path and the row's
+            output position, making it reproducible across repeated reads of the
+            same data with the same pipeline configuration. Stored in the
+            ``'row_hash'`` column. If a column named ``'row_hash'`` already
+            exists in the file, it will be overwritten.
         file_extensions: A list of file extensions to filter files by.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -1121,6 +1128,7 @@ def read_parquet(
         partitioning=partitioning,
         shuffle=shuffle,
         include_paths=include_paths,
+        include_row_hash=include_row_hash,
         file_extensions=file_extensions,
     )
     return read_datasource(

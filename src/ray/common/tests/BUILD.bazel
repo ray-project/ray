@@ -201,6 +201,28 @@ ray_cc_test(
 )
 
 ray_cc_test(
+    name = "memory_monitor_factory_test",
+    size = "small",
+    srcs = [
+        "memory_monitor_factory_test.cc",
+    ],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    target_compatible_with = [
+        "@platforms//os:linux",
+    ],
+    deps = [
+        "//src/ray/common:memory_monitor_factory",
+        "//src/ray/common:memory_monitor_interface",
+        "//src/ray/common:threshold_memory_monitor",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
+        "//src/ray/common/cgroup2:cgroup_test_utils",
+    ],
+)
+
+ray_cc_test(
     name = "grpc_util_test",
     size = "small",
     srcs = [
