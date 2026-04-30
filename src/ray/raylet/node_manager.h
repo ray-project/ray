@@ -29,7 +29,7 @@
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/id.h"
 #include "ray/common/lease/lease.h"
-#include "ray/common/memory_monitor.h"
+#include "ray/common/memory_monitor_interface.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/common/task/task_util.h"
@@ -51,7 +51,7 @@
 #include "ray/raylet/scheduling/local_lease_manager.h"
 #include "ray/raylet/throttler.h"
 #include "ray/raylet/wait_manager.h"
-#include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_killing_policy_interface.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
@@ -129,6 +129,8 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+  // Whether resource isolation via cgroupv2 is enabled.
+  bool enable_resource_isolation;
 };
 
 enum RayletShutdownState : std::uint8_t {
@@ -175,7 +177,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       PlacementGroupResourceManager &placement_group_resource_manager,
       boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
       local_stream_socket socket,
-      ray::observability::MetricInterface &memory_manager_worker_eviction_total_count);
+      ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
+      ray::observability::MetricInterface
+          &node_manager_unexpected_worker_failure_total_count);
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
@@ -217,7 +221,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void RecordMetrics();
 
   /// Report worker OOM kill stats
-  void ReportWorkerOOMKillStats();
+  void ReportWorkerOomKillStats();
 
   /// Get the port of the node manager rpc server.
   int GetServerPort() const { return node_manager_server_.GetPort(); }
@@ -342,6 +346,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::CancelLocalTaskReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                               rpc::IsLocalWorkerDeadReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
@@ -437,9 +445,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Convert a worker to an actor since it's finished an actor creation task.
   /// \param worker The worker that was granted the actor creation lease.
-  /// \param lease The lease of the actor creation task.
+  /// \param lease_spec The lease specification of the actor creation task.
   void ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
-                            const RayLease &lease);
+                            const LeaseSpecification &lease_spec);
 
   /// Start a wait request for the requested objects.
   ///
@@ -649,10 +657,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
-                               rpc::IsLocalWorkerDeadReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(rpc::GetNodeStatsRequest request,
                           rpc::GetNodeStatsReply *reply,
@@ -757,21 +761,51 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Will trigger local gc if needed and do a syncer global gc broadcast if needed.
   void TriggerLocalOrGlobalGCIfNeeded();
 
-  /// Creates the callback used in the memory monitor.
-  MemoryUsageRefreshCallback CreateMemoryUsageRefreshCallback();
+  /**
+   * @brief Creates the callback used by the memory monitor
+   * to select workers to kill via the set killing policy and kill them.
+   */
+  KillWorkersCallback CreateKillWorkersCallback();
 
-  /// Creates the detail message for the worker that is killed due to memory running low.
+  /**
+   * @brief Marks kill worker in progress and disables all monitors to
+   * prevent more than one in-flight kill worker operation.
+   * @return True if we successfully marked the kill worker in progress.
+   *         False if the kill worker operation is already in progress.
+   */
+  bool MarkKillWorkerInProgress();
+
+  /**
+   * @brief Disables kill worker in progress flag and enables all monitors
+   * to begin accepting new kill worker requests.
+   */
+  void ReleaseKillWorkerInProgress();
+
+  /**
+   * @param workers_to_kill The workers to print the kill details for.
+   * @param node_id The ID of the node.
+   * @param system_memory_snapshot The snapshot of the system memory.
+   * @param process_memory_snapshot The snapshot of the process memory.
+   * @param usage_threshold The memory limit.
+   * @return The detail message for the workers that are killed due to memory running low.
+   */
   std::string CreateOomKillMessageDetails(
-      const std::shared_ptr<WorkerInterface> &worker,
+      const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+          &workers_to_kill,
       const NodeID &node_id,
       const SystemMemorySnapshot &system_memory_snapshot,
+      const std::string &object_store_memory_usage,
       const ProcessesMemorySnapshot &process_memory_snapshot,
       float usage_threshold) const;
 
-  /// Creates the suggestion message for the worker that is killed due to memory running
-  /// low.
+  /**
+   * @param workers_to_kill The workers to print the kill suggestions for.
+   * @return The suggestion message for the workers that are killed due to memory running
+   * low.
+   */
   std::string CreateOomKillMessageSuggestions(
-      const std::shared_ptr<WorkerInterface> &worker, bool should_retry = true) const;
+      const std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
+          &workers_to_kill) const;
 
   /// Stores the failure reason for the task. The entry will be cleaned up by a periodic
   /// function post TTL.
@@ -900,10 +934,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Throttler for global gc
   Throttler global_gc_throttler_;
 
-  /// Target being evicted or null if no target
-  std::shared_ptr<WorkerInterface> high_memory_eviction_target_;
-
   ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
+
+  ray::observability::MetricInterface
+      &node_manager_unexpected_worker_failure_total_count_;
 
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
@@ -953,10 +987,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   int64_t gc_command_sync_version_ = 0;
 
   /// The Policy for selecting the worker to kill when the node runs out of memory.
-  std::shared_ptr<WorkerKillingPolicy> worker_killing_policy_;
+  std::unique_ptr<WorkerKillingPolicyInterface> worker_killing_policy_;
 
-  /// Monitors and reports node memory usage and whether it is above threshold.
-  std::unique_ptr<MemoryMonitor> memory_monitor_;
+  /// Guards worker_killing_in_progress_ and serializes kill callbacks from monitors.
+  absl::Mutex worker_killing_in_progress_mutex_;
+
+  /// True while a kill-workers operation is inflight; prevents concurrent kills.
+  bool worker_killing_in_progress_ ABSL_GUARDED_BY(worker_killing_in_progress_mutex_) =
+      false;
+
+  /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
+  std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
 
   /// Used to move the dashboard and runtime_env agents into the system cgroup.
   AddProcessToCgroupHook add_process_to_system_cgroup_hook_;

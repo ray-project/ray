@@ -1,8 +1,18 @@
 import argparse
 import dataclasses
 import inspect
+import json
 import typing
-from typing import TYPE_CHECKING, Any, AsyncGenerator, List, Optional, Tuple, Union
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    AsyncGenerator,
+    List,
+    Literal,
+    Optional,
+    Tuple,
+    Union,
+)
 
 from pydantic import BaseModel, field_validator
 from starlette.datastructures import State
@@ -51,13 +61,15 @@ from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 if TYPE_CHECKING:
     from vllm.config import VllmConfig
     from vllm.engine.protocol import EngineClient
-    from vllm.entrypoints.openai.serving_chat import OpenAIServingChat
-    from vllm.entrypoints.openai.serving_completion import OpenAIServingCompletion
-    from vllm.entrypoints.openai.serving_embedding import OpenAIServingEmbedding
-    from vllm.entrypoints.openai.serving_models import OpenAIServingModels
-    from vllm.entrypoints.openai.serving_score import ServingScores
-    from vllm.entrypoints.openai.serving_tokenization import OpenAIServingTokenization
-    from vllm.entrypoints.openai.serving_transcription import OpenAIServingTranscription
+    from vllm.entrypoints.openai.chat_completion.serving import OpenAIServingChat
+    from vllm.entrypoints.openai.completion.serving import OpenAIServingCompletion
+    from vllm.entrypoints.openai.models.serving import OpenAIServingModels
+    from vllm.entrypoints.openai.speech_to_text.serving import (
+        OpenAIServingTranscription,
+    )
+    from vllm.entrypoints.pooling.embed.serving import OpenAIServingEmbedding
+    from vllm.entrypoints.pooling.score.serving import ServingScores
+    from vllm.entrypoints.serve.tokenize.serving import OpenAIServingTokenization
 
 vllm = try_import("vllm")
 logger = get_logger(__name__)
@@ -208,9 +220,11 @@ class VLLMWakeupConfig(BaseModel):
 class VLLMPauseConfig(BaseModel):
     """vLLM-specific configuration for pause operation."""
 
-    wait_for_inflight_requests: bool = False
-    """When True, waits for in-flight requests to finish before pausing.
-    When False (default), aborts in-flight requests immediately.
+    mode: Literal["abort", "wait", "keep"] = "abort"
+    """Pause mode:
+    - "abort" (default): Abort all in-flight requests immediately.
+    - "wait": Wait for in-flight requests to complete before pausing.
+    - "keep": Freeze requests in queue; they resume on resume_generation().
     """
 
     clear_cache: bool = True
@@ -237,13 +251,6 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
-        from vllm import envs as vllm_envs
-
-        if hasattr(vllm_envs, "VLLM_USE_V1") and not vllm_envs.VLLM_USE_V1:
-            logger.error(
-                "vLLM v0 is fully deprecated. As a result in Ray Serve LLM only v1 is supported."
-            )
-
         self.llm_config.setup_engine_backend()
 
         self._running = False
@@ -308,28 +315,30 @@ class VLLMEngine(LLMEngine):
 
         args = _dict_to_namespace(merged)
 
+        # Query supported tasks from the engine so init_app_state initializes the correct serving objects.
+        # Without this, vLLM falls back to 'generate' only.
+        init_kwargs: dict[str, Any] = dict(
+            state=state,
+            args=args,
+        )
+        if "supported_tasks" in inspect.signature(init_app_state).parameters:
+            if hasattr(self._engine_client, "get_supported_tasks"):
+                supported_tasks = await self._engine_client.get_supported_tasks()
+                init_kwargs["supported_tasks"] = supported_tasks
+
         if "vllm_config" in inspect.signature(init_app_state).parameters:
-            await init_app_state(
-                self._engine_client,
-                vllm_config=vllm_engine_config,
-                state=state,
-                args=args,
-            )
-        else:
-            await init_app_state(
-                self._engine_client,
-                state=state,
-                args=args,
-            )
+            init_kwargs["vllm_config"] = vllm_engine_config
+
+        await init_app_state(self._engine_client, **init_kwargs)
 
         self._oai_models = getattr(state, "openai_serving_models", None)
         self._oai_serving_chat = getattr(state, "openai_serving_chat", None)
         self._oai_serving_completion = getattr(state, "openai_serving_completion", None)
-        self._oai_serving_embedding = getattr(state, "openai_serving_embedding", None)
+        self._oai_serving_embedding = getattr(state, "serving_embedding", None)
         self._oai_serving_transcription = getattr(
             state, "openai_serving_transcription", None
         )
-        self._oai_serving_scores = getattr(state, "openai_serving_scores", None)
+        self._oai_serving_scores = getattr(state, "serving_scores", None)
         self._oai_serving_tokenization = getattr(
             state, "openai_serving_tokenization", None
         )
@@ -420,21 +429,25 @@ class VLLMEngine(LLMEngine):
 
         engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
 
-        if engine_config.use_gpu:
-            # Create engine config on a task with access to GPU,
-            # as GPU capability may be queried.
+        # If the backend is anything other than CPU, we need to create the
+        # engine config on a task with hardware access.
+        if engine_config.accelerator.requires_remote_initialization:
+            accelerator = engine_config.accelerator
+            accelerator_type = self.llm_config.accelerator_type
+
+            # Initialize options required for the remote task and hardware backend
+            remote_options = {
+                "num_cpus": 0,
+                "runtime_env": callback_ctx.runtime_env,
+                "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                    placement_group=callback_ctx.placement_group,
+                ),
+                **accelerator.get_remote_options(accelerator_type),
+            }
+
             ref = (
-                ray.remote(
-                    num_cpus=0,
-                    num_gpus=0.001,
-                    accelerator_type=self.llm_config.accelerator_type,
-                )(_get_vllm_engine_config)
-                .options(
-                    runtime_env=callback_ctx.runtime_env,
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=callback_ctx.placement_group,
-                    ),
-                )
+                ray.remote(_get_vllm_engine_config)
+                .options(**remote_options)
                 .remote(self.llm_config)
             )
             vllm_engine_args, vllm_engine_config = ray.get(ref)
@@ -501,6 +514,20 @@ class VLLMEngine(LLMEngine):
         if isinstance(lora_request, VLLMErrorResponse):
             raise ValueError(f"Failed to load lora model: {lora_request.error.message}")
 
+    @staticmethod
+    def _make_error_response(
+        serving: Any,
+        exc: Exception,
+    ) -> ErrorResponse:
+        """Convert an exception to an ErrorResponse and map exception types to
+        the appropriate HTTP status codes (e.g. VLLMValidationError -> 400).
+        """
+        try:
+            vllm_error = serving.create_error_response(exc)
+            return ErrorResponse(error=ErrorInfo(**vllm_error.error.model_dump()))
+        except Exception:
+            raise exc  # re-raise the original so it surfaces as a 500
+
     async def chat(
         self,
         request: ChatCompletionRequest,
@@ -513,10 +540,14 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            chat_response = await self._oai_serving_chat.create_chat_completion(  # type: ignore[attr-defined]
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_chat, e)
+            return
 
         if isinstance(chat_response, AsyncGenerator):
             async for response in chat_response:
@@ -543,10 +574,14 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            completion_response = await self._oai_serving_completion.create_completion(  # type: ignore[attr-defined]
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_completion, e)
+            return
 
         if isinstance(completion_response, AsyncGenerator):
             async for response in completion_response:
@@ -575,17 +610,18 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        embedding_response = await self._oai_serving_embedding.create_embedding(  # type: ignore[attr-defined]
-            request,
-            raw_request=raw_request,
-        )
-
-        if isinstance(embedding_response, VLLMErrorResponse):
-            yield ErrorResponse(
-                error=ErrorInfo(**embedding_response.error.model_dump())
+        try:
+            embedding_response = await self._oai_serving_embedding(
+                request,
+                raw_request=raw_request,
             )
-        else:
-            yield EmbeddingResponse(**embedding_response.model_dump())
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_embedding, e)
+            return
+
+        # vLLM 0.18+ returns a starlette Response object
+        content = json.loads(embedding_response.body)
+        yield EmbeddingResponse(**content)
 
     async def transcriptions(
         self,
@@ -602,11 +638,15 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        transcription_response = await self._oai_serving_transcription.create_transcription(  # type: ignore[attr-defined]
-            audio_data,
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            transcription_response = await self._oai_serving_transcription.create_transcription(  # type: ignore[attr-defined]
+                audio_data,
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_transcription, e)
+            return
 
         if isinstance(transcription_response, AsyncGenerator):
             async for response in transcription_response:
@@ -635,10 +675,14 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        score_response = await self._oai_serving_scores.create_score(
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            score_response = await self._oai_serving_scores.create_score(
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_scores, e)
+            return
 
         if isinstance(score_response, VLLMErrorResponse):
             yield ErrorResponse(**score_response.model_dump())
@@ -657,10 +701,14 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        tokenize_response = await self._oai_serving_tokenization.create_tokenize(
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            tokenize_response = await self._oai_serving_tokenization.create_tokenize(
+                request,
+                raw_request=raw_request,
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_tokenization, e)
+            return
 
         if isinstance(tokenize_response, VLLMErrorResponse):
             yield ErrorResponse(error=ErrorInfo(**tokenize_response.error.model_dump()))
@@ -679,10 +727,16 @@ class VLLMEngine(LLMEngine):
         raw_request: Optional[Request] = RawRequestInfo.to_starlette_request_optional(
             raw_request_info
         )
-        detokenize_response = await self._oai_serving_tokenization.create_detokenize(
-            request,
-            raw_request=raw_request,
-        )
+        try:
+            detokenize_response = (
+                await self._oai_serving_tokenization.create_detokenize(
+                    request,
+                    raw_request=raw_request,
+                )
+            )
+        except ValueError as e:
+            yield self._make_error_response(self._oai_serving_tokenization, e)
+            return
 
         if isinstance(detokenize_response, VLLMErrorResponse):
             yield ErrorResponse(
@@ -743,14 +797,13 @@ class VLLMEngine(LLMEngine):
 
         Args:
             **kwargs: Options parsed into VLLMPauseConfig.
-                - wait_for_inflight_requests (bool): Wait for in-flight requests
-                  to finish. Default False.
+                - mode (str): "abort" (default), "wait", or "keep".
                 - clear_cache (bool): Clear KV cache after draining. Default True.
         """
         assert self._engine_client is not None, "engine_client is not initialized"
         config = VLLMPauseConfig(**kwargs)
         await self._engine_client.pause_generation(
-            wait_for_inflight_requests=config.wait_for_inflight_requests,
+            mode=config.mode,
             clear_cache=config.clear_cache,
         )
 

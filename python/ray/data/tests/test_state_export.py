@@ -91,7 +91,7 @@ class DummyLogicalOperator(LogicalOperator):
     """A dummy logical operator for testing _get_logical_args with various data types."""
 
     def __init__(self, input_op=None):
-        super().__init__("DummyOperator", [])
+        super().__init__(input_dependencies=[], name="DummyOperator")
 
         # Test various data types that might be returned by _get_logical_args
         self._string_value = "test_string"
@@ -135,6 +135,10 @@ class DummyLogicalOperator(LogicalOperator):
         }
 
         self._data_class = TestDataclass()
+
+    @property
+    def num_outputs(self):
+        return self._num_outputs
 
 
 @pytest.fixture

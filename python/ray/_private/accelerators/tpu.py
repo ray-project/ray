@@ -55,9 +55,11 @@ TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
 DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 
-# Accelerators that are 4 chips per host: v2, v3, v4, v5p, v7x
-# Accelerators that are 8 chips per host: v5e, v6e
-SINGLE_HOST_8_CHIPS_TPU_TYPES = ("v5litepod", "v6e")
+# Accelerators that support up to 8 chips per host for single-host topologies: v5e, v6e
+TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
+
+# Topologies that are always sub-host or single-host
+TPU_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
 
 # Accelerators that are 2 cores per chip: v2, v3, v4, v5p, v7x
 # Accelerators that are 1 core per chip: v5e, v6e
@@ -146,11 +148,33 @@ def _accelerator_type_check(accelerator_type: str):
         )
 
 
+def get_total_chips_from_accelerator_type(accelerator_type: str) -> int:
+    """Calculates total chips from a GCP accelerator ("pod") type string (e.g. "v6e-16")."""
+    _accelerator_type_check(accelerator_type)
+
+    parts = accelerator_type.split("-")
+    if len(parts) < 2:
+        raise ValueError(
+            f"Accelerator type must include size (e.g. 'v6e-8'), got: {accelerator_type}"
+        )
+
+    num_cores = int(parts[1])
+    cores_per_chip = get_tpu_cores_per_chip(accelerator_type)
+
+    return num_cores // cores_per_chip
+
+
 def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
     _accelerator_type_check(accelerator_type)
-    if accelerator_type.startswith(SINGLE_HOST_8_CHIPS_TPU_TYPES):
-        return 8
 
+    if accelerator_type.startswith(TPU_8_CHIPS_PER_HOST_TYPES):
+        total_chips = get_total_chips_from_accelerator_type(accelerator_type)
+
+        # Sub/single-host topologies return their exact chip count
+        if total_chips <= 8:
+            return total_chips
+
+    # Multi-host topologies default to 4 visible chips per host
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
 
 
@@ -209,27 +233,28 @@ def fetch_tpu_slice_name_from_pg(pg):
 def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     """Get the number of chips per host based on topology and accelerator version.
 
-    The current rule is as follows:
-        Default chips per host is 4.
-        If accelerator_version is v5e or v6e:
-            If topology total chips < 8, return total chips (partial host).
-            Otherwise return 8.
-        If accelerator_version is v5p or other versions, the chips per host will be 4
+    Rules for determining the default number of chips per host:
+        - Default for most TPU generations (v4, v5p, v7x, etc.) is 4 chips per host.
+        - For v5e and v6e:
+            - Topologies with <= 8 chips use the exact chip count (e.g. 1x1 -> 1).
+              These topologies are always sub or single-host.
+            - Multi-host topologies (> 8 chips) default to 4-chip hosts.
 
     Args:
-        topology: The TPU topology string (e.g. "2x2x2").
-        accelerator_version: The accelerator version of the node (e.g. "V4", "v4").
+        topology: The TPU topology string (e.g. "2x2x2", "2x4").
+        accelerator_version: The accelerator version string (e.g. "v4", "v6e").
 
     Returns:
-        A int representing the number of chips per host
+        The default number of chips per host for the given configuration.
     """
     total_chips = get_num_chips_from_topology(topology)
 
-    # Check for 8-chip host types (v5litepod, v6e)
-    if accelerator_version.strip().lower() in SINGLE_HOST_8_CHIPS_TPU_TYPES:
-        if total_chips < 8:
-            return total_chips
-        return 8
+    # Check for 8-chip host types (v5litepod, v6e) for single host setups
+    if (
+        accelerator_version.strip().lower() in TPU_8_CHIPS_PER_HOST_TYPES
+        and topology.strip().lower() in TPU_SINGLE_HOST_TOPOLOGIES
+    ):
+        return total_chips
 
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
 

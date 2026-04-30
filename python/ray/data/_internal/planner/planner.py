@@ -1,9 +1,11 @@
-import functools
 import warnings
-from typing import Callable, Dict, List, Optional, Tuple, Type, TypeVar
+from functools import partial
+from typing import TYPE_CHECKING, Callable, Dict, List, Optional, Tuple, Type, TypeVar
 
-from ray import ObjectRef
-from ray.data._internal.execution.execution_callback import add_execution_callback
+if TYPE_CHECKING:
+    import pyarrow.fs
+
+from ray.data._internal.execution.execution_callback import ExecutionCallback
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.operators.aggregate_num_rows import (
     AggregateNumRows,
@@ -55,6 +57,7 @@ from ray.data._internal.planner.plan_udf_map_op import (
 from ray.data._internal.planner.plan_write_op import plan_write_op
 from ray.data.checkpoint.load_checkpoint_callback import LoadCheckpointCallback
 from ray.data.context import DataContext
+from ray.data.datasource.file_datasink import _FileDatasink
 
 LogicalOperatorType = TypeVar("LogicalOperatorType", bound=LogicalOperator)
 PlanLogicalOpFn = Callable[
@@ -175,22 +178,30 @@ class Planner:
         self._supports_checkpointing = False
         self._plan_fns_for_checkpointing = {}
 
-    def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
+    def plan(
+        self, logical_plan: LogicalPlan
+    ) -> Tuple[PhysicalPlan, List["ExecutionCallback"]]:
         """Convert logical to physical operators recursively in post-order."""
         checkpoint_config = logical_plan.context.checkpoint_config
+
+        callbacks = [cls() for cls in logical_plan.context.execution_callback_classes]
+
         if checkpoint_config is not None and self._check_supports_checkpointing(
             logical_plan
         ):
             self._supports_checkpointing = True
+            data_file_dir, data_file_fs = self._get_data_file_info(logical_plan)
 
-            checkpoint_callback = self._create_checkpoint_callback(checkpoint_config)
-            add_execution_callback(checkpoint_callback, logical_plan.context)
-            load_checkpoint = checkpoint_callback.load_checkpoint
+            checkpoint_callback = self._create_checkpoint_callback(
+                checkpoint_config,
+            )
+
+            callbacks.append(checkpoint_callback)
 
             # Dynamically set the plan functions for checkpointing because they
             # need to a reference to the checkpoint ref.
             self._plan_fns_for_checkpointing = self._get_plan_fns_for_checkpointing(
-                load_checkpoint
+                data_file_dir, data_file_fs
             )
 
         elif checkpoint_config is not None:
@@ -203,7 +214,7 @@ class Planner:
             logical_plan.dag, logical_plan.context
         )
         physical_plan = PhysicalPlan(physical_dag, op_map, logical_plan.context)
-        return physical_plan
+        return physical_plan, callbacks
 
     def get_plan_fn(self, logical_op: LogicalOperator) -> PlanLogicalOpFn:
         if self._supports_checkpointing:
@@ -266,21 +277,40 @@ class Planner:
         op_map[physical_op] = logical_op
         return physical_op, op_map
 
-    def _create_checkpoint_callback(self, checkpoint_config) -> LoadCheckpointCallback:
+    def _create_checkpoint_callback(
+        self,
+        checkpoint_config,
+    ) -> LoadCheckpointCallback:
         """Factory method to create the LoadCheckpointCallback.
 
         Subclasses can override this to use a different callback implementation.
         """
-        return LoadCheckpointCallback(checkpoint_config)
+        return LoadCheckpointCallback(
+            checkpoint_config,
+        )
+
+    @staticmethod
+    def _get_data_file_info(logical_plan: LogicalPlan):
+        """Extract the data file directory and filesystem from the Write op's datasink.
+
+        Returns (path, filesystem) for file-based datasinks, or (None, None)
+        for non-file datasinks.
+        """
+        last_op = logical_plan.dag
+        if isinstance(last_op, Write):
+            datasink = last_op.datasink_or_legacy_datasource
+            if isinstance(datasink, _FileDatasink):
+                return datasink.unresolved_path, datasink.filesystem
+        return None, None
 
     def _get_plan_fns_for_checkpointing(
         self,
-        load_checkpoint: Callable[[], ObjectRef],
+        data_file_dir: Optional[str] = None,
+        data_file_filesystem: Optional["pyarrow.fs.FileSystem"] = None,
     ) -> Dict[Type[LogicalOperator], PlanLogicalOpFn]:
         plan_fns = {
-            Read: functools.partial(
-                plan_read_op_with_checkpoint_filter,
-                load_checkpoint=load_checkpoint,
+            Read: partial(
+                plan_read_op_with_checkpoint_filter, data_file_dir, data_file_filesystem
             ),
             Write: plan_write_op_with_checkpoint_writer,
         }

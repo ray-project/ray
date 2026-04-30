@@ -9,10 +9,7 @@ from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     ApplicationName,
     AsyncInferenceTaskQueueMetricReport,
-    AutoscalingSnapshotError,
-    AutoscalingStatus,
     DeploymentID,
-    DeploymentSnapshot,
     HandleMetricReport,
     ReplicaID,
     ReplicaMetricReport,
@@ -21,10 +18,14 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.constants import (
     RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_MIN_HANDLE_METRICS_TIMEOUT_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deployment_info import DeploymentInfo
+from ray.serve._private.gang_scheduling_autoscaling_policy import (
+    GangSchedulingAutoscalingPolicy,
+)
 from ray.serve._private.metrics_utils import (
     aggregate_timeseries,
     merge_instantaneous_total,
@@ -88,10 +89,9 @@ class DeploymentAutoscalingState:
         # content of the dictionary is determined by the user defined policy
         self._policy_state: Optional[Dict[str, Any]] = None
         self._running_replicas: List[ReplicaID] = []
+        self._cached_running_replica_strs: Set[str] = set()
         self._target_capacity: Optional[float] = None
         self._target_capacity_direction: Optional[TargetCapacityDirection] = None
-        self._cached_deployment_snapshot: Optional[DeploymentSnapshot] = None
-        self._latest_metrics_timestamp: Optional[float] = None
         # Track timestamps of last scale up and scale down events
         self._last_scale_up_time: Optional[float] = None
         self._last_scale_down_time: Optional[float] = None
@@ -123,6 +123,18 @@ class DeploymentAutoscalingState:
             tag_keys=("deployment", "application", "policy_scope"),
         )
 
+        self.autoscaling_target_ongoing_requests_gauge = metrics.Gauge(
+            "serve_autoscaling_target_ongoing_requests",
+            description=(
+                "The configured target number of ongoing requests per replica. "
+                "For the default policy, this can be combined with "
+                "serve_autoscaling_total_requests to compute the raw desired number "
+                "of replicas (total_requests / target_ongoing_requests) and detect "
+                "autoscaling regressions."
+            ),
+            tag_keys=("deployment", "application"),
+        )
+
     def register(self, info: DeploymentInfo, curr_target_num_replicas: int) -> int:
         """Registers an autoscaling deployment's info.
 
@@ -147,6 +159,11 @@ class DeploymentAutoscalingState:
         self._policy = _apply_autoscaling_config(
             _resolve_policy_callable(self._config.policy)
         )
+        gang_size = getattr(
+            info.deployment_config.gang_scheduling_config, "gang_size", None
+        )
+        if gang_size is not None and gang_size > 1:
+            self._policy = GangSchedulingAutoscalingPolicy(self._policy, gang_size)
         self._target_capacity = info.target_capacity
         self._target_capacity_direction = info.target_capacity_direction
         self._policy_state = {}
@@ -189,6 +206,9 @@ class DeploymentAutoscalingState:
     def update_running_replica_ids(self, running_replicas: List[ReplicaID]):
         """Update cached set of running replica IDs for this deployment."""
         self._running_replicas = running_replicas
+        self._cached_running_replica_strs = {
+            r.to_full_id_str() for r in running_replicas
+        }
 
     def record_scale_up(self):
         """Record a scale up event by updating the timestamp."""
@@ -233,12 +253,6 @@ class DeploymentAutoscalingState:
             replica_id not in self._replica_metrics
             or send_timestamp > self._replica_metrics[replica_id].timestamp
         ):
-            if self._latest_metrics_timestamp is None:
-                self._latest_metrics_timestamp = send_timestamp
-            else:
-                self._latest_metrics_timestamp = max(
-                    self._latest_metrics_timestamp, send_timestamp
-                )
             self._replica_metrics[replica_id] = replica_metric_report
 
     def record_request_metrics_for_handle(
@@ -255,12 +269,6 @@ class DeploymentAutoscalingState:
             or send_timestamp > self._handle_requests[handle_id].timestamp
         ):
             self._handle_requests[handle_id] = handle_metric_report
-            if self._latest_metrics_timestamp is None:
-                self._latest_metrics_timestamp = send_timestamp
-            else:
-                self._latest_metrics_timestamp = max(
-                    self._latest_metrics_timestamp, send_timestamp
-                )
 
     def record_async_inference_task_queue_metrics(
         self, report: AsyncInferenceTaskQueueMetricReport
@@ -325,6 +333,9 @@ class DeploymentAutoscalingState:
         self.autoscaling_policy_execution_time_gauge.set(
             policy_execution_time_ms, tags={**tags, "policy_scope": policy_scope}
         )
+        self.autoscaling_target_ongoing_requests_gauge.set(
+            self._config.get_target_ongoing_requests(), tags=tags
+        )
 
     def get_decision_num_replicas(
         self, curr_target_num_replicas: int, _skip_bound_check: bool = False
@@ -359,13 +370,7 @@ class DeploymentAutoscalingState:
         if _skip_bound_check:
             return decision_num_replicas
 
-        decision_num_replicas = self.apply_bounds(decision_num_replicas)
-
-        self._cached_deployment_snapshot = self._create_deployment_snapshot(
-            ctx=autoscaling_context,
-            target_replicas=decision_num_replicas,
-        )
-        return decision_num_replicas
+        return self.apply_bounds(decision_num_replicas)
 
     def get_autoscaling_context(
         self,
@@ -453,15 +458,11 @@ class DeploymentAutoscalingState:
         timeseries_list = []
 
         for handle_metric in self._handle_requests.values():
-            for replica_id in self._running_replicas:
-                if (
-                    RUNNING_REQUESTS_KEY not in handle_metric.metrics
-                    or replica_id not in handle_metric.metrics[RUNNING_REQUESTS_KEY]
-                ):
+            running_reqs = handle_metric.metrics.get(RUNNING_REQUESTS_KEY, {})
+            for replica_str in self._cached_running_replica_strs:
+                if replica_str not in running_reqs:
                     continue
-                timeseries_list.append(
-                    handle_metric.metrics[RUNNING_REQUESTS_KEY][replica_id]
-                )
+                timeseries_list.append(running_reqs[replica_str])
 
         return timeseries_list
 
@@ -511,11 +512,27 @@ class DeploymentAutoscalingState:
             # between replicas and controller. Also add a small epsilon to avoid division by zero
             if last_window_s <= 0:
                 last_window_s = 1e-3
+
+            # Exclude early "partial" period: when series have misaligned start times,
+            # late-starting series are implicitly 0 before their first data point, which
+            # undercounts the total and biases aggregations. Start the window at the
+            # timestamp when all series have contributed at least one point.
+            # Use max(aligned_start, merged[0].timestamp) because merge rounds timestamps
+            # to 10ms; if aligned_start is before the first merged point, the gap would
+            # be treated as 0 and bias the average downward.
+            window_start = None
+            non_empty_series = [ts for ts in timeseries_list if ts]
+            if len(non_empty_series) > 1:
+                aligned_start = max(ts[0].timestamp for ts in non_empty_series)
+                if aligned_start <= merged_timeseries[-1].timestamp:
+                    window_start = max(aligned_start, merged_timeseries[0].timestamp)
+
             # Calculate the aggregated metric value
             value = aggregate_timeseries(
                 merged_timeseries,
                 aggregation_function=self._config.aggregation_function,
                 last_window_s=last_window_s,
+                window_start=window_start,
             )
             return value if value is not None else 0.0
 
@@ -663,11 +680,12 @@ class DeploymentAutoscalingState:
         """
         total_requests = 0
 
-        for id in self._running_replicas:
-            if id in self._replica_metrics:
-                total_requests += self._replica_metrics[id].aggregated_metrics.get(
-                    RUNNING_REQUESTS_KEY, 0
-                )
+        # Iterate over _replica_metrics but only count running replicas. Stale metrics from
+        # stopped replicas can remain until on_replica_stopped runs; filtering avoids inflation.
+        for report in self._replica_metrics.values():
+            # TODO(abrar): Store replica_id as string in report to avoid this conversion.
+            if report.replica_id.to_full_id_str() in self._cached_running_replica_strs:
+                total_requests += report.aggregated_metrics.get(RUNNING_REQUESTS_KEY, 0)
 
         metrics_collected_on_replicas = total_requests > 0
 
@@ -676,14 +694,25 @@ class DeploymentAutoscalingState:
             total_requests += handle_metric.aggregated_queued_requests
             # Add running requests from handles if not collected on replicas
             if not metrics_collected_on_replicas:
-                for replica_id in self._running_replicas:
-                    if replica_id in handle_metric.aggregated_metrics.get(
-                        RUNNING_REQUESTS_KEY, {}
-                    ):
-                        total_requests += handle_metric.aggregated_metrics.get(
-                            RUNNING_REQUESTS_KEY
-                        ).get(replica_id)
+                running_reqs = handle_metric.aggregated_metrics.get(
+                    RUNNING_REQUESTS_KEY, {}
+                )
+                for replica_str, count in running_reqs.items():
+                    if replica_str in self._cached_running_replica_strs:
+                        total_requests += count
         return total_requests
+
+    def _should_aggregate_metrics_at_controller(self) -> bool:
+        """
+        Determine if metrics should be aggregated at the controller.
+        If the Direct Ingress is enabled, then metrics should only be aggregated at the controller.
+
+        Returns:
+            True if metrics should be aggregated at the controller, False otherwise.
+        """
+        return (
+            RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER or RAY_SERVE_ENABLE_DIRECT_INGRESS
+        )
 
     def get_total_num_requests(self) -> float:
         """Get average total number of requests aggregated over the past
@@ -696,77 +725,10 @@ class DeploymentAutoscalingState:
         or on replicas, but not both. Its the responsibility of the writer
         to ensure enclusivity of the metrics.
         """
-        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+        if self._should_aggregate_metrics_at_controller():
             return self._calculate_total_requests_aggregate_mode()
         else:
             return self._calculate_total_requests_simple_mode()
-
-    def _create_deployment_snapshot(
-        self,
-        *,
-        ctx: AutoscalingContext,
-        target_replicas: int,
-    ) -> DeploymentSnapshot:
-        """Create a fully-populated DeploymentSnapshot using data already available in
-        AutoscalingState and the provided context.
-        """
-        current_replicas = ctx.current_num_replicas
-        min_replicas = ctx.capacity_adjusted_min_replicas
-        max_replicas = ctx.capacity_adjusted_max_replicas
-
-        queued_requests = ctx.total_queued_requests
-
-        if self._latest_metrics_timestamp is not None:
-            time_since_last_collected_metrics_s = (
-                time.time() - self._latest_metrics_timestamp
-            )
-        else:
-            time_since_last_collected_metrics_s = None
-
-        if target_replicas > current_replicas:
-            scaling_status_raw = AutoscalingStatus.UPSCALE
-        elif target_replicas < current_replicas:
-            scaling_status_raw = AutoscalingStatus.DOWNSCALE
-        else:
-            scaling_status_raw = AutoscalingStatus.STABLE
-
-        scaling_status = AutoscalingStatus.format_scaling_status(scaling_status_raw)
-
-        look_back_period_s = self._config.look_back_period_s
-        metrics_health = DeploymentSnapshot.format_metrics_health_text(
-            time_since_last_collected_metrics_s=time_since_last_collected_metrics_s,
-            look_back_period_s=look_back_period_s,
-        )
-
-        errors: List[str] = []
-
-        if time_since_last_collected_metrics_s is None:
-            errors.append(AutoscalingSnapshotError.METRICS_UNAVAILABLE)
-
-        policy = ctx.config.policy.get_policy()
-        policy_name_str = f"{policy.__module__}.{policy.__name__}"
-        return DeploymentSnapshot(
-            timestamp_str=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-            app=self._deployment_id.app_name,
-            deployment=self._deployment_id.name,
-            current_replicas=current_replicas,
-            target_replicas=target_replicas,
-            min_replicas=min_replicas,
-            max_replicas=max_replicas,
-            scaling_status=scaling_status,
-            policy_name=policy_name_str,
-            look_back_period_s=look_back_period_s,
-            queued_requests=float(queued_requests),
-            ongoing_requests=float(ctx.total_num_requests),
-            metrics_health=metrics_health,
-            errors=errors,
-        )
-
-    def get_deployment_snapshot(self) -> Optional[DeploymentSnapshot]:
-        """
-        Return the cached deployment snapshot if available.
-        """
-        return self._cached_deployment_snapshot
 
     def get_replica_metrics(self) -> Dict[ReplicaID, List[TimeSeries]]:
         """Get the raw replica metrics dict."""
@@ -785,7 +747,7 @@ class DeploymentAutoscalingState:
             Sum of queued requests at all handles. Uses aggregated values in simple mode,
             or aggregates timeseries data in aggregate mode.
         """
-        if RAY_SERVE_AGGREGATE_METRICS_AT_CONTROLLER:
+        if self._should_aggregate_metrics_at_controller():
             # Aggregate mode: collect and aggregate timeseries
             queued_timeseries = self._collect_handle_queued_requests()
             if not queued_timeseries:
@@ -976,7 +938,6 @@ class ApplicationAutoscalingState:
         """
         if self.has_policy():
             # Using app-level policy
-            # TODO(nadongjun): App-level autoscaling bypasses per-deployment snapshot creation; add snapshot support here.
             autoscaling_contexts = {
                 deployment_id: state.get_autoscaling_context(
                     deployment_to_target_num_replicas[deployment_id],
@@ -997,8 +958,8 @@ class ApplicationAutoscalingState:
             self._policy_state = returned_policy_state
 
             # Validate returned decisions
-            assert (
-                type(decisions) is dict
+            assert isinstance(
+                decisions, dict
             ), "Autoscaling policy must return a dictionary of deployment_name -> decision_num_replicas"
 
             # assert that deployment_id is in decisions is valid
@@ -1303,12 +1264,3 @@ class AutoscalingStateManager:
     def drop_stale_handle_metrics(self, alive_serve_actor_ids: Set[str]) -> None:
         for app_state in self._app_autoscaling_states.values():
             app_state.drop_stale_handle_metrics(alive_serve_actor_ids)
-
-    def get_deployment_snapshot(
-        self, deployment_id: DeploymentID
-    ) -> Optional[DeploymentSnapshot]:
-        app_state = self._app_autoscaling_states.get(deployment_id.app_name)
-        if not app_state:
-            return None
-        dep_state = app_state._deployment_autoscaling_states.get(deployment_id)
-        return dep_state.get_deployment_snapshot() if dep_state else None

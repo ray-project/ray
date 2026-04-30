@@ -657,6 +657,25 @@ class TestAlgorithm(unittest.TestCase):
         assert metrics_2["time_this_iter_s"] > SECONDS_TO_SLEEP * 2
         algo_2.stop()
 
+    def test_custom_eval_function_falsy_results(self):
+        """Test that custom eval function can return ({}, 0, 0)."""
+        config = (
+            ppo.PPOConfig()
+            .environment("CartPole-v1")
+            .evaluation(
+                custom_evaluation_function=lambda algo, eval_workers: ({}, 0, 0),
+                evaluation_interval=1,
+                evaluation_num_env_runners=1,
+                evaluation_duration=1,
+                evaluation_duration_unit="episodes",
+            )
+            .training(train_batch_size=50, minibatch_size=25, num_epochs=1)
+        )
+        algo = config.build()
+        metrics = algo.train()
+        self.assertIn(EVALUATION_RESULTS, metrics)
+        algo.stop()
+
 
 if __name__ == "__main__":
     import sys

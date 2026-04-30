@@ -126,6 +126,15 @@ message RequestRouterConfig {
 
   // kwargs which Ray Serve passes to the router class' initialize_state method.
   bytes request_router_kwargs = 5;
+
+  // Initial backoff time (in seconds) before retrying to route a request.
+  double initial_backoff_s = 6;
+
+  // Multiplier applied to the backoff time after each retry.
+  double backoff_multiplier = 7;
+
+  // Maximum backoff time (in seconds) between retries.
+  double max_backoff_s = 8;
 }
 //[End] ROUTING CONFIG
 
@@ -154,6 +163,30 @@ message GangSchedulingConfig {
   GangRuntimeFailurePolicy runtime_failure_policy = 3;
 }
 //[End] GANG SCHEDULING CONFIG
+
+// Configuration for a deployment-scoped actor.
+message DeploymentActorConfig {
+  // Cloudpickled actor class (serialized by value so it can be
+  // deserialized without the original module being importable).
+  bytes _serialized_actor_class = 1;
+
+  // Cloudpickled init args.
+  bytes serialized_init_args = 2;
+
+  // Cloudpickled init kwargs.
+  bytes serialized_init_kwargs = 3;
+
+  // Cloudpickled actor options.
+  bytes serialized_actor_options = 4;
+
+  // Unique name for this actor within the deployment.
+  string name = 5;
+
+  // Human-readable import path for the actor class
+  // (e.g. "my_module:MyActorClass"). Used for display and
+  // as a fallback when _serialized_actor_class is unavailable.
+  string actor_class_name = 6;
+}
 
 // Configuration options for a deployment, to be set by the user.
 message DeploymentConfig {
@@ -207,6 +240,15 @@ message DeploymentConfig {
 
   // Gang scheduling configuration for atomic replica scheduling.
   GangSchedulingConfig gang_scheduling_config = 21;
+
+  // Deployment-scoped actors managed by the controller.
+  repeated DeploymentActorConfig deployment_actors = 22;
+
+  // The fraction of replicas to update at a time during a rolling update.
+  // Declared `optional` so that unset (e.g. from an older controller during a
+  // rolling upgrade) is distinguishable from an explicit value. When unset,
+  // the Python side falls back to DEFAULT_ROLLING_UPDATE_PERCENTAGE (0.2).
+  optional double rolling_update_percentage = 23;
 }
 
 // Deployment language.
@@ -344,6 +386,7 @@ enum DeploymentStatusTrigger {
   DEPLOYMENT_STATUS_TRIGGER_HEALTH_CHECK_FAILED = 7;
   DEPLOYMENT_STATUS_TRIGGER_INTERNAL_ERROR = 8;
   DEPLOYMENT_STATUS_TRIGGER_DELETING = 9;
+  DEPLOYMENT_STATUS_TRIGGER_DEPLOYMENT_ACTOR_FAILED = 10;
 }
 
 message DeploymentStatusInfo {

@@ -214,7 +214,8 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     rpc::autoscaler::DrainNodeReply reply;
     auto send_reply_callback =
         [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
-    gcs_autoscaler_state_manager_->HandleDrainNode(request, &reply, send_reply_callback);
+    gcs_autoscaler_state_manager_->HandleDrainNode(
+        request, &reply, send_reply_callback, /*grpc_peer=*/"");
     return reply.is_accepted();
   }
 
@@ -844,7 +845,8 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainNodeRaceCondition) {
   rpc::autoscaler::DrainNodeReply reply;
   auto send_reply_callback =
       [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
-  gcs_autoscaler_state_manager_->HandleDrainNode(request, &reply, send_reply_callback);
+  gcs_autoscaler_state_manager_->HandleDrainNode(
+      request, &reply, send_reply_callback, /*grpc_peer=*/"");
 
   // At this point, the GCS request is not accepted yet since ralyet has not replied.
   ASSERT_FALSE(reply.is_accepted());
@@ -857,6 +859,122 @@ TEST_F(GcsAutoscalerStateManagerTest, TestDrainNodeRaceCondition) {
 
   // The GCS request is accepted now.
   ASSERT_TRUE(reply.is_accepted());
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestResizeRayletResourceInstances) {
+  std::shared_ptr<rpc::GcsNodeInfo> node = GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->mutable_resources_total()->insert({"memory", 1024});
+  node->set_instance_id("instance_1");
+  AddNode(node);
+
+  rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
+  request.set_node_id(node->node_id());
+  request.mutable_resources()->insert({{"CPU", 8}, {"memory", 4096}});
+  rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
+  Status callback_status = Status::OK();
+  auto send_reply_callback = [&callback_status](ray::Status status,
+                                                std::function<void()> f1,
+                                                std::function<void()> f2) {
+    callback_status = std::move(status);
+  };
+  gcs_autoscaler_state_manager_->HandleResizeRayletResourceInstances(
+      request, &reply, send_reply_callback);
+
+  ASSERT_EQ(raylet_client_->last_resize_local_resource_instances_request.size(), 2);
+  ASSERT_EQ(raylet_client_->last_resize_local_resource_instances_request.at("CPU"), 8);
+  ASSERT_EQ(raylet_client_->last_resize_local_resource_instances_request.at("memory"),
+            4096);
+
+  ASSERT_TRUE(
+      raylet_client_->ReplyResizeLocalResourceInstances({{"CPU", 8}, {"memory", 4096}}));
+  ASSERT_TRUE(callback_status.ok());
+  ASSERT_EQ(reply.total_resources_size(), 2);
+  ASSERT_EQ(reply.total_resources().at("CPU"), 8);
+  ASSERT_EQ(reply.total_resources().at("memory"), 4096);
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestResizeRayletResourceInstancesNotFound) {
+  rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
+  request.set_node_id(NodeID::FromRandom().Binary());
+  request.mutable_resources()->insert({{"CPU", 8}});
+  rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
+  Status callback_status = Status::OK();
+  auto send_reply_callback = [&callback_status](ray::Status status,
+                                                std::function<void()> f1,
+                                                std::function<void()> f2) {
+    callback_status = std::move(status);
+  };
+  gcs_autoscaler_state_manager_->HandleResizeRayletResourceInstances(
+      request, &reply, send_reply_callback);
+  ASSERT_TRUE(callback_status.IsNotFound());
+  ASSERT_EQ(reply.total_resources_size(), 0);
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestResizeRayletResourceInstancesInvalidNodeId) {
+  rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
+  request.set_node_id("invalid");
+  request.mutable_resources()->insert({{"CPU", 8}});
+  rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
+  Status callback_status = Status::OK();
+  auto send_reply_callback = [&callback_status](ray::Status status,
+                                                std::function<void()> f1,
+                                                std::function<void()> f2) {
+    callback_status = std::move(status);
+  };
+  gcs_autoscaler_state_manager_->HandleResizeRayletResourceInstances(
+      request, &reply, send_reply_callback);
+  ASSERT_TRUE(callback_status.IsInvalidArgument());
+  ASSERT_EQ(callback_status.message(),
+            absl::StrFormat("Expected node_id to be %d bytes, but got %d bytes.",
+                            NodeID::Size(),
+                            request.node_id().size()));
+  ASSERT_EQ(reply.total_resources_size(), 0);
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestResizeRayletResourceInstancesEmptyNodeId) {
+  rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
+  request.set_node_id("");
+  request.mutable_resources()->insert({{"CPU", 8}});
+  rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
+  Status callback_status = Status::OK();
+  auto send_reply_callback = [&callback_status](ray::Status status,
+                                                std::function<void()> f1,
+                                                std::function<void()> f2) {
+    callback_status = std::move(status);
+  };
+  gcs_autoscaler_state_manager_->HandleResizeRayletResourceInstances(
+      request, &reply, send_reply_callback);
+  ASSERT_TRUE(callback_status.IsInvalidArgument());
+  ASSERT_EQ(callback_status.message(),
+            absl::StrFormat("Expected node_id to be %d bytes, but got %d bytes.",
+                            NodeID::Size(),
+                            request.node_id().size()));
+  ASSERT_EQ(reply.total_resources_size(), 0);
+}
+
+TEST_F(GcsAutoscalerStateManagerTest, TestResizeRayletResourceInstancesErrors) {
+  auto node = GenNodeInfo();
+  node->mutable_resources_total()->insert({"CPU", 2});
+  node->set_instance_id("instance_1");
+  AddNode(node);
+
+  rpc::autoscaler::ResizeRayletResourceInstancesRequest request;
+  request.set_node_id(node->node_id());
+  request.mutable_resources()->insert({{"GPU", 1}});
+  rpc::autoscaler::ResizeRayletResourceInstancesReply reply;
+  Status callback_status = Status::OK();
+  auto send_reply_callback = [&callback_status](ray::Status status,
+                                                std::function<void()> f1,
+                                                std::function<void()> f2) {
+    callback_status = std::move(status);
+  };
+  gcs_autoscaler_state_manager_->HandleResizeRayletResourceInstances(
+      request, &reply, send_reply_callback);
+  ASSERT_TRUE(raylet_client_->ReplyResizeLocalResourceInstances(
+      {}, Status::InvalidArgument("Cannot resize unit instance resource 'GPU'.")));
+  ASSERT_TRUE(callback_status.IsInvalidArgument());
+  ASSERT_EQ(reply.total_resources_size(), 0);
 }
 
 TEST_F(GcsAutoscalerStateManagerTest, TestIdleTime) {
@@ -1191,6 +1309,120 @@ TEST_F(GcsAutoscalerStateManagerTest,
   EXPECT_EQ(c2.operator_(), rpc::LabelSelectorOperator::LABEL_OPERATOR_NOT_IN);
   ASSERT_EQ(c2.label_values_size(), 1);
   EXPECT_EQ(c2.label_values(0), "TPU");
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsWithLocalityRequirementPending) {
+  rpc::PlacementGroupLoad load;
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(1));
+  pg_data->set_placement_group_id(pg_id.Binary());
+  pg_data->set_label_domain_key("ray.io/gpu-domain");
+
+  auto *bundle1 = pg_data->add_bundles();
+  (*bundle1->mutable_unit_resources())["GPU"] = 4;
+
+  auto *bundle2 = pg_data->add_bundles();
+  (*bundle2->mutable_unit_resources())["GPU"] = 4;
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  ASSERT_EQ(req.bundle_selectors_size(), 1);
+
+  const auto &selector = req.bundle_selectors(0);
+  ASSERT_EQ(selector.resource_requests_size(), 2);
+
+  ASSERT_TRUE(selector.has_locality_requirement());
+  const auto &locality_req = selector.locality_requirement();
+  ASSERT_TRUE(locality_req.has_locality_constraint());
+  EXPECT_EQ(locality_req.locality_constraint().label_name(), "ray.io/gpu-domain");
+  EXPECT_EQ(locality_req.locality_constraint().placement_strategy(),
+            rpc::PlacementStrategy::STRICT_PACK);
+
+  // Not a rescheduling PG, so label_selector should not be set.
+  EXPECT_FALSE(locality_req.has_label_selector());
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsWithLocalityRequirementRescheduling) {
+  rpc::PlacementGroupLoad load;
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::RESCHEDULING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(2));
+  pg_data->set_placement_group_id(pg_id.Binary());
+  pg_data->set_label_domain_key("ray.io/gpu-domain");
+  (*pg_data->mutable_label_domain_assignments())["ray.io/gpu-domain"] = "rack-1";
+
+  // One placed bundle (has node_id) and one unplaced bundle.
+  auto *placed_bundle = pg_data->add_bundles();
+  (*placed_bundle->mutable_unit_resources())["GPU"] = 4;
+  placed_bundle->set_node_id(NodeID::FromRandom().Binary());
+
+  auto *unplaced_bundle = pg_data->add_bundles();
+  (*unplaced_bundle->mutable_unit_resources())["GPU"] = 4;
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  ASSERT_EQ(req.bundle_selectors_size(), 1);
+
+  const auto &selector = req.bundle_selectors(0);
+  // Only the unplaced bundle should appear.
+  ASSERT_EQ(selector.resource_requests_size(), 1);
+
+  ASSERT_TRUE(selector.has_locality_requirement());
+  const auto &locality_req = selector.locality_requirement();
+  ASSERT_TRUE(locality_req.has_locality_constraint());
+  EXPECT_EQ(locality_req.locality_constraint().label_name(), "ray.io/gpu-domain");
+  EXPECT_EQ(locality_req.locality_constraint().placement_strategy(),
+            rpc::PlacementStrategy::STRICT_PACK);
+
+  // Partial rescheduling: domain assignment exists and some bundles are still placed,
+  // so label_selector should constrain to that domain.
+  ASSERT_TRUE(locality_req.has_label_selector());
+  const auto &label_sel = locality_req.label_selector();
+  ASSERT_EQ(label_sel.label_constraints_size(), 1);
+  const auto &constraint = label_sel.label_constraints(0);
+  EXPECT_EQ(constraint.label_key(), "ray.io/gpu-domain");
+  EXPECT_EQ(constraint.operator_(), rpc::LabelSelectorOperator::LABEL_OPERATOR_IN);
+  ASSERT_EQ(constraint.label_values_size(), 1);
+  EXPECT_EQ(constraint.label_values(0), "rack-1");
+}
+
+TEST_F(GcsAutoscalerStateManagerTest,
+       TestGetPendingGangResourceRequestsNoLocalityWithoutLabelDomainKey) {
+  rpc::PlacementGroupLoad load;
+  auto *pg_data = load.add_placement_group_data();
+  pg_data->set_state(rpc::PlacementGroupTableData::PENDING);
+  auto pg_id = PlacementGroupID::Of(JobID::FromInt(3));
+  pg_data->set_placement_group_id(pg_id.Binary());
+
+  auto *bundle = pg_data->add_bundles();
+  (*bundle->mutable_unit_resources())["CPU"] = 2;
+
+  EXPECT_CALL(*gcs_placement_group_manager_, GetPlacementGroupLoad)
+      .WillOnce(Return(std::make_shared<rpc::PlacementGroupLoad>(std::move(load))));
+
+  const auto &state = GetClusterResourceStateSync();
+  const auto &requests = state.pending_gang_resource_requests();
+  ASSERT_EQ(requests.size(), 1);
+
+  const auto &req = requests.Get(0);
+  ASSERT_EQ(req.bundle_selectors_size(), 1);
+  // Does not use label-domain scheduling, so locality_requirement should not be set.
+  EXPECT_FALSE(req.bundle_selectors(0).has_locality_requirement());
 }
 
 }  // namespace gcs

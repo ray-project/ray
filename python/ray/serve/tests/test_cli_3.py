@@ -9,9 +9,9 @@ from typing import Union
 import httpx
 import pytest
 import yaml
+from pydantic import BaseModel
 
 from ray import serve
-from ray._common.pydantic_compat import BaseModel
 from ray._common.test_utils import wait_for_condition
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve.handle import DeploymentHandle
@@ -220,10 +220,17 @@ class TestRun:
         )
 
         for _ in range(number_of_kill_signals):
-            p.send_signal(signal.SIGINT)  # Equivalent to ctrl-C
+            p.send_signal(signal.SIGINT)
+            # Mimic realistic human Ctrl-C timing. Without a gap, two
+            # back-to-back SIGINTs can land before the KeyboardInterrupt
+            # handler in `serve run` has a chance to run, aborting the
+            # process before graceful shutdown begins.
+            time.sleep(0.1)
         p.wait()
+
         with pytest.raises(httpx.HTTPError):
             httpx.post("http://localhost:8000/", json=["ADD", 0]).json()
+
         print("Kill successful! Deployments are not reachable over HTTP.")
 
         print('Running node at import path "ray.serve.tests.test_cli_3.parrot_node".')

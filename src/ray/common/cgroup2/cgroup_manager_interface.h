@@ -77,6 +77,35 @@ class CgroupManagerInterface {
   virtual Status AddProcessToSystemCgroup(const std::string &pid) = 0;
 
   /**
+    @return the path to the user cgroup.
+  */
+  virtual std::string GetUserCgroupPath() const = 0;
+
+  /**
+    Gets the constraint value within the system cgroup for a given constraint name.
+
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint file cannot be read.
+    @return Status::InvalidArgument if the constraint does not exist.
+  */
+  virtual StatusOr<std::string> GetSystemCgroupConstraintValue(
+      const std::string &constraint_name) const = 0;
+
+  /**
+    Gets the constraint value within the user cgroup for a given constraint name.
+
+    @param constraint_name the name of the constraint (e.g., "cpu.weight", "memory.min").
+
+    @return StatusOr with the constraint value as a string if successful.
+    @return Status::IOError if the constraint file cannot be read.
+    @return Status::InvalidArgument if the constraint does not exist.
+  */
+  virtual StatusOr<std::string> GetUserCgroupConstraintValue(
+      const std::string &constraint_name) const = 0;
+
+  /**
     Cleans up the cgroup hierarchy, disables all controllers and removes all
     constraints.
   */
@@ -123,5 +152,30 @@ class CgroupManagerInterface {
   // See https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
   inline static const Constraint<int64_t> memory_min_constraint_{
       "memory.min", "memory", {0, std::numeric_limits<int64_t>::max()}, 0};
+
+  // memory.low provides best effort memory protection. If the memory usage of a cgroup
+  // is within its effective low boundary, the cgroup's memory won't be reclaimed under
+  // any conditions.
+  // See https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
+  inline static const Constraint<int64_t> memory_low_constraint_{
+      "memory.low", "memory", {0, std::numeric_limits<int64_t>::max()}, 0};
+
+  // memory.high provides best effort memory protection. If the memory usage of a cgroup
+  // meet or exceeds its high boundary, the processes within the cgroup will be throttled.
+  // See https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
+  inline static const Constraint<int64_t> memory_high_constraint_{
+      "memory.high",
+      "memory",
+      {0, std::numeric_limits<int64_t>::max()},
+      std::numeric_limits<int64_t>::max()};
+
+  // memory.max provides hard memory protection. If the memory usage of a cgroup
+  // meet or exceeds its max boundary, the kernel OOM killer will be invoked.
+  // See https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-interface-files
+  inline static const Constraint<int64_t> memory_max_constraint_{
+      "memory.max",
+      "memory",
+      {0, std::numeric_limits<int64_t>::max()},
+      std::numeric_limits<int64_t>::max()};
 };
 }  // namespace ray
