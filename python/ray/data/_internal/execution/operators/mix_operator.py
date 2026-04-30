@@ -75,35 +75,6 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
     def _output_queues(self) -> List[BaseBundleQueue]:
         return [self._output_buffer]
 
-    @override
-    def internal_input_queue_num_blocks(self) -> int:
-        return sum(q.num_blocks() for q in self._input_buffers)
-
-    @override
-    def internal_input_queue_num_bytes(self) -> int:
-        return sum(q.estimate_size_bytes() for q in self._input_buffers)
-
-    @override
-    def internal_output_queue_num_blocks(self) -> int:
-        return self._output_buffer.num_blocks()
-
-    @override
-    def internal_output_queue_num_bytes(self) -> int:
-        return self._output_buffer.estimate_size_bytes()
-
-    @override
-    def clear_internal_input_queue(self) -> None:
-        for idx, input_buffer in enumerate(self._input_buffers):
-            while input_buffer:
-                bundle = input_buffer.get_next()
-                self._metrics.on_input_dequeued(bundle, input_index=idx)
-
-    @override
-    def clear_internal_output_queue(self) -> None:
-        while self._output_buffer:
-            bundle = self._output_buffer.get_next()
-            self._metrics.on_output_dequeued(bundle)
-
     # ------------------------------------------------------------------
     # PhysicalOperator interface
     # ------------------------------------------------------------------
