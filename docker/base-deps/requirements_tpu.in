@@ -2,7 +2,8 @@
 numpy>=2.0
 
 # Minimum version for tpu7x compatibility
-jax[tpu]>=0.8.2
+jax[tpu]>=0.8.2; python_version >= "3.11"
+jax[tpu]; python_version < "3.11"
 
 # Standard JAX ecosystem dependencies
 flax
