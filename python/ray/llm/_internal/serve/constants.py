@@ -97,6 +97,10 @@ DEFAULT_LLM_ROUTER_TARGET_ONGOING_REQUESTS = int(
         DEFAULT_MAX_TARGET_ONGOING_REQUESTS,
     )
 )
+# Minimum interval (seconds) between full tracebacks for fatal engine errors
+DEFAULT_FATAL_ERROR_COOLDOWN_S = float(
+    os.getenv("RAY_SERVE_LLM_ERROR_LOG_COOLDOWN_S", "10")
+)
 
 
 # HOME DIR
