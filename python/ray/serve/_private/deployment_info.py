@@ -40,9 +40,6 @@ class DeploymentInfo:
 
         self.route_prefix = route_prefix
         self.ingress = ingress
-        # Whether this deployment serves as the ingress request router for
-        # ingress bypass. The ingress request router deployment gets its own
-        # HAProxy backend for Lua routing calls.
         self.ingress_request_router = ingress_request_router
 
         self.target_capacity = target_capacity
