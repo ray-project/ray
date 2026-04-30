@@ -15,38 +15,32 @@
 #pragma once
 
 #include <memory>
+#include <vector>
 
 #include "ray/common/cgroup2/cgroup_manager_interface.h"
 #include "ray/common/memory_monitor_interface.h"
 
 namespace ray {
 
-/// Factory class for creating MemoryMonitor instances.
-///
-/// This feature is only enabled on Linux. On Linux, it creates a ThresholdMemoryMonitor
-/// that monitors memory usage using /proc filesystem and cgroups.
-///
-/// On non-Linux platforms, this will return a no-op implementation.
 class MemoryMonitorFactory {
  public:
   /**
-   * Create a memory monitor instance.
+   * On Linux, creates monitors based on configuration:
+   *   - Resource isolation disabled: ThresholdMemoryMonitor only.
+   *   - Resource isolation enabled, ThresholdMemoryMonitor + EventMemoryMonitor.
    *
-   * On Linux, creates a ThresholdMemoryMonitor that monitors memory usage
-   * and triggers the callback when usage is refreshed.
+   * On non-Linux platforms, returns a vector with a single NoopMemoryMonitor.
    *
-   * On non-Linux platforms, creates a NoopMemoryMonitor that does nothing.
-   *
-   * @param kill_workers_callback function to execute when the memory usage is refreshed.
+   * @param kill_workers_callback function to invoke when memory pressure is detected.
    * @param resource_isolation_enabled When resource isolation is enabled, the
-   * memory monitor will work with the configured cgroup constraints to better
+   * memory monitors will work with the configured cgroup constraints to better
    * enforce the memory usage limit.
-   * @param cgroup_manager When resource isolation is enabled, the monitor will determine
+   * @param cgroup_manager When resource isolation is enabled, the monitors will determine
    * the proper memory monitoring threshold based on the set cgroup constraints provided
    * by the cgroup manager.
-   * @return a unique pointer to the memory monitor instance.
+   * @return a vector of memory monitor instances.
    */
-  static std::unique_ptr<MemoryMonitorInterface> Create(
+  static std::vector<std::unique_ptr<MemoryMonitorInterface>> Create(
       KillWorkersCallback kill_workers_callback,
       bool resource_isolation_enabled,
       const CgroupManagerInterface &cgroup_manager);
