@@ -44,7 +44,7 @@ class DefaultCoreWorkerMemoryStoreWithThread : public CoreWorkerMemoryStore {
   ~DefaultCoreWorkerMemoryStoreWithThread() { io_context_->Stop(); }
 
  private:
-  DefaultCoreWorkerMemoryStoreWithThread(
+  explicit DefaultCoreWorkerMemoryStoreWithThread(
       std::unique_ptr<InstrumentedIOContextWithThread> io_context)
       : CoreWorkerMemoryStore(io_context->GetIoService()),
         io_context_(std::move(io_context)) {}
