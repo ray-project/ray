@@ -183,10 +183,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
     // rep-64-poc/reports/phase-3-skeleton.md for the full deferral
     // writeup.
     store_client = std::make_shared<ObservableStoreClient>(
-        std::make_unique<RocksDbStoreClient>(
-            io_context,
-            RayConfig::instance().gcs_storage_path(),
-            /*expected_cluster_id=*/""),
+        std::make_unique<RocksDbStoreClient>(io_context,
+                                             RayConfig::instance().gcs_storage_path(),
+                                             /*expected_cluster_id=*/""),
         metrics_.storage_operation_latency_in_ms_histogram,
         metrics_.storage_operation_count_counter);
     break;
@@ -699,10 +698,9 @@ void GcsServer::InitKVManager() {
     // See ROCKSDB_PERSIST case above (in the gcs_table_storage path) for
     // the cluster_id deferral rationale.
     store_client = std::make_unique<ObservableStoreClient>(
-        std::make_unique<RocksDbStoreClient>(
-            io_context,
-            RayConfig::instance().gcs_storage_path(),
-            /*expected_cluster_id=*/""),
+        std::make_unique<RocksDbStoreClient>(io_context,
+                                             RayConfig::instance().gcs_storage_path(),
+                                             /*expected_cluster_id=*/""),
         metrics_.storage_operation_latency_in_ms_histogram,
         metrics_.storage_operation_count_counter);
     break;

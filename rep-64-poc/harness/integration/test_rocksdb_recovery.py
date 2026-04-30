@@ -33,13 +33,11 @@ from __future__ import annotations
 
 import os
 import shutil
-import signal
 import subprocess
 import tempfile
 import time
 
 import pytest
-
 
 # Skip by default in environments that don't have Ray + the Phase 3
 # binary. The marker makes "I don't have the built artifacts" visible
@@ -47,7 +45,7 @@ import pytest
 pytestmark = pytest.mark.skipif(
     os.environ.get("RAY_REP64_RUN_E2E") != "1",
     reason="Set RAY_REP64_RUN_E2E=1 to run the Phase 3 end-to-end test."
-            " Requires a Ray build with the Phase 3 RocksDbStoreClient.",
+    " Requires a Ray build with the Phase 3 RocksDbStoreClient.",
 )
 
 
@@ -89,6 +87,7 @@ def _kill_gcs_process():
     # avoids having to parse Ray internals. Falls back to pgrep.
     try:
         import psutil
+
         for p in psutil.process_iter(["name", "cmdline"]):
             cmd = p.info.get("cmdline") or []
             if any("gcs_server" in arg for arg in cmd):
@@ -135,8 +134,9 @@ def test_detached_actor_survives_gcs_kill(gcs_storage_dir):
     # Re-lookup by name. With the embedded backend, the actor record
     # was persisted to RocksDB before the kill; recovery should succeed.
     recovered = ray.get_actor("rep64-counter")
-    assert ray.get(recovered.incr.remote(7)) == 12, \
-        "Expected detached actor's state to survive GCS restart"
+    assert (
+        ray.get(recovered.incr.remote(7)) == 12
+    ), "Expected detached actor's state to survive GCS restart"
 
     ray.shutdown()
 
@@ -154,6 +154,7 @@ def test_storage_dir_marker_present(gcs_storage_dir):
     @ray.remote
     def noop():
         return 1
+
     assert ray.get(noop.remote()) == 1
     ray.shutdown()
 

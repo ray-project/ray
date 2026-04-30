@@ -20,7 +20,6 @@ import argparse
 import json
 import os
 import platform
-import subprocess
 import sys
 import time
 from collections.abc import Callable
@@ -32,9 +31,18 @@ import redis
 # Mirrors RedisStoreClient's key layout: outer hash = "{ns}@{table}",
 # field = "{key}". See src/ray/gcs/store_client/redis_store_client.cc.
 NAMESPACE = "rep64poc"
-TABLES = ["ACTOR", "NODE", "JOB", "PLACEMENT_GROUP", "WORKER",
-          "PG_SCHEDULE", "ACTOR_TASK_SPEC", "RESOURCE_USAGE_BATCH",
-          "WORKERS", "INTERNAL_CONFIG"]
+TABLES = [
+    "ACTOR",
+    "NODE",
+    "JOB",
+    "PLACEMENT_GROUP",
+    "WORKER",
+    "PG_SCHEDULE",
+    "ACTOR_TASK_SPEC",
+    "RESOURCE_USAGE_BATCH",
+    "WORKERS",
+    "INTERNAL_CONFIG",
+]
 
 
 def hash_key(table: str) -> str:
@@ -124,8 +132,9 @@ def collect_environment(client: redis.Redis) -> dict:
     }
 
 
-def run_workload(client: redis.Redis, n_warmup: int, n_measure: int,
-                 value_size: int) -> dict[str, OpResult]:
+def run_workload(
+    client: redis.Redis, n_warmup: int, n_measure: int, value_size: int
+) -> dict[str, OpResult]:
     """Run all measured operations sequentially, single-threaded.
 
     GCS calls into StoreClient from a single event loop, so single-thread
@@ -150,24 +159,21 @@ def run_workload(client: redis.Redis, n_warmup: int, n_measure: int,
     # PUT: overwrite existing keys.
     for i in range(n_warmup):
         client.hset(hk, f"k{i}", value)
-    results["put"] = measure(
-        lambda i: client.hset(hk, f"k{i}", value), n_measure)
+    results["put"] = measure(lambda i: client.hset(hk, f"k{i}", value), n_measure)
 
     # GET hit.
     for i in range(n_warmup):
         client.hget(hk, f"k{i}")
-    results["get_hit"] = measure(
-        lambda i: client.hget(hk, f"k{i}"), n_measure)
+    results["get_hit"] = measure(lambda i: client.hget(hk, f"k{i}"), n_measure)
 
     # GET miss.
-    results["get_miss"] = measure(
-        lambda i: client.hget(hk, f"absent_{i}"), n_measure)
+    results["get_miss"] = measure(lambda i: client.hget(hk, f"absent_{i}"), n_measure)
 
     # EXISTS hit / miss.
-    results["exists_hit"] = measure(
-        lambda i: client.hexists(hk, f"k{i}"), n_measure)
+    results["exists_hit"] = measure(lambda i: client.hexists(hk, f"k{i}"), n_measure)
     results["exists_miss"] = measure(
-        lambda i: client.hexists(hk, f"absent_{i}"), n_measure)
+        lambda i: client.hexists(hk, f"absent_{i}"), n_measure
+    )
 
     # MULTI_GET (10 keys per call).
     def mget10(i: int) -> object:
@@ -181,8 +187,7 @@ def run_workload(client: redis.Redis, n_warmup: int, n_measure: int,
         cursor = 0
         out: list = []
         while True:
-            cursor, batch = client.hscan(hk, cursor=cursor, match="k1*",
-                                         count=200)
+            cursor, batch = client.hscan(hk, cursor=cursor, match="k1*", count=200)
             out.extend(batch.items())
             if cursor == 0:
                 break
@@ -193,13 +198,13 @@ def run_workload(client: redis.Redis, n_warmup: int, n_measure: int,
 
     # GET_ALL: HGETALL on the full table (one large operation).
     # Measure fewer iterations since each call returns the full table.
-    results["get_all"] = measure(lambda i: client.hgetall(hk),
-                                 max(100, n_measure // 100))
+    results["get_all"] = measure(
+        lambda i: client.hgetall(hk), max(100, n_measure // 100)
+    )
 
     # DELETE individual keys (consume from the populated set).
     delete_n = min(n_measure, total_keys // 2)
-    results["delete"] = measure(
-        lambda i: client.hdel(hk, f"k{i}"), delete_n)
+    results["delete"] = measure(lambda i: client.hdel(hk, f"k{i}"), delete_n)
 
     # BATCH_DELETE 10 at a time (against the second half of the keys).
     def batch_del10(i: int) -> object:
@@ -207,8 +212,7 @@ def run_workload(client: redis.Redis, n_warmup: int, n_measure: int,
         keys = [f"k{base + j}" for j in range(10)]
         return client.hdel(hk, *keys)
 
-    results["batch_delete_10"] = measure(
-        batch_del10, max(100, n_measure // 100))
+    results["batch_delete_10"] = measure(batch_del10, max(100, n_measure // 100))
 
     return results
 
@@ -216,15 +220,18 @@ def run_workload(client: redis.Redis, n_warmup: int, n_measure: int,
 def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--host", default=os.environ.get("REDIS_HOST", "localhost"))
-    p.add_argument("--port", type=int,
-                   default=int(os.environ.get("REDIS_PORT", "6379")))
+    p.add_argument(
+        "--port", type=int, default=int(os.environ.get("REDIS_PORT", "6379"))
+    )
     p.add_argument("--n-warmup", type=int, default=1000)
     p.add_argument("--n-measure", type=int, default=10000)
-    p.add_argument("--value-size", type=int, default=256,
-                   help="Value size in bytes (default 256 — typical actor "
-                        "metadata).")
-    p.add_argument("--output", default="-",
-                   help="Path to write JSON; '-' for stdout.")
+    p.add_argument(
+        "--value-size",
+        type=int,
+        default=256,
+        help="Value size in bytes (default 256 — typical actor " "metadata).",
+    )
+    p.add_argument("--output", default="-", help="Path to write JSON; '-' for stdout.")
     args = p.parse_args()
 
     meta = HarnessMeta()
@@ -237,21 +244,24 @@ def main() -> int:
         "concurrency": 1,
     }
 
-    client = redis.Redis(host=args.host, port=args.port,
-                         decode_responses=False, socket_timeout=10)
+    client = redis.Redis(
+        host=args.host, port=args.port, decode_responses=False, socket_timeout=10
+    )
     # Fail fast if Redis is misconfigured for the durability comparison.
     cfg = client.config_get("appendfsync")
     if cfg.get("appendfsync") != "always":
-        print(f"REFUSING TO RUN: redis appendfsync={cfg.get('appendfsync')}; "
-              "expected 'always' to match RocksDB's sync-write contract. "
-              "Use the docker-compose runner or set --requirepass and "
-              "configure manually.", file=sys.stderr)
+        print(
+            f"REFUSING TO RUN: redis appendfsync={cfg.get('appendfsync')}; "
+            "expected 'always' to match RocksDB's sync-write contract. "
+            "Use the docker-compose runner or set --requirepass and "
+            "configure manually.",
+            file=sys.stderr,
+        )
         return 2
 
     meta.environment = collect_environment(client)
     t0 = time.perf_counter()
-    results = run_workload(client, args.n_warmup, args.n_measure,
-                           args.value_size)
+    results = run_workload(client, args.n_warmup, args.n_measure, args.value_size)
     meta.duration_seconds = round(time.perf_counter() - t0, 2)
 
     doc = {

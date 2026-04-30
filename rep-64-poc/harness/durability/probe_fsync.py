@@ -34,7 +34,6 @@ import time
 from datetime import datetime, timezone
 from typing import Optional
 
-
 # F_FULLFSYNC value comes from <sys/fcntl.h> on macOS. It's stable.
 _F_FULLFSYNC = 51
 
@@ -42,8 +41,7 @@ _F_FULLFSYNC = 51
 def _full_fsync_macos(fd: int) -> None:
     """Issue F_FULLFSYNC via fcntl on macOS. Raises OSError on failure."""
     libc = ctypes.CDLL("libc.dylib", use_errno=True)
-    rc = libc.fcntl(ctypes.c_int(fd), ctypes.c_int(_F_FULLFSYNC),
-                    ctypes.c_int(0))
+    rc = libc.fcntl(ctypes.c_int(fd), ctypes.c_int(_F_FULLFSYNC), ctypes.c_int(0))
     if rc != 0:
         err = ctypes.get_errno()
         raise OSError(err, f"fcntl(F_FULLFSYNC) failed: errno={err}")
@@ -71,29 +69,39 @@ def _time_op(fn) -> int:
     return time.perf_counter_ns() - t0
 
 
-def probe(target_dir: str, n: int, write_size: int,
-          sync_call: str) -> dict:
+def probe(target_dir: str, n: int, write_size: int, sync_call: str) -> dict:
     """Run `n` probes of one specific sync call against a file in `target_dir`.
 
     sync_call in {"fsync", "fdatasync", "f_fullfsync"}.
     """
-    fd = os.open(os.path.join(target_dir, f"rep64-probe-{sync_call}.tmp"),
-                 os.O_CREAT | os.O_WRONLY | os.O_TRUNC, 0o644)
+    fd = os.open(
+        os.path.join(target_dir, f"rep64-probe-{sync_call}.tmp"),
+        os.O_CREAT | os.O_WRONLY | os.O_TRUNC,
+        0o644,
+    )
     payload = b"x" * write_size
 
     if sync_call == "fsync":
-        sync_fn = lambda: os.fsync(fd)
+
+        def sync_fn():
+            return os.fsync(fd)
+
     elif sync_call == "fdatasync":
         if not hasattr(os, "fdatasync"):
             os.close(fd)
             return {"available": False, "reason": "os.fdatasync not present"}
-        sync_fn = lambda: os.fdatasync(fd)
+
+        def sync_fn():
+            return os.fdatasync(fd)
+
     elif sync_call == "f_fullfsync":
         if platform.system() != "Darwin":
             os.close(fd)
-            return {"available": False,
-                    "reason": "F_FULLFSYNC is macOS-only"}
-        sync_fn = lambda: _full_fsync_macos(fd)
+            return {"available": False, "reason": "F_FULLFSYNC is macOS-only"}
+
+        def sync_fn():
+            return _full_fsync_macos(fd)
+
     else:
         os.close(fd)
         raise ValueError(f"unknown sync_call: {sync_call}")
@@ -109,8 +117,9 @@ def probe(target_dir: str, n: int, write_size: int,
     return {"available": True, **_percentiles(samples_ns)}
 
 
-def label_substrate(host_os: str, fsync_p50_us: float,
-                    fullfsync_p50_us: Optional[float]) -> dict:
+def label_substrate(
+    host_os: str, fsync_p50_us: float, fullfsync_p50_us: Optional[float]
+) -> dict:
     """Decide whether the probed substrate is honest about durability.
 
     Heuristics:
@@ -194,8 +203,7 @@ def collect_environment() -> dict:
         try:
             with open("/proc/cpuinfo") as f:
                 cpuinfo = f.read()
-            for vendor in ("Microsoft", "VMware", "KVM", "Xen", "Bochs",
-                           "QEMU"):
+            for vendor in ("Microsoft", "VMware", "KVM", "Xen", "Bochs", "QEMU"):
                 if vendor in cpuinfo:
                     info["hypervisor"] = vendor
                     break
@@ -208,35 +216,39 @@ def collect_environment() -> dict:
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--target-dir", default=tempfile.gettempdir(),
-                   help="Directory to probe. Use the path the durability "
-                        "tests will actually write to.")
-    p.add_argument("--n", type=int, default=200,
-                   help="Number of fsync calls to measure.")
-    p.add_argument("--write-size", type=int, default=4096,
-                   help="Bytes written before each fsync call.")
-    p.add_argument("--output", default="-",
-                   help="Path to write JSON; '-' for stdout.")
+    p.add_argument(
+        "--target-dir",
+        default=tempfile.gettempdir(),
+        help="Directory to probe. Use the path the durability "
+        "tests will actually write to.",
+    )
+    p.add_argument(
+        "--n", type=int, default=200, help="Number of fsync calls to measure."
+    )
+    p.add_argument(
+        "--write-size",
+        type=int,
+        default=4096,
+        help="Bytes written before each fsync call.",
+    )
+    p.add_argument("--output", default="-", help="Path to write JSON; '-' for stdout.")
     args = p.parse_args()
 
     if not os.path.isdir(args.target_dir):
-        print(f"ERROR: target dir does not exist: {args.target_dir}",
-              file=sys.stderr)
+        print(f"ERROR: target dir does not exist: {args.target_dir}", file=sys.stderr)
         return 2
 
     started = datetime.now(timezone.utc).isoformat()
     env = collect_environment()
 
     fsync_result = probe(args.target_dir, args.n, args.write_size, "fsync")
-    fdatasync_result = probe(args.target_dir, args.n, args.write_size,
-                             "fdatasync")
-    fullfsync_result = probe(args.target_dir, args.n, args.write_size,
-                             "f_fullfsync")
+    fdatasync_result = probe(args.target_dir, args.n, args.write_size, "fdatasync")
+    fullfsync_result = probe(args.target_dir, args.n, args.write_size, "f_fullfsync")
 
-    fsync_p50 = fsync_result.get("p50_us") if fsync_result.get("available") \
-                else None
-    full_p50 = fullfsync_result.get("p50_us") if fullfsync_result.get(
-        "available") else None
+    fsync_p50 = fsync_result.get("p50_us") if fsync_result.get("available") else None
+    full_p50 = (
+        fullfsync_result.get("p50_us") if fullfsync_result.get("available") else None
+    )
     label = label_substrate(env["host_os"], fsync_p50 or 0.0, full_p50)
 
     out = {

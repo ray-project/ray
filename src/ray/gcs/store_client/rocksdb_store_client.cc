@@ -64,13 +64,11 @@ RocksDbStoreClient::RocksDbStoreClient(instrumented_io_context &io_service,
   // returns just `default`.
   rocksdb::Options list_options;
   std::vector<std::string> cf_names;
-  auto list_status =
-      rocksdb::DB::ListColumnFamilies(list_options, db_path, &cf_names);
+  auto list_status = rocksdb::DB::ListColumnFamilies(list_options, db_path, &cf_names);
   if (!list_status.ok()) {
     cf_names = {kDefaultCFName};
   }
-  if (std::find(cf_names.begin(), cf_names.end(), kDefaultCFName) ==
-      cf_names.end()) {
+  if (std::find(cf_names.begin(), cf_names.end(), kDefaultCFName) == cf_names.end()) {
     cf_names.push_back(kDefaultCFName);
   }
 
@@ -84,8 +82,8 @@ RocksDbStoreClient::RocksDbStoreClient(instrumented_io_context &io_service,
   rocksdb::DB *raw_db = nullptr;
   auto open_status =
       rocksdb::DB::Open(BuildDbOptions(), db_path, descriptors, &handles, &raw_db);
-  RAY_CHECK(open_status.ok())
-      << "Failed to open RocksDB at " << db_path << ": " << open_status.ToString();
+  RAY_CHECK(open_status.ok()) << "Failed to open RocksDB at " << db_path << ": "
+                              << open_status.ToString();
   db_.reset(raw_db);
 
   RAY_CHECK_EQ(handles.size(), descriptors.size());
@@ -104,17 +102,15 @@ RocksDbStoreClient::RocksDbStoreClient(instrumented_io_context &io_service,
   // corrupted-or-overflowed counter on disk produces a clear FATAL
   // rather than an unrecoverable std::out_of_range.
   std::string counter_value;
-  auto get_status = db_->Get(rocksdb::ReadOptions(),
-                             db_->DefaultColumnFamily(),
-                             kJobCounterKey,
-                             &counter_value);
+  auto get_status = db_->Get(
+      rocksdb::ReadOptions(), db_->DefaultColumnFamily(), kJobCounterKey, &counter_value);
   if (get_status.ok()) {
     long long parsed = 0;
     try {
       parsed = std::stoll(counter_value);
     } catch (const std::exception &e) {
-      RAY_LOG(FATAL) << "RocksDB job counter is corrupt at " << db_path
-                     << ": " << counter_value << " (" << e.what() << ")";
+      RAY_LOG(FATAL) << "RocksDB job counter is corrupt at " << db_path << ": "
+                     << counter_value << " (" << e.what() << ")";
     }
     if (parsed < 0 || parsed > std::numeric_limits<int>::max()) {
       RAY_LOG(FATAL) << "RocksDB job counter at " << db_path
@@ -123,8 +119,7 @@ RocksDbStoreClient::RocksDbStoreClient(instrumented_io_context &io_service,
     job_id_ = static_cast<int>(parsed);
   } else {
     RAY_CHECK(get_status.IsNotFound())
-        << "Unexpected RocksDB Get error for job counter: "
-        << get_status.ToString();
+        << "Unexpected RocksDB Get error for job counter: " << get_status.ToString();
   }
 }
 
@@ -139,10 +134,8 @@ RocksDbStoreClient::~RocksDbStoreClient() {
 void RocksDbStoreClient::ValidateOrWriteClusterIdMarker(
     const std::string &expected_cluster_id) {
   std::string existing;
-  auto get_status = db_->Get(rocksdb::ReadOptions(),
-                             db_->DefaultColumnFamily(),
-                             kClusterIdKey,
-                             &existing);
+  auto get_status = db_->Get(
+      rocksdb::ReadOptions(), db_->DefaultColumnFamily(), kClusterIdKey, &existing);
 
   if (get_status.IsNotFound()) {
     if (!expected_cluster_id.empty()) {
@@ -156,9 +149,8 @@ void RocksDbStoreClient::ValidateOrWriteClusterIdMarker(
     return;
   }
 
-  RAY_CHECK(get_status.ok())
-      << "Unexpected RocksDB Get error for cluster marker: "
-      << get_status.ToString();
+  RAY_CHECK(get_status.ok()) << "Unexpected RocksDB Get error for cluster marker: "
+                             << get_status.ToString();
 
   // REP §"Stale data protection": fail-fast if the marker disagrees,
   // rather than silently loading another cluster's state. No-op when
@@ -182,9 +174,8 @@ rocksdb::ColumnFamilyHandle *RocksDbStoreClient::GetOrCreateColumnFamily(
     return it->second;
   }
   rocksdb::ColumnFamilyHandle *new_handle = nullptr;
-  auto status = db_->CreateColumnFamily(rocksdb::ColumnFamilyOptions(),
-                                        table_name,
-                                        &new_handle);
+  auto status =
+      db_->CreateColumnFamily(rocksdb::ColumnFamilyOptions(), table_name, &new_handle);
   RAY_CHECK(status.ok()) << "Failed to create column family '" << table_name
                          << "': " << status.ToString();
   cf_handles_[table_name] = new_handle;
@@ -208,8 +199,7 @@ void RocksDbStoreClient::AsyncPut(const std::string &table_name,
       std::move(callback).Post("GcsRocksDb.PutSkip", false);
       return;
     }
-    RAY_CHECK(get_status.IsNotFound())
-        << "RocksDB Get failed: " << get_status.ToString();
+    RAY_CHECK(get_status.IsNotFound()) << "RocksDB Get failed: " << get_status.ToString();
   } else {
     std::string existing;
     auto get_status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
@@ -223,8 +213,7 @@ void RocksDbStoreClient::AsyncPut(const std::string &table_name,
 
   auto put_status = db_->Put(SyncWriteOptions(), cf, key, std::move(data));
   RAY_CHECK(put_status.ok()) << "RocksDB Put failed for table=" << table_name
-                             << " key=" << key << ": "
-                             << put_status.ToString();
+                             << " key=" << key << ": " << put_status.ToString();
 
   std::move(callback).Post("GcsRocksDb.Put", inserted);
 }
@@ -242,8 +231,8 @@ void RocksDbStoreClient::AsyncGet(
   if (status.ok()) {
     data = std::move(raw_value);
   } else if (!status.IsNotFound()) {
-    RAY_LOG(FATAL) << "RocksDB Get failed for table=" << table_name
-                   << " key=" << key << ": " << status.ToString();
+    RAY_LOG(FATAL) << "RocksDB Get failed for table=" << table_name << " key=" << key
+                   << ": " << status.ToString();
   }
   std::move(callback).Post("GcsRocksDb.Get", Status::OK(), std::move(data));
 }
@@ -261,8 +250,8 @@ void RocksDbStoreClient::AsyncGetAll(
   for (it->SeekToFirst(); it->Valid(); it->Next()) {
     result.emplace(it->key().ToString(), it->value().ToString());
   }
-  RAY_CHECK(it->status().ok())
-      << "RocksDB iterator failed during GetAll: " << it->status().ToString();
+  RAY_CHECK(it->status().ok()) << "RocksDB iterator failed during GetAll: "
+                               << it->status().ToString();
 
   std::move(callback).Post("GcsRocksDb.GetAll", std::move(result));
 }
@@ -309,14 +298,12 @@ void RocksDbStoreClient::AsyncDelete(const std::string &table_name,
   auto get_status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
   bool existed = get_status.ok();
   if (!existed && !get_status.IsNotFound()) {
-    RAY_LOG(FATAL) << "RocksDB Get during Delete failed: "
-                   << get_status.ToString();
+    RAY_LOG(FATAL) << "RocksDB Get during Delete failed: " << get_status.ToString();
   }
 
   auto del_status = db_->Delete(SyncWriteOptions(), cf, key);
   RAY_CHECK(del_status.ok()) << "RocksDB Delete failed for table=" << table_name
-                             << " key=" << key << ": "
-                             << del_status.ToString();
+                             << " key=" << key << ": " << del_status.ToString();
 
   std::move(callback).Post("GcsRocksDb.Delete", existed);
 }
@@ -349,15 +336,15 @@ void RocksDbStoreClient::AsyncBatchDelete(const std::string &table_name,
     if (statuses[i].ok()) {
       ++deleted_count;
     } else if (!statuses[i].IsNotFound()) {
-      RAY_LOG(FATAL) << "RocksDB Get during BatchDelete failed for key="
-                     << keys[i] << ": " << statuses[i].ToString();
+      RAY_LOG(FATAL) << "RocksDB Get during BatchDelete failed for key=" << keys[i]
+                     << ": " << statuses[i].ToString();
     }
     auto bs = batch.Delete(cf, keys[i]);
     RAY_CHECK(bs.ok()) << "WriteBatch Delete failed: " << bs.ToString();
   }
   auto write_status = db_->Write(SyncWriteOptions(), &batch);
-  RAY_CHECK(write_status.ok())
-      << "RocksDB BatchDelete write failed: " << write_status.ToString();
+  RAY_CHECK(write_status.ok()) << "RocksDB BatchDelete write failed: "
+                               << write_status.ToString();
 
   std::move(callback).Post("GcsRocksDb.BatchDelete", deleted_count);
 }
@@ -367,10 +354,9 @@ void RocksDbStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
   std::move(callback).Post("GcsRocksDb.GetNextJobID", next);
 }
 
-void RocksDbStoreClient::AsyncGetKeys(
-    const std::string &table_name,
-    const std::string &prefix,
-    Postable<void(std::vector<std::string>)> callback) {
+void RocksDbStoreClient::AsyncGetKeys(const std::string &table_name,
+                                      const std::string &prefix,
+                                      Postable<void(std::vector<std::string>)> callback) {
   auto *cf = GetOrCreateColumnFamily(table_name);
 
   // Byte-ordered prefix scan: Seek to the prefix and walk forward while
@@ -382,8 +368,8 @@ void RocksDbStoreClient::AsyncGetKeys(
     if (!it->key().starts_with(rocksdb::Slice(prefix))) break;
     result.emplace_back(it->key().ToString());
   }
-  RAY_CHECK(it->status().ok())
-      << "RocksDB iterator failed during GetKeys: " << it->status().ToString();
+  RAY_CHECK(it->status().ok()) << "RocksDB iterator failed during GetKeys: "
+                               << it->status().ToString();
 
   std::move(callback).Post("GcsRocksDb.GetKeys", std::move(result));
 }
@@ -412,8 +398,7 @@ int RocksDbStoreClient::GetNextJobIDSync() {
                          db_->DefaultColumnFamily(),
                          kJobCounterKey,
                          std::to_string(job_id_));
-  RAY_CHECK(status.ok()) << "RocksDB Put for job counter failed: "
-                         << status.ToString();
+  RAY_CHECK(status.ok()) << "RocksDB Put for job counter failed: " << status.ToString();
   return job_id_;
 }
 

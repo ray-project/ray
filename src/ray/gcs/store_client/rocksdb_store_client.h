@@ -23,7 +23,6 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/postable/postable.h"
 #include "ray/gcs/store_client/store_client.h"
-
 #include "rocksdb/db.h"
 #include "rocksdb/options.h"
 
@@ -121,8 +120,8 @@ class RocksDbStoreClient : public StoreClient {
   /// first use. The cf_mutex_ is held across the create call so two
   /// concurrent first-touches of the same table do not both attempt to
   /// create it (RocksDB rejects duplicate creates on the same name).
-  rocksdb::ColumnFamilyHandle *GetOrCreateColumnFamily(
-      const std::string &table_name) ABSL_LOCKS_EXCLUDED(cf_mutex_);
+  rocksdb::ColumnFamilyHandle *GetOrCreateColumnFamily(const std::string &table_name)
+      ABSL_LOCKS_EXCLUDED(cf_mutex_);
 
   /// Write the cluster-ID marker on first open or validate it on
   /// subsequent opens. RAY_CHECK-fails on mismatch when

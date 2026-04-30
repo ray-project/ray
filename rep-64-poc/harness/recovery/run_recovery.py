@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
 import platform
 import shutil
 import subprocess
@@ -40,17 +39,28 @@ from pathlib import Path
 def run_one(bin_path: str, db_dir: Path, num_keys: int) -> dict:
     print(f"# size={num_keys}: populate", file=sys.stderr)
     t0 = time.monotonic()
-    populate = subprocess.run(
-        [bin_path, "--mode", "populate", "--db-dir", str(db_dir),
-         "--num-keys", str(num_keys)],
-        capture_output=True, text=True, check=True,
+    subprocess.run(
+        [
+            bin_path,
+            "--mode",
+            "populate",
+            "--db-dir",
+            str(db_dir),
+            "--num-keys",
+            str(num_keys),
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
     )
     populate_seconds = time.monotonic() - t0
 
     print(f"# size={num_keys}: recover", file=sys.stderr)
     recover = subprocess.run(
         [bin_path, "--mode", "recover", "--db-dir", str(db_dir)],
-        capture_output=True, text=True, check=True,
+        capture_output=True,
+        text=True,
+        check=True,
     )
     recover_json = json.loads(recover.stdout.strip())
 
@@ -63,16 +73,26 @@ def run_one(bin_path: str, db_dir: Path, num_keys: int) -> dict:
 
 def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("--bin", required=True,
-                    help="path to bazel-built recovery_bench binary")
-    ap.add_argument("--db-root", required=True,
-                    help="root dir for per-run RocksDB instances; should be on "
-                    "an honest-fsync substrate (e.g. ext4 on /home, NOT /tmp)")
-    ap.add_argument("--sizes", default="100,1000,10000,100000",
-                    help="comma-separated list of state sizes to benchmark")
+    ap.add_argument(
+        "--bin", required=True, help="path to bazel-built recovery_bench binary"
+    )
+    ap.add_argument(
+        "--db-root",
+        required=True,
+        help="root dir for per-run RocksDB instances; should be on "
+        "an honest-fsync substrate (e.g. ext4 on /home, NOT /tmp)",
+    )
+    ap.add_argument(
+        "--sizes",
+        default="100,1000,10000,100000",
+        help="comma-separated list of state sizes to benchmark",
+    )
     ap.add_argument("--output", default=None)
-    ap.add_argument("--keep-dbs", action="store_true",
-                    help="don't delete per-size DBs after the run")
+    ap.add_argument(
+        "--keep-dbs",
+        action="store_true",
+        help="don't delete per-size DBs after the run",
+    )
     args = ap.parse_args()
 
     sizes = [int(s) for s in args.sizes.split(",") if s.strip()]

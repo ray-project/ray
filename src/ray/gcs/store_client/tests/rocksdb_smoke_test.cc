@@ -1,3 +1,17 @@
+// Copyright 2026 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
 // Phase 2 smoke test for the RocksDB Bazel integration (REP-64 POC).
 //
 // This is the smallest possible exercise of the new dependency: open a
@@ -26,8 +40,8 @@ namespace {
 fs::path UniqueTempDir() {
   std::random_device rd;
   std::mt19937_64 rng(rd());
-  auto p = fs::temp_directory_path() /
-           ("rep64-poc-rocksdb-smoke-" + std::to_string(rng()));
+  auto p =
+      fs::temp_directory_path() / ("rep64-poc-rocksdb-smoke-" + std::to_string(rng()));
   fs::create_directories(p);
   return p;
 }

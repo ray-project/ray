@@ -21,13 +21,16 @@
 // own performance characteristics match the REP's stated ranges.
 //
 // Usage (no line continuations to keep -Werror=comment happy):
-//   bazel run --config=ci -c opt //rep-64-poc/harness/microbench:storage_microbench -- --output rep-64-poc/harness/microbench/results/<name>.json
+//   bazel run --config=ci -c opt //rep-64-poc/harness/microbench:storage_microbench --
+//   --output rep-64-poc/harness/microbench/results/<name>.json
 //
 // Build with -c opt to avoid debug-build noise; the numbers below are
 // only meaningful from an opt-mode binary.
 
 #include <algorithm>
 #include <atomic>
+#include <boost/asio.hpp>
+#include <boost/optional.hpp>
 #include <chrono>
 #include <cstdio>
 #include <cstdlib>
@@ -42,9 +45,6 @@
 #include <thread>
 #include <vector>
 
-#include <boost/asio.hpp>
-#include <boost/optional.hpp>
-
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/gcs/store_client/rocksdb_store_client.h"
@@ -58,8 +58,8 @@ using ray::gcs::InMemoryStoreClient;
 using ray::gcs::RocksDbStoreClient;
 using ray::gcs::StoreClient;
 
-constexpr int kKeyCount = 10000;          // total keys per backend
-constexpr int kSampledOps = 10000;        // measure first N ops of each kind
+constexpr int kKeyCount = 10000;    // total keys per backend
+constexpr int kSampledOps = 10000;  // measure first N ops of each kind
 const std::string kTable = "phase7";
 
 class IoFixture {
@@ -109,19 +109,19 @@ LatencyStats Summarise(std::vector<double> samples_us) {
   return s;
 }
 
-std::string StatsJson(const std::string &label, const LatencyStats &s,
-                      double aggregate_seconds, int op_count) {
+std::string StatsJson(const std::string &label,
+                      const LatencyStats &s,
+                      double aggregate_seconds,
+                      int op_count) {
   std::ostringstream os;
-  double ops_per_sec =
-      aggregate_seconds > 0 ? op_count / aggregate_seconds : 0.0;
+  double ops_per_sec = aggregate_seconds > 0 ? op_count / aggregate_seconds : 0.0;
   os << "    \"" << label << "\": {\n"
      << "      \"count\": " << s.count << ",\n"
      << "      \"aggregate_seconds\": " << std::fixed << std::setprecision(4)
      << aggregate_seconds << ",\n"
-     << "      \"ops_per_sec\": " << std::fixed << std::setprecision(1)
-     << ops_per_sec << ",\n"
-     << "      \"mean_us\": " << std::fixed << std::setprecision(2) << s.mean_us
+     << "      \"ops_per_sec\": " << std::fixed << std::setprecision(1) << ops_per_sec
      << ",\n"
+     << "      \"mean_us\": " << std::fixed << std::setprecision(2) << s.mean_us << ",\n"
      << "      \"p50_us\": " << s.p50_us << ",\n"
      << "      \"p95_us\": " << s.p95_us << ",\n"
      << "      \"p99_us\": " << s.p99_us << ",\n"
@@ -146,9 +146,10 @@ std::pair<std::vector<double>, double> RunPutBench(StoreClient &client) {
   // Pre-warm the column family so the first Put doesn't include the
   // cf-create cost in its sample.
   std::atomic<int> warm_acked{0};
-  Status s = client.AsyncPut(kTable, "warmup", "warmup", true,
-                             [&warm_acked](bool) { warm_acked.fetch_add(1); });
-  while (warm_acked.load() == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  Status s = client.AsyncPut(
+      kTable, "warmup", "warmup", true, [&warm_acked](bool) { warm_acked.fetch_add(1); });
+  while (warm_acked.load() == 0)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   (void)s;
 
   auto wall_start = std::chrono::steady_clock::now();
@@ -156,8 +157,8 @@ std::pair<std::vector<double>, double> RunPutBench(StoreClient &client) {
     std::string key = "k" + std::to_string(i);
     std::string value = "v" + std::to_string(i) + "-payload-padding-data";
     auto op_start = std::chrono::steady_clock::now();
-    Status ps = client.AsyncPut(kTable, key, value, true,
-                                 [&acked](bool) { acked.fetch_add(1); });
+    Status ps =
+        client.AsyncPut(kTable, key, value, true, [&acked](bool) { acked.fetch_add(1); });
     auto op_end = std::chrono::steady_clock::now();
     if (i < kSampledOps) {
       samples.push_back(
@@ -166,8 +167,7 @@ std::pair<std::vector<double>, double> RunPutBench(StoreClient &client) {
           1000.0);
     }
     if (!ps.ok()) {
-      std::cerr << "AsyncPut failed at i=" << i << ": " << ps.ToString()
-                << std::endl;
+      std::cerr << "AsyncPut failed at i=" << i << ": " << ps.ToString() << std::endl;
       std::exit(1);
     }
   }
@@ -192,8 +192,7 @@ std::pair<std::vector<double>, double> RunGetBench(StoreClient &client) {
     std::string key = "k" + std::to_string(dist(rng));
     auto op_start = std::chrono::steady_clock::now();
     Status gs = client.AsyncGet(
-        kTable, key,
-        [&acked](Status, const boost::optional<std::string> &) {
+        kTable, key, [&acked](Status, const boost::optional<std::string> &) {
           acked.fetch_add(1);
         });
     auto op_end = std::chrono::steady_clock::now();
@@ -204,8 +203,7 @@ std::pair<std::vector<double>, double> RunGetBench(StoreClient &client) {
           1000.0);
     }
     if (!gs.ok()) {
-      std::cerr << "AsyncGet failed at i=" << i << ": " << gs.ToString()
-                << std::endl;
+      std::cerr << "AsyncGet failed at i=" << i << ": " << gs.ToString() << std::endl;
       std::exit(1);
     }
   }
@@ -221,8 +219,7 @@ double RunGetAllBench(StoreClient &client, size_t *result_size) {
   size_t got = 0;
   auto t0 = std::chrono::steady_clock::now();
   Status s = client.AsyncGetAll(
-      kTable, [&done, &got](
-                  absl::flat_hash_map<std::string, std::string> &&result) {
+      kTable, [&done, &got](absl::flat_hash_map<std::string, std::string> &&result) {
         got = result.size();
         done.fetch_add(1);
       });
@@ -236,14 +233,14 @@ double RunGetAllBench(StoreClient &client, size_t *result_size) {
   return Elapsed(t0, t1);
 }
 
-double RunGetKeysBench(StoreClient &client, const std::string &prefix,
+double RunGetKeysBench(StoreClient &client,
+                       const std::string &prefix,
                        size_t *result_size) {
   std::atomic<int> done{0};
   size_t got = 0;
   auto t0 = std::chrono::steady_clock::now();
-  Status s = client.AsyncGetKeys(
-      kTable, prefix,
-      [&done, &got](std::vector<std::string> result) {
+  Status s =
+      client.AsyncGetKeys(kTable, prefix, [&done, &got](std::vector<std::string> result) {
         got = result.size();
         done.fetch_add(1);
       });
@@ -285,8 +282,8 @@ BackendResult BenchInMemory(IoFixture &io_fixture) {
   std::cerr << "    Get done in " << get_total << "s" << std::endl;
 
   br.get_all_seconds = RunGetAllBench(client, &br.get_all_count);
-  std::cerr << "    GetAll done in " << br.get_all_seconds << "s ("
-            << br.get_all_count << " entries)" << std::endl;
+  std::cerr << "    GetAll done in " << br.get_all_seconds << "s (" << br.get_all_count
+            << " entries)" << std::endl;
 
   br.get_keys_seconds = RunGetKeysBench(client, "k1", &br.get_keys_count);
   std::cerr << "    GetKeys('k1') done in " << br.get_keys_seconds << "s ("
@@ -310,8 +307,8 @@ BackendResult BenchRocksDb(IoFixture &io_fixture, const std::string &db_path) {
   std::cerr << "    Get done in " << get_total << "s" << std::endl;
 
   br.get_all_seconds = RunGetAllBench(client, &br.get_all_count);
-  std::cerr << "    GetAll done in " << br.get_all_seconds << "s ("
-            << br.get_all_count << " entries)" << std::endl;
+  std::cerr << "    GetAll done in " << br.get_all_seconds << "s (" << br.get_all_count
+            << " entries)" << std::endl;
 
   br.get_keys_seconds = RunGetKeysBench(client, "k1", &br.get_keys_count);
   std::cerr << "    GetKeys('k1') done in " << br.get_keys_seconds << "s ("
@@ -353,8 +350,9 @@ int main(int argc, char **argv) {
   // numbers look ~100x faster than they would on real ext4. Phase 1's
   // probe verified this VM's /home is on honest ext4 at fsync p50
   // = 3.6 ms, so that's the production-realistic substrate.
-  std::string db_dir = std::string(std::getenv("HOME") ? std::getenv("HOME") : "/var/tmp")
-                       + "/.cache/rep64-microbench";
+  std::string db_dir =
+      std::string(std::getenv("HOME") ? std::getenv("HOME") : "/var/tmp") +
+      "/.cache/rep64-microbench";
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--output" && i + 1 < argc) {

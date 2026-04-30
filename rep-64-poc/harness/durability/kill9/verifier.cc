@@ -18,8 +18,7 @@
 
 int main(int argc, char **argv) {
   if (argc != 4) {
-    std::cerr << "usage: verifier <db_path> <num_writes> <key_prefix>"
-              << std::endl;
+    std::cerr << "usage: verifier <db_path> <num_writes> <key_prefix>" << std::endl;
     return 2;
   }
   const std::string db_path = argv[1];
@@ -48,15 +47,14 @@ int main(int argc, char **argv) {
       std::cout << "missing:" << i << "\n";
       ++missing;
     } else {
-      std::cerr << "unexpected get error at i=" << i << ": "
-                << get_status.ToString() << std::endl;
+      std::cerr << "unexpected get error at i=" << i << ": " << get_status.ToString()
+                << std::endl;
       delete db;
       return 1;
     }
   }
 
-  std::cerr << "verifier: found=" << found << " missing=" << missing
-            << std::endl;
+  std::cerr << "verifier: found=" << found << " missing=" << missing << std::endl;
   delete db;
   return 0;
 }

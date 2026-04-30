@@ -55,8 +55,7 @@ namespace {
 fs::path UniqueTempDir(const std::string &tag) {
   std::random_device rd;
   std::mt19937_64 rng(rd());
-  auto p = fs::temp_directory_path() /
-           ("rep64-poc-" + tag + "-" + std::to_string(rng()));
+  auto p = fs::temp_directory_path() / ("rep64-poc-" + tag + "-" + std::to_string(rng()));
   fs::create_directories(p);
   return p;
 }
@@ -100,17 +99,20 @@ TEST(RocksDbStoreClientTest, PutGetRoundtrip) {
   std::atomic<int> done{0};
   std::optional<std::string> got;
 
-  client.AsyncPut("t1", "k1", "v1", /*overwrite=*/true,
+  client.AsyncPut("t1",
+                  "k1",
+                  "v1",
+                  /*overwrite=*/true,
                   {[&done](bool) { done.fetch_add(1); }, io.io()});
   ASSERT_TRUE(WaitFor([&] { return done.load() == 1; }));
 
-  client.AsyncGet(
-      "t1", "k1",
-      {[&done, &got](Status, std::optional<std::string> value) {
-         got = std::move(value);
-         done.fetch_add(1);
-       },
-       io.io()});
+  client.AsyncGet("t1",
+                  "k1",
+                  {[&done, &got](Status, std::optional<std::string> value) {
+                     got = std::move(value);
+                     done.fetch_add(1);
+                   },
+                   io.io()});
   ASSERT_TRUE(WaitFor([&] { return done.load() == 2; }));
   ASSERT_TRUE(got.has_value());
   EXPECT_EQ(*got, "v1");
@@ -129,12 +131,12 @@ TEST(RocksDbStoreClientTest, RecoverAcrossReopen) {
   {
     RocksDbStoreClient writer(io.io(), db.string(), cluster_id);
     std::atomic<int> done{0};
-    writer.AsyncPut("table_a", "k1", "vA1", true,
-                    {[&done](bool) { done.fetch_add(1); }, io.io()});
-    writer.AsyncPut("table_a", "k2", "vA2", true,
-                    {[&done](bool) { done.fetch_add(1); }, io.io()});
-    writer.AsyncPut("table_b", "k1", "vB1", true,
-                    {[&done](bool) { done.fetch_add(1); }, io.io()});
+    writer.AsyncPut(
+        "table_a", "k1", "vA1", true, {[&done](bool) { done.fetch_add(1); }, io.io()});
+    writer.AsyncPut(
+        "table_a", "k2", "vA2", true, {[&done](bool) { done.fetch_add(1); }, io.io()});
+    writer.AsyncPut(
+        "table_b", "k1", "vB1", true, {[&done](bool) { done.fetch_add(1); }, io.io()});
     ASSERT_TRUE(WaitFor([&] { return done.load() == 3; }));
   }
   // Destroyed: RocksDB is closed. Now reopen.
@@ -143,19 +145,22 @@ TEST(RocksDbStoreClientTest, RecoverAcrossReopen) {
     RocksDbStoreClient reader(io.io(), db.string(), cluster_id);
     std::atomic<int> done{0};
     std::string vA1, vA2, vB1;
-    reader.AsyncGet("table_a", "k1",
+    reader.AsyncGet("table_a",
+                    "k1",
                     {[&](Status, std::optional<std::string> v) {
                        if (v) vA1 = *v;
                        done.fetch_add(1);
                      },
                      io.io()});
-    reader.AsyncGet("table_a", "k2",
+    reader.AsyncGet("table_a",
+                    "k2",
                     {[&](Status, std::optional<std::string> v) {
                        if (v) vA2 = *v;
                        done.fetch_add(1);
                      },
                      io.io()});
-    reader.AsyncGet("table_b", "k1",
+    reader.AsyncGet("table_b",
+                    "k1",
                     {[&](Status, std::optional<std::string> v) {
                        if (v) vB1 = *v;
                        done.fetch_add(1);
@@ -187,8 +192,8 @@ TEST(RocksDbStoreClientTest, JobIdMonotonicAndPersists) {
     RocksDbStoreClient client(io.io(), db.string(), "");
     int next = client.GetNextJobIDSync();
     EXPECT_GT(next, last)
-        << "Expected job ID to advance beyond the previous lifetime's max ("
-        << last << "), got " << next;
+        << "Expected job ID to advance beyond the previous lifetime's max (" << last
+        << "), got " << next;
   }
   fs::remove_all(db);
 }

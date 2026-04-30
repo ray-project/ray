@@ -46,8 +46,8 @@ namespace {
 fs::path UniqueTempDir(const std::string &tag) {
   std::random_device rd;
   std::mt19937_64 rng(rd());
-  auto p = fs::temp_directory_path() /
-           ("rep64-phase5-" + tag + "-" + std::to_string(rng()));
+  auto p =
+      fs::temp_directory_path() / ("rep64-phase5-" + tag + "-" + std::to_string(rng()));
   fs::create_directories(p);
   return p;
 }
@@ -86,8 +86,8 @@ class RocksDbConcurrencyTest : public ::testing::Test {
   void SetUp() override {
     db_path_ = UniqueTempDir("rocksdb");
     io_fixture_ = std::make_unique<IoServiceFixture>();
-    client_ = std::make_unique<RocksDbStoreClient>(io_fixture_->io(),
-                                                    db_path_.string(), "");
+    client_ =
+        std::make_unique<RocksDbStoreClient>(io_fixture_->io(), db_path_.string(), "");
   }
 
   void TearDown() override {
@@ -127,12 +127,10 @@ TEST_F(RocksDbConcurrencyTest, JobIdNoDuplicatesAcrossThreads) {
 
   ASSERT_EQ(all_ids.size(), kTotal);
   std::set<int> unique(all_ids.begin(), all_ids.end());
-  ASSERT_EQ(unique.size(), all_ids.size())
-      << "duplicate IDs detected — atomicity bug";
+  ASSERT_EQ(unique.size(), all_ids.size()) << "duplicate IDs detected — atomicity bug";
   EXPECT_EQ(*unique.begin(), 1);
-  EXPECT_EQ(*unique.rbegin(), kTotal)
-      << "expected the contiguous range [1, " << kTotal
-      << "]; missing IDs would mean lost increments";
+  EXPECT_EQ(*unique.rbegin(), kTotal) << "expected the contiguous range [1, " << kTotal
+                                      << "]; missing IDs would mean lost increments";
 }
 
 // --- 2. Per-thread monotonicity. ------------------------------------------
@@ -177,9 +175,12 @@ TEST_F(RocksDbConcurrencyTest, ParallelAsyncPutAllSurviveWithCorrectValues) {
       for (int i = 0; i < kPerThread; ++i) {
         std::string key = "k" + std::to_string(t) + "_" + std::to_string(i);
         std::string value = "v" + std::to_string(t) + "_" + std::to_string(i);
-        client_->AsyncPut(kTable, key, value, /*overwrite=*/true,
-                          {[&put_acks](bool) { put_acks.fetch_add(1); },
-                           io_fixture_->io()});
+        client_->AsyncPut(
+            kTable,
+            key,
+            value,
+            /*overwrite=*/true,
+            {[&put_acks](bool) { put_acks.fetch_add(1); }, io_fixture_->io()});
       }
     });
   }
@@ -195,18 +196,18 @@ TEST_F(RocksDbConcurrencyTest, ParallelAsyncPutAllSurviveWithCorrectValues) {
     for (int i = 0; i < kPerThread; ++i) {
       std::string key = "k" + std::to_string(t) + "_" + std::to_string(i);
       std::string expected = "v" + std::to_string(t) + "_" + std::to_string(i);
-      client_->AsyncGet(
-          kTable, key,
-          {[expected, &get_acks, &mismatches, &missing](
-               Status status, std::optional<std::string> value) {
-             if (!status.ok() || !value) {
-               missing.fetch_add(1);
-             } else if (*value != expected) {
-               mismatches.fetch_add(1);
-             }
-             get_acks.fetch_add(1);
-           },
-           io_fixture_->io()});
+      client_->AsyncGet(kTable,
+                        key,
+                        {[expected, &get_acks, &mismatches, &missing](
+                             Status status, std::optional<std::string> value) {
+                           if (!status.ok() || !value) {
+                             missing.fetch_add(1);
+                           } else if (*value != expected) {
+                             mismatches.fetch_add(1);
+                           }
+                           get_acks.fetch_add(1);
+                         },
+                         io_fixture_->io()});
     }
   }
   ASSERT_TRUE(WaitFor([&] { return get_acks.load() == kTotal; }))
@@ -240,14 +241,13 @@ TEST_F(RocksDbConcurrencyTest, JobIdSurvivesRestartAfterConcurrentLoad) {
   }
   for (auto &w : workers) w.join();
   ASSERT_EQ(ids_first_lifetime.size(), kTotalFirstLifetime);
-  int max_first = *std::max_element(ids_first_lifetime.begin(),
-                                     ids_first_lifetime.end());
+  int max_first = *std::max_element(ids_first_lifetime.begin(), ids_first_lifetime.end());
   ASSERT_EQ(max_first, kTotalFirstLifetime);
 
   // Close + reopen.
   client_.reset();
-  client_ = std::make_unique<RocksDbStoreClient>(io_fixture_->io(),
-                                                  db_path_.string(), "");
+  client_ =
+      std::make_unique<RocksDbStoreClient>(io_fixture_->io(), db_path_.string(), "");
 
   int next = client_->GetNextJobIDSync();
   EXPECT_GT(next, max_first)

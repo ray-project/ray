@@ -33,8 +33,7 @@ namespace {
 fs::path UniqueDbPath() {
   std::random_device rd;
   std::mt19937_64 rng(rd());
-  auto p = fs::temp_directory_path() /
-           ("rep64-phase6-parity-" + std::to_string(rng()));
+  auto p = fs::temp_directory_path() / ("rep64-phase6-parity-" + std::to_string(rng()));
   fs::create_directories(p);
   return p;
 }
@@ -45,9 +44,9 @@ class RocksDbStoreClientParityTest : public StoreClientTestBase {
  public:
   void InitStoreClient() override {
     db_path_ = UniqueDbPath();
-    store_client_ = std::make_shared<RocksDbStoreClient>(
-        *(io_service_pool_->Get()), db_path_.string(),
-        /*expected_cluster_id=*/"");
+    store_client_ = std::make_shared<RocksDbStoreClient>(*(io_service_pool_->Get()),
+                                                         db_path_.string(),
+                                                         /*expected_cluster_id=*/"");
   }
 
   void TearDown() override {

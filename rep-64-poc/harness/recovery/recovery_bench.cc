@@ -37,6 +37,8 @@
 //   recovery_bench --mode recover  --db-dir /path
 
 #include <atomic>
+#include <boost/asio.hpp>
+#include <boost/optional.hpp>
 #include <chrono>
 #include <cstdlib>
 #include <iomanip>
@@ -46,9 +48,6 @@
 #include <sstream>
 #include <string>
 #include <thread>
-
-#include <boost/asio.hpp>
-#include <boost/optional.hpp>
 
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/rocksdb_store_client.h"
@@ -94,8 +93,8 @@ int Populate(const std::string &db_dir, int num_keys) {
     for (size_t j = 0; j < value.size(); ++j) {
       value[j] = static_cast<char>('A' + ((i + j) % 26));
     }
-    auto s = client.AsyncPut(kTable, key, value, true,
-                              [&acked](bool) { acked.fetch_add(1); });
+    auto s =
+        client.AsyncPut(kTable, key, value, true, [&acked](bool) { acked.fetch_add(1); });
     if (!s.ok()) {
       std::cerr << "AsyncPut failed: " << s.ToString() << std::endl;
       return 1;
@@ -124,8 +123,7 @@ int Recover(const std::string &db_dir) {
   auto t_scan_start = std::chrono::steady_clock::now();
   auto s = client.AsyncGetAll(
       kTable,
-      [&done, &scan_count](
-          absl::flat_hash_map<std::string, std::string> &&result) {
+      [&done, &scan_count](absl::flat_hash_map<std::string, std::string> &&result) {
         scan_count = result.size();
         done.fetch_add(1);
       });
@@ -141,9 +139,9 @@ int Recover(const std::string &db_dir) {
   bool lookup_present = false;
   auto t_lookup_start = std::chrono::steady_clock::now();
   s = client.AsyncGet(
-      kTable, "actor_0",
-      [&lookup_done, &lookup_present](
-          Status, const boost::optional<std::string> &v) {
+      kTable,
+      "actor_0",
+      [&lookup_done, &lookup_present](Status, const boost::optional<std::string> &v) {
         lookup_present = v.has_value();
         lookup_done.fetch_add(1);
       });
@@ -151,7 +149,8 @@ int Recover(const std::string &db_dir) {
     std::cerr << "AsyncGet failed: " << s.ToString() << std::endl;
     return 1;
   }
-  while (lookup_done.load() == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
+  while (lookup_done.load() == 0)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1));
   auto t_lookup_end = std::chrono::steady_clock::now();
 
   std::cout << std::fixed << std::setprecision(6) << "{"
@@ -159,8 +158,7 @@ int Recover(const std::string &db_dir) {
             << "\"scan_seconds\": " << Elapsed(t_scan_start, t_scan_end) << ","
             << "\"lookup_seconds\": " << Elapsed(t_lookup_start, t_lookup_end) << ","
             << "\"scan_count\": " << scan_count << ","
-            << "\"lookup_present\": " << (lookup_present ? "true" : "false")
-            << "}\n";
+            << "\"lookup_present\": " << (lookup_present ? "true" : "false") << "}\n";
   return 0;
 }
 
@@ -172,12 +170,16 @@ int main(int argc, char **argv) {
   int num_keys = 10000;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
-    if (a == "--mode" && i + 1 < argc) mode = argv[++i];
-    else if (a == "--db-dir" && i + 1 < argc) db_dir = argv[++i];
-    else if (a == "--num-keys" && i + 1 < argc) num_keys = std::atoi(argv[++i]);
+    if (a == "--mode" && i + 1 < argc)
+      mode = argv[++i];
+    else if (a == "--db-dir" && i + 1 < argc)
+      db_dir = argv[++i];
+    else if (a == "--num-keys" && i + 1 < argc)
+      num_keys = std::atoi(argv[++i]);
   }
   if (mode.empty() || db_dir.empty()) {
-    std::cerr << "usage: recovery_bench --mode {populate|recover} --db-dir <path> [--num-keys N]"
+    std::cerr << "usage: recovery_bench --mode {populate|recover} --db-dir <path> "
+                 "[--num-keys N]"
               << std::endl;
     return 2;
   }
