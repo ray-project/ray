@@ -1478,18 +1478,6 @@ class ServeController:
             app_name, ingress_deployment_name
         )
 
-    def _get_running_replica_details_for_deployments(
-        self, app_name: str, deployment_names: Iterable[str]
-    ) -> List[ReplicaDetails]:
-        replica_details = []
-        for deployment_name in deployment_names:
-            replica_details.extend(
-                self._get_running_replica_details_for_deployment(
-                    app_name, deployment_name
-                )
-            )
-        return replica_details
-
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
@@ -1596,17 +1584,6 @@ class ServeController:
                     app_name, ingress_request_router_deployment_name
                 ),
                 RequestProtocol.HTTP,
-            )
-            backend_deployment_names = (
-                deployment_name
-                for deployment_name in self.application_state_manager.get_deployments(
-                    app_name
-                )
-                if deployment_name != ingress_request_router_deployment_name
-            )
-            replica_details = self._get_running_replica_details_for_deployments(
-                app_name,
-                backend_deployment_names,
             )
             include_grpc = False
 
