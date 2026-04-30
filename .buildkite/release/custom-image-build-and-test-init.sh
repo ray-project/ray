@@ -64,6 +64,5 @@ BUILD_WORKSPACE_DIRECTORY="${PWD}" bazel-bin/release/custom_image_build_and_test
   "${RUN_FLAGS[@]}" \
   --custom-build-jobs-output-file .buildkite/release/custom_build_jobs.rayci.yaml \
   --test-jobs-output-file .buildkite/release/release_tests.json \
-  --rayci-select-output-file /tmp/rayci_select.txt
-
-buildkite-agent pipeline upload .buildkite/release/release_tests.json
+  --rayci-select-output-file /tmp/rayci_select.txt \
+  --upload-to-buildkite

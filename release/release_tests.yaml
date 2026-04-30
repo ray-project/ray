@@ -1566,7 +1566,7 @@
   group: Serve tests
   working_dir: serve_tests
 
-  frequency: weekly
+  frequency: nightly
   team: serve
 
   cluster:
@@ -1591,6 +1591,13 @@
 
   variations:
     - __suffix__: aws
+    - __suffix__: aws.pip_haproxy
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_ENABLE_HA_PROXY=1
+            - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
+            - RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
     - __suffix__: gce
       env: gce
       frequency: manual
@@ -1657,6 +1664,54 @@
       frequency: manual
       cluster:
         cluster_compute: compute_tpl_single_node_gce.yaml
+
+- name: pytest_serve_router_benchmark
+  python: "3.10"
+  group: Serve tests
+  working_dir: serve_tests
+
+  frequency: nightly
+  team: serve
+
+  cluster:
+    cluster_compute: compute_tpl_8_cpu_autoscaling.yaml
+    cloud_id: cld_wy5a6nhazplvu32526ams61d98
+    project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
+
+  run:
+    timeout: 7200
+    long_running: false
+    # Every variation fully overrides this
+    script: "false"
+
+  alert: default
+
+  variations:
+    # Low-latency / high-throughput workload
+    - __suffix__: aws.standard
+      run:
+        timeout: 7200
+        long_running: false
+        script: >-
+          python workloads/router_microbenchmark.py
+          --simulated-latency-mean-s 0.01
+          --simulated-latency-cap-s 0.1
+          --max-ongoing-requests-child 5
+          --max-ongoing-requests-parent 5
+          --router-type pow2
+    # Supply-constrained workload
+    - __suffix__: aws.supply_constraint
+      run:
+        timeout: 7200
+        long_running: false
+        script: >-
+          python workloads/router_microbenchmark.py
+          --simulated-latency-mean-s 1
+          --simulated-latency-cap-s 10
+          --max-ongoing-requests-child 2
+          --max-ongoing-requests-parent 5
+          --router-type pow2
+          --router-type capacity_queue
 
 - name: pytest_serve_resnet_benchmark
   python: "3.10"
@@ -1747,6 +1802,11 @@
       run:
         timeout: 1200
         script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=torch --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet
+
+    - __suffix__: skip_training.parquet.slow_consumer
+      run:
+        timeout: 3000
+        script: RAY_TRAIN_V2_ENABLED=1 python train_benchmark.py --task=image_classification --dataloader_type=ray_data --num_workers=16 --skip_train_step=True --skip_validation_at_epoch_end=True --image_classification_data_format=parquet --train_step_sleep_s=5.0 --max_train_batches=500 --limit_training_rows=-1 --image_classification_use_1t_dataset=True
 
     - __suffix__: skip_training.parquet.fault_tolerance
       run:
@@ -2222,6 +2282,7 @@
   team: rllib
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
       post_build_script: byod_rllib.sh
@@ -2246,6 +2307,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -2273,6 +2335,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: stress_tests/placement_group_tests_compute.yaml
 
   run:
@@ -2285,6 +2348,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/placement_group_tests_compute_gce.yaml
 
 - name: autoscaling_shuffle_1tb_1000_partitions
@@ -2296,6 +2360,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -2320,6 +2385,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_64.yaml
 
   run:
@@ -2333,6 +2399,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: tpl_64_gce.yaml
     - __suffix__: aws.py312
       frequency: weekly
@@ -2346,6 +2413,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: tpl_64.yaml
 
   run:
@@ -2360,6 +2428,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: experimental/compute_t4_gpu.yaml
@@ -2376,6 +2445,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: experimental/compute_gpu_2x1_aws.yaml
@@ -2392,6 +2462,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu-cu130
       post_build_script: byod_compiled_graph_gpu_cu130.sh
@@ -2410,6 +2481,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu-cu130
       post_build_script: byod_compiled_graph_gpu_cu130.sh
@@ -2428,6 +2500,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: experimental/compute_t4_gpu.yaml
@@ -2445,6 +2518,7 @@
   working_dir: microbenchmark
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: llm-cu128 # llm image already has nixl
       post_build_script: byod_llm_pin_cupy_cuda12x.sh # match cupy-cuda12x to ray-llm base lock (BYOD testdeps can float major)
@@ -2482,6 +2556,7 @@
   working_dir: benchmark-worker-startup
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       type: gpu
     cluster_compute: only_head_node_1gpu_64cpu.yaml
@@ -2500,6 +2575,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: only_head_node_1gpu_64cpu_gce.yaml
 
 - name: dask_on_ray_100gb_sort
@@ -2510,6 +2586,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -2534,6 +2611,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
@@ -2549,6 +2627,7 @@
   smoke_test:
     frequency: nightly
     cluster:
+      anyscale_sdk_2026: true
       app_config: stress_tests/state_api_app_config.yaml
       cluster_compute: stress_tests/smoke_test_compute.yaml
 
@@ -2569,9 +2648,12 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/stress_tests_compute_large_gce.yaml
       smoke_test:
         frequency: manual
+        cluster:
+          cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 
 - name: shuffle_20gb_with_state_api
@@ -2582,6 +2664,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
@@ -2610,6 +2693,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -2622,6 +2706,7 @@
   smoke_test:
     frequency: nightly
     cluster:
+      anyscale_sdk_2026: true
       app_config: stress_tests/stress_tests_app_config.yaml
       cluster_compute: stress_tests/smoke_test_compute.yaml
 
@@ -2637,9 +2722,12 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
+        cluster:
+          cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 - name: stress_test_dead_actors
   python: "3.10"
@@ -2650,6 +2738,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
@@ -2662,6 +2751,7 @@
   smoke_test:
     frequency: nightly
     cluster:
+      anyscale_sdk_2026: true
       app_config: stress_tests/stress_tests_app_config.yaml
       cluster_compute: stress_tests/smoke_test_compute.yaml
 
@@ -2678,9 +2768,12 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/stress_tests_compute_gce.yaml
       smoke_test:
         frequency: manual
+        cluster:
+          cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 # The full test is not stable, so run the smoke test only.
 # See https://github.com/ray-project/ray/issues/23244.
@@ -2692,6 +2785,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -2708,6 +2802,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/smoke_test_compute_gce.yaml
 
 # - name: threaded_actors_stress_test
@@ -2752,6 +2847,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: stress_tests/smoke_test_compute.yaml
 
   run:
@@ -2766,6 +2862,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/smoke_test_compute_gce.yaml
       smoke_test:
         frequency: manual
@@ -2779,6 +2876,7 @@
   team: core
   env: aws_perf
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         # Lower the memory usage threshold at which the Ray memory monitor will kill
@@ -2799,6 +2897,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: stress_tests/stress_tests_single_node_oom_compute_gce.yaml
 
 
@@ -2810,6 +2909,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
@@ -2873,6 +2973,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: placement_group_tests/compute.yaml
 
   run:
@@ -2885,6 +2986,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: placement_group_tests/compute_gce.yaml
 
 - name: placement_group_performance_test
@@ -2895,6 +2997,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: placement_group_tests/pg_perf_test_compute.yaml
 
   run:
@@ -2909,6 +3012,7 @@
       env: gce
       frequency: manual
       cluster:
+        anyscale_sdk_2026: true
         cluster_compute: placement_group_tests/pg_perf_test_compute_gce.yaml
 
 
@@ -2929,6 +3033,7 @@
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: single_node.yaml
+    anyscale_sdk_2026: true
 
   run:
     timeout: 12000
@@ -3194,6 +3299,7 @@
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: scheduling.yaml
+    anyscale_sdk_2026: true
 
   run:
     timeout: 3600
@@ -3261,6 +3367,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3285,6 +3392,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3310,6 +3418,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3330,6 +3439,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_health_check_period_ms=10000
@@ -3361,6 +3471,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3385,6 +3496,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3410,6 +3522,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3430,6 +3543,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_health_check_period_ms=10000
@@ -3461,6 +3575,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3485,6 +3600,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3510,6 +3626,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3530,6 +3647,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_health_check_period_ms=10000
@@ -3561,6 +3679,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3585,6 +3704,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3610,6 +3730,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: chaos_test/compute_template.yaml
 
   run:
@@ -3630,6 +3751,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_health_check_period_ms=10000
@@ -4070,6 +4192,7 @@
       type: torch-cu128
       runtime_env:
         - RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY=1 # For test_llm_serve_prefill_decode_with_data_parallelism
+    anyscale_sdk_2026: true
     cluster_compute: llm_2x_4xl4.yaml
 
   run:
@@ -4304,6 +4427,7 @@
     byod:
       type: torch-cu128
       post_build_script: byod_llm_lmcache_test.sh
+    anyscale_sdk_2026: true
     cluster_compute: llm_auto_select_worker.yaml
     # NOTE: Important for getting the correct secrets
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
