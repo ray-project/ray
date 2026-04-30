@@ -32,6 +32,7 @@
 #include "ray/gcs/state_util.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "ray/util/clock.h"
 #include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -47,7 +48,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
                             rpc::RayletClientPool &raylet_client_pool,
                             InternalKVInterface &kv,
                             instrumented_io_context &io_context,
-                            pubsub::GcsPublisher *gcs_publisher);
+                            pubsub::GcsPublisher *gcs_publisher,
+                            ClockInterface &clock);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -233,6 +235,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
   absl::flat_hash_map<ray::NodeID, std::pair<absl::Time, rpc::ResourcesData>>
       node_resource_info_;
 
+  ClockInterface &clock_;
   ThreadChecker thread_checker_;
 
   FRIEND_TEST(GcsAutoscalerStateManagerTest, TestReportAutoscalingState);

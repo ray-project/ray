@@ -33,6 +33,7 @@
 #include "ray/gcs/gcs_table_storage.h"
 #include "ray/observability/metric_interface.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "ray/util/clock.h"
 #include "src/ray/protobuf/common.pb.h"
 #include "src/ray/protobuf/core_worker.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -124,7 +125,8 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       rpc::RayletClientPool &raylet_client_pool,
       rpc::CoreWorkerClientPool &worker_client_pool,
-      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram);
+      ray::observability::MetricInterface &scheduler_placement_time_ms_histogram,
+      ClockInterface &clock);
 
   ~GcsActorScheduler() override = default;
 
@@ -361,6 +363,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   std::vector<std::function<void()>> resource_changed_listeners_;
 
   ray::observability::MetricInterface &scheduler_placement_time_ms_histogram_;
+  ClockInterface &clock_;
 
   /// Select a node where the actor is forwarded (for queueing and scheduling).
   ///

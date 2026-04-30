@@ -22,7 +22,6 @@
 #include "absl/strings/str_format.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/util/string_utils.h"
-#include "ray/util/time.h"
 
 namespace ray {
 namespace gcs {
@@ -35,7 +34,8 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     rpc::RayletClientPool &raylet_client_pool,
     InternalKVInterface &kv,
     instrumented_io_context &io_context,
-    pubsub::GcsPublisher *gcs_publisher)
+    pubsub::GcsPublisher *gcs_publisher,
+    ClockInterface &clock)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
@@ -43,7 +43,8 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
       raylet_client_pool_(raylet_client_pool),
       kv_(kv),
       io_context_(io_context),
-      gcs_publisher_(gcs_publisher) {}
+      gcs_publisher_(gcs_publisher),
+      clock_(clock) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -91,8 +92,7 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
 
       if (gcs_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
-        auto error_data = CreateErrorTableData(
-            error_type, error_message, absl::FromUnixMillis(current_time_ms()));
+        auto error_data = CreateErrorTableData(error_type, error_message, clock_.Now());
         gcs_publisher_->PublishError(session_name_, std::move(error_data));
       }
     }
@@ -298,7 +298,7 @@ void GcsAutoscalerStateManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   }
   auto node_info =
       node_resource_info_
-          .emplace(node_id, std::make_pair(absl::Now(), rpc::ResourcesData()))
+          .emplace(node_id, std::make_pair(clock_.Now(), rpc::ResourcesData()))
           .first;
   // Note: We populate total available resources but not load (which is only received from
   // autoscaler reports). Temporary underreporting when node is added is fine.
@@ -321,7 +321,7 @@ void GcsAutoscalerStateManager::UpdateResourceLoadAndUsage(rpc::ResourcesData da
   auto &new_data = iter->second.second;
   new_data = std::move(data);
   // Last update time
-  iter->second.first = absl::Now();
+  iter->second.first = clock_.Now();
 }
 
 absl::flat_hash_map<ResourceDemandKey, rpc::ResourceDemand>
@@ -430,7 +430,7 @@ void GcsAutoscalerStateManager::GetNodeStates(
       // use raylet reported idle timestamp since there might be clock skew.
       node_state_proto->set_idle_duration_ms(
           node_resource_data.idle_duration_ms() +
-          absl::ToInt64Milliseconds(absl::Now() - node_resource_item.first));
+          absl::ToInt64Milliseconds(clock_.Now() - node_resource_item.first));
     } else {
       node_state_proto->set_status(rpc::autoscaler::NodeStatus::RUNNING);
     }

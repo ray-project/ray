@@ -29,6 +29,7 @@
 #include "ray/observability/ray_event_recorder_interface.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
+#include "ray/util/clock.h"
 #include "ray/util/event.h"
 #include "src/ray/protobuf/autoscaler.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
@@ -55,7 +56,8 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
                  rpc::RayletClientPool *raylet_client_pool,
                  const ClusterID &cluster_id,
                  observability::RayEventRecorderInterface &ray_event_recorder,
-                 const std::string &session_name);
+                 const std::string &session_name,
+                 ClockInterface &clock);
 
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
@@ -398,6 +400,7 @@ class GcsNodeManager : public rpc::NodeInfoGcsServiceHandler {
 
   observability::RayEventRecorderInterface &ray_event_recorder_;
   std::string session_name_;
+  ClockInterface &clock_;
 
   // Debug info.
   enum CountType {

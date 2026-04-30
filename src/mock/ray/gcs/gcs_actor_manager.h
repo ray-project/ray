@@ -19,6 +19,7 @@
 #include "ray/gcs/actor/gcs_actor_manager.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/util/clock.h"
 
 namespace ray {
 namespace gcs {
@@ -43,7 +44,8 @@ class MockGcsActorManager : public GcsActorManager {
             /*ray_event_recorder=*/fake_ray_event_recorder_,
             /*session_name=*/"",
             /*actor_by_state_gauge=*/fake_actor_by_state_gauge_,
-            /*gcs_actor_by_state_gauge=*/fake_gcs_actor_by_state_gauge_) {}
+            /*gcs_actor_by_state_gauge=*/fake_gcs_actor_by_state_gauge_,
+            /*clock=*/clock_) {}
 
   MOCK_METHOD(void,
               HandleRegisterActor,
@@ -88,6 +90,7 @@ class MockGcsActorManager : public GcsActorManager {
                rpc::SendReplyCallback send_reply_callback),
               (override));
 
+  Clock clock_;
   instrumented_io_context mock_io_context_do_not_use_;
   observability::FakeRayEventRecorder fake_ray_event_recorder_;
   observability::FakeGauge fake_actor_by_state_gauge_;
