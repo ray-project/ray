@@ -131,7 +131,7 @@ def _hash_partition(
         # blocks depending on whether the block contains nulls.
         hashes = pd.util.hash_pandas_object(
             table.to_pandas(types_mapper=pd.ArrowDtype), index=False
-        ).values
+        ).values.copy()
         np.mod(hashes, num_partitions, out=hashes)
         partitions = hashes
 
