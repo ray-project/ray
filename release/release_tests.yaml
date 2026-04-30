@@ -1254,7 +1254,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: torch-cu130
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1285,7 +1285,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: torch-cu130
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
 
   run:
@@ -1315,7 +1315,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: torch-cu130
+      type: torch-cu128
     cluster_compute: compute_tpl_4_xlarge.yaml
   run:
     timeout: 600
@@ -1341,7 +1341,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: torch-cu130
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_node.yaml
   run:
     timeout: 600
@@ -1367,7 +1367,7 @@
   cluster:
     anyscale_sdk_2026: true
     byod:
-      type: torch-cu130
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_worker.yaml
   run:
     timeout: 600
@@ -1481,7 +1481,7 @@
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
     byod:
-      type: torch-cpu
+      type: torch-cu128
 
   run:
     timeout: 7200
@@ -1545,7 +1545,7 @@
 
   cluster:
     byod:
-      type: torch-cu130
+      type: torch-cu128
     cluster_compute: compute_tpl_single_node_32_cpu.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -1676,7 +1676,7 @@
 
   cluster:
     byod:
-      type: torch-cu130
+      type: torch-cu128
     cluster_compute: compute_tpl_gpu_node.yaml
     cloud_id: cld_wy5a6nhazplvu32526ams61d98
     project_id: prj_lhlrf1u5yv8qz9qg3xzw8fkiiq
@@ -4565,7 +4565,7 @@
 
   cluster:
     byod:
-      type: torch-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: torch-cu128
       post_build_script: byod_langchain_agent_ray_serve.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
@@ -4591,7 +4591,7 @@
 
   cluster:
     byod:
-      type: torch-cu130  # anyscale/ray-llm:<PR_RAY_VERSION>-py311-cu128
+      type: torch-cu128
       post_build_script: byod_multi_agent_a2a.sh  # release/ray_release/byod/
     cluster_compute: ci/aws.yaml  # relative to working_dir
 
