@@ -1,0 +1,21 @@
+# REP-64 POC, Phase 6: StoreClientTestBase parity for RocksDbStoreClient.
+#
+# Subclasses Ray's existing StoreClientTestBase (the same fixture
+# in_memory_store_client_test.cc and redis_store_client_test.cc use)
+# and runs the full method-coverage suite against RocksDB. This is the
+# load-bearing Phase 6 evidence point.
+
+load("//bazel:ray.bzl", "ray_cc_test")
+
+ray_cc_test(
+    name = "rocksdb_parity_test",
+    size = "medium",
+    srcs = ["rocksdb_parity_test.cc"],
+    tags = ["team:core"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "//src/ray/gcs/store_client:rocksdb_store_client",
+        "//src/ray/gcs/store_client/tests:store_client_test_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

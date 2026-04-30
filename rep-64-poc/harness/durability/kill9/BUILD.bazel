@@ -1,0 +1,28 @@
+# REP-64 POC, Phase 4: kill-9 durability harness.
+#
+# Two small standalone binaries that the Python orchestrator
+# (run_kill9.py) drives. Kept out of //:rocksdb_smoke_test sibling
+# targets in BUILD.bazel because these are POC harness code, not Ray
+# proper.
+
+load("@rules_cc//cc:defs.bzl", "cc_binary")
+
+cc_binary(
+    name = "writer",
+    srcs = ["writer.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "@com_github_facebook_rocksdb//:rocksdb",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+cc_binary(
+    name = "verifier",
+    srcs = ["verifier.cc"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "@com_github_facebook_rocksdb//:rocksdb",
+    ],
+    visibility = ["//visibility:public"],
+)

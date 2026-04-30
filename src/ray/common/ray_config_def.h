@@ -430,8 +430,14 @@ RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
-// The storage backend to use for the GCS. It can be either 'redis' or 'memory'.
+// The storage backend to use for the GCS. It can be 'redis', 'memory', or
+// 'rocksdb' (REP-64 embedded storage backend).
 RAY_CONFIG(std::string, gcs_storage, "memory")
+
+/// Filesystem path for the RocksDB GCS backend (REP-64). Only meaningful
+/// when gcs_storage == "rocksdb"; the operator points this at a
+/// PersistentVolume mount inside the Ray head pod.
+RAY_CONFIG(std::string, gcs_storage_path, "")
 
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)

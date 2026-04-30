@@ -74,6 +74,34 @@ ray_cc_test(
     ],
 )
 
+# REP-64 (rep-64-poc/) Phase 2 smoke test: opens a RocksDB directly,
+# proves the dep is wired in. Does NOT use StoreClient.
+ray_cc_test(
+    name = "rocksdb_smoke_test",
+    size = "small",
+    srcs = ["rocksdb_smoke_test.cc"],
+    tags = ["team:core"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "@com_github_facebook_rocksdb//:rocksdb",
+    ],
+)
+
+# REP-64 Phase 3 walking-skeleton tests: cluster-id marker, recovery
+# across close+reopen, JobID monotonicity. Phase-3-specific scenarios
+# that don't fit StoreClientTestBase.
+ray_cc_test(
+    name = "rocksdb_store_client_test",
+    size = "small",
+    srcs = ["rocksdb_store_client_test.cc"],
+    tags = ["team:core"],
+    target_compatible_with = ["@platforms//os:linux"],
+    deps = [
+        "//src/ray/common:asio",
+        "//src/ray/gcs/store_client:rocksdb_store_client",
+    ],
+)
+
 ray_cc_test(
     name = "observable_store_client_test",
     size = "small",
