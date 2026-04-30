@@ -1585,9 +1585,7 @@ class ServeController:
         return target_groups
 
     def _get_targets_for_protocol(
-        self,
-        replica_details: List[ReplicaDetails],
-        protocol: RequestProtocol,
+        self, replica_details: List[ReplicaDetails], protocol: RequestProtocol
     ) -> List[Target]:
         """Create targets for a specific protocol from a list of replicas."""
         return [
