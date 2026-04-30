@@ -1,4 +1,4 @@
---index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
+--index-url https://pypi.org/simple
 
 absl-py==1.4.0 \
     --hash=sha256:0d3fe606adfa4f7db64792dd4c7aee4ee0c38ab75dfd353b7a83ed3e957fcb47 \
