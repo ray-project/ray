@@ -1080,7 +1080,6 @@ class ActorReplicaWrapper:
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
                 deployment_info.ingress,
-                deployment_info.ingress_request_router,
                 deployment_info.route_prefix,
                 deployment_info.ingress_request_router,
             )

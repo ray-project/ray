@@ -659,9 +659,9 @@ class ServeController:
             # Ingress request router replicas also need direct-ingress ports.
             ingress_replicas_info_list: List[
                 Tuple[str, str, int, int]
-            ] = self.deployment_state_manager.get_ingress_replicas_info()
+            ] = self.deployment_state_manager.get_direct_ingress_replicas_info()
 
-            NodePortManager.update_ports(ingress_replicas_info_list)
+            NodePortManager.update_ports(direct_ingress_replicas_info_list)
 
             # Clean up stale ports
             # get all alive replica ids and their node ids.
@@ -1577,7 +1577,6 @@ class ServeController:
                 app_name
             )
             ingress_request_router_targets = None
-            include_grpc = True
         else:
             ingress_request_router_targets = self._get_targets_for_protocol(
                 self._get_running_replica_details_for_deployment(
@@ -1585,13 +1584,11 @@ class ServeController:
                 ),
                 RequestProtocol.HTTP,
             )
-            include_grpc = False
 
         return self._get_target_groups_for_replica_details(
             app_name,
             route_prefix,
             replica_details,
-            include_grpc=include_grpc,
             ingress_request_router_targets=ingress_request_router_targets,
         )
 
@@ -1601,7 +1598,6 @@ class ServeController:
         route_prefix: str,
         replica_details: List[ReplicaDetails],
         *,
-        include_grpc: bool = True,
         ingress_request_router_targets: Optional[List[Target]] = None,
     ) -> List[TargetGroup]:
         target_groups = []
@@ -1609,9 +1605,7 @@ class ServeController:
         http_targets = self._get_targets_for_protocol(
             replica_details, RequestProtocol.HTTP
         )
-        if http_targets and (
-            ingress_request_router_targets is None or ingress_request_router_targets
-        ):
+        if http_targets:
             target_groups.append(
                 TargetGroup(
                     protocol=RequestProtocol.HTTP,
@@ -1624,7 +1618,7 @@ class ServeController:
                 )
             )
 
-        if include_grpc and is_grpc_enabled(self.get_grpc_config()):
+        if is_grpc_enabled(self.get_grpc_config()):
             grpc_targets = self._get_targets_for_protocol(
                 replica_details, RequestProtocol.GRPC
             )
