@@ -421,6 +421,33 @@ exclude_patterns = [
     # ray_train_workloads bundles sub-folder READMEs that aren't part of any
     # toctree (only the notebooks are). Exclude them to avoid orphan warnings.
     "_collections/train/tutorials/**/README.*",
+    # Sidecar README.md files in fetched template dirs duplicate the canonical
+    # notebook that the gallery / toctree already links to. Exclude to avoid
+    # orphan warnings without losing reachable content.
+    "_collections/data/examples/unstructured_data_ingestion/README.md",
+    "_collections/serve/tutorials/asynchronous-inference/README.md",
+    "_collections/tune/examples/tune_pytorch_asha/README.md",
+    # deployment-serve-llm top README is an umbrella overview; the size
+    # variants (small/medium/large/...) are what the gallery links to.
+    # Matches the legacy in-tree handling from #59980.
+    "_collections/serve/tutorials/deployment-serve-llm/README.*",
+    # llamafactory: master excludes the in-tree paths only, but this branch
+    # also pulls a copy via sphinx-collections (see _TEMPLATE_COLLECTIONS).
+    # Mirror the in-tree patterns under _collections/ so the fetched copy
+    # is suppressed too. The template has no landing page on docs.ray.io.
+    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/README.*",
+    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
+    # TODO(@elliot-barn): Remove the patterns below once the in-tree template
+    # directories are deleted in the follow-up PR. The bulk-sync branch
+    # repointed examples.yml + toctrees at /_collections/... so the in-tree
+    # copies restored by the revert are duplicates and orphan-warn until they
+    # are removed.
+    "ray-overview/examples/*/README.ipynb",
+    "ray-overview/examples/*/content/README.ipynb",
+    "serve/tutorials/deployment-serve-llm/content/*/README.ipynb",
+    "serve/tutorials/asynchronous-inference/content/*.ipynb",
+    "train/tutorials/content/README.md",
+    "tune/examples/tune_pytorch_asha/content/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
