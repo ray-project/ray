@@ -5,8 +5,8 @@ from urllib.parse import urlparse, urlunparse
 import pytest
 
 import ray
-from ray import train
 import ray.train.collective
+from ray import train
 from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.torch import TorchTrainer
