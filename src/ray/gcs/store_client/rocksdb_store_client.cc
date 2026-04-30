@@ -15,7 +15,9 @@
 #include "ray/gcs/store_client/rocksdb_store_client.h"
 
 #include <algorithm>
+#include <limits>
 #include <optional>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -97,19 +99,28 @@ RocksDbStoreClient::RocksDbStoreClient(instrumented_io_context &io_service,
   ValidateOrWriteClusterIdMarker(expected_cluster_id);
 
   // Recover the persisted job counter. Default 0 if the DB is fresh.
+  // No mutex needed: the constructor runs before any other thread can
+  // observe `this`. Use std::stoll + an explicit range check so a
+  // corrupted-or-overflowed counter on disk produces a clear FATAL
+  // rather than an unrecoverable std::out_of_range.
   std::string counter_value;
   auto get_status = db_->Get(rocksdb::ReadOptions(),
                              db_->DefaultColumnFamily(),
                              kJobCounterKey,
                              &counter_value);
   if (get_status.ok()) {
+    long long parsed = 0;
     try {
-      absl::MutexLock lock(&job_id_mutex_);
-      job_id_ = std::stoi(counter_value);
-    } catch (...) {
+      parsed = std::stoll(counter_value);
+    } catch (const std::exception &e) {
       RAY_LOG(FATAL) << "RocksDB job counter is corrupt at " << db_path
-                     << ": " << counter_value;
+                     << ": " << counter_value << " (" << e.what() << ")";
     }
+    if (parsed < 0 || parsed > std::numeric_limits<int>::max()) {
+      RAY_LOG(FATAL) << "RocksDB job counter at " << db_path
+                     << " is out of int range: " << counter_value;
+    }
+    job_id_ = static_cast<int>(parsed);
   } else {
     RAY_CHECK(get_status.IsNotFound())
         << "Unexpected RocksDB Get error for job counter: "
@@ -313,20 +324,35 @@ void RocksDbStoreClient::AsyncDelete(const std::string &table_name,
 void RocksDbStoreClient::AsyncBatchDelete(const std::string &table_name,
                                           const std::vector<std::string> &keys,
                                           Postable<void(int64_t)> callback) {
+  if (keys.empty()) {
+    std::move(callback).Post("GcsRocksDb.BatchDelete", static_cast<int64_t>(0));
+    return;
+  }
+
   auto *cf = GetOrCreateColumnFamily(table_name);
+
+  // Batch the existence probe via MultiGet so we issue one I/O round
+  // instead of N sequential Gets. Mirrors AsyncMultiGet's structure.
+  std::vector<rocksdb::ColumnFamilyHandle *> cfs(keys.size(), cf);
+  std::vector<rocksdb::Slice> key_slices;
+  key_slices.reserve(keys.size());
+  for (const auto &k : keys) key_slices.emplace_back(k);
+
+  std::vector<std::string> values;
+  std::vector<rocksdb::Status> statuses =
+      db_->MultiGet(rocksdb::ReadOptions(), cfs, key_slices, &values);
+  RAY_CHECK_EQ(statuses.size(), keys.size());
 
   rocksdb::WriteBatch batch;
   int64_t deleted_count = 0;
-  for (const auto &k : keys) {
-    std::string v;
-    auto gs = db_->Get(rocksdb::ReadOptions(), cf, k, &v);
-    if (gs.ok()) {
+  for (size_t i = 0; i < keys.size(); ++i) {
+    if (statuses[i].ok()) {
       ++deleted_count;
-    } else if (!gs.IsNotFound()) {
-      RAY_LOG(FATAL) << "RocksDB Get during BatchDelete failed for key=" << k
-                     << ": " << gs.ToString();
+    } else if (!statuses[i].IsNotFound()) {
+      RAY_LOG(FATAL) << "RocksDB Get during BatchDelete failed for key="
+                     << keys[i] << ": " << statuses[i].ToString();
     }
-    auto bs = batch.Delete(cf, k);
+    auto bs = batch.Delete(cf, keys[i]);
     RAY_CHECK(bs.ok()) << "WriteBatch Delete failed: " << bs.ToString();
   }
   auto write_status = db_->Write(SyncWriteOptions(), &batch);
