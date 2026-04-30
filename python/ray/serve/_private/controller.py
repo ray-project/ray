@@ -1493,12 +1493,15 @@ class ServeController:
             )
         )
 
+        # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
             app_name
         )
-        if ingress_request_router_deployment_name is None:
-            ingress_request_router_targets = None
-        else:
+        if not replica_details:
+            return []
+
+        ingress_request_router_targets = []
+        if ingress_request_router_deployment_name is not None:
             ingress_request_router_targets = self._get_targets_for_protocol(
                 self._get_running_replica_details_for_deployment(
                     app_name, ingress_request_router_deployment_name
@@ -1506,21 +1509,6 @@ class ServeController:
                 RequestProtocol.HTTP,
             )
 
-        return self._get_target_groups_for_replica_details(
-            app_name,
-            route_prefix,
-            replica_details,
-            ingress_request_router_targets=ingress_request_router_targets,
-        )
-
-    def _get_target_groups_for_replica_details(
-        self,
-        app_name: str,
-        route_prefix: str,
-        replica_details: List[ReplicaDetails],
-        *,
-        ingress_request_router_targets: Optional[List[Target]] = None,
-    ) -> List[TargetGroup]:
         target_groups = []
 
         # Create targets for each protocol
@@ -1534,9 +1522,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
-                    ingress_request_router_targets=(
-                        ingress_request_router_targets or []
-                    ),
+                    ingress_request_router_targets=ingress_request_router_targets,
                 )
             )
 
