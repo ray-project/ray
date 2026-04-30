@@ -1,4 +1,4 @@
---index-url https://pypi.org/simple
+--index-url https://us-python.pkg.dev/artifact-foundry-prod/ah-3p-staging-python/simple/
 
 aiohappyeyeballs==2.6.1 \
     --hash=sha256:c3f9d0113123803ccadfdf3f0faa505bc78e6a72d1cc4806cbd719826e943558 \

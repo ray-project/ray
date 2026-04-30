@@ -1,5 +1,5 @@
 # Pin to satisfy both cupy (needs <2.3) and JAX (needs >2.0)
-numpy<2.3
+numpy>=2.0
 
 # Minimum version for tpu7x compatibility
 jax[tpu]>=0.8.2
