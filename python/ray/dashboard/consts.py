@@ -1,6 +1,10 @@
+import logging
+import math
 import os
 
 from ray._private.ray_constants import env_bool, env_float, env_integer
+
+logger = logging.getLogger(__name__)
 
 DASHBOARD_LOG_FILENAME = "dashboard.log"
 DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX = "DASHBOARD_AGENT_ADDR_NODE_ID_PREFIX:"
@@ -112,3 +116,22 @@ SUBPROCESS_MODULE_GRACEFUL_SHUTDOWN_TIMEOUT = env_float(
 SUBPROCESS_MODULE_JOIN_TIMEOUT = env_float(
     "RAY_DASHBOARD_SUBPROCESS_MODULE_JOIN_TIMEOUT", 2.0
 )
+
+DEFAULT_PROXY_SERVER_TIMEOUT = 30.0
+PROXY_SERVER_TIMEOUT_ENV_VAR = "RAY_DASHBOARD_PROXY_SERVER_TIMEOUT"
+
+
+def get_proxy_server_timeout() -> float:
+    timeout = env_float(PROXY_SERVER_TIMEOUT_ENV_VAR, DEFAULT_PROXY_SERVER_TIMEOUT)
+    if not math.isfinite(timeout) or timeout <= 0:
+        logger.warning(
+            f"Found {PROXY_SERVER_TIMEOUT_ENV_VAR}={timeout} in environment, "
+            "but value must be a positive finite float. "
+            f"Returning default {DEFAULT_PROXY_SERVER_TIMEOUT}."
+        )
+        return DEFAULT_PROXY_SERVER_TIMEOUT
+    return timeout
+
+
+# Timeout in seconds for proxy server requests in dashboard.
+PROXY_SERVER_TIMEOUT = get_proxy_server_timeout()

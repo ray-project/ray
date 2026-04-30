@@ -2,6 +2,7 @@ import asyncio
 import errno
 import ipaddress
 import logging
+import math
 import os
 import pathlib
 import posixpath
@@ -14,6 +15,7 @@ import multidict
 from packaging.version import Version
 
 import ray
+import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
@@ -95,6 +97,7 @@ class HttpServerDashboardHead:
         session_name: str,
         metrics: DashboardPrometheusMetrics,
         proxy_server_url: str | None = None,
+        proxy_server_timeout: float | None = None,
     ):
         self.ip = ip
         self.http_host = http_host
@@ -104,6 +107,20 @@ class HttpServerDashboardHead:
         self.metrics = metrics
         self._session_name = session_name
         self.proxy_server_url = proxy_server_url
+        if proxy_server_timeout is None:
+            proxy_server_timeout = dashboard_consts.get_proxy_server_timeout()
+        if (
+            isinstance(proxy_server_timeout, bool)
+            or not isinstance(proxy_server_timeout, (int, float))
+            or not math.isfinite(proxy_server_timeout)
+            or proxy_server_timeout <= 0
+        ):
+            raise ValueError(
+                "proxy_server_timeout must be a positive finite number, "
+                f"got {proxy_server_timeout!r}"
+            )
+        self.proxy_server_timeout = float(proxy_server_timeout)
+        self._proxy_http_session: aiohttp.ClientSession | None = None
 
         # Below attirubtes are filled after `run` API is invoked.
         self.runner = None
@@ -128,6 +145,26 @@ class HttpServerDashboardHead:
             self.http_session = aiohttp.ClientSession(loop=get_or_create_event_loop())
         else:
             self.http_session = aiohttp.ClientSession()
+
+    def _get_proxy_http_session(self) -> aiohttp.ClientSession:
+        if self._proxy_http_session is None or self._proxy_http_session.closed:
+            # Use a dedicated session with DummyCookieJar instead of sharing
+            # self.http_session so upstream Set-Cookie headers (e.g. History
+            # Server cluster session cookies) are never cached across clients
+            # or allowed to overwrite per-request Cookie headers.
+            timeout = aiohttp.ClientTimeout(total=self.proxy_server_timeout)
+            if Version(aiohttp.__version__) < Version("4.0.0"):
+                self._proxy_http_session = aiohttp.ClientSession(
+                    loop=get_or_create_event_loop(),
+                    timeout=timeout,
+                    cookie_jar=aiohttp.DummyCookieJar(),
+                )
+            else:
+                self._proxy_http_session = aiohttp.ClientSession(
+                    timeout=timeout,
+                    cookie_jar=aiohttp.DummyCookieJar(),
+                )
+        return self._proxy_http_session
 
     @routes.get("/")
     async def get_index(self, req) -> aiohttp.web.FileResponse:
@@ -329,45 +366,48 @@ class HttpServerDashboardHead:
             # This is to fix 415 error caused by content-type not in headers
             proxy_headers.setdefault("Content-Type", "application/json")
 
-            timeout = aiohttp.ClientTimeout(total=30)
+            # Manual concatenation to preserve potential paths in proxy_server_url
+            full_url = f"{self.proxy_server_url.rstrip('/')}{rel_path}"
+            session = self._get_proxy_http_session()
             try:
-                async with aiohttp.ClientSession(timeout=timeout) as session:
-                    # Manual concatenation to preserve potential paths in proxy_server_url
-                    full_url = f"{self.proxy_server_url.rstrip('/')}{rel_path}"
-                    logger.debug(
-                        f"Sending request to proxy server instead. {full_url=}"
-                    )
+                logger.debug(f"Sending request to proxy server instead. {full_url=}")
 
-                    async with session.request(
-                        method=request.method,
-                        url=full_url,
-                        headers=proxy_headers,
-                        data=body_data,
-                    ) as resp:
-                        body = await resp.read()
-                        # only fallback if the reponse from the proxy server is not found
-                        if not resp.status == 404:
-                            resp_headers = multidict.CIMultiDict(
-                                (k, v)
-                                for k, v in resp.headers.items()
-                                if k.lower()
-                                not in {
-                                    "transfer-encoding",
-                                    "content-encoding",
-                                    "content-length",
-                                }
-                            )
+                async with session.request(
+                    method=request.method,
+                    url=full_url,
+                    headers=proxy_headers,
+                    data=body_data,
+                ) as resp:
+                    body = await resp.read()
+                    # only fallback if the reponse from the proxy server is not found
+                    if not resp.status == 404:
+                        resp_headers = multidict.CIMultiDict(
+                            (k, v)
+                            for k, v in resp.headers.items()
+                            if k.lower()
+                            not in {
+                                "transfer-encoding",
+                                "content-encoding",
+                                "content-length",
+                            }
+                        )
 
-                            return aiohttp.web.Response(
-                                body=body, status=resp.status, headers=resp_headers
-                            )
-                        else:
-                            logger.warning(
-                                f"Calling endpoint {request.rel_url} returned status {resp.status} and {body}, falling back"
-                            )
+                        return aiohttp.web.Response(
+                            body=body, status=resp.status, headers=resp_headers
+                        )
+                    else:
+                        logger.warning(
+                            f"Calling endpoint {request.rel_url} returned status {resp.status} and {body}, falling back"
+                        )
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"Request to proxy server endpoint {full_url} timed out after "
+                    f"{self.proxy_server_timeout}s. Falling back to original handler."
+                )
             except Exception as e:
                 logger.warning(
-                    f"Failed to use proxy server endpoint: {e}. Falling back to original handler."
+                    f"Failed to use proxy server endpoint {full_url}: {e!r}. "
+                    "Falling back to original handler."
                 )
 
         return await handler(request)
@@ -501,4 +541,12 @@ class HttpServerDashboardHead:
 
     async def cleanup(self):
         # Wait for finish signal.
-        await self.runner.cleanup()
+        try:
+            if self.runner is not None:
+                await self.runner.cleanup()
+        finally:
+            if (
+                self._proxy_http_session is not None
+                and not self._proxy_http_session.closed
+            ):
+                await self._proxy_http_session.close()
