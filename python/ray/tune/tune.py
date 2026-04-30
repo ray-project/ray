@@ -284,6 +284,7 @@ def run(
     checkpoint_config: Optional[CheckpointConfig] = None,
     verbose: Optional[Union[int, AirVerbosity, Verbosity]] = None,
     progress_reporter: Optional[ProgressReporter] = None,
+    progress_report_interval_s: Optional[float] = None,
     log_to_file: bool = False,
     trial_name_creator: Optional[Callable[[Trial], str]] = None,
     trial_dirname_creator: Optional[Callable[[Trial], str]] = None,
@@ -412,6 +413,12 @@ def run(
             intermediate experiment progress. Defaults to CLIReporter if
             running in command-line, or JupyterNotebookReporter if running in
             a Jupyter notebook.
+        progress_report_interval_s: Minimum interval in seconds between
+            consecutive status-table heartbeats printed to the console. If
+            ``None`` (default), uses 30s for the AIR output engine and 5s for
+            the legacy ``CLIReporter``/``JupyterNotebookReporter`` path. Only
+            applies to the default reporter; ignored when a custom
+            ``progress_reporter`` instance is supplied.
         log_to_file: Log stdout and stderr to files in
             Tune's trial directories. If this is `False` (default), no files
             are written. If `true`, outputs are written to `trialdir/stdout`
@@ -865,6 +872,7 @@ def run(
         metric=metric,
         mode=mode,
         progress_metrics=progress_metrics,
+        progress_report_interval_s=progress_report_interval_s,
     )
 
     # User Warning for GPUs
@@ -898,8 +906,11 @@ def run(
 
     if air_verbosity is None:
         is_trainer = _entrypoint == AirEntrypoint.TRAINER
+        legacy_reporter_kwargs = {}
+        if progress_report_interval_s is not None:
+            legacy_reporter_kwargs["max_report_frequency"] = progress_report_interval_s
         progress_reporter = progress_reporter or _detect_reporter(
-            _trainer_api=is_trainer
+            _trainer_api=is_trainer, **legacy_reporter_kwargs
         )
 
     if resume is not None:

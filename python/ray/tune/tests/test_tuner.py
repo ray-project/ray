@@ -267,6 +267,10 @@ class TunerTest(unittest.TestCase):
             {"tune_config": TuneConfig(time_budget_s=60)},
             lambda kw: kw["time_budget_s"] == 60,
         ),
+        (
+            {"run_config": RunConfig(progress_report_interval_s=12.5)},
+            lambda kw: kw["progress_report_interval_s"] == 12.5,
+        ),
     ],
 )
 def test_tuner_api_kwargs(shutdown_only, params_expected):

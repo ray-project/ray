@@ -564,6 +564,13 @@ class RunConfig:
             both streams are written. If this is a Sequence (e.g. a Tuple),
             it has to have length 2 and the elements indicate the files to
             which stdout and stderr are written, respectively.
+        progress_report_interval_s: Minimum interval in seconds between
+            consecutive status-table heartbeats printed to the console. When
+            unset (default), the built-in reporter refreshes every 30 seconds
+            under the AIR output engine and every 5 seconds under the legacy
+            ``CLIReporter``/``JupyterNotebookReporter`` path. Raise this value
+            to reduce log noise for long-running sweeps; lower it for more
+            responsive feedback during short runs.
 
     """
 
@@ -577,6 +584,7 @@ class RunConfig:
     stop: Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]] = None
     callbacks: Optional[List["Callback"]] = None
     progress_reporter: Optional["ray.tune.progress_reporter.ProgressReporter"] = None
+    progress_report_interval_s: Optional[float] = None
     log_to_file: Union[bool, str, Tuple[str, str]] = False
 
     # Deprecated
