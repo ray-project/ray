@@ -18,7 +18,6 @@ from pydantic import (
 )
 
 from ray._common.logging_constants import LOGRECORD_STANDARD_ATTRS
-from ray._common.network_utils import get_all_interfaces_ip
 from ray._private.runtime_env.packaging import parse_uri
 from ray.serve._private.common import (
     DeploymentStatus,
@@ -732,7 +731,7 @@ class ServeApplicationSchema(BaseModel):
         ),
     )
     host: str = Field(
-        default_factory=get_all_interfaces_ip,
+        default="0.0.0.0",
         description=(
             "Host for HTTP servers to listen on. Defaults to "
             "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
@@ -924,7 +923,7 @@ class HTTPOptionsSchema(BaseModel):
     """
 
     host: str = Field(
-        default_factory=get_all_interfaces_ip,
+        default="0.0.0.0",
         description=(
             "Host for HTTP servers to listen on. Defaults to "
             "all interfaces (0.0.0.0 for IPv4, :: for IPv6), which exposes "
