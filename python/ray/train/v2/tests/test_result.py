@@ -61,6 +61,9 @@ def build_dummy_trainer(
                     )
             else:
                 train.report(metrics={"metric_a": i, "metric_b": -i})
+        # Call `get_all_reported_checkpoints` to ensure that all checkpoints are
+        #   saved before the RuntimeError
+        ray.train.get_all_reported_checkpoints()
         raise RuntimeError()
 
     trainer = TorchTrainer(
