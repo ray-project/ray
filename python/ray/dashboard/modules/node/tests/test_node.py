@@ -5,6 +5,7 @@ import sys
 import threading
 import time
 import traceback
+from collections import deque
 from datetime import datetime, timedelta
 
 import pytest
@@ -18,9 +19,79 @@ from ray._private.test_utils import (
 )
 from ray.cluster_utils import Cluster
 from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
+from ray.dashboard.modules.node.datacenter import DataSource
+from ray.dashboard.modules.node.node_head import NodeHead
 from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
+
+
+def _node_info(node_id, state):
+    return {
+        "nodeId": node_id,
+        "state": state,
+        "isHeadNode": False,
+        "nodeManagerAddress": "127.0.0.1",
+        "nodeManagerPort": 10001,
+    }
+
+
+@pytest.mark.asyncio
+async def test_reconcile_node_cache_corrects_stale_dashboard_state():
+    node_head = NodeHead.__new__(NodeHead)
+    stale_alive_node_id = "stale-alive"
+    missing_node_id = "missing-from-gcs"
+    current_node_id = "current"
+    new_node_id = "new"
+
+    original_nodes = DataSource.nodes
+    DataSource.nodes = {
+        stale_alive_node_id: _node_info(stale_alive_node_id, "ALIVE"),
+        missing_node_id: _node_info(missing_node_id, "ALIVE"),
+        current_node_id: _node_info(current_node_id, "ALIVE"),
+    }
+    try:
+        node_head._stubs = {missing_node_id: object()}
+        node_head._dead_node_queue = deque([missing_node_id])
+
+        async def get_all_nodes_from_gcs():
+            return [
+                _node_info(stale_alive_node_id, "DEAD"),
+                _node_info(current_node_id, "ALIVE"),
+                _node_info(new_node_id, "ALIVE"),
+            ]
+
+        async def update_node(node):
+            DataSource.nodes[node["nodeId"]] = node
+
+        kv_deleted_keys = []
+
+        async def fake_kv_del(key, **kwargs):
+            kv_deleted_keys.append(key)
+
+        class FakeGcsClient:
+            async_internal_kv_del = fake_kv_del
+
+        node_head.gcs_client = FakeGcsClient()
+        node_head._get_all_nodes_from_gcs = get_all_nodes_from_gcs
+        node_head._update_node = update_node
+
+        stats = await node_head._reconcile_node_cache_once()
+
+        assert stats == {
+            "num_pruned": 1,
+            "num_state_corrected": 1,
+            "num_added": 1,
+        }
+        assert missing_node_id not in DataSource.nodes
+        assert missing_node_id not in node_head._stubs
+        assert missing_node_id not in node_head._dead_node_queue
+        assert len(kv_deleted_keys) == 2
+        assert DataSource.nodes[stale_alive_node_id]["state"] == "DEAD"
+        assert DataSource.nodes[current_node_id]["state"] == "ALIVE"
+        assert DataSource.nodes[new_node_id]["state"] == "ALIVE"
+    finally:
+        DataSource.nodes = original_nodes
 
 
 def test_nodes_update(enable_test_module, ray_start_with_dashboard):
