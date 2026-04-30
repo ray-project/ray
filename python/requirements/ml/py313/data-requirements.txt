@@ -12,3 +12,4 @@ modin>=0.26.0
 pandas>=2.2.2
 responses>=0.15.0
 pymars>=0.8.3; python_version < "3.12"
+lance-namespace==0.6.1
