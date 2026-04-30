@@ -53,21 +53,10 @@ class FakeLongPollHost:
 
 # Application State Manager for dependency injection
 class FakeApplicationStateManager:
-    def __init__(
-        self,
-        app_statuses,
-        route_prefixes,
-        ingress_deployments,
-        ingress_request_router_deployments=None,
-        deployments=None,
-    ):
+    def __init__(self, app_statuses, route_prefixes, ingress_deployments):
         self.app_statuses = app_statuses
         self.route_prefixes = route_prefixes
         self.ingress_deployments = ingress_deployments
-        self.ingress_request_router_deployments = (
-            ingress_request_router_deployments or {}
-        )
-        self.deployments = deployments or {}
 
     def list_app_statuses(self):
         return self.app_statuses
@@ -79,18 +68,7 @@ class FakeApplicationStateManager:
         return self.ingress_deployments.get(app_name, f"{app_name}_ingress")
 
     def get_ingress_request_router_deployment_name(self, app_name):
-        return self.ingress_request_router_deployments.get(app_name)
-
-    def get_deployments(self, app_name):
-        if app_name in self.deployments:
-            return self.deployments[app_name]
-
-        deployments = []
-        if app_name in self.ingress_deployments:
-            deployments.append(self.ingress_deployments[app_name])
-        if app_name in self.ingress_request_router_deployments:
-            deployments.append(self.ingress_request_router_deployments[app_name])
-        return deployments
+        return None
 
 
 class FakeProxyState:
@@ -782,164 +760,6 @@ def test_get_target_groups_only_includes_ingress_deployments(
             regular_replica_info
         ),
         RequestProtocol.GRPC,
-    )
-
-
-def test_get_target_groups_with_ingress_request_router_splits_targets(
-    direct_ingress_controller: FakeDirectIngressController,
-):
-    app_name = "app1"
-    llm_deployment_name = "LLMServer"
-    router_deployment_name = "IngressRequestRouter"
-    route_prefix = "/v1"
-
-    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
-        app_statuses={app_name: {}},
-        route_prefixes={app_name: route_prefix},
-        ingress_deployments={app_name: llm_deployment_name},
-        ingress_request_router_deployments={app_name: router_deployment_name},
-        deployments={app_name: [llm_deployment_name, router_deployment_name]},
-    )
-
-    llm_deployment_id = DeploymentID(name=llm_deployment_name, app_name=app_name)
-    router_deployment_id = DeploymentID(name=router_deployment_name, app_name=app_name)
-
-    llm_replica_id = ReplicaID(unique_id="llm_replica", deployment_id=llm_deployment_id)
-    pending_llm_replica_id = ReplicaID(
-        unique_id="pending_llm_replica", deployment_id=llm_deployment_id
-    )
-    router_replica_id = ReplicaID(
-        unique_id="router_replica", deployment_id=router_deployment_id
-    )
-
-    llm_replica_info = RunningReplicaInfo(
-        replica_id=llm_replica_id,
-        node_id="node1",
-        node_ip="10.0.0.1",
-        availability_zone="az1",
-        actor_name="llm_replica",
-        max_ongoing_requests=100,
-        backend_http_port=8100,
-    )
-    pending_llm_replica_info = RunningReplicaInfo(
-        replica_id=pending_llm_replica_id,
-        node_id="node2",
-        node_ip="10.0.0.2",
-        availability_zone="az2",
-        actor_name="pending_llm_replica",
-        max_ongoing_requests=100,
-    )
-    router_replica_info = RunningReplicaInfo(
-        replica_id=router_replica_id,
-        node_id="node3",
-        node_ip="10.0.0.3",
-        availability_zone="az3",
-        actor_name="router_replica",
-        max_ongoing_requests=100,
-        backend_http_port=8200,
-    )
-
-    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
-        running_replica_infos={
-            llm_deployment_id: [llm_replica_info, pending_llm_replica_info],
-            router_deployment_id: [router_replica_info],
-        },
-    )
-    router_http_port = direct_ingress_controller.allocate_replica_port(
-        "node3", router_replica_id.unique_id, RequestProtocol.HTTP
-    )
-
-    assert direct_ingress_controller.get_target_groups(app_name=app_name) == [
-        TargetGroup(
-            protocol=RequestProtocol.HTTP,
-            route_prefix=route_prefix,
-            app_name=app_name,
-            targets=[
-                Target(
-                    ip="10.0.0.1",
-                    port=8100,
-                    instance_id="",
-                    name="llm_replica",
-                ),
-            ],
-            ingress_request_router_targets=[
-                Target(
-                    ip="10.0.0.3",
-                    port=router_http_port,
-                    instance_id="",
-                    name="router_replica",
-                ),
-            ],
-        )
-    ]
-
-
-def test_ingress_request_router_target_groups_require_router_and_backend_targets(
-    direct_ingress_controller: FakeDirectIngressController,
-):
-    app_name = "app1"
-    llm_deployment_name = "LLMServer"
-    router_deployment_name = "IngressRequestRouter"
-
-    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
-        app_statuses={app_name: {}},
-        route_prefixes={app_name: "/v1"},
-        ingress_deployments={app_name: llm_deployment_name},
-        ingress_request_router_deployments={app_name: router_deployment_name},
-        deployments={app_name: [llm_deployment_name, router_deployment_name]},
-    )
-
-    llm_deployment_id = DeploymentID(name=llm_deployment_name, app_name=app_name)
-    router_deployment_id = DeploymentID(name=router_deployment_name, app_name=app_name)
-
-    llm_replica_id = ReplicaID(unique_id="llm_replica", deployment_id=llm_deployment_id)
-    router_replica_id = ReplicaID(
-        unique_id="router_replica", deployment_id=router_deployment_id
-    )
-
-    llm_replica_info = RunningReplicaInfo(
-        replica_id=llm_replica_id,
-        node_id="node1",
-        node_ip="10.0.0.1",
-        availability_zone="az1",
-        actor_name="llm_replica",
-        max_ongoing_requests=100,
-        backend_http_port=8100,
-    )
-    router_replica_info = RunningReplicaInfo(
-        replica_id=router_replica_id,
-        node_id="node2",
-        node_ip="10.0.0.2",
-        availability_zone="az2",
-        actor_name="router_replica",
-        max_ongoing_requests=100,
-    )
-
-    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
-        running_replica_infos={llm_deployment_id: [llm_replica_info]},
-    )
-    assert (
-        direct_ingress_controller._get_target_groups_for_app_with_ingress_request_router(
-            app_name,
-            "/v1",
-            router_deployment_name,
-        )
-        == []
-    )
-
-    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
-        running_replica_infos={router_deployment_id: [router_replica_info]},
-    )
-    direct_ingress_controller.allocate_replica_port(
-        "node2", router_replica_id.unique_id, RequestProtocol.HTTP
-    )
-    assert (
-        direct_ingress_controller._get_target_groups_for_app_with_ingress_request_router(
-            app_name,
-            "/v1",
-            router_deployment_name,
-        )
-        == []
     )
 
 
