@@ -21,7 +21,7 @@ steps:
 
   - label: ":tapioca: build: pip-compile py3.13 dependencies"
     key: pip_compile_313_dependencies
-    tags: always
+    tags: python_dependencies
     instance_type: small
     commands:
       # uncomment the following line to update the pinned versions of pip dependencies
