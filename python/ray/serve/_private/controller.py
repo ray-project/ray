@@ -661,7 +661,7 @@ class ServeController:
                 Tuple[str, str, int, int]
             ] = self.deployment_state_manager.get_direct_ingress_replicas_info()
 
-            NodePortManager.update_ports(direct_ingress_replicas_info_list)
+            NodePortManager.update_ports(direct_ingress_port_infos)
 
             # Clean up stale ports
             # get all alive replica ids and their node ids.
