@@ -448,7 +448,7 @@ def create_controlled_app(config: ControllerAppConfig) -> Application:
 
 class AutoscalingControllerAppConfig(BaseModel):
     min_replicas: int
-    initial_replicas: Optional[int]
+    initial_replicas: Optional[int] = None
     max_replicas: int
 
 
