@@ -501,6 +501,54 @@ async def test_backoff_engaged_when_all_ranks_saturated(router):
 
 
 @pytest.mark.asyncio
+async def test_concurrent_same_session_does_not_orphan(router):
+    """Concurrent same-session requests at the rank-list size must all
+    resolve, not livelock.
+
+    Regression: the routing task that pops a pending from the route deque
+    is the one responsible for fulfilling it. If the inner retry loop
+    breaks early under load (e.g., on the routing-task-shedding check after
+    a probe miss) without fulfilling, that pending used to become an
+    orphan: still in `_pending_requests_to_fulfill` / `_pending_requests_by_id`
+    but with no task actively routing it. Surviving routing tasks would
+    then loop with `request_metadata=None`, and because ConsistentHashRouter
+    uses strict-metadata-match fulfillment (no FIFO fallback like pow2),
+    they couldn't pick up the orphan, livelocking the router.
+    """
+    loop = get_or_create_event_loop()
+
+    # 1 + DEFAULT_FALLBACK_REPLICAS replicas so the full rank list is
+    # exactly the same set across requests (no replica outside the ranks).
+    replicas = [
+        FakeRunningReplica(f"r{i}") for i in range(1 + DEFAULT_FALLBACK_REPLICAS)
+    ]
+    for r in replicas:
+        r.set_queue_len_response(0)
+    router.update_replicas(replicas)
+
+    # Fire (1 + fallback_replicas + 2) concurrent same-session requests.
+    # That's strictly more than the rank-list size, exercising the path
+    # where the routing task that owns a popped pending might temporarily
+    # exceed the dynamically computed task target.
+    burst_size = 1 + DEFAULT_FALLBACK_REPLICAS + 2
+    tasks = [
+        loop.create_task(
+            router._choose_replica_for_request(_make_request("burst-session"))
+        )
+        for _ in range(burst_size)
+    ]
+    done, pending = await asyncio.wait(tasks, timeout=2.0)
+    assert len(pending) == 0, (
+        f"{len(pending)}/{burst_size} concurrent same-session requests "
+        "did not resolve -- ConsistentHashRouter livelocked under load."
+    )
+
+    chosen_replicas = {t.result().replica_id for t in done}
+    # Affinity preserved: every burst request lands on the same primary.
+    assert len(chosen_replicas) == 1
+
+
+@pytest.mark.asyncio
 async def test_two_routers_route_same_session_to_same_replica(router):
     """Two independent routers with the same replica set must pick the same
     replica for the same session_id."""
