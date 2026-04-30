@@ -78,6 +78,9 @@ class FuriosaAcceleratorManager(AcceleratorManager):
                 return None
 
             arch_obj = devices[0].device_info().arch()
+            if arch_obj is None:
+                return None
+
             # PyO3 enums typically stringify as "<EnumName.Variant>",
             # "EnumName.Variant", or just "Variant". Take the trailing
             # component and normalize.
@@ -89,7 +92,7 @@ class FuriosaAcceleratorManager(AcceleratorManager):
                 return None
             return f"FURIOSA_{normalized}"
         except Exception as e:
-            logger.exception("Failed to detect Furiosa NPU type: %s", e)
+            logger.debug("Failed to detect Furiosa NPU type: %s", e)
             return None
 
     @staticmethod

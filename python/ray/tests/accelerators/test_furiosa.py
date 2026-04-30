@@ -104,6 +104,23 @@ class TestFuriosaAcceleratorManager:
         monkeypatch.setattr(mock_furiosa_smi_py, "list_devices", lambda: [])
         assert FuriosaAcceleratorManager.get_current_node_accelerator_type() is None
 
+    def test_get_current_node_accelerator_type_arch_is_none(self, monkeypatch):
+        """Regression: arch() returning None must not produce 'FURIOSA_NONE'."""
+        from ray.tests.accelerators import mock_furiosa_smi_py
+
+        class _NullArchDeviceInfo:
+            def arch(self):
+                return None
+
+        class _NullArchDevice:
+            def device_info(self):
+                return _NullArchDeviceInfo()
+
+        monkeypatch.setattr(
+            mock_furiosa_smi_py, "list_devices", lambda: [_NullArchDevice()]
+        )
+        assert FuriosaAcceleratorManager.get_current_node_accelerator_type() is None
+
     def test_set_current_process_visible_accelerator_ids(self):
         FuriosaAcceleratorManager.set_current_process_visible_accelerator_ids(
             ["0", "1"]
