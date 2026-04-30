@@ -53,7 +53,7 @@ def main(args: argparse.Namespace):
     def benchmark_fn():
         num_workers = [1, 10, 100, 500, 1000, 2000]
         for num_worker in num_workers:
-            num_blocks = BLOCKS_PER_WORKER * args.num_workers
+            num_blocks = BLOCKS_PER_WORKER * num_workers
             num_rows = num_blocks * ROWS_PER_BLOCK
             ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
 
@@ -61,7 +61,7 @@ def main(args: argparse.Namespace):
                 ds = ds.map_batches(
                     NoOpUDF,
                     num_cpus=1,
-                    compute=ray.data.ActorPoolStrategy(size=args.num_workers),
+                    compute=ray.data.ActorPoolStrategy(size=num_workers),
                 )
             else:
                 ds = ds.map_batches(
