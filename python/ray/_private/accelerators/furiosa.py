@@ -12,16 +12,17 @@ NOSET_FURIOSA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_FURIOSA_VISIBLE_
 
 
 class FuriosaAcceleratorManager(AcceleratorManager):
-    """Furiosa AI NPU accelerators (RNGD family).
+    """Furiosa AI NPU accelerators.
 
     Resource name is ``FURIOSA``. The accelerator type is reported as
-    ``FURIOSA_<ARCH>`` where ``<ARCH>`` is the architecture string the
-    Furiosa SMI SDK exposes for the device. The current RNGD family
-    SKUs are RNGD-S, RNGD, RNGD-Max, and RNGD+, which surface as
-    ``FURIOSA_RNGDS``, ``FURIOSA_RNGD``, ``FURIOSA_RNGDMAX`` and
-    ``FURIOSA_RNGDPLUS`` respectively. Supporting any architecture the
-    SDK reports keeps this manager forward-compatible with new SKUs as
-    Furiosa adds them to ``furiosa_smi_py``.
+    ``FURIOSA_<ARCH>`` where ``<ARCH>`` is the architecture identifier
+    that the Furiosa SMI SDK exposes via its ``Arch`` enum. The current
+    SDK variants are ``Rngd``, ``RngdS``, ``RngdMax`` and ``RngdPlus``,
+    which surface here as ``FURIOSA_RNGD``, ``FURIOSA_RNGDS``,
+    ``FURIOSA_RNGDMAX`` and ``FURIOSA_RNGDPLUS`` respectively.
+    Supporting any architecture the SDK reports keeps this manager
+    forward-compatible with new SKUs as Furiosa adds them to
+    ``furiosa_smi_py``.
     """
 
     @staticmethod
