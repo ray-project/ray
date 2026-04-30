@@ -68,19 +68,23 @@ class IOContextMonitor {
     const std::shared_ptr<ClockInterface> clock;
 
     // Mutex protecting fields written by the probe callback (on the io_context
-    // thread) and read by the monitor in CheckProbeStatus.
+    // thread) and read by the monitor in ProcessProbe.
     absl::Mutex mu;
     // Defaults to true to kick off the probe in the first iteration.
     bool last_probe_completed ABSL_GUARDED_BY(mu) = true;
     absl::Time probe_complete_time ABSL_GUARDED_BY(mu) = absl::InfinitePast();
 
-    // Only accessed from the monitor (via Tick/CheckProbeStatus).
+    // Only accessed from the monitor (via Tick/ProcessProbe).
     absl::Time probe_post_time = absl::InfinitePast();
     bool healthy = true;
     bool deadline_exceeded_recorded = false;
   };
 
-  bool CheckProbeStatus(const std::shared_ptr<ProbeState> &probe);
+  bool ProcessProbe(const std::shared_ptr<ProbeState> &probe);
+  bool OnProbePending(const std::shared_ptr<ProbeState> &probe)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(probe->mu);
+  bool OnProbeCompleted(const std::shared_ptr<ProbeState> &probe)
+      ABSL_EXCLUSIVE_LOCKS_REQUIRED(probe->mu);
   static void ExecuteProbeOnIOContext(const std::shared_ptr<ProbeState> &probe)
       ABSL_LOCKS_EXCLUDED(probe->mu);
 
