@@ -8,7 +8,6 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
-    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
 )
@@ -19,20 +18,11 @@ from ray.serve.tests.conftest import *  # noqa
 import psutil
 
 
-@pytest.fixture
-def _skip_if_ff_not_enabled():
-    if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
-        pytest.skip(
-            reason="RAY_SERVE_ENABLE_DIRECT_INGRESS not set.",
-        )
-
-
 @pytest.mark.asyncio
 @pytest.mark.parametrize("set_http_options_timeout", [False, True])
 @pytest.mark.parametrize("timeout_header", [None, "abc", "0", "1"])
 @pytest.mark.parametrize("disconnect_header", [None, "?0", "?1"])
 async def test_http_request_timeout_disconnect_headers(
-    _skip_if_ff_not_enabled,
     ray_instance,
     ray_shutdown,
     set_http_options_timeout,

@@ -266,6 +266,7 @@ DEFAULT_MAX_ONGOING_REQUESTS = 5
 DEFAULT_TARGET_ONGOING_REQUESTS = 2
 DEFAULT_CONSUMER_CONCURRENCY = DEFAULT_MAX_ONGOING_REQUESTS
 DEFAULT_CONSTRUCTOR_RETRY_COUNT = 20
+DEFAULT_ROLLING_UPDATE_PERCENTAGE = 0.2
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(
@@ -660,6 +661,13 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# Experimental: use HAProxy binary from the ray-haproxy PyPI package instead
+# of a system-installed binary. When enabled, get_haproxy_binary() resolves
+# the binary from the ray_haproxy package (pip install ray-haproxy).
+RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY = (
+    os.environ.get("RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY", "0") == "1"
+)
+
 # Feature flag to include client IP address in HTTP access logs.
 # Off by default for privacy; set to "1" to enable.
 RAY_SERVE_LOG_CLIENT_ADDRESS = (
@@ -668,9 +676,7 @@ RAY_SERVE_LOG_CLIENT_ADDRESS = (
 
 # Absolute path to the HAProxy binary. Defaults to bare "haproxy" (PATH lookup).
 # Set in Docker images to avoid PATH-resolution failures (e.g. broken mounts).
-RAY_SERVE_HAPROXY_BINARY_PATH = os.environ.get(
-    "RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy"
-)
+RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy")
 
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
@@ -714,6 +720,9 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
 )
+
+# HAProxy stats UI port
+RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
 # HAProxy log port
 RAY_SERVE_HAPROXY_SYSLOG_PORT = int(
