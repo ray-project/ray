@@ -1540,7 +1540,8 @@ class TargetGroup(BaseModel):
     ingress_request_router_targets: List[Target] = Field(
         default_factory=list,
         description=(
-            "List of ingress request router targets for Lua-based routing " "decisions."
+            "List of HTTP ingress request router targets for Lua-based routing "
+            "decisions."
         ),
     )
 

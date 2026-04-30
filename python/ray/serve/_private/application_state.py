@@ -1928,6 +1928,10 @@ def override_deployment_info(
         ):
             deployment.route_prefix = app_route_prefix
 
+    ingress_deployments = [
+        name for name, info in deployment_infos.items() if info.ingress
+    ]
+
     # Validate that at most one deployment is marked as the ingress request router.
     ingress_request_router_deployments = [
         name for name, info in deployment_infos.items() if info.ingress_request_router
@@ -1938,5 +1942,20 @@ def override_deployment_info(
             f"{ingress_request_router_deployments}. Only one deployment per "
             "application can be the ingress request router for ingress bypass mode."
         )
+    if ingress_request_router_deployments:
+        if not ingress_deployments:
+            raise ValueError(
+                "A deployment marked as ingress_request_router requires an ingress "
+                "deployment in the same application."
+            )
+
+        overlapping_deployments = sorted(
+            set(ingress_deployments) & set(ingress_request_router_deployments)
+        )
+        if overlapping_deployments:
+            raise ValueError(
+                "Deployments cannot be both ingress and ingress_request_router: "
+                f"{overlapping_deployments}."
+            )
 
     return deployment_infos

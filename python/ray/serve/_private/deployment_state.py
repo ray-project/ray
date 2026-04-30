@@ -1066,8 +1066,8 @@ class ActorReplicaWrapper:
                 deployment_info.deployment_config.to_proto_bytes(),
                 self._version,
                 deployment_info.ingress,
-                deployment_info.ingress_request_router,
                 deployment_info.route_prefix,
+                deployment_info.ingress_request_router,
             )
         # TODO(simon): unify the constructor arguments across language
         elif (
@@ -5909,7 +5909,7 @@ class DeploymentStateManager:
             node_ids.update(deployment_state.get_active_node_ids())
         return node_ids
 
-    def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
+    def get_direct_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
         """Get replicas that own direct-ingress ports."""
         direct_ingress_replicas_list = [
             deployment_state._replicas.get()

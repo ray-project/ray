@@ -1055,12 +1055,14 @@ class Replica:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        ingress_request_router: bool = False,
     ):
         self._version = version
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
         self._deployment_config = deployment_config
         self._ingress = ingress
+        self._ingress_request_router = ingress_request_router
         self._route_prefix = route_prefix
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
@@ -1970,7 +1972,7 @@ class Replica:
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
             return
 
-        if not self._ingress and not self._deployment_config.ingress_request_router:
+        if not self._ingress and not self._ingress_request_router:
             return
 
         async def allocate_and_start_server(start_server_fn, protocol):
@@ -2708,13 +2710,12 @@ class ReplicaActor:
         deployment_config_proto_bytes: bytes,
         version: DeploymentVersion,
         ingress: bool,
+        route_prefix: str,
         ingress_request_router: bool = False,
-        route_prefix: str = "",
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
         )
-        deployment_config.ingress_request_router = ingress_request_router
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)
@@ -2727,6 +2728,7 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
+            ingress_request_router=ingress_request_router,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):
