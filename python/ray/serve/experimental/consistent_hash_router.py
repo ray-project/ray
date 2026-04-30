@@ -6,8 +6,10 @@ due to backpressure, the router falls back to the next replica in the ring,
 with at most DEFAULT_FALLBACK_REPLICAS replicas before backing off the request.
 """
 
+import asyncio
 import bisect
 import logging
+import time
 from typing import FrozenSet, List, Optional
 
 import mmh3
@@ -206,3 +208,85 @@ class ConsistentHashRouter(RequestRouter):
                 ranks.append([replica])
 
         return ranks
+
+    async def _fulfill_pending_requests(self):
+        """Overrides the base loop with two consistent-hash-specific
+        invariants:
+
+        1. Exit immediately when there is nothing to route (rather than
+           routing for a None pending request, which the base class does
+           assuming a FIFO fallback that ConsistentHashRouter does not
+           provide).
+        2. The routing task that owns a popped pending request must keep
+           retrying the inner loop until the request is fulfilled, even if
+           there are now more routing tasks than the target. Without this,
+           concurrent same-session bursts would orphan their pending
+           requests under load.
+        """
+        try:
+            while len(self._routing_tasks) <= self.target_num_routing_tasks:
+                start_time = time.time()
+                backoff_index = 0
+                pending_request = self._get_next_pending_request_to_route()
+                if pending_request is None:
+                    # No work for this task; let it exit. Future calls to
+                    # _maybe_start_routing_tasks (on new requests or replica
+                    # updates) will spawn fresh tasks. Drain done entries
+                    # from the front of the fulfill deque first so that
+                    # ``num_pending_requests`` accurately reflects active
+                    # work for the next round of task accounting.
+                    while (
+                        len(self._pending_requests_to_fulfill) > 0
+                        and self._pending_requests_to_fulfill[0].future.done()
+                    ):
+                        self._pending_requests_to_fulfill.popleft()
+                    return
+                request_metadata = pending_request.metadata
+                gen_choose_replicas_with_backoff = self._choose_replicas_with_backoff(
+                    pending_request
+                )
+                try:
+                    async for candidates in gen_choose_replicas_with_backoff:
+                        while (
+                            len(self._pending_requests_to_fulfill) > 0
+                            and self._pending_requests_to_fulfill[0].future.done()
+                        ):
+                            self._pending_requests_to_fulfill.popleft()
+
+                        # Note: unlike the base class, we deliberately do NOT
+                        # break on `len(routing_tasks) > target` here when our
+                        # popped pending_request hasn't been fulfilled yet, so
+                        # that the popping task always finishes its work.
+                        if (
+                            pending_request.future.done()
+                            and len(self._routing_tasks) > self.target_num_routing_tasks
+                        ):
+                            break
+
+                        replica = await self._select_from_candidate_replicas(
+                            candidates, backoff_index
+                        )
+                        if replica is not None:
+                            self._fulfill_next_pending_request(
+                                replica, request_metadata
+                            )
+                            break
+
+                        backoff_index += 1
+                        if backoff_index >= 50 and backoff_index % 50 == 0:
+                            routing_time_elapsed = time.time() - start_time
+                            warning_log = (
+                                "Failed to route request after "
+                                f"{backoff_index} attempts over "
+                                f"{routing_time_elapsed:.2f}s. Retrying. "
+                                f"Request ID: {request_metadata.request_id}."
+                            )
+                            logger.warning(warning_log)
+                finally:
+                    await gen_choose_replicas_with_backoff.aclose()
+
+        except Exception:
+            logger.exception("Unexpected error in _fulfill_pending_requests.")
+        finally:
+            self._routing_tasks.remove(asyncio.current_task(loop=self._event_loop))
+            self.num_routing_tasks_gauge.set(self.curr_num_routing_tasks)
