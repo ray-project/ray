@@ -455,6 +455,10 @@ class ServeController:
             keys_to_snapshot_ids_bytes
         )
 
+    def notify_long_poll_client_disabled(self, client_id: str, reason: str) -> None:
+        """Logged when a LongPollClient stops itself; see LongPollHost."""
+        self.long_poll_host.notify_client_disabled(client_id, reason)
+
     def get_all_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()

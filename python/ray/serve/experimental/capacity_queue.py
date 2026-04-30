@@ -99,6 +99,7 @@ class CapacityQueue:
                     ): self._update_deployment_targets,
                 },
                 call_in_event_loop=get_or_create_event_loop(),
+                client_id=f"CapacityQueue:{ray.get_runtime_context().get_actor_id()}",
             )
 
         # Start background TTL reaper if token_ttl_s is set.

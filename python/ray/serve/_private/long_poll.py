@@ -117,6 +117,9 @@ class LongPollClient:
           callbacks to be called on state update for the corresponding keys.
         call_in_event_loop: an asyncio event loop
           to post the callback into.
+        client_id: optional human-readable identifier reported back to the
+          host if this client disables itself. Defaults to a process-scoped
+          id when not provided.
     """
 
     def __init__(
@@ -124,6 +127,7 @@ class LongPollClient:
         host_actor,
         key_listeners: Dict[KeyType, UpdateStateCallable],
         call_in_event_loop: AbstractEventLoop,
+        client_id: Optional[str] = None,
     ) -> None:
         # We used to allow this to be optional, but due to Ray Client issue
         # we now enforce all long poll client to post callback to event loop
@@ -133,6 +137,7 @@ class LongPollClient:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
+        self._client_id = client_id or f"pid={os.getpid()}"
         # The initial snapshot id for each key is < 0,
         # but real snapshot keys in the long poll host are always >= 0,
         # so this will always trigger an initial update.
@@ -224,12 +229,22 @@ class LongPollClient:
         if self.event_loop.is_running():
             self.event_loop.call_soon_threadsafe(callback)
         else:
+            reason = "Bound asyncio event loop is not running; controller updates cannot be delivered."
             logger.error(
-                "LongPollClient cannot deliver controller updates and has been "
-                "disabled: its bound asyncio event loop is closed. Keep the loop "
-                "running for the lifetime of this process."
+                f"LongPollClient {self._client_id!r} has been disabled: {reason} "
+                f"Keep the loop running for the lifetime of this process."
             )
             self.is_running = False
+            # Fire-and-forget notify so the controller logs this client as disabled.
+            try:
+                self.host_actor.notify_long_poll_client_disabled.remote(
+                    self._client_id, reason
+                )
+            except Exception:
+                logger.exception(
+                    "Failed to notify host that LongPollClient "
+                    f"{self._client_id!r} disabled itself."
+                )
 
     def _process_update(self, updates: Dict[str, UpdatedObject]):
         if isinstance(updates, (ray.exceptions.RayActorError)):
@@ -356,6 +371,18 @@ class LongPollHost:
     def _get_pending_clients_by_namespace(self, namespace_tag: str) -> int:
         """Used for testing. Returns the aggregate pending client count."""
         return self._pending_clients_by_namespace.get(namespace_tag, 0)
+
+    def notify_client_disabled(self, client_id: str, reason: str) -> None:
+        """Fire-and-forget hook for clients that are shutting themselves down.
+
+        LongPollClient calls this before flipping ``is_running`` to False when
+        it cannot keep delivering updates (e.g. its bound asyncio loop is no
+        longer running).
+        """
+        logger.error(
+            f"LongPollClient {client_id!r} disabled itself and will no longer "
+            f"receive controller updates. Reason: {reason}"
+        )
 
     def _count_send(
         self, timeout_or_data: Union[LongPollState, Dict[KeyType, UpdatedObject]]

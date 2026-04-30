@@ -1,8 +1,11 @@
 import asyncio
+import io
+import logging
 import os
 import sys
 import time
 from typing import Dict
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -625,6 +628,33 @@ def test_delete_tombstone_reaches_parked_subscriber(serve_instance):
     delivered = result[targets_key].object_snapshot
     assert delivered.is_available is False
     assert delivered.running_replicas == []
+
+
+def test_long_poll_client_disable_propagates_to_host_log():
+    host = LongPollHost()
+    host_actor = MagicMock()
+    host_actor.notify_long_poll_client_disabled.remote.side_effect = (
+        host.notify_client_disabled
+    )
+
+    serve_logger = logging.getLogger("ray.serve")
+    buf = io.StringIO()
+    handler = logging.StreamHandler(buf)
+    serve_logger.addHandler(handler)
+    loop = asyncio.new_event_loop()  # never run; is_running() == False
+    try:
+        client = LongPollClient(
+            host_actor, {}, call_in_event_loop=loop, client_id="TestClient"
+        )
+        client._schedule_to_event_loop(lambda: None)
+    finally:
+        loop.close()
+        serve_logger.removeHandler(handler)
+
+    assert client.is_running is False
+    output = buf.getvalue()
+    assert "TestClient" in output, output
+    assert "not running" in output.lower(), output
 
 
 if __name__ == "__main__":

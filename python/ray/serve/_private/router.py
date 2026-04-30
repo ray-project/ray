@@ -686,6 +686,9 @@ class AsyncioRouter:
                 ): self.update_deployment_config,
             },
             call_in_event_loop=self._event_loop,
+            # Multiple AsyncioRouters can share an actor (one per downstream
+            # handle), so include the deployment id to disambiguate.
+            client_id=f"AsyncioRouter:{self_actor_id}:{deployment_id}",
         )
 
         shared = SharedRouterLongPollClient.get_or_create(
@@ -1474,10 +1477,12 @@ class SharedRouterLongPollClient:
         ] = defaultdict(weakref.WeakSet)
 
         # Creating the LongPollClient implicitly starts it
+        worker_id = ray.get_runtime_context().get_worker_id()
         self.long_poll_client = LongPollClient(
             controller_handle,
             key_listeners={},
             call_in_event_loop=self.event_loop,
+            client_id=f"SharedRouterLongPollClient:{worker_id}",
         )
 
     @classmethod
