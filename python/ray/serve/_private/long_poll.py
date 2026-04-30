@@ -118,8 +118,7 @@ class LongPollClient:
         call_in_event_loop: an asyncio event loop
           to post the callback into.
         client_id: optional human-readable identifier reported back to the
-          host if this client disables itself. Defaults to a process-scoped
-          id when not provided.
+          host if this client disables itself.
     """
 
     def __init__(
@@ -137,7 +136,7 @@ class LongPollClient:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
-        self._client_id = client_id or f"pid={os.getpid()}"
+        self.client_id = client_id
         # The initial snapshot id for each key is < 0,
         # but real snapshot keys in the long poll host are always >= 0,
         # so this will always trigger an initial update.
@@ -231,19 +230,19 @@ class LongPollClient:
         else:
             reason = "Bound asyncio event loop is not running; controller updates cannot be delivered."
             logger.error(
-                f"LongPollClient {self._client_id!r} has been disabled: {reason} "
+                f"LongPollClient {self.client_id!r} has been disabled: {reason} "
                 f"Keep the loop running for the lifetime of this process."
             )
             self.is_running = False
             # Fire-and-forget notify so the controller logs this client as disabled.
             try:
                 self.host_actor.notify_long_poll_client_disabled.remote(
-                    self._client_id, reason
+                    self.client_id, reason
                 )
             except Exception:
                 logger.exception(
                     "Failed to notify host that LongPollClient "
-                    f"{self._client_id!r} disabled itself."
+                    f"{self.client_id!r} disabled itself."
                 )
 
     def _process_update(self, updates: Dict[str, UpdatedObject]):

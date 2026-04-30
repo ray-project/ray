@@ -688,7 +688,7 @@ class AsyncioRouter:
             call_in_event_loop=self._event_loop,
             # Multiple AsyncioRouters can share an actor (one per downstream
             # handle), so include the deployment id to disambiguate.
-            client_id=f"AsyncioRouter:{self_actor_id}:{deployment_id}",
+            client_id=f"{type(self).__name__}:{self_actor_id}:{deployment_id}",
         )
 
         shared = SharedRouterLongPollClient.get_or_create(
@@ -1482,7 +1482,7 @@ class SharedRouterLongPollClient:
             controller_handle,
             key_listeners={},
             call_in_event_loop=self.event_loop,
-            client_id=f"SharedRouterLongPollClient:{worker_id}",
+            client_id=f"{type(self).__name__}:{worker_id}",
         )
 
     @classmethod
