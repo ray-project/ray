@@ -303,9 +303,31 @@ async def test_drain_and_undrain_haproxy_manager(
     monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
 
     cluster = Cluster()
-    head_node = cluster.add_node(num_cpus=0)
-    cluster.add_node(num_cpus=1)
-    cluster.add_node(num_cpus=1)
+
+    # Cluster() puts three Ray nodes on one host, but HAProxy defaults to
+    # singleton paths under /tmp/haproxy-serve/, so concurrent reloads
+    # across nodes truncate each other's config and crash haproxy with
+    # "No enabled listener found". Each raylet inherits os.environ at fork
+    # time, so setting per-node env vars before each cluster.add_node()
+    # gives each HAProxyManager its own paths without changing prod code.
+    def add_node(i, num_cpus):
+        monkeypatch.setenv(
+            "RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+            f"/tmp/haproxy-serve/haproxy-{i}.cfg",
+        )
+        monkeypatch.setenv(
+            "RAY_SERVE_HAPROXY_SOCKET_PATH",
+            f"/tmp/haproxy-serve/admin-{i}.sock",
+        )
+        monkeypatch.setenv(
+            "RAY_SERVE_HAPROXY_SERVER_STATE_FILE",
+            f"/tmp/haproxy-serve/server-state-{i}",
+        )
+        return cluster.add_node(num_cpus=num_cpus)
+
+    head_node = add_node(0, num_cpus=0)
+    add_node(1, num_cpus=1)
+    add_node(2, num_cpus=1)
     cluster.wait_for_nodes()
     ray.init(address=head_node.address)
     serve.start(http_options={"location": "EveryNode"})
@@ -331,6 +353,25 @@ async def test_drain_and_undrain_haproxy_manager(
     proxy_actor_ids = {proxy.actor_id for _, proxy in serve_details.proxies.items()}
 
     assert len(proxy_actor_ids) == 3
+
+    # All HAProxy actors share *:8000 via SO_REUSEPORT, so a localhost
+    # connection may land on any of them. Wait until each shard has received
+    # the backend update from the controller's long poll before issuing the
+    # blocking request — otherwise an unsynced shard returns 503 and the
+    # request never reaches a replica.
+    def all_haproxies_ready():
+        for _ in range(6):
+            try:
+                if (
+                    httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
+                    != 200
+                ):
+                    return False
+            except Exception:
+                return False
+        return True
+
+    wait_for_condition(all_haproxies_ready, timeout=20)
 
     # Start a long-running request in background to test draining behavior
     request_result = []
