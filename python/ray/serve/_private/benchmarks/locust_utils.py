@@ -148,7 +148,13 @@ def run_locust_worker(
     runner.greenlet.join()
 
     if client.errors:
-        raise RuntimeError(f"There were {len(client.errors)} errors: {client.errors}")
+        logger.warning(
+            f"Locust worker observed {len(client.errors)} request errors during the test. "
+            f"Refer to the 'master.stats.num_failures' for the aggregate count. "
+            f"Errors are: {client.errors}."
+        )
+    else:
+        logger.info("Locust worker finished successfully.")
 
 
 def run_locust_master(
