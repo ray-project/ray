@@ -136,7 +136,7 @@ class _CheckpointManager:
 
             for checkpoint_result in results_to_delete:
                 checkpoint = checkpoint_result.checkpoint
-                logger.debug("Deleting checkpoint: ", checkpoint)
+                logger.debug("Deleting checkpoint: %s", checkpoint)
                 _delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
     def _get_checkpoint_score(
