@@ -6,7 +6,12 @@ import pydantic
 import pytest
 
 from ray.llm._internal.common.utils.download_utils import NodeModelDownloadable
-from ray.llm._internal.serve.core.configs.accelerators import TPUAccelerator
+from ray.llm._internal.serve.core.configs.accelerators import (
+    CPUAccelerator,
+    GPUAccelerator,
+    TPUAccelerator,
+    TPUConfig,
+)
 from ray.llm._internal.serve.core.configs.llm_config import (
     LLMConfig,
     LoraConfig,
@@ -398,6 +403,20 @@ class TestAcceleratorConfigLogic:
 
         assert isinstance(engine_config.accelerator, TPUAccelerator)
         assert engine_config.accelerator_type == "TPU-V6E"
+
+    def test_requires_deferred_placement_group(self):
+        """Test that requires_deferred_placement_group correctly identifies deferred PG requirements."""
+        cpu_accel = CPUAccelerator()
+        assert cpu_accel.requires_deferred_placement_group is False
+
+        gpu_accel = GPUAccelerator()
+        assert gpu_accel.requires_deferred_placement_group is False
+
+        tpu_accel_no_topo = TPUAccelerator(TPUConfig(kind="tpu"))
+        assert tpu_accel_no_topo.requires_deferred_placement_group is False
+
+        tpu_accel_with_topo = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
+        assert tpu_accel_with_topo.requires_deferred_placement_group is True
 
 
 class TestApplyCheckpointInfo:
