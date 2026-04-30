@@ -456,7 +456,7 @@ class ServeController:
         )
 
     def notify_long_poll_client_disabled(self, client_id: str, reason: str) -> None:
-        """Logs LongPollClient's disabled reason propagated from LongPollClient."""
+        """Surfaces the disabled reason from LongPollClient in the logs."""
         self.long_poll_host.notify_client_disabled(client_id, reason)
 
     def get_all_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:

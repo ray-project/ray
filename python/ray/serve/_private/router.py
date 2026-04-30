@@ -1477,12 +1477,11 @@ class SharedRouterLongPollClient:
         ] = defaultdict(weakref.WeakSet)
 
         # Creating the LongPollClient implicitly starts it
-        worker_id = ray.get_runtime_context().get_worker_id()
         self.long_poll_client = LongPollClient(
             controller_handle,
             key_listeners={},
             call_in_event_loop=self.event_loop,
-            client_id=f"{type(self).__name__}:{worker_id}",
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_worker_id()}",
         )
 
     @classmethod

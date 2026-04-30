@@ -117,8 +117,8 @@ class LongPollClient:
           callbacks to be called on state update for the corresponding keys.
         call_in_event_loop: an asyncio event loop
           to post the callback into.
-        client_id: optional human-readable identifier reported back to the
-          host if this client disables itself.
+        client_id: optional identifier reported back to the host if this client
+          disables itself.
     """
 
     def __init__(
