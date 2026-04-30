@@ -383,13 +383,20 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// Decrease the reference count for this object ID. Should be called
   /// by the language frontend when a reference is destroyed.
   ///
+  /// Posted to the IO thread to relieve lock contention between the
+  /// caller and the core worker thread.
+  ///
   /// \param[in] object_id The object ID to decrease the reference count for.
   void RemoveLocalReference(const ObjectID &object_id) {
-    std::vector<ObjectID> deleted;
-    reference_counter_->RemoveLocalReference(object_id, &deleted);
-    // TODO(sang): This seems bad... We should delete the memory store
-    // properly from reference counter.
-    memory_store_->Delete(deleted);
+    io_service_.post(
+        [this, object_id]() {
+          std::vector<ObjectID> deleted;
+          reference_counter_->RemoveLocalReference(object_id, &deleted);
+          // TODO(sang): This seems bad... We should delete the memory store
+          // properly from reference counter.
+          memory_store_->Delete(deleted);
+        },
+        "CoreWorker.RemoveLocalReference");
   }
 
   int GetMemoryStoreSize() { return memory_store_->Size(); }
