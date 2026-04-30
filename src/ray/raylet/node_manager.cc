@@ -2902,9 +2902,8 @@ void NodeManager::TriggerLocalOrGlobalGCIfNeeded() {
   }
 
   // Trigger local GC if needed.
-  const bool local_gc_trigger =
-      clock_.SteadyNow() - local_gc_throttler_.LastRunTime() >
-      std::chrono::nanoseconds(local_gc_interval_ns_);
+  const bool local_gc_trigger = clock_.SteadyNow() - local_gc_throttler_.LastRunTime() >
+                                std::chrono::nanoseconds(local_gc_interval_ns_);
   if ((local_gc_triggered_by_global_gc_ || local_gc_trigger) &&
       local_gc_throttler_.CheckAndUpdateIfPossible()) {
     auto all_workers = worker_pool_.GetAllRegisteredWorkers();
