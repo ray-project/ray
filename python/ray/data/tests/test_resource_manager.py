@@ -764,6 +764,71 @@ class TestResourceManager:
             not can_submit
         ), "Task should be blocked: requires 2000 bytes but only 1000 bytes memory available"
 
+    def test_update_usages_incremental_matches_full_recompute(self):
+        ctx = DataContext.get_current()
+        o1 = InputDataBuffer(ctx, [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1}, name="Map1")
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1}, name="Map2")
+        topo = build_streaming_topology(o3, ExecutionOptions())
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            lambda: ExecutionResources(cpu=4, object_store_memory=1000),
+            ctx,
+        )
+        ops = [o1, o2, o3]
+        current = {op: ExecutionResources.zero() for op in ops}
+        running = {op: ExecutionResources.zero() for op in ops}
+        pending = {op: ExecutionResources.zero() for op in ops}
+        pending_outputs = {op: 0 for op in ops}
+        internal_outqueue = {op: 0 for op in ops}
+        pending_inputs = {op: 0 for op in ops}
+        internal_inqueue = {op: 0 for op in ops}
+        for op in ops:
+            op.current_logical_usage = MagicMock(side_effect=lambda op=op: current[op])
+            op.running_logical_usage = MagicMock(side_effect=lambda op=op: running[op])
+            op.pending_logical_usage = MagicMock(side_effect=lambda op=op: pending[op])
+            op._metrics = MagicMock()
+            op._metrics.obj_store_mem_max_pending_output_per_task = 0
+            op._metrics.obj_store_mem_internal_inqueue_for_input = MagicMock(
+                side_effect=lambda _input_index, op=op: internal_inqueue[op]
+            )
+
+        def apply_metrics():
+            for op in ops:
+                op._metrics.obj_store_mem_pending_task_outputs = pending_outputs[op]
+                op._metrics.obj_store_mem_internal_outqueue = internal_outqueue[op]
+                op._metrics.obj_store_mem_pending_task_inputs = pending_inputs[op]
+
+        def usage_snapshot():
+            return {
+                "global": resource_manager.get_global_usage(),
+                "running": resource_manager.get_global_running_usage(),
+                "pending": resource_manager.get_global_pending_usage(),
+                "op_usages": {op: resource_manager.get_op_usage(op) for op in ops},
+                "mem_internal": {
+                    op: resource_manager.get_mem_op_internal(op) for op in ops
+                },
+                "mem_outputs": {
+                    op: resource_manager.get_mem_op_outputs(op) for op in ops
+                },
+            }
+
+        apply_metrics()
+        resource_manager.update_usages()
+        budgets_before = {op: resource_manager.get_budget(op) for op in ops}
+        current[o3] = ExecutionResources(cpu=1)
+        running[o3] = ExecutionResources(cpu=1)
+        pending_outputs[o3] = 100
+        pending_inputs[o3] = 50
+        internal_inqueue[o3] = 25
+        apply_metrics()
+        resource_manager.update_usages_incremental(o3)
+        assert {op: resource_manager.get_budget(op) for op in ops} == budgets_before
+        incremental_snapshot = usage_snapshot()
+        resource_manager.update_usages()
+        assert incremental_snapshot == usage_snapshot()
+
 
 class TestResourceAllocatorUnblockingStreamingOutputBackpressure:
     """Tests for OpResourceAllocator._should_unblock_streaming_output_backpressure."""

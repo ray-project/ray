@@ -263,6 +263,75 @@ class ResourceManager:
         if self._op_resource_allocator is not None:
             self._update_allocated_budgets()
 
+    def update_usages_incremental(self, op: PhysicalOperator) -> None:
+        """Incrementally refresh usage state for the given operator and its upstreams.
+
+        Recomputes per-op usages only for the given operator and its upstreams.
+        Global aggregates are patched by delta.
+
+        Allocator budgets (`_update_allocated_budgets`) are intentionally left
+        frozen during the inner dispatch loop. Recomputing them after every
+        dispatched task is expensive, and the next full `update_usages` call
+        refreshes budgets before the next scheduling-loop step.
+
+        Pre-condition: `update_usages` has been called at least once so
+        the per-op usage caches are populated.
+        """
+        affected_ops = set[PhysicalOperator]([op])
+        for upstream in op.input_dependencies:
+            if upstream in self._topology:
+                affected_ops.add(upstream)
+
+        for op in affected_ops:
+            state = self._topology[op]
+
+            # Subtract this op's previous contribution from globals.
+            old_usage = self._op_usages.get(op)
+            old_running = self._op_running_usages.get(op)
+            old_pending = self._op_pending_usages.get(op)
+            if old_usage is not None:
+                self._global_usage = self._global_usage.subtract(old_usage)
+            if old_running is not None:
+                self._global_running_usage = self._global_running_usage.subtract(
+                    old_running
+                )
+            if old_pending is not None:
+                self._global_pending_usage = self._global_pending_usage.subtract(
+                    old_pending
+                )
+
+            op_usage = op.current_logical_usage()
+            op_running_usage = op.running_logical_usage()
+            op_pending_usage = op.pending_logical_usage()
+
+            assert not op_usage.object_store_memory
+            assert not op_running_usage.object_store_memory
+            assert not op_pending_usage.object_store_memory
+
+            used_object_store = self._estimate_object_store_memory_usage(op, state)
+
+            op_usage = op_usage.copy(object_store_memory=used_object_store)
+            op_running_usage = op_running_usage.copy(
+                object_store_memory=used_object_store
+            )
+
+            if isinstance(op, ReportsExtraResourceUsage):
+                op_usage.add(op.extra_resource_usage())
+
+            self._op_usages[op] = op_usage
+            self._op_running_usages[op] = op_running_usage
+            self._op_pending_usages[op] = op_pending_usage
+
+            self._global_usage = self._global_usage.add(op_usage)
+            self._global_running_usage = self._global_running_usage.add(
+                op_running_usage
+            )
+            self._global_pending_usage = self._global_pending_usage.add(
+                op_pending_usage
+            )
+
+            op._metrics.obj_store_mem_used = op_usage.object_store_memory
+
     def _update_allocated_budgets(self):
         completed_ops_usage = self._get_completed_ops_usage()
 
