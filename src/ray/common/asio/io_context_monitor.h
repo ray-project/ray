@@ -81,10 +81,6 @@ class IOContextMonitor {
   };
 
   bool ProcessProbe(const std::shared_ptr<ProbeState> &probe);
-  bool OnProbePending(const std::shared_ptr<ProbeState> &probe)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(probe->mu);
-  bool OnProbeCompleted(const std::shared_ptr<ProbeState> &probe)
-      ABSL_EXCLUSIVE_LOCKS_REQUIRED(probe->mu);
   static void ExecuteProbeOnIOContext(const std::shared_ptr<ProbeState> &probe)
       ABSL_LOCKS_EXCLUDED(probe->mu);
 

@@ -54,10 +54,8 @@ bool IOContextMonitor::Tick() {
 
 bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
   absl::MutexLock lock(&probe->mu);
-  return probe->last_probe_completed ? OnProbeCompleted(probe) : OnProbePending(probe);
-}
 
-bool IOContextMonitor::OnProbePending(const std::shared_ptr<ProbeState> &probe) {
+  // Check if the probe has exceeded the deadline, independent of it having finished.
   absl::Time now = clock_->Now();
   if (now - probe->probe_post_time >= healthy_deadline_ &&
       !probe->deadline_exceeded_recorded) {
@@ -70,34 +68,31 @@ bool IOContextMonitor::OnProbePending(const std::shared_ptr<ProbeState> &probe) 
     probe->deadline_exceeded_recorded = true;
   }
 
-  // Don't post another probe until this one completes.
-  return probe->healthy;
-}
+  // A new probe will only be started once the existing one completes.
+  if (probe->last_probe_completed) {
+    // Record lag and health status from the completed probe, then post a new one.
+    if (probe->probe_post_time != absl::InfinitePast()) {
+      double lag_ms =
+          absl::ToDoubleMilliseconds(probe->probe_complete_time - probe->probe_post_time);
+      lag_gauge_.Record(lag_ms, {{"Name", probe->name}});
 
-bool IOContextMonitor::OnProbeCompleted(const std::shared_ptr<ProbeState> &probe) {
-  absl::Time now = clock_->Now();
-
-  // Record lag from the previous probe.
-  if (probe->probe_post_time != absl::InfinitePast()) {
-    double lag_ms =
-        absl::ToDoubleMilliseconds(probe->probe_complete_time - probe->probe_post_time);
-    lag_gauge_.Record(lag_ms, {{"Name", probe->name}});
-
-    // Only mark healthy if we're still within the deadline window. If we're
-    // past the deadline, the probe completed late — wait for a fresh one.
-    if (now - probe->probe_post_time < healthy_deadline_) {
-      probe->healthy = true;
+      // Only mark healthy if we're still within the deadline window. If we're
+      // past the deadline, the probe completed late. The io_context will only be
+      // marked healthy if the next probe completes on time.
+      if (now - probe->probe_post_time < healthy_deadline_) {
+        probe->healthy = true;
+      }
     }
-  }
 
-  // Post a new probe. The callback captures the shared_ptr to keep the
-  // ProbeState alive even if the monitor is destroyed while a probe is
-  // outstanding.
-  probe->probe_post_time = now;
-  probe->last_probe_completed = false;
-  probe->deadline_exceeded_recorded = false;
-  probe->io_context.post([probe]() { ExecuteProbeOnIOContext(probe); },
-                         "io_context_monitor_probe");
+    // Post a new probe. The callback captures the shared_ptr to keep the
+    // ProbeState alive even if the monitor is destroyed while a probe is
+    // outstanding.
+    probe->probe_post_time = now;
+    probe->last_probe_completed = false;
+    probe->deadline_exceeded_recorded = false;
+    probe->io_context.post([probe]() { ExecuteProbeOnIOContext(probe); },
+                           "io_context_monitor_probe");
+  }
 
   return probe->healthy;
 }
