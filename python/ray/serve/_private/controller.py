@@ -1559,27 +1559,20 @@ class ServeController:
             RequestProtocol.HTTP,
         )
 
-        running_replica_infos = (
-            self.deployment_state_manager.get_running_replica_infos()
-        )
-        http_targets = [
-            Target(
-                ip=replica_info.node_ip,
-                port=replica_info.backend_http_port,
-                instance_id="",
-                name=replica_info.actor_name,
-            )
+        backend_replica_details = [
+            replica_detail
             for deployment_name in self.application_state_manager.get_deployments(
                 app_name
             )
             if deployment_name != ingress_request_router_deployment_name
-            for replica_info in running_replica_infos.get(
-                DeploymentID(app_name=app_name, name=deployment_name),
-                [],
+            for replica_detail in self._get_running_replica_details_for_deployment(
+                app_name, deployment_name
             )
-            if replica_info.backend_http_port is not None
-            and replica_info.node_ip is not None
         ]
+        http_targets = self._get_targets_for_protocol(
+            backend_replica_details,
+            RequestProtocol.HTTP,
+        )
 
         if not http_targets or not ingress_request_router_targets:
             return []
@@ -1636,19 +1629,32 @@ class ServeController:
         return target_groups
 
     def _get_targets_for_protocol(
-        self, replica_details: List[ReplicaDetails], protocol: RequestProtocol
+        self,
+        replica_details: List[ReplicaDetails],
+        protocol: RequestProtocol,
     ) -> List[Target]:
         """Create targets for a specific protocol from a list of replicas."""
-        return [
-            Target(
-                ip=replica_detail.node_ip,
-                port=self._get_port(replica_detail, protocol),
-                instance_id=replica_detail.node_instance_id,
-                name=replica_detail.actor_name,
+        targets = []
+        for replica_detail in replica_details:
+            if protocol == RequestProtocol.HTTP:
+                port = replica_detail.backend_http_port
+            elif self._is_port_allocated(replica_detail, protocol):
+                port = self._get_port(replica_detail, protocol)
+            else:
+                port = None
+
+            if port is None:
+                continue
+
+            targets.append(
+                Target(
+                    ip=replica_detail.node_ip,
+                    port=port,
+                    instance_id=replica_detail.node_instance_id,
+                    name=replica_detail.actor_name,
+                )
             )
-            for replica_detail in replica_details
-            if self._is_port_allocated(replica_detail, protocol)
-        ]
+        return targets
 
     def _get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
         return self.deployment_state_manager.get_node_id_to_alive_replica_ids()

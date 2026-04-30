@@ -1263,6 +1263,10 @@ class ReplicaDetails(ServeActorDetails):
             "state from the running replica actor."
         )
     )
+    backend_http_port: Optional[int] = Field(
+        default=None,
+        description="Port for the replica-owned backend HTTP listener.",
+    )
 
 
 @PublicAPI(stability="alpha")

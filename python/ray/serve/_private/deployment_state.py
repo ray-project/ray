@@ -1907,6 +1907,7 @@ class DeploymentReplica:
             actor_id=self._actor.actor_id,
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,
+            backend_http_port=self._actor._http_port or None,
         )
 
         return is_ready

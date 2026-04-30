@@ -165,6 +165,19 @@ class FakeDeploymentStateManager:
         return node_id_to_alive_replica_ids
 
     def get_replica_details(self, replica_info: RunningReplicaInfo) -> ReplicaDetails:
+        backend_http_port = replica_info.backend_http_port
+        node_manager = NodePortManager._node_managers.get(replica_info.node_id)
+        if (
+            backend_http_port is None
+            and node_manager
+            and node_manager.is_port_allocated(
+                replica_info.replica_id.unique_id, RequestProtocol.HTTP
+            )
+        ):
+            backend_http_port = node_manager.get_port(
+                replica_info.replica_id.unique_id, RequestProtocol.HTTP
+            )
+
         return ReplicaDetails(
             replica_id=replica_info.replica_id.unique_id,
             node_id=replica_info.node_id,
@@ -173,6 +186,7 @@ class FakeDeploymentStateManager:
             start_time_s=0,
             state=ReplicaState.RUNNING,
             actor_name=replica_info.replica_id.unique_id,
+            backend_http_port=backend_http_port,
         )
 
     def get_deployment_details(self, id: DeploymentID) -> Optional[DeploymentDetails]:
