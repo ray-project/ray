@@ -1507,58 +1507,37 @@ class ServeController:
             )
         )
 
-        if ingress_request_router_deployment_name:
-            return self._get_target_groups_for_app_with_ingress_request_router(
-                app_name, route_prefix, ingress_request_router_deployment_name
-            )
-
-        # Standard mode: ingress deployment replicas are the targets
-        replica_details = self._get_running_replica_details_for_ingress_deployment(
-            app_name
-        )
-        if not replica_details:
-            return []
-
-        return self._get_target_groups_for_replica_details(
-            app_name, route_prefix, replica_details
-        )
-
-    def _get_target_groups_for_app_with_ingress_request_router(
-        self,
-        app_name: str,
-        route_prefix: str,
-        ingress_request_router_deployment_name: str,
-    ) -> List[TargetGroup]:
-        """Create target groups for ingress bypass mode.
-
-        Ingress request router targets serve /internal/route for Lua
-        routing decisions. Main targets serve data plane traffic via
-        direct ingress.
-        """
-        ingress_request_router_targets = self._get_targets_for_protocol(
-            self._get_running_replica_details_for_deployment(
-                app_name, ingress_request_router_deployment_name
-            ),
-            RequestProtocol.HTTP,
-        )
-
-        backend_deployment_names = (
-            deployment_name
-            for deployment_name in self.application_state_manager.get_deployments(
+        if ingress_request_router_deployment_name is None:
+            replica_details = self._get_running_replica_details_for_ingress_deployment(
                 app_name
             )
-            if deployment_name != ingress_request_router_deployment_name
-        )
-        backend_replica_details = self._get_running_replica_details_for_deployments(
-            app_name,
-            backend_deployment_names,
-        )
+            ingress_request_router_targets = None
+            include_grpc = True
+        else:
+            ingress_request_router_targets = self._get_targets_for_protocol(
+                self._get_running_replica_details_for_deployment(
+                    app_name, ingress_request_router_deployment_name
+                ),
+                RequestProtocol.HTTP,
+            )
+            backend_deployment_names = (
+                deployment_name
+                for deployment_name in self.application_state_manager.get_deployments(
+                    app_name
+                )
+                if deployment_name != ingress_request_router_deployment_name
+            )
+            replica_details = self._get_running_replica_details_for_deployments(
+                app_name,
+                backend_deployment_names,
+            )
+            include_grpc = False
 
         return self._get_target_groups_for_replica_details(
             app_name,
             route_prefix,
-            backend_replica_details,
-            include_grpc=False,
+            replica_details,
+            include_grpc=include_grpc,
             ingress_request_router_targets=ingress_request_router_targets,
         )
 
