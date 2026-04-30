@@ -1493,6 +1493,7 @@
     - __suffix__: aws.pip_haproxy
       cluster:
         byod:
+          post_build_script: byod_install_ray_haproxy.sh
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
             - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
@@ -1534,6 +1535,7 @@
     - __suffix__: aws.pip_haproxy
       cluster:
         byod:
+          post_build_script: byod_install_ray_haproxy.sh
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
             - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
@@ -1571,6 +1573,7 @@
     - __suffix__: aws.pip_haproxy
       cluster:
         byod:
+          post_build_script: byod_install_ray_haproxy.sh
           runtime_env:
             - RAY_SERVE_ENABLE_HA_PROXY=1
             - RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
