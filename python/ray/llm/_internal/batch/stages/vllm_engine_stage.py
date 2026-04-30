@@ -31,6 +31,7 @@ from ray.llm._internal.batch.stages.common import (
     maybe_convert_ndarray_to_list,
     truncate_str,
 )
+from ray.llm._internal.common.errors import VLLM_FATAL_ERRORS as _VLLM_FATAL_ERRORS
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     STREAMING_LOAD_FORMATS,
@@ -41,18 +42,6 @@ from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
-
-# vLLM fatal errors that should always be re-raised, never swallowed.
-# EngineDeadError indicates the vLLM engine process has crashed and is
-# unrecoverable - all subsequent requests would fail anyway.
-_VLLM_FATAL_ERRORS: Tuple[Type[Exception], ...] = ()
-try:
-    from vllm.v1.engine.exceptions import EngineDeadError
-
-    _VLLM_FATAL_ERRORS = (EngineDeadError,)
-except ImportError:
-    # vLLM not installed or older version without this exception
-    pass
 
 # Length of prompt snippet to surface in case of recoverable error
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
