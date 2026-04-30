@@ -36,7 +36,7 @@ class ClockInterface {
   int64_t NowUnixNanos() const { return absl::ToUnixNanos(Now()); }
 };
 
-/// Real clock that delegates to absl::Now().
+/// Real clock that delegates to absl::Now(). Thread-safe.
 class Clock final : public ClockInterface {
  public:
   absl::Time Now() const override { return absl::Now(); }
