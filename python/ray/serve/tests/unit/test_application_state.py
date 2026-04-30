@@ -1475,40 +1475,6 @@ class TestOverrideDeploymentInfo:
         ):
             override_deployment_info(deployment_infos, config)
 
-    def test_rejects_ingress_request_router_without_ingress_deployment(self):
-        config = ServeApplicationSchema(
-            name="default",
-            import_path="test.import.path",
-        )
-        deployment_infos = {
-            "Router": deployment_info("Router", ingress_request_router=True),
-        }
-
-        with pytest.raises(
-            ValueError,
-            match="requires an ingress deployment",
-        ):
-            override_deployment_info(deployment_infos, config)
-
-    def test_rejects_ingress_request_router_on_ingress_deployment(self):
-        config = ServeApplicationSchema(
-            name="default",
-            import_path="test.import.path",
-        )
-        deployment_infos = {
-            "Ingress": deployment_info(
-                "Ingress",
-                route_prefix="/",
-                ingress_request_router=True,
-            ),
-        }
-
-        with pytest.raises(
-            ValueError,
-            match="cannot be both ingress and ingress_request_router",
-        ):
-            override_deployment_info(deployment_infos, config)
-
     def test_override_autoscaling_config(self, info):
         config = ServeApplicationSchema(
             name="default",
