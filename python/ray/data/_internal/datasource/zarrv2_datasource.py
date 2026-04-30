@@ -147,7 +147,7 @@ class ZarrV2Datasource(Datasource):
         if chunk_shape:
             for val in chunk_shape:
                 if val <= 0 or not isinstance(val, int):
-                    raise ValueError("chunk shape must only contain positive integers.")
+                    raise ValueError("chunk shape must only contain positive integers")
 
         self.paths = [str(path)]
         self.chunk_shape = tuple(chunk_shape) if chunk_shape else chunk_shape
