@@ -2954,6 +2954,7 @@
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: single_node.yaml
+    anyscale_sdk_2026: true
 
   run:
     timeout: 12000
@@ -3219,6 +3220,7 @@
       runtime_env:
         - LD_PRELOAD=/usr/lib/x86_64-linux-gnu/libjemalloc.so
     cluster_compute: scheduling.yaml
+    anyscale_sdk_2026: true
 
   run:
     timeout: 3600
