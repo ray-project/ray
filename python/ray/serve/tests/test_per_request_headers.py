@@ -8,6 +8,7 @@ from ray._common.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.constants import (
     RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
     RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
 )
@@ -89,9 +90,11 @@ async def test_http_request_timeout_disconnect_headers(
                 assert response.status_code == 200
 
 
-def test_direct_ingress_binds_all_interfaces_when_host_is_loopback(
-    _skip_if_ff_not_enabled, ray_shutdown
-):
+@pytest.mark.skipif(
+    not RAY_SERVE_ENABLE_DIRECT_INGRESS,
+    reason="RAY_SERVE_ENABLE_DIRECT_INGRESS not set.",
+)
+def test_direct_ingress_binds_all_interfaces_when_host_is_loopback(ray_shutdown):
     """Direct ingress backend ports must bind to 0.0.0.0 even when
     HTTPOptions.host is loopback, so HAProxy on other nodes can reach them.
     """
