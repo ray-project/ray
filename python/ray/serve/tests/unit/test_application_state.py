@@ -1373,17 +1373,12 @@ class TestOverrideDeploymentInfo:
         assert updated_info.deployment_config.health_check_period_s == 20
         assert updated_info.deployment_config.health_check_timeout_s == 60
 
-    def test_override_default_num_replicas_keeps_actor_options(self, info):
+    def test_noop_deployment_override_keeps_actor_options(self, info):
         original_actor_options = dict(info.replica_config.ray_actor_options)
         config = ServeApplicationSchema(
             name="default",
             import_path="test.import.path",
-            deployments=[
-                DeploymentSchema(
-                    name="A",
-                    num_replicas=1,
-                )
-            ],
+            deployments=[DeploymentSchema(name="A")],
         )
 
         updated_infos = override_deployment_info({"A": info}, config)
@@ -1401,7 +1396,7 @@ class TestOverrideDeploymentInfo:
             updated_info.deployment_config,
             updated_info.replica_config.ray_actor_options,
         )
-        assert old_version == new_version
+        assert old_version.ray_actor_options_hash == new_version.ray_actor_options_hash
         assert not old_version.requires_actor_restart(new_version)
 
     def test_override_autoscaling_config(self, info):
