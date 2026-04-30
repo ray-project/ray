@@ -11,9 +11,10 @@ import httpx
 import pytest
 import yaml
 
+import ray
 from ray import serve
 from ray._common.test_utils import wait_for_condition
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import DeploymentID, ReplicaState
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.scripts import remove_ansi_escape_sequences
@@ -894,6 +895,8 @@ def test_deploy_gang_scheduling(serve_instance):
 def test_deploy_gang_scaling(serve_instance, initial_replicas, final_replicas):
     """Test gang-aware scaling via serve deploy preserves existing gangs."""
     gang_size = 2
+    deployment_id = DeploymentID(name="GangApp", app_name="gang_app")
+    controller = serve.context._get_global_client()._controller
     config_files = {
         replicas: os.path.join(
             os.path.dirname(__file__),
@@ -903,41 +906,34 @@ def test_deploy_gang_scaling(serve_instance, initial_replicas, final_replicas):
         for replicas in (initial_replicas, final_replicas)
     }
 
-    # First deploy.
-    subprocess.check_output(["serve", "deploy", config_files[initial_replicas]])
-    app_url = get_application_url(app_name="gang_app")
-    wait_for_condition(lambda: httpx.post(f"{app_url}/").status_code == 200, timeout=30)
+    def collect_gang_ids(num_replicas):
+        # Query the controller directly for replica gang contexts. Probing
+        # via HTTP is unreliable for observing every replica: under direct
+        # ingress, get_application_url returns a single replica's port, so
+        # all requests land on one replica.
+        collected = []
 
-    # Collect initial gang IDs.
+        def _ready():
+            replicas = ray.get(
+                controller._dump_replica_states_for_testing.remote(deployment_id)
+            )
+            running = replicas.get([ReplicaState.RUNNING])
+            if len(running) != num_replicas:
+                return False
+            collected.append({r.gang_context.gang_id for r in running})
+            return True
+
+        wait_for_condition(_ready, timeout=30)
+        return collected[-1]
+
+    subprocess.check_output(["serve", "deploy", config_files[initial_replicas]])
     initial_num_gangs = initial_replicas // gang_size
-    initial_gang_ids = set()
-    for _ in range(initial_replicas * 10):
-        data = json.loads(httpx.post(f"{app_url}/").text)
-        if data["gang_id"] is not None:
-            initial_gang_ids.add(data["gang_id"])
+    initial_gang_ids = collect_gang_ids(initial_replicas)
     assert len(initial_gang_ids) == initial_num_gangs
 
-    # Redeploy with new replica count.
     subprocess.check_output(["serve", "deploy", config_files[final_replicas]])
-
-    # Wait for rescale to complete.
-    def rescale_complete():
-        status = serve.status()
-        app_status = status.applications.get("gang_app")
-        if app_status is None or app_status.status != "RUNNING":
-            return False
-        dep = list(app_status.deployments.values())[0]
-        return dep.replica_states.get("RUNNING", 0) == final_replicas
-
-    wait_for_condition(rescale_complete, timeout=30)
-
-    # Collect final gang IDs.
     final_num_gangs = final_replicas // gang_size
-    final_gang_ids = set()
-    for _ in range(final_replicas * 10):
-        data = json.loads(httpx.post(f"{app_url}/").text)
-        if data["gang_id"] is not None:
-            final_gang_ids.add(data["gang_id"])
+    final_gang_ids = collect_gang_ids(final_replicas)
     assert len(final_gang_ids) == final_num_gangs
 
     # The smaller set of gangs must be a subset of the larger set,
