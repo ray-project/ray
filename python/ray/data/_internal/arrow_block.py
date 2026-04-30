@@ -61,6 +61,10 @@ _MIN_PYARROW_VERSION_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 _BATCH_SIZE_PRESERVING_STUB_COL_NAME = "__bsp_stub"
 
 
+def _is_user_visible_column(name: str) -> bool:
+    return name != _BATCH_SIZE_PRESERVING_STUB_COL_NAME
+
+
 # Set the max chunk size in bytes for Arrow to Batches conversion in
 # ArrowBlockAccessor.iter_rows(). Default to 4MB, to optimize for image
 # datasets in parquet format.
@@ -407,9 +411,18 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 f"Arrow blocks, but got: {columns}."
             )
         if len(columns) == 0:
-            # Applicable for count which does an empty projection.
-            # Pyarrow returns a table with 0 columns and num_rows rows.
-            return self.fill_column(_BATCH_SIZE_PRESERVING_STUB_COL_NAME, None)
+            # Empty projection (e.g. count or ``select_columns([])``).
+            # Drop every existing column, then append the stub so row
+            # counts survive downstream ``pa.concat_tables`` calls (which
+            # collapse num_rows to 0 when all inputs have 0 columns).
+            # ``pa.Table`` tracks num_rows as metadata independent of
+            # columns, so ``select([])`` preserves it here. The stub is
+            # filtered out of the user-visible schema; it's a physical
+            # placeholder only.
+            narrowed = self._table.select([])
+            return ArrowBlockAccessor(narrowed).fill_column(
+                _BATCH_SIZE_PRESERVING_STUB_COL_NAME, None
+            )
         return self._table.select(columns)
 
     def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
