@@ -51,27 +51,31 @@ def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
     def benchmark_fn():
-        num_blocks = BLOCKS_PER_WORKER * args.num_workers
-        num_rows = num_blocks * ROWS_PER_BLOCK
-        ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
+        num_workers = [1, 10, 100, 500, 1000, 2000]
+        for num_worker in num_workers:
+            num_blocks = BLOCKS_PER_WORKER * args.num_workers
+            num_rows = num_blocks * ROWS_PER_BLOCK
+            ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
 
-        if args.worker_type == "actors":
-            ds = ds.map_batches(
-                NoOpUDF,
-                num_cpus=1,
-                compute=ray.data.ActorPoolStrategy(size=args.num_workers),
-            )
-        else:
-            ds = ds.map_batches(
-                no_op_udf,
-                num_cpus=1,
-            )
+            if args.worker_type == "actors":
+                ds = ds.map_batches(
+                    NoOpUDF,
+                    num_cpus=1,
+                    compute=ray.data.ActorPoolStrategy(size=args.num_workers),
+                )
+            else:
+                ds = ds.map_batches(
+                    no_op_udf,
+                    num_cpus=1,
+                )
 
-        ds = ds.materialize()
-        metrics = collect_dataset_stats(ds)
-        metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
-        metrics["num_blocks"] = num_blocks
-        metrics["num_rows"] = num_rows
+            ds = ds.materialize()
+            metrics = collect_dataset_stats(ds)
+            metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
+            metrics["num_blocks"] = num_blocks
+            metrics["num_rows"] = num_rows
+            import pprint
+            pprint.pprint(metrics)
         return metrics
 
     benchmark.run_fn("worker_scaling", benchmark_fn)

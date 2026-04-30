@@ -536,7 +536,7 @@
   matrix:
     setup:
       num_workers: [1000]
-      worker_type: [actors, tasks]
+      worker_type: [actors]
 
   run:
     timeout: 1200

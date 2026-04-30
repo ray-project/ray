@@ -32,6 +32,7 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     we care about for the release tests."""
     summary = ds.get_stats_summary(detail=True)
     return {
+        "avg_scheduling_loop_duration_s": summary.streaming_exec_schedule_s,
         "operators": [
             {
                 "operator_name": op.operator_name,

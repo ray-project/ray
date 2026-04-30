@@ -1154,7 +1154,7 @@ class DatasetStats:
                 op_stat.total_input_num_rows = parent_total_output
             operators_stats.append(op_stat)
         streaming_exec_schedule_s = (
-            self.streaming_exec_schedule_s.get()
+            self.streaming_exec_schedule_s.avg()
             if self.streaming_exec_schedule_s
             else 0
         )
