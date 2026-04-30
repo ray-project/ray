@@ -404,13 +404,16 @@ exclude_patterns = [
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
+    # Each template ships README.md + README.ipynb at the same docname; keep
+    # only the .md and exclude the duplicate .ipynb at the template root and
+    # in any sub-template directories. The template root README.md is the
+    # actual content page that toctrees / examples.yml refer to.
     *[
         pattern
         for coll in _TEMPLATE_COLLECTIONS.values()
         for pattern in (
-            f"_collections/{coll['target']}/README.*",
-            f"_collections/{coll['target']}/*.ipynb",
-            f"_collections/{coll['target']}/**/*.ipynb",
+            f"_collections/{coll['target']}/README.ipynb",
+            f"_collections/{coll['target']}/**/README.ipynb",
         )
     ],
     # ray_train_workloads bundles sub-folder READMEs that aren't part of any
