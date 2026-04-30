@@ -260,10 +260,9 @@ class DataConfig(BaseModel):
     datasets_to_split: Union[Literal["all"], List[str]] = Field(
         description="Which datasets to split; either 'all' or a list of dataset names."
     )
-    # TODO: Add Pydantic deprecation annotation to execution_options once Pydantic V1 is removed in PR #62716
     execution_options: Optional[Dict] = Field(
         default=None,
-        description="DEPRECATED: Use data_execution_options instead.",
+        deprecated="DEPRECATED: Use data_execution_options instead.",
     )
     data_execution_options: DataExecutionOptions = Field(
         description="Data execution options"
