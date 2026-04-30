@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
@@ -8,6 +8,9 @@ import pyarrow.parquet as pq
 from pyarrow import compute as pc
 from pyarrow.fs import FileSystem
 from typing_extensions import override
+
+if TYPE_CHECKING:
+    from ray.data.datasource.partitioning import Partitioning
 
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
@@ -135,10 +138,11 @@ class ParquetFileReader(FileReader):
         predicate: Optional[pc.Expression] = None,
         limit: Optional[int] = None,
         filesystem: Optional[FileSystem] = None,
-        partitioning: Optional[pds.Partitioning] = None,
+        partitioning: "Optional[Partitioning]" = None,
         ignore_prefixes: Optional[List[str]] = None,
         target_block_size: Optional[int] = None,
         include_paths: bool = False,
+        schema: Optional[pa.Schema] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -149,12 +153,16 @@ class ParquetFileReader(FileReader):
             predicate: PyArrow compute expression for filtering.
             limit: Maximum number of rows to read.
             filesystem: Filesystem for reading files.
-            partitioning: PyArrow partitioning for reading files.
+            partitioning: Ray ``Partitioning`` for synthesizing partition
+                columns from file paths.
             ignore_prefixes: Prefixes to ignore when reading files.
             target_block_size: Target in-memory size per batch in bytes.
                 Used for adaptive batch sizing when ``batch_size`` is not set.
             include_paths: If True, include the source file path in a
                 ``'path'`` column for each row.
+            schema: Caller-supplied unified schema forwarded to the base
+                :class:`FileReader` for per-fragment inference override
+                and partition-column type casting.
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -166,6 +174,7 @@ class ParquetFileReader(FileReader):
             partitioning=partitioning,
             ignore_prefixes=ignore_prefixes,
             include_paths=include_paths,
+            schema=schema,
         )
         self._explicit_batch_size = batch_size
         self._target_block_size = target_block_size

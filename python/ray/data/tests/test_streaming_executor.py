@@ -1,4 +1,5 @@
 import os
+import pickle
 import random
 import threading
 import time
@@ -1251,8 +1252,10 @@ def create_stub_streaming_gen(
                     task_wall_time_s=_time.perf_counter() - task_start_s,
                 )
             )
-            yield BlockMetadataWithSchema.from_metadata(
-                block_metadata, schema=block_accessor.schema()
+            yield pickle.dumps(
+                BlockMetadataWithSchema.from_metadata(
+                    block_metadata, schema=block_accessor.schema()
+                )
             )
 
     generator_backpressure_num_objects = (

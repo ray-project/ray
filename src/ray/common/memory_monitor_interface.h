@@ -48,11 +48,9 @@ struct SystemMemorySnapshot {
 using ProcessesMemorySnapshot = absl::flat_hash_map<pid_t, int64_t>;
 
 /**
- * @brief Callback that runs at each monitoring interval.
- *
- * \param system_memory snapshot of system memory information.
+ * @brief Callback to trigger worker oom killing when under memory pressure.
  */
-using KillWorkersCallback = std::function<void(SystemMemorySnapshot system_memory)>;
+using KillWorkersCallback = std::function<void()>;
 
 /**
  * @brief implementations of this interface monitors the memory usage of the node
