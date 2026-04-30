@@ -193,7 +193,7 @@ class FakeDeploymentStateManager:
             replicas=replica_details,
         )
 
-    def get_direct_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
+    def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
         return []
 
 

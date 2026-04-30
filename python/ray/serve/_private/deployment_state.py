@@ -5909,7 +5909,7 @@ class DeploymentStateManager:
             node_ids.update(deployment_state.get_active_node_ids())
         return node_ids
 
-    def get_direct_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
+    def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
         """Get replicas that own direct-ingress ports."""
         direct_ingress_replicas_list = [
             deployment_state._replicas.get()

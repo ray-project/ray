@@ -651,12 +651,13 @@ class ServeController:
         """Update ingress ports if direct ingress is enabled."""
         # Direct ingress port management
         if self._direct_ingress_enabled:
-            # Update port values for replicas that own direct-ingress ports.
-            direct_ingress_replicas_info_list: List[
+            # Update port values for replicas that need direct-ingress ports.
+            # This includes ingress replicas and ingress request router replicas.
+            ingress_replicas_info_list: List[
                 Tuple[str, str, int, int]
-            ] = self.deployment_state_manager.get_direct_ingress_replicas_info()
+            ] = self.deployment_state_manager.get_ingress_replicas_info()
 
-            NodePortManager.update_ports(direct_ingress_replicas_info_list)
+            NodePortManager.update_ports(ingress_replicas_info_list)
 
             # Clean up stale ports
             # get all alive replica ids and their node ids.
