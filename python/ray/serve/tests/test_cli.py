@@ -43,7 +43,9 @@ def check_http_response(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_deploy_config_default_num_replicas_no_replica_restart(serve_instance):
+def test_deploy_config_default_num_replicas_no_replica_restart(
+    serve_instance, tmp_path
+):
     """Explicitly setting default num_replicas via CLI config should not roll replicas."""
 
     config = {
@@ -55,9 +57,7 @@ def test_deploy_config_default_num_replicas_no_replica_restart(serve_instance):
         ]
     }
     success_message_fragment = b"Sent deploy request successfully."
-
-    with NamedTemporaryFile("w", suffix=".yaml", delete=False) as config_file:
-        config_file_name = config_file.name
+    config_file_name = str(tmp_path / "serve_config.yaml")
 
     def write_config() -> None:
         with open(config_file_name, "w") as config_file:
@@ -79,28 +79,25 @@ def test_deploy_config_default_num_replicas_no_replica_restart(serve_instance):
         url = get_application_url()
         return httpx.get(url).json()[0]
 
-    try:
-        write_config()
-        deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
-        assert success_message_fragment in deploy_response
-        wait_for_condition(check_running_with_one_replica, timeout=30)
-        initial_pid = get_pid()
+    write_config()
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+    wait_for_condition(check_running_with_one_replica, timeout=30)
+    initial_pid = get_pid()
 
-        config["applications"][0]["deployments"] = [
-            {
-                "name": "f",
-                "num_replicas": 1,
-            }
-        ]
-        write_config()
-        deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
-        assert success_message_fragment in deploy_response
-        wait_for_condition(check_running_with_one_replica, timeout=30)
+    config["applications"][0]["deployments"] = [
+        {
+            "name": "f",
+            "num_replicas": 1,
+        }
+    ]
+    write_config()
+    deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+    assert success_message_fragment in deploy_response
+    wait_for_condition(check_running_with_one_replica, timeout=30)
 
-        observed_pids = [get_pid() for _ in range(5)]
-        assert observed_pids == [initial_pid] * len(observed_pids)
-    finally:
-        os.remove(config_file_name)
+    observed_pids = [get_pid() for _ in range(5)]
+    assert observed_pids == [initial_pid] * len(observed_pids)
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
