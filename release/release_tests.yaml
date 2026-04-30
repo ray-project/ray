@@ -2271,6 +2271,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: shuffle/shuffle_compute_multi.yaml
 
   run:
@@ -2321,6 +2322,7 @@
 
   team: core
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: shuffle/shuffle_compute_autoscaling.yaml
 
   run:
@@ -2535,6 +2537,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: dask_on_ray/dask_on_ray_sort_compute_template.yaml
 
   run:
@@ -2607,6 +2610,7 @@
   frequency: nightly
   team: core
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_MAX_LIMIT_FROM_API_SERVER=1000000000
@@ -2835,6 +2839,7 @@
   team: core
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: dask_on_ray/1tb_sort_compute.yaml
 
   run:
