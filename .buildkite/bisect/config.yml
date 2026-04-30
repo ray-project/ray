@@ -7,7 +7,7 @@ builder_queues:
   builder: builder_queue_branch
 runner_queues:
   default: runner_queue_small_branch
-  macos: macos-branch
+  macos-arm64: macos-branch-arm64
 buildkite_dirs:
   - .buildkite/bisect
 build_env_keys:
