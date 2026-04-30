@@ -6,6 +6,7 @@ import pytest
 
 import ray
 from ray import train
+import ray.train.collective
 from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
 from ray.train.torch import TorchTrainer
@@ -61,9 +62,9 @@ def build_dummy_trainer(
                     )
             else:
                 train.report(metrics={"metric_a": i, "metric_b": -i})
-        # Call `get_all_reported_checkpoints` to ensure that all checkpoints are
-        #   saved before the RuntimeError
-        ray.train.get_all_reported_checkpoints()
+
+        # Ensure that all checkpoints are saved before the RuntimeError
+        ray.train.collective.barrier()
         raise RuntimeError()
 
     trainer = TorchTrainer(
