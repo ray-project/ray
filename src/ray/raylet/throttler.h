@@ -14,6 +14,7 @@
 
 #pragma once
 
+#include <chrono>
 #include <functional>
 #include <utility>
 
@@ -25,25 +26,25 @@ class Throttler {
  public:
   explicit Throttler(int64_t interval_ns, ClockInterface &clock)
       : clock_(clock),
-        interval_ns_(interval_ns),
+        interval_(std::chrono::nanoseconds(interval_ns)),
         // Subtracting interval so the first run is possible.
-        last_run_ns_(clock_.NowUnixNanos() - interval_ns) {}
+        last_run_(clock_.SteadyNow() - interval_) {}
 
   bool CheckAndUpdateIfPossible() {
-    auto now = clock_.NowUnixNanos();
-    if (now - last_run_ns_ >= interval_ns_) {
-      last_run_ns_ = now;
+    auto now = clock_.SteadyNow();
+    if (now - last_run_ >= interval_) {
+      last_run_ = now;
       return true;
     }
     return false;
   }
 
-  uint64_t LastRunTime() const { return last_run_ns_; }
+  SteadyTimePoint LastRunTime() const { return last_run_; }
 
  private:
   ClockInterface &clock_;
-  uint64_t interval_ns_;
-  uint64_t last_run_ns_;
+  std::chrono::nanoseconds interval_;
+  SteadyTimePoint last_run_;
 };
 
 }  // namespace ray
