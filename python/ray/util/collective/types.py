@@ -37,7 +37,7 @@ class Backend(object):
     NCCL = "NCCL"
     GLOO = "GLOO"
     UNRECOGNIZED = "unrecognized"
-    JAX_TPU = "JAX_TPU"
+    JAX = "JAX"
 
     def __new__(cls, name: str):
         upper_name = name.upper()

@@ -136,7 +136,7 @@ def create_collective_group(
     if backend == Backend.GLOO:
         metadata_key = get_master_address_metadata_key(name)
 
-    if backend == Backend.JAX_TPU:
+    if backend == Backend.JAX:
         _populate_tpu_cache(actors)
         comm = CommunicatorHandle(actors, name, backend)
         manager.add_remote_communicator(comm)
@@ -192,7 +192,7 @@ def destroy_collective_group(group_or_name: Union[CommunicatorHandle, str]):
     manager = RemoteCommunicatorManager.get()
     group = manager.remove_remote_communicator(name)
     if group is not None:
-        if group.backend == Backend.JAX_TPU:
+        if group.backend == Backend.JAX:
             with _cache_lock:
                 for actor in group.actors:
                     _actor_to_device_ids_cache.pop(actor._actor_id.hex(), None)
@@ -266,15 +266,15 @@ def get_global_device_id_from_actor(actor: ray.actor.ActorHandle) -> int:
         return device_ids[0]
 
 
-def _populate_tpu_cache(workers):
+def _populate_tpu_cache(actors):
     """
-    Standalone helper to fetch and cache TPU device IDs for a list of workers.
+    Standalone helper to fetch and cache TPU device IDs for a list of actors.
     Runs entirely on the driver process.
     """
-    # Concurrently fetch TPU device IDs from all workers
+    # Concurrently fetch TPU device IDs from all actors
     futures = [
-        worker.__ray_call__.remote(lambda self: tpu_utils.get_tpu_device_ids(self))
-        for worker in workers
+        actor.__ray_call__.remote(lambda self: tpu_utils.get_tpu_device_ids(self))
+        for actor in actors
     ]
 
     # Wait for all workers to return their device IDs
@@ -282,8 +282,8 @@ def _populate_tpu_cache(workers):
 
     # Safely write the results to the driver's global cache
     with _cache_lock:
-        for worker, device_ids in zip(workers, device_ids_list):
-            actor_id = worker._actor_id.hex()
+        for actor, device_ids in zip(actors, device_ids_list):
+            actor_id = actor._actor_id.hex()
 
             # This mutates the dictionary that is shared across the entire Ray driver
             _actor_to_device_ids_cache[actor_id] = device_ids

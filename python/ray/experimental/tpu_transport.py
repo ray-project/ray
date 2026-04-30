@@ -171,9 +171,6 @@ class JaxTransport(TensorTransportManager):
             tuple(meta.partition_spec),
         )
 
-        # Matching successful JAX test: block on source arrays before resharding.
-        jax.block_until_ready(tensors)
-
         # 1. Initiate P2P push coordination.
         proxies = jax.device_put(tensors, dst_sharding)
 

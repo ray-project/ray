@@ -18,7 +18,7 @@ class FakeTPUActor:
 
 
 def test_jax_tpu_cache_lifecycle(ray_start_regular_shared):
-    """Tests the lifecycle of the TPU device ID cache for JAX_TPU backend."""
+    """Tests the lifecycle of the TPU device ID cache for JAX backend."""
     world_size = 2
     actors = [FakeTPUActor.remote([i]) for i in range(world_size)]
     actor_ids = [actor._actor_id.hex() for actor in actors]
@@ -42,12 +42,12 @@ def test_jax_tpu_cache_lifecycle(ray_start_regular_shared):
 
         group_name = "test_jax_tpu"
         group = ray.experimental.collective.create_collective_group(
-            actors, backend="JAX_TPU", name=group_name
+            actors, backend="JAX", name=group_name
         )
 
         assert group is not None
         assert group.name == group_name
-        assert group.backend == Backend.JAX_TPU
+        assert group.backend == Backend.JAX
 
         # Verify cache is populated.
         from ray.experimental.collective.collective import _actor_to_device_ids_cache

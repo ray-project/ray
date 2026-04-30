@@ -102,7 +102,9 @@ def _ensure_default_transports_registered():
 
             from ray.experimental.tpu_transport import JaxTransport
 
-            register_tensor_transport("JAX", ["tpu", "cpu"], JaxTransport, jax.Array)
+            register_tensor_transport(
+                "JAX", ["tpu", "gpu", "cpu"], JaxTransport, jax.Array
+            )
         except ImportError:
             pass
 
