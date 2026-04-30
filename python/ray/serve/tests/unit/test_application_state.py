@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
+    CHECKPOINT_KEY,
     ApplicationState,
     ApplicationStateManager,
     ApplicationStatusInfo,
@@ -1279,6 +1280,55 @@ def test_is_ready_for_shutdown(mocked_application_state_manager):
     app_state_manager.update()
     assert app_state.is_deleted()
     assert app_state_manager.is_ready_for_shutdown()
+
+
+def test_shutdown_does_not_delete_checkpoint(mocked_application_state_manager):
+    """Tests checkpoint survives `shutdown() and `is_ready_for_shutdown(). Only an
+    explicit `delete_checkpoint() call should remove it.
+    """
+    (
+        app_state_manager,
+        deployment_state_manager,
+        kv_store,
+    ) = mocked_application_state_manager
+    app_name = "test_app"
+    deployment_name = "d1"
+    deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
+
+    # Deploy an application and bring it to RUNNING.
+    params = deployment_params(deployment_name)
+    app_state_manager.deploy_app(
+        app_name, [params], ApplicationArgsProto(external_scaler_enabled=False)
+    )
+    app_state_manager.update()
+    deployment_state_manager.set_deployment_healthy(deployment_id)
+    app_state_manager.update()
+    app_state_manager.save_checkpoint()
+
+    # Checkpoint should exist after save.
+    assert kv_store.get(CHECKPOINT_KEY) is not None
+
+    # shutdown() must NOT delete the checkpoint.
+    app_state_manager.shutdown()
+    assert kv_store.get(CHECKPOINT_KEY) is not None
+
+    # save_checkpoint() after shutdown should be a no-op.
+    pre_shutdown_checkpoint = kv_store.get(CHECKPOINT_KEY)
+    app_state_manager.save_checkpoint()
+    assert kv_store.get(CHECKPOINT_KEY) is pre_shutdown_checkpoint
+
+    # Delete deployments so is_ready_for_shutdown() is True.
+    deployment_state_manager.delete_deployment(deployment_id)
+    deployment_state_manager.set_deployment_deleted(deployment_id)
+    app_state_manager.update()
+    assert app_state_manager.is_ready_for_shutdown()
+
+    # is_ready_for_shutdown() must NOT delete the checkpoint.
+    assert kv_store.get(CHECKPOINT_KEY) is not None
+
+    # Only delete_checkpoint() should remove it.
+    app_state_manager.delete_checkpoint()
+    assert kv_store.get(CHECKPOINT_KEY) is None
 
 
 class TestOverrideDeploymentInfo:
@@ -2975,6 +3025,24 @@ def partial_app_level_policy(contexts):
     return decisions, {}
 
 
+def partial_decisions_app_level_policy(contexts):
+    """
+    The decison for deployment "d1" is skipped but state
+    for each deployment is always provided
+    """
+    decisions = {}
+    new_state = {}
+    for deployment_id, ctx in contexts.items():
+        prev_counter = 0
+        if ctx.policy_state:
+            prev_counter = ctx.policy_state.get("counter", 0)
+        if deployment_id.name != "d1":
+            decisions[deployment_id] = 3
+        # Pass the state regardless
+        new_state[deployment_id] = {"counter": prev_counter + 1}
+    return decisions, new_state
+
+
 class TestApplicationLevelAutoscaling:
     """Test application-level autoscaling policy registration, execution, and lifecycle."""
 
@@ -3736,6 +3804,73 @@ class TestApplicationLevelAutoscaling:
         invalid_value_state = {d1_id: "not a dict"}
         with pytest.raises(AssertionError, match="must be a dictionary"):
             app_autoscaling_state._validate_policy_state(invalid_value_state)
+
+    def test_policy_state_persitence_for_skipped_deployments(
+        self, mocked_application_state_manager
+    ):
+        """
+        Test that when an app-level policy returns decisions for only a subset of deployments, the skipped deployment's user state is
+        still maintained across multiple calls
+        """
+
+        (
+            app_state_manager,
+            deployment_state_manager,
+            _,
+        ) = mocked_application_state_manager
+
+        # Create app config with two deployments and override to use the stateful policy.
+        deployments = [
+            DeploymentSchema(
+                name="d1",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                },
+            ),
+            DeploymentSchema(
+                name="d2",
+                autoscaling_config={
+                    "target_ongoing_requests": 1,
+                    "min_replicas": 1,
+                    "max_replicas": 5,
+                    "initial_replicas": 1,
+                },
+            ),
+        ]
+        app_config = self._create_app_config(deployments=deployments)
+        app_config.autoscaling_policy = {
+            "policy_function": "ray.serve.tests.unit.test_application_state:partial_decisions_app_level_policy"
+        }
+
+        # Deploy app and register deployments with autoscaling manager.
+        _ = self._deploy_app_with_mocks(app_state_manager, app_config)
+        asm = self._register_deployments(app_state_manager, app_config)
+
+        # Create replicas so autoscaling runs.
+        d1_id = DeploymentID(name="d1", app_name="test_app")
+        d2_id = DeploymentID(name="d2", app_name="test_app")
+        d1_replicas = [
+            ReplicaID(unique_id=f"d1_replica_{i}", deployment_id=d1_id) for i in [1, 2]
+        ]
+        d2_replicas = [
+            ReplicaID(unique_id=f"d2_replica_{i}", deployment_id=d2_id) for i in [1, 2]
+        ]
+        asm.update_running_replica_ids(d1_id, d1_replicas)
+        asm.update_running_replica_ids(d2_id, d2_replicas)
+
+        for i in range(3):
+            deployment_state_manager._scaling_decisions.clear()
+            app_state_manager.update()
+            # The scaling decisions will not contain d1
+            assert d1_id not in deployment_state_manager._scaling_decisions
+            assert deployment_state_manager._scaling_decisions[d2_id] == 3
+            # State still exists and increments correctly according to the policy for each deployment
+            app_autoscaling_state = asm._app_autoscaling_states["test_app"]
+            for _, state in app_autoscaling_state._policy_state.items():
+                assert state.get("counter") == i + 1
 
     def test_app_level_autoscaling_with_decorator_applies_delays(
         self, mocked_application_state_manager

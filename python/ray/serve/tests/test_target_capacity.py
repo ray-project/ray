@@ -448,7 +448,7 @@ def create_controlled_app(config: ControllerAppConfig) -> Application:
 
 class AutoscalingControllerAppConfig(BaseModel):
     min_replicas: int
-    initial_replicas: Optional[int]
+    initial_replicas: Optional[int] = None
     max_replicas: int
 
 
@@ -670,8 +670,8 @@ class TestTargetCapacityUpdateAndServeStatus:
         app_name = "controlled_app"
         deployment_name = "controlled"
         min_replicas = 10
-        initial_replicas = 30
-        max_replicas = 70
+        initial_replicas = 12
+        max_replicas = 20
 
         lifecycle_signal = SignalActor.options(
             name="lifecycle_signal", namespace=SERVE_NAMESPACE
