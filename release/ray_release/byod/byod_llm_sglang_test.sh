@@ -4,12 +4,15 @@
 
 set -exo pipefail
 
+# Install build deps for Rust crates linking against OpenSSL (e.g. openssl-sys via reqwest)
+apt-get update && apt-get install -y --no-install-recommends pkg-config libssl-dev
+
 # Install rust via rustup (apt's rustc 1.75 is too old for crates requiring edition2024, e.g. idna_adapter)
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable --profile minimal
 export PATH="$HOME/.cargo/bin:$PATH"
 
 pip3 uninstall -y vllm
-pip3 install "sglang[all,ray]==0.5.10rc0"
+pip3 install "sglang[all,ray]==0.5.10"
 # Reinstall opentelemetry-proto to regenerate _pb2.py files compatible with
 # the protobuf version that sglang pulls in (protobuf 4.x+ removed old-style
 # descriptor creation, causing Ray dashboard to crash on startup).

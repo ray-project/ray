@@ -920,9 +920,9 @@ comm==0.2.3 \
     # via
     #   ipykernel
     #   ipywidgets
-compressed-tensors==0.14.0.1 \
-    --hash=sha256:46c4940a3a779d3d97108c294bfcd9acf4bd0491f7c6737c320f0e815ec732e4 \
-    --hash=sha256:5ad3841184b6f5020e06059b2463191c5c57a144bb97cab9159978d8118839b1
+compressed-tensors==0.15.0.1 \
+    --hash=sha256:a8e93054e8a5ec49c980b09ed36c4c1249b4a8ee167920a8e461c4da26e78d99 \
+    --hash=sha256:e1b1f322e82e475715e242bad46925a304ea8e5c98b5055a15b8eb22fb6bfea9
     # via vllm
 configargparse==1.7.5 \
     --hash=sha256:1e63fdffedf94da9cd435fc13a1cd24777e76879dd2343912c1f871d4ac8c592 \
@@ -6214,8 +6214,10 @@ virtualenv==21.2.4 \
     --hash=sha256:29d21e941795206138d0f22f4e45ff7050e5da6c6472299fb7103318763861ac \
     --hash=sha256:b294ef68192638004d72524ce7ef303e9d0cf5a44c95ce2e54a7500a6381cada
     # via ray
-vllm @ https://github.com/vllm-project/vllm/releases/download/v0.19.0/vllm-0.19.0+cu130-cp38-abi3-manylinux_2_35_x86_64.whl \
-    --hash=sha256:84f26a82237ebbfdd892aec652c7dd890836edf0daf3c83bf9713beee82f3ab0
+vllm==0.19.1 \
+    --hash=sha256:71a87f46cafab4489c69a5c5c83b870d0235e5694d8222303d460576293dc719 \
+    --hash=sha256:9fb88ce6b50991eba41d183584f65f51d7f6015d86a42cdabf79c1c8bd5d66fa \
+    --hash=sha256:c8dde3c9af20f00a644e64a50ebe43948f2921bab3ffd5407d634c15836cb181
     # via -r docker/ray-torch/torch-requirements.txt
 watchfiles==1.1.1 \
     --hash=sha256:00485f441d183717038ed2e887a7c868154f216877653121068107b227a2f64c \
