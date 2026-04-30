@@ -1206,7 +1206,11 @@ class ActorReplicaWrapper:
         self._rank = rank
         return updating
 
-    def recover(self, ingress: bool = False) -> bool:
+    def recover(
+        self,
+        ingress: bool = False,
+        ingress_request_router: bool = False,
+    ) -> bool:
         """Recover replica version from a live replica actor.
 
         When controller dies, the deployment state loses the info on the version that's
@@ -1217,6 +1221,8 @@ class ActorReplicaWrapper:
 
         Args:
             ingress: Whether this replica is an ingress replica.
+            ingress_request_router: Whether this replica is an ingress request
+                router replica.
 
         Returns:
             False if the replica actor is no longer alive; the
@@ -1226,6 +1232,7 @@ class ActorReplicaWrapper:
         """
         logger.info(f"Recovering {self.replica_id}.")
         self._ingress = ingress
+        self._ingress_request_router = ingress_request_router
         try:
             self._actor_handle = ray.get_actor(
                 self._actor_name, namespace=SERVE_NAMESPACE
@@ -1870,7 +1877,10 @@ class DeploymentReplica:
             False if the replica actor is no longer alive.
         """
         # If replica is no longer alive
-        if not self._actor.recover(ingress=deployment_info.ingress):
+        if not self._actor.recover(
+            ingress=deployment_info.ingress,
+            ingress_request_router=deployment_info.ingress_request_router,
+        ):
             return False
 
         self._start_time = time.time()
@@ -1907,7 +1917,6 @@ class DeploymentReplica:
             actor_id=self._actor.actor_id,
             worker_id=self._actor.worker_id,
             log_file_path=self._actor.log_file_path,
-            backend_http_port=self._actor._http_port or None,
         )
 
         return is_ready
@@ -4910,6 +4919,9 @@ class DeploymentState:
     def is_ingress(self) -> bool:
         return self._target_state.info.ingress
 
+    def is_ingress_request_router(self) -> bool:
+        return self._target_state.info.ingress_request_router
+
     def get_outbound_deployments(self) -> Optional[List[DeploymentID]]:
         """Get the outbound deployments.
 
@@ -5898,15 +5910,16 @@ class DeploymentStateManager:
         return node_ids
 
     def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
-        """Get all ingress replicas info for all deployments."""
-        ingress_replicas_list = [
+        """Get replicas that own direct-ingress ports."""
+        direct_ingress_replicas_list = [
             deployment_state._replicas.get()
             for deployment_state in self._deployment_states.values()
             if deployment_state.is_ingress()
+            or deployment_state.is_ingress_request_router()
         ]
 
         ingress_replicas_info = []
-        for replicas in ingress_replicas_list:
+        for replicas in direct_ingress_replicas_list:
             for replica in replicas:
                 ingress_replicas_info.append(
                     (

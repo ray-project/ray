@@ -1634,27 +1634,16 @@ class ServeController:
         protocol: RequestProtocol,
     ) -> List[Target]:
         """Create targets for a specific protocol from a list of replicas."""
-        targets = []
-        for replica_detail in replica_details:
-            if protocol == RequestProtocol.HTTP:
-                port = replica_detail.backend_http_port
-            elif self._is_port_allocated(replica_detail, protocol):
-                port = self._get_port(replica_detail, protocol)
-            else:
-                port = None
-
-            if port is None:
-                continue
-
-            targets.append(
-                Target(
-                    ip=replica_detail.node_ip,
-                    port=port,
-                    instance_id=replica_detail.node_instance_id,
-                    name=replica_detail.actor_name,
-                )
+        return [
+            Target(
+                ip=replica_detail.node_ip,
+                port=self._get_port(replica_detail, protocol),
+                instance_id=replica_detail.node_instance_id,
+                name=replica_detail.actor_name,
             )
-        return targets
+            for replica_detail in replica_details
+            if self._is_port_allocated(replica_detail, protocol)
+        ]
 
     def _get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
         return self.deployment_state_manager.get_node_id_to_alive_replica_ids()
