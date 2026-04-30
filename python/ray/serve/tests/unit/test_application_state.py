@@ -39,6 +39,7 @@ from ray.serve._private.deploy_utils import deploy_args_to_deployment_info
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.test_utils import MockKVStore
 from ray.serve._private.utils import get_random_string
+from ray.serve._private.version import DeploymentVersion
 from ray.serve.config import (
     AutoscalingConfig,
     DeploymentActorConfig,
@@ -1321,6 +1322,37 @@ class TestOverrideDeploymentInfo:
         assert updated_info.deployment_config.graceful_shutdown_timeout_s == 40
         assert updated_info.deployment_config.health_check_period_s == 20
         assert updated_info.deployment_config.health_check_timeout_s == 60
+
+    def test_override_default_num_replicas_keeps_actor_options(self, info):
+        original_actor_options = dict(info.replica_config.ray_actor_options)
+        config = ServeApplicationSchema(
+            name="default",
+            import_path="test.import.path",
+            deployments=[
+                DeploymentSchema(
+                    name="A",
+                    num_replicas=1,
+                )
+            ],
+        )
+
+        updated_infos = override_deployment_info({"A": info}, config)
+        updated_info = updated_infos["A"]
+        assert updated_info.replica_config.ray_actor_options == original_actor_options
+        assert "runtime_env" not in updated_info.replica_config.ray_actor_options
+
+        old_version = DeploymentVersion(
+            info.version,
+            info.deployment_config,
+            info.replica_config.ray_actor_options,
+        )
+        new_version = DeploymentVersion(
+            updated_info.version,
+            updated_info.deployment_config,
+            updated_info.replica_config.ray_actor_options,
+        )
+        assert old_version == new_version
+        assert not old_version.requires_actor_restart(new_version)
 
     def test_override_autoscaling_config(self, info):
         config = ServeApplicationSchema(

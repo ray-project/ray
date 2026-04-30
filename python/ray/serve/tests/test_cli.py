@@ -43,6 +43,67 @@ def check_http_response(
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_deploy_config_default_num_replicas_no_replica_restart(serve_instance):
+    """Explicitly setting default num_replicas via CLI config should not roll replicas."""
+
+    config = {
+        "applications": [
+            {
+                "name": SERVE_DEFAULT_APP_NAME,
+                "import_path": "ray.serve.tests.test_config_files.pid.node",
+            }
+        ]
+    }
+    success_message_fragment = b"Sent deploy request successfully."
+
+    with NamedTemporaryFile("w", suffix=".yaml", delete=False) as config_file:
+        config_file_name = config_file.name
+
+    def write_config() -> None:
+        with open(config_file_name, "w") as config_file:
+            yaml.safe_dump(config, config_file)
+
+    def check_running_with_one_replica() -> bool:
+        status = serve.status()
+        app_status = status.applications.get(SERVE_DEFAULT_APP_NAME)
+        if app_status is None or app_status.status != "RUNNING":
+            return False
+
+        deployment_status = app_status.deployments.get("f")
+        if deployment_status is None:
+            return False
+
+        return deployment_status.replica_states.get("RUNNING", 0) == 1
+
+    def get_pid() -> int:
+        url = get_application_url()
+        return httpx.get(url).json()[0]
+
+    try:
+        write_config()
+        deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+        assert success_message_fragment in deploy_response
+        wait_for_condition(check_running_with_one_replica, timeout=30)
+        initial_pid = get_pid()
+
+        config["applications"][0]["deployments"] = [
+            {
+                "name": "f",
+                "num_replicas": 1,
+            }
+        ]
+        write_config()
+        deploy_response = subprocess.check_output(["serve", "deploy", config_file_name])
+        assert success_message_fragment in deploy_response
+        wait_for_condition(check_running_with_one_replica, timeout=30)
+
+        observed_pids = [get_pid() for _ in range(5)]
+        assert observed_pids == [initial_pid] * len(observed_pids)
+    finally:
+        os.remove(config_file_name)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
 def test_deploy_basic(serve_instance):
     """Deploys some valid config files and checks that the deployments work."""
     # Create absolute file names to YAML config files
