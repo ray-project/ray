@@ -53,10 +53,19 @@ class FakeLongPollHost:
 
 # Application State Manager for dependency injection
 class FakeApplicationStateManager:
-    def __init__(self, app_statuses, route_prefixes, ingress_deployments):
+    def __init__(
+        self,
+        app_statuses,
+        route_prefixes,
+        ingress_deployments,
+        ingress_request_router_deployments=None,
+    ):
         self.app_statuses = app_statuses
         self.route_prefixes = route_prefixes
         self.ingress_deployments = ingress_deployments
+        self.ingress_request_router_deployments = (
+            ingress_request_router_deployments or {}
+        )
 
     def list_app_statuses(self):
         return self.app_statuses
@@ -68,7 +77,7 @@ class FakeApplicationStateManager:
         return self.ingress_deployments.get(app_name, f"{app_name}_ingress")
 
     def get_ingress_request_router_deployment_name(self, app_name):
-        return None
+        return self.ingress_request_router_deployments.get(app_name)
 
 
 class FakeProxyState:
@@ -761,6 +770,81 @@ def test_get_target_groups_only_includes_ingress_deployments(
         ),
         RequestProtocol.GRPC,
     )
+
+
+def test_get_target_groups_populates_ingress_request_router_targets(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    app_name = "app1"
+    route_prefix = "/app1"
+    ingress_deployment_id = DeploymentID(name="app1_ingress", app_name=app_name)
+    router_deployment_id = DeploymentID(name="app1_router", app_name=app_name)
+    ingress_replica_id = ReplicaID(
+        unique_id="ingress_replica", deployment_id=ingress_deployment_id
+    )
+    router_replica_id = ReplicaID(
+        unique_id="router_replica", deployment_id=router_deployment_id
+    )
+    ingress_replica_info = RunningReplicaInfo(
+        replica_id=ingress_replica_id,
+        node_id="node1",
+        node_ip="10.0.0.1",
+        availability_zone="az1",
+        actor_name="ingress_replica",
+        max_ongoing_requests=100,
+    )
+    router_replica_info = RunningReplicaInfo(
+        replica_id=router_replica_id,
+        node_id="node2",
+        node_ip="10.0.0.2",
+        availability_zone="az2",
+        actor_name="router_replica",
+        max_ongoing_requests=100,
+    )
+
+    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
+        app_statuses={app_name: {}},
+        route_prefixes={app_name: route_prefix},
+        ingress_deployments={app_name: ingress_deployment_id.name},
+        ingress_request_router_deployments={app_name: router_deployment_id.name},
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={
+            ingress_deployment_id: [ingress_replica_info],
+            router_deployment_id: [router_replica_info],
+        },
+    )
+
+    ingress_http_port = direct_ingress_controller.allocate_replica_port(
+        "node1", ingress_replica_id.unique_id, RequestProtocol.HTTP
+    )
+    router_http_port = direct_ingress_controller.allocate_replica_port(
+        "node2", router_replica_id.unique_id, RequestProtocol.HTTP
+    )
+
+    assert direct_ingress_controller.get_target_groups(app_name=app_name) == [
+        TargetGroup(
+            protocol=RequestProtocol.HTTP,
+            route_prefix=route_prefix,
+            app_name=app_name,
+            targets=[
+                Target(
+                    ip="10.0.0.1",
+                    port=ingress_http_port,
+                    instance_id="",
+                    name="ingress_replica",
+                )
+            ],
+            ingress_request_router_targets=[
+                Target(
+                    ip="10.0.0.2",
+                    port=router_http_port,
+                    instance_id="",
+                    name="router_replica",
+                )
+            ],
+        )
+    ]
 
 
 def test_get_target_groups_app_with_no_running_replicas(
