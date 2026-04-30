@@ -1473,6 +1473,18 @@ class ServeController:
             app_name, ingress_deployment_name
         )
 
+    def _get_running_replica_details_for_deployments(
+        self, app_name: str, deployment_names: Iterable[str]
+    ) -> List[ReplicaDetails]:
+        replica_details = []
+        for deployment_name in deployment_names:
+            replica_details.extend(
+                self._get_running_replica_details_for_deployment(
+                    app_name, deployment_name
+                )
+            )
+        return replica_details
+
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
@@ -1507,38 +1519,9 @@ class ServeController:
         if not replica_details:
             return []
 
-        target_groups = []
-
-        # Create targets for each protocol
-        http_targets = self._get_targets_for_protocol(
-            replica_details, RequestProtocol.HTTP
+        return self._get_target_groups_for_replica_details(
+            app_name, route_prefix, replica_details
         )
-        if http_targets:
-            target_groups.append(
-                TargetGroup(
-                    protocol=RequestProtocol.HTTP,
-                    route_prefix=route_prefix,
-                    targets=http_targets,
-                    app_name=app_name,
-                )
-            )
-
-        # Add gRPC targets if enabled
-        if is_grpc_enabled(self.get_grpc_config()):
-            grpc_targets = self._get_targets_for_protocol(
-                replica_details, RequestProtocol.GRPC
-            )
-            if grpc_targets:
-                target_groups.append(
-                    TargetGroup(
-                        protocol=RequestProtocol.GRPC,
-                        route_prefix=route_prefix,
-                        targets=grpc_targets,
-                        app_name=app_name,
-                    )
-                )
-
-        return target_groups
 
     def _get_target_groups_for_app_with_ingress_request_router(
         self,
@@ -1559,33 +1542,70 @@ class ServeController:
             RequestProtocol.HTTP,
         )
 
-        backend_replica_details = [
-            replica_detail
+        backend_deployment_names = (
+            deployment_name
             for deployment_name in self.application_state_manager.get_deployments(
                 app_name
             )
             if deployment_name != ingress_request_router_deployment_name
-            for replica_detail in self._get_running_replica_details_for_deployment(
-                app_name, deployment_name
-            )
-        ]
-        http_targets = self._get_targets_for_protocol(
-            backend_replica_details,
-            RequestProtocol.HTTP,
+        )
+        backend_replica_details = self._get_running_replica_details_for_deployments(
+            app_name,
+            backend_deployment_names,
         )
 
-        if not http_targets or not ingress_request_router_targets:
-            return []
+        return self._get_target_groups_for_replica_details(
+            app_name,
+            route_prefix,
+            backend_replica_details,
+            include_grpc=False,
+            ingress_request_router_targets=ingress_request_router_targets,
+        )
 
-        return [
-            TargetGroup(
-                protocol=RequestProtocol.HTTP,
-                route_prefix=route_prefix,
-                targets=http_targets,
-                app_name=app_name,
-                ingress_request_router_targets=ingress_request_router_targets,
+    def _get_target_groups_for_replica_details(
+        self,
+        app_name: str,
+        route_prefix: str,
+        replica_details: List[ReplicaDetails],
+        *,
+        include_grpc: bool = True,
+        ingress_request_router_targets: Optional[List[Target]] = None,
+    ) -> List[TargetGroup]:
+        target_groups = []
+
+        http_targets = self._get_targets_for_protocol(
+            replica_details, RequestProtocol.HTTP
+        )
+        if http_targets and (
+            ingress_request_router_targets is None or ingress_request_router_targets
+        ):
+            target_groups.append(
+                TargetGroup(
+                    protocol=RequestProtocol.HTTP,
+                    route_prefix=route_prefix,
+                    targets=http_targets,
+                    app_name=app_name,
+                    ingress_request_router_targets=(
+                        ingress_request_router_targets or []
+                    ),
+                )
             )
-        ]
+
+        if include_grpc and is_grpc_enabled(self.get_grpc_config()):
+            grpc_targets = self._get_targets_for_protocol(
+                replica_details, RequestProtocol.GRPC
+            )
+            if grpc_targets:
+                target_groups.append(
+                    TargetGroup(
+                        protocol=RequestProtocol.GRPC,
+                        route_prefix=route_prefix,
+                        targets=grpc_targets,
+                        app_name=app_name,
+                    )
+                )
+
+        return target_groups
 
     def _get_target_groups_for_app_with_no_running_replicas(
         self, route_prefix: str, app_name: str
