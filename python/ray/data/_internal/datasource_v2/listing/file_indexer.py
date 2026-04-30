@@ -9,6 +9,9 @@ from ray._common.utils import env_integer
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
 from ray.data._internal.datasource_v2.listing.file_pruners import FilePruner
 from ray.data._internal.datasource_v2.listing.indexing_utils import _get_file_infos
+from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+    InMemorySizeEstimator,
+)
 from ray.data._internal.util import make_async_gen
 from ray.data.block import BlockColumn
 from ray.data.datasource.path_util import _resolve_paths_and_filesystem
@@ -25,6 +28,7 @@ class FileIndexer(ABC):
         filesystem: "FileSystem",
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
+        size_estimator: Optional["InMemorySizeEstimator"] = None,
     ) -> Iterable[FileManifest]:
         """List files and their on-disk sizes for the given path.
 
@@ -33,10 +37,13 @@ class FileIndexer(ABC):
             filesystem: A PyArrow filesystem object.
             pruners: A list of file pruners to apply.
             preserve_order: Whether to preserve order in file listing.
+            size_estimator: An optional InMemorySizeEstimator to compute estimated
+                in-memory sizes for files.
 
         Returns:
-            An iterator of `FileManifest` objects, each of which contains a file path
-            and the on-disk size of the file in bytes.
+            An iterator of `FileManifest` objects, each of which contains a file path,
+            the on-disk size of the file in bytes, and optionally estimated in-memory
+            size if a size_estimator is provided.
         """
         ...
 
@@ -91,6 +98,7 @@ class NonSamplingFileIndexer(FileIndexer):
         filesystem: "FileSystem",
         pruners: Optional[List[FilePruner]] = None,
         preserve_order: bool = False,
+        size_estimator: Optional["InMemorySizeEstimator"] = None,
     ) -> Iterable[FileManifest]:
         file_info_iterator = (
             self._get_file_info_iterator_threaded(paths, filesystem, preserve_order)
@@ -99,7 +107,7 @@ class NonSamplingFileIndexer(FileIndexer):
         )
 
         yield from self._process_file_infos_to_manifests(
-            file_info_iterator, pruners or []
+            file_info_iterator, pruners or [], size_estimator
         )
 
     def _get_file_info_iterator_sequential(
@@ -156,6 +164,7 @@ class NonSamplingFileIndexer(FileIndexer):
         self,
         file_infos: Iterable[FileInfo],
         pruners: List[FilePruner],
+        size_estimator: Optional["InMemorySizeEstimator"] = None,
     ) -> Iterable[FileManifest]:
         running_paths: List[str] = []
         running_file_sizes: List[int] = []
@@ -178,15 +187,47 @@ class NonSamplingFileIndexer(FileIndexer):
 
             if len(running_paths) >= self._max_paths_per_output:
                 manifests_count += 1
-                yield FileManifest.construct_manifest(running_paths, running_file_sizes)
+                yield self._create_manifest_with_estimates(
+                    running_paths, running_file_sizes, size_estimator
+                )
                 running_paths = []
                 running_file_sizes = []
 
         if running_paths:
             manifests_count += 1
-            yield FileManifest.construct_manifest(running_paths, running_file_sizes)
+            yield self._create_manifest_with_estimates(
+                running_paths, running_file_sizes, size_estimator
+            )
 
         logger.debug(
             f"Listing files: constructed {manifests_count} manifests "
             f"with {files_count} files"
         )
+
+    def _create_manifest_with_estimates(
+        self,
+        paths: List[str],
+        file_sizes: List[int],
+        size_estimator: Optional["InMemorySizeEstimator"] = None,
+    ) -> FileManifest:
+        """Create a FileManifest with optional estimated in-memory sizes.
+
+        Args:
+            paths: List of file paths.
+            file_sizes: List of on-disk file sizes in bytes.
+            size_estimator: Optional estimator to compute in-memory sizes.
+
+        Returns:
+            A FileManifest with estimated sizes if an estimator is provided.
+        """
+        estimated_sizes = None
+        if size_estimator is not None:
+            # Create a temporary manifest to pass to the estimator
+            temp_manifest = FileManifest.construct_manifest(paths, file_sizes)
+            # Get estimated sizes from estimator
+            estimated_sizes_array = size_estimator.estimate_in_memory_sizes(
+                temp_manifest
+            )
+            estimated_sizes = estimated_sizes_array.tolist()
+
+        return FileManifest.construct_manifest(paths, file_sizes, estimated_sizes)

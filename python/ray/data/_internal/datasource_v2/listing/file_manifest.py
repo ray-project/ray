@@ -9,6 +9,7 @@ from ray.data.block import Block, BlockAccessor, BlockColumnAccessor
 # File manifest column names
 PATH_COLUMN_NAME = "__path"
 FILE_SIZE_COLUMN_NAME = "__file_size"
+ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME = "__estimated_in_memory_size"
 
 
 class FileManifest:
@@ -25,7 +26,8 @@ class FileManifest:
         """Create a new `FileManifest` from a block.
 
         Args:
-            block: Block with `PATH_COLUMN_NAME`, `FILE_SIZE_COLUMN_NAME`
+            block: Block with `PATH_COLUMN_NAME`, `FILE_SIZE_COLUMN_NAME`,
+                and optionally `ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME`.
                 Any other columns are optional and treated as input data.
         """
         column_names = BlockAccessor.for_block(block).column_names()
@@ -36,6 +38,15 @@ class FileManifest:
 
         self._paths = block[PATH_COLUMN_NAME]
         self._file_sizes = block[FILE_SIZE_COLUMN_NAME]
+
+        # Estimated in-memory sizes are optional; if missing, compute from file sizes
+        if ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME in column_names:
+            self._estimated_in_memory_sizes = block[
+                ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME
+            ]
+        else:
+            # Fallback: use 5x compression ratio (conservative estimate)
+            self._estimated_in_memory_sizes = None
 
     def __len__(self) -> int:
         return len(self._block)
@@ -50,6 +61,26 @@ class FileManifest:
     @cached_property
     def file_sizes(self) -> np.ndarray:
         return BlockColumnAccessor.for_column(self._file_sizes).to_numpy()
+
+    @cached_property
+    def estimated_in_memory_sizes(self) -> np.ndarray:
+        """Return estimated in-memory sizes, computing from file sizes if needed.
+
+        Uses the __estimated_in_memory_size column if available, otherwise
+        applies a 5x compression ratio to file sizes as a conservative estimate.
+        """
+        if self._estimated_in_memory_sizes is not None:
+            return BlockColumnAccessor.for_column(
+                self._estimated_in_memory_sizes
+            ).to_numpy()
+        else:
+            # Fallback: 5x compression ratio (typical for Parquet)
+            return (self.file_sizes * 5).astype(np.int64)
+
+    @cached_property
+    def total_estimated_in_memory_size(self) -> int:
+        """Return the sum of all estimated in-memory byte sizes in this manifest."""
+        return int(np.sum(self.estimated_in_memory_sizes))
 
     def as_block(self) -> Block:
         """Return the underlying block for the `FileManifest`.
@@ -111,13 +142,20 @@ class FileManifest:
         cls,
         paths: List[str],
         sizes: List[int],
+        estimated_in_memory_sizes: Optional[List[int]] = None,
     ) -> "FileManifest":
         assert len(paths) == len(sizes)
+        if estimated_in_memory_sizes is not None:
+            assert len(paths) == len(estimated_in_memory_sizes)
 
-        block = pa.table(
-            {
-                PATH_COLUMN_NAME: paths,
-                FILE_SIZE_COLUMN_NAME: sizes,
-            }
-        )
+        table_dict = {
+            PATH_COLUMN_NAME: paths,
+            FILE_SIZE_COLUMN_NAME: sizes,
+        }
+
+        # Add estimated sizes if provided
+        if estimated_in_memory_sizes is not None:
+            table_dict[ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME] = estimated_in_memory_sizes
+
+        block = pa.table(table_dict)
         return cls(block)

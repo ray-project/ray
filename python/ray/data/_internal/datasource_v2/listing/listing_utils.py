@@ -22,6 +22,9 @@ if TYPE_CHECKING:
     from pyarrow.fs import FileSystem
 
     from ray.data._internal.datasource_v2.listing.file_indexer import FileIndexer
+    from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+        InMemorySizeEstimator,
+    )
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.datasource.partitioning import PathPartitionFilter
 
@@ -62,6 +65,7 @@ def list_files_for_each_block(
     file_extensions: Optional[List[str]] = None,
     partition_filter: Optional["PathPartitionFilter"] = None,
     preserve_order: bool = False,
+    size_estimator: Optional["InMemorySizeEstimator"] = None,
 ) -> Iterable[Block]:
     """Expand path blocks into ``FileManifest`` blocks.
 
@@ -79,6 +83,7 @@ def list_files_for_each_block(
             filesystem=filesystem,
             pruners=pruners,
             preserve_order=preserve_order,
+            size_estimator=size_estimator,
         ):
             if len(manifest) > 0:
                 yield manifest.as_block()
@@ -119,6 +124,7 @@ def sample_files(
     filesystem: "FileSystem",
     pruners: Optional[List[FilePruner]] = None,
     max_files: int = 16,
+    size_estimator: Optional["InMemorySizeEstimator"] = None,
 ) -> FileManifest:
     """Drive the indexer until up to ``max_files`` files arrive; return them.
 
@@ -144,6 +150,7 @@ def sample_files(
         filesystem=filesystem,
         pruners=pruners or [],
         preserve_order=True,
+        size_estimator=size_estimator,
     ):
         if len(manifest) == 0:
             continue

@@ -495,7 +495,8 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         # allow the Ray locality scheduler a chance to optimize task placement.
         if "scheduling_strategy" not in ray_remote_args:
             ctx = self.data_context
-            if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
+            bundle_size = self._estimate_bundle_size(input_bundle)
+            if bundle_size and bundle_size > ctx.large_args_threshold:
                 ray_remote_args[
                     "scheduling_strategy"
                 ] = ctx.scheduling_strategy_large_args
@@ -508,6 +509,40 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
                 if "scheduling_strategy" not in self._remote_args_for_metrics:
                     self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)
         return ray_remote_args
+
+    def _estimate_bundle_size(self, input_bundle: Optional[RefBundle]) -> Optional[int]:
+        """Estimate bundle size, preferring estimated sizes if available.
+
+        Returns the sum of estimated in-memory bytes from metadata if available,
+        otherwise falls back to actual size_bytes.
+        """
+        if input_bundle is None:
+            return None
+
+        # Try to use pre-read estimated sizes if available in metadata
+        total_estimated = 0
+        metadata_list = input_bundle.metadata()
+        if metadata_list:
+            has_estimates = False
+            for meta in metadata_list:
+                if (
+                    hasattr(meta, "input_files_estimated_bytes")
+                    and meta.input_files_estimated_bytes is not None
+                ):
+                    total_estimated += meta.input_files_estimated_bytes
+                    has_estimates = True
+                elif (
+                    hasattr(meta, "estimated_size_bytes")
+                    and meta.estimated_size_bytes is not None
+                ):
+                    total_estimated += meta.estimated_size_bytes
+                    has_estimates = True
+
+            if has_estimates:
+                return total_estimated
+
+        # Fallback to actual size bytes
+        return input_bundle.size_bytes()
 
     @abstractmethod
     def _try_schedule_task(self, refs: RefBundle, strict: bool):

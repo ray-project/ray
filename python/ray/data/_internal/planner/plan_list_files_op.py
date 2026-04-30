@@ -62,6 +62,7 @@ def plan_list_files_op(
     partition_filter = op.partition_filter
     filesystem = op.filesystem
     indexer = op.file_indexer
+    size_estimator = op.size_estimator
     partitioner = op.file_partitioner
 
     shuffle_config = op.shuffle_config_factory()
@@ -75,6 +76,7 @@ def plan_list_files_op(
                 file_extensions=file_extensions,
                 partition_filter=partition_filter,
                 preserve_order=data_context.execution_options.preserve_order,
+                size_estimator=size_estimator,
             ),
             # Disable block-shaping: produce manifest blocks as-is.
             disable_block_shaping=True,

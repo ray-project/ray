@@ -278,6 +278,8 @@ class BlockStats:
 
     # Overall task execution stats (reported from the worker).
     task_exec_stats: Optional[TaskExecWorkerStats] = field(default=None)
+    # Pre-read estimated in-memory size in bytes, or None.
+    estimated_size_bytes: Optional[int] = field(default=None)
 
     def __post_init__(self):
         if self.size_bytes is not None:
@@ -299,6 +301,8 @@ class BlockMetadata(BlockStats):
     # the empty list if indeterminate.
     # Stored as a tuple for hash-ability.
     input_files: Optional[Tuple[str, ...]] = field(default=None)
+    # Total estimated in-memory bytes of input files that produced this block.
+    input_files_estimated_bytes: Optional[int] = field(default=None)
 
     def __post_init__(self):
         super().__post_init__()
@@ -327,6 +331,8 @@ class BlockMetadataWithSchema(BlockMetadata):
             exec_stats=metadata.exec_stats,
             task_exec_stats=metadata.task_exec_stats,
             input_files=metadata.input_files,
+            estimated_size_bytes=metadata.estimated_size_bytes,
+            input_files_estimated_bytes=metadata.input_files_estimated_bytes,
             schema=schema,
         )
 

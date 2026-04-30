@@ -499,10 +499,17 @@ def _read_datasource_v2(
     pruners = _build_pruners(datasource.file_extensions, partition_filter)
 
     indexer = datasource._get_file_indexer()
+    size_estimator = datasource.get_size_estimator()
 
     # Sample a few files for schema inference. Listed again (cheaply) during
     # execution inside the ListFiles op — no caching layer needed.
-    sample = sample_files(indexer, datasource.paths, datasource.filesystem, pruners)
+    sample = sample_files(
+        indexer,
+        datasource.paths,
+        datasource.filesystem,
+        pruners,
+        size_estimator=size_estimator,
+    )
     schema = datasource.infer_schema(sample)
     # NOTE: ``block_udf``'s schema effect (e.g. a
     # ``tensor_column_schema``-derived cast) is probed lazily in
@@ -566,6 +573,7 @@ def _read_datasource_v2(
         file_extensions=datasource.file_extensions,
         partition_filter=partition_filter,
         shuffle_config_factory=_shuffle_config_factory,
+        size_estimator=size_estimator,
     )
 
     compute_strategy = get_compute_strategy_for_read_api(compute, concurrency)

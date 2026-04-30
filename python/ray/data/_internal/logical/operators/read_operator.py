@@ -29,6 +29,9 @@ if TYPE_CHECKING:
     from ray.data._internal.datasource_v2.partitioners.file_partitioner import (
         FilePartitioner,
     )
+    from ray.data._internal.datasource_v2.readers.in_memory_size_estimator import (
+        InMemorySizeEstimator,
+    )
     from ray.data._internal.datasource_v2.scanners.scanner import Scanner
     from ray.data.datasource.file_based_datasource import FileShuffleConfig
     from ray.data.datasource.partitioning import PathPartitionFilter
@@ -486,6 +489,8 @@ class ListFiles(LogicalOperator, SourceOperator):
     shuffle_config_factory: Callable[[], Optional["FileShuffleConfig"]] = field(
         default=lambda: None
     )
+    # Optional estimator for in-memory sizes (for FileManifest population)
+    size_estimator: Optional["InMemorySizeEstimator"] = None
     _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(
         init=False, repr=False, default_factory=list
@@ -503,10 +508,11 @@ class ListFiles(LogicalOperator, SourceOperator):
         return None
 
     def infer_schema(self) -> "pa.Schema":
-        # ``FileManifest`` columns are fixed: __path, __file_size.
+        # ``FileManifest`` columns are fixed: __path, __file_size, __estimated_in_memory_size.
         import pyarrow as pa
 
         from ray.data._internal.datasource_v2.listing.file_manifest import (
+            ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME,
             FILE_SIZE_COLUMN_NAME,
             PATH_COLUMN_NAME,
         )
@@ -515,5 +521,6 @@ class ListFiles(LogicalOperator, SourceOperator):
             [
                 pa.field(PATH_COLUMN_NAME, pa.string()),
                 pa.field(FILE_SIZE_COLUMN_NAME, pa.int64()),
+                pa.field(ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME, pa.int64()),
             ]
         )

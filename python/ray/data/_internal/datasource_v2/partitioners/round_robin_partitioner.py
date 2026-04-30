@@ -19,6 +19,7 @@ class _FileBucket:
 
     paths: list = field(default_factory=list)
     file_sizes: list = field(default_factory=list)
+    estimated_in_memory_sizes: list = field(default_factory=list)
     in_memory_size: int = 0
 
     def add(
@@ -29,11 +30,13 @@ class _FileBucket:
     ):
         self.paths.append(path)
         self.file_sizes.append(file_size)
+        self.estimated_in_memory_sizes.append(in_memory_size)
         self.in_memory_size += in_memory_size
 
     def clear(self):
         self.paths.clear()
         self.file_sizes.clear()
+        self.estimated_in_memory_sizes.clear()
         self.in_memory_size = 0
 
 
@@ -77,9 +80,10 @@ class RoundRobinPartitioner(FilePartitioner):
         self._output_queue: collections.deque[FileManifest] = collections.deque()
 
     def add_input(self, input_manifest: FileManifest):
-        in_memory_size_estimates = (
-            self._in_memory_size_estimator.estimate_in_memory_sizes(input_manifest)
-        )
+        # Use pre-computed estimated sizes from the manifest if available,
+        # otherwise call the estimator (for backward compatibility)
+        in_memory_size_estimates = input_manifest.estimated_in_memory_sizes
+
         for (file_path, file_size, in_memory_size_estimate,) in zip(
             input_manifest.paths,
             input_manifest.file_sizes,
@@ -114,6 +118,9 @@ class RoundRobinPartitioner(FilePartitioner):
                 manifest = FileManifest.construct_manifest(
                     current_bucket.paths,
                     current_bucket.file_sizes,
+                    estimated_in_memory_sizes=[
+                        int(size) for size in current_bucket.estimated_in_memory_sizes
+                    ],
                 )
                 self._output_queue.append(manifest)
                 self._current_bucket_index = (
@@ -137,5 +144,8 @@ class RoundRobinPartitioner(FilePartitioner):
                 manifest = FileManifest.construct_manifest(
                     bucket.paths,
                     bucket.file_sizes,
+                    estimated_in_memory_sizes=[
+                        int(size) for size in bucket.estimated_in_memory_sizes
+                    ],
                 )
                 self._output_queue.append(manifest)
