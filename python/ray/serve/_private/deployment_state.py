@@ -779,7 +779,6 @@ class ActorReplicaWrapper:
         self._last_record_routing_stats_time: float = 0.0
         self._has_user_routing_stats_method: bool = False
         self._ingress: bool = False
-        self._ingress_request_router: bool = False
 
         # Outbound deployments polling state
         self._outbound_deployments: Optional[List[DeploymentID]] = None
@@ -1036,7 +1035,6 @@ class ActorReplicaWrapper:
         self._assign_rank_callback = assign_rank_callback
         self._actor_resources = deployment_info.replica_config.resource_dict
         self._ingress = deployment_info.ingress
-        self._ingress_request_router = deployment_info.ingress_request_router
         self._gang_placement_group = gang_placement_group
         self._gang_pg_index = gang_pg_index
         self._gang_context = gang_context
@@ -1220,11 +1218,7 @@ class ActorReplicaWrapper:
         self._rank = rank
         return updating
 
-    def recover(
-        self,
-        ingress: bool = False,
-        ingress_request_router: bool = False,
-    ) -> bool:
+    def recover(self, ingress: bool = False) -> bool:
         """Recover replica version from a live replica actor.
 
         When controller dies, the deployment state loses the info on the version that's
@@ -1239,8 +1233,6 @@ class ActorReplicaWrapper:
 
         Args:
             ingress: Whether this replica is an ingress replica.
-            ingress_request_router: Whether this replica is an ingress request
-                router replica.
 
         Returns:
             False if the replica actor is no longer alive; the caller drops
@@ -1251,7 +1243,6 @@ class ActorReplicaWrapper:
         """
         logger.info(f"Recovering {self.replica_id}.")
         self._ingress = ingress
-        self._ingress_request_router = ingress_request_router
         try:
             self._actor_handle = ray.get_actor(
                 self._actor_name, namespace=SERVE_NAMESPACE
@@ -1962,10 +1953,7 @@ class DeploymentReplica:
             False if the replica actor is no longer alive.
         """
         # If replica is no longer alive
-        if not self._actor.recover(
-            ingress=deployment_info.ingress,
-            ingress_request_router=deployment_info.ingress_request_router,
-        ):
+        if not self._actor.recover(ingress=deployment_info.ingress):
             return False
 
         self._start_time = time.time()
@@ -6031,7 +6019,7 @@ class DeploymentStateManager:
         ]
 
         ingress_replicas_info = []
-        for replicas in direct_ingress_replicas_list:
+        for replicas in ingress_replicas_list:
             for replica in replicas:
                 ingress_replicas_info.append(
                     (
