@@ -395,8 +395,7 @@ class ServeControllerClient:
 
         ray.get(
             self._controller.deploy_applications.remote(
-                name_to_deployment_args_list,
-                name_to_application_args,
+                name_to_deployment_args_list, name_to_application_args
             )
         )
 
