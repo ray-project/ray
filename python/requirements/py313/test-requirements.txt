@@ -15,7 +15,17 @@ boto3==1.29.7
 cloudpickle==3.1.1
 tornado>=6.2.0
 cython==0.29.37
-fastapi>=0.115.12
+# FastAPI 0.125+ removed pydantic.v1 model support in route handlers
+# (raises PydanticV1NotSupportedError). test_pydantic_serialization still
+# exercises v1 BaseModel in FastAPI routes, so pin to the last known-good
+# version (matches the default py3.11 lock).
+fastapi==0.121.0
+# asgiref 3.10+ reworked async-to-sync adapters; Serve's direct-ingress
+# request timeout / disconnect handling regresses on 3.11 — fails
+# test_direct_ingress_standalone::test_http_request_timeout_disconnect_headers
+# parametrizations that depend on server-side timeout or client-disconnect
+# detection. Hold at the last known-good version.
+asgiref==3.9.2
 feather-format==0.4.1
 # Keep compatible with Werkzeug
 flask==2.1.3
@@ -37,6 +47,10 @@ numba==0.61.2
 openpyxl==3.0.10
 opentelemetry-api==1.39.0
 opentelemetry-sdk==1.39.0
+# proto and exporter-otlp-proto-grpc must match sdk/proto version or vllm
+# (rayllm depset) can't satisfy opentelemetry-exporter-otlp's in-family pins.
+opentelemetry-proto==1.39.0
+opentelemetry-exporter-otlp-proto-grpc==1.39.0
 opentelemetry-exporter-prometheus==0.60b0
 opentelemetry-semantic-conventions==0.60b0
 pexpect==4.8.0
@@ -107,6 +121,17 @@ httpcore>=1.0.9
 httpx>=0.28.1
 backoff==1.10
 
+# Bisecting test_raylet_and_agent_share_fate against the py3.13 compile
+# refresh. grpcio 1.80 cold import on the runtime-env agent may be eating
+# the 10s wait_for_condition budget; testing whether the previous pin
+# restores agent startup in time. grpcio-tools and grpcio-status must
+# match so pip-compile doesn't pull 1.80 (which requires grpcio>=1.80
+# and would conflict), and so the resolver doesn't backtrack through
+# every grpcio-status / typer version trying to find a compatible set.
+grpcio==1.76.0
+grpcio-tools==1.76.0
+grpcio-status==1.76.0
+
 # For test_basic.py::test_omp_threads_set
 threadpoolctl==3.1.0
 numexpr==2.14.1
@@ -121,7 +146,10 @@ watchfiles==0.19.0
 typing-extensions>=4.10
 filelock>=3.16.1
 virtualenv>=20.29
-jsonschema>=4.23.0
+# jsonschema 4.25 introduced rfc3987-syntax (format-nongpl extra) which pins
+# lark==1.3.1. That conflicts with vllm's lark==1.2.2, so we cap below 4.25
+# to keep the rayllm depsets resolvable when they use this lock as a constraint.
+jsonschema>=4.23.0,<4.25.0
 attrs>=22.2.0
 openapi-schema-validator>=0.6.3
 wheel>=0.45.1
@@ -131,7 +159,19 @@ pyopenssl>=25.0.0
 starlette>=0.40.0
 requests>=2.32.3
 docker>=7.1.0
-protobuf>=4
+# tensorflow-metadata (pinned for py3.10 compat) caps protobuf<=6.32 on py<3.11.
+protobuf>=4,<=6.32; python_version < '3.11'
+protobuf==6.33.6; python_version >= '3.11'
+# scipy 1.16 / contourpy 1.3.3 / networkx 3.5 all dropped py3.10 support (no
+# cp310 wheels or Requires-Python>=3.11). The py3.13 lock is consumed as a
+# constraint by py3.10 depsets, so these are dual-pinned here with markers to
+# preserve the cross-py-version compat path.
+scipy==1.15.3; python_version < '3.11'
+scipy==1.17.1; python_version >= '3.11'
+contourpy==1.3.2; python_version < '3.11'
+contourpy==1.3.3; python_version >= '3.11'
+networkx==3.4.2; python_version < '3.11'
+networkx==3.6.1; python_version >= '3.11'
 cffi>=1.17.1,<2
 # cupy-cuda12x requires fastrlock
 fastrlock>=0.8.3; sys_platform != 'darwin'
