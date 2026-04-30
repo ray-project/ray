@@ -651,8 +651,8 @@ class ServeController:
         """Update ingress ports if direct ingress is enabled."""
         # Direct ingress port management
         if self._direct_ingress_enabled:
-            # Update port values for replicas that need direct-ingress ports.
-            # This includes ingress replicas and ingress request router replicas.
+            # Update port values for ingress replicas.
+            # Ingress request router replicas also need direct-ingress ports.
             ingress_replicas_info_list: List[
                 Tuple[str, str, int, int]
             ] = self.deployment_state_manager.get_ingress_replicas_info()
