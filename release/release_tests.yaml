@@ -131,6 +131,12 @@
         byod:
           type: torch-cpu
         cluster_compute: hello_world_compute_config.yaml
+    - __suffix__: cu128
+      cluster:
+        anyscale_sdk_2026: true
+        byod:
+          type: torch-cu128
+        cluster_compute: hello_world_compute_config_gpu.yaml
     - __suffix__: cu130
       cluster:
         anyscale_sdk_2026: true

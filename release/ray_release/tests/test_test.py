@@ -152,6 +152,14 @@ def test_get_anyscale_byod_image():
     assert _stub_test(
         {
             "python": "3.13",
+            "cluster": {"byod": {"type": "torch-cu128"}},
+        }
+    ).get_anyscale_byod_image() == (
+        f"{get_global_config()['byod_ecr']}/{DATAPLANE_ECR_TORCH_REPO}:a1b2c3d4-py313-cu128"
+    )
+    assert _stub_test(
+        {
+            "python": "3.13",
             "cluster": {"byod": {"type": "torch-cu130"}},
         }
     ).get_anyscale_byod_image() == (

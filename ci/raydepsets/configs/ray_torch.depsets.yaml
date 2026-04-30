@@ -3,6 +3,10 @@ build_arg_sets:
     PYTHON_VERSION: "3.13"
     PYTHON_SHORT: "313"
     CUDA_CODE: cu130
+  py313_cuda128:
+    PYTHON_VERSION: "3.13"
+    PYTHON_SHORT: "313"
+    CUDA_CODE: cu128
   py313_cpu:
     PYTHON_VERSION: "3.13"
     PYTHON_SHORT: "313"
@@ -26,4 +30,5 @@ depsets:
       - --python-platform=linux
     build_arg_sets:
       - py313_cuda130
+      - py313_cuda128
       - py313_cpu

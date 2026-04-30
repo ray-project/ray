@@ -91,10 +91,17 @@ steps:
         - "3.13"
       cuda:
         - "13.0.0-cudnn"
+      image_type:
+        - "ray-torch-cu130"
+      adjustments:
+        - with:
+            python: "3.13"
+            cuda: "12.8.1-cudnn"
+            image_type: "ray-torch-cu128"
     env:
       PYTHON_VERSION: "{{array.python}}"
       CUDA_VERSION: "{{array.cuda}}"
-      IMAGE_TYPE: "ray-torch-cu130"
+      IMAGE_TYPE: "{{array.image_type}}"
     depends_on:
       - raycudabaseextra($)
 
@@ -291,6 +298,10 @@ steps:
         - "3.13"
       gpu:
         - "cu13.0.0-cudnn"
+      adjustments:
+        - with:
+            python: "3.13"
+            gpu: "cu12.8.1-cudnn"
     env:
       PYTHON_VERSION: "{{array.python}}"
       GPU: "{{array.gpu}}"
@@ -340,6 +351,10 @@ steps:
         - "3.13"
       gpu:
         - cu13.0.0-cudnn
+      adjustments:
+        - with:
+            python: "3.13"
+            gpu: "cu12.8.1-cudnn"
 
   - label: ":crane: publish: ray-ml-anyscale py{{array.python}} cu12.1.1-cudnn8"
     key: anyscalemlbuild
