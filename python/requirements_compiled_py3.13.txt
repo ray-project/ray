@@ -1722,7 +1722,7 @@ pycron==3.2.0
     # via taskiq
 pycurl==7.45.7
     # via -r python/requirements/cloud-requirements.txt
-pydantic==2.12.3
+pydantic==2.12.3 ; python_version < "3.14"
     # via
     #   -r python/requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
