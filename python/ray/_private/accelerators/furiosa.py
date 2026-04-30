@@ -83,10 +83,16 @@ class FuriosaAcceleratorManager(AcceleratorManager):
 
             # PyO3 enums typically stringify as "<EnumName.Variant>",
             # "EnumName.Variant", or just "Variant". Take the trailing
-            # component and normalize.
+            # component.
             raw = str(arch_obj).split(".")[-1].strip()
             if not raw:
                 return None
+            # Map special suffixes to their alphabetic equivalents so that the
+            # ``Arch::ToString`` form ("rngd+") and the PyO3 enum form
+            # ("RngdPlus") produce the same Ray accelerator type label.
+            # Without this, stripping "+" would collapse "rngd+" into
+            # "rngd", colliding with the distinct ``Rngd`` SKU.
+            raw = raw.replace("+", "plus")
             normalized = "".join(ch for ch in raw if ch.isalnum()).upper()
             if not normalized:
                 return None

@@ -80,11 +80,14 @@ class TestFuriosaAcceleratorManager:
             ("RngdMax", "FURIOSA_RNGDMAX"),
             ("RngdS", "FURIOSA_RNGDS"),
             ("RngdPlus", "FURIOSA_RNGDPLUS"),
-            # Future-proofing: non-alphanumeric characters are stripped so
-            # arch values like "rngd-max" or "rngd+" still produce valid
-            # accelerator type labels.
+            # The SDK's Arch::ToString form is also accepted. Both forms
+            # must resolve to the same label so that PyO3-enum and
+            # to_string() outputs are interchangeable.
             ("rngd-max", "FURIOSA_RNGDMAX"),
-            ("rngd+", "FURIOSA_RNGD"),
+            # "+" must NOT be silently stripped: that would collapse
+            # "rngd+" into "rngd" and collide with the base RNGD SKU.
+            # It is mapped to "plus" so the label matches RngdPlus.
+            ("rngd+", "FURIOSA_RNGDPLUS"),
         ],
     )
     def test_get_current_node_accelerator_type_dynamic(
