@@ -3,6 +3,7 @@ import functools
 import itertools
 import logging
 import math
+import pickle
 import queue
 import random
 import threading
@@ -1808,13 +1809,14 @@ class HashShuffleAggregator:
                 block_ser_time_s=(stats.object_creation_dur_s if stats else None),
             )
 
-            yield BlockMetadataWithSchema.from_block(
+            bm = BlockMetadataWithSchema.from_block(
                 block,
                 block_exec_stats=exec_stats,
                 task_exec_stats=TaskExecWorkerStats(
                     task_wall_time_s=time.perf_counter() - start_time_s,
                 ),
             )
+            yield pickle.dumps(bm)
 
             # Reset the builder
             exec_stats_builder = BlockExecStats.builder()
