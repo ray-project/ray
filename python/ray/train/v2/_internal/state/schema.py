@@ -262,7 +262,8 @@ class DataConfig(BaseModel):
     )
     # TODO: Add Pydantic deprecation annotation to execution_options once Pydantic V1 is removed in PR #62716
     execution_options: Optional[Dict] = Field(
-        description="DEPRECATED: Use data_execution_options instead."
+        default=None,
+        description="DEPRECATED: Use data_execution_options instead.",
     )
     data_execution_options: DataExecutionOptions = Field(
         description="Data execution options"
