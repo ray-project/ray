@@ -27,9 +27,12 @@ class IOContextMonitorTest : public ::testing::Test {
       std::string name,
       std::vector<std::pair<std::string, instrumented_io_context *>> io_contexts,
       absl::Duration deadline = absl::Seconds(5)) {
-    return IOContextMonitor(std::move(name), std::move(io_contexts),
-                            lag_gauge_, deadline_counter_,
-                            deadline, clock_);
+    return IOContextMonitor(std::move(name),
+                            std::move(io_contexts),
+                            lag_gauge_,
+                            deadline_counter_,
+                            deadline,
+                            clock_);
   }
 
   double GetLag(const std::string &ctx_name) {
@@ -69,8 +72,7 @@ TEST_F(IOContextMonitorTest, ProbeSucceeds) {
 
 TEST_F(IOContextMonitorTest, DetectsStuckIOContext) {
   instrumented_io_context stuck_ctx;
-  auto monitor = MakeMonitor("test", {{"stuck", &stuck_ctx}},
-                             absl::Milliseconds(100));
+  auto monitor = MakeMonitor("test", {{"stuck", &stuck_ctx}}, absl::Milliseconds(100));
 
   EXPECT_TRUE(monitor.Tick());
   clock_->AdvanceTime(absl::Milliseconds(200));
@@ -152,8 +154,7 @@ TEST_F(IOContextMonitorTest, LateCompletionDoesNotRestoreHealth) {
 
 TEST_F(IOContextMonitorTest, DoesNotAccumulateProbesOnStuckContext) {
   instrumented_io_context stuck_ctx;
-  auto monitor = MakeMonitor("test", {{"stuck", &stuck_ctx}},
-                             absl::Milliseconds(100));
+  auto monitor = MakeMonitor("test", {{"stuck", &stuck_ctx}}, absl::Milliseconds(100));
 
   monitor.Tick();
   clock_->AdvanceTime(absl::Milliseconds(200));
@@ -174,12 +175,15 @@ TEST(IOContextMonitorThreadTest, CallbackAndShutdown) {
       "test",
       std::vector<std::pair<std::string, instrumented_io_context *>>{
           {"test_ctx", &ctx.GetIoService()}},
-      lag_gauge, deadline_counter, absl::Seconds(5));
+      lag_gauge,
+      deadline_counter,
+      absl::Seconds(5));
 
   std::atomic<int> callback_count{0};
   IOContextMonitorThread thread(
-      std::move(monitor), absl::Milliseconds(50),
-      [&callback_count](bool healthy) { callback_count.fetch_add(1); });
+      std::move(monitor), absl::Milliseconds(50), [&callback_count](bool healthy) {
+        callback_count.fetch_add(1);
+      });
 
   thread.Start();
   while (callback_count.load() < 2) {
