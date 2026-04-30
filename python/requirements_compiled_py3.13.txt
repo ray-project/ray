@@ -1124,7 +1124,7 @@ ml-dtypes==0.5.4
     #   jaxlib
     #   keras
     #   tensorflow
-mlflow==3.11.1
+mlflow==3.11.0rc1
     # via
     #   -r python/requirements/ml/py313/core-requirements.txt
     #   -r python/requirements/py313/test-requirements.txt
