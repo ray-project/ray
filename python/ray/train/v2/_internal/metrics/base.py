@@ -1,11 +1,22 @@
 from abc import ABC, abstractmethod
 from enum import Enum
-from typing import Dict, Generic, Optional, Tuple, TypeVar
+from typing import Dict, Generic, Literal, Optional, Tuple, TypeVar
 
-from ray.util.metrics import Gauge
+from ray.util.metrics import Counter, Gauge
 
 RUN_NAME_TAG_KEY = "ray_train_run_name"
 RUN_ID_TAG_KEY = "ray_train_run_id"
+
+EVENT_KIND_TAG_KEY = "kind"
+EVENT_SEVERITY_TAG_KEY = "severity"
+
+EventKind = Literal[
+    "checkpoint_saved",
+    "run_retry",
+    "run_failed",
+    "train_run_attempt",
+]
+EventSeverity = Literal["info", "warning", "error"]
 
 T = TypeVar("T")
 E = TypeVar("E", bound=Enum)
@@ -164,3 +175,44 @@ class EnumMetric(Metric, Generic[E]):
         tags = self._base_tags.copy()
         tags[self._enum_tag_key] = enum_value.name
         return tags
+
+
+class EventMetric(Counter):
+    """A counter for emitting point-in-time annotation events.
+
+    Increments a single Counter family per `event(kind, severity)` call. The
+    `kind` and `severity` `Literal` types bound cardinality at the producer.
+    Used for Grafana annotation queries; see the dashboard `annotations.list`
+    entries for how these surface.
+
+    The metric is exported as ``ray_train_annotation_event_total`` (the
+    ``ray_`` namespace and ``_total`` suffix are appended by the metrics
+    pipeline / Prometheus exporter).
+    """
+
+    METRIC_NAME = "train_annotation_event"
+
+    def __init__(self, base_tags: Dict[str, str]):
+        self._base_tags = base_tags
+        super().__init__(
+            self.METRIC_NAME,
+            description="Annotation events emitted by Ray Train internals.",
+            tag_keys=tuple(base_tags.keys())
+            + (EVENT_KIND_TAG_KEY, EVENT_SEVERITY_TAG_KEY),
+        )
+
+    @classmethod
+    def for_run(cls, run_name: str, run_id: str) -> "EventMetric":
+        return cls(
+            base_tags={RUN_NAME_TAG_KEY: run_name, RUN_ID_TAG_KEY: run_id},
+        )
+
+    def event(self, kind: EventKind, severity: EventSeverity = "info") -> None:
+        self.inc(
+            1,
+            tags={
+                **self._base_tags,
+                EVENT_KIND_TAG_KEY: kind,
+                EVENT_SEVERITY_TAG_KEY: severity,
+            },
+        )

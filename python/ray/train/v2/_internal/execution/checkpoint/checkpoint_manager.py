@@ -26,6 +26,7 @@ from ray.train.v2._internal.execution.context import StorageContext
 from ray.train.v2._internal.execution.storage import _exists_at_fs_path, delete_fs_path
 from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import Worker
+from ray.train.v2._internal.metrics.base import EventMetric
 from ray.train.v2._internal.util import wait_with_logging
 from ray.train.v2.api.report_config import CheckpointConsistencyMode
 from ray.train.v2.api.reported_checkpoint import (
@@ -95,9 +96,11 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self,
         checkpoint_config: CheckpointConfig,
         storage_context: StorageContext,
+        event_metric: Optional[EventMetric] = None,
     ):
         self._storage_context = storage_context
         self._checkpoint_config = checkpoint_config
+        self._event_metric = event_metric
 
         # This tracks the number of report calls that have been processed
         # for the current worker group.
@@ -172,6 +175,9 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self._current_report_index += 1
 
         self._save_state_and_delete_old_checkpoints()
+
+        if self._event_metric is not None:
+            self._event_metric.event(kind="checkpoint_saved")
 
         self._notify()
 

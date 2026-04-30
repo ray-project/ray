@@ -13,7 +13,7 @@ from ray.train.v2._internal.execution.controller.state import (
     TrainControllerState,
     TrainControllerStateType,
 )
-from ray.train.v2._internal.metrics.base import EnumMetric, TimeMetric
+from ray.train.v2._internal.metrics.base import EnumMetric, EventMetric, TimeMetric
 from ray.train.v2._internal.metrics.controller import ControllerMetrics
 from ray.train.v2._internal.metrics.worker import WorkerMetrics
 from ray.train.v2.api.config import RunConfig
@@ -30,11 +30,43 @@ class MockGauge:
         self._values[frozenset(tags.items())] = value
 
 
+class MockCounter:
+    """Mock class for ray.util.metrics.Counter."""
+
+    def __init__(self, name: str, description: str = "", tag_keys: tuple = ()):
+        self.name = name
+        self.description = description
+        self.tag_keys = tag_keys
+        self.calls: list[tuple[float, dict]] = []
+
+    def inc(self, value=1.0, tags=None):
+        self.calls.append((value, dict(tags or {})))
+
+
 @pytest.fixture
 def mock_gauge(monkeypatch):
     """Fixture that replaces ray.util.metrics.Gauge with MockGauge."""
     monkeypatch.setattr(ray.train.v2._internal.metrics.base, "Gauge", MockGauge)
     return MockGauge
+
+
+@pytest.fixture
+def mock_counter_init(monkeypatch):
+    """Replace Counter.__init__ so EventMetric (a Counter subclass) records
+    inc() calls without going through the real Cython metrics layer."""
+    calls: list[tuple[float, dict]] = []
+
+    def fake_init(self, name, description="", tag_keys=None):
+        self.name = name
+        self.description = description
+        self.tag_keys = tag_keys
+
+    def fake_inc(self, value=1.0, tags=None):
+        calls.append((value, dict(tags or {})))
+
+    monkeypatch.setattr(ray.util.metrics.Counter, "__init__", fake_init)
+    monkeypatch.setattr(ray.util.metrics.Counter, "inc", fake_inc)
+    return calls
 
 
 def mock_time_monotonic(monkeypatch, time_values: list[float]):
@@ -306,6 +338,57 @@ def test_controller_state_metrics(monkeypatch, mock_gauge):
         )
         == 0
     )
+
+
+def test_event_metric(mock_counter_init):
+    """EventMetric.event() should increment by 1 and pass through the right
+    tag set (base tags + kind + severity)."""
+    calls = mock_counter_init
+    metric = EventMetric.for_run(run_name="test_run", run_id="abc123")
+
+    metric.event("checkpoint_saved")
+    metric.event("run_retry", severity="warning")
+    metric.event("run_failed", severity="error")
+
+    assert len(calls) == 3
+    for value, _ in calls:
+        assert value == 1
+
+    _, first_tags = calls[0]
+    assert first_tags == {
+        "ray_train_run_name": "test_run",
+        "ray_train_run_id": "abc123",
+        "kind": "checkpoint_saved",
+        "severity": "info",
+    }
+
+    _, retry_tags = calls[1]
+    assert retry_tags["kind"] == "run_retry"
+    assert retry_tags["severity"] == "warning"
+
+    _, failed_tags = calls[2]
+    assert failed_tags["kind"] == "run_failed"
+    assert failed_tags["severity"] == "error"
+
+
+def test_event_metric_tag_keys(monkeypatch):
+    """EventMetric should declare the union of base-tag keys + kind/severity."""
+    captured = {}
+
+    def fake_init(self, name, description="", tag_keys=None):
+        captured["name"] = name
+        captured["tag_keys"] = tag_keys
+
+    monkeypatch.setattr(ray.util.metrics.Counter, "__init__", fake_init)
+    EventMetric.for_run(run_name="r", run_id="i")
+
+    assert captured["name"] == "train_annotation_event"
+    assert set(captured["tag_keys"]) == {
+        "ray_train_run_name",
+        "ray_train_run_id",
+        "kind",
+        "severity",
+    }
 
 
 if __name__ == "__main__":

@@ -304,6 +304,16 @@ assert len(all_panel_ids) == len(
     set(all_panel_ids)
 ), f"Duplicated id found. Use unique id for each panel. {all_panel_ids}"
 
+# The Train dashboard's `annotations.list` (defined in
+# train_grafana_dashboard_base.json) renders two PromQL-driven annotation
+# sources: controller state transitions (from the existing
+# `ray_train_controller_state` EnumMetric, filtered with `== 1` to fire once
+# per transition) and point-in-time train events (from the
+# `ray_train_annotation_event_total` Counter emitted by EventMetric in
+# `python/ray/train/v2/_internal/metrics/base.py`). Tooltips intentionally
+# only show the metric label set; richer payloads (free-form text, severity
+# strings, etc.) and shaded-band region rendering are out of scope for v1 to
+# avoid the cardinality and plugin-dependency tradeoffs of those approaches.
 train_dashboard_config = DashboardConfig(
     name="TRAIN",
     default_uid="rayTrainDashboard",

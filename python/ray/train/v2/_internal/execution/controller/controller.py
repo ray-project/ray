@@ -51,6 +51,7 @@ from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
 )
+from ray.train.v2._internal.metrics.base import EventMetric
 from ray.train.v2._internal.execution.scaling_policy import (
     NoopDecision,
     ResizeDecision,
@@ -135,9 +136,15 @@ class TrainController:
         self._callbacks = callbacks or []
         self._storage_context = self._train_run_context.run_config.storage_context
 
+        self._event_metric = EventMetric.for_run(
+            run_name=self._run_config.name,
+            run_id=self._train_run_context.run_id,
+        )
+
         self._checkpoint_manager = CheckpointManager(
             checkpoint_config=self._run_config.checkpoint_config,
             storage_context=self._storage_context,
+            event_metric=self._event_metric,
         )
         if validation_config:
             validation_manager = ValidationManager(
@@ -363,6 +370,7 @@ class TrainController:
             )
 
         if failure_decision == FailureDecision.RETRY:
+            self._event_metric.event(kind="run_retry", severity="warning")
             return TrainControllerLoopIterationResult(
                 run_attempt_id=self._get_run_attempt_id(),
                 previous_state=controller_state,
@@ -371,6 +379,7 @@ class TrainController:
                 ),
             )
         elif failure_decision == FailureDecision.RAISE:
+            self._event_metric.event(kind="run_failed", severity="error")
             next_state = ShuttingDownState(
                 next_state=ErroredState(
                     training_failed_error=training_failed_error,
@@ -680,6 +689,9 @@ class TrainController:
 
     def _generate_run_attempt_id(self):
         self._run_attempt_id = uuid.uuid4().hex
+        # The attempt id is recoverable from logs at this timestamp; we
+        # deliberately do not carry it as a Prometheus label (cardinality).
+        self._event_metric.event(kind="train_run_attempt")
         return self._run_attempt_id
 
     def _get_run_attempt_id(self):

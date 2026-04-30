@@ -196,6 +196,15 @@ def _generate_grafana_dashboard(dashboard_config: DashboardConfig) -> str:
             global_filters=global_filters_str
         )
 
+    # Apply global_filters to annotation queries the same way panel expressions
+    # are filtered. Annotation entries with no PromQL target (e.g. the
+    # built-in "-- Grafana --" entry) are skipped.
+    annotations = base_json.get("annotations", {}).get("list", [])
+    for annotation in annotations:
+        target = annotation.get("target")
+        if target and "expr" in target:
+            target["expr"] = target["expr"].format(global_filters=global_filters_str)
+
     tags = base_json.get("tags", []) or []
     tags.append(f"rayVersion:{ray.__version__}")
     base_json["tags"] = tags

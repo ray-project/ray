@@ -24,6 +24,30 @@
         "iconColor": "rgba(0, 211, 255, 1)",
         "name": "Annotations & Alerts",
         "type": "dashboard"
+      },
+      {
+        "name": "Controller state transitions",
+        "datasource": "${datasource}",
+        "enable": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "tagKeys": "ray_train_controller_state",
+        "target": {
+          "expr": "changes(ray_train_controller_state{{ray_train_run_id=~\"$TrainRunId\", ray_train_run_name=~\"$TrainRunName\", {global_filters}}}[$__interval]) > 0 and on(ray_train_controller_state) (ray_train_controller_state{{ray_train_run_id=~\"$TrainRunId\", ray_train_run_name=~\"$TrainRunName\", {global_filters}}} == 1)",
+          "refId": "A",
+          "legendFormat": "{{ray_train_controller_state}}"
+        }
+      },
+      {
+        "name": "Train events",
+        "datasource": "${datasource}",
+        "enable": true,
+        "iconColor": "rgba(255, 96, 96, 1)",
+        "tagKeys": "kind,severity",
+        "target": {
+          "expr": "increase(ray_train_annotation_event_total{{ray_train_run_id=~\"$TrainRunId\", ray_train_run_name=~\"$TrainRunName\", {global_filters}}}[$__interval]) > 0",
+          "refId": "A",
+          "legendFormat": "{{kind}}"
+        }
       }
     ]
   },
