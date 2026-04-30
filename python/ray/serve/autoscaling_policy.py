@@ -28,7 +28,7 @@ _DELAY_ELAPSED_EPS_S = 1e-6
 _INFLIGHT_SCALING_TOLERANCE_RATIO = 0.1
 
 
-def _is_scaling_in_flight(ctx, desired_num_replicas: float) -> bool:
+def _is_scaling_in_flight(ctx) -> bool:
     """Return True if the previous scaling decision is not yet fully applied.
 
     Suppressing decisions while the previous scaling delta is still being
@@ -39,17 +39,6 @@ def _is_scaling_in_flight(ctx, desired_num_replicas: float) -> bool:
     """
     if ctx.current_num_replicas == 0 or ctx.target_num_replicas == 0:
         return False
-
-    # Only suppress decisions that continue scaling in the same direction
-    # as the pending operation. Allow direction reversals or moves toward
-    # current (e.g. traffic dropped while the cluster is still catching up
-    # to a previously-issued upscale target). This prevents the autoscaler
-    # from getting stuck at a high target if the cluster can't reach it.
-    pending_delta = ctx.target_num_replicas - ctx.current_num_replicas
-    new_delta = desired_num_replicas - ctx.current_num_replicas
-    if pending_delta * new_delta <= 0:
-        return False
-
     delta = abs(ctx.current_num_replicas - ctx.target_num_replicas)
     threshold = max(1, int(_INFLIGHT_SCALING_TOLERANCE_RATIO * ctx.target_num_replicas))
     return delta > threshold
@@ -185,7 +174,7 @@ def _apply_default_params(
     # In-flight scaling debounce: if the previous scaling decision has not
     # been fully applied to the cluster yet, suppress new decisions to
     # prevent oscillation. See `_is_scaling_in_flight` for details.
-    if _is_scaling_in_flight(ctx, desired_num_replicas):
+    if _is_scaling_in_flight(ctx):
         return ctx.target_num_replicas, policy_state
 
     desired_num_replicas = _apply_scaling_factors(
