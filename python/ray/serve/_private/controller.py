@@ -1602,6 +1602,7 @@ class ServeController:
     ) -> List[TargetGroup]:
         target_groups = []
 
+        # Create targets for each protocol
         http_targets = self._get_targets_for_protocol(
             replica_details, RequestProtocol.HTTP
         )
@@ -1618,6 +1619,7 @@ class ServeController:
                 )
             )
 
+        # Add gRPC targets if enabled
         if is_grpc_enabled(self.get_grpc_config()):
             grpc_targets = self._get_targets_for_protocol(
                 replica_details, RequestProtocol.GRPC
