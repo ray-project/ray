@@ -659,9 +659,9 @@ class ServeController:
             # Ingress request router replicas also need direct-ingress ports.
             ingress_replicas_info_list: List[
                 Tuple[str, str, int, int]
-            ] = self.deployment_state_manager.get_direct_ingress_replicas_info()
+            ] = self.deployment_state_manager.get_ingress_replicas_info()
 
-            NodePortManager.update_ports(direct_ingress_replicas_info_list)
+            NodePortManager.update_ports(ingress_replicas_info_list)
 
             # Clean up stale ports
             # get all alive replica ids and their node ids.
