@@ -6,6 +6,14 @@ from ray import ObjectRef
 ray.init()
 
 
+# Regression check for https://github.com/ray-project/ray/issues/62971:
+# `ray.init()` returns a `BaseContext`, which must support the standard
+# context-manager protocol so `with ray.init(...):` type-checks.
+def _check_ray_init_context_manager() -> None:
+    with ray.init(num_cpus=1, num_gpus=0):  # type-check only, never executed
+        pass
+
+
 @ray.remote
 def int_task() -> int:
     return 1
