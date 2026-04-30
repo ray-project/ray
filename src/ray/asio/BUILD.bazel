@@ -4,6 +4,7 @@ ray_cc_library(
     name = "asio_chaos",
     srcs = ["asio_chaos.cc"],
     hdrs = ["asio_chaos.h"],
+    visibility = ["//visibility:public"],
     deps = [
         "//src/ray/common:ray_config",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -18,6 +19,7 @@ ray_cc_library(
         "asio_util.h",
         "instrumented_io_context.h",
     ],
+    visibility = ["//visibility:public"],
     deps = [
         ":asio_chaos",
         "//src/ray/common:event_stats",
@@ -35,6 +37,7 @@ ray_cc_library(
     name = "io_service_pool",
     srcs = ["io_service_pool.cc"],
     hdrs = ["io_service_pool.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":instrumented_io_context",
         "//src/ray/util:logging",
@@ -46,6 +49,7 @@ ray_cc_library(
     name = "periodical_runner",
     srcs = ["periodical_runner.cc"],
     hdrs = ["periodical_runner.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":instrumented_io_context",
         "//src/ray/common:ray_config",
@@ -59,6 +63,7 @@ ray_cc_library(
     name = "fake_periodical_runner",
     testonly = True,
     hdrs = ["fake_periodical_runner.h"],
+    visibility = ["//visibility:public"],
     deps = [
         ":periodical_runner",
         "@boost//:asio",
