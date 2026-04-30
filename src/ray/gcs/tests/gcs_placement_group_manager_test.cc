@@ -1226,8 +1226,7 @@ TEST_F(GcsPlacementGroupManagerTest, TestStatsCreationTime) {
       absl::Microseconds(1);
   auto end_to_end_creation_latency_us =
       absl::Nanoseconds(scheduling_done_ns - request_received_ns) / absl::Microseconds(1);
-  ASSERT_EQ(placement_group->GetStats().scheduling_latency_us(),
-            scheduling_latency_us);
+  ASSERT_EQ(placement_group->GetStats().scheduling_latency_us(), scheduling_latency_us);
   ASSERT_EQ(placement_group->GetStats().end_to_end_creation_latency_us(),
             end_to_end_creation_latency_us);
 }
