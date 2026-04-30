@@ -1552,63 +1552,69 @@ class ServeController:
         routing decisions. Main targets serve data plane traffic via
         direct ingress.
         """
-        # Ingress request router targets: the router deployment replicas
-        # that serve /internal/route.
-        ingress_request_router_replica_details = (
+        ingress_request_router_targets = self._get_targets_for_protocol(
             self._get_running_replica_details_for_deployment(
                 app_name, ingress_request_router_deployment_name
-            )
-        )
-        ingress_request_router_targets = (
-            self._get_targets_for_protocol(
-                ingress_request_router_replica_details, RequestProtocol.HTTP
-            )
-            if ingress_request_router_replica_details
-            else []
+            ),
+            RequestProtocol.HTTP,
         )
 
-        # Data plane targets: all non-router deployments with direct ingress
-        # ports.
-        # Use the replica-owned direct ingress port rather than proxy protocol ports.
-        all_deployment_names = self.application_state_manager.get_deployments(app_name)
+        http_targets = self._get_backend_http_targets_for_app(
+            app_name,
+            exclude_deployment_name=ingress_request_router_deployment_name,
+        )
 
-        http_targets = []
-        for dep_name in all_deployment_names:
-            if dep_name == ingress_request_router_deployment_name:
-                continue
-            deployment_id = DeploymentID(app_name=app_name, name=dep_name)
-            all_replica_infos = (
-                self.deployment_state_manager.get_running_replica_infos()
-            )
-            replicas = all_replica_infos.get(deployment_id, [])
-            for replica_info in replicas:
-                port = replica_info.backend_http_port
-                if port is not None and replica_info.node_ip is not None:
-                    http_targets.append(
-                        Target(
-                            ip=replica_info.node_ip,
-                            port=port,
-                            instance_id="",
-                            name=replica_info.actor_name,
-                        )
-                    )
-
-        if not http_targets and not ingress_request_router_targets:
+        if not http_targets or not ingress_request_router_targets:
             return []
 
-        target_groups = []
-        if http_targets or ingress_request_router_targets:
-            target_groups.append(
-                TargetGroup(
-                    protocol=RequestProtocol.HTTP,
-                    route_prefix=route_prefix,
-                    targets=http_targets,
-                    app_name=app_name,
-                    ingress_request_router_targets=ingress_request_router_targets,
+        return [
+            TargetGroup(
+                protocol=RequestProtocol.HTTP,
+                route_prefix=route_prefix,
+                targets=http_targets,
+                app_name=app_name,
+                ingress_request_router_targets=ingress_request_router_targets,
+            )
+        ]
+
+    def _get_backend_http_targets_for_app(
+        self, app_name: str, *, exclude_deployment_name: str
+    ) -> List[Target]:
+        """Get direct backend HTTP targets for non-router deployments in an app."""
+        running_replica_infos = (
+            self.deployment_state_manager.get_running_replica_infos()
+        )
+
+        targets = []
+        for deployment_name in self.application_state_manager.get_deployments(app_name):
+            if deployment_name == exclude_deployment_name:
+                continue
+            targets.extend(
+                self._get_backend_http_targets_for_replicas(
+                    running_replica_infos.get(
+                        DeploymentID(app_name=app_name, name=deployment_name),
+                        [],
+                    )
                 )
             )
+        return targets
 
-        return target_groups
+    @staticmethod
+    def _get_backend_http_targets_for_replicas(
+        replica_infos: Iterable[RunningReplicaInfo],
+    ) -> List[Target]:
+        """Create targets from replica-owned backend HTTP listener metadata."""
+        return [
+            Target(
+                ip=replica_info.node_ip,
+                port=replica_info.backend_http_port,
+                instance_id="",
+                name=replica_info.actor_name,
+            )
+            for replica_info in replica_infos
+            if replica_info.backend_http_port is not None
+            and replica_info.node_ip is not None
+        ]
 
     def _get_target_groups_for_app_with_no_running_replicas(
         self, route_prefix: str, app_name: str

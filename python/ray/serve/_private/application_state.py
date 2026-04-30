@@ -405,10 +405,10 @@ class ApplicationState:
         else:
             self._update_status(ApplicationStatus.DEPLOYING)
 
-        if deployment_infos is None:
-            self._ingress_deployment_name = None
-            self._ingress_request_router_deployment_name = None
-        else:
+        self._ingress_deployment_name = None
+        self._ingress_request_router_deployment_name = None
+
+        if deployment_infos is not None:
             for name, info in deployment_infos.items():
                 if info.ingress:
                     self._ingress_deployment_name = name

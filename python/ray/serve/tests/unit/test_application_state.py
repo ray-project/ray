@@ -336,6 +336,28 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
     yield application_state, deployment_state_manager
 
 
+def test_application_state_clears_stale_ingress_request_router(
+    mocked_application_state,
+):
+    application_state, _ = mocked_application_state
+
+    application_state._set_target_state(
+        {"Router": deployment_info("Router", ingress_request_router=True)},
+        api_type=APIType.IMPERATIVE,
+        code_version="1",
+        target_config=None,
+    )
+    assert application_state.ingress_request_router_deployment == "Router"
+
+    application_state._set_target_state(
+        {"Main": deployment_info("Main")},
+        api_type=APIType.IMPERATIVE,
+        code_version="2",
+        target_config=None,
+    )
+    assert application_state.ingress_request_router_deployment is None
+
+
 class TestApplicationStatusInfo:
     def test_application_status_required(self):
         with pytest.raises(TypeError):
