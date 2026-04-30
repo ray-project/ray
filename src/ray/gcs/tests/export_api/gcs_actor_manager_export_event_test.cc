@@ -35,6 +35,7 @@
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 #include "ray/util/event.h"
@@ -154,6 +155,8 @@ class GcsActorManagerTest : public ::testing::Test {
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(publisher));
+    observability_publisher_ = std::make_shared<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
     gcs_table_storage_ =
         std::make_unique<gcs::GcsTableStorage>(std::make_unique<InMemoryStoreClient>());
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
@@ -179,7 +182,8 @@ class GcsActorManagerTest : public ::testing::Test {
         /*ray_event_recorder=*/fake_ray_event_recorder_,
         /*session_name=*/"",
         actor_by_state_gauge_,
-        gcs_actor_by_state_gauge_);
+        gcs_actor_by_state_gauge_,
+        observability_publisher_.get());
 
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -271,6 +275,7 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
   std::shared_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  std::shared_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_mgr_;
   const std::chrono::milliseconds timeout_ms_{2000};
   absl::Mutex mutex_;

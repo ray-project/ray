@@ -23,6 +23,7 @@
 
 #include "ray/gcs_rpc_client/rpc_client.h"
 #include "ray/rpc/authentication/authentication_token_loader.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace pubsub {
@@ -39,10 +40,16 @@ PythonGcsSubscriber::PythonGcsSubscriber(const std::string &gcs_address,
                                          std::string subscriber_id,
                                          std::string worker_id)
     : channel_(rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port)),
-      pubsub_stub_(rpc::InternalPubSubGcsService::NewStub(channel_)),
+      observability_pubsub_stub_(rpc::ObservabilityPubSubService::NewStub(channel_)),
       channel_type_(channel_type),
       subscriber_id_(std::move(subscriber_id)),
-      worker_id_(std::move(worker_id)) {}
+      worker_id_(std::move(worker_id)) {
+  RAY_CHECK(IsObservabilityPubSubChannel(channel_type_))
+      << "PythonGcsSubscriber only supports GCS pubsub channels on "
+         "ObservabilityPubSubService (RAY_ERROR_INFO_CHANNEL, RAY_LOG_CHANNEL, "
+         "RAY_NODE_RESOURCE_USAGE_CHANNEL), got channel_type="
+      << static_cast<int>(channel_type_);
+}
 
 Status PythonGcsSubscriber::Subscribe() {
   absl::MutexLock lock(&mu_);
@@ -59,10 +66,9 @@ Status PythonGcsSubscriber::Subscribe() {
   auto *command = request.add_commands();
   command->set_channel_type(channel_type_);
   command->mutable_subscribe_message();
-
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status =
-      pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
+      observability_pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
   if (status.ok()) {
     return Status::OK();
@@ -92,7 +98,8 @@ Status PythonGcsSubscriber::DoPoll(int64_t timeout_ms, rpc::PubMessage *message)
     auto context = current_polling_context_;
     // Drop the lock while in RPC
     mu_.Unlock();
-    grpc::Status status = pubsub_stub_->GcsSubscriberPoll(context.get(), request, &reply);
+    grpc::Status status =
+        observability_pubsub_stub_->GcsSubscriberPoll(context.get(), request, &reply);
     mu_.Lock();
 
     if (status.error_code() == grpc::StatusCode::DEADLINE_EXCEEDED ||
@@ -182,7 +189,7 @@ Status PythonGcsSubscriber::Close() {
   command->mutable_unsubscribe_message();
   rpc::GcsSubscriberCommandBatchReply reply;
   grpc::Status status =
-      pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
+      observability_pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
 
   if (!status.ok()) {
     RAY_LOG(WARNING) << "Error while unregistering the subscriber: "
