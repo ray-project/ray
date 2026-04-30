@@ -54,15 +54,20 @@ bool IOContextMonitor::Tick() {
 
 bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
   absl::MutexLock lock(&probe->mu);
-
-  // Check if the probe has exceeded the deadline, independent of it having finished.
   absl::Time now = clock_->Now();
-  if (now - probe->probe_post_time >= healthy_deadline_ &&
+
+  // Time elapsed for the probe: the actual lag if it has completed, or the
+  // wall-clock time since posting if it's still outstanding.
+  absl::Duration elapsed =
+      (probe->last_probe_completed ? probe->probe_complete_time : now) -
+      probe->probe_post_time;
+
+  // Check if the probe has exceeded the deadline, whether or not it has finished.
+  if (probe->probe_post_time != absl::InfinitePast() && elapsed >= healthy_deadline_ &&
       !probe->deadline_exceeded_recorded) {
     RAY_LOG(WARNING) << "[" << component_name_ << "] io_context '" << probe->name
-                     << "' has not responded to probe ("
-                     << absl::ToInt64Milliseconds(now - probe->probe_post_time)
-                     << "ms elapsed)";
+                     << "' exceeded probe deadline ("
+                     << absl::ToInt64Milliseconds(elapsed) << "ms)";
     deadline_exceeded_counter_.Record(1, {{"Name", probe->name}});
     probe->healthy = false;
     probe->deadline_exceeded_recorded = true;
@@ -72,14 +77,10 @@ bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
   if (probe->last_probe_completed) {
     // Record lag and health status from the completed probe, then post a new one.
     if (probe->probe_post_time != absl::InfinitePast()) {
-      double lag_ms =
-          absl::ToDoubleMilliseconds(probe->probe_complete_time - probe->probe_post_time);
-      lag_gauge_.Record(lag_ms, {{"Name", probe->name}});
+      lag_gauge_.Record(absl::ToDoubleMilliseconds(elapsed), {{"Name", probe->name}});
 
-      // Only mark healthy if we're still within the deadline window. If we're
-      // past the deadline, the probe completed late. The io_context will only be
-      // marked healthy if the next probe completes on time.
-      if (now - probe->probe_post_time < healthy_deadline_) {
+      // Only mark healthy if the probe's actual lag was within the deadline.
+      if (elapsed < healthy_deadline_) {
         probe->healthy = true;
       }
     }

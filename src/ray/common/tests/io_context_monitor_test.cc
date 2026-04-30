@@ -136,6 +136,24 @@ TEST_F(IOContextMonitorTest, MultipleIOContexts) {
   EXPECT_TRUE(monitor.Tick());
 }
 
+TEST_F(IOContextMonitorTest, CompletionPastDeadlineMarksUnhealthy) {
+  instrumented_io_context ctx;
+  auto monitor = MakeMonitor("test", {{"ctx", &ctx}}, absl::Milliseconds(100));
+
+  // Tick 1 posts the probe at t=0.
+  EXPECT_TRUE(monitor.Tick());
+
+  // Advance past the deadline before the probe runs, so when it completes its
+  // lag exceeds the deadline.
+  clock_->AdvanceTime(absl::Milliseconds(200));
+  ctx.poll();
+
+  // Tick 2 observes a completed probe whose lag (200ms) is past the deadline.
+  EXPECT_FALSE(monitor.Tick());
+  EXPECT_EQ(GetDeadlineExceeded("ctx"), 1);
+  EXPECT_GE(GetLag("ctx"), 200);
+}
+
 TEST_F(IOContextMonitorTest, LateCompletionDoesNotRestoreHealth) {
   instrumented_io_context ctx;
   auto monitor = MakeMonitor("test", {{"ctx", &ctx}}, absl::Milliseconds(100));
