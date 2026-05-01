@@ -190,6 +190,11 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context,
         )
 
+        # Propagate the block reference counter to all operators
+        counter = self._resource_manager.block_ref_counter
+        for op in self._topology:
+            op.set_block_ref_counter(counter)
+
         # Setup progress manager
         self._progress_manager = get_progress_manager(
             self._data_context,

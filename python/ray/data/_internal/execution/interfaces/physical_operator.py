@@ -37,6 +37,7 @@ from ray.data.context import DataContext
 
 if TYPE_CHECKING:
 
+    from ray.data._internal.execution.block_ref_counter import BlockRefCounter
     from ray.data.block import BlockMetadataWithSchema
 
 logger = logging.getLogger(__name__)
@@ -420,6 +421,7 @@ class PhysicalOperator(Operator):
         self._id = str(uuid.uuid4())
         # Initialize metrics after data_context is set
         self._metrics = OpRuntimeMetrics(self)
+        self._block_ref_counter: Optional["BlockRefCounter"] = None
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -705,6 +707,14 @@ class PhysicalOperator(Operator):
             options: The global options used for the overall execution.
         """
         self._started = True
+
+    def set_block_ref_counter(self, counter: "BlockRefCounter") -> None:
+        """Inject the centralized block reference counter.
+
+        Called by StreamingExecutor after start() so that operators can call
+        on_block_produced / on_task_completed without changing the start() signature.
+        """
+        self._block_ref_counter = counter
 
     def can_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
