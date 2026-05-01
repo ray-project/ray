@@ -137,7 +137,6 @@ class AllToAllOperator(InternalQueueOperatorMixin, SubProgressMixin, PhysicalOpe
         # Keep the legacy attribute name during the transition. Some internal
         # call sites still read this field directly instead of using the mixin.
         self._sub_progress_bar_names = sub_progress_bar_names
-        self._sub_progress_names = sub_progress_bar_names
         self._sub_progress_metrics = (
             {
                 name: ProgressMetrics(name=name, total=None, completed=0)
