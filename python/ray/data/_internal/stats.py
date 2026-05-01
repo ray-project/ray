@@ -1,6 +1,7 @@
 import collections
 import copy
 import logging
+import math
 import time
 from collections import defaultdict
 from contextlib import contextmanager
@@ -165,6 +166,7 @@ class Timer:
         self._min: float = float("inf")
         self._max: float = 0
         self._total_count: float = 0
+        self._samples: List[float] = []
 
     @contextmanager
     def timer(self) -> None:
@@ -181,6 +183,7 @@ class Timer:
         if value > self._max:
             self._max = value
         self._total_count += 1
+        self._samples.append(value)
 
     def get(self) -> float:
         return self._total
@@ -193,6 +196,24 @@ class Timer:
 
     def avg(self) -> float:
         return self._total / self._total_count if self._total_count else float("inf")
+
+    def _percentile(self, p: float) -> float:
+        """Linear-interpolated percentile in ``[0, 100]`` over recorded samples."""
+        if not self._total_count:
+            return float("inf")
+        s = sorted(self._samples)
+        k = (len(s) - 1) * (p / 100.0)
+        f = math.floor(k)
+        c = math.ceil(k)
+        if f == c:
+            return s[int(k)]
+        return s[f] * (c - k) + s[c] * (k - f)
+
+    def p50(self) -> float:
+        return self._percentile(50.0)
+
+    def p90(self) -> float:
+        return self._percentile(90.0)
 
 
 class _DatasetStatsBuilder:
@@ -1153,11 +1174,11 @@ class DatasetStats:
                 # Single operator scenario: input rows = total output from all parent nodes
                 op_stat.total_input_num_rows = parent_total_output
             operators_stats.append(op_stat)
-        streaming_exec_schedule_s = (
-            self.streaming_exec_schedule_s.avg()
-            if self.streaming_exec_schedule_s
-            else 0
-        )
+        avg_streaming_exec_schedule_s = self.streaming_exec_schedule_s.avg()
+        p50_streaming_exec_schedule_s = self.streaming_exec_schedule_s.p50()
+        p90_streaming_exec_schedule_s = self.streaming_exec_schedule_s.p90()
+        min_streaming_exec_schedule_s = self.streaming_exec_schedule_s.min()
+        max_streaming_exec_schedule_s = self.streaming_exec_schedule_s.max()
         return DatasetStatsSummary(
             operators_stats,
             iter_stats,
@@ -1170,7 +1191,11 @@ class DatasetStats:
             self.global_bytes_spilled,
             self.global_bytes_restored,
             self.dataset_bytes_spilled,
-            streaming_exec_schedule_s,
+            avg_streaming_exec_schedule_s,
+            p50_streaming_exec_schedule_s,
+            p90_streaming_exec_schedule_s,
+            min_streaming_exec_schedule_s,
+            max_streaming_exec_schedule_s,
         )
 
     def runtime_metrics(self) -> str:
@@ -1205,7 +1230,12 @@ class DatasetStatsSummary:
     global_bytes_spilled: int
     global_bytes_restored: int
     dataset_bytes_spilled: int
+    # Mean per streaming scheduling iteration (backward-compatible field name).
     streaming_exec_schedule_s: float
+    streaming_exec_schedule_p50_s: float
+    streaming_exec_schedule_p90_s: float
+    streaming_exec_schedule_min_s: float
+    streaming_exec_schedule_max_s: float
 
     def to_string(
         self,
@@ -1357,7 +1387,17 @@ class DatasetStatsSummary:
                 )
                 op_total_time = latest_end - earliest_start
                 out += fmt_line(summ.base_name, op_total_time)
-        out += fmt_line("Scheduling", self.streaming_exec_schedule_s)
+        if math.isfinite(self.streaming_exec_schedule_s):
+            out += fmt_line(
+                "Scheduling (avg per iteration)", self.streaming_exec_schedule_s
+            )
+            if math.isfinite(self.streaming_exec_schedule_min_s):
+                out += (
+                    f"*   scheduling iteration: min {fmt(self.streaming_exec_schedule_min_s)}, "
+                    f"p50 {fmt(self.streaming_exec_schedule_p50_s)}, "
+                    f"p90 {fmt(self.streaming_exec_schedule_p90_s)}, "
+                    f"max {fmt(self.streaming_exec_schedule_max_s)}\n"
+                )
         out += fmt_line("Total", total_wall_time)
         return out
 

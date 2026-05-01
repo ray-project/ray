@@ -33,6 +33,10 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     summary = ds.get_stats_summary(detail=True)
     return {
         "avg_scheduling_loop_duration_s": summary.streaming_exec_schedule_s,
+        "p50_scheduling_loop_duration_s": summary.streaming_exec_schedule_p50_s,
+        "p90_scheduling_loop_duration_s": summary.streaming_exec_schedule_p90_s,
+        "min_scheduling_loop_duration_s": summary.streaming_exec_schedule_min_s,
+        "max_scheduling_loop_duration_s": summary.streaming_exec_schedule_max_s,
         "operators": [
             {
                 "operator_name": op.operator_name,

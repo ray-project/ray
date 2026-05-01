@@ -5,7 +5,6 @@ across a range(N) -> map_batches(1000 actors) -> consume pipeline.
 """
 
 import argparse
-
 import ray
 from benchmark import (
     Benchmark,
@@ -15,7 +14,7 @@ from benchmark import (
 )
 
 BLOCKS_PER_WORKER: int = 10
-TARGET_BLOCK_SIZE_BYTES: int = 128 * 1024 * 1024  # 128 MiB
+TARGET_BLOCK_SIZE_BYTES: int = 512 * 1024 * 1024  # 512 MiB
 BYTES_PER_ROW: int = 8  # ray.data.range produces one int64 per row
 ROWS_PER_BLOCK: int = TARGET_BLOCK_SIZE_BYTES // BYTES_PER_ROW
 
@@ -51,7 +50,7 @@ def main(args: argparse.Namespace):
     benchmark = Benchmark()
 
     def benchmark_fn():
-        num_workers = [1, 10, 100, 500, 1000, 2000]
+        num_workers = [1, 10, 100, 500, 1000, 2000, 5000, 10000]
         for num_worker in num_workers:
             num_blocks = BLOCKS_PER_WORKER * num_worker
             num_rows = num_blocks * ROWS_PER_BLOCK

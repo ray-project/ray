@@ -8,6 +8,6 @@ head_node:
 
 worker_nodes:
     - instance_type: m5.2xlarge
-      min_nodes: 250
-      max_nodes: 250
+      min_nodes: 1250
+      max_nodes: 1250
       market_type: ON_DEMAND
