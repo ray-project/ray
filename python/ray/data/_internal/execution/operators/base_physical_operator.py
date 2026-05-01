@@ -190,6 +190,7 @@ class AllToAllOperator(
         while self._input_buffer.has_next():
             refs = self._input_buffer.get_next()
             self._metrics.on_input_dequeued(refs, input_index=0)
+            self._track_bundle_consumed(refs)
 
         for ref in self._output_buffer:
             self._metrics.on_output_queued(ref)

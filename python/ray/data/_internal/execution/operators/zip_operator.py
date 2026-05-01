@@ -267,7 +267,11 @@ class ZipOperator(InternalQueueOperatorMixin, NAryOperator):
             output_refs.append(bundle)
         stats = {self._name: to_stats(output_metadata_schema)}
 
-        # Clean up inputs.
+        # Untrack consumed input blocks and clean up.
+        for bundle in left_input:
+            self._track_bundle_consumed(bundle)
+        for bundle in right_input:
+            self._track_bundle_consumed(bundle)
         for ref in left_input:
             ref.destroy_if_owned()
         for ref in right_input:

@@ -509,6 +509,10 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
         task_index = self._next_data_task_idx
         self._next_data_task_idx += 1
 
+        if self._block_ref_counter is not None:
+            for block_ref, _ in inputs.blocks:
+                self._block_ref_counter.on_block_dispatched_to_task(block_ref)
+
         def _output_ready_callback(
             task_index,
             output: RefBundle,
@@ -551,6 +555,7 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
             self._data_tasks.pop(task_index)
             # Notify output queue that this task is complete.
             self._output_queue.finalize(key=task_index)
+            self._track_bundle_consumed(inputs)
             if task_done_callback:
                 task_done_callback()
 

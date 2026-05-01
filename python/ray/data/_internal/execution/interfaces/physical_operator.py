@@ -739,6 +739,15 @@ class PhysicalOperator(Operator):
                     block_ref, metadata.size_bytes or 0, self
                 )
 
+    def _track_bundle_consumed(self, bundle: RefBundle) -> None:
+        """Untrack all blocks in bundle from the block reference counter.
+
+        No-op if the block reference counter has not been injected yet.
+        """
+        if self._block_ref_counter is not None:
+            for block_ref, _ in bundle.blocks:
+                self._block_ref_counter.on_task_completed(block_ref)
+
     def can_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
 
