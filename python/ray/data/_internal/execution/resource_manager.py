@@ -4,7 +4,7 @@ import time
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from functools import reduce
-from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray._common.utils import env_bool, env_float
 from ray.data._internal.execution import create_resource_allocator
@@ -1091,6 +1091,67 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             object_store_memory=op_reserved.object_store_memory + reserved_for_outputs
         )
 
+    def _apply_op_grant_caps(
+        self,
+        op: PhysicalOperator,
+        op_proportional: ExecutionResources,
+        op_shared: ExecutionResources,
+        remaining_shared: ExecutionResources,
+        op_budgets: Dict[PhysicalOperator, ExecutionResources],
+        max_resource_usage: ExecutionResources,
+    ) -> Tuple[ExecutionResources, ExecutionResources]:
+        """Cap and borrow-adjust the proportional and shared grants for one op.
+
+        For ops with a finite max_resource_usage, applies a three-step sequence:
+          1. Cap op_proportional so reserved + proportional <= max_resource_usage.
+          2. Borrow from remaining_shared to reach min_scheduling_resources if needed.
+          3. Cap op_shared so the total grant doesn't exceed max_resource_usage.
+
+        Both caps are necessary because op_proportional and op_shared are drawn from
+        different pools and can each independently push the total over the limit.
+        Example: max=10, total_reserved=3, op_proportional=9 (raw), op_shared=2.
+          After step 1: op_proportional = min(9, 10-3) = 7  (total so far: 10)
+          After step 3: op_shared      = min(2, 10-10) = 0  (total: 10)
+
+        Step 1 must precede step 2 so the borrow shortfall is computed against
+        the capped proportional — i.e., what the op will actually receive.
+        """
+        total_reserved = (
+            self._get_total_reserved(op)
+            if max_resource_usage != ExecutionResources.inf()
+            else None
+        )
+
+        if total_reserved is not None:
+            op_proportional = op_proportional.min(
+                max_resource_usage.subtract(total_reserved).max(
+                    ExecutionResources.zero()
+                )
+            )
+
+        # Borrow from remaining_shared if total grant < min_scheduling_resources.
+        # Applies to all ops regardless of cap.
+        shortfall = (
+            op.min_scheduling_resources()
+            .subtract(op_budgets[op].add(op_proportional).add(op_shared))
+            .max(ExecutionResources.zero())
+        )
+        if not shortfall.is_zero() and op_shared.add(shortfall).satisfies_limit(
+            remaining_shared
+        ):
+            op_shared = op_shared.add(shortfall)
+
+        if total_reserved is not None:
+            op_usage = self._resource_manager.get_op_usage(op)
+            current_allocation = total_reserved.add(op_proportional).max(op_usage)
+            op_shared = op_shared.min(
+                max_resource_usage.subtract(current_allocation).max(
+                    ExecutionResources.zero()
+                )
+            )
+
+        return op_proportional, op_shared
+
     def max_task_output_bytes_to_read(self, op: PhysicalOperator) -> Optional[int]:
         budget = self.get_budget(op)
         if budget is None:
@@ -1210,59 +1271,26 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         }
 
         # Allocate the remaining shared resources to each operator.
+        # op_proportional and op_shared are mutually exclusive per dimension:
+        # when over-subscribed, remaining_shared = 0 so op_shared = 0.
         for i, op in enumerate(reversed(eligible_ops)):
-            # op_proportional and op_shared are mutually exclusive per dimension:
-            # when over-subscribed, remaining_shared = 0 so op_shared = 0.
             op_proportional = op_proportional_grants.get(op, ExecutionResources.zero())
-            # By default, divide the remaining shared resources equally.
             op_shared = remaining_shared.scale(1.0 / (len(eligible_ops) - i))
 
-            # If budget < min_scheduling_resources, borrow from remaining_shared to reach
-            # the minimum (only if remaining_shared covers the shortfall).
-            to_borrow = (
-                op.min_scheduling_resources()
-                .subtract(op_budgets[op].add(op_proportional).add(op_shared))
-                .max(ExecutionResources.zero())
+            op_proportional, op_shared = self._apply_op_grant_caps(
+                op,
+                op_proportional,
+                op_shared,
+                remaining_shared,
+                op_budgets,
+                op_max_resources[op],
             )
-            if not to_borrow.is_zero() and op_shared.add(to_borrow).satisfies_limit(
-                remaining_shared
-            ):
-                op_shared = op_shared.add(to_borrow)
-
-            # Cap op_shared so the total grant doesn't exceed max_resource_usage (excess
-            # stays in remaining_shared). Note: total_reserved includes _reserved_for_op_outputs.
-            max_resource_usage = op_max_resources[op]
-            if max_resource_usage != ExecutionResources.inf():
-                total_reserved = self._get_total_reserved(op)
-                # Cap op_proportional so planned_grant = reserved + proportional + shared
-                # never exceeds max_resource_usage. Without this, over-subscribed proportional
-                # grants can push planned_grant past the cap, suppressing correct downscaling.
-                max_proportional = max_resource_usage.subtract(total_reserved).max(
-                    ExecutionResources.zero()
-                )
-                op_proportional = op_proportional.min(max_proportional)
-                op_usage = self._resource_manager.get_op_usage(op)
-                # current_allocation accounts for the proportional grant already given.
-                current_allocation = total_reserved.add(op_proportional).max(op_usage)
-                max_shared = max_resource_usage.subtract(current_allocation).max(
-                    ExecutionResources.zero()
-                )
-                op_shared = op_shared.min(max_shared)
 
             remaining_shared = remaining_shared.subtract(op_shared)
-            assert remaining_shared.is_non_negative(), (
-                remaining_shared,
-                op,
-                op_shared,
-                to_borrow,
+            assert remaining_shared.is_non_negative(), (remaining_shared, op, op_shared)
+            self._op_planned_grants[op] = self._op_reserved[op].add(
+                op_proportional.add(op_shared)
             )
-
-            # planned_grant = reserved floor + shared grant (proportional for
-            # over-subscribed dims, evenly shared for normal dims).
-            # Note: _op_reserved excludes _reserved_for_op_outputs; the output
-            # reservation is added back in max_task_output_bytes_to_read.
-            op_shared_grant = op_proportional.add(op_shared)
-            self._op_planned_grants[op] = self._op_reserved[op].add(op_shared_grant)
 
         # Give any remaining shared resources to the most downstream uncapped op.
         # This can happen when some ops have their shared allocation capped.
