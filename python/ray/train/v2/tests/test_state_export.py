@@ -137,7 +137,30 @@ def test_export_train_run_run_settings_fields(enable_export_api_write):
             "use_tpu": False,
         },
         "datasets": ["dataset_1"],
-        "data_config": {"all": {}, "enable_shard_locality": True},
+        "data_config": {
+            "all": {},
+            "enable_shard_locality": True,
+            "data_execution_options": {
+                "default": {
+                    "actor_locality_enabled": True,
+                    "exclude_resources": {
+                        "CPU": 0.0,
+                        "GPU": 0.0,
+                        "memory": 0.0,
+                        "object_store_memory": 0.0,
+                    },
+                    "preserve_order": False,
+                    "resource_limits": {
+                        "CPU": "inf",
+                        "GPU": "inf",
+                        "memory": "inf",
+                        "object_store_memory": "inf",
+                    },
+                    "verbose_progress": True,
+                },
+                "per_dataset_execution_options": {},
+            },
+        },
         "run_config": {
             "name": "test_run",
             "failure_config": {"controller_failure_limit": -1, "max_failures": 0},
@@ -499,15 +522,18 @@ def test_export_execution_options_with_inf_resource_limits(enable_export_api_wri
     from ray.data._internal.execution.interfaces.execution_options import (
         ExecutionOptions,
     )
-    from ray.train.v2._internal.state.util import execution_options_to_dict
+    from ray.train.v2._internal.state.schema import DataExecutionOptions
+    from ray.train.v2._internal.state.util import execution_options_to_model
 
     state_actor = get_or_create_state_actor()
 
     run = create_mock_train_run(RunStatus.RUNNING)
     # Default ExecutionOptions uses for_limits(), setting all resource fields to inf.
-    run.run_settings.data_config.execution_options = {
-        "train": execution_options_to_dict(ExecutionOptions())
-    }
+    default_model = execution_options_to_model(ExecutionOptions())
+    run.run_settings.data_config.data_execution_options = DataExecutionOptions(
+        default=default_model,
+        per_dataset_execution_options={"train": default_model},
+    )
 
     # Must not raise — previously MessageToDict crashed on inf values.
     ray.get(state_actor.create_or_update_train_run.remote(run))
@@ -515,12 +541,77 @@ def test_export_execution_options_with_inf_resource_limits(enable_export_api_wri
     data = _get_exported_data()
     assert len(data) == 1
 
-    resource_limits = data[0]["event_data"]["run_settings"]["data_config"][
-        "execution_options"
-    ]["train"]["resource_limits"]
-    # inf must be serialized as the string "inf", not a bare float.
-    assert resource_limits["CPU"] == "inf"
-    assert resource_limits["GPU"] == "inf"
+    exported_exec_opts = data[0]["event_data"]["run_settings"]["data_config"][
+        "data_execution_options"
+    ]
+    # inf must be serialized as the string "inf", not a bare float, in both
+    # the default and per-dataset override slots.
+    assert exported_exec_opts["default"]["resource_limits"]["CPU"] == "inf"
+    assert exported_exec_opts["default"]["resource_limits"]["GPU"] == "inf"
+    assert (
+        exported_exec_opts["per_dataset_execution_options"]["train"]["resource_limits"][
+            "CPU"
+        ]
+        == "inf"
+    )
+
+
+def test_export_per_dataset_execution_options(enable_export_api_write):
+    """Test that a fully populated per_dataset_execution_options round-trips through export.
+
+    Each dataset's ExecutionOptions has distinct values so we can confirm none
+    of them collapse onto the default or each other during proto serialization.
+    """
+    from ray.train.v2._internal.state.schema import (
+        DataExecutionOptions,
+        ExecutionOptions as ExecutionOptionsSchema,
+    )
+
+    state_actor = get_or_create_state_actor()
+
+    default = ExecutionOptionsSchema(
+        resource_limits={"CPU": 1.0, "GPU": 0.0},
+        exclude_resources={"CPU": 0.0, "GPU": 0.0},
+        preserve_order=False,
+        actor_locality_enabled=True,
+        verbose_progress=True,
+    )
+    train_opts = ExecutionOptionsSchema(
+        resource_limits={"CPU": 8.0, "GPU": 2.0},
+        exclude_resources={"CPU": 1.0, "GPU": 0.0},
+        preserve_order=True,
+        actor_locality_enabled=False,
+        verbose_progress=False,
+    )
+    eval_opts = ExecutionOptionsSchema(
+        resource_limits={"CPU": 4.0, "GPU": 1.0},
+        exclude_resources={"CPU": 0.5, "GPU": 0.0},
+        preserve_order=False,
+        actor_locality_enabled=True,
+        verbose_progress=False,
+    )
+
+    run = create_mock_train_run(RunStatus.RUNNING)
+    run.run_settings.data_config.data_execution_options = DataExecutionOptions(
+        default=default,
+        per_dataset_execution_options={"train": train_opts, "eval": eval_opts},
+    )
+
+    ray.get(state_actor.create_or_update_train_run.remote(run))
+
+    data = _get_exported_data()
+    assert len(data) == 1
+
+    exported = data[0]["event_data"]["run_settings"]["data_config"][
+        "data_execution_options"
+    ]
+    assert exported == {
+        "default": default.dict(),
+        "per_dataset_execution_options": {
+            "train": train_opts.dict(),
+            "eval": eval_opts.dict(),
+        },
+    }
 
 
 def test_export_optional_fields(enable_export_api_write):
@@ -542,7 +633,6 @@ def test_export_optional_fields(enable_export_api_write):
     run_with_optional.run_settings.scaling_config.topology = "v4-8"
     run_with_optional.run_settings.scaling_config.bundle_label_selector = {"k": "v"}
     run_with_optional.run_settings.data_config.datasets_to_split = ["dataset_1"]
-    run_with_optional.run_settings.data_config.execution_options = {"foo": "bar"}
     run_with_optional.run_settings.run_config.checkpoint_config.num_to_keep = 2
     run_with_optional.run_settings.run_config.checkpoint_config.checkpoint_score_attribute = (
         "score"
@@ -596,7 +686,6 @@ def test_export_optional_fields(enable_export_api_write):
     assert "label_selector_single" not in run_settings["scaling_config"]
     assert "label_selector_list" not in run_settings["scaling_config"]
     assert "data_config" in run_settings
-    assert "execution_options" not in run_settings["data_config"]
     assert "storage_filesystem" not in run_settings["run_config"]
 
     # Verify train run attempt without optional fields
@@ -631,10 +720,6 @@ def test_export_optional_fields(enable_export_api_write):
     assert (
         run_settings["data_config"]["datasets"]["values"]
         == run_with_optional.run_settings.data_config.datasets_to_split
-    )
-    assert (
-        run_settings["data_config"]["execution_options"]
-        == run_with_optional.run_settings.data_config.execution_options
     )
     assert run_settings["run_config"]["checkpoint_config"]["num_to_keep"] == str(
         run_with_optional.run_settings.run_config.checkpoint_config.num_to_keep
