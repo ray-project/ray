@@ -3089,8 +3089,24 @@ KillWorkersCallback NodeManager::CreateKillWorkersCallback() {
           ProcessesMemorySnapshot process_memory_snapshot =
               MemoryMonitorUtils::TakePerProcessMemorySnapshot();
           SystemMemorySnapshot system_memory_snapshot =
-              MemoryMonitorUtils::TakeSystemMemorySnapshot(
+              MemoryMonitorUtils::TakeHostSystemMemorySnapshot(
                   MemoryMonitorInterface::kDefaultCgroupPath);
+          if (initial_config_.enable_resource_isolation) {
+            StatusSetOr<SystemMemorySnapshot, StatusT::NotFound>
+                user_slice_memory_snapshot_or =
+                    MemoryMonitorUtils::TakeUserSliceSystemMemorySnapshot(
+                        cgroup_manager_->GetUserCgroupPath(),
+                        cgroup_manager_->GetSystemCgroupPath());
+            if (user_slice_memory_snapshot_or.has_value()) {
+              system_memory_snapshot = user_slice_memory_snapshot_or.value();
+            } else {
+              RAY_LOG(ERROR) << absl::StrFormat(
+                  "Failed to take user slice memory snapshot due to: %s. "
+                  "Falling back to host system memory snapshot.",
+                  user_slice_memory_snapshot_or.message());
+            }
+          }
+
           std::vector<std::pair<std::shared_ptr<WorkerInterface>, bool>>
               workers_to_kill_and_should_retry =
                   worker_killing_policy_->SelectWorkersToKill(

@@ -32,7 +32,7 @@ std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Creat
   std::vector<std::unique_ptr<MemoryMonitorInterface>> monitors;
 
   uint64_t monitor_interval_ms = RayConfig::instance().memory_monitor_refresh_ms();
-  int64_t total_memory_bytes = MemoryMonitorUtils::TakeSystemMemorySnapshot(
+  int64_t total_memory_bytes = MemoryMonitorUtils::TakeHostSystemMemorySnapshot(
                                    MemoryMonitorInterface::kDefaultCgroupPath)
                                    .total_bytes;
   int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
@@ -43,10 +43,18 @@ std::vector<std::unique_ptr<MemoryMonitorInterface>> MemoryMonitorFactory::Creat
       cgroup_manager);
 
   if (monitor_interval_ms > 0) {
-    monitors.push_back(
-        std::make_unique<ThresholdMemoryMonitor>(std::move(kill_workers_callback),
-                                                 memory_usage_threshold_bytes,
-                                                 monitor_interval_ms));
+    monitors.push_back(std::make_unique<ThresholdMemoryMonitor>(
+        std::move(kill_workers_callback),
+        memory_usage_threshold_bytes,
+        monitor_interval_ms,
+        resource_isolation_enabled,
+        MemoryMonitorInterface::kDefaultCgroupPath,
+        /* user_cgroup_path */
+        resource_isolation_enabled ? cgroup_manager.GetUserCgroupPath()
+                                   : MemoryMonitorInterface::kDefaultCgroupPath,
+        /* system_cgroup_path */
+        resource_isolation_enabled ? cgroup_manager.GetSystemCgroupPath()
+                                   : MemoryMonitorInterface::kDefaultCgroupPath));
   } else {
     RAY_LOG(INFO) << "ThresholdMemoryMonitor disabled. Specify "
                   << "`RAY_memory_monitor_refresh_ms` > 0 to enable the monitor.";

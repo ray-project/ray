@@ -18,6 +18,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <optional>
 #include <ostream>
 
 #include "absl/container/flat_hash_map.h"
@@ -29,15 +30,34 @@ namespace ray {
  * @brief A snapshot of aggregated memory usage across the system.
  */
 struct SystemMemorySnapshot {
+  /// The current memory usage.
   int64_t used_bytes;
 
-  /// The total memory available on the system. >= used_bytes.
+  /// The total memory available on the system.
   int64_t total_bytes;
 
   friend std::ostream &operator<<(std::ostream &os,
                                   const SystemMemorySnapshot &memory_snapshot) {
     os << "Used bytes: " << memory_snapshot.used_bytes
        << ", Total bytes: " << memory_snapshot.total_bytes;
+    return os;
+  }
+};
+
+/**
+ * @brief A snapshot of memory usage within a cgroup.
+ */
+struct CgroupMemorySnapshot {
+  /// size of anonymous mappings within the cgroup in bytes.
+  int64_t anon_memory_bytes;
+
+  /// size of shared memory mappings within the cgroup in bytes.
+  int64_t shmem_memory_bytes;
+
+  friend std::ostream &operator<<(std::ostream &os,
+                                  const CgroupMemorySnapshot &memory_snapshot) {
+    os << "Anon memory bytes: " << memory_snapshot.anon_memory_bytes
+       << ", Shmem memory bytes: " << memory_snapshot.shmem_memory_bytes;
     return os;
   }
 };
