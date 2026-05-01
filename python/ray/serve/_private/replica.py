@@ -2534,10 +2534,7 @@ class Replica:
             )
             return
 
-        custom_app = getattr(
-            self._user_callable_wrapper.user_callable, "_asgi_app", None
-        )
-        if custom_app is not None:
+        if self._user_callable_asgi_app is not None:
             req_meta = RequestMetadata(
                 request_id=generate_request_id(),
                 internal_request_id=generate_request_id(),
@@ -2551,7 +2548,7 @@ class Replica:
             )
             self._metrics_manager.inc_num_ongoing_requests(req_meta)
             try:
-                await custom_app(scope, receive, send)
+                await self._user_callable_asgi_app(scope, receive, send)
             finally:
                 self._metrics_manager.dec_num_ongoing_requests(req_meta)
             return

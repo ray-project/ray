@@ -20,7 +20,6 @@ from ray.llm._internal.serve.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
-    RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
