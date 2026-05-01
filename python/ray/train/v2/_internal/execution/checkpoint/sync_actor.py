@@ -1,6 +1,6 @@
 import asyncio
 import logging
-from contextlib import contextmanager
+from contextlib import asynccontextmanager
 from typing import List, Optional, TypeVar
 
 import ray
@@ -80,33 +80,31 @@ class SynchronizationActor:
             self._world_size = 0
             self._reset = False
 
-    def _setup_or_validate_collective_op(self, world_size: int):
+    async def _setup_or_validate_collective_op(self, world_size: int):
         """The setup method for the synchronization actor if it is not setup yet.
         It initializes the world size and the start times for the
         synchronization barrier.
         """
-        # TODO: fix potential bug where previous collective has not cleared states
-        # (counter non zero) new collective is started.
+        # Wait for previous collective reset to finish.
+        await self._condition.wait_for(lambda: not self._reset)
         if self._world_size == 0:
             self._world_size = world_size
             self._sync_start_times = [None] * world_size
-            # Clear any stale reset flag from a previous barrier cycle.
-            self._reset = False
         elif world_size != self._world_size:
             raise ValueError(
                 f"Expected all callers to provide the same world size. \
                 Got {world_size} and expected {self._world_size}."
             )
 
-    @contextmanager
-    def _broadcast_collective_context_manager(
+    @asynccontextmanager
+    async def _broadcast_collective_context_manager(
         self, world_rank: int, world_size: int, data: T
     ):
         """A context manager that ensures the synchronization barrier is lifted
         after the block of code is executed.
         """
         try:
-            self._setup_or_validate_collective_op(world_size)
+            await self._setup_or_validate_collective_op(world_size)
             if world_rank == 0:
                 self._reduced_data = data
             if self._counter < self._world_size:
@@ -183,7 +181,7 @@ class SynchronizationActor:
         # manager which makes the condition variable awaiting and the counter
         # incrementing an atomic operation.
         async with self._condition:
-            with self._broadcast_collective_context_manager(
+            async with self._broadcast_collective_context_manager(
                 world_rank, world_size, data
             ):
                 # If the counter is equal to the world size, it means the last worker
