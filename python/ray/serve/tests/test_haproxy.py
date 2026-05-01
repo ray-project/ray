@@ -304,25 +304,15 @@ async def test_drain_and_undrain_haproxy_manager(
 
     cluster = Cluster()
 
-    # Cluster() puts three Ray nodes on one host, but HAProxy defaults to
-    # singleton paths under /tmp/haproxy-serve/, so concurrent reloads
-    # across nodes truncate each other's config and crash haproxy with
-    # "No enabled listener found". Each raylet inherits os.environ at fork
-    # time, so setting per-node env vars before each cluster.add_node()
-    # gives each HAProxyManager its own paths without changing prod code.
+    # Give each raylet its own HAProxy paths so co-located managers don't
+    # stomp each other's config (raylets inherit os.environ at fork).
     def add_node(i, num_cpus):
-        monkeypatch.setenv(
-            "RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
-            f"/tmp/haproxy-serve/haproxy-{i}.cfg",
-        )
-        monkeypatch.setenv(
-            "RAY_SERVE_HAPROXY_SOCKET_PATH",
-            f"/tmp/haproxy-serve/admin-{i}.sock",
-        )
-        monkeypatch.setenv(
-            "RAY_SERVE_HAPROXY_SERVER_STATE_FILE",
-            f"/tmp/haproxy-serve/server-state-{i}",
-        )
+        for var, name in [
+            ("RAY_SERVE_HAPROXY_CONFIG_FILE_LOC", f"haproxy-{i}.cfg"),
+            ("RAY_SERVE_HAPROXY_SOCKET_PATH", f"admin-{i}.sock"),
+            ("RAY_SERVE_HAPROXY_SERVER_STATE_FILE", f"server-state-{i}"),
+        ]:
+            monkeypatch.setenv(var, f"/tmp/haproxy-serve/{name}")
         return cluster.add_node(num_cpus=num_cpus)
 
     head_node = add_node(0, num_cpus=0)
@@ -354,22 +344,18 @@ async def test_drain_and_undrain_haproxy_manager(
 
     assert len(proxy_actor_ids) == 3
 
-    # All HAProxy actors share *:8000 via SO_REUSEPORT, so a localhost
-    # connection may land on any of them. Wait until each shard has received
-    # the backend update from the controller's long poll before issuing the
-    # blocking request — otherwise an unsynced shard returns 503 and the
-    # request never reaches a replica.
+    # 3 HAProxies share *:8000 via SO_REUSEPORT; ping until 20 successive
+    # requests succeed so every shard is hit at least once with high
+    # probability (P(miss) ~= 3 * (2/3)^20 ~= 0.1%).
     def all_haproxies_ready():
-        for _ in range(6):
-            try:
-                if (
-                    httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
-                    != 200
-                ):
-                    return False
-            except Exception:
-                return False
-        return True
+        try:
+            return all(
+                httpx.get("http://localhost:8000/-/healthz", timeout=2).status_code
+                == 200
+                for _ in range(20)
+            )
+        except Exception:
+            return False
 
     wait_for_condition(all_haproxies_ready, timeout=20)
 
