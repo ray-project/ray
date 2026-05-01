@@ -273,6 +273,20 @@ def test_vllm_llama_lora():
     ]
     num_pairs = len(prompts)
 
+    # The following controls are propagated to the vLLM worker to minimize non-determinism:
+    #   * engine_kwargs["seed"]: vLLM seeds its internal torch/np/random state.
+    #   * PYTHONHASHSEED: stabilizes dict/set iteration order in the worker.
+    #   * CUBLAS_WORKSPACE_CONFIG: forces deterministic cuBLAS workspace.
+    # Flash-attention kernels and the vLLM v1 async scheduler still introduce
+    # residual non-determinism we can't eliminate from the test, but in
+    # practice the regime separation (base/LoRA divergence signal vs noise)
+    # is very wide (~30/30 vs ~5/30), so half-of-num_pairs is a robust threshold.
+    # Note for future: VLLM_BATCH_INVARIANT=1 with attention_backend=FLASH_ATTN
+    # eliminates the remaining non-determinism entirely for perfect separation,
+    # but it requires a GPU compute capability (>=9.0) the CI runners don't meet, so
+    # we rely on the median threshold instead. Recommended if CI hardware is upgraded.
+    seed = 42
+
     processor_config = vLLMEngineProcessorConfig(
         model_source=model_source,
         dynamic_lora_loading_path=lora_path,
@@ -281,13 +295,20 @@ def test_vllm_llama_lora():
             enable_chunked_prefill=True,
             enable_lora=True,
             max_lora_rank=max_lora_rank,
+            seed=seed,
         ),
         tokenize=True,
         detokenize=True,
         # minimize non-determinism from vLLM's dynamic batching by sending (1 base + 1 LoRA) per batch
         batch_size=2,
         concurrency=1,
-        runtime_env={"env_vars": {"VLLM_DISABLE_COMPILE_CACHE": "1"}},
+        runtime_env={
+            "env_vars": {
+                "VLLM_DISABLE_COMPILE_CACHE": "1",
+                "PYTHONHASHSEED": "0",
+                "CUBLAS_WORKSPACE_CONFIG": ":4096:8",
+            }
+        },
     )
 
     processor = build_processor(
@@ -323,9 +344,7 @@ def test_vllm_llama_lora():
 
     # LoRA exercise check: a significant fraction of pairs must differ.
     by_id = {out["id"]: out["resp"] for out in outs}
-    diffs = sum(
-        1 for k in range(num_pairs) if by_id[2 * k] != by_id[2 * k + 1]
-    )
+    diffs = sum(1 for k in range(num_pairs) if by_id[2 * k] != by_id[2 * k + 1])
     min_diffs = int(num_pairs * min_diff_fraction)
     assert diffs >= min_diffs, (
         f"Only {diffs}/{num_pairs} base/LoRA pairs differ (need >= {min_diffs}) — "
