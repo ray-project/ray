@@ -35,7 +35,8 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
     rpc::RayletClientPool &raylet_client_pool,
     InternalKVInterface &kv,
     instrumented_io_context &io_context,
-    pubsub::GcsPublisher *gcs_publisher)
+    pubsub::GcsPublisher *gcs_publisher,
+    pubsub::ObservabilityPublisher *observability_publisher)
     : session_name_(std::move(session_name)),
       gcs_node_manager_(gcs_node_manager),
       gcs_actor_manager_(gcs_actor_manager),
@@ -43,7 +44,8 @@ GcsAutoscalerStateManager::GcsAutoscalerStateManager(
       raylet_client_pool_(raylet_client_pool),
       kv_(kv),
       io_context_(io_context),
-      gcs_publisher_(gcs_publisher) {}
+      gcs_publisher_(gcs_publisher),
+      observability_publisher_(observability_publisher) {}
 
 void GcsAutoscalerStateManager::HandleGetClusterResourceState(
     rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -89,11 +91,11 @@ void GcsAutoscalerStateManager::HandleReportAutoscalingState(
           "This feature will be turned on by default in a future release of Ray.";
       RAY_LOG_EVERY_MS(WARNING, 60000) << error_message;
 
-      if (gcs_publisher_ != nullptr) {
+      if (observability_publisher_ != nullptr) {
         std::string error_type = "infeasible_resource_requests";
         auto error_data = CreateErrorTableData(
             error_type, error_message, absl::FromUnixMillis(current_time_ms()));
-        gcs_publisher_->PublishError(session_name_, std::move(error_data));
+        observability_publisher_->PublishError(session_name_, std::move(error_data));
       }
     }
   };
