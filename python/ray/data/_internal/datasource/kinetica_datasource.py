@@ -225,6 +225,11 @@ class KineticaDatasource(Datasource):
             )
             columns.append(column)
 
+        # Handle empty tables (no columns)
+        if not columns:
+            import pyarrow as pa
+            return None, 0, pa.schema([])
+
         record_type = GPUdbRecordType(columns=columns, label=self._table_name)
 
         # Get total count (accounting for filter)
