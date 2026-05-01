@@ -34,7 +34,7 @@ def _strip_npu_prefix(token: str) -> str:
 
 
 class FuriosaAcceleratorManager(AcceleratorManager):
-    """Furiosa AI NPU accelerators.
+    """FuriosaAI NPU accelerators.
 
     Resource name is ``FURIOSA``. The accelerator type is reported as
     ``FURIOSA_<ARCH>`` where ``<ARCH>`` is the architecture identifier
