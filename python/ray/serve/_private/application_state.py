@@ -409,6 +409,19 @@ class ApplicationState:
         self._ingress_request_router_deployment_name = None
 
         if deployment_infos is not None:
+            ingress_request_router_deployment_names = [
+                name
+                for name, info in deployment_infos.items()
+                if info.ingress_request_router
+            ]
+            if len(ingress_request_router_deployment_names) > 1:
+                raise ValueError(
+                    "Multiple deployments marked as ingress_request_router: "
+                    f"{ingress_request_router_deployment_names}. Only one deployment "
+                    "per application can be the ingress request router for ingress "
+                    "bypass mode."
+                )
+
             for name, info in deployment_infos.items():
                 if info.ingress:
                     self._ingress_deployment_name = name
@@ -1927,16 +1940,5 @@ def override_deployment_info(
             and deployment.route_prefix is not None
         ):
             deployment.route_prefix = app_route_prefix
-
-    # Validate that at most one deployment is marked as the ingress request router.
-    ingress_request_router_deployments = [
-        name for name, info in deployment_infos.items() if info.ingress_request_router
-    ]
-    if len(ingress_request_router_deployments) > 1:
-        raise ValueError(
-            "Multiple deployments marked as ingress_request_router: "
-            f"{ingress_request_router_deployments}. Only one deployment per "
-            "application can be the ingress request router for ingress bypass mode."
-        )
 
     return deployment_infos
