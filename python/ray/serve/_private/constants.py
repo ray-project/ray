@@ -21,6 +21,22 @@ SERVE_LOGGER_NAME = "ray.serve"
 SERVE_CONTROLLER_NAME = "SERVE_CONTROLLER_ACTOR"
 SERVE_DEPLOYMENT_ACTOR_PREFIX = "SERVE_DEPLOYMENT_ACTOR::"
 
+# Reserved runtime_env keys used to hydrate deployment actor context.
+# Unlike replicas which use _set_internal_replica_context() during init,
+# deployment actors are user-defined Ray actors. Serve controller can't
+# inject constructor params. Env vars via runtime_env are the reasonable
+# injection point that doesn't require modifying the user's class.
+RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR = "RAY_SERVE_INTERNAL_DEPLOYMENT_NAME"
+RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME"
+)
+RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR = (
+    "RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION"
+)
+
 #: Actor name used to register HTTP proxy actor
 SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 
@@ -66,6 +82,20 @@ HTTP_PROXY_TIMEOUT = 60
 # Max retry on deployment constructor is
 # min(num_replicas * MAX_PER_REPLICA_RETRY_COUNT, max_constructor_retry_count)
 MAX_PER_REPLICA_RETRY_COUNT = get_env_int("RAY_SERVE_MAX_PER_REPLICA_RETRY_COUNT", 3)
+
+#: Max processing latency metric configuration.
+#: Rolling window duration for calculating max processing latency (in seconds).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S = float(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S", "60")
+)
+#: Interval for reporting max processing latency metric (in seconds).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S = float(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S", "10")
+)
+#: Number of buckets for the rolling window (determines granularity).
+RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS = int(
+    get_env_str("RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS", "6")
+)
 
 
 # If you are wondering why we are using histogram buckets, please refer to
@@ -236,6 +266,7 @@ DEFAULT_MAX_ONGOING_REQUESTS = 5
 DEFAULT_TARGET_ONGOING_REQUESTS = 2
 DEFAULT_CONSUMER_CONCURRENCY = DEFAULT_MAX_ONGOING_REQUESTS
 DEFAULT_CONSTRUCTOR_RETRY_COUNT = 20
+DEFAULT_ROLLING_UPDATE_PERCENTAGE = 0.2
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(
@@ -630,6 +661,13 @@ RAY_SERVE_ENABLE_DIRECT_INGRESS = (
 # Feature flag to use HAProxy.
 RAY_SERVE_ENABLE_HA_PROXY = os.environ.get("RAY_SERVE_ENABLE_HA_PROXY", "0") == "1"
 
+# Experimental: use HAProxy binary from the ray-haproxy PyPI package instead
+# of a system-installed binary. When enabled, get_haproxy_binary() resolves
+# the binary from the ray_haproxy package (pip install ray-haproxy).
+RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY = (
+    os.environ.get("RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY", "0") == "1"
+)
+
 # Feature flag to include client IP address in HTTP access logs.
 # Off by default for privacy; set to "1" to enable.
 RAY_SERVE_LOG_CLIENT_ADDRESS = (
@@ -638,9 +676,7 @@ RAY_SERVE_LOG_CLIENT_ADDRESS = (
 
 # Absolute path to the HAProxy binary. Defaults to bare "haproxy" (PATH lookup).
 # Set in Docker images to avoid PATH-resolution failures (e.g. broken mounts).
-RAY_SERVE_HAPROXY_BINARY_PATH = os.environ.get(
-    "RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy"
-)
+RAY_SERVE_HAPROXY_BINARY_PATH = get_env_str("RAY_SERVE_HAPROXY_BINARY_PATH", "haproxy")
 
 # HAProxy configuration defaults
 # Maximum number of concurrent connections
@@ -684,6 +720,9 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
 )
+
+# HAProxy stats UI port
+RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
 # HAProxy log port
 RAY_SERVE_HAPROXY_SYSLOG_PORT = int(

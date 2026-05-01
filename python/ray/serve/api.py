@@ -49,10 +49,12 @@ from ray.serve.config import (
     gRPCOptions,
 )
 from ray.serve.context import (
+    DeploymentActorContext,
     ReplicaContext,
     _check_cached_client_alive,
     _get_deployment_actor,
     _get_global_client,
+    _get_internal_deployment_actor_context,
     _get_internal_replica_context,
     _set_global_client,
 )
@@ -200,6 +202,25 @@ def get_replica_context() -> ReplicaContext:
             "Ray Serve deployment."
         )
     return internal_replica_context
+
+
+@DeveloperAPI
+def get_deployment_actor_context() -> DeploymentActorContext:
+    """Returns deployment metadata from within a deployment actor at runtime.
+
+    Returns:
+        DeploymentActorContext for the current deployment actor.
+
+    Raises:
+        RayServeException: if not called from within a deployment actor.
+    """
+    internal_context = _get_internal_deployment_actor_context()
+    if internal_context is None:
+        raise RayServeException(
+            "`serve.get_deployment_actor_context()` may only be called from within "
+            "a Ray Serve deployment actor."
+        )
+    return internal_context
 
 
 @DeveloperAPI
@@ -459,6 +480,7 @@ def deployment(
     deployment_actors: Default[
         Optional[List[Union[Dict, DeploymentActorConfig]]]
     ] = DEFAULT.VALUE,
+    rolling_update_percentage: Default[float] = DEFAULT.VALUE,
 ) -> Callable[[Callable], Deployment]:
     """Decorator that converts a Python class to a `Deployment`.
 
@@ -537,6 +559,10 @@ def deployment(
             Each actor is shared across all replicas of this deployment. Use
             `serve.get_deployment_actor(actor_name)` from within a replica to get
             the actor handle. See `DeploymentActorConfig` for options.
+        rolling_update_percentage: The fraction of replicas to update at a
+            time during a rolling update. Must be in ``(0.0, 1.0]``.
+            Defaults to ``0.2`` (20%).
+
     Returns:
         `Deployment`
     """
@@ -623,6 +649,7 @@ def deployment(
         max_constructor_retry_count=max_constructor_retry_count,
         gang_scheduling_config=gang_scheduling_config,
         deployment_actors=deployment_actors,
+        rolling_update_percentage=rolling_update_percentage,
     )
     deployment_config.user_configured_option_names = set(user_configured_option_names)
 

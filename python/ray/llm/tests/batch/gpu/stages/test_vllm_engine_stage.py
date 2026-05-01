@@ -135,7 +135,7 @@ async def test_vllm_engine_udf_basic(mock_vllm_wrapper, model_llama_3_2_216M):
         engine_kwargs={
             # Test that this should be overridden by the stage.
             "model": "random-model",
-            # This is overriden in the processor, so it remains unchanged when we bypass
+            # This is overridden in the processor, so it remains unchanged when we bypass
             # the processor and pass it directly to the stage via vLLMEngineStageUDF.
             "task_type": vLLMTaskType.EMBED,
             "max_num_seqs": 100,

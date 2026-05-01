@@ -40,7 +40,7 @@ First, install Ray Data with LLM support:
 
 .. code-block:: bash
 
-    pip install -U "ray[data, llm]>=2.49.1"
+    pip install -U "ray[data, llm]>=2.53.0"
 
 Here's a complete minimal example that runs batch inference:
 
@@ -617,11 +617,13 @@ C/C++ runtime dependencies incompatibility
    Ray 2.55 installs vLLM 0.18.0. Depending on the conda environment, you may encounter
    incompatibilities with native runtime libraries (for example, ``libstdc++``, ``CXXABI``, ``ICU``).
 
-   In such cases, configure ``LD_LIBRARY_PATH`` to prefer the conda environment's libraries over system libraries.
+   In such cases, override just the ``libstdc++`` library from your conda environment with ``LD_LIBRARY_PATH``:
 
    .. code-block:: shell
 
-      export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
+      mkdir -p "${CONDA_PREFIX}/lib-overrides"
+      ln -sf "${CONDA_PREFIX}/lib/libstdc++.so.6" "${CONDA_PREFIX}/lib-overrides/libstdc++.so.6"
+      export LD_LIBRARY_PATH="${CONDA_PREFIX}/lib-overrides${LD_LIBRARY_PATH:+:${LD_LIBRARY_PATH}}"
 
 **Usage data collection**: Ray collects anonymous usage data to improve Ray Data LLM. To opt out, see :ref:`Ray usage stats <ref-usage-stats>`.
 

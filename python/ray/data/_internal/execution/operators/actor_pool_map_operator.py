@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import time
 import uuid
@@ -34,6 +36,8 @@ from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import (
 )
 from ray.data._internal.compute import ActorPoolStrategy
 from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    RebundleQueue,
     create_bundle_queue,
 )
 from ray.data._internal.execution.interfaces import (
@@ -50,7 +54,6 @@ from ray.data._internal.execution.node_trackers.actor_location import (
     get_or_create_actor_location_tracker,
 )
 from ray.data._internal.execution.operators.map_operator import (
-    BaseRefBundler,
     MapOperator,
     _map_task,
 )
@@ -104,7 +107,7 @@ class ActorPoolMapOperator(MapOperator):
         compute_strategy: ActorPoolStrategy,
         name: str = "ActorPoolMap",
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[BaseRefBundler] = None,
+        ref_bundler: Optional[RebundleQueue] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
@@ -187,6 +190,16 @@ class ActorPoolMapOperator(MapOperator):
         self._locality_hits = 0
         self._locality_misses = 0
 
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return [self._bundle_queue, self._block_ref_bundler]
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_queue]
+
     def _create_actor_pool(
         self, compute_strategy: ActorPoolStrategy
     ) -> "AutoscalingActorPool":
@@ -246,18 +259,6 @@ class ActorPoolMapOperator(MapOperator):
             )
 
         return ray_actor_task_remote_args
-
-    def internal_input_queue_num_blocks(self) -> int:
-        # NOTE: Internal queue size for ``ActorPoolMapOperator`` includes both
-        #   - Input blocks bundler, alas
-        #   - Own bundle's queue
-        return self._block_ref_bundler.num_blocks() + self._bundle_queue.num_blocks()
-
-    def internal_input_queue_num_bytes(self) -> int:
-        return (
-            self._bundle_queue.estimate_size_bytes()
-            + self._block_ref_bundler.size_bytes()
-        )
 
     def start(self, options: ExecutionOptions):
         self._actor_locality_enabled = options.actor_locality_enabled
@@ -319,17 +320,16 @@ class ActorPoolMapOperator(MapOperator):
             and the actual resource usage for this actor.
         """
         assert self._actor_cls is not None
-        if self._ray_remote_args_fn:
-            actual_remote_args = self._refresh_actor_cls()
-        else:
-            actual_remote_args = self._ray_remote_args
+        actual_remote_args = dict(self._merge_ray_remote_args())
+        extra_labels = actual_remote_args.pop("_labels", {})
         actor_resource_usage = ExecutionResources(
             cpu=actual_remote_args.get("num_cpus", 0),
             gpu=actual_remote_args.get("num_gpus", 0),
             memory=actual_remote_args.get("memory", 0),
         )
         actor = self._actor_cls.options(
-            _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels}
+            _labels={self._OPERATOR_ID_LABEL_KEY: self.id, **labels, **extra_labels},
+            **actual_remote_args,
         ).remote(
             ctx=self._data_context_ref,
             logical_actor_id=logical_actor_id,
@@ -439,22 +439,17 @@ class ActorPoolMapOperator(MapOperator):
 
         return num_submitted_tasks
 
-    def _refresh_actor_cls(self) -> Dict[str, Any]:
+    def _merge_ray_remote_args(self) -> Dict[str, Any]:
         """When `self._ray_remote_args_fn` is specified, this method should
         be called prior to initializing the new worker in order to get new
-        remote args passed to the worker. It updates `self.cls` with the same
-        `_MapWorker` class, but with the new remote args from
-        `self._ray_remote_args_fn`.
+        remote args passed to the worker.
 
         Returns:
             The merged remote args used to create the actor class.
         """
-        assert self._ray_remote_args_fn, "_ray_remote_args_fn must be provided"
         remote_args = self._ray_remote_args.copy()
-        new_remote_args = self._ray_remote_args_fn()
-
-        remote_args.update(new_remote_args)
-        self._actor_cls = ray.remote(**remote_args)(self._map_worker_cls)
+        if self._ray_remote_args_fn:
+            remote_args.update(self._ray_remote_args_fn())
         return remote_args
 
     def has_next(self) -> bool:
@@ -489,18 +484,6 @@ class ActorPoolMapOperator(MapOperator):
                 "You might be able to increase the number of concurrent tasks by "
                 "configuring `override_num_blocks` earlier in the pipeline."
             )
-
-    def clear_internal_input_queue(self) -> None:
-        """Clear internal input queues for the actor-pool map operator.
-
-        In addition to clearing the base class' internal queues, this method clears
-        the local bundle queue used to stage input bundles for actors.
-        """
-        super().clear_internal_input_queue()
-
-        while self._bundle_queue.has_next():
-            bundle = self._bundle_queue.get_next()
-            self._metrics.on_input_dequeued(bundle, input_index=0)
 
     def _do_shutdown(self, force: bool = False):
         self._actor_pool.shutdown(force=force)
