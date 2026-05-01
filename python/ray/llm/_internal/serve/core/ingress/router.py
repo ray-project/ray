@@ -11,6 +11,8 @@ _BODY_TRUNCATED_HEADER = "x-body-truncated"
 
 _ReplicaCacheSignature = FrozenSet[ReplicaID]
 
+# Placeholder app used only to make Serve wrap this class as ASGI. The actual
+# hot-path ASGI app is late-bound per replica by __serve_build_asgi_app__.
 ingress_request_router_app = FastAPI()
 
 router_app = FastAPI()
