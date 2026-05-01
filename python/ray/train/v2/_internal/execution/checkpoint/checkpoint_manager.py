@@ -255,7 +255,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # Delete the old checkpoints.
         for checkpoint_result in results_to_delete:
             checkpoint = checkpoint_result.checkpoint
-            logger.debug("Deleting checkpoint: ", checkpoint)
+            logger.debug("Deleting checkpoint: %s", checkpoint)
             delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
     # --------------------------

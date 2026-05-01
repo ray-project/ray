@@ -351,6 +351,7 @@ message DeploymentInfo {
   int64 end_time_ms = 7;
   double target_capacity = 8;
   TargetCapacityDirection target_capacity_direction = 9;
+  bool ingress_request_router = 10;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
@@ -510,6 +511,7 @@ message DeploymentArgs {
   optional string route_prefix = 5;
   bool ingress = 6;
   optional string docs_path = 7;
+  bool ingress_request_router = 8;
 }
 
 message ApplicationArgs {
