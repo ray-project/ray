@@ -539,7 +539,7 @@
       worker_type: [actors]
 
   run:
-    timeout: 1200
+    timeout: 3600
     script: python worker_scaling_benchmark.py --num-workers {{num_workers}} --worker-type {{worker_type}}
 
 
