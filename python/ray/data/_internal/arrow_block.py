@@ -174,7 +174,9 @@ class ArrowBlockBuilder(TableBlockBuilder):
     @staticmethod
     def _combine_tables(tables: List[Block]) -> Block:
         if len(tables) > 1:
-            return transform_pyarrow.concat(tables, promote_types=True)
+            return transform_pyarrow.concat(
+                tables, promote_types=True, preserve_order=True
+            )
         else:
             return tables[0]
 
