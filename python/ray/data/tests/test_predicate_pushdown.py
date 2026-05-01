@@ -1,8 +1,7 @@
 import os
 import re
-from typing import Any, List
+from typing import Any, List, Optional
 
-import lance
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -35,6 +34,19 @@ from ray.data.tests.test_util import (
     plan_operator_comes_before,
 )
 from ray.tests.conftest import *  # noqa
+
+# Same gate as tests/datasource/test_lance.py; keep optional so this module imports
+# without ``pip install pylance`` for Parquet-only runs.
+_LANCE_PUSHDOWN_SKIP_REASON: Optional[str]
+try:
+    import lance as _lance_for_version_check
+
+    if Version(_lance_for_version_check.__version__) <= Version("0.3.19"):
+        _LANCE_PUSHDOWN_SKIP_REASON = f"pylance {_lance_for_version_check.__version__} <= 0.3.19; API incompatible"
+    else:
+        _LANCE_PUSHDOWN_SKIP_REASON = None
+except ImportError:
+    _LANCE_PUSHDOWN_SKIP_REASON = "lance module not installed"
 
 # Pattern to match read operators in logical plans.
 # Matches V1 ``Read[Read<Format>]`` or the V2 ``ListFiles → ReadFiles``
@@ -170,13 +182,13 @@ def test_chained_filter_with_expressions(parquet_ds):
         (lazy_fixture("s3_fs"), lazy_fixture("s3_path")),
     ],
 )
-# Same pylance version gate as tests/datasource/test_lance.py
 @pytest.mark.skipif(
-    Version(lance.__version__) <= Version("0.3.19"),
-    reason=f"pylance {lance.__version__} <= 0.3.19; API incompatible",
+    _LANCE_PUSHDOWN_SKIP_REASON is not None,
+    reason=_LANCE_PUSHDOWN_SKIP_REASON or "",
 )
 def test_pushdown_filter_lance(ray_start_regular_shared, fs, data_path):
     """Test that Lance predicate pushdown absorbs expression filters into Read."""
+    import lance
 
     df1 = pa.table({"a": [2, 1, 3, 4, 6, 5], "two": ["b", "a", "c", "e", "g", "f"]})
     setup_data_path = _unwrap_protocol(data_path)

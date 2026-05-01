@@ -1,10 +1,11 @@
-"""Integration-ish tests for ``read_parquet()`` on the DataSourceV2 path.
+"""Tests for ``read_parquet()`` on the DataSourceV2 path (planning + schema).
 
-These tests exercise planning-time behavior: schema inference,
-``ListFiles → ReadFiles`` attachment to the logical plan, and
-unsupported-option gating. Physical execution (take_all) requires a
-live Ray runtime and is covered by the CI parquet regression suite;
-these tests run with no Ray cluster.
+Lives under ``tests/datasource_v2/`` (not ``tests/unit/``) because
+``_read_datasource_v2`` uses ``@wrap_auto_init``, which calls ``ray.init``;
+``tests/unit/conftest.py`` forbids that for unit tests.
+
+Physical execution (e.g. ``take_all``) is covered by the main Parquet suite
+(``tests/datasource/test_parquet.py``).
 """
 import pyarrow as pa
 import pyarrow.parquet as pq
@@ -13,6 +14,8 @@ import pytest
 import ray
 from ray.data._internal.logical.operators import ListFiles, ReadFiles
 from ray.data.context import DataContext
+from ray.data.tests.conftest import *  # noqa
+from ray.tests.conftest import *  # noqa
 
 
 def _write(path, table):
