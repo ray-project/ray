@@ -924,6 +924,173 @@ def test_apply_app_configs_deletes_existing(check_obj_ref_ready_nowait):
     Mock(return_value="123"),
 )
 @patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/old")], None)))
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_apply_app_configs_merge_preserves_existing(check_obj_ref_ready_nowait):
+    """Test that apply_app_configs with delete_missing_apps=False (merge mode)
+    preserves existing declarative apps not in the submitted config.
+    """
+    kv_store = MockKVStore()
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
+    app_state_manager = ApplicationStateManager(
+        deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
+    )
+
+    # Deploy app1 and app2 declaratively.
+    app1_config = ServeApplicationSchema(
+        name="app1", import_path="fa.ke", route_prefix="/1"
+    )
+    app2_config = ServeApplicationSchema(
+        name="app2", import_path="fa.ke", route_prefix="/2"
+    )
+    app_state_manager.apply_app_configs([app1_config, app2_config])
+    app1_state = app_state_manager._application_states["app1"]
+    app2_state = app_state_manager._application_states["app2"]
+    assert app1_state.api_type == APIType.DECLARATIVE
+    assert app2_state.api_type == APIType.DECLARATIVE
+    app1_state.update()
+    app2_state.update()
+    assert app1_state.status == ApplicationStatus.DEPLOYING
+    assert app2_state.status == ApplicationStatus.DEPLOYING
+
+    # Now apply a new config with only app3, using merge mode.
+    # app1 and app2 should NOT be deleted.
+    app3_config = ServeApplicationSchema(
+        name="app3", import_path="fa.ke", route_prefix="/3"
+    )
+    app_state_manager.apply_app_configs([app3_config], delete_missing_apps=False)
+    app3_state = app_state_manager._application_states["app3"]
+    assert app3_state.api_type == APIType.DECLARATIVE
+
+    # Verify app1 and app2 are still present and not deleting.
+    assert "app1" in app_state_manager._application_states
+    assert "app2" in app_state_manager._application_states
+    app1_state.update()
+    app2_state.update()
+    app3_state.update()
+    assert app1_state.status == ApplicationStatus.DEPLOYING
+    assert app2_state.status == ApplicationStatus.DEPLOYING
+    assert app3_state.status == ApplicationStatus.DEPLOYING
+
+
+@patch(
+    "ray.serve._private.application_state.get_app_code_version",
+    Mock(return_value="123"),
+)
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/old")], None)))
+@patch("ray.cancel", Mock())
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_apply_app_configs_merge_upserts_existing(check_obj_ref_ready_nowait):
+    """Test that apply_app_configs with delete_missing_apps=False (merge mode)
+    correctly upserts an app that already exists.
+    """
+    kv_store = MockKVStore()
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
+    app_state_manager = ApplicationStateManager(
+        deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
+    )
+
+    # Deploy app1 declaratively.
+    app1_config = ServeApplicationSchema(
+        name="app1", import_path="fa.ke", route_prefix="/1"
+    )
+    app_state_manager.apply_app_configs([app1_config])
+    assert "app1" in app_state_manager._application_states
+
+    # Now merge-deploy app1 with a different import path, plus a new app2.
+    app1_updated = ServeApplicationSchema(
+        name="app1", import_path="fa.ke.v2", route_prefix="/1"
+    )
+    app2_config = ServeApplicationSchema(
+        name="app2", import_path="fa.ke", route_prefix="/2"
+    )
+    app_state_manager.apply_app_configs(
+        [app1_updated, app2_config], delete_missing_apps=False
+    )
+
+    # Both apps should exist.
+    assert "app1" in app_state_manager._application_states
+    assert "app2" in app_state_manager._application_states
+
+
+@patch(
+    "ray.serve._private.application_state.get_app_code_version",
+    Mock(return_value="123"),
+)
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
+@patch("ray.get", Mock(return_value=(None, [deployment_params("a", "/old")], None)))
+@patch("ray.cancel", Mock())
+@patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
+def test_apply_app_configs_merge_then_replace_then_merge(check_obj_ref_ready_nowait):
+    """Test switching between merge and replace modes.
+
+    1. Deploy app1 and app2 with merge.
+    2. Deploy with only app2 with replace: app1 should be deleted.
+    3. Deploy app3 with merge: app2 should survive, app3 should be added.
+    """
+    kv_store = MockKVStore()
+    deployment_state_manager = MockDeploymentStateManager(kv_store)
+    app_state_manager = ApplicationStateManager(
+        deployment_state_manager,
+        AutoscalingStateManager(),
+        MockEndpointState(),
+        kv_store,
+        LoggingConfig(),
+    )
+
+    app1_config = ServeApplicationSchema(
+        name="app1", import_path="fa.ke", route_prefix="/1"
+    )
+    app2_config = ServeApplicationSchema(
+        name="app2", import_path="fa.ke", route_prefix="/2"
+    )
+    app3_config = ServeApplicationSchema(
+        name="app3", import_path="fa.ke", route_prefix="/3"
+    )
+
+    # Merge deploy app1 and app2.
+    app_state_manager.apply_app_configs(
+        [app1_config, app2_config], delete_missing_apps=False
+    )
+    assert "app1" in app_state_manager._application_states
+    assert "app2" in app_state_manager._application_states
+    assert app_state_manager._application_states["app1"].api_type == APIType.DECLARATIVE
+    assert app_state_manager._application_states["app2"].api_type == APIType.DECLARATIVE
+
+    # Replace deploy with only app2: app1 should be deleted.
+    app_state_manager.apply_app_configs([app2_config], delete_missing_apps=True)
+    assert "app2" in app_state_manager._application_states
+    app1_state = app_state_manager._application_states.get("app1")
+    assert app1_state is not None
+    app1_state.update()
+    assert app1_state.status == ApplicationStatus.DELETING
+
+    # Merge deploy app3: app2 should survive, app3 should be added.
+    app_state_manager.apply_app_configs([app3_config], delete_missing_apps=False)
+    assert "app2" in app_state_manager._application_states
+    assert "app3" in app_state_manager._application_states
+    app2_state = app_state_manager._application_states["app2"]
+    app3_state = app_state_manager._application_states["app3"]
+    app2_state.update()
+    app3_state.update()
+    assert app2_state.status == ApplicationStatus.DEPLOYING
+    assert app3_state.status == ApplicationStatus.DEPLOYING
+
+
+@patch(
+    "ray.serve._private.application_state.get_app_code_version",
+    Mock(return_value="123"),
+)
+@patch("ray.serve._private.application_state.build_serve_application", Mock())
 @patch("ray.get", Mock(return_value=(None, [deployment_params("d1", "/route1")], None)))
 @patch("ray.serve._private.application_state.check_obj_ref_ready_nowait")
 def test_apply_app_configs_with_external_scaler_enabled(check_obj_ref_ready_nowait):

@@ -133,6 +133,64 @@ class TestDeploy:
             ).model_dump(exclude_unset=True)
         ]
 
+    def test_deploy_with_merge_flag(self, fake_serve_client):
+        """--merge should set apply_strategy='merge' in the deployed config."""
+        runner = CliRunner()
+        result = runner.invoke(deploy, ["my_module:my_app", "--merge"])
+        assert result.exit_code == 0, result.output
+        assert fake_serve_client.deployed_config["apply_strategy"] == "merge"
+
+    def test_deploy_without_merge_flag(self, fake_serve_client):
+        """Without --merge, apply_strategy should not be in the payload
+        (excluded by exclude_unset=True)."""
+        runner = CliRunner()
+        result = runner.invoke(deploy, ["my_module:my_app"])
+        assert result.exit_code == 0, result.output
+        assert "apply_strategy" not in fake_serve_client.deployed_config
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Tempfile not working.")
+    def test_deploy_yaml_with_merge_flag(self, fake_serve_client):
+        """--merge should work with YAML config files too."""
+        runner = CliRunner()
+        config = {
+            "applications": [
+                {
+                    "name": "app1",
+                    "import_path": "module.app",
+                    "route_prefix": "/app1",
+                }
+            ]
+        }
+        with NamedTemporaryFile("w", suffix=".yaml") as f:
+            yaml.dump(config, f)
+            f.flush()
+            result = runner.invoke(deploy, [f.name, "--merge"])
+
+        assert result.exit_code == 0, result.output
+        assert fake_serve_client.deployed_config["apply_strategy"] == "merge"
+
+    @pytest.mark.skipif(sys.platform == "win32", reason="Tempfile not working.")
+    def test_deploy_yaml_with_apply_strategy_in_file(self, fake_serve_client):
+        """apply_strategy set in the YAML file should be sent in the payload."""
+        runner = CliRunner()
+        config = {
+            "apply_strategy": "merge",
+            "applications": [
+                {
+                    "name": "app1",
+                    "import_path": "module.app",
+                    "route_prefix": "/app1",
+                }
+            ],
+        }
+        with NamedTemporaryFile("w", suffix=".yaml") as f:
+            yaml.dump(config, f)
+            f.flush()
+            result = runner.invoke(deploy, [f.name])
+
+        assert result.exit_code == 0, result.output
+        assert fake_serve_client.deployed_config["apply_strategy"] == "merge"
+
 
 class TestEnumSerialization:
     """Test that enum representer correctly serializes enums in YAML dumps."""

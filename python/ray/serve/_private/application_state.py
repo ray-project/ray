@@ -1311,6 +1311,7 @@ class ApplicationStateManager:
         deployment_time: float = 0,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
+        delete_missing_apps: bool = True,
     ):
         """Declaratively apply the list of application configs.
 
@@ -1339,15 +1340,16 @@ class ApplicationStateManager:
             )
 
         # Delete all apps that were previously deployed via the declarative API
-        # but are not in the config being applied.
-        existing_apps = {
-            name
-            for name, app_state in self._application_states.items()
-            if app_state.api_type == APIType.DECLARATIVE
-        }
-        apps_in_config = {app_config.name for app_config in app_configs}
-        for app_to_delete in existing_apps - apps_in_config:
-            self.delete_app(app_to_delete)
+        # but are not in the config being applied if `delete_missing_apps` is True
+        if delete_missing_apps:
+            existing_apps = {
+                name
+                for name, app_state in self._application_states.items()
+                if app_state.api_type == APIType.DECLARATIVE
+            }
+            apps_in_config = {app_config.name for app_config in app_configs}
+            for app_to_delete in existing_apps - apps_in_config:
+                self.delete_app(app_to_delete)
 
         ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 

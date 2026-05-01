@@ -21,6 +21,7 @@ from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.exceptions import RayTaskError
+from ray.serve.schema import ApplyStrategy
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -166,10 +167,25 @@ class ServeHead(SubprocessModule):
                 text=repr(e),
             )
 
-        config_http_options = config.http_options.model_dump()
-        location = ProxyLocation._to_deployment_mode(config.proxy_location)
-        full_http_options = dict({"location": location}, **config_http_options)
-        grpc_options = config.grpc_options.model_dump()
+        is_merge = config.apply_strategy == ApplyStrategy.MERGE
+        fields_set = config.model_fields_set
+
+        # In merge mode, only build top-level options that the user explicitly
+        # set.
+        build_http = not is_merge or (
+            "http_options" in fields_set or "proxy_location" in fields_set
+        )
+        build_grpc = not is_merge or "grpc_options" in fields_set
+
+        full_http_options = {}
+        if build_http:
+            config_http_options = config.http_options.model_dump()
+            location = ProxyLocation._to_deployment_mode(config.proxy_location)
+            full_http_options = dict({"location": location}, **config_http_options)
+
+        grpc_options = {}
+        if build_grpc:
+            grpc_options = config.grpc_options.model_dump()
 
         async with self._controller_start_lock:
             client = await serve_start_async(
