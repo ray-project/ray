@@ -439,6 +439,21 @@ RAY_CONFIG(std::string, gcs_storage, "memory")
 /// PersistentVolume mount inside the Ray head pod.
 RAY_CONFIG(std::string, gcs_storage_path, "")
 
+/// REP-64: offload RocksDB I/O (including the WAL fsync that dominates
+/// per-call latency) to a background thread pool, so blocking ops do
+/// not stall the GCS event loop. When false, each Async* call runs
+/// synchronously on the caller's thread (current POC default; matches
+/// InMemoryStoreClient semantics, easier to reason about). Phase 7 of
+/// the POC measures both paths so maintainers can compare.
+RAY_CONFIG(bool, gcs_rocksdb_async_offload, false)
+
+/// Number of worker threads in the RocksDB offload pool. Only meaningful
+/// when gcs_rocksdb_async_offload is true. RocksDB serializes WAL writes
+/// internally and batches concurrent in-flight writers into one fsync
+/// (group commit), so a small pool (≈4) is enough to capture the
+/// aggregate-throughput benefit on the GCS metadata workload.
+RAY_CONFIG(uint32_t, gcs_rocksdb_io_pool_size, 4)
+
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 

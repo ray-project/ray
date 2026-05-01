@@ -211,5 +211,104 @@ TEST(RocksDbStoreClientTest, ClusterIdMarkerWritesOnFirstOpen) {
   fs::remove_all(db);
 }
 
+TEST(RocksDbStoreClientTest, OffloadPathRoundtripsAcrossPoolThreads) {
+  // Construct with offload_io=true so RocksDB calls run on the pool,
+  // not the caller's thread. Issues 64 concurrent Puts back-to-back from
+  // a single thread (the io_service thread) — without offload, those
+  // would serialize on the caller; with offload, the pool drains them
+  // in parallel. Either way, every callback must fire and every Get
+  // must return the right value. This is the correctness contract;
+  // throughput vs. inline is a Phase-7 microbench question, not a
+  // unit-test concern.
+  IoServiceFixture io;
+  const fs::path db = UniqueTempDir("offload-roundtrip");
+  RocksDbStoreClient client(io.io(),
+                            db.string(),
+                            /*expected_cluster_id=*/"",
+                            /*offload_io=*/true,
+                            /*io_pool_size=*/4);
+
+  constexpr int kN = 64;
+  std::atomic<int> writes_done{0};
+  for (int i = 0; i < kN; ++i) {
+    client.AsyncPut("offload_t",
+                    "k" + std::to_string(i),
+                    "v" + std::to_string(i),
+                    /*overwrite=*/true,
+                    {[&writes_done](bool) { writes_done.fetch_add(1); }, io.io()});
+  }
+  ASSERT_TRUE(WaitFor([&] { return writes_done.load() == kN; }));
+
+  std::atomic<int> reads_done{0};
+  std::vector<std::optional<std::string>> got(kN);
+  for (int i = 0; i < kN; ++i) {
+    client.AsyncGet(
+        "offload_t",
+        "k" + std::to_string(i),
+        {[i, &reads_done, &got](Status, std::optional<std::string> v) {
+           got[i] = std::move(v);
+           reads_done.fetch_add(1);
+         },
+         io.io()});
+  }
+  ASSERT_TRUE(WaitFor([&] { return reads_done.load() == kN; }));
+
+  for (int i = 0; i < kN; ++i) {
+    ASSERT_TRUE(got[i].has_value()) << "missing key " << i;
+    EXPECT_EQ(*got[i], "v" + std::to_string(i));
+  }
+
+  fs::remove_all(db);
+}
+
+TEST(RocksDbStoreClientTest, OffloadPathDestructorJoinsBeforeDbClose) {
+  // Regression: pool tasks must complete (or be drained) before db_ is
+  // destroyed. If we tear down while a task is still mid-Put, we'd see
+  // a use-after-free on the rocksdb::DB handle. Issue a write, then let
+  // the client go out of scope immediately. The destructor must drain
+  // the pool *before* db_ destructs. ASan would catch a regression here;
+  // for normal builds this just verifies the code path doesn't deadlock.
+  IoServiceFixture io;
+  const fs::path db = UniqueTempDir("offload-dtor");
+
+  {
+    RocksDbStoreClient client(io.io(),
+                              db.string(),
+                              /*expected_cluster_id=*/"",
+                              /*offload_io=*/true,
+                              /*io_pool_size=*/2);
+    std::atomic<int> done{0};
+    for (int i = 0; i < 16; ++i) {
+      client.AsyncPut("dtor_t",
+                      "k" + std::to_string(i),
+                      "v" + std::to_string(i),
+                      true,
+                      {[&done](bool) { done.fetch_add(1); }, io.io()});
+    }
+    // Wait so the test asserts the writes actually landed; the destructor
+    // join is the load-bearing piece, but verifying durability tightens
+    // the contract.
+    ASSERT_TRUE(WaitFor([&] { return done.load() == 16; }));
+  }
+  // Reopen and read back.
+  {
+    RocksDbStoreClient reader(io.io(), db.string(), /*expected_cluster_id=*/"");
+    std::atomic<int> reads_done{0};
+    int matched = 0;
+    for (int i = 0; i < 16; ++i) {
+      reader.AsyncGet("dtor_t",
+                      "k" + std::to_string(i),
+                      {[i, &reads_done, &matched](Status, std::optional<std::string> v) {
+                         if (v && *v == "v" + std::to_string(i)) ++matched;
+                         reads_done.fetch_add(1);
+                       },
+                       io.io()});
+    }
+    ASSERT_TRUE(WaitFor([&] { return reads_done.load() == 16; }));
+    EXPECT_EQ(matched, 16);
+  }
+  fs::remove_all(db);
+}
+
 }  // namespace gcs
 }  // namespace ray

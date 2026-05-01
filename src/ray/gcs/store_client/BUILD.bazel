@@ -72,6 +72,7 @@ ray_cc_library(
         ":store_client",
         "//src/ray/common:asio",
         "//src/ray/util:logging",
+        "@boost//:asio",
         "@com_github_facebook_rocksdb//:rocksdb",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",

@@ -14,12 +14,15 @@
 
 #pragma once
 
+#include <cstddef>
+#include <functional>
 #include <memory>
 #include <string>
 #include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "boost/asio/thread_pool.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/postable/postable.h"
 #include "ray/gcs/store_client/store_client.h"
@@ -34,11 +37,25 @@ namespace gcs {
 /// volume. Implements the GCS fault-tolerance contract proposed in
 /// REP-64 (`enhancements/reps/2026-02-23-gcs-embedded-storage.md`).
 ///
-/// Method semantics mirror `InMemoryStoreClient` and `RedisStoreClient`:
-/// each call does its RocksDB work synchronously (mutating ops block on
-/// the WAL fsync because `WriteOptions::sync = true`) and then dispatches
-/// the user-supplied callback via `Postable::Post`. Going through
-/// `Postable` keeps callback ordering uniform with the rest of GCS.
+/// **Two execution paths, selected at construction:**
+///
+/// - *Inline (default).* Each call does its RocksDB work on the caller's
+///   thread (mutating ops block on the WAL fsync). Mirrors
+///   `InMemoryStoreClient` semantics and is the simplest to reason about.
+///   Drawback flagged by code review: the WAL fsync (~3.8 ms p50 on
+///   probe-verified ext4) blocks the GCS event loop, capping single-key
+///   write throughput at ~250/s and adding tail latency to other GCS RPCs.
+///
+/// - *Offloaded* (`gcs_rocksdb_async_offload = true`). Each call posts
+///   its RocksDB work to a small `boost::asio::thread_pool`; the
+///   user-supplied callback still runs on `io_service_` via
+///   `Postable::Post`. RocksDB's group-commit aggregates concurrent
+///   in-flight writers into one fsync, so aggregate write throughput
+///   scales with pool size while the event loop stays responsive.
+///
+/// In both paths the callback is dispatched via `Postable::Post` to the
+/// GCS event loop, which keeps callback ordering uniform with the rest
+/// of GCS.
 ///
 /// **Durability.** Every mutating call uses `WriteOptions::sync = true`
 /// so the WAL is fsynced before the callback fires. This is the
@@ -63,9 +80,19 @@ class RocksDbStoreClient : public StoreClient {
   ///   `InitKVManager()` runs. PVC-mismatch fail-fast is deferred until
   ///   the K8s downward API plumbs in an external authoritative ID
   ///   (REP-64 Phase 8 follow-on; see `rep-64-poc/reports/phase-3-skeleton.md`).
+  /// \param offload_io If true, RocksDB work runs on `io_pool_` (a
+  ///   thread pool of \p io_pool_size threads) instead of the caller's
+  ///   thread. The user callback always runs on \p io_service via
+  ///   `Postable::Post` regardless. Production wiring is driven by the
+  ///   `gcs_rocksdb_async_offload` config flag; tests pass it directly
+  ///   so they can exercise both paths.
+  /// \param io_pool_size Worker-thread count. Ignored when
+  ///   `offload_io == false`. Clamped to >= 1 when active.
   RocksDbStoreClient(instrumented_io_context &io_service,
                      const std::string &db_path,
-                     const std::string &expected_cluster_id);
+                     const std::string &expected_cluster_id,
+                     bool offload_io = false,
+                     std::size_t io_pool_size = 4);
 
   ~RocksDbStoreClient() override;
 
@@ -131,6 +158,11 @@ class RocksDbStoreClient : public StoreClient {
   /// `WriteOptions{sync=true}` shorthand. fsync-on-WAL.
   rocksdb::WriteOptions SyncWriteOptions() const;
 
+  /// Dispatch \p work either inline (when `io_pool_` is null) or onto
+  /// the offload pool. The work closure runs the RocksDB op AND posts
+  /// the user callback, so the pool-vs-inline branch lives only here.
+  void RunIo(std::function<void()> work);
+
   static constexpr char kClusterIdKey[] = "__ray_rep64_cluster_id__";
   static constexpr char kJobCounterKey[] = "__ray_rep64_job_counter__";
 
@@ -138,7 +170,12 @@ class RocksDbStoreClient : public StoreClient {
   // matching how RedisStoreClient stores its io_service_.
   instrumented_io_context &io_service_;
 
+  /// Offload pool for RocksDB I/O. Null when offload_io was false in
+  /// the ctor. Joined and destroyed BEFORE `db_` so any in-flight RocksDB
+  /// op completes against a still-live DB handle. (Hence declared after
+  /// `db_` here — destructor walks members in reverse.)
   std::unique_ptr<rocksdb::DB> db_;
+  std::unique_ptr<boost::asio::thread_pool> io_pool_;
 
   absl::Mutex cf_mutex_;
   absl::flat_hash_map<std::string, rocksdb::ColumnFamilyHandle *> cf_handles_
