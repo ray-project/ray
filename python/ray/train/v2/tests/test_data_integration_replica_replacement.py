@@ -184,14 +184,12 @@ _SCENARIOS = [
     _Scenario(
         name="simultaneous_failures_two_ranks_full_restart",
         num_epochs=1,
-        max_failures=1,
-        # Both ranks fail at the same row count; both deaths land in the
-        # same controller poll, so failing_rgs == all_rgs and the
-        # controller falls through to a full worker-group restart.
+        max_failures=2,
         failures=(
             _FailurePoint(rank=0, after_n_rows=10),
             _FailurePoint(rank=1, after_n_rows=10),
         ),
+        # Failure can happen in same or different poll cycles.
         expects_full_restart=True,
     ),
 ]
