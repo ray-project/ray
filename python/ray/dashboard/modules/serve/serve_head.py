@@ -177,13 +177,13 @@ class ServeHead(SubprocessModule):
         )
         build_grpc = not is_merge or "grpc_options" in fields_set
 
-        full_http_options = {}
+        full_http_options = None
         if build_http:
             config_http_options = config.http_options.model_dump()
             location = ProxyLocation._to_deployment_mode(config.proxy_location)
             full_http_options = dict({"location": location}, **config_http_options)
 
-        grpc_options = {}
+        grpc_options = None
         if build_grpc:
             grpc_options = config.grpc_options.model_dump()
 
@@ -197,7 +197,8 @@ class ServeHead(SubprocessModule):
         # Serve ignores HTTP options if it was already running when
         # serve_start_async() is called. Therefore we validate that no
         # existing HTTP options are updated and print warning in case they are
-        self.validate_http_options(client, full_http_options)
+        if full_http_options:
+            self.validate_http_options(client, full_http_options)
 
         try:
             if config.logging_config:
