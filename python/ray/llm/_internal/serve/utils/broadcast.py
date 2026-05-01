@@ -74,13 +74,17 @@ def broadcast(
     if router is None:
         raise RuntimeError("DeploymentHandle router is None.")
 
-    # Access the request router and replica set
-    # Handle different potential internal structures
+    # Access the request router and replica set. Use the public `request_router`
+    # property when available — it lazily initializes `_request_router` from the
+    # populated replica set, which the underscore-prefixed field does not.
+    # Without this, a handle that has only ever been .options()-cloned (never
+    # called as a coroutine) sees `_request_router is None` even after replicas
+    # are populated.
     request_router = None
     if hasattr(router, "_asyncio_router"):
-        request_router = router._asyncio_router._request_router
-    elif hasattr(router, "_request_router"):
-        request_router = router._request_router
+        request_router = router._asyncio_router.request_router
+    elif hasattr(router, "request_router"):
+        request_router = router.request_router
 
     if request_router is None:
         raise RuntimeError("Request router not initialized. No replicas accessible.")
