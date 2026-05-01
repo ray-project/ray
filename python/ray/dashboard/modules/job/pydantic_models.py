@@ -1,12 +1,18 @@
 from enum import Enum
 from typing import Any, Dict, Optional
 
-from ray._common.pydantic_compat import PYDANTIC_INSTALLED, BaseModel, Field
 from ray.dashboard.modules.job.common import JobStatus
 from ray.util.annotations import PublicAPI
 
-# Pydantic is not part of the minimal Ray installation.
-if PYDANTIC_INSTALLED:
+try:
+    from pydantic import BaseModel, Field
+except ImportError:
+    # Pydantic is not part of the minimal Ray installation.
+    BaseModel = None
+    Field = None
+
+
+if BaseModel is not None:
 
     @PublicAPI(stability="beta")
     class DriverInfo(BaseModel):

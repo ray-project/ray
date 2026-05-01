@@ -3,8 +3,9 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from pydantic import BaseModel
+
 import ray
-from ray._common.pydantic_compat import BaseModel
 from ray._private.ray_constants import env_float
 from ray.air.config import CheckpointConfig
 from ray.train._checkpoint import Checkpoint
