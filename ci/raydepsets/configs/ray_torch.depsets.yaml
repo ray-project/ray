@@ -21,7 +21,7 @@ depsets:
       - docker/ray-torch/torch-requirements.txt
       - docker/base-deps/requirements.in
       - docker/base-extra/requirements.in
-    constraint: python/deplocks/ray_torch/relaxed_requirements_compiled_py${PYTHON_VERSION}.lock
+#    constraint: python/deplocks/ray_torch/relaxed_requirements_compiled_py${PYTHON_VERSION}.lock
     output: python/deplocks/ray-torch/ray-torch-${CUDA_CODE}_base_py${PYTHON_VERSION}.lock
     append_flags:
       - --index https://download.pytorch.org/whl/${CUDA_CODE}
