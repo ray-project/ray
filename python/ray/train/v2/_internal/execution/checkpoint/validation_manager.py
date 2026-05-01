@@ -146,12 +146,12 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
             ):
                 continue
             self._pending_validations.pop(task)
-            logger.info(
+            logger.warning(
                 f"Validation for checkpoint {pending.checkpoint} exceeded "
                 f"timeout_s={pending.timeout_s}s. Cancelling."
             )
             self._timed_out_tasks.add(task)
-            ray.cancel(task)
+            ray.cancel(task, force=True)
             self._finished_validations[task] = pending.checkpoint
 
     def _poll_validations(self) -> int:
@@ -245,15 +245,16 @@ class ValidationManager(ControllerCallback, ReportCallback, WorkerGroupCallback)
         """
         was_timed_out = task in self._timed_out_tasks
         self._timed_out_tasks.discard(task)
+        if was_timed_out:
+            logger.info(
+                f"Validation for checkpoint {checkpoint} was cancelled due to timeout."
+            )
+            return {}, ReportedCheckpointStatus.VALIDATION_TIMEOUT
+
         try:
             metrics = ray.get(task)
             return metrics, ReportedCheckpointStatus.VALIDATED
         except ray.exceptions.TaskCancelledError:
-            if was_timed_out:
-                logger.info(
-                    f"Validation for checkpoint {checkpoint} was cancelled due to timeout."
-                )
-                return {}, ReportedCheckpointStatus.VALIDATION_TIMEOUT
             logger.info(
                 f"Validation was cancelled for checkpoint {checkpoint}, likely because the train run was aborted. "
                 "It will be retried in the next train run with the same storage path if there is one."
