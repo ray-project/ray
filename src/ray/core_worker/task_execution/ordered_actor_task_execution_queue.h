@@ -49,7 +49,8 @@ class OrderedActorTaskExecutionQueue : public ActorTaskExecutionQueueInterface {
 
   void EnqueueTask(int64_t seq_no,
                    int64_t client_processed_up_to,
-                   TaskToExecute task) override;
+                   TaskToExecute task,
+                   int64_t arg_fetch_tag) override;
 
   /// Cancel the actor task in the queue.
   /// Tasks are in the queue if it is either queued, or executing.

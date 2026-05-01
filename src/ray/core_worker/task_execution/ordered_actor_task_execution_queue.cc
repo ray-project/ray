@@ -66,7 +66,8 @@ void OrderedActorTaskExecutionQueue::Stop() {
 
 void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
                                                  int64_t client_processed_up_to,
-                                                 TaskToExecute task) {
+                                                 TaskToExecute task,
+                                                 int64_t arg_fetch_tag) {
   // A seq_no of -1 means no ordering constraint. Non-retry Actor tasks must be executed
   // in order.
   RAY_CHECK(seq_no != -1);
@@ -90,8 +91,12 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
       << "Enqueuing in order actor task, seq_no=" << seq_no
       << ", next_seq_no_=" << group_state.next_seq_no << ", group='" << group << "'";
 
-  const auto dependencies = task_spec.GetDependencies();
   const bool is_retry = task_spec.IsRetry();
+
+  // arg_fetch_tag must be -1 only if there are no dependencies and vice versa
+  RAY_CHECK_EQ(arg_fetch_tag != -1, !task_spec.GetDependencies().empty())
+      << "arg_fetch_tag must be -1 iff the task has no dependencies";
+
   TaskToExecute *retry_task = nullptr;
   if (is_retry) {
     retry_task = &group_state.pending_retry_tasks.emplace_back(std::move(task));
@@ -107,7 +112,10 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
     pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
   }
 
-  if (!dependencies.empty()) {
+  // Set the OnArgsReady callback. In the general case, this should be called
+  // before MarkReady is called on the waiter for the same tag.
+  // But in the other case, the callback is executed immediately.
+  if (arg_fetch_tag != -1) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
@@ -115,7 +123,7 @@ void OrderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    waiter_.AsyncWait(dependencies, [this, seq_no, is_retry, retry_task, group]() {
+    waiter_.OnArgsReady(arg_fetch_tag, [this, seq_no, is_retry, retry_task, group]() {
       TaskToExecute *ready_task = nullptr;
       if (is_retry) {
         // retry_task is guaranteed to be a valid pointer for retries

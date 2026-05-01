@@ -141,9 +141,23 @@ void TaskReceiver::HandleTaskExecutionResult(
   }
 }
 
+int64_t TaskReceiver::BeginActorTaskArgsFetch(const rpc::PushTaskRequest &request) {
+  RAY_CHECK_EQ(request.task_spec().type(), TaskType::ACTOR_TASK)
+      << "BeginActorTaskArgsFetch must only be called for actor tasks";
+
+  // Copy rather than move since `request` needs task_spec further down
+  TaskSpecification task_spec(request.task_spec());
+  const auto dependencies = task_spec.GetDependencies();
+  if (dependencies.empty()) {
+    return -1;
+  }
+  return waiter_.BeginArgsFetch(dependencies);
+}
+
 void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
                                          rpc::PushTaskReply *reply,
-                                         rpc::SendReplyCallback send_reply_callback) {
+                                         rpc::SendReplyCallback send_reply_callback,
+                                         int64_t arg_fetch_tag) {
   TaskSpecification task_spec =
       TaskSpecification(std::move(*request.mutable_task_spec()));
   if (stopping_) {
@@ -241,7 +255,8 @@ void TaskReceiver::QueueTaskForExecution(rpc::PushTaskRequest request,
     it->second->EnqueueTask(
         request.sequence_number(),
         request.client_processed_up_to(),
-        TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));
+        TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)),
+        arg_fetch_tag);
   } else {
     normal_task_execution_queue_->EnqueueTask(
         TaskToExecute(execute_callback, cancel_callback, std::move(task_spec)));

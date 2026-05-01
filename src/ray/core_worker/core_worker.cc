@@ -3382,12 +3382,16 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
   // For actor tasks, we just need to post a HandleActorTask instance to the task
   // execution service.
   if (request.task_spec().type() == TaskType::ACTOR_TASK) {
+    // Fire the args-fetch IPC eagerly on the gRPC handler thread so it is
+    // pipelined with any in-progress work on the task execution service.
+    int64_t arg_fetch_tag = task_receiver_->BeginActorTaskArgsFetch(request);
     task_execution_service_.post(
         [this,
          request = std::move(request),
          reply,
          send_reply_callback = std::move(send_reply_callback),
-         func_name]() mutable {
+         func_name,
+         arg_fetch_tag]() mutable {
           // We have posted an exit task onto the main event loop,
           // so shouldn't bother executing any further work.
           if (IsExiting()) {
@@ -3396,7 +3400,7 @@ void CoreWorker::HandlePushTask(rpc::PushTaskRequest request,
             return;
           }
           task_receiver_->QueueTaskForExecution(
-              std::move(request), reply, send_reply_callback);
+              std::move(request), reply, send_reply_callback, arg_fetch_tag);
         },
         "CoreWorker.HandlePushTaskActor");
   } else {
