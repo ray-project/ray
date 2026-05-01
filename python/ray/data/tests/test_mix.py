@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 
 import ray
@@ -65,7 +66,7 @@ def test_mix_equal_weights(ray_start_10_cpus_shared, weights):
     # We should round robin between the two datasets.
     # The output should alternate 10 rows for each dataset.
     for batch in mixed.iter_batches(batch_size=2 * rows_per_block):
-        ratio = (batch["source"] == 0).sum() / len(batch["source"])
+        ratio = np.sum(batch["source"] == 0) / len(batch["source"])
         assert ratio == 0.5
 
 
@@ -80,7 +81,7 @@ def test_mix_uneven_weights(ray_start_10_cpus_shared):
         stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
     for batch in mixed.iter_batches(batch_size=4 * rows_per_block):
-        ratio = (batch["source"] == 0).sum() / len(batch["source"])
+        ratio = np.sum(batch["source"] == 0) / len(batch["source"])
         assert ratio == 0.75
 
 
@@ -103,9 +104,9 @@ def test_mix_three_datasets(ray_start_10_cpus_shared):
         stopping_condition=MixStoppingCondition.STOP_ON_LONGEST_DROP,
     )
     for batch in mixed.iter_batches(batch_size=10 * rows_per_block):
-        ratio_ds1 = (batch["source"] == 0).sum() / len(batch["source"])
-        ratio_ds2 = (batch["source"] == 1).sum() / len(batch["source"])
-        ratio_ds3 = (batch["source"] == 2).sum() / len(batch["source"])
+        ratio_ds1 = np.sum(batch["source"] == 0) / len(batch["source"])
+        ratio_ds2 = np.sum(batch["source"] == 1) / len(batch["source"])
+        ratio_ds3 = np.sum(batch["source"] == 2) / len(batch["source"])
         assert ratio_ds1 == 0.5
         assert ratio_ds2 == 0.3
         assert ratio_ds3 == 0.2
@@ -147,13 +148,13 @@ def test_mix_stop_on_longest_drop(ray_start_10_cpus_shared):
     for batch in mixed.iter_batches(batch_size=2 * rows_per_block):
         # We should round robin between the two datasets, until ds2 is exhausted.
         if ds2_rows_seen < 200:
-            ratio = (batch["source"] == 0).sum() / len(batch["source"])
+            ratio = np.sum(batch["source"] == 0) / len(batch["source"])
             assert ratio == 0.5
-            ds2_rows_seen += (batch["source"] == 1).sum()
+            ds2_rows_seen += np.sum(batch["source"] == 1)
 
         # After that point, we should only see rows from ds1.
         else:
-            ratio = (batch["source"] == 0).sum() / len(batch["source"])
+            ratio = np.sum(batch["source"] == 0) / len(batch["source"])
             assert ratio == 1.0
 
 
@@ -171,7 +172,7 @@ def test_mix_non_uniform_block_sizes(ray_start_10_cpus_shared):
     # Mix ordering: [ds0: 120], [ds1: 10, 10, 10, 10], ...
     # Expect every window of 160 rows to have a ratio of 0.75:0.25
     for batch in mixed.iter_batches(batch_size=160):
-        ratio = (batch["source"] == 0).sum() / len(batch["source"])
+        ratio = np.sum(batch["source"] == 0) / len(batch["source"])
         assert ratio == 0.75
 
 
@@ -241,7 +242,9 @@ class TestEstimateNumMixOutputs:
 
     def test_invalid_stopping_condition(self):
         with pytest.raises(ValueError, match="Unknown stopping condition"):
-            estimate_num_mix_outputs([100, 200], [0.5, 0.5], "invalid")
+            estimate_num_mix_outputs(
+                [100, 200], [0.5, 0.5], "invalid"  # type: ignore[arg-type]
+            )
 
 
 if __name__ == "__main__":

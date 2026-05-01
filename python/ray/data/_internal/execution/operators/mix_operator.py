@@ -47,10 +47,10 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
 
         self._stopping_condition = stopping_condition
 
-        self._input_buffers: List[FIFOBundleQueue] = [
+        self._input_buffers: List[BaseBundleQueue] = [
             FIFOBundleQueue() for _ in range(len(input_ops))
         ]
-        self._output_buffer = FIFOBundleQueue()
+        self._output_buffer: BaseBundleQueue = FIFOBundleQueue()
 
         # Cumulative rows output per input, used for deficit calculation.
         self._rows_seen: List[int] = [0] * len(input_ops)
