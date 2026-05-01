@@ -93,7 +93,7 @@ class TrainHead(SubprocessModule):
                 )
 
         return Response(
-            text=details.json(),
+            text=details.model_dump_json(),
             content_type="application/json",
         )
 
@@ -127,9 +127,9 @@ class TrainHead(SubprocessModule):
 
             status, status_details = await self._get_run_status(train_run)
 
-            decorated_train_run = DecoratedTrainRun.parse_obj(
+            decorated_train_run = DecoratedTrainRun.model_validate(
                 {
-                    **train_run.dict(),
+                    **train_run.model_dump(),
                     "attempts": decorated_train_run_attempts,
                     "job_details": job_details,
                     "status": status,
@@ -168,8 +168,11 @@ class TrainHead(SubprocessModule):
                 DecoratedTrainWorker
             ] = await self._decorate_train_workers(train_run_attempt.workers)
 
-            decorated_train_run_attempt = DecoratedTrainRunAttempt.parse_obj(
-                {**train_run_attempt.dict(), "workers": decorated_train_workers}
+            decorated_train_run_attempt = DecoratedTrainRunAttempt.model_validate(
+                {
+                    **train_run_attempt.model_dump(),
+                    "workers": decorated_train_workers,
+                }
             )
             decorated_train_run_attempts.append(decorated_train_run_attempt)
 
@@ -215,17 +218,17 @@ class TrainHead(SubprocessModule):
                     for gpu in gpus
                 ]
 
-                decorated_train_worker = DecoratedTrainWorker.parse_obj(
+                decorated_train_worker = DecoratedTrainWorker.model_validate(
                     {
-                        **train_worker.dict(),
+                        **train_worker.model_dump(),
                         "status": actor["state"],
                         "processStats": actor["processStats"],
                         "gpus": formatted_gpus,
                     }
                 )
             else:
-                decorated_train_worker = DecoratedTrainWorker.parse_obj(
-                    train_worker.dict()
+                decorated_train_worker = DecoratedTrainWorker.model_validate(
+                    train_worker.model_dump()
                 )
 
             decorated_train_workers.append(decorated_train_worker)
@@ -326,7 +329,7 @@ class TrainHead(SubprocessModule):
                 )
 
         return Response(
-            text=details.json(),
+            text=details.model_dump_json(),
             content_type="application/json",
         )
 
@@ -388,23 +391,27 @@ class TrainHead(SubprocessModule):
                         for gpu in gpus
                     ]
 
-                    worker_info_with_details = TrainWorkerInfoWithDetails.parse_obj(
-                        {
-                            **worker_info.dict(),
-                            "status": actor["state"],
-                            "processStats": actor["processStats"],
-                            "gpus": formatted_gpus,
-                        }
+                    worker_info_with_details = (
+                        TrainWorkerInfoWithDetails.model_validate(
+                            {
+                                **worker_info.model_dump(),
+                                "status": actor["state"],
+                                "processStats": actor["processStats"],
+                                "gpus": formatted_gpus,
+                            }
+                        )
                     )
                 else:
-                    worker_info_with_details = TrainWorkerInfoWithDetails.parse_obj(
-                        worker_info.dict()
+                    worker_info_with_details = (
+                        TrainWorkerInfoWithDetails.model_validate(
+                            worker_info.model_dump()
+                        )
                     )
 
                 worker_infos_with_details.append(worker_info_with_details)
 
-            train_run_with_details = TrainRunInfoWithDetails.parse_obj(
-                {**train_run.dict(), "workers": worker_infos_with_details}
+            train_run_with_details = TrainRunInfoWithDetails.model_validate(
+                {**train_run.model_dump(), "workers": worker_infos_with_details}
             )
 
             # The train run can be unexpectedly terminated before the final run
