@@ -493,6 +493,9 @@ def test_map_batches_batch_mutation(
         (10, 5, 2),
         (10, 1, 10),
         (12, 3, 2),
+        # Batches span multiple source blocks, so the builder concatenates
+        # them into multi-chunk Arrow columns before delivering the batch.
+        (12, 4, 4),
     ],
 )
 def test_map_batches_batch_zero_copy(
@@ -504,12 +507,15 @@ def test_map_batches_batch_zero_copy(
 ):
     # Verify the safety guarantee of ``zero_copy_batch=True``: a UDF that
     # tries to mutate the batch in place must not corrupt the source block.
-    # Arrow-backed pandas columns enforce this implicitly (assignments rebind
-    # the column to a fresh array), so we assert the property directly rather
-    # than relying on a writable-buffer ValueError.
+    # Arrow-backed pandas columns enforce this implicitly (column assignments
+    # rebind to a fresh array instead of writing through the underlying
+    # buffer), so we validate the contract by comparing source vs. mutated
+    # output rather than inspecting ``df.values.flags.writeable``. The
+    # writeability flag is unreliable here: for multi-chunk batches (formed
+    # when several blocks are merged), ``df.values`` materializes a fresh
+    # numpy array via ``ChunkedArray.to_numpy()``, which is writable even
+    # though the underlying Arrow buffers remain immutable.
     def mutate(df):
-        # ``.values`` should still surface as read-only for zero-copy batches.
-        assert not df.values.flags.writeable
         df["id"] += 1
         return df
 
