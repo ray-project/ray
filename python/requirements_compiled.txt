@@ -141,7 +141,9 @@ async-generator==1.10
 async-lru==2.0.5
     # via jupyterlab
 async-timeout==5.0.1
-    # via redis
+    # via
+    #   aiohttp
+    #   redis
 attrs==25.1.0
     # via
     #   -r python/requirements/test-requirements.txt
@@ -519,6 +521,10 @@ evaluate==0.4.3
     # via -r python/requirements/ml/train-test-requirements.txt
 everett==3.1.0
     # via comet-ml
+exceptiongroup==1.3.1
+    # via
+    #   anyio
+    #   pytest
 execnet==2.1.2
     # via pytest-shutil
 executing==2.0.1
@@ -2310,7 +2316,14 @@ tokenizers==0.15.2
 toml==0.10.2
     # via tensorflow-datasets
 tomli==2.0.1
-    # via semgrep
+    # via
+    #   black
+    #   build
+    #   jupyterlab
+    #   jupytext
+    #   mypy
+    #   pytest
+    #   semgrep
 tomlkit==0.13.0
     # via
     #   snowflake-connector-python
@@ -2447,9 +2460,13 @@ typing-extensions==4.15.0
     # via
     #   -r python/requirements/test-requirements.txt
     #   aiosignal
+    #   ale-py
     #   alembic
+    #   altair
     #   anyio
     #   arro3-core
+    #   asgiref
+    #   async-lru
     #   aws-sam-translator
     #   azure-core
     #   azure-identity
@@ -2458,6 +2475,7 @@ typing-extensions==4.15.0
     #   botorch
     #   configspace
     #   etils
+    #   exceptiongroup
     #   fastapi
     #   gradio
     #   gradio-client
@@ -2486,6 +2504,7 @@ typing-extensions==4.15.0
     #   snowflake-connector-python
     #   sqlalchemy
     #   starlette
+    #   taskiq
     #   tensorflow
     #   testcontainers
     #   textual

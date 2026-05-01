@@ -2673,11 +2673,17 @@ networkx==3.2.1 \
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
     #   torch
-nixl==0.4.0 ; sys_platform != 'darwin' \
-    --hash=sha256:2e28bb82708f92c1eef7766a054aeae228ccf3f9d154ee10c9516839d9d8555e \
-    --hash=sha256:435d15686c9901c1fd6132041f54ff350fa72bf0a5a6b9d3d3e4498366516a24 \
-    --hash=sha256:9a6c831bd8863ab2e2bb242f3cc916f330801836e7461820db9d01d7c6735ef0 \
-    --hash=sha256:ef19355b74e2bd5460fca897b8a6559725784694fdd20b0f254b1172d63c2460
+nixl-cu13==1.0.0 ; sys_platform != 'darwin' \
+    --hash=sha256:27645aba4a9ceceff3efe8cea4c02832cd04e03aa0bea1a1e1cbd7a70e5180a1 \
+    --hash=sha256:310f276057d2a321055c0906024419104d8cdf3fc1ebaa5351f34edb8196b47b \
+    --hash=sha256:4b7d875fad57ada0ffe06c1c6cf07c269f173254ebae4623791aefce49f09e02 \
+    --hash=sha256:6111ec2f60e3a014c80a6145f1dab5fddd9e55a38dcfb94e5483a1a372507be8 \
+    --hash=sha256:71e69782e4b6f8b8fe1a69b99650c29aab8d0f7ada44c16e9716f05f297b84ed \
+    --hash=sha256:8f4a8a9e9a229eccf7b9736d9dad49b46f07d898a76895e9d785dd9dc561d1fb \
+    --hash=sha256:ba78cf478fce2401b8fa3c8977d44172d500ee277af7a7bc1624693299ea8a3b \
+    --hash=sha256:c1552a57828ec943e18ea26ecc943eddf42b8f1f936440469eaf1db9862cfcf5 \
+    --hash=sha256:eba80119a6b1e5d2a3b7525c04281100e4d0b5e25d6bf1d9202de384ea77ccaf \
+    --hash=sha256:ff95b44729aa64284a16a6e7b758ddd8c54dc2288f390ed2c8943976564d86ab
     # via -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
 numexpr==2.14.1 ; python_full_version < '3.12' \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
@@ -2813,7 +2819,7 @@ numpy==2.2.6 \
     #   keras
     #   ml-dtypes
     #   modin
-    #   nixl
+    #   nixl-cu13
     #   numexpr
     #   pandas
     #   pyarrow
@@ -4866,7 +4872,7 @@ torch==2.7.0+cu128 \
     --hash=sha256:fa05ac6ebed4777de7a5eff398c1f17b697c02422516748ce66a8151873e5a0e
     # via
     #   -r python/deplocks/ci/relaxed_data-ci_depset_py3.10.lock
-    #   nixl
+    #   nixl-cu13
     #   torchmetrics
     #   torchtext
     #   torchvision
