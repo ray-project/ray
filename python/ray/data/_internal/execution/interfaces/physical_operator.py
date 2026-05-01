@@ -127,6 +127,8 @@ class DataOpTask(OpTask):
         ] = lambda metadata_ref: None,
         task_resource_bundle: Optional[ExecutionResources] = None,
         operator_name: str = "Unknown",
+        block_ref_counter: Optional["BlockRefCounter"] = None,
+        owner_op: Optional["PhysicalOperator"] = None,
     ):
         """Create a DataOpTask
         Args:
@@ -142,6 +144,10 @@ class DataOpTask(OpTask):
             task_resource_bundle: The execution resources of this task.
             operator_name: The name of the physical operator that created this task.
                 Used for logging the operator name in warnings/errors.
+            block_ref_counter: The centralized block reference counter. If provided,
+                on_block_produced is called for each block yielded by this task.
+            owner_op: The operator that owns the blocks produced by this task.
+                Must be set if block_ref_counter is set.
         """
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
@@ -154,6 +160,8 @@ class DataOpTask(OpTask):
         self._block_ready_callback = block_ready_callback
         self._metadata_ready_callback = metadata_ready_callback
         self._operator_name = operator_name
+        self._block_ref_counter: Optional["BlockRefCounter"] = block_ref_counter
+        self._owner_op: Optional["PhysicalOperator"] = owner_op
 
         # If the generator hasn't produced block metadata yet, or if the block metadata
         # object isn't available after we get a reference, we need store the pending
@@ -273,6 +281,10 @@ class DataOpTask(OpTask):
                 meta_with_schema_bytes
             )
             meta = meta_with_schema.metadata
+            if self._block_ref_counter is not None:
+                self._block_ref_counter.on_block_produced(
+                    self._pending_block_ref, meta.size_bytes or 0, self._owner_op
+                )
             self._output_ready_callback(
                 RefBundle(
                     [(self._pending_block_ref, meta)],
@@ -715,6 +727,17 @@ class PhysicalOperator(Operator):
         on_block_produced / on_task_completed without changing the start() signature.
         """
         self._block_ref_counter = counter
+
+    def _track_bundle_produced(self, bundle: RefBundle) -> None:
+        """Register all blocks in bundle as produced by this operator.
+
+        No-op if the block reference counter has not been injected yet.
+        """
+        if self._block_ref_counter is not None:
+            for block_ref, metadata in bundle.blocks:
+                self._block_ref_counter.on_block_produced(
+                    block_ref, metadata.size_bytes or 0, self
+                )
 
     def can_add_input(self) -> bool:
         """Return whether it is desirable to add input to this operator right now.
