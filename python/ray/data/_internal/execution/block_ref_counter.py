@@ -1,4 +1,5 @@
 import dataclasses
+import threading
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict
 
@@ -43,6 +44,7 @@ class BlockRefCounter:
         self._entries: Dict["ray.ObjectRef", _BlockEntry] = {}
         # (owner_op -> total live bytes); maintained incrementally for O(1) reads.
         self._bytes_by_owner: Dict["PhysicalOperator", int] = defaultdict(int)
+        self._lock = threading.Lock()
 
     def on_block_produced(
         self,
@@ -55,13 +57,14 @@ class BlockRefCounter:
         Sets ref_count = 1, representing the block being alive in the pipeline.
         Must be called exactly once per block_ref.
         """
-        assert (
-            block_ref not in self._entries
-        ), f"on_block_produced called for already-tracked block {block_ref}."
-        self._entries[block_ref] = _BlockEntry(
-            size_bytes=size_bytes, owner=owner, ref_count=1
-        )
-        self._bytes_by_owner[owner] += size_bytes
+        with self._lock:
+            assert (
+                block_ref not in self._entries
+            ), f"on_block_produced called for already-tracked block {block_ref}."
+            self._entries[block_ref] = _BlockEntry(
+                size_bytes=size_bytes, owner=owner, ref_count=1
+            )
+            self._bytes_by_owner[owner] += size_bytes
 
     def on_block_dispatched_to_task(self, block_ref: "ray.ObjectRef") -> None:
         """Called each time a task takes block_ref as input.
@@ -72,42 +75,49 @@ class BlockRefCounter:
         concurrent tasks): ref_count is incremented so the block is not removed
         when the first task completes.
         """
-        assert (
-            block_ref in self._entries
-        ), f"on_block_dispatched_to_task called for untracked block {block_ref}."
-        entry = self._entries[block_ref]
-        if entry.first_task_dispatched:
-            entry.ref_count += 1
-        else:
-            entry.first_task_dispatched = True
+        with self._lock:
+            assert (
+                block_ref in self._entries
+            ), f"on_block_dispatched_to_task called for untracked block {block_ref}."
+            entry = self._entries[block_ref]
+            if entry.first_task_dispatched:
+                entry.ref_count += 1
+            else:
+                entry.first_task_dispatched = True
 
     def on_task_completed(self, block_ref: "ray.ObjectRef") -> None:
         """Called when a task that held block_ref completes, or when an inline
         operator (LimitOperator, ZipOperator, AllToAllOperator) finishes
         consuming a block.
 
+        *NOTE*: Also called from the user thread when sink output
+        blocks are consumed via _ClosingIterator.get_next().
+
         Decrements ref_count. When it reaches zero the block's contribution
         to its owner's usage is removed.
         """
-        assert block_ref in self._entries, (
-            f"on_task_completed called for untracked block {block_ref}. "
-            "This indicates a missing on_block_produced call or a double completion."
-        )
-        entry = self._entries[block_ref]
-        entry.ref_count -= 1
-        if entry.ref_count == 0:
-            del self._entries[block_ref]
-            assert self._bytes_by_owner[entry.owner] >= entry.size_bytes, (
-                f"Usage for {entry.owner} would go negative: "
-                f"current={self._bytes_by_owner[entry.owner]}, "
-                f"removing={entry.size_bytes}"
+        with self._lock:
+            assert block_ref in self._entries, (
+                f"on_task_completed called for untracked block {block_ref}. "
+                "This indicates a missing on_block_produced call or a double completion."
             )
-            self._bytes_by_owner[entry.owner] -= entry.size_bytes
+            entry = self._entries[block_ref]
+            entry.ref_count -= 1
+            if entry.ref_count == 0:
+                del self._entries[block_ref]
+                assert self._bytes_by_owner[entry.owner] >= entry.size_bytes, (
+                    f"Usage for {entry.owner} would go negative: "
+                    f"current={self._bytes_by_owner[entry.owner]}, "
+                    f"removing={entry.size_bytes}"
+                )
+                self._bytes_by_owner[entry.owner] -= entry.size_bytes
 
     def get_object_store_memory_usage(self, owner: "PhysicalOperator") -> int:
         """Total bytes of blocks produced by owner that are still live."""
-        return self._bytes_by_owner.get(owner, 0)
+        with self._lock:
+            return self._bytes_by_owner.get(owner, 0)
 
     def clear(self) -> None:
-        self._entries.clear()
-        self._bytes_by_owner.clear()
+        with self._lock:
+            self._entries.clear()
+            self._bytes_by_owner.clear()
