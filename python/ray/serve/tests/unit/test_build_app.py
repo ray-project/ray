@@ -2,9 +2,11 @@ import sys
 from typing import Any, Dict, List, Optional
 
 import pytest
+from fastapi import FastAPI
 
 from ray import serve
 from ray.serve._private.build_app import BuiltApplication, build_app
+from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID
 from ray.serve.deployment import Application, Deployment
 from ray.serve.handle import DeploymentHandle
@@ -543,6 +545,130 @@ def test_ingress_name_got_modified():
     # The ingress deployment should be the last one.
     assert len(built_app.deployments) == 3
     assert built_app.deployments[-1].name == "D_2"
+
+
+def test_build_app_keeps_ingress_request_router_separate_from_app_deployments(
+    monkeypatch,
+):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment
+    class Ingress:
+        pass
+
+    @serve.deployment
+    class IngressRequestRouter:
+        pass
+
+    ingress_app = Ingress.bind()
+    app = ingress_app._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=ingress_app)
+    )
+
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    assert [deployment.name for deployment in built_app.deployments] == ["Ingress"]
+    assert set(built_app.deployment_handles) == {"Ingress"}
+    assert built_app.ingress_request_router_deployment is not None
+    assert built_app.ingress_request_router_deployment.name == "IngressRequestRouter"
+
+
+def test_build_app_requires_ingress_request_router_to_be_single_deployment(
+    monkeypatch,
+):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment
+    class Ingress:
+        pass
+
+    @serve.deployment
+    class RouterChild:
+        pass
+
+    @serve.deployment
+    class IngressRequestRouter:
+        def __init__(self, child):
+            self._child = child
+
+    with pytest.raises(
+        ValueError,
+        match=(
+            "`ingress_request_router` to build into exactly one standalone "
+            "deployment"
+        ),
+    ):
+        ingress_app = Ingress.bind()
+        app = ingress_app._with_ingress_request_router(
+            IngressRequestRouter.bind(RouterChild.bind())
+        )
+        build_app(
+            app,
+            name="default",
+            make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        )
+
+
+def test_build_app_rejects_ingress_request_router_in_main_app_graph(monkeypatch):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    @serve.deployment
+    class IngressRequestRouter:
+        pass
+
+    @serve.deployment
+    class Ingress:
+        def __init__(self, router):
+            self._router = router
+
+    ingress_request_router = IngressRequestRouter.bind()
+    ingress_app = Ingress.bind(ingress_request_router)
+    app = ingress_app._with_ingress_request_router(ingress_request_router)
+
+    with pytest.raises(
+        ValueError,
+        match="did not produce any new deployments",
+    ):
+        build_app(
+            app,
+            name="default",
+            make_deployment_handle=FakeDeploymentHandle.from_deployment,
+        )
+
+
+def test_ingress_validation_excludes_ingress_request_router_fastapi_app(monkeypatch):
+    monkeypatch.setattr("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True)
+
+    ingress_api = FastAPI()
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(ingress_api)
+    class Ingress:
+        pass
+
+    @serve.deployment
+    @serve.ingress(router_api)
+    class IngressRequestRouter:
+        pass
+
+    ingress_app = Ingress.bind()
+    app = ingress_app._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=ingress_app)
+    )
+
+    built_app: BuiltApplication = build_app(
+        app,
+        name="default",
+        make_deployment_handle=FakeDeploymentHandle.from_deployment,
+    )
+
+    client = object.__new__(ServeControllerClient)
+    client._check_ingress_deployments([built_app])
 
 
 if __name__ == "__main__":

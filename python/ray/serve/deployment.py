@@ -63,6 +63,16 @@ class Application:
     def __init__(self, bound_deployment: "Deployment"):
         # This is used by `build_app`, but made private so users don't use it.
         self._bound_deployment = bound_deployment
+        # Optional peer ingress request router for ingress bypass mode.
+        self._ingress_request_router: Optional["Application"] = None
+
+    def _with_ingress_request_router(
+        self, ingress_request_router: "Application"
+    ) -> "Application":
+        # Internal-only, unstable hook for the Serve LLM direct-ingress stack.
+        # This is not a stable public Serve API.
+        self._ingress_request_router = ingress_request_router
+        return self
 
 
 @PublicAPI(stability="stable")

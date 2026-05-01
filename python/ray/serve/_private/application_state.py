@@ -1,4 +1,3 @@
-import inspect
 import json
 import logging
 import os
@@ -48,7 +47,6 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
 )
-from ray.serve.api import ASGIAppReplicaWrapper
 from ray.serve.config import (
     AutoscalingConfig,
     AutoscalingPolicy,
@@ -1559,7 +1557,8 @@ def build_serve_application(
     """Import and build a Serve application.
 
     Args:
-        import_path: import path to top-level bound deployment.
+        import_path: import path to a top-level Serve application object or
+            application builder return value.
         code_version: code version inferred from app config. All
             deployment versions are set to this code version.
         name: application name. If specified, application will be deployed
@@ -1603,7 +1602,7 @@ def build_serve_application(
             name=name,
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
-        num_ingress_deployments = 0
+        built_app.validate_single_fastapi_ingress()
 
         def _get_serialized_def(attr_path: str) -> bytes:
             module, attr = import_module_and_attr(attr_path)
@@ -1617,13 +1616,13 @@ def build_serve_application(
             application_serialized_autoscaling_policy_def = _get_serialized_def(
                 application_autoscaling_policy_function
             )
-        for deployment in built_app.deployments:
-            if inspect.isclass(deployment.func_or_class) and issubclass(
-                deployment.func_or_class, ASGIAppReplicaWrapper
-            ):
-                num_ingress_deployments += 1
-            is_ingress = deployment.name == built_app.ingress_deployment_name
 
+        def _append_deploy_args(
+            deployment,
+            *,
+            is_ingress: bool,
+            is_ingress_request_router: bool,
+        ) -> None:
             if deployment._deployment_config.deployment_actors:
                 for cfg in deployment._deployment_config.deployment_actors:
                     if not cfg._serialized_actor_class:
@@ -1656,6 +1655,7 @@ def build_serve_application(
                     name=deployment._name,
                     replica_config=deployment._replica_config,
                     ingress=is_ingress,
+                    ingress_request_router=is_ingress_request_router,
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,
@@ -1664,17 +1664,23 @@ def build_serve_application(
                     serialized_deployment_actors=serialized_deployment_actors,
                 )
             )
-        if num_ingress_deployments > 1:
-            return (
-                None,
-                None,
-                (
-                    f'Found multiple FastAPI deployments in application "{built_app.name}". '
-                    "Please only include one deployment with @serve.ingress "
-                    "in your application to avoid this issue."
-                ),
+
+        for deployment in built_app.deployments:
+            _append_deploy_args(
+                deployment,
+                is_ingress=deployment.name == built_app.ingress_deployment_name,
+                is_ingress_request_router=False,
+            )
+
+        if built_app.ingress_request_router_deployment is not None:
+            _append_deploy_args(
+                built_app.ingress_request_router_deployment,
+                is_ingress=False,
+                is_ingress_request_router=True,
             )
         return application_serialized_autoscaling_policy_def, deploy_args_list, None
+    except RayServeException as e:
+        return None, None, str(e)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
