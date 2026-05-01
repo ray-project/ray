@@ -448,6 +448,16 @@ exclude_patterns = [
     "serve/tutorials/asynchronous-inference/content/*.ipynb",
     "train/tutorials/content/README.md",
     "tune/examples/tune_pytorch_asha/content/*.ipynb",
+    # Numbered child notebooks of the excluded in-tree READMEs above. Their
+    # parent README's embedded {toctree} no longer fires (README is excluded),
+    # so the children orphan-warn until the in-tree directories are deleted.
+    "ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/*.ipynb",
+    "ray-overview/examples/e2e-rag/notebooks/*.ipynb",
+    "ray-overview/examples/e2e-timeseries/e2e_timeseries/*.ipynb",
+    "ray-overview/examples/e2e-xgboost/notebooks/*.ipynb",
+    "ray-overview/examples/mcp-ray-serve/*.ipynb",
+    "ray-overview/examples/object-detection/*.ipynb",
+    "train/tutorials/content/workload-patterns/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
