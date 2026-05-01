@@ -279,15 +279,6 @@ def build_openai_app(llm_serving_args: dict) -> "Application":
     return build_openai_app(builder_config=llm_serving_args)
 
 
-def build_openai_ingress_request_router(llm_serving_args: dict) -> "Application":
-    """Build the ingress request router peer for direct streaming LLM apps."""
-    from ray.llm._internal.serve.core.ingress.builder import (
-        build_openai_ingress_request_router,
-    )
-
-    return build_openai_ingress_request_router(builder_config=llm_serving_args)
-
-
 @PublicAPI(stability="alpha")
 def build_pd_openai_app(pd_serving_args: dict) -> "Application":
     """Build a deployable application utilizing P/D disaggregation.
@@ -440,7 +431,6 @@ __all__ = [
     "LoraConfig",
     "build_llm_deployment",
     "build_openai_app",
-    "build_openai_ingress_request_router",
     "build_pd_openai_app",
     "build_dp_deployment",
     "build_dp_openai_app",
