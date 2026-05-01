@@ -13,6 +13,9 @@ build_arg_sets:
   py313:
     PYTHON_VERSION: "3.13"
     PYTHON_SHORT: "313"
+  py314:
+    PYTHON_VERSION: "3.14"
+    PYTHON_SHORT: "314"
 
 depsets:
   - name: ray_img_depset_${PYTHON_SHORT}
@@ -31,6 +34,7 @@ depsets:
       - py311
       - py312
       - py313
+      - py314
     pre_hooks:
       - ci/raydepsets/pre_hooks/build-placeholder-wheel.sh
       - ci/raydepsets/pre_hooks/remove-compiled-headers.sh ${PYTHON_VERSION}
