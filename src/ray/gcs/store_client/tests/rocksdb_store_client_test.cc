@@ -242,14 +242,13 @@ TEST(RocksDbStoreClientTest, OffloadPathRoundtripsAcrossPoolThreads) {
   std::atomic<int> reads_done{0};
   std::vector<std::optional<std::string>> got(kN);
   for (int i = 0; i < kN; ++i) {
-    client.AsyncGet(
-        "offload_t",
-        "k" + std::to_string(i),
-        {[i, &reads_done, &got](Status, std::optional<std::string> v) {
-           got[i] = std::move(v);
-           reads_done.fetch_add(1);
-         },
-         io.io()});
+    client.AsyncGet("offload_t",
+                    "k" + std::to_string(i),
+                    {[i, &reads_done, &got](Status, std::optional<std::string> v) {
+                       got[i] = std::move(v);
+                       reads_done.fetch_add(1);
+                     },
+                     io.io()});
   }
   ASSERT_TRUE(WaitFor([&] { return reads_done.load() == kN; }));
 
