@@ -132,9 +132,12 @@ def _shuffle_map(
         )
         return (input_block_metadata, [], {}), *([None] * num_groups)
 
-    # Hash-partition each block individually to keep peak memory at ~2x one
-    # block instead of ~2x all blocks combined. Accumulate per-partition
-    # shards as lists of tables, then concatenate at the end.
+    # Hash-partition each block individually to avoid a full-table
+    # combine_chunks() copy.  Individual blocks are typically single-chunk
+    # already, so per-block combine_chunks() is cheap (~128MB) and the
+    # allocator reuses freed pages across iterations.  Concatenating all
+    # blocks first would require combine_chunks() on the mega-table,
+    # spiking heap by ~1x total input.
     partition_accumulators: Dict[int, List[pa.Table]] = {}
 
     for block in blocks:
@@ -365,12 +368,10 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
     _DEFAULT_MAP_TASK_NUM_CPUS = 1.0
     _DEFAULT_REDUCE_TASK_NUM_CPUS = 1.0
     _DEFAULT_COMPACTION_STRATEGY = "pre_map_merge"  # "none" | "pre_map_merge"
-    _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 0.5 * 1024 * 1024 * 1024  # 0.5 GB
+    _DEFAULT_PRE_MAP_MERGE_THRESHOLD = 1024 * 1024 * 1024  # 1 GB
     # Max reducers per node, regardless of heap budget.  Bounds NIC fetch
     # contention; chosen empirically — most cloud instances saturate around
     # this concurrency on shuffle-heavy workloads.
-    _DEFAULT_MAX_REDUCERS_PER_NODE = 4
-
     def __init__(
         self,
         input_op: PhysicalOperator,
@@ -459,10 +460,6 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
             None,
         )
         self._reduce_task_num_cpus: float = self._DEFAULT_REDUCE_TASK_NUM_CPUS
-        self._max_reducers_per_node: int = data_context.get_config(
-            "actorless_shuffle_max_reducers_per_node",
-            self._DEFAULT_MAX_REDUCERS_PER_NODE,
-        )
 
         # -- Output queue -----------------------------------------------------
         self._output_queue: deque = deque()
@@ -729,13 +726,9 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         group's uncompressed bytes for decompressed inputs plus the
         output blocks during build/yield (~2x).
 
-        Per-node concurrency is capped on two axes:
-
-        1. Heap budget: combined reducer heap must fit in node memory
-           (excluding object store and worker/raylet overhead).
-        2. Fetch contention: concurrent reducers share the local NIC
-           when pulling remote shards.  We don't query the actual NIC
-           bandwidth, so we apply a conservative fixed per-node cap.
+        Per-node concurrency is controlled by mapping CPU reservation
+        proportionally to memory needs.  This ensures no idle workers
+        can co-exist on the node during the memory-intensive reduce phase.
         """
         import math
 
@@ -765,22 +758,25 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
         node_cpus = max(1.0, cluster_res.get("CPU", 8) / num_nodes)
         node_memory = cluster_res.get("memory", 30e9) / num_nodes
 
-        # Heap cap: 80% of node memory leaves headroom for raylet, IDLE
-        # workers (Python allocator retention), spill workers, and OS.
-        usable_node_memory = node_memory * 0.8
-        per_node_by_heap = max(1, int(usable_node_memory / reducer_heap))
+        # 80% of node memory leaves headroom for raylet, spill workers, OS.
+        usable_node_memory = node_memory
 
-        target_per_node = min(per_node_by_heap, self._max_reducers_per_node)
+        # Map CPU proportionally to memory, then round up to fully occupy
+        # the node's CPU budget.  This prevents idle workers (with retained
+        # heap from prior tasks) from co-existing during the memory-intensive
+        # reduce phase.
+        proportional_cpus = max(
+            1.0, math.ceil(node_cpus * reducer_heap / usable_node_memory)
+        )
+        target_per_node = max(1, int(node_cpus / proportional_cpus))
         reduce_cpus = max(1.0, math.ceil(node_cpus / target_per_node))
-
         logger.info(
             f"Auto-derived reduce_cpus={reduce_cpus} "
             f"(max_group={max_group_bytes / 1e9:.1f}GB "
             f"[shard_group_size={self._shard_group_size}], "
             f"reducer_heap={reducer_heap / 1e9:.1f}GB, "
-            f"node_memory={node_memory / 1e9:.0f}GB, "
-            f"per_node_by_heap={per_node_by_heap}, "
-            f"max_reducers_per_node={self._max_reducers_per_node}, "
+            f"usable_node_memory={usable_node_memory / 1e9:.1f}GB, "
+            f"node_cpus={node_cpus}, "
             f"target_per_node={target_per_node})"
         )
         return float(reduce_cpus)
