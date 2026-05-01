@@ -1,14 +1,17 @@
 import collections
 import itertools
 import random
+from unittest.mock import MagicMock
 
 import pytest
 
 import ray
-from ray.data._internal.execution.interfaces import ExecutionOptions
+from ray.data._internal.execution.block_ref_counter import BlockRefCounter
+from ray.data._internal.execution.interfaces import ExecutionOptions, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
 from ray.tests.conftest import *  # noqa
 
@@ -274,6 +277,167 @@ def test_split_operator_with_locality(ray_start_regular_shared, equal, random_se
         f"Expected >=85% with locality-aware dispatching. "
         f"Hits: {locality_hits}/{total}"
     )
+
+
+class TestOutputSplitterBlockRefCounter:
+    """Unit tests for BlockRefCounter integration in OutputSplitter.
+
+    _track_bundle_split tests run without Ray (using a minimal stub instead of
+    RefBundle, since the method only accesses .blocks).  The truncation test uses
+    the ray_start_regular_shared fixture because all_inputs_done() calls into
+    RefBundle internals that require real ObjectRefs.
+    """
+
+    class _FakeBundle:
+        """Minimal stand-in for RefBundle used by _track_bundle_split.
+
+        _track_bundle_split only iterates over .blocks, so a plain object with
+        a blocks tuple is sufficient — no Ray ObjectRef validation occurs.
+        """
+
+        def __init__(self, blocks):
+            self.blocks = tuple(blocks)
+
+    def _fake_bundle(self, refs_with_sizes):
+        """Return a _FakeBundle with (fake_ref, size_bytes) pairs.
+
+        Needed because `RefBundle.__post_init__` validates the first block.
+        Used only for ``_track_bundle_split`` tests.
+        """
+        blocks = [
+            (
+                ref,
+                BlockMetadata(
+                    num_rows=1, size_bytes=size, input_files=None, exec_stats=None
+                ),
+            )
+            for ref, size in refs_with_sizes
+        ]
+        return self._FakeBundle(blocks)
+
+    def _real_bundle(self, ray_refs_with_sizes):
+        """Return a real RefBundle backed by actual ray.ObjectRefs."""
+        blocks = [
+            (
+                ref,
+                BlockMetadata(
+                    num_rows=1, size_bytes=size, input_files=None, exec_stats=None
+                ),
+            )
+            for ref, size in ray_refs_with_sizes
+        ]
+        return RefBundle(blocks, owns_blocks=True, schema=None)
+
+    def _make_op(self, n=2, equal=True):
+        input_op = InputDataBuffer(DataContext.get_current(), [])
+        op = OutputSplitter(
+            input_op, n=n, equal=equal, data_context=DataContext.get_current()
+        )
+        counter = BlockRefCounter()
+        op._block_ref_counter = counter
+        return op, counter
+
+    # ------------------------------------------------------------------
+    # _track_bundle_split  (no Ray required)
+    # ------------------------------------------------------------------
+
+    def test_track_bundle_split_all_pass_through(self):
+        """All refs pass through to left/right unchanged — counter is unaffected."""
+        op, counter = self._make_op()
+
+        ref1, ref2 = object(), object()
+        counter.on_block_produced(ref1, 100, op)
+        counter.on_block_produced(ref2, 200, op)
+
+        original = self._fake_bundle([(ref1, 100), (ref2, 200)])
+        # ref1 goes entirely to left, ref2 entirely to right — no block physically split.
+        left = self._fake_bundle([(ref1, 100)])
+        right = self._fake_bundle([(ref2, 200)])
+
+        op._track_bundle_split(original, left, right)
+
+        # No new refs produced, no original refs consumed.
+        assert counter.get_object_store_memory_usage(op) == 300
+
+    def test_track_bundle_split_straddle(self):
+        """A straddling block is replaced by two brand-new refs."""
+        op, counter = self._make_op()
+
+        original_ref = object()
+        counter.on_block_produced(original_ref, 300, op)
+
+        original = self._fake_bundle([(original_ref, 300)])
+        # _split_block() produced two new ObjectRefs.
+        new_left, new_right = object(), object()
+        left = self._fake_bundle([(new_left, 120)])
+        right = self._fake_bundle([(new_right, 180)])
+
+        op._track_bundle_split(original, left, right)
+
+        # original_ref consumed; new_left (120) and new_right (180) registered.
+        assert counter.get_object_store_memory_usage(op) == 300
+
+    def test_track_bundle_split_mixed(self):
+        """One pass-through block and one straddling block in the same bundle."""
+        op, counter = self._make_op()
+
+        pass_ref = object()
+        straddle_ref = object()
+        counter.on_block_produced(pass_ref, 100, op)
+        counter.on_block_produced(straddle_ref, 200, op)
+
+        original = self._fake_bundle([(pass_ref, 100), (straddle_ref, 200)])
+        # pass_ref goes intact to left; straddle_ref is physically split.
+        new_left, new_right = object(), object()
+        left = self._fake_bundle([(pass_ref, 100), (new_left, 80)])
+        right = self._fake_bundle([(new_right, 120)])
+
+        op._track_bundle_split(original, left, right)
+
+        # straddle_ref (200) untracked; new_left (80) + new_right (120) registered;
+        # pass_ref (100) unchanged.
+        assert counter.get_object_store_memory_usage(op) == 300
+
+    # ------------------------------------------------------------------
+    # all_inputs_done truncation  (requires Ray for real ObjectRefs)
+    # ------------------------------------------------------------------
+
+    def test_all_inputs_done_truncates_remainder_blocks(self, ray_start_regular_shared):
+        """Blocks discarded by equal-split truncation are untracked from the counter.
+
+        With n=2, equal=True, and 3 single-row bundles:
+          allocation = [0, 0] (num_output starts at 0)
+          remainder  = 3 - 0 = 3
+          x          = 3 // 2 = 1   → allocation = [1, 1]
+
+        Two bundles are dispatched to the output queue; the third is truncated
+        and must be untracked from the counter.
+        """
+        op, counter = self._make_op(n=2, equal=True)
+
+        # Real ObjectRefs — content is irrelevant, we only use them as dict keys.
+        ref1, ref2, ref3 = ray.put(None), ray.put(None), ray.put(None)
+        counter.on_block_produced(ref1, 100, op)
+        counter.on_block_produced(ref2, 200, op)
+        counter.on_block_produced(ref3, 300, op)
+
+        b1 = self._real_bundle([(ref1, 100)])
+        b2 = self._real_bundle([(ref2, 200)])
+        b3 = self._real_bundle([(ref3, 300)])
+
+        # Populate the buffer directly, bypassing add_input metric tracking.
+        op._buffer.add(b1)
+        op._buffer.add(b2)
+        op._buffer.add(b3)
+
+        # Mock metrics so the dequeue/enqueue callbacks don't crash.
+        op._metrics = MagicMock()
+
+        op.all_inputs_done()
+
+        # b3 (ref3=300) was truncated and must be untracked.
+        # b1 (ref1=100) and b2 (ref2=200) remain live in the output queue.
+        assert counter.get_object_store_memory_usage(op) == 300
 
 
 if __name__ == "__main__":

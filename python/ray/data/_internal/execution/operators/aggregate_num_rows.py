@@ -47,6 +47,7 @@ class AggregateNumRows(PhysicalOperator):
         schema = BlockAccessor.for_block(block).schema()
         bundle = RefBundle([(block_ref, metadata)], owns_blocks=True, schema=schema)
 
+        self._track_bundle_produced(bundle)
         self._has_outputted = True
         return bundle
 
@@ -56,6 +57,8 @@ class AggregateNumRows(PhysicalOperator):
     def _add_input_inner(self, refs, input_index) -> None:
         assert refs.num_rows() is not None
         self._num_rows += refs.num_rows()
+        # Blocks are consumed in-place (no downstream task); untrack immediately.
+        self._track_bundle_consumed(refs)
 
     def throttling_disabled(self) -> bool:
         return True
