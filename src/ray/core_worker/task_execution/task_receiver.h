@@ -68,6 +68,16 @@ class TaskReceiver {
         pool_manager_(std::make_shared<ConcurrencyGroupManager<BoundedExecutor>>()),
         fiber_state_manager_(nullptr) {}
 
+  /// Issue an async args-fetch IPC to the raylet for an actor task's
+  /// dependencies, if any. Intended to be called on the gRPC handler thread
+  /// before posting `QueueTaskForExecution` to the task execution service, so
+  /// the IPC is not blocked behind in-progress task execution.
+  ///
+  /// \param[in] request The PushTaskRequest. Read-only access to the args.
+  /// \return The tag returned by `ActorTaskExecutionArgWaiter::BeginArgsFetch`,
+  ///   or -1 if the request has no dependencies (no IPC issued).
+  int64_t BeginActorTaskArgsFetch(const rpc::PushTaskRequest &request);
+
   /// Enqueue a task for execution that was received via `PushTask`.
   ///
   /// For actor tasks: the task will be enqueued and requests will be scheduled to begin
@@ -79,9 +89,13 @@ class TaskReceiver {
   /// \param[in] request The request message.
   /// \param[out] reply The reply message.
   /// \param[in] send_reply_callback The reply callback.
+  /// \param[in] arg_fetch_tag For actor tasks, the tag returned by
+  ///   `BeginActorTaskArgsFetch`. -1 for non-actor tasks or actor tasks with
+  ///   no dependencies.
   void QueueTaskForExecution(rpc::PushTaskRequest request,
                              rpc::PushTaskReply *reply,
-                             rpc::SendReplyCallback send_reply_callback);
+                             rpc::SendReplyCallback send_reply_callback,
+                             int64_t arg_fetch_tag = -1);
 
   /// Execute as many tasks from the queue as are available.
   void ExecuteQueuedNormalTasks();

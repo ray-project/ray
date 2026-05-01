@@ -60,7 +60,7 @@ void UnorderedActorTaskExecutionQueue::CancelAllQueuedTasks(const std::string &m
 
   while (!queued_actor_tasks_.empty()) {
     auto it = queued_actor_tasks_.begin();
-    it->second.Cancel(status);
+    it->second.task.Cancel(status);
     pending_task_id_to_is_canceled.erase(it->first);
     queued_actor_tasks_.erase(it);
   }
@@ -79,7 +79,8 @@ void UnorderedActorTaskExecutionQueue::Stop() {
 
 void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
                                                    int64_t client_processed_up_to,
-                                                   TaskToExecute task) {
+                                                   TaskToExecute task,
+                                                   int64_t arg_fetch_tag) {
   // Add and execute a task. For different attempts of the same
   // task id, if an attempt is running, the other attempt will
   // wait until the first attempt finishes so that no more
@@ -88,6 +89,10 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   // task concurrently is that it's not safe to assume user's
   // code can handle concurrent execution of the same actor method.
   RAY_CHECK(std::this_thread::get_id() == main_thread_id_);
+  // Invariant mirrors OrderedActorTaskExecutionQueue: a tag is reserved exactly
+  // when there were dependencies to fetch.
+  RAY_CHECK_EQ(arg_fetch_tag != -1, !task.PendingDependencies().empty())
+      << "arg_fetch_tag must be -1 iff the task has no dependencies";
   TaskID task_id = task.TaskID();
   bool run_task = true;
   std::optional<TaskToExecute> task_to_cancel;
@@ -102,16 +107,20 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
       if (it != queued_actor_tasks_.end()) {
         // There is already an attempt of the same task queued,
         // keep the one with larger attempt number and cancel the other one.
-        RAY_CHECK_NE(it->second.AttemptNumber(), task.AttemptNumber());
-        if (it->second.AttemptNumber() > task.AttemptNumber()) {
+        RAY_CHECK_NE(it->second.task.AttemptNumber(), task.AttemptNumber());
+        if (it->second.task.AttemptNumber() > task.AttemptNumber()) {
           // This can happen if the PushTaskRequest arrives out of order.
+          // TODO(karticam): The IPC for 'arg_fetch_tag' is in flight; its eventual
+          // MarkReady will be stored in the waiter, but will never be consumed.
+          // Fix the small memory leak.
           task_to_cancel = std::move(task);
         } else {
-          task_to_cancel = std::move(it->second);
-          queued_actor_tasks_.insert_or_assign(task_id, std::move(task));
+          task_to_cancel = std::move(it->second.task);
+          queued_actor_tasks_.insert_or_assign(
+              task_id, QueuedTask{std::move(task), arg_fetch_tag});
         }
       } else {
-        queued_actor_tasks_.emplace(task_id, std::move(task));
+        queued_actor_tasks_.emplace(task_id, QueuedTask{std::move(task), arg_fetch_tag});
       }
     } else {
       pending_task_id_to_is_canceled.emplace(task_id, false);
@@ -120,7 +129,7 @@ void UnorderedActorTaskExecutionQueue::EnqueueTask(int64_t seq_no,
   }
 
   if (run_task) {
-    RunRequest(std::move(task));
+    RunRequest(std::move(task), arg_fetch_tag);
   }
 
   if (task_to_cancel.has_value()) {
@@ -167,9 +176,13 @@ void UnorderedActorTaskExecutionQueue::RunRequestWithResolvedDependencies(
   }
 }
 
-void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
+void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request,
+                                                  int64_t arg_fetch_tag) {
   const TaskSpecification &task_spec = request.TaskSpec();
-  if (!request.PendingDependencies().empty()) {
+  // Same invariant as in EnqueueTask: a tag is reserved iff there were deps.
+  RAY_CHECK_EQ(arg_fetch_tag != -1, !request.PendingDependencies().empty())
+      << "arg_fetch_tag must be -1 iff the task has no dependencies";
+  if (arg_fetch_tag != -1) {
     RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
         task_spec.TaskId(),
         task_spec.JobId(),
@@ -177,9 +190,7 @@ void UnorderedActorTaskExecutionQueue::RunRequest(TaskToExecute request) {
         task_spec,
         rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
         /* include_task_info */ false));
-    // Make a copy since request is going to be moved.
-    auto dependencies = request.PendingDependencies();
-    waiter_.AsyncWait(dependencies, [this, request = std::move(request)]() mutable {
+    waiter_.OnArgsReady(arg_fetch_tag, [this, request = std::move(request)]() mutable {
       RAY_CHECK_EQ(std::this_thread::get_id(), main_thread_id_);
 
       const TaskSpecification &task = request.TaskSpec();
@@ -226,7 +237,7 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
     request.Execute();
   }
 
-  std::optional<TaskToExecute> request_to_run;
+  std::optional<QueuedTask> request_to_run;
   {
     absl::MutexLock lock(&mu_);
     auto it = queued_actor_tasks_.find(task_id);
@@ -240,8 +251,8 @@ void UnorderedActorTaskExecutionQueue::AcceptRequestOrRejectIfCanceled(
 
   if (request_to_run.has_value()) {
     task_execution_service_.post(
-        [this, request = std::move(*request_to_run)]() mutable {
-          RunRequest(std::move(request));
+        [this, queued = std::move(*request_to_run)]() mutable {
+          RunRequest(std::move(queued.task), queued.arg_fetch_tag);
         },
         "UnorderedActorTaskExecutionQueue.RunRequest");
   }
