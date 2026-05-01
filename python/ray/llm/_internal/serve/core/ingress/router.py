@@ -9,7 +9,7 @@ distinct from Serve's per-deployment request router.
 import asyncio
 from typing import Dict, List
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 
 from ray import serve
@@ -46,7 +46,6 @@ class LLMRouter:
             )
         else:
             get_or_create_event_loop().create_task(self._setup(llm_deployments or []))
-        get_or_create_event_loop().create_task(self._install_route_middleware())
 
     async def _setup_by_names(self, names, configs_pre):
         from ray import serve as _serve
@@ -70,42 +69,12 @@ class LLMRouter:
             self._default_serve_handles[cfg.model_id] = handle
         self._init_completed.set()
 
-    async def _install_route_middleware(self):
-        while not hasattr(self, "_asgi_app"):
-            await asyncio.sleep(0.01)
-
-        original_app = self._asgi_app
-        router_self = self
-
-        async def route_middleware(scope, receive, send):
-            if (
-                scope["type"] == "http"
-                and scope.get("method") == "POST"
-                and scope.get("path") == "/internal/route"
-            ):
-                await router_self._handle_route_raw(scope, receive, send)
-                return
-            await original_app(scope, receive, send)
-
-        self._asgi_app = route_middleware
-        logger.info("LLMRouter route middleware installed")
-
-    async def _handle_route_raw(self, scope, receive, send):
-        import orjson
-
-        body_parts = []
-        while True:
-            message = await receive()
-            body_parts.append(message.get("body", b""))
-            if not message.get("more_body", False):
-                break
-        body_bytes = b"".join(body_parts)
-
+    @ingress_request_router_app.post("/internal/route")
+    async def route(self, request: Request):
         try:
-            parsed = orjson.loads(body_bytes)
+            parsed = await request.json()
         except Exception:
-            await self._send_json(send, {"error": "invalid json"}, 400)
-            return
+            return JSONResponse({"error": "invalid json"}, status_code=400)
 
         default_model_id = (
             next(iter(self._llm_configs.keys())) if self._llm_configs else None
@@ -118,32 +87,14 @@ class LLMRouter:
         model_id = model or default_model_id
 
         if model_id is None:
-            await self._send_json(send, {"error": "no model"}, 404)
-            return
+            return JSONResponse({"error": "no model"}, status_code=404)
 
         try:
             replica_id = await self._pick_replica(model_id)
         except Exception as e:
-            await self._send_json(send, {"error": str(e)}, 503)
-            return
+            return JSONResponse({"error": str(e)}, status_code=503)
 
-        await self._send_json(send, {"replica_id": replica_id}, 200)
-
-    async def _send_json(self, send, data, status):
-        import orjson
-
-        body = orjson.dumps(data)
-        await send(
-            {
-                "type": "http.response.start",
-                "status": status,
-                "headers": [
-                    [b"content-type", b"application/json"],
-                    [b"content-length", str(len(body)).encode()],
-                ],
-            }
-        )
-        await send({"type": "http.response.body", "body": body})
+        return JSONResponse({"replica_id": replica_id})
 
     async def _setup(self, llm_deployments: List[DeploymentHandle]):
         for handle in llm_deployments:

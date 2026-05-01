@@ -20,7 +20,6 @@ from ray.llm._internal.serve.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
-    RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -196,36 +195,26 @@ class LLMServer(LLMServerProtocol):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
-        if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
-            await self._register_direct_ingress_app()
+    async def __serve_build_asgi_app__(self):
+        """Build the vLLM FastAPI app after async engine startup completes."""
+        from vllm.entrypoints.openai.api_server import build_app, init_app_state
 
-    async def _register_direct_ingress_app(self):
-        """Build vLLM's FastAPI app and set it as the ASGI app for this replica."""
-        try:
-            from vllm.entrypoints.openai.api_server import build_app, init_app_state
+        engine = self.engine
+        args = engine._vllm_args
+        supported_tasks = ("generate",)
+        if hasattr(engine._engine_client, "get_supported_tasks"):
+            supported_tasks = await engine._engine_client.get_supported_tasks()
 
-            engine = self.engine
-            args = engine._vllm_args
-            supported_tasks = ("generate",)
-            if hasattr(engine._engine_client, "get_supported_tasks"):
-                supported_tasks = await engine._engine_client.get_supported_tasks()
+        app = build_app(args, supported_tasks=supported_tasks)
+        await init_app_state(
+            engine._engine_client,
+            app.state,
+            args,
+            supported_tasks=supported_tasks,
+        )
 
-            app = build_app(args, supported_tasks=supported_tasks)
-            await init_app_state(
-                engine._engine_client,
-                app.state,
-                args,
-                supported_tasks=supported_tasks,
-            )
-
-            self._asgi_app = app
-            logger.info("Registered vLLM FastAPI app for direct ingress serving")
-        except Exception:
-            logger.warning(
-                "Failed to register vLLM FastAPI app for direct ingress. "
-                "Direct ingress will use the default Serve ASGI wrapper.",
-                exc_info=True,
-            )
+        logger.info("Built vLLM FastAPI app for direct ingress serving")
+        return app
 
     def _init_multiplex_loader(
         self, model_downloader_cls: Optional[Type[LoraModelLoader]] = None

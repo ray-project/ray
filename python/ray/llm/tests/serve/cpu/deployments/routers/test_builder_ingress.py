@@ -21,6 +21,7 @@ from ray.llm._internal.serve.core.ingress.builder import (
     build_openai_app,
 )
 from ray.llm._internal.serve.core.ingress.ingress import OpenAiIngress
+from ray.serve._private.http_util import ASGIAppReplicaWrapper
 from ray.serve.config import AutoscalingConfig
 
 
@@ -384,6 +385,7 @@ class TestBuildOpenaiApp:
         ingress_request_router = app._ingress_request_router
 
         assert app._bound_deployment.name == "LLMServer:test-model"
+        assert issubclass(app._bound_deployment.func_or_class, ASGIAppReplicaWrapper)
         assert ingress_request_router is not None
         assert ingress_request_router._bound_deployment.name == "LLMRouter"
         assert ingress_request_router._bound_deployment.init_kwargs[

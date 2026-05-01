@@ -187,6 +187,8 @@ from ray.util import metrics as ray_metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+SERVE_BUILD_ASGI_APP_METHOD = "__serve_build_asgi_app__"
+
 
 def _wrap_grpc_call(f):
     """Decorator that processes grpc methods."""
@@ -2526,10 +2528,7 @@ class Replica:
             )
             return
 
-        custom_app = getattr(
-            self._user_callable_wrapper.user_callable, "_asgi_app", None
-        )
-        if custom_app is not None:
+        if self._user_callable_asgi_app is not None:
             req_meta = RequestMetadata(
                 request_id=generate_request_id(),
                 internal_request_id=generate_request_id(),
@@ -2543,7 +2542,7 @@ class Replica:
             )
             self._metrics_manager.inc_num_ongoing_requests(req_meta)
             try:
-                await custom_app(scope, receive, send)
+                await self._user_callable_asgi_app(scope, receive, send)
             finally:
                 self._metrics_manager.dec_num_ongoing_requests(req_meta)
             return
@@ -3227,6 +3226,18 @@ class UserCallableWrapper:
 
     async def _initialize_asgi_callable(self) -> None:
         self._callable: ASGIAppReplicaWrapper
+
+        build_asgi_app = getattr(self._callable, SERVE_BUILD_ASGI_APP_METHOD, None)
+        if build_asgi_app is not None:
+            app, _ = await self._call_func_or_gen(
+                build_asgi_app,
+                run_sync_methods_in_threadpool_override=False,
+            )
+            if app is None:
+                raise TypeError(
+                    f"`{SERVE_BUILD_ASGI_APP_METHOD}` must return an ASGI app."
+                )
+            self._callable._set_asgi_app(app)
 
         app: Starlette = self._callable.app
 

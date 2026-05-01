@@ -2,6 +2,7 @@ import os
 import pprint
 from typing import Any, Dict, List, Optional, Type, Union
 
+from fastapi import FastAPI
 from pydantic import Field, field_validator, model_validator
 
 from ray import serve
@@ -19,6 +20,7 @@ from ray.llm._internal.serve.core.ingress.ingress import (
 from ray.llm._internal.serve.core.server.builder import (
     build_llm_deployment,
 )
+from ray.llm._internal.serve.core.server.llm_server import LLMServer
 from ray.llm._internal.serve.observability.logging import get_logger
 from ray.serve.deployment import Application
 
@@ -40,6 +42,22 @@ def _validate_direct_streaming_llm_configs(llm_configs: List[LLMConfig]) -> None
         )
 
 
+def _build_direct_streaming_llm_deployments(
+    llm_configs: List[LLMConfig],
+) -> List[Application]:
+    """Build LLMServer deployments with late-bound ASGI ingress enabled."""
+    deployments = []
+    for llm_config in llm_configs:
+        server_cls = llm_config.server_cls or LLMServer
+        deployments.append(
+            build_llm_deployment(
+                llm_config,
+                deployment_cls=serve.ingress(FastAPI())(server_cls),
+            )
+        )
+    return deployments
+
+
 def build_openai_ingress_request_router(builder_config: dict) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
@@ -49,7 +67,7 @@ def build_openai_ingress_request_router(builder_config: dict) -> Application:
     builder_config = LLMServingArgs.model_validate(builder_config)
     llm_configs = builder_config.llm_configs
     _validate_direct_streaming_llm_configs(llm_configs)
-    llm_deployments = [build_llm_deployment(c) for c in llm_configs]
+    llm_deployments = _build_direct_streaming_llm_deployments(llm_configs)
 
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
 
@@ -166,7 +184,11 @@ def build_openai_app(builder_config: dict) -> Application:
     builder_config = LLMServingArgs.model_validate(builder_config)
     llm_configs = builder_config.llm_configs
 
-    llm_deployments = [build_llm_deployment(c) for c in llm_configs]
+    if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        _validate_direct_streaming_llm_configs(llm_configs)
+        llm_deployments = _build_direct_streaming_llm_deployments(llm_configs)
+    else:
+        llm_deployments = [build_llm_deployment(c) for c in llm_configs]
 
     ingress_cls_config = builder_config.ingress_cls_config
     default_ingress_options = ingress_cls_config.ingress_cls.get_deployment_options(
@@ -186,7 +208,6 @@ def build_openai_app(builder_config: dict) -> Application:
     # app. Attach LLMRouter to that app so imperative and declarative deploys
     # consume the same composed Application.
     if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
-        _validate_direct_streaming_llm_configs(llm_configs)
         logger.info(
             "Direct streaming enabled: "
             "LLMServer=ingress, LLMRouter=ingress_request_router"
