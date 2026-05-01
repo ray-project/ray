@@ -13,7 +13,7 @@ google-cloud-bigquery-storage
 google-api-core
 webdataset
 raydp==1.7.0b20250423.dev0
-pylance==1.0.3
+pylance
 delta-sharing
 deltalake==1.5.0
 pytest-mock
@@ -26,3 +26,13 @@ pybase64
 hudi==0.4.0
 datasketches
 testcontainers[kafka]
+pyarrow
+torch
+tensorflow
+jax
+jaxlib
+tensorflow-datasets
+tensorflow-metadata>=1.17.0
+tf-keras
+torchvision==0.22.0
+confluent-kafka
