@@ -356,7 +356,14 @@ class ReadFiles(
         return isinstance(self.scanner, SupportsColumnPruning)
 
     def get_projection_map(self) -> Optional[Dict[str, str]]:
-        columns = getattr(self.scanner, "columns", None)
+        if not self.supports_projection_pushdown():
+            return None
+        from ray.data._internal.datasource_v2.logical_optimizers import (
+            SupportsColumnPruning,
+        )
+
+        assert isinstance(self.scanner, SupportsColumnPruning)
+        columns = self.scanner.pruned_column_names()
         if columns is None:
             return None
         renames = self.column_renames or {}
