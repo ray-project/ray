@@ -71,11 +71,15 @@ MemoryMonitorUtils::TakeUserSliceSystemMemorySnapshot(
       user_cgroup_memory_snapshot_or.value();
   CgroupMemorySnapshot system_cgroup_memory_snapshot =
       system_cgroup_memory_snapshot_or.value();
+  // We appoximate actual user application memory usage with user slice anon bytes
+  // for approximating heap usage and the sum of user and system cgroup shmem bytes
+  // for approximating object store usage since shared memory accounting between
+  // the system and user slice is in-determinant per:
+  // https://docs.kernel.org/admin-guide/cgroup-v2.html#memory-ownership
   int64_t total_used_bytes = user_cgroup_memory_snapshot.anon_memory_bytes +
                              user_cgroup_memory_snapshot.shmem_memory_bytes +
                              system_cgroup_memory_snapshot.shmem_memory_bytes;
   auto [_, host_level_total_bytes] = GetLinuxMemoryBytes(proc_dir);
-  RAY_LOG(INFO) << absl::StrFormat("host level total bytes: %d", host_level_total_bytes);
   return SystemMemorySnapshot{total_used_bytes, host_level_total_bytes};
 }
 
@@ -108,8 +112,8 @@ MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path
     if (!anon_found || !shmem_found) {
       return StatusT::NotFound(
           absl::StrFormat("Failed to read memory stat for cgroup %s. "
-                          "Please ensure a valid cgroupv2 path is provided "
-                          "and cgroupv2 is active.",
+                          "Is the provided cgroupv2 path valid "
+                          "and cgroupv2 active?",
                           root_cgroup_path));
     }
     return snapshot;
@@ -117,8 +121,8 @@ MemoryMonitorUtils::TakeCgroupMemorySnapshot(const std::string &root_cgroup_path
 
   return StatusT::NotFound(
       absl::StrFormat("Failed to open memory stat file on path: %s. "
-                      "Please ensure a valid cgroupv2 path is provided "
-                      "and cgroupv2 is active.",
+                      "Is the provided cgroupv2 path valid "
+                      "and cgroupv2 active?",
                       v2_stat_path));
 }
 
