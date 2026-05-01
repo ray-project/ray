@@ -167,7 +167,9 @@ class ZarrV2Datasource(Datasource):
                     raise ValueError("chunk shape must only contain positive integers.")
 
         self.paths = [str(path)]
-        self.chunk_shape = tuple(chunk_shape) if chunk_shape else chunk_shape
+        self.chunk_shape: tuple[int, ...] | None = (
+            tuple(chunk_shape) if chunk_shape is not None else None
+        )
         self._metadata = self._load_consolidated_metadata()
         self._selected_arrays = self._select_array_metadata(array_paths)
         self._grid_shape_dict = self._gen_grid_shape()
@@ -231,8 +233,8 @@ class ZarrV2Datasource(Datasource):
     def _gen_grid_shape(self) -> dict[str, ZarrGridData]:
         grid_shape_dict: dict[str, ZarrGridData] = {}
         for array, meta in self._selected_arrays.items():
-            shape = tuple(meta["shape"])
-            chunk_shape = tuple(meta["chunks"])
+            shape = meta["shape"]
+            chunk_shape = meta["chunks"]
             if self.chunk_shape:
                 chunk_shape = self.chunk_shape
                 meta["chunks"] = chunk_shape
