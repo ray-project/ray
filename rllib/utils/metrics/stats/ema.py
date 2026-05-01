@@ -216,8 +216,6 @@ class EmaStats(StatsBase):
         if torch and isinstance(value, torch.Tensor):
             value = single_value_to_cpu(value)
 
-        self._value = np.nan
-
         if compile:
             return value
 
