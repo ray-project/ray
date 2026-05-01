@@ -2036,7 +2036,39 @@ class Replica:
 
         grpc_enabled = self._ingress and is_grpc_enabled(self._grpc_options)
 
-        # Allocate and start HTTP server
+        # Allocate and start HTTP server. If the user callable provided a
+        # late-bound ASGI app, serve it directly on the backend HTTP port.
+        # This keeps the LLM direct-streaming path equivalent to the earlier
+        # custom-ASGI path while still updating Serve's ongoing-request count
+        # for load-aware routing.
+        asgi_app_to_serve = self._direct_ingress_asgi
+        if self._user_callable_asgi_app is not None:
+            inner_app = self._user_callable_asgi_app
+            metrics_manager = self._metrics_manager
+            request_metadata = RequestMetadata(
+                request_id="",
+                internal_request_id="",
+                call_method="__call__",
+                route=self._route_prefix,
+                app_name=self._deployment_id.app_name,
+                multiplexed_model_id="",
+                is_streaming=True,
+                _request_protocol=RequestProtocol.HTTP,
+                is_direct_ingress=True,
+            )
+
+            async def count_ongoing_requests(scope, receive, send):
+                if scope["type"] == "http":
+                    metrics_manager.inc_num_ongoing_requests(request_metadata)
+                    try:
+                        await inner_app(scope, receive, send)
+                    finally:
+                        metrics_manager.dec_num_ongoing_requests(request_metadata)
+                else:
+                    await inner_app(scope, receive, send)
+
+            asgi_app_to_serve = count_ongoing_requests
+
         async def start_http_server(port):
             options = configure_http_middlewares(
                 configure_http_options_with_defaults(
@@ -2045,7 +2077,7 @@ class Replica:
             )
 
             return await start_asgi_http_server(
-                self._direct_ingress_asgi,
+                asgi_app_to_serve,
                 options,
                 event_loop=self._event_loop,
                 enable_so_reuseport=False,
@@ -3239,17 +3271,19 @@ class UserCallableWrapper:
                 )
             self._callable._set_asgi_app(app)
 
-        app: Starlette = self._callable.app
+        app: ASGIApp = self._callable.app
 
-        # The reason we need to do this is because BackPressureError is a serve internal exception
-        # and FastAPI doesn't know how to handle it, so it treats it as a 500 error.
-        # With same reasoning, we are not handling TimeoutError because it's a generic exception
-        # the FastAPI knows how to handle. See https://www.starlette.io/exceptions/
-        def handle_exception(_: Request, exc: Exception):
-            return self.handle_exception(exc)
+        if hasattr(app, "add_exception_handler"):
+            # The reason we need to do this is because BackPressureError is a serve
+            # internal exception and FastAPI doesn't know how to handle it, so it
+            # treats it as a 500 error. With same reasoning, we are not handling
+            # TimeoutError because it's a generic exception the FastAPI knows how
+            # to handle. See https://www.starlette.io/exceptions/
+            def handle_exception(_: Request, exc: Exception):
+                return self.handle_exception(exc)
 
-        for exc in self.service_unavailable_exceptions:
-            app.add_exception_handler(exc, handle_exception)
+            for exc in self.service_unavailable_exceptions:
+                app.add_exception_handler(exc, handle_exception)
 
         await self._callable._run_asgi_lifespan_startup()
 
