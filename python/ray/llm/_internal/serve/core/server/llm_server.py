@@ -20,6 +20,7 @@ from ray.llm._internal.serve.constants import (
     ENABLE_WORKER_PROCESS_SETUP_HOOK,
     ENGINE_START_TIMEOUT_S,
     MODEL_RESPONSE_BATCH_TIMEOUT_MS,
+    RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING,
     RAYLLM_VLLM_ENGINE_CLS_ENV,
 )
 from ray.llm._internal.serve.core.configs.llm_config import (
@@ -195,7 +196,8 @@ class LLMServer(LLMServerProtocol):
             self.engine = self._engine_cls(self._llm_config)
             await asyncio.wait_for(self._start_engine(), timeout=ENGINE_START_TIMEOUT_S)
 
-        await self._register_direct_ingress_app()
+        if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+            await self._register_direct_ingress_app()
 
     async def _register_direct_ingress_app(self):
         """Build vLLM's FastAPI app and set it as the ASGI app for this replica."""

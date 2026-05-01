@@ -50,6 +50,7 @@ class LLMRouter:
 
     async def _setup_by_names(self, names, configs_pre):
         from ray import serve as _serve
+
         # Pre-fill configs from build-time data so we can answer routing decisions
         # before the LLMServer replica is actually up.
         for cfg in configs_pre:
@@ -63,10 +64,11 @@ class LLMRouter:
                 except Exception:
                     await asyncio.sleep(0.1)
             else:
-                raise RuntimeError(f"LLMServer deployment {name} did not register in time")
+                raise RuntimeError(
+                    f"LLMServer deployment {name} did not register in time"
+                )
             self._default_serve_handles[cfg.model_id] = handle
         self._init_completed.set()
-
 
     async def _install_route_middleware(self):
         while not hasattr(self, "_asgi_app"):
@@ -156,6 +158,8 @@ class LLMRouter:
     @ingress_request_router_app.get("/")
     @ingress_request_router_app.get("/health")
     async def health(self):
+        if not self._init_completed.is_set():
+            return JSONResponse({"status": "initializing"}, status_code=503)
         return JSONResponse({"status": "ok"})
 
     async def _pick_replica(self, model_id: str) -> str:

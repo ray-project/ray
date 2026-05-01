@@ -29,6 +29,17 @@ def _get_llm_deployment_names(llm_deployments: List[Application]) -> List[str]:
     return [app._bound_deployment.name for app in llm_deployments]
 
 
+def _validate_direct_streaming_llm_configs(llm_configs: List[LLMConfig]) -> None:
+    """Validate temporary direct-streaming app-shape constraints."""
+    if len(llm_configs) > 1:
+        raise ValueError(
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING currently supports exactly one "
+            "LLM config. Multi-model direct streaming requires composing multiple "
+            "LLMServer deployments into the main application graph, which is not "
+            "supported yet."
+        )
+
+
 def build_openai_ingress_request_router(builder_config: dict) -> Application:
     """Build the ingress request router peer for OpenAI compatible LLM apps.
 
@@ -37,6 +48,7 @@ def build_openai_ingress_request_router(builder_config: dict) -> Application:
     """
     builder_config = LLMServingArgs.model_validate(builder_config)
     llm_configs = builder_config.llm_configs
+    _validate_direct_streaming_llm_configs(llm_configs)
     llm_deployments = [build_llm_deployment(c) for c in llm_configs]
 
     from ray.llm._internal.serve.core.ingress.router import LLMRouter
@@ -174,6 +186,7 @@ def build_openai_app(builder_config: dict) -> Application:
     # app. Attach LLMRouter to that app so imperative and declarative deploys
     # consume the same composed Application.
     if RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING:
+        _validate_direct_streaming_llm_configs(llm_configs)
         logger.info(
             "Direct streaming enabled: "
             "LLMServer=ingress, LLMRouter=ingress_request_router"

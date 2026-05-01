@@ -390,6 +390,24 @@ class TestBuildOpenaiApp:
             "llm_deployment_names"
         ] == ["LLMServer:test-model"]
 
+    def test_direct_streaming_rejects_multiple_llm_configs(
+        self, llm_config, disable_placement_bundles, monkeypatch
+    ):
+        monkeypatch.setattr(
+            "ray.llm._internal.serve.core.ingress.builder."
+            "RAY_SERVE_LLM_ENABLE_DIRECT_STREAMING",
+            True,
+        )
+        other_llm_config = LLMConfig(
+            model_loading_config=ModelLoadingConfig(model_id="other-model")
+        )
+
+        with pytest.raises(
+            ValueError,
+            match="currently supports exactly one LLM config",
+        ):
+            build_openai_app(LLMServingArgs(llm_configs=[llm_config, other_llm_config]))
+
 
 class TestIngressScaleToZero:
     """Tests for ingress scale-to-zero behavior when all models have min_replicas=0."""
