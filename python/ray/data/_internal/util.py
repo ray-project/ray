@@ -1557,7 +1557,7 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            error_str = str(e) + (f" {e.__cause__}" if e.__cause__ is not None else "")
+            error_str = f"{e} {e.__cause__}" if e.__cause__ else str(e)
             is_retryable = match is None or any(
                 pattern in error_str for pattern in match
             )
