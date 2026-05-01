@@ -1,6 +1,7 @@
 torch
-pytest
 torchvision
+pytest
+pytest-asyncio
 openai
 google-api-python-client
 transformers
