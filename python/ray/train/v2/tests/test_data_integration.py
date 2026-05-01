@@ -26,6 +26,7 @@ from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.tests.util import (
     DummyObjectRefWrapper,
     DummyWorkerGroup,
+    MockReplicaGroupBackendConfig,
     create_dummy_run_context,
 )
 
@@ -57,7 +58,7 @@ def test_dataset_sharding_across_workers(ray_start_4_cpus, num_workers):
 
 @pytest.mark.parametrize("datasets_to_split", ["all", ["train"], []])
 def test_multiple_datasets(ray_start_4_cpus, datasets_to_split):
-    """Tests that the dataset is sharded across a variety of num_workers."""
+    """Tests that multiple datasets can be sharded across workers."""
     NUM_ROWS = 1000
     NUM_WORKERS = 2
 
@@ -125,9 +126,11 @@ def test_datasets_callback(ray_start_4_cpus):
         train_run_context=train_run_context,
         datasets={"train": train_ds, "valid": valid_ds},
     )
-    dataset_manager_for_each_worker = callback.before_init_train_context(
-        worker_group.get_workers()
-    )["dataset_shard_provider"]
+    dataset_manager_for_each_worker = (
+        callback.before_init_train_context_on_worker_group(worker_group.get_workers())[
+            "dataset_shard_provider"
+        ]
+    )
     assert len(dataset_manager_for_each_worker) == NUM_WORKERS
 
     dataset_manager = dataset_manager_for_each_worker[0]
@@ -206,6 +209,7 @@ def test_configure_locality(enable_shard_locality):
         world_size,
         equal=True,
         locality_hints=worker_node_ids if enable_shard_locality else None,
+        enable_2pc_batch_consumption_tracking=False,
     )
 
 
@@ -652,9 +656,11 @@ def test_datasets_callback_v1_uses_exclude_resources(ray_start_4_cpus, monkeypat
         train_run_context=train_run_context,
         datasets={"train": train_ds, "valid": valid_ds},
     )
-    dataset_manager_for_each_worker = callback.before_init_train_context(
-        worker_group.get_workers()
-    )["dataset_shard_provider"]
+    dataset_manager_for_each_worker = (
+        callback.before_init_train_context_on_worker_group(worker_group.get_workers())[
+            "dataset_shard_provider"
+        ]
+    )
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
@@ -714,9 +720,11 @@ def test_v2_no_negative_exclude_resources(ray_start_4_cpus):
         train_run_context=train_run_context,
         datasets={"train": train_ds, "valid": valid_ds},
     )
-    dataset_manager_for_each_worker = callback.before_init_train_context(
-        worker_group.get_workers()
-    )["dataset_shard_provider"]
+    dataset_manager_for_each_worker = (
+        callback.before_init_train_context_on_worker_group(worker_group.get_workers())[
+            "dataset_shard_provider"
+        ]
+    )
 
     dataset_manager = dataset_manager_for_each_worker[0]
     processed_train_ds = dataset_manager.get_dataset_shard(
@@ -826,6 +834,84 @@ def test_fixed_scaling_policy_coordinator_lifecycle():
         mock_coordinator.cancel_request.remote.assert_called_once_with(
             requester_id="train-test-run-123",
         )
+
+
+def test_shard_provider_reused_across_replica_group_replacement(ray_start_4_cpus):
+    """When a replica group is replaced (torchft-style), the replacement worker
+    resumes data delivery exactly where the predecessor's last ack landed —
+    no duplicates ever reach user code (at-most-once contract).
+
+    Backed by the SplitCoordinator's 2PC reservation/ack/abort protocol:
+    each batch yielded synchronously commits its rows via coord.ack before
+    user code sees them, and DatasetsCallback.before_replica_group_shutdown
+    aborts the predecessor's outstanding reservations into a per-split
+    requeue that the replacement drains first.
+    """
+    import os
+
+    import ray
+
+    NUM_ROWS = 100
+    NUM_WORKERS = 2
+
+    @ray.remote(num_cpus=0)
+    class Collector:
+        def __init__(self):
+            self._rows = []
+
+        def add(self, worker_tag, row):
+            self._rows.append((worker_tag, row))
+
+        def get_rows(self):
+            return list(self._rows)
+
+    collector = Collector.remote()
+
+    # Default block sizes; no overrides needed. With 2PC, prefetched-but-not-
+    # yet-yielded blocks become reservations that the abort path slices into
+    # the requeue, so any layer of in-worker buffering is safe.
+    train_ds = ray.data.range(NUM_ROWS)
+
+    def train_fn():
+        worker_tag = os.getpid()
+        shard = ray.train.get_dataset_shard("train")
+        for batch in shard.iter_batches(batch_size=1):
+            row = int(batch["id"][0])
+            ray.get(collector.add.remote(worker_tag, row))
+            # Only 1 worker should see row 50 and fail once. With 2PC's
+            # sync-ack-before-yield, this row has already been committed at
+            # the coord by the time the raise fires; the replacement
+            # resumes from row 51's block onward.
+            if row == 50:
+                raise RuntimeError("Injected failure after consuming row 50.")
+
+    trainer = DataParallelTrainer(
+        train_fn,
+        datasets={"train": train_ds},
+        backend_config=MockReplicaGroupBackendConfig(),
+        scaling_config=ray.train.ScalingConfig(num_workers=NUM_WORKERS),
+        run_config=ray.train.RunConfig(
+            failure_config=ray.train.FailureConfig(max_failures=1),
+        ),
+    )
+    trainer.fit()
+
+    entries = ray.get(collector.get_rows.remote())
+    by_worker = {}
+    for worker_tag, row in entries:
+        by_worker.setdefault(worker_tag, []).append(row)
+    for tag in by_worker:
+        by_worker[tag].sort()
+    rows = sorted(r for _, r in entries)
+    attribution = "\n".join(
+        f"  worker pid={tag}: {len(rs)} rows {rs}"
+        for tag, rs in sorted(by_worker.items())
+    )
+    assert sorted(rows) == list(range(NUM_ROWS)), (
+        f"Expected all {NUM_ROWS} rows to be collected exactly once after "
+        f"replica replacement, got {len(rows)} rows: {sorted(rows)}\n"
+        f"Per-worker attribution:\n{attribution}"
+    )
 
 
 if __name__ == "__main__":
