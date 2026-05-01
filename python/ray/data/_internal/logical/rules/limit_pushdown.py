@@ -10,6 +10,7 @@ from ray.data._internal.logical.operators import (
     Download,
     Limit,
     Read,
+    ReadFiles,
     Union,
 )
 
@@ -197,6 +198,18 @@ class LimitPushdownRule(Rule):
                         per_block_limit=limit,
                         num_outputs=op.num_outputs,
                     )
+                if isinstance(op, ReadFiles):
+                    from ray.data._internal.datasource_v2.logical_optimizers import (
+                        SupportsLimitPushdown,
+                    )
+
+                    if isinstance(op.scanner, SupportsLimitPushdown):
+                        return replace(
+                            op,
+                            input_op=op.input_dependency,
+                            scanner=op.scanner.push_limit(limit),
+                        )
+                    return op
                 assert len(op.input_dependencies) == 1, len(op.input_dependencies)
                 return replace(
                     op,
