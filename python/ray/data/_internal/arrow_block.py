@@ -216,6 +216,37 @@ def _get_max_chunk_size(
         return max(1, int(max_chunk_size_bytes / avg_row_size))
 
 
+def _native_pa_ext_column_to_ndarray_list(
+    col: "pyarrow.ChunkedArray",
+) -> List[Any]:
+    """Materialize a *native* pyarrow extension column into a Python list
+    suitable for direct assignment to a pandas DataFrame.
+
+    Used by ``ArrowBlockAccessor.to_pandas()`` to bypass pyarrow's broken
+    ``split_blocks=True`` code path for native-C++ extension types (their
+    ``to_pandas_dtype()`` raises ``NotImplementedError`` and the split-
+    blocks block-builder doesn't recover, leading to a downstream
+    ``KeyError``).
+
+    For ``FixedShapeTensorType`` we use the array's own
+    ``to_numpy_ndarray()``, which preserves shape per row. For any other
+    native extension type, we fall back to converting through the storage
+    type via pandas (a path that does not go through the broken
+    ExtensionBlock reconstruction code).
+    """
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
+    if _is_native_tensor_type(col.type):
+        if col.num_chunks == 0:
+            return []
+        per_chunk = [chunk.to_numpy_ndarray() for chunk in col.chunks]
+        combined = per_chunk[0] if len(per_chunk) == 1 else np.concatenate(per_chunk)
+        return list(combined)
+
+    storage = col.cast(col.type.storage_type)
+    return list(storage.to_pandas())
+
+
 class ArrowBlockAccessor(TableBlockAccessor):
     ROW_TYPE = ArrowRow
 
@@ -299,11 +330,28 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 return None
             return pd.ArrowDtype(t)
 
+        # ``split_blocks=True`` is incompatible with pyarrow's *native* extension
+        # types (e.g. ``pa.fixed_shape_tensor``): pyarrow's C++ block converter
+        # routes those columns through its Python ExtensionBlock reconstruction
+        # path, which then KeyErrors because the type's ``to_pandas_dtype()``
+        # raises ``NotImplementedError`` and the column never gets registered
+        # in the internal extension-columns map. Ray's own extension types
+        # (which subclass ``pa.ExtensionType`` and return a real
+        # ``ExtensionDtype`` from ``to_pandas_dtype()``) are unaffected, so we
+        # only disable ``split_blocks`` when we detect a native pyarrow
+        # extension type in the schema.
+        has_native_pa_extension = any(
+            isinstance(field.type, pyarrow.BaseExtensionType)
+            and not isinstance(field.type, pyarrow.ExtensionType)
+            for field in arrow_schema
+        )
+        split_blocks = not has_native_pa_extension
+
         # Context on split_blocks and self_destruct: https://arrow.apache.org/docs/python/pandas.html#memory-usage-and-zero-copy
         # Self destruct: Goes column by column, converts and then destructs the memory held in the arrow memory pool.
         df = table.to_pandas(
             ignore_metadata=ctx.pandas_block_ignore_metadata,
-            split_blocks=True,
+            split_blocks=split_blocks,
             self_destruct=True,
             types_mapper=_types_mapper,
         )
