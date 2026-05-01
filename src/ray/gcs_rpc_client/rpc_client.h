@@ -172,8 +172,9 @@ class GcsRpcClient {
             channel_, client_call_manager, address);
     internal_kv_grpc_client_ = std::make_shared<GrpcClient<InternalKVGcsService>>(
         channel_, client_call_manager, address);
-    internal_pubsub_grpc_client_ = std::make_shared<GrpcClient<InternalPubSubGcsService>>(
-        channel_, client_call_manager, address);
+    control_plane_pubsub_grpc_client_ =
+        std::make_shared<GrpcClient<ControlPlanePubSubGcsService>>(
+            channel_, client_call_manager, address);
     task_info_grpc_client_ = std::make_shared<GrpcClient<TaskInfoGcsService>>(
         channel_, client_call_manager, address);
     ray_event_export_grpc_client_ =
@@ -513,17 +514,17 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
 
   /// Operations for pubsub
-  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+  VOID_GCS_RPC_CLIENT_METHOD(ControlPlanePubSubGcsService,
                              GcsPublish,
-                             internal_pubsub_grpc_client_,
+                             control_plane_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+  VOID_GCS_RPC_CLIENT_METHOD(ControlPlanePubSubGcsService,
                              GcsSubscriberPoll,
-                             internal_pubsub_grpc_client_,
+                             control_plane_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
-  VOID_GCS_RPC_CLIENT_METHOD(InternalPubSubGcsService,
+  VOID_GCS_RPC_CLIENT_METHOD(ControlPlanePubSubGcsService,
                              GcsSubscriberCommandBatch,
-                             internal_pubsub_grpc_client_,
+                             control_plane_pubsub_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
   /// Operations for autoscaler
@@ -610,7 +611,8 @@ class GcsRpcClient {
   std::shared_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
   std::shared_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
-  std::shared_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
+  std::shared_ptr<GrpcClient<ControlPlanePubSubGcsService>>
+      control_plane_pubsub_grpc_client_;
   std::shared_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
   std::shared_ptr<GrpcClient<RayEventExportGcsService>> ray_event_export_grpc_client_;
   std::shared_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;

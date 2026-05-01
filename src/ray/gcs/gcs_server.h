@@ -305,7 +305,7 @@ class GcsServer {
   /// Runtime env handler.
   std::unique_ptr<RuntimeEnvHandler> runtime_env_handler_;
   /// GCS PubSub handler (control-plane).
-  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
   /// Observability pubsub handler.
   std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
   /// GCS Task info manager for managing task states change events.
