@@ -243,7 +243,8 @@ class ServerConfig:
     host: str  # IP/hostname to connect to
     port: int  # Port to connect to
     real_ip: Optional[str] = None  # Original IP before localhost conversion
-    replica_id: Optional[str] = None  # Stable replica ID returned by /internal/route
+    routing_key: Optional[str] = None  # Stable custom-routing selection key
+    replica_id: Optional[str] = None
 
     def __str__(self) -> str:
         return f"ServerConfig(name='{self.name}', host='{self.host}', port={self.port})"
@@ -715,48 +716,67 @@ class HAProxyApi(ProxyApi):
 
         Per-request routing: Lua calls /internal/route on an HTTP router
         for every request, which calls choose_replicas() to pick a replica
-        and returns its replica ID. HAProxy then resolves that replica ID to
-        a concrete backend server name inside the local config.
+        and returns its backend HTTP host/port. HAProxy then resolves that
+        endpoint to a concrete backend server name inside the local config.
 
         Returns the path to the written Lua script.
         """
         config_dir = os.path.dirname(self.config_file_path)
         lua_path = os.path.join(config_dir, "direct_ingress_custom_request_routing.lua")
 
-        all_router_servers: List[ServerConfig] = []
-        server_name_map_entries = []
+        router_entries = []
         for backend in backends:
             if not backend.custom_request_routing or not backend.router_servers:
                 continue
-            all_router_servers.extend(backend.router_servers)
-            for server in backend.servers:
-                if server.replica_id is None:
-                    continue
-                server_name_map_entries.append(
-                    f"    [{json.dumps(server.replica_id)}] = "
-                    f"{json.dumps(server.name)}"
-                )
+            router = sorted(
+                backend.router_servers, key=lambda server: (server.port, server.host)
+            )[0]
+            router_entries.append(
+                "    { path_prefix = "
+                f'{json.dumps(backend.path_prefix or "/")}, '
+                f"host = {json.dumps(router.host)}, "
+                f"port = {router.port} }}"
+            )
 
-        if not all_router_servers:
+        if not router_entries:
             return lua_path
 
-        router = sorted(
-            all_router_servers, key=lambda server: (server.port, server.host)
-        )[0]
-        server_name_map_lua = (
-            "{\n" + ",\n".join(sorted(server_name_map_entries)) + "\n}"
-            if server_name_map_entries
-            else "{}"
-        )
+        routers_lua = "{\n" + ",\n".join(router_entries) + "\n}"
 
-        lua_content = f"""local router = {{
-    host = "{router.host}",
-    port = {router.port}
+        lua_content = f"""local STREAMING_PATHS = {{
+    ["/v1/chat/completions"] = true,
+    ["/v1/completions"] = true,
 }}
 
-local replica_id_to_server_name_map = {server_name_map_lua}
+local ROUTERS = {routers_lua}
 
-local function do_request(body)
+local function path_matches(path, prefix)
+    if prefix == "/" then
+        return true
+    end
+    return path == prefix or string.sub(path, 1, #prefix + 1) == prefix .. "/"
+end
+
+local function find_router(path)
+    for _, router in ipairs(ROUTERS) do
+        if path_matches(path, router.path_prefix) then
+            return router
+        end
+    end
+    return nil
+end
+
+local function strip_prefix(path, prefix)
+    if prefix == "/" then
+        return path
+    end
+    if path == prefix then
+        return "/"
+    end
+    return string.sub(path, #prefix + 1)
+end
+
+local function do_request(router, body)
     local sock = core.tcp()
     sock:settimeout(5)
 
@@ -767,7 +787,7 @@ local function do_request(body)
 
     local req = "POST /internal/route HTTP/1.0\\r\\n"
         .. "Content-Type: application/json\\r\\n"
-        .. "Content-Length: " .. string.len(body) .. "\\r\\n"
+        .. "Content-Length: " .. #body .. "\\r\\n"
         .. "\\r\\n"
         .. body
 
@@ -787,7 +807,22 @@ local function do_request(body)
     return response
 end
 
-core.register_action("lookup_backend_http_target", {{"http-req"}}, function(txn)
+local DISABLE_ROUTING_PATH = "/tmp/ray-serve-disable-ingress-bypass-routing"
+
+core.register_action("route_direct_ingress_request", {{"http-req"}}, function(txn)
+    local f = io.open(DISABLE_ROUTING_PATH, "r")
+    if f then f:close() return end
+    local path = txn.sf:path()
+    local router = find_router(path)
+    if not router then
+        return
+    end
+
+    local relative_path = strip_prefix(path, router.path_prefix)
+    if not STREAMING_PATHS[relative_path] then
+        return
+    end
+
     local body = txn.sf:req_body()
     if not body or body == "" then
         return
@@ -797,19 +832,18 @@ core.register_action("lookup_backend_http_target", {{"http-req"}}, function(txn)
         return
     end
 
-    local response = do_request(body)
-
+    local response = do_request(router, body)
     if not response then
         return
     end
 
-    local replica_id = response:match('"replica_id"%s*:%s*"([^"]+)"')
+    local host = response:match('"host"%s*:%s*"([^"]+)"')
+    local port = response:match('"port"%s*:%s*([0-9]+)')
 
-    if replica_id then
-        local server_name = replica_id_to_server_name_map[replica_id]
-        if server_name then
-            txn:set_var("txn.backend_http_target", server_name)
-        end
+    if host and port then
+        local routing_key = "sc_" .. host:gsub("%.", "_") .. "_" .. port
+        txn:set_var("txn.direct_ingress_target", routing_key)
+        txn:set_var("txn.custom_request_routed", true)
     end
 end, 0)
 """
@@ -1344,6 +1378,7 @@ class HAProxyManager(ProxyActorInterface):
             host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
             port=target.port,
             real_ip=target.ip,
+            routing_key=f"sc_{target.ip.replace('.', '_')}_{target.port}",
             replica_id=target.name,
         )
 
