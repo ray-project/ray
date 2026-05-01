@@ -28,6 +28,9 @@ from ray.data._internal.datasource_v2.listing.listing_utils import (
     partition_files,
     shuffle_files,
 )
+from ray.data._internal.datasource_v2.readers.read_files_task_memory import (
+    MAP_TASK_KWARG_ENRICH_MANIFEST_TASK_MEMORY,
+)
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
 from ray.data._internal.execution.operators.input_data_buffer import (
     InputDataBuffer,
@@ -122,6 +125,7 @@ def plan_list_files_op(
         # Don't fuse into the downstream ``ReadFiles`` — listing and reading
         # have different resource profiles.
         supports_fusion=False,
+        map_task_kwargs={MAP_TASK_KWARG_ENRICH_MANIFEST_TASK_MEMORY: True},
     )
     map_op.throttling_disabled = lambda: True
     return map_op

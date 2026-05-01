@@ -513,36 +513,73 @@ class MapOperator(InternalQueueOperatorMixin, OneToOneOperator, ABC):
     def _estimate_bundle_size(self, input_bundle: Optional[RefBundle]) -> Optional[int]:
         """Estimate bundle size, preferring estimated sizes if available.
 
-        Returns the sum of estimated in-memory bytes from metadata if available,
-        otherwise falls back to actual size_bytes.
+        If no block has ``input_files_estimated_bytes`` or ``estimated_size_bytes``,
+        returns ``input_bundle.size_bytes()`` (so partial slices are sized correctly).
+
+        Otherwise sums per block: ``input_files_estimated_bytes`` if set, else
+        ``estimated_size_bytes``, else that block's ``size_bytes``.
         """
         if input_bundle is None:
             return None
 
-        # Try to use pre-read estimated sizes if available in metadata
-        total_estimated = 0
-        metadata_list = input_bundle.metadata()
-        if metadata_list:
-            has_estimates = False
-            for meta in metadata_list:
-                if (
-                    hasattr(meta, "input_files_estimated_bytes")
-                    and meta.input_files_estimated_bytes is not None
-                ):
-                    total_estimated += meta.input_files_estimated_bytes
-                    has_estimates = True
-                elif (
-                    hasattr(meta, "estimated_size_bytes")
-                    and meta.estimated_size_bytes is not None
-                ):
-                    total_estimated += meta.estimated_size_bytes
-                    has_estimates = True
+        metadata_list = input_bundle.metadata
+        if not metadata_list:
+            return input_bundle.size_bytes()
 
-            if has_estimates:
-                return total_estimated
+        any_estimate = any(
+            (
+                hasattr(meta, "input_files_estimated_bytes")
+                and meta.input_files_estimated_bytes is not None
+            )
+            or (
+                hasattr(meta, "estimated_size_bytes")
+                and meta.estimated_size_bytes is not None
+            )
+            for meta in metadata_list
+        )
 
-        # Fallback to actual size bytes
-        return input_bundle.size_bytes()
+        if not any_estimate:
+            return input_bundle.size_bytes()
+
+        total = 0
+        for meta in metadata_list:
+            if (
+                hasattr(meta, "input_files_estimated_bytes")
+                and meta.input_files_estimated_bytes is not None
+            ):
+                total += meta.input_files_estimated_bytes
+            elif (
+                hasattr(meta, "estimated_size_bytes")
+                and meta.estimated_size_bytes is not None
+            ):
+                total += meta.estimated_size_bytes
+            else:
+                total += meta.size_bytes
+
+        return total
+
+    def _estimate_task_memory_bytes(self, input_bundle: RefBundle) -> Optional[int]:
+        """Sum ``task_memory_bytes`` from bundle metadata when present."""
+        total = 0
+        found = False
+        for meta in input_bundle.metadata:
+            tm = getattr(meta, "task_memory_bytes", None)
+            if tm is not None:
+                total += int(tm)
+                found = True
+        return total if found else None
+
+    def _merge_task_memory_into_ray_remote_args(
+        self,
+        input_bundle: RefBundle,
+        ray_remote_args: Dict[str, Any],
+    ) -> None:
+        """Raise Ray ``memory`` reservation using per-block hints (e.g. ``ReadFiles``)."""
+        task_mem = self._estimate_task_memory_bytes(input_bundle)
+        if task_mem is None:
+            return
+        user_mem = ray_remote_args.get("memory") or 0
+        ray_remote_args["memory"] = max(user_mem, task_mem)
 
     @abstractmethod
     def _try_schedule_task(self, refs: RefBundle, strict: bool):
@@ -776,6 +813,19 @@ def _map_task(
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in map_transformer.apply_transform(blocks_iter, ctx):
                 block_meta = BlockAccessor.for_block(block).get_metadata()
+                # DataSource V2 only: ``plan_list_files_op`` sets this map_task_kwarg.
+                # Key must match ``MAP_TASK_KWARG_ENRICH_MANIFEST_TASK_MEMORY`` in
+                # ``read_files_task_memory`` (set only by ``plan_list_files_op``).
+                if kwargs.get("_ray_data_datasource_v2_enrich_manifest_task_memory"):
+                    from ray.data._internal.datasource_v2.readers.read_files_task_memory import (
+                        enrich_file_manifest_block_metadata_if_applicable,
+                    )
+
+                    block_meta = enrich_file_manifest_block_metadata_if_applicable(
+                        block,
+                        block_meta,
+                        target_max_block_size=data_context.target_max_block_size,
+                    )
                 block_schema = BlockAccessor.for_block(block).schema()
 
                 # Finish processing before yielding the block!

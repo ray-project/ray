@@ -1,5 +1,6 @@
+import logging
 from abc import ABC, abstractmethod
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
 
 import numpy as np
 
@@ -8,6 +9,11 @@ from ray.data._internal.datasource_v2.readers.file_reader import FileReader
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import BlockAccessor
 from ray.util.annotations import DeveloperAPI
+
+if TYPE_CHECKING:
+    from pyarrow.fs import FileSystem
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -27,6 +33,44 @@ class InMemorySizeEstimator(ABC):
             The estimated in-memory sizes of the data in bytes.
         """
         ...
+
+    def estimate_max_uncompressed_row_group_sizes(
+        self, manifest: FileManifest
+    ) -> Optional[np.ndarray]:
+        """Optional per-file max raw uncompressed Parquet row-group size in bytes.
+
+        Default ``None`` means the listing stage does not populate
+        ``FileManifest``'s ``__max_uncompressed_row_group_size`` column.
+        """
+        return None
+
+
+def _parquet_max_uncompressed_row_group_bytes(
+    path: str, filesystem: Optional["FileSystem"]
+) -> int:
+    import pyarrow.parquet as pq
+
+    try:
+        if filesystem is not None:
+            pf = pq.ParquetFile(path, filesystem=filesystem)
+        else:
+            pf = pq.ParquetFile(path)
+        metadata = pf.metadata
+    except Exception as e:
+        logger.debug(
+            "Could not read Parquet footer for row-group sizing (%s): %s", path, e
+        )
+        return 0
+
+    max_uc = 0
+    for rg_idx in range(metadata.num_row_groups):
+        rg_meta = metadata.row_group(rg_idx)
+        uc = sum(
+            rg_meta.column(col_idx).total_uncompressed_size
+            for col_idx in range(rg_meta.num_columns)
+        )
+        max_uc = max(max_uc, uc)
+    return max_uc
 
 
 @DeveloperAPI
@@ -134,10 +178,28 @@ class ParquetInMemorySizeEstimator(InMemorySizeEstimator):
     columnar compression and encoding. This estimator applies a constant
     ratio (default 5x) to avoid the overhead of reading file metadata or
     sampling data, which can be slow for Parquet files and hurt startup time.
+
+    When a PyArrow ``filesystem`` is supplied (resolved read paths), also reads each
+    file's footer to populate max uncompressed row-group footprints for read-task
+    memory hints.
     """
 
-    def __init__(self, encoding_ratio: float = PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT):
+    def __init__(
+        self,
+        encoding_ratio: float = PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
+        filesystem: Optional["FileSystem"] = None,
+    ):
         self._encoding_ratio = encoding_ratio
+        self._filesystem = filesystem
 
     def estimate_in_memory_sizes(self, manifest: FileManifest) -> np.ndarray:
         return self._encoding_ratio * manifest.file_sizes
+
+    def estimate_max_uncompressed_row_group_sizes(
+        self, manifest: FileManifest
+    ) -> Optional[np.ndarray]:
+        paths = manifest.paths
+        out = np.empty(len(paths), dtype=np.int64)
+        for i, path in enumerate(paths):
+            out[i] = _parquet_max_uncompressed_row_group_bytes(path, self._filesystem)
+        return out

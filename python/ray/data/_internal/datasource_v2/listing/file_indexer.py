@@ -221,6 +221,7 @@ class NonSamplingFileIndexer(FileIndexer):
             A FileManifest with estimated sizes if an estimator is provided.
         """
         estimated_sizes = None
+        max_rg_sizes = None
         if size_estimator is not None:
             # Create a temporary manifest to pass to the estimator
             temp_manifest = FileManifest.construct_manifest(paths, file_sizes)
@@ -230,4 +231,12 @@ class NonSamplingFileIndexer(FileIndexer):
             )
             estimated_sizes = estimated_sizes_array.tolist()
 
-        return FileManifest.construct_manifest(paths, file_sizes, estimated_sizes)
+            max_rg_array = size_estimator.estimate_max_uncompressed_row_group_sizes(
+                temp_manifest
+            )
+            if max_rg_array is not None:
+                max_rg_sizes = max_rg_array.tolist()
+
+        return FileManifest.construct_manifest(
+            paths, file_sizes, estimated_sizes, max_rg_sizes
+        )

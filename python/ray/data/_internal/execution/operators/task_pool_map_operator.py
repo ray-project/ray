@@ -5,6 +5,9 @@ if TYPE_CHECKING:
     import pyarrow as pa
 
 
+from ray.data._internal.datasource_v2.readers.read_files_task_memory import (
+    MAP_TASK_KWARG_MERGE_READ_TASK_MEMORY,
+)
 from ray.data._internal.execution.bundle_queue import RebundleQueue
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
@@ -110,6 +113,11 @@ class TaskPoolMapOperator(MapOperator):
         )
 
         dynamic_ray_remote_args = self._get_dynamic_ray_remote_args(input_bundle=bundle)
+        # DataSource V2 only: ``plan_read_files_op`` sets this map_task_kwarg.
+        if self.get_map_task_kwargs().get(MAP_TASK_KWARG_MERGE_READ_TASK_MEMORY):
+            self._merge_task_memory_into_ray_remote_args(
+                bundle, dynamic_ray_remote_args
+            )
         dynamic_ray_remote_args["name"] = self.name
         logical_usage = ExecutionResources.from_resource_dict(dynamic_ray_remote_args)
 

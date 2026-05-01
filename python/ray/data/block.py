@@ -303,6 +303,8 @@ class BlockMetadata(BlockStats):
     input_files: Optional[Tuple[str, ...]] = field(default=None)
     # Total estimated in-memory bytes of input files that produced this block.
     input_files_estimated_bytes: Optional[int] = field(default=None)
+    # Hint for Ray heap ``memory`` reservation (e.g. DataSource V2 ``ReadFiles``).
+    task_memory_bytes: Optional[int] = field(default=None)
 
     def __post_init__(self):
         super().__post_init__()
@@ -333,6 +335,7 @@ class BlockMetadataWithSchema(BlockMetadata):
             input_files=metadata.input_files,
             estimated_size_bytes=metadata.estimated_size_bytes,
             input_files_estimated_bytes=metadata.input_files_estimated_bytes,
+            task_memory_bytes=metadata.task_memory_bytes,
             schema=schema,
         )
 

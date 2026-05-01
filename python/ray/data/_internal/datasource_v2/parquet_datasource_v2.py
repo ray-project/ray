@@ -134,7 +134,7 @@ class ParquetDatasourceV2(DataSourceV2[FileManifest]):
         )
 
     def get_size_estimator(self) -> ParquetInMemorySizeEstimator:
-        return ParquetInMemorySizeEstimator()
+        return ParquetInMemorySizeEstimator(filesystem=self._filesystem)
 
     @override
     def resolve_partitioning(self, sample: FileManifest) -> Optional[Partitioning]:

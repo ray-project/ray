@@ -20,6 +20,9 @@ import logging
 from typing import Iterable, List
 
 from ray.data._internal.datasource_v2.listing.file_manifest import FileManifest
+from ray.data._internal.datasource_v2.readers.read_files_task_memory import (
+    MAP_TASK_KWARG_MERGE_READ_TASK_MEMORY,
+)
 from ray.data._internal.datasource_v2.scanners.file_scanner import FileScanner
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -93,4 +96,5 @@ def plan_read_files_op(
         name=op.name,
         compute_strategy=op.compute,
         ray_remote_args=op.ray_remote_args,
+        map_task_kwargs={MAP_TASK_KWARG_MERGE_READ_TASK_MEMORY: True},
     )

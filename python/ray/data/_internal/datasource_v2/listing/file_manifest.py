@@ -10,6 +10,8 @@ from ray.data.block import Block, BlockAccessor, BlockColumnAccessor
 PATH_COLUMN_NAME = "__path"
 FILE_SIZE_COLUMN_NAME = "__file_size"
 ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME = "__estimated_in_memory_size"
+# Largest raw (codec-uncompressed) Parquet row group footprint for the file, in bytes.
+MAX_UNCOMPRESSED_ROW_GROUP_SIZE_COLUMN_NAME = "__max_uncompressed_row_group_size"
 
 
 class FileManifest:
@@ -26,8 +28,9 @@ class FileManifest:
         """Create a new `FileManifest` from a block.
 
         Args:
-            block: Block with `PATH_COLUMN_NAME`, `FILE_SIZE_COLUMN_NAME`,
-                and optionally `ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME`.
+            block: Block with ``PATH_COLUMN_NAME``, ``FILE_SIZE_COLUMN_NAME``,
+                and optionally ``ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME`` /
+                ``MAX_UNCOMPRESSED_ROW_GROUP_SIZE_COLUMN_NAME``.
                 Any other columns are optional and treated as input data.
         """
         column_names = BlockAccessor.for_block(block).column_names()
@@ -47,6 +50,13 @@ class FileManifest:
         else:
             # Fallback: use 5x compression ratio (conservative estimate)
             self._estimated_in_memory_sizes = None
+
+        if MAX_UNCOMPRESSED_ROW_GROUP_SIZE_COLUMN_NAME in column_names:
+            self._max_uncompressed_row_group_sizes = block[
+                MAX_UNCOMPRESSED_ROW_GROUP_SIZE_COLUMN_NAME
+            ]
+        else:
+            self._max_uncompressed_row_group_sizes = None
 
     def __len__(self) -> int:
         return len(self._block)
@@ -81,6 +91,27 @@ class FileManifest:
     def total_estimated_in_memory_size(self) -> int:
         """Return the sum of all estimated in-memory byte sizes in this manifest."""
         return int(np.sum(self.estimated_in_memory_sizes))
+
+    @cached_property
+    def max_uncompressed_row_group_sizes(self) -> np.ndarray:
+        """Per-file maximum raw uncompressed Parquet row-group size in bytes.
+
+        When the optional metadata column is absent, returns zeros (unknown).
+        """
+        if self._max_uncompressed_row_group_sizes is not None:
+            return (
+                BlockColumnAccessor.for_column(self._max_uncompressed_row_group_sizes)
+                .to_numpy()
+                .astype(np.int64, copy=False)
+            )
+        return np.zeros(len(self), dtype=np.int64)
+
+    @cached_property
+    def max_max_uncompressed_row_group_size(self) -> int:
+        """Maximum over files of each file's largest row group's uncompressed size."""
+        if len(self) == 0:
+            return 0
+        return int(np.max(self.max_uncompressed_row_group_sizes))
 
     def as_block(self) -> Block:
         """Return the underlying block for the `FileManifest`.
@@ -143,10 +174,13 @@ class FileManifest:
         paths: List[str],
         sizes: List[int],
         estimated_in_memory_sizes: Optional[List[int]] = None,
+        max_uncompressed_row_group_sizes: Optional[List[int]] = None,
     ) -> "FileManifest":
         assert len(paths) == len(sizes)
         if estimated_in_memory_sizes is not None:
             assert len(paths) == len(estimated_in_memory_sizes)
+        if max_uncompressed_row_group_sizes is not None:
+            assert len(paths) == len(max_uncompressed_row_group_sizes)
 
         table_dict = {
             PATH_COLUMN_NAME: paths,
@@ -156,6 +190,11 @@ class FileManifest:
         # Add estimated sizes if provided
         if estimated_in_memory_sizes is not None:
             table_dict[ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME] = estimated_in_memory_sizes
+
+        if max_uncompressed_row_group_sizes is not None:
+            table_dict[
+                MAX_UNCOMPRESSED_ROW_GROUP_SIZE_COLUMN_NAME
+            ] = max_uncompressed_row_group_sizes
 
         block = pa.table(table_dict)
         return cls(block)

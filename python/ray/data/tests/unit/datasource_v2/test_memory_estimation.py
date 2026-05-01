@@ -10,13 +10,33 @@ import numpy as np
 import pyarrow as pa
 import pytest
 
+import ray
 from ray.data._internal.datasource_v2.listing.file_manifest import (
     ESTIMATED_IN_MEMORY_SIZE_COLUMN_NAME,
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
     FileManifest,
 )
-from ray.data.block import BlockMetadata, BlockMetadataWithSchema
+from ray.data._internal.datasource_v2.readers.read_files_task_memory import (
+    MAP_TASK_KWARG_MERGE_READ_TASK_MEMORY,
+    READ_FILES_TASK_MEMORY_EPS_BYTES,
+    enrich_file_manifest_block_metadata_if_applicable,
+    estimate_read_files_task_memory_bytes,
+)
+from ray.data.block import BlockAccessor, BlockMetadata, BlockMetadataWithSchema
+
+
+def _minimal_map_transformer():
+    """Minimal MapTransformer for constructing map operators in unit tests."""
+    from ray.data._internal.execution.operators.map_transformer import (
+        BlockMapTransformFn,
+        MapTransformer,
+    )
+
+    def _noop(blocks, ctx):
+        return blocks
+
+    return MapTransformer([BlockMapTransformFn(_noop, disable_block_shaping=True)])
 
 
 class TestFileManifestWithEstimatedSizes:
@@ -74,6 +94,23 @@ class TestFileManifestWithEstimatedSizes:
         # Total should be (1000 * 5) + (2000 * 5) = 15000
         total = manifest.total_estimated_in_memory_size
         assert total == 15000
+
+    def test_manifest_concat_preserves_max_uncompressed_row_group_sizes(self):
+        manifest1 = FileManifest.construct_manifest(
+            paths=["/f1"],
+            sizes=[100],
+            max_uncompressed_row_group_sizes=[1_000_000],
+        )
+        manifest2 = FileManifest.construct_manifest(
+            paths=["/f2"],
+            sizes=[200],
+            max_uncompressed_row_group_sizes=[3_000_000],
+        )
+        concatenated = FileManifest.concat([manifest1, manifest2])
+        np.testing.assert_array_equal(
+            concatenated.max_uncompressed_row_group_sizes,
+            np.array([1_000_000, 3_000_000]),
+        )
 
     def test_manifest_concat_preserves_estimated_sizes(self):
         """Test concatenating manifests preserves estimated size info."""
@@ -221,8 +258,10 @@ class TestBlockMetadataEstimatedSizes:
         metadata = BlockMetadata(
             num_rows=1000,
             size_bytes=5000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
             estimated_size_bytes=25000,
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
         assert metadata.estimated_size_bytes == 25000
@@ -233,8 +272,10 @@ class TestBlockMetadataEstimatedSizes:
         metadata = BlockMetadata(
             num_rows=1000,
             size_bytes=5000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
             input_files_estimated_bytes=25000,
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
         assert metadata.input_files_estimated_bytes == 25000
@@ -245,9 +286,11 @@ class TestBlockMetadataEstimatedSizes:
         metadata = BlockMetadata(
             num_rows=1000,
             size_bytes=5000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
             estimated_size_bytes=25000,
             input_files_estimated_bytes=20000,
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
         assert metadata.estimated_size_bytes == 25000
@@ -259,7 +302,9 @@ class TestBlockMetadataEstimatedSizes:
         metadata = BlockMetadata(
             num_rows=1000,
             size_bytes=5000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
         assert metadata.estimated_size_bytes is None
@@ -271,9 +316,11 @@ class TestBlockMetadataEstimatedSizes:
         metadata = BlockMetadata(
             num_rows=500,
             size_bytes=2000,
-            schema=schema,
+            # schema=schema,
             estimated_size_bytes=10000,
             input_files_estimated_bytes=8000,
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
         metadata_with_schema = BlockMetadataWithSchema.from_metadata(
@@ -290,37 +337,34 @@ class TestMapOperatorMemoryEstimation:
     def test_estimate_bundle_size_uses_input_files_estimated_bytes(self):
         """Test _estimate_bundle_size prioritizes input_files_estimated_bytes."""
         from ray.data._internal.execution.interfaces import RefBundle
-        from ray.data._internal.execution.operators.map_transformer import (
-            MapTransformer,
+        from ray.data._internal.execution.operators.input_data_buffer import (
+            InputDataBuffer,
         )
         from ray.data._internal.execution.operators.task_pool_map_operator import (
             TaskPoolMapOperator,
         )
         from ray.data.context import DataContext
 
-        # Create a mock input operator
-        class MockInputOperator:
-            def progress_str(self):
-                return "mock"
-
-            def num_outputs(self):
-                return 1
-
         # Create metadata with input_files_estimated_bytes
         metadata = BlockMetadata(
             num_rows=1000,
             size_bytes=5000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
             input_files_estimated_bytes=25000,
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
-        # Create a RefBundle with the metadata
-        bundle = RefBundle([(None, metadata)])
+        block_ref = ray.ObjectRef(b"x" * 28)
+        bundle = RefBundle(
+            blocks=[(block_ref, metadata)],
+            schema=None,
+            owns_blocks=False,
+        )
 
-        # Create a MapOperator instance
-        map_transformer = MapTransformer([])
-        input_op = MockInputOperator()
+        map_transformer = _minimal_map_transformer()
         data_context = DataContext.get_current()
+        input_op = InputDataBuffer(data_context, input_data=[])
 
         map_op = TaskPoolMapOperator(
             map_transformer=map_transformer,
@@ -335,7 +379,6 @@ class TestMapOperatorMemoryEstimation:
             map_task_kwargs=None,
         )
 
-        # Test _estimate_bundle_size
         size = map_op._estimate_bundle_size(bundle)
 
         # Should use input_files_estimated_bytes (25000) instead of size_bytes (5000)
@@ -344,33 +387,33 @@ class TestMapOperatorMemoryEstimation:
     def test_estimate_bundle_size_fallback_to_estimated_size_bytes(self):
         """Test _estimate_bundle_size falls back to estimated_size_bytes."""
         from ray.data._internal.execution.interfaces import RefBundle
-        from ray.data._internal.execution.operators.map_transformer import (
-            MapTransformer,
+        from ray.data._internal.execution.operators.input_data_buffer import (
+            InputDataBuffer,
         )
         from ray.data._internal.execution.operators.task_pool_map_operator import (
             TaskPoolMapOperator,
         )
         from ray.data.context import DataContext
 
-        class MockInputOperator:
-            def progress_str(self):
-                return "mock"
-
-            def num_outputs(self):
-                return 1
-
         metadata = BlockMetadata(
             num_rows=1000,
             size_bytes=5000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
             estimated_size_bytes=15000,
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
-        bundle = RefBundle([(None, metadata)])
+        block_ref = ray.ObjectRef(b"x" * 28)
+        bundle = RefBundle(
+            blocks=[(block_ref, metadata)],
+            schema=None,
+            owns_blocks=False,
+        )
 
-        map_transformer = MapTransformer([])
-        input_op = MockInputOperator()
+        map_transformer = _minimal_map_transformer()
         data_context = DataContext.get_current()
+        input_op = InputDataBuffer(data_context, input_data=[])
 
         map_op = TaskPoolMapOperator(
             map_transformer=map_transformer,
@@ -393,32 +436,32 @@ class TestMapOperatorMemoryEstimation:
     def test_estimate_bundle_size_fallback_to_actual_size_bytes(self):
         """Test _estimate_bundle_size falls back to actual size_bytes."""
         from ray.data._internal.execution.interfaces import RefBundle
-        from ray.data._internal.execution.operators.map_transformer import (
-            MapTransformer,
+        from ray.data._internal.execution.operators.input_data_buffer import (
+            InputDataBuffer,
         )
         from ray.data._internal.execution.operators.task_pool_map_operator import (
             TaskPoolMapOperator,
         )
         from ray.data.context import DataContext
 
-        class MockInputOperator:
-            def progress_str(self):
-                return "mock"
-
-            def num_outputs(self):
-                return 1
-
         metadata = BlockMetadata(
             num_rows=1000,
             size_bytes=5000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
-        bundle = RefBundle([(None, metadata)])
+        block_ref = ray.ObjectRef(b"x" * 28)
+        bundle = RefBundle(
+            blocks=[(block_ref, metadata)],
+            schema=None,
+            owns_blocks=False,
+        )
 
-        map_transformer = MapTransformer([])
-        input_op = MockInputOperator()
+        map_transformer = _minimal_map_transformer()
         data_context = DataContext.get_current()
+        input_op = InputDataBuffer(data_context, input_data=[])
 
         map_op = TaskPoolMapOperator(
             map_transformer=map_transformer,
@@ -435,45 +478,48 @@ class TestMapOperatorMemoryEstimation:
 
         size = map_op._estimate_bundle_size(bundle)
 
-        # Should fall back to actual size_bytes
+        # Should fall back to actual size_bytes when no estimates are present
         assert size == 5000
 
     def test_estimate_bundle_size_multiple_blocks(self):
         """Test _estimate_bundle_size sums multiple metadata blocks."""
         from ray.data._internal.execution.interfaces import RefBundle
-        from ray.data._internal.execution.operators.map_transformer import (
-            MapTransformer,
+        from ray.data._internal.execution.operators.input_data_buffer import (
+            InputDataBuffer,
         )
         from ray.data._internal.execution.operators.task_pool_map_operator import (
             TaskPoolMapOperator,
         )
         from ray.data.context import DataContext
 
-        class MockInputOperator:
-            def progress_str(self):
-                return "mock"
-
-            def num_outputs(self):
-                return 1
-
         metadata1 = BlockMetadata(
             num_rows=1000,
             size_bytes=5000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
             input_files_estimated_bytes=25000,
+            exec_stats=None,
+            task_exec_stats=None,
         )
         metadata2 = BlockMetadata(
             num_rows=2000,
             size_bytes=10000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
             input_files_estimated_bytes=50000,
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
-        bundle = RefBundle([(None, metadata1), (None, metadata2)])
+        ref1 = ray.ObjectRef(b"1" * 28)
+        ref2 = ray.ObjectRef(b"2" * 28)
+        bundle = RefBundle(
+            blocks=[(ref1, metadata1), (ref2, metadata2)],
+            schema=None,
+            owns_blocks=False,
+        )
 
-        map_transformer = MapTransformer([])
-        input_op = MockInputOperator()
+        map_transformer = _minimal_map_transformer()
         data_context = DataContext.get_current()
+        input_op = InputDataBuffer(data_context, input_data=[])
 
         map_op = TaskPoolMapOperator(
             map_transformer=map_transformer,
@@ -496,39 +542,42 @@ class TestMapOperatorMemoryEstimation:
     def test_estimate_bundle_size_mixed_metadata(self):
         """Test _estimate_bundle_size with mixed metadata having/not having estimates."""
         from ray.data._internal.execution.interfaces import RefBundle
-        from ray.data._internal.execution.operators.map_transformer import (
-            MapTransformer,
+        from ray.data._internal.execution.operators.input_data_buffer import (
+            InputDataBuffer,
         )
         from ray.data._internal.execution.operators.task_pool_map_operator import (
             TaskPoolMapOperator,
         )
         from ray.data.context import DataContext
 
-        class MockInputOperator:
-            def progress_str(self):
-                return "mock"
-
-            def num_outputs(self):
-                return 1
-
         # One with estimate, one without
         metadata1 = BlockMetadata(
             num_rows=1000,
             size_bytes=5000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
             input_files_estimated_bytes=25000,
+            exec_stats=None,
+            task_exec_stats=None,
         )
         metadata2 = BlockMetadata(
             num_rows=2000,
             size_bytes=10000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
-        bundle = RefBundle([(None, metadata1), (None, metadata2)])
+        ref1 = ray.ObjectRef(b"1" * 28)
+        ref2 = ray.ObjectRef(b"2" * 28)
+        bundle = RefBundle(
+            blocks=[(ref1, metadata1), (ref2, metadata2)],
+            schema=None,
+            owns_blocks=False,
+        )
 
-        map_transformer = MapTransformer([])
-        input_op = MockInputOperator()
+        map_transformer = _minimal_map_transformer()
         data_context = DataContext.get_current()
+        input_op = InputDataBuffer(data_context, input_data=[])
 
         map_op = TaskPoolMapOperator(
             map_transformer=map_transformer,
@@ -550,24 +599,17 @@ class TestMapOperatorMemoryEstimation:
 
     def test_estimate_bundle_size_none_bundle(self):
         """Test _estimate_bundle_size with None bundle returns None."""
-        from ray.data._internal.execution.operators.map_transformer import (
-            MapTransformer,
+        from ray.data._internal.execution.operators.input_data_buffer import (
+            InputDataBuffer,
         )
         from ray.data._internal.execution.operators.task_pool_map_operator import (
             TaskPoolMapOperator,
         )
         from ray.data.context import DataContext
 
-        class MockInputOperator:
-            def progress_str(self):
-                return "mock"
-
-            def num_outputs(self):
-                return 1
-
-        map_transformer = MapTransformer([])
-        input_op = MockInputOperator()
+        map_transformer = _minimal_map_transformer()
         data_context = DataContext.get_current()
+        input_op = InputDataBuffer(data_context, input_data=[])
 
         map_op = TaskPoolMapOperator(
             map_transformer=map_transformer,
@@ -586,6 +628,100 @@ class TestMapOperatorMemoryEstimation:
 
         # Should return None for None bundle
         assert size is None
+
+
+class TestReadFilesTaskMemoryEstimate:
+    """``max(uncompressed_rg, batch, block) + eps`` for ReadFiles scheduling."""
+
+    def test_estimate_prefers_row_group_over_target_block(self):
+        manifest = FileManifest.construct_manifest(
+            paths=["/a.parquet"],
+            sizes=[1000],
+            estimated_in_memory_sizes=[5000],
+            max_uncompressed_row_group_sizes=[50_000_000],
+        )
+        got = estimate_read_files_task_memory_bytes(
+            manifest, target_max_block_size=8_000_000
+        )
+        assert got == 50_000_000 + READ_FILES_TASK_MEMORY_EPS_BYTES
+
+    def test_estimate_prefers_target_block_when_larger_than_row_group(self):
+        manifest = FileManifest.construct_manifest(
+            paths=["/a.parquet"],
+            sizes=[1000],
+            max_uncompressed_row_group_sizes=[1_000_000],
+        )
+        got = estimate_read_files_task_memory_bytes(
+            manifest, target_max_block_size=8_000_000
+        )
+        assert got == 8_000_000 + READ_FILES_TASK_MEMORY_EPS_BYTES
+
+    def test_enrich_manifest_metadata_sets_task_memory_and_input_estimates(self):
+        manifest = FileManifest.construct_manifest(
+            paths=["/f"],
+            sizes=[100],
+            estimated_in_memory_sizes=[400],
+            max_uncompressed_row_group_sizes=[2_000_000],
+        )
+        block = manifest.as_block()
+        base = BlockAccessor.for_block(block).get_metadata()
+        enriched = enrich_file_manifest_block_metadata_if_applicable(
+            block, base, target_max_block_size=1_000_000
+        )
+        assert enriched.input_files_estimated_bytes == 400
+        assert (
+            enriched.task_memory_bytes == 2_000_000 + READ_FILES_TASK_MEMORY_EPS_BYTES
+        )
+
+    def test_non_manifest_block_not_enriched(self):
+        block = pa.table({"x": [1, 2]})
+        base = BlockAccessor.for_block(block).get_metadata()
+        enriched = enrich_file_manifest_block_metadata_if_applicable(
+            block, base, target_max_block_size=99
+        )
+        assert enriched is base
+
+
+class TestMapOperatorTaskMemoryHint:
+    def test_merge_task_memory_into_ray_remote_args(self):
+        from ray.data._internal.execution.interfaces import RefBundle
+        from ray.data._internal.execution.operators.input_data_buffer import (
+            InputDataBuffer,
+        )
+        from ray.data._internal.execution.operators.task_pool_map_operator import (
+            TaskPoolMapOperator,
+        )
+        from ray.data.context import DataContext
+
+        metadata = BlockMetadata(
+            num_rows=1,
+            size_bytes=100,
+            task_memory_bytes=500_000_000,
+            exec_stats=None,
+            task_exec_stats=None,
+        )
+        block_ref = ray.ObjectRef(b"m" * 28)
+        bundle = RefBundle(
+            blocks=[(block_ref, metadata)],
+            schema=None,
+            owns_blocks=False,
+        )
+        map_op = TaskPoolMapOperator(
+            map_transformer=_minimal_map_transformer(),
+            input_op=InputDataBuffer(DataContext.get_current(), input_data=[]),
+            data_context=DataContext.get_current(),
+            name="test_map",
+            target_max_block_size_override=None,
+            min_rows_per_bundle=None,
+            ref_bundler=None,
+            max_concurrency=1,
+            supports_fusion=True,
+            map_task_kwargs={MAP_TASK_KWARG_MERGE_READ_TASK_MEMORY: True},
+            ray_remote_args={"memory": 1000},
+        )
+        remote_args = {"memory": 1000}
+        map_op._merge_task_memory_into_ray_remote_args(bundle, remote_args)
+        assert remote_args["memory"] == 500_000_000
 
 
 class TestMemoryEstimationIntegration:
@@ -608,8 +744,10 @@ class TestMemoryEstimationIntegration:
         metadata = BlockMetadata(
             num_rows=1000,
             size_bytes=3000,  # sum of file sizes
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
             input_files_estimated_bytes=manifest.total_estimated_in_memory_size,
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
         # Verify the flow
@@ -638,8 +776,10 @@ class TestMemoryEstimationIntegration:
         metadata = BlockMetadata(
             num_rows=1500,
             size_bytes=3000,
-            schema=pa.schema([("col", pa.int64())]),
+            # schema=pa.schema([("col", pa.int64())]),
             input_files_estimated_bytes=concatenated.total_estimated_in_memory_size,
+            exec_stats=None,
+            task_exec_stats=None,
         )
 
         assert metadata.input_files_estimated_bytes == 15000
