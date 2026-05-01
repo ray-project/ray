@@ -23,6 +23,7 @@ from ray.serve._private.utils import generate_request_id
 from ray.serve.experimental.consistent_hash_router import (
     DEFAULT_FALLBACK_REPLICAS,
     DEFAULT_VIRTUAL_NODES,
+    SESSION_AFFINITY_LRU_MAX,
     TOP_SESSIONS_MAX,
     ConsistentHashRouter,
     _hash_bytes,
@@ -276,9 +277,9 @@ async def test_scale_up_remaps_small_fraction(router):
 
     # Expected: 1/5 = 20%. Upper bound generous to avoid flake on
     # random-cluster draws of the hash.
-    assert moved < 0.4 * len(
-        sessions
-    ), f"Scale-up remapped {moved}/{len(sessions)} sessions; expected ~200"
+    assert moved < 0.4 * len(sessions), (
+        f"Scale-up remapped {moved}/{len(sessions)} sessions; expected ~200"
+    )
 
     assert moved > 0
 
@@ -609,11 +610,19 @@ def _install_fake_metrics(router: ConsistentHashRouter) -> dict:
     router.ring_rebuild_duration_ms_histogram = FakeHistogram(
         tag_keys=common
     ).set_default_tags(default_tags)
+    router.session_observations_counter = FakeCounter(tag_keys=common).set_default_tags(
+        default_tags
+    )
+    router.session_affinity_hits_counter = FakeCounter(
+        tag_keys=common
+    ).set_default_tags(default_tags)
     return {
         "fallback": router.fallback_counter,
         "top_sessions": router.top_sessions_gauge,
         "ring_rebuilds": router.ring_rebuilds_counter,
         "ring_rebuild_duration_ms": router.ring_rebuild_duration_ms_histogram,
+        "session_observations": router.session_observations_counter,
+        "session_affinity_hits": router.session_affinity_hits_counter,
         "default_tags": default_tags,
     }
 
@@ -756,6 +765,279 @@ async def test_anonymous_traffic_skips_top_sessions(router):
     assert fakes["fallback"].get_count({**fakes["default_tags"], "rank": "0"}) == 1
     assert fakes["top_sessions"].values == {}
     assert router._top_sessions_lru == {}
+
+
+# ---------------------------------------------------------------------------
+# Session-affinity metric (the dip-and-recover SLI for ring stability).
+# ---------------------------------------------------------------------------
+
+
+def _count(counter, tags) -> int:
+    """``FakeCounter.get_count`` returns None for unseen tag combinations;
+    normalize to 0 so tests can do arithmetic with the result."""
+    return counter.get_count(tags) or 0
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_first_request_records_no_observation(router):
+    """First sighting of a session_id seeds the LRU but emits no observation
+    (there is no prior mapping to compare against)."""
+    router.update_replicas(_ready_replicas(3))
+    fakes = _install_fake_metrics(router)
+    tags = fakes["default_tags"]
+
+    chosen = await _route_session(router, "sess_first")
+
+    assert _count(fakes["session_observations"], tags) == 0
+    assert _count(fakes["session_affinity_hits"], tags) == 0
+    # LRU seeded with the chosen replica.
+    assert router._last_replica_per_session["sess_first"] == chosen
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_hit_when_ring_unchanged(router):
+    """Repeated requests on a stable ring all hit the same replica → 100%
+    affinity rate after the first request (which seeds the LRU)."""
+    router.update_replicas(_ready_replicas(3))
+    fakes = _install_fake_metrics(router)
+    tags = fakes["default_tags"]
+
+    chosen_ids = [await _route_session(router, "sess_sticky") for _ in range(5)]
+    # All 5 requests land on the same replica (consistent hashing is
+    # deterministic on a stable ring).
+    assert len(set(chosen_ids)) == 1
+
+    # 4 subsequent observations after the first seeded the LRU; all 4 hit.
+    assert _count(fakes["session_observations"], tags) == 4
+    assert _count(fakes["session_affinity_hits"], tags) == 4
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_miss_on_ring_remap(router):
+    """When a ring rebuild relocates a session's primary to a new replica,
+    the next observation counts as a miss — the dip in the affinity rate.
+    The replica set at scale-up is chosen so that ``sess_remap`` provably
+    moves to the newly-added replica."""
+    initial = _ready_replicas(4)
+    router.update_replicas(initial)
+
+    sess = "sess_remap_probe"
+    routing_key = router._routing_key(_make_request(sess))
+    pre_primary = router._lookup_ranked_replicas(routing_key)[0]
+
+    # Construct a replica set whose ring positions guarantee the new
+    # replica intercepts ``sess_remap_probe`` ahead of ``pre_primary``.
+    # Try replicas r_new_0..r_new_99 until one moves the session.
+    new_primary = None
+    for i in range(200):
+        candidate = FakeRunningReplica(f"r_new_{i}")
+        candidate.set_queue_len_response(0)
+        scaled = list(initial) + [candidate]
+        # Probe what the rebuild *would* yield without permanently
+        # reconfiguring the router.
+        probe_router = ConsistentHashRouter(
+            deployment_id=DEPLOYMENT_ID,
+            handle_source=DeploymentHandleSource.REPLICA,
+            self_actor_id="probe",
+            self_actor_handle=None,
+            use_replica_queue_len_cache=False,
+        )
+        probe_router.initialize_state()
+        probe_router.update_replicas(scaled)
+        new_primary_candidate = probe_router._lookup_ranked_replicas(routing_key)[0]
+        if new_primary_candidate != pre_primary:
+            new_primary = new_primary_candidate
+            scale_up_with = candidate
+            break
+
+    assert new_primary is not None, "No new replica relocates the test session"
+
+    # Pre-rebuild routing seeds the LRU with the old primary.
+    fakes = _install_fake_metrics(router)
+    tags = fakes["default_tags"]
+    first = await _route_session(router, sess)
+    assert first == pre_primary
+    assert _count(fakes["session_observations"], tags) == 0  # first sighting
+
+    # Scale up; new replica's vnodes intercept the routing key.
+    router.update_replicas(initial + [scale_up_with])
+
+    # Post-rebuild routing lands on the new primary -> miss.
+    second = await _route_session(router, sess)
+    assert second == new_primary
+    assert _count(fakes["session_observations"], tags) == 1
+    assert _count(fakes["session_affinity_hits"], tags) == 0
+
+    # Subsequent requests hit the new mapping -> hit (the "recover").
+    third = await _route_session(router, sess)
+    assert third == new_primary
+    assert _count(fakes["session_observations"], tags) == 2
+    assert _count(fakes["session_affinity_hits"], tags) == 1
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_miss_on_saturation_fallback(router):
+    """When the primary is saturated and the request falls through to the
+    fallback, the affinity check observes the change of replica → miss.
+    This is correct: the session genuinely landed on a different replica
+    than the previous request, even though the ring itself didn't change."""
+    replicas = _ready_replicas(3)
+    router.update_replicas(replicas)
+    fakes = _install_fake_metrics(router)
+    tags = fakes["default_tags"]
+
+    sess = "sess_sat"
+    ranked = router._lookup_ranked_replicas(sess)
+    primary_id, fallback_id = ranked[0], ranked[1]
+
+    # First call lands on the primary (no saturation).
+    first = await _route_session(router, sess)
+    assert first == primary_id
+    assert _count(fakes["session_observations"], tags) == 0  # first sighting
+
+    # Saturate the primary. Next call falls through to fallback_1 → miss.
+    for r in replicas:
+        if r.replica_id == primary_id:
+            r.set_queue_len_response(DEFAULT_MAX_ONGOING_REQUESTS)
+        else:
+            r.set_queue_len_response(0)
+
+    second = await _route_session(router, sess)
+    assert second == fallback_id
+    assert _count(fakes["session_observations"], tags) == 1
+    assert _count(fakes["session_affinity_hits"], tags) == 0
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_lru_evicts_oldest(router):
+    """Once the LRU fills, the oldest entry is evicted; a return visit to
+    the evicted session is counted as a fresh sighting (no observation)."""
+    router.update_replicas(_ready_replicas(3))
+    fakes = _install_fake_metrics(router)
+    tags = fakes["default_tags"]
+
+    # Seed the LRU exactly to the cap: 1 + (LRU_MAX - 1) = LRU_MAX entries.
+    await _route_session(router, "sess_evictee")
+    for i in range(SESSION_AFFINITY_LRU_MAX - 1):
+        await _route_session(router, f"sess_filler_{i}")
+
+    assert "sess_evictee" in router._last_replica_per_session
+    assert len(router._last_replica_per_session) == SESSION_AFFINITY_LRU_MAX
+
+    # One more fresh session triggers eviction of the oldest (sess_evictee).
+    await _route_session(router, "sess_overflow")
+    assert "sess_evictee" not in router._last_replica_per_session
+
+    # All sightings so far were first-time → no observations recorded.
+    assert _count(fakes["session_observations"], tags) == 0
+
+    # Return visit to the evicted session counts as a fresh sighting,
+    # NOT an observation, because the LRU lost its previous mapping.
+    await _route_session(router, "sess_evictee")
+    assert _count(fakes["session_observations"], tags) == 0
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_lru_touches_recency_on_repeat_hit(router):
+    """Re-sighting of a session moves it to MRU; an older entry gets
+    evicted instead. Validates the LRU ordering used to bound memory."""
+    router.update_replicas(_ready_replicas(3))
+    _install_fake_metrics(router)
+
+    await _route_session(router, "sess_kept")  # oldest
+    await _route_session(router, "sess_evicted_first")  # second-oldest
+    await _route_session(router, "sess_kept")  # touch -> MRU
+
+    # Fill the LRU up to its cap.
+    for i in range(SESSION_AFFINITY_LRU_MAX - 2):
+        await _route_session(router, f"sess_filler_{i}")
+
+    # One more fresh session triggers an eviction.
+    await _route_session(router, "sess_overflow")
+    assert "sess_evicted_first" not in router._last_replica_per_session
+    assert "sess_kept" in router._last_replica_per_session
+
+
+@pytest.mark.asyncio
+async def test_anonymous_traffic_skips_session_affinity(router):
+    """A session-less request must not seed the affinity LRU or touch
+    its counters — there is no session_id to track affinity against."""
+    router.update_replicas(_ready_replicas(3))
+    fakes = _install_fake_metrics(router)
+    tags = fakes["default_tags"]
+
+    await _route_session(router, session_id="")
+
+    assert _count(fakes["session_observations"], tags) == 0
+    assert _count(fakes["session_affinity_hits"], tags) == 0
+    assert router._last_replica_per_session == {}
+
+
+@pytest.mark.asyncio
+async def test_session_affinity_dip_and_recover_curve(router):
+    """End-to-end "dip and recover" check: many sessions on a stable ring
+    yield ~100% affinity, a scale-up causes a dip, and post-rebuild
+    repeated traffic returns to ~100%. Mirrors the production dashboard
+    plot for consistent-hashing correctness."""
+    R0 = 4
+    initial = _ready_replicas(R0)
+    router.update_replicas(initial)
+    fakes = _install_fake_metrics(router)
+    tags = fakes["default_tags"]
+
+    sessions = [f"user_{i}" for i in range(64)]
+
+    # Phase 1: seed each session once. No observations yet (first sightings).
+    for s in sessions:
+        await _route_session(router, s)
+    assert _count(fakes["session_observations"], tags) == 0
+    assert _count(fakes["session_affinity_hits"], tags) == 0
+
+    # Phase 2: stable ring -- second pass yields 100% hits.
+    for s in sessions:
+        await _route_session(router, s)
+    pre_obs = _count(fakes["session_observations"], tags)
+    pre_hits = _count(fakes["session_affinity_hits"], tags)
+    assert pre_obs == len(sessions)
+    assert pre_hits == len(sessions)
+
+    # Phase 3: scale up -> ring rebuild relocates ~1/(R0+1) sessions.
+    new_replica = FakeRunningReplica("r_new")
+    new_replica.set_queue_len_response(0)
+    router.update_replicas(initial + [new_replica])
+
+    base_obs = _count(fakes["session_observations"], tags)
+    base_hits = _count(fakes["session_affinity_hits"], tags)
+
+    for s in sessions:
+        await _route_session(router, s)
+    dip_obs = _count(fakes["session_observations"], tags) - base_obs
+    dip_hits = _count(fakes["session_affinity_hits"], tags) - base_hits
+
+    # All sessions are observed (they were in the LRU before the rebuild).
+    assert dip_obs == len(sessions)
+    # The hit rate must dip below 100% — at least one session must have
+    # moved to the new replica. Theoretically ~1/(R0+1) sessions move,
+    # so we assert hit_rate < 1.0 with a generous bound.
+    dip_hit_rate = dip_hits / dip_obs
+    assert dip_hit_rate < 1.0, (
+        f"Expected the rebuild to remap at least one session, but the "
+        f"affinity hit rate stayed at {dip_hit_rate:.3f}."
+    )
+
+    # Phase 4: post-rebuild ring is again stable, so the next pass
+    # recovers to 100% hit rate -- the "recover" half of the curve.
+    base_obs2 = _count(fakes["session_observations"], tags)
+    base_hits2 = _count(fakes["session_affinity_hits"], tags)
+    for s in sessions:
+        await _route_session(router, s)
+    recovery_obs = _count(fakes["session_observations"], tags) - base_obs2
+    recovery_hits = _count(fakes["session_affinity_hits"], tags) - base_hits2
+    assert recovery_obs == len(sessions)
+    assert recovery_hits == len(sessions), (
+        "Affinity rate did not recover to 100% after a single full pass "
+        "post-rebuild; the LRU may not be advancing to the new replica."
+    )
 
 
 if __name__ == "__main__":

@@ -36,6 +36,13 @@ DEFAULT_FALLBACK_REPLICAS = 2
 # Bounded LRU size for the top-sessions gauge
 TOP_SESSIONS_MAX = 20
 
+# Bounded LRU size for the session-affinity tracker. Each entry is a
+# (session_id -> ReplicaID) pair used to decide whether the next routing
+# decision for the same session "stuck" to the previous replica. Larger
+# values smooth the affinity-rate metric (less noise per observation) at
+# linear cost in router-process memory.
+SESSION_AFFINITY_LRU_MAX = 1024
+
 
 def _hash_bytes(key: bytes) -> int:
     """Hash ``key`` with MurmurHash3 and return the low 64 bits."""
@@ -117,6 +124,39 @@ class ConsistentHashRouter(RequestRouter):
             boundaries=DEFAULT_LATENCY_BUCKET_MS,
             tag_keys=common_tag_keys,
         ).set_default_tags(default_tags)
+
+        # Session affinity correctness: counts observations (a session
+        # was seen before) and hits (the new routing landed on the same
+        # replica as the previous routing for that session). The ratio
+        # hits/observations is the SLI: ~1.0 in steady state, dips when
+        # a ring rebuild remaps a session, recovers as repeated traffic
+        # establishes the new mapping. Reference: Karger et al. 1997 —
+        # an R -> R+1 scale should remap exactly 1/(R+1) of sessions,
+        # so the dip floor is predictable.
+        self.session_observations_counter = metrics.Counter(
+            "serve_consistent_hash_session_observations",
+            description=(
+                "Number of routing decisions for a session_id seen at least "
+                "once before (i.e., eligible for an affinity-hit comparison)."
+            ),
+            tag_keys=common_tag_keys,
+        ).set_default_tags(default_tags)
+
+        self.session_affinity_hits_counter = metrics.Counter(
+            "serve_consistent_hash_session_affinity_hits",
+            description=(
+                "Number of routing decisions where the chosen replica matches "
+                "the previous chosen replica for the same session_id."
+            ),
+            tag_keys=common_tag_keys,
+        ).set_default_tags(default_tags)
+
+        # In-memory LRU backing the affinity counters. Bounded by
+        # SESSION_AFFINITY_LRU_MAX entries. Sampling is implicit:
+        # less-recently-active sessions stop contributing, which is fine —
+        # the affinity rate is a sliding-window aggregate, not a per-session
+        # invariant.
+        self._last_replica_per_session: "OrderedDict[str, ReplicaID]" = OrderedDict()
 
     def initialize_state(self, **kwargs) -> None:
         virtual_nodes = kwargs.get("virtual_nodes", DEFAULT_VIRTUAL_NODES)
@@ -317,8 +357,7 @@ class ConsistentHashRouter(RequestRouter):
                         # that the popping task always finishes its work.
                         if (
                             pending_request.future.done()
-                            and len(self._routing_tasks)
-                            > self.target_num_routing_tasks
+                            and len(self._routing_tasks) > self.target_num_routing_tasks
                         ):
                             break
 
@@ -356,8 +395,8 @@ class ConsistentHashRouter(RequestRouter):
         replica_id: ReplicaID,
         result: ReplicaResult,
     ) -> None:
-        """Emit per-rank and top-sessions metrics after a replica accepts
-        the request.
+        """Emit per-rank, top-sessions, and session-affinity metrics
+        after a replica accepts the request.
         """
         rank = self._compute_rank(self._routing_key(pending_request), replica_id)
         self.fallback_counter.inc(tags={"rank": str(rank)})
@@ -365,6 +404,30 @@ class ConsistentHashRouter(RequestRouter):
         session_id = pending_request.metadata.session_id if pending_request else ""
         if session_id:
             self._touch_top_session(session_id)
+            self._observe_session_affinity(session_id, replica_id)
+
+    def _observe_session_affinity(self, session_id: str, replica_id: ReplicaID) -> None:
+        """Update the bounded LRU and emit affinity counters.
+
+        First sighting of a session_id only seeds the LRU and emits no
+        observation (there is no prior mapping to compare against).
+        Subsequent sightings emit one observation; the comparison
+        increments the hit counter only when the accepting replica
+        matches the LRU entry. The LRU is then advanced to the new
+        replica so the next routing decision compares against the
+        most recent placement, which is what makes the metric a
+        steady-state-1.0 / dip-and-recover signal across ring rebuilds.
+        """
+        previous = self._last_replica_per_session.get(session_id)
+        if previous is not None:
+            self.session_observations_counter.inc()
+            if previous == replica_id:
+                self.session_affinity_hits_counter.inc()
+            self._last_replica_per_session.move_to_end(session_id)
+        else:
+            if len(self._last_replica_per_session) >= SESSION_AFFINITY_LRU_MAX:
+                self._last_replica_per_session.popitem(last=False)
+        self._last_replica_per_session[session_id] = replica_id
 
     def _compute_rank(self, routing_key: str, replica_id: ReplicaID) -> int:
         """Position of ``replica_id`` in the current ranked walk
