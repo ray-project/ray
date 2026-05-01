@@ -20,10 +20,9 @@ def main() -> None:
     This script determines the rayci step ids to run microcheck tests.
     """
     ci_init()
-    steps = (
-        Test.gen_microcheck_step_ids(LINUX_TEST_PREFIX, BAZEL_WORKSPACE_DIR)
-        .union(Test.gen_microcheck_step_ids(WINDOWS_TEST_PREFIX, BAZEL_WORKSPACE_DIR))
-        .union(Test.gen_microcheck_step_ids(MACOS_TEST_PREFIX, BAZEL_WORKSPACE_DIR))
+    steps = Test.gen_microcheck_step_ids_for_prefixes(
+        [LINUX_TEST_PREFIX, WINDOWS_TEST_PREFIX, MACOS_TEST_PREFIX],
+        BAZEL_WORKSPACE_DIR,
     )
 
     print(",".join(steps))
