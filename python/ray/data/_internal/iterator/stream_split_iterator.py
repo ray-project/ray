@@ -114,11 +114,7 @@ class StreamSplitDataIterator(DataIterator):
                 logger.debug(
                     f"Split {self._output_split_idx}: rejoining in-progress epoch."
                 )
-                cur_epoch = ray.get(
-                    self._coord_actor.rejoin_current_epoch.remote(
-                        self._output_split_idx
-                    )
-                )
+                cur_epoch = ray.get(self._coord_actor.rejoin_current_epoch.remote())
             else:
                 logger.debug(f"Split {self._output_split_idx}: requesting new epoch.")
                 cur_epoch = ray.get(
@@ -379,7 +375,7 @@ class SplitCoordinator:
         epoch_id = self._barrier(split_idx)
         return epoch_id
 
-    def rejoin_current_epoch(self, split_idx: int) -> int:
+    def rejoin_current_epoch(self) -> int:
         """Returns the in-progress epoch id without arriving at the start barrier.
 
         Used by a Ray Train replacement worker (e.g., torchft replica
