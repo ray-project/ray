@@ -704,7 +704,7 @@ message GcsSubscriberCommandBatchReply {
 
 /// Control-plane pubsub (GCS table deltas, node liveness, worker failures).
 /// Runs on the `pubsub_io_context` thread in GcsServer.
-service InternalPubSubGcsService {
+service ControlPlanePubSubGcsService {
   /// The request to sent to GCS to publish messages for control-plane channels only.
   rpc GcsPublish(GcsPublishRequest) returns (GcsPublishReply);
   /// The long polling request sent to GCS for pubsub operations.
@@ -717,8 +717,9 @@ service InternalPubSubGcsService {
 }
 
 /// Observability pubsub (logs, errors, node resource usage JSON for the dashboard).
-/// Same RPC and message names as `InternalPubSubGcsService`, plus `ReportJobError`, on a
-/// separate gRPC service and a dedicated `observability_pubsub_io_context` in GcsServer.
+/// Same RPC and message names as `ControlPlanePubSubGcsService`, plus `ReportJobError`,
+/// on a separate gRPC service and a dedicated `observability_pubsub_io_context` in
+/// GcsServer.
 service ObservabilityPubSubService {
   rpc GcsPublish(GcsPublishRequest) returns (GcsPublishReply);
   rpc ReportJobError(ReportJobErrorRequest) returns (ReportJobErrorReply);

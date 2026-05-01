@@ -26,7 +26,7 @@
 namespace ray {
 namespace gcs {
 
-/// Shared implementation for Internal and Observability GCS pubsub handlers
+/// Shared implementation for control-plane and observability GCS pubsub handlers
 /// (publish, subscriber poll, subscribe/unsubscribe batch).
 class PubSubHandlerBase {
  public:
@@ -57,13 +57,13 @@ class PubSubHandlerBase {
   absl::flat_hash_map<std::string, absl::flat_hash_set<UniqueID>> sender_to_subscribers_;
 };
 
-/// Implementation of `InternalPubSubGcsServiceHandler`: long-poll subscribe and
+/// Implementation of `ControlPlanePubSubGcsServiceHandler`: long-poll subscribe and
 /// register / unregister subscribers against a `GcsPublisher`.
-class InternalPubSubHandler : public PubSubHandlerBase,
-                              public rpc::InternalPubSubGcsServiceHandler {
+class ControlPlanePubSubHandler : public PubSubHandlerBase,
+                                  public rpc::ControlPlanePubSubGcsServiceHandler {
  public:
-  InternalPubSubHandler(instrumented_io_context &io_service,
-                        pubsub::GcsPublisher &gcs_publisher);
+  ControlPlanePubSubHandler(instrumented_io_context &io_service,
+                            pubsub::GcsPublisher &gcs_publisher);
 
   using PubSubHandlerBase::AsyncRemoveSubscriberFrom;
 
@@ -90,7 +90,8 @@ class InternalPubSubHandler : public PubSubHandlerBase,
 };
 
 /// Observability pubsub (`ObservabilityPubSubService`): same publish/subscriber
-/// behavior as internal pubsub, plus `ReportJobError`, on an `ObservabilityPublisher`.
+/// behavior as control-plane pubsub, plus `ReportJobError`, on an
+/// `ObservabilityPublisher`.
 class ObservabilityPubSubHandler : public PubSubHandlerBase,
                                    public rpc::ObservabilityPubSubServiceHandler {
  public:
