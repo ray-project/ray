@@ -79,6 +79,7 @@ class SynchronizationActor:
             self._reduced_data = None
             self._world_size = 0
             self._reset = False
+            self._condition.notify_all()
 
     async def _setup_or_validate_collective_op(self, world_size: int):
         """The setup method for the synchronization actor if it is not setup yet.
