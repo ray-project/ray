@@ -233,18 +233,27 @@ class Test(dict):
         Generate the union of microcheck buildkite step ids across multiple OS
         prefixes. The git/bazel-query work that determines changed and human-specified
         tests does not depend on the prefix, so it runs once for the whole call instead
-        of once per prefix.
+        of once per prefix. Per-prefix workers run in parallel because their dominant
+        cost is independent S3 round-trips.
         """
         changed_tests = cls._get_changed_tests(bazel_workspace_dir)
         human_specified_tests = cls._get_human_specified_tests(bazel_workspace_dir)
 
-        step_ids = set()
-        for prefix in prefixes:
-            step_ids.update(
-                cls._gen_microcheck_step_ids_for_prefix(
+        step_ids: Set[str] = set()
+        if not prefixes:
+            return step_ids
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=len(prefixes)
+        ) as executor:
+            for prefix_step_ids in executor.map(
+                lambda prefix: cls._gen_microcheck_step_ids_for_prefix(
                     prefix, changed_tests, human_specified_tests
-                )
-            )
+                ),
+                prefixes,
+            ):
+                step_ids.update(prefix_step_ids)
+
         return step_ids
 
     @classmethod
