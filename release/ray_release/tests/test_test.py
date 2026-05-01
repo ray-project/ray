@@ -44,7 +44,7 @@ class MockTest(dict):
     def get_name(self) -> str:
         return self.get("name", "")
 
-    def get_test_results(self, limit: int) -> List[TestResult]:
+    def get_test_results(self, *args, **kwargs) -> List[TestResult]:
         return self.get("test_results", [])
 
     def is_high_impact(self) -> bool:
@@ -473,6 +473,41 @@ def test_gen_microcheck_step_ids_for_prefixes_dedups_prefix_independent_calls(
     mock_get_changed_tests.assert_called_once_with("")
     mock_get_human_specified_tests.assert_called_once_with("")
     assert mock_gen_for_prefix.call_count == 3
+
+
+@patch("ray_release.test.Test.gen_from_name")
+@patch("ray_release.test.Test._gen_high_impact_tests")
+def test_gen_microcheck_step_ids_for_prefix_parallel_fetches(
+    mock_gen_high_impact_tests,
+    mock_gen_from_name,
+) -> None:
+    mock_gen_high_impact_tests.return_value = {"//a", "//b", "//c"}
+
+    a = MockTest(
+        {
+            "name": "linux://a",
+            "test_results": [_stub_test_result(rayci_step_id="step-a", commit="c1")],
+        }
+    )
+    b = MockTest(
+        {
+            "name": "linux://b",
+            "test_results": [_stub_test_result(rayci_step_id="step-b", commit="c1")],
+        }
+    )
+    c = MockTest(
+        {
+            "name": "linux://c",
+            "test_results": [_stub_test_result(rayci_step_id="step-a", commit="c1")],
+        }
+    )
+    by_name = {t.get_name(): t for t in (a, b, c)}
+    mock_gen_from_name.side_effect = lambda name: by_name.get(name)
+
+    result = Test._gen_microcheck_step_ids_for_prefix(LINUX_TEST_PREFIX, set(), set())
+
+    assert result == {"step-a", "step-b"}
+    assert mock_gen_from_name.call_count == 3
 
 
 def test_gen_microcheck_tests() -> None:
