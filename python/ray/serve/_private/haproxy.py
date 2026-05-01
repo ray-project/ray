@@ -1028,6 +1028,7 @@ class HAProxyManager(ProxyActorInterface):
                 LongPollNamespace.FALLBACK_TARGETS: self.update_fallback_targets,
             },
             call_in_event_loop=self.event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
 
         is_head = self._node_id == get_head_node_id()
