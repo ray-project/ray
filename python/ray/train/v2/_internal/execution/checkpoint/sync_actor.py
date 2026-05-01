@@ -85,6 +85,8 @@ class SynchronizationActor:
         It initializes the world size and the start times for the
         synchronization barrier.
         """
+        # TODO: fix potential bug where previous collective has not cleared states
+        # (counter non zero) new collective is started.
         if self._world_size == 0:
             self._world_size = world_size
             self._sync_start_times = [None] * world_size
