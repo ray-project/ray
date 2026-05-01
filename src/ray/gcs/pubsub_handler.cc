@@ -126,8 +126,8 @@ void PubSubHandlerBase::AsyncRemoveSubscriberFrom(const std::string &sender_id) 
       "RemoveSubscriberFrom");
 }
 
-InternalPubSubHandler::InternalPubSubHandler(instrumented_io_context &io_service,
-                                             pubsub::GcsPublisher &gcs_publisher)
+ControlPlanePubSubHandler::ControlPlanePubSubHandler(instrumented_io_context &io_service,
+                                                     pubsub::GcsPublisher &gcs_publisher)
     : PubSubHandlerBase(io_service, gcs_publisher.GetPublisher()) {}
 
 ObservabilityPubSubHandler::ObservabilityPubSubHandler(
