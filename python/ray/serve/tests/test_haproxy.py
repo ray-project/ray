@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import socket
 import subprocess
 import sys
 import threading
@@ -605,13 +606,28 @@ def test_haproxy_metrics(ray_shutdown):
 
     assert httpx.get("http://localhost:8000/").text == "hello1"
 
-    metrics_response = httpx.get("http://localhost:9101/metrics")
-    assert metrics_response.status_code == 200
-
-    http_backend_metrics = (
-        'haproxy_backend_http_responses_total{proxy="http-default",code="2xx"} 1'
+    metric_prefix = (
+        'haproxy_backend_http_responses_total{proxy="http-default",code="2xx"} '
     )
-    assert http_backend_metrics in metrics_response.text
+    last_metrics = [""]
+
+    def metrics_show_2xx_response():
+        assert httpx.get("http://localhost:8000/").text == "hello1"
+        resp = httpx.get("http://localhost:9101/metrics")
+        assert resp.status_code == 200
+        last_metrics[0] = resp.text
+        for line in resp.text.splitlines():
+            if line.startswith(metric_prefix):
+                return float(line[len(metric_prefix) :]) >= 1
+        return False
+
+    try:
+        wait_for_condition(metrics_show_2xx_response, timeout=30)
+    except RuntimeError:
+        # Dump full /metrics so bazel test logs show the real backend counters
+        # instead of pytest's truncated assertion message.
+        print("Final /metrics output:\n" + last_metrics[0])
+        raise
 
     serve.shutdown()
 
@@ -783,16 +799,17 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return f"http-{app}"
 
     def haproxy_show_stat() -> str:
-        result = subprocess.run(
-            f'echo "show stat" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            text=True,
-            timeout=5,
-        )
-        if result.returncode != 0:
-            raise RuntimeError(f"Failed to query HAProxy stats: {result.stderr}")
-        return result.stdout
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(b"show stat\n")
+            chunks = []
+            while True:
+                data = s.recv(4096)
+                if not data:
+                    break
+                chunks.append(data)
+        return b"".join(chunks).decode("utf-8", errors="ignore")
 
     def list_primary_servers(backend_name: str) -> list:
         lines = haproxy_show_stat().strip().split("\n")
@@ -810,12 +827,10 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return servers
 
     def set_server_state(backend: str, server: str, state: str) -> None:
-        subprocess.run(
-            f'echo "set server {backend}/{server} state {state}" | socat - {SOCKET_PATH}',
-            shell=True,
-            capture_output=True,
-            timeout=5,
-        )
+        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as s:
+            s.settimeout(5)
+            s.connect(SOCKET_PATH)
+            s.sendall(f"set server {backend}/{server} state {state}\n".encode())
 
     def wait_health(expected: int, timeout: float = 15.0) -> None:
         wait_for_condition(

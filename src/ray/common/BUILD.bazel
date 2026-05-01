@@ -135,6 +135,8 @@ ray_cc_library(
     ],
     deps = [
         ":memory_monitor_interface",
+        ":ray_config",
+        "//src/ray/common/cgroup2:cgroup_manager_interface",
         "//src/ray/util:compat",
         "//src/ray/util:logging",
         "@boost//:algorithm",
@@ -226,7 +228,7 @@ ray_cc_library(
     name = "memory_monitor_factory",
     srcs = select({
         "//bazel:is_linux": [
-            "threshold_memory_monitor_factory.cc",
+            "multi_memory_monitor_factory.cc",
         ],
         "//conditions:default": [
             "noop_memory_monitor_factory.cc",
@@ -241,16 +243,18 @@ ray_cc_library(
     ],
     deps = [
         ":memory_monitor_interface",
-        ":noop_memory_monitor",
         "//src/ray/common/cgroup2:cgroup_manager_interface",
     ] + select({
         "//bazel:is_linux": [
             ":memory_monitor_utils",
+            ":noop_memory_monitor",
             ":ray_config",
             ":threshold_memory_monitor",
             "//src/ray/util:logging",
         ],
-        "//conditions:default": [],
+        "//conditions:default": [
+            ":noop_memory_monitor",
+        ],
     }),
 )
 

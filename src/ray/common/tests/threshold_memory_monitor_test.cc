@@ -23,6 +23,7 @@
 #include <utility>
 
 #include "gtest/gtest.h"
+#include "ray/common/cgroup2/noop_cgroup_manager.h"
 #include "ray/common/memory_monitor_interface.h"
 #include "ray/common/memory_monitor_test_fixture.h"
 #include "ray/common/memory_monitor_utils.h"
@@ -53,15 +54,7 @@ TEST_F(ThresholdMemoryMonitorTest, TestMonitorTriggerCanDetectMemoryUsage) {
   MakeThresholdMemoryMonitor(
       0 /*memory_usage_threshold_bytes*/,
       1 /*refresh_interval_ms*/,
-      [has_checked_once](SystemMemorySnapshot system_memory) {
-        ASSERT_GT(system_memory.total_bytes, 0)
-            << "Reported total bytes from cgroup is <= 0. Is the system memory snapshot "
-               "taken correctly?";
-        ASSERT_GE(system_memory.used_bytes, 0)
-            << "Reported used bytes from cgroup is < 0. Is the system memory snapshot "
-               "taken correctly?";
-        has_checked_once->count_down();
-      },
+      [has_checked_once]() { has_checked_once->count_down(); },
       "" /*root_cgroup_path*/);
   has_checked_once->wait();
 }
@@ -79,17 +72,13 @@ TEST_F(ThresholdMemoryMonitorTest,
 
   std::shared_ptr<boost::latch> has_checked_once = std::make_shared<boost::latch>(1);
 
-  int64_t memory_usage_threshold_bytes =
-      MemoryMonitorUtils::GetMemoryThreshold(cgroup_total_bytes, 0.7f, -1);
+  NoopCgroupManager noop_cgroup_manager;
+  int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
+      cgroup_total_bytes, 0.7f, -1, false, noop_cgroup_manager);
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
-      [has_checked_once, cgroup_total_bytes](SystemMemorySnapshot system_memory) {
-        ASSERT_EQ(system_memory.total_bytes, cgroup_total_bytes)
-            << "Unexpected total bytes read from cgroup. Are we correctly reading memory "
-               "from the cgroup?";
-        has_checked_once->count_down();
-      },
+      [has_checked_once]() { has_checked_once->count_down(); },
       cgroup_dir /*root_cgroup_path*/);
 
   has_checked_once->wait();
@@ -109,14 +98,13 @@ TEST_F(ThresholdMemoryMonitorTest,
   std::shared_ptr<std::atomic<bool>> callback_triggered =
       std::make_shared<std::atomic<bool>>(false);
 
-  int64_t memory_usage_threshold_bytes =
-      MemoryMonitorUtils::GetMemoryThreshold(cgroup_total_bytes, 0.7f, -1);
+  NoopCgroupManager noop_cgroup_manager;
+  int64_t memory_usage_threshold_bytes = MemoryMonitorUtils::GetMemoryThreshold(
+      cgroup_total_bytes, 0.7f, -1, false, noop_cgroup_manager);
   MakeThresholdMemoryMonitor(
       memory_usage_threshold_bytes,  // (70%)
       1 /*refresh_interval_ms*/,
-      [callback_triggered](SystemMemorySnapshot system_memory) {
-        callback_triggered->store(true);
-      },
+      [callback_triggered]() { callback_triggered->store(true); },
       cgroup_dir /*root_cgroup_path*/);
 
   std::this_thread::sleep_for(std::chrono::seconds(5));
