@@ -9,7 +9,7 @@ from collections.abc import Callable, Iterable
 from itertools import product
 from math import prod
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, List, Optional
+from typing import TYPE_CHECKING, Any, List, Optional, TypedDict, cast
 from urllib.parse import urlsplit
 
 import fsspec
@@ -22,6 +22,23 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 
 if TYPE_CHECKING:
     from ray.data.context import DataContext
+
+
+class ZarrArrayMeta(TypedDict):
+    shape: tuple[int, ...]
+    chunks: tuple[int, ...]
+    dtype: str
+
+
+class ZarrChunkRow(TypedDict):
+    array: str
+    meta: ZarrArrayMeta
+    chunk_index: tuple[int, ...]
+
+
+class ZarrGridData(TypedDict):
+    meta: ZarrArrayMeta
+    grid_shape: tuple[int, ...]
 
 
 def _make_azure_fs(url: str, obj: Any) -> tuple[Any, Any]:
@@ -85,7 +102,7 @@ def _resolve_store(path: str, obj: Any) -> tuple[Any, str]:
 
 
 def _create_read_fn(
-    batch: list[dict[str, object]],
+    batch: list[ZarrChunkRow],
 ) -> Callable[[], Iterable[pd.DataFrame]]:
     def read_fn() -> Iterable[pd.DataFrame]:
         arrays = []
@@ -155,7 +172,7 @@ class ZarrV2Datasource(Datasource):
         self._selected_arrays = self._select_array_metadata(array_paths)
         self._grid_shape_dict = self._gen_grid_shape()
 
-    def _load_consolidated_metadata(self) -> dict:
+    def _load_consolidated_metadata(self) -> dict[str, Any]:
         fs, store_path = _resolve_store(self.paths[0], self)
         if store_path:
             meta_path = f"{store_path.rstrip('/')}/.zmetadata"
@@ -172,16 +189,24 @@ class ZarrV2Datasource(Datasource):
 
     def _select_array_metadata(
         self, array_paths: Iterable[str] | None
-    ) -> dict[str, dict[str, object]]:
+    ) -> dict[str, ZarrArrayMeta]:
         """Pick a single array's metadata from the consolidated metadata."""
-        arrays: dict[str, dict[str, object]] = {}
+        arrays: dict[str, ZarrArrayMeta] = {}
         for key, value in self._metadata.items():
             if not key.endswith(".zarray"):
                 continue
-            elif key == ".zarray":
-                arrays[""] = value
+
+            raw_meta = cast(dict[str, Any], value)
+            meta: ZarrArrayMeta = {
+                "shape": tuple(int(x) for x in raw_meta["shape"]),
+                "chunks": tuple(int(x) for x in raw_meta["chunks"]),
+                "dtype": str(raw_meta["dtype"]),
+            }
+
+            if key == ".zarray":
+                arrays[""] = meta
             else:
-                arrays[key[: -len("/.zarray")]] = value
+                arrays[key[: -len("/.zarray")]] = meta
 
         if not arrays:
             raise ValueError("No arrays found in consolidated metadata.")
@@ -203,8 +228,8 @@ class ZarrV2Datasource(Datasource):
 
         return {path: arrays[path] for path in selected_paths}
 
-    def _gen_grid_shape(self) -> dict[str, dict[str, object]]:
-        grid_shape_dict = {}
+    def _gen_grid_shape(self) -> dict[str, ZarrGridData]:
+        grid_shape_dict: dict[str, ZarrGridData] = {}
         for array, meta in self._selected_arrays.items():
             shape = tuple(meta["shape"])
             chunk_shape = tuple(meta["chunks"])
@@ -300,7 +325,7 @@ class ZarrV2Datasource(Datasource):
     ) -> List[ReadTask]:
 
         read_tasks: List[ReadTask] = []
-        batch: list[dict[str, object]] = []
+        batch: list[ZarrChunkRow] = []
 
         num_chunks = sum(
             prod(value["grid_shape"]) for _, value in self._grid_shape_dict.items()
