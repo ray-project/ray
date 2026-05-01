@@ -256,9 +256,10 @@ class CheckpointManager(abc.ABC):
         # Note: the convert is very time-consuming.
         # Get the object ref the checkpointed IDs, because we do not want the IDs
         # to occupy the memory of the head node.
-        checkpointed_ids_ref, checkpoint_size_ref = (
-            convert_and_sort_checkpointed_ids.remote(block_ref, self.id_column)
-        )
+        (
+            checkpointed_ids_ref,
+            checkpoint_size_ref,
+        ) = convert_and_sort_checkpointed_ids.remote(block_ref, self.id_column)
 
         checkpoint_size = ray.get(checkpoint_size_ref)
 
