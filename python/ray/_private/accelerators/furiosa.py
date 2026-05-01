@@ -7,8 +7,30 @@ from ray._private.ray_constants import env_bool
 
 logger = logging.getLogger(__name__)
 
-FURIOSA_VISIBLE_DEVICES_ENV_VAR = "FURIOSA_VISIBLE_DEVICES"
-NOSET_FURIOSA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_FURIOSA_VISIBLE_DEVICES"
+# Ray uses ``FURIOSA_DEVICES`` to track which Furiosa NPUs are assigned to a
+# worker/actor process. The value uses the same ``npu:<index>`` notation that
+# ``furiosa-llm``'s ``--devices`` CLI flag expects (e.g., ``npu:0,npu:3``),
+# so the variable can be passed straight through to ``furiosa-llm`` without
+# reformatting. Bare integer IDs are also accepted on read for convenience.
+FURIOSA_VISIBLE_DEVICES_ENV_VAR = "FURIOSA_DEVICES"
+NOSET_FURIOSA_VISIBLE_DEVICES_ENV_VAR = "RAY_EXPERIMENTAL_NOSET_FURIOSA_DEVICES"
+
+_FURIOSA_DEVICE_PREFIX = "npu:"
+
+
+def _strip_npu_prefix(token: str) -> str:
+    """Return the numeric device index from an ``npu:<id>`` token.
+
+    Accepts bare integers (``"3"``) as well as the prefixed form
+    (``"npu:3"``) so that values written by other tooling round-trip
+    cleanly.
+    """
+    token = token.strip()
+    if token.startswith(_FURIOSA_DEVICE_PREFIX):
+        token = token[len(_FURIOSA_DEVICE_PREFIX) :]
+    # ``furiosa-llm`` allows ``npu:0:0-3`` to address a core range; we keep
+    # only the device index, which is what Ray's scheduler operates on.
+    return token.split(":", 1)[0]
 
 
 class FuriosaAcceleratorManager(AcceleratorManager):
@@ -23,6 +45,12 @@ class FuriosaAcceleratorManager(AcceleratorManager):
     Supporting any architecture the SDK reports keeps this manager
     forward-compatible with new SKUs as Furiosa adds them to
     ``furiosa_smi_py``.
+
+    Device visibility is tracked through the ``FURIOSA_DEVICES``
+    environment variable, formatted as ``npu:<id>`` tokens to match
+    ``furiosa-llm``'s ``--devices`` flag. This lets user code pass the
+    value directly to ``furiosa-llm`` (e.g.,
+    ``furiosa-llm --devices "$FURIOSA_DEVICES"``) without reformatting.
     """
 
     @staticmethod
@@ -42,7 +70,11 @@ class FuriosaAcceleratorManager(AcceleratorManager):
             return None
         if visible_devices == "":
             return []
-        return visible_devices.split(",")
+        return [
+            _strip_npu_prefix(token)
+            for token in visible_devices.split(",")
+            if token.strip()
+        ]
 
     @staticmethod
     def get_current_node_num_accelerators() -> int:
@@ -66,9 +98,11 @@ class FuriosaAcceleratorManager(AcceleratorManager):
 
         The architecture is read from
         ``device.device_info().arch()`` to mirror the upstream Furiosa SMI
-        interface. Non-alphanumeric characters in the Arch enum string
-        (e.g., the ``-`` in ``rngd-max`` or the ``+`` in ``rngd+``) are
-        stripped so the resulting label is a valid Ray accelerator type.
+        interface. The Arch enum string is normalized into an
+        accelerator-type label: ``+`` is mapped to ``plus`` so distinct
+        SKUs do not collide (``rngd+`` becomes ``FURIOSA_RNGDPLUS``,
+        matching the PyO3 enum form ``RngdPlus``), and any remaining
+        non-alphanumeric characters are stripped.
         """
         try:
             from furiosa_smi_py import list_devices
@@ -122,6 +156,10 @@ class FuriosaAcceleratorManager(AcceleratorManager):
         if env_bool(NOSET_FURIOSA_VISIBLE_DEVICES_ENV_VAR, False):
             return
 
+        formatted = ",".join(
+            f"{_FURIOSA_DEVICE_PREFIX}{_strip_npu_prefix(str(d))}"
+            for d in visible_furiosa_devices
+        )
         os.environ[
             FuriosaAcceleratorManager.get_visible_accelerator_ids_env_var()
-        ] = ",".join(map(str, visible_furiosa_devices))
+        ] = formatted

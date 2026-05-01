@@ -45,10 +45,25 @@ class TestFuriosaAcceleratorManager:
         )
 
     def test_get_current_process_visible_accelerator_ids(self):
+        # furiosa-llm --devices form (preferred)
+        os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] = "npu:0,npu:1,npu:2,npu:3"
+        assert (
+            FuriosaAcceleratorManager.get_current_process_visible_accelerator_ids()
+            == ["0", "1", "2", "3"]
+        )
+
+        # Bare integer form is also accepted for convenience.
         os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] = "0,1,2,3"
         assert (
             FuriosaAcceleratorManager.get_current_process_visible_accelerator_ids()
             == ["0", "1", "2", "3"]
+        )
+
+        # Core range notation: only the device index is returned.
+        os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] = "npu:0:0-3,npu:1:0-3"
+        assert (
+            FuriosaAcceleratorManager.get_current_process_visible_accelerator_ids()
+            == ["0", "1"]
         )
 
         os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] = ""
@@ -125,16 +140,18 @@ class TestFuriosaAcceleratorManager:
         assert FuriosaAcceleratorManager.get_current_node_accelerator_type() is None
 
     def test_set_current_process_visible_accelerator_ids(self):
+        # Ray's scheduler hands us bare integer IDs; we serialize them in
+        # the ``npu:<id>`` form expected by ``furiosa-llm --devices``.
         FuriosaAcceleratorManager.set_current_process_visible_accelerator_ids(
             ["0", "1"]
         )
-        assert os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] == "0,1"
+        assert os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] == "npu:0,npu:1"
 
         os.environ[NOSET_FURIOSA_VISIBLE_DEVICES_ENV_VAR] = "1"
         FuriosaAcceleratorManager.set_current_process_visible_accelerator_ids(
             ["2", "3"]
         )
-        assert os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] == "0,1"
+        assert os.environ[FURIOSA_VISIBLE_DEVICES_ENV_VAR] == "npu:0,npu:1"
 
     def test_validate_resource_request_quantity(self):
         valid, _ = FuriosaAcceleratorManager.validate_resource_request_quantity(1)
