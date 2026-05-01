@@ -1,4 +1,9 @@
-"""Heap memory hints for DataSource V2 ``ReadFiles`` Ray tasks."""
+"""Heap memory hints for DataSource V2 ``ReadFiles`` Ray tasks.
+
+For integration tests, a local probe script, and manual OOM / utilization
+tuning of :data:`READ_FILES_TASK_MEMORY_EPS_BYTES`, see
+``python/ray/data/tests/datasource_v2/README_read_files_task_memory.md``.
+"""
 
 from __future__ import annotations
 

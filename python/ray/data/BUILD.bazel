@@ -958,6 +958,20 @@ py_test(
 )
 
 py_test(
+    name = "test_read_parquet_v2_task_memory_integration",
+    size = "small",
+    srcs = ["tests/datasource_v2/test_read_parquet_v2_task_memory_integration.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_projection_fusion",
     size = "small",
     srcs = ["tests/test_projection_fusion.py"],

@@ -357,12 +357,21 @@ class BlockMetadataWithSchema(BlockMetadata):
 
     @property
     def metadata(self) -> BlockMetadata:
+        """Plain :class:`BlockMetadata` without schema.
+
+        Must preserve all :class:`BlockMetadata` fields so streaming hand-offs
+        (e.g. ListFiles manifest ``task_memory_bytes`` for ReadFiles scheduling)
+        are not dropped.
+        """
         return BlockMetadata(
             num_rows=self.num_rows,
             size_bytes=self.size_bytes,
             exec_stats=self.exec_stats,
-            input_files=self.input_files,
             task_exec_stats=self.task_exec_stats,
+            estimated_size_bytes=self.estimated_size_bytes,
+            input_files=self.input_files,
+            input_files_estimated_bytes=self.input_files_estimated_bytes,
+            task_memory_bytes=self.task_memory_bytes,
         )
 
 
