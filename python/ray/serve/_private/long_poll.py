@@ -117,7 +117,7 @@ class LongPollClient:
           callbacks to be called on state update for the corresponding keys.
         call_in_event_loop: an asyncio event loop
           to post the callback into.
-        client_id: optional identifier reported back to the host if this client
+        client_id: identifier reported back to the host if this client
           disables itself.
     """
 
@@ -126,7 +126,7 @@ class LongPollClient:
         host_actor,
         key_listeners: Dict[KeyType, UpdateStateCallable],
         call_in_event_loop: AbstractEventLoop,
-        client_id: Optional[str] = None,
+        client_id: str,
     ) -> None:
         # We used to allow this to be optional, but due to Ray Client issue
         # we now enforce all long poll client to post callback to event loop
@@ -225,6 +225,9 @@ class LongPollClient:
         # Schedule the next iteration only if the loop is running.
         # The event loop might not be running if users used a cached
         # version across loops.
+        if not self.is_running:
+            return
+
         if self.event_loop.is_running():
             self.event_loop.call_soon_threadsafe(callback)
         else:

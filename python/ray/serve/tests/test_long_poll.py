@@ -166,6 +166,7 @@ async def test_client_callbacks(serve_instance):
             "key_2": key_2_callback,
         },
         call_in_event_loop=get_or_create_event_loop(),
+        client_id="test_client_callbacks",
     )
 
     await async_wait_for_condition(
@@ -197,6 +198,7 @@ async def test_client_threadsafe(serve_instance):
             "key_1": key_1_callback,
         },
         call_in_event_loop=get_or_create_event_loop(),
+        client_id="test_client_threadsafe",
     )
 
     await e.wait()
