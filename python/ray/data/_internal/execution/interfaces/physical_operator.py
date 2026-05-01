@@ -149,6 +149,8 @@ class DataOpTask(OpTask):
             owner_op: The operator that owns the blocks produced by this task.
                 Must be set if block_ref_counter is set.
         """
+        if block_ref_counter is not None and owner_op is None:
+            raise ValueError("owner_op must be provided when block_ref_counter is set.")
         super().__init__(task_index, task_resource_bundle)
         # TODO(hchen): Right now, the streaming generator is required to yield a Block
         # and a BlockMetadata each time. We should unify task submission with an unified
