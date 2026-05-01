@@ -91,7 +91,7 @@ class RayActivityResponse(BaseModel):
     last_activity_at: Optional[float] = Field(
         None,
         description=(
-            "Timestamp when last actvity of this Ray component finished in format of "
+            "Timestamp when last activity of this Ray component finished in format of "
             "seconds since unix epoch. This field does not need to be populated "
             "for Ray components where it is not meaningful."
         ),
