@@ -356,6 +356,22 @@ class BlockMetadataWithSchema(BlockMetadata):
             task_exec_stats=self.task_exec_stats,
         )
 
+    def __getstate__(self) -> Dict[str, Any]:
+        state = {f.name: getattr(self, f.name) for f in fields(BlockMetadataWithSchema)}
+
+        if isinstance(self.schema, pa.Schema):
+            state["schema"] = self.schema.serialize().to_pybytes()
+        else:
+            state["schema"] = self.schema
+
+        return state
+
+    def __setstate__(self, state: Dict[str, Any]):
+        schema_val: bytes | Schema | None = state["schema"]
+        if isinstance(schema_val, (bytes, bytearray)):
+            state["schema"] = pa.ipc.read_schema(pa.BufferReader(schema_val))
+        self.__dict__.update(state)
+
 
 @DeveloperAPI
 class BlockAccessor:
@@ -538,7 +554,7 @@ class BlockAccessor:
         # implements the Mapping protocol. Use bulk GPU->CPU transfer via
         # to_arrow() instead of the slow column-by-column Mapping path.
         elif _is_cudf_dataframe(batch):
-            return batch.to_arrow()
+            return batch.to_arrow(preserve_index=False)
 
         elif isinstance(batch, pandas.DataFrame):
             if (block_type == BlockType.ARROW) or (

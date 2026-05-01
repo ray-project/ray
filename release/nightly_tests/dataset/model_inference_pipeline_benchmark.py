@@ -16,7 +16,7 @@ Key features mirrored from production:
 import argparse
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Literal, Optional, Union
 
 import numpy as np
 import pandas as pd
@@ -35,7 +35,7 @@ DEFAULT_MODEL_NAME = "sentence-transformers/all-MiniLM-L6-v2"
 class WorkerConfig:
     """Configuration for a worker pool (preprocessing or inference)."""
 
-    batch_size: int
+    batch_size: Union[int, Literal["auto"]]
     num_cpus: float
     num_gpus: float
     # Actor pool sizing (only for inference actors)
@@ -67,8 +67,8 @@ def parse_args():
     )
     parser.add_argument(
         "--preprocessing-batch-size",
-        type=int,
-        default=4096,
+        type=lambda v: v if v == "auto" else int(v),
+        default="auto",
         help="Batch size for preprocessing step.",
     )
     parser.add_argument(

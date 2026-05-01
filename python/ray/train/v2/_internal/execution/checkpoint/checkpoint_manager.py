@@ -54,7 +54,7 @@ class _CheckpointManagerState(BaseModel):
     ray_version: str = ray.__version__
     checkpoint_results: List[_TrainingResultState]
     checkpoint_report_indices: List[int]
-    latest_checkpoint_result: Optional[_TrainingResultState]
+    latest_checkpoint_result: Optional[_TrainingResultState] = None
     pending_training_results: List[_TrainingResultState]
     pending_validation_specs: List[Union[bool, ValidationTaskConfig]]
     current_report_index: int
@@ -258,7 +258,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # Delete the old checkpoints.
         for checkpoint_result in results_to_delete:
             checkpoint = checkpoint_result.checkpoint
-            logger.debug("Deleting checkpoint: ", checkpoint)
+            logger.debug("Deleting checkpoint: %s", checkpoint)
             delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
     # --------------------------
@@ -521,12 +521,14 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         self,
         current_report_index: int,
         consistency_mode: CheckpointConsistencyMode = CheckpointConsistencyMode.VALIDATED,
+        timeout_s: Optional[float] = None,
     ) -> List[ReportedCheckpoint]:
         """Get all the reported checkpoints so far.
 
         Args:
             current_report_index: The current report index.
             consistency_mode: Read semantics for checkpoint retrieval. Defaults to VALIDATED.
+            timeout_s: Timeout in seconds. Defaults to None to run forever.
 
         Returns:
             A list of ReportedCheckpoint objects that represent the checkpoints and
@@ -552,15 +554,21 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             )
 
         async with self._condition:
-            await wait_with_logging(
-                self._condition,
-                predicate=predicate,
-                generate_warning_message=lambda: self._generate_get_all_reported_checkpoints_periodic_warning(
-                    start_time, consistency_mode
-                ),
-                warn_interval_s=self._collective_warn_interval_s,
-                timeout_s=-1,  # wait forever
-            )
+            try:
+                await wait_with_logging(
+                    self._condition,
+                    predicate=predicate,
+                    generate_warning_message=lambda: self._generate_get_all_reported_checkpoints_periodic_warning(
+                        start_time, consistency_mode
+                    ),
+                    warn_interval_s=self._collective_warn_interval_s,
+                    timeout_s=timeout_s,
+                )
+            except (asyncio.TimeoutError, TimeoutError):
+                # Time out due to checkpoint upload or validation in progress
+                logger.debug(
+                    "Timed out waiting for reported_checkpoint to become available."
+                )
 
         # TODO: might be nice for CheckpointManager to manage ReportedCheckpoint
         # instead of _TrainingResult but that is a large refactor.

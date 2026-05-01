@@ -19,8 +19,8 @@ from ray.llm._internal.serve.config_generator.inputs import (
 )
 from ray.llm._internal.serve.config_generator.utils.gpu import (
     DEFAULT_MODEL_ID_TO_GPU,
-    GPUType,
 )
+from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
 
 
 def _format_yaml_dumper():
@@ -76,7 +76,7 @@ def _write_config_to_disk(serve_config: Dict[str, Any], timestamp: str):
 def _get_model_with_validation(
     model_id: Optional[str],
     hf_token: Optional[str],
-    gpu_type: Optional[GPUType],
+    gpu_type: Optional[AcceleratorType],
     tensor_parallelism: Optional[int],
     enable_lora: Optional[bool],
     num_loras_per_replica: Optional[int],
@@ -113,7 +113,7 @@ def gen_config(
         Optional[str], typer.Option(help="Huggingface token", hidden=True)
     ] = None,
     gpu_type: Annotated[
-        Optional[GPUType], typer.Option(help="Type of GPU", hidden=True)
+        Optional[AcceleratorType], typer.Option(help="Type of GPU", hidden=True)
     ] = None,
     tensor_parallelism: Annotated[
         Optional[int], typer.Option(help="Number of tensor parallelism", hidden=True)
