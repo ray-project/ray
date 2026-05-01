@@ -70,6 +70,15 @@ class InternalQueueOperatorMixin(PhysicalOperator, abc.ABC):
         and then clears internal input and output queues.
         """
         super().mark_execution_finished()
+        # Untrack any blocks still sitting in the queues before clearing them,
+        # so the BlockRefCounter doesn't overestimate memory (e.g. when a downstream limit
+        # operator terminates early and discards buffered blocks).
+        for input_queue in self._input_queues:
+            for bundle in input_queue:
+                self._track_bundle_consumed(bundle)
+        for output_queue in self._output_queues:
+            for bundle in output_queue:
+                self._track_bundle_consumed(bundle)
         self.clear_internal_input_queue()
         self.clear_internal_output_queue()
 

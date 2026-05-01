@@ -316,6 +316,101 @@ class TestAllToAllOperatorBlockRefCounter:
         assert counter.get_object_store_memory_usage(op) == 250
 
 
+class TestMarkExecutionFinishedBlockRefCounter:
+    """Tests for BlockRefCounter integration in InternalQueueOperatorMixin.mark_execution_finished().
+
+    Verifies that blocks still buffered in internal queues are untracked when
+    an operator finishes early (e.g. LimitOperator discarding buffered blocks).
+    """
+
+    class _FakeBundle:
+        def __init__(self, blocks):
+            self.blocks = tuple(blocks)
+            self.block_refs = [ref for ref, _ in self.blocks]
+
+        def num_rows(self):
+            return len(self.blocks)
+
+        def size_bytes(self):
+            return sum(m.size_bytes for _, m in self.blocks)
+
+    def _fake_bundle(self, refs_with_sizes):
+        return self._FakeBundle(
+            [
+                (
+                    ref,
+                    BlockMetadata(
+                        num_rows=1, size_bytes=size, input_files=None, exec_stats=None
+                    ),
+                )
+                for ref, size in refs_with_sizes
+            ]
+        )
+
+    def _make_op(self):
+        input_op = InputDataBuffer(DataContext.get_current(), [])
+        upstream = InputDataBuffer(DataContext.get_current(), [])
+        op = AllToAllOperator(
+            bulk_fn=MagicMock(),
+            input_op=input_op,
+            data_context=DataContext.get_current(),
+        )
+        counter = BlockRefCounter()
+        op._block_ref_counter = counter
+        op._metrics = MagicMock()
+        op.start(ExecutionOptions())
+        return op, upstream, counter
+
+    def test_fifo_queue_blocks_untracked_on_finish(self):
+        """Blocks buffered in FIFOBundleQueue input/output queues are untracked
+        when mark_execution_finished() is called.
+        """
+        op, upstream, counter = self._make_op()
+
+        in_ref = object()
+        counter.on_block_produced(in_ref, 100, upstream)
+        op._input_buffer.add(self._fake_bundle([(in_ref, 100)]))
+
+        out_ref = object()
+        counter.on_block_produced(out_ref, 200, op)
+        op._output_buffer.add(self._fake_bundle([(out_ref, 200)]))
+
+        op.mark_execution_finished()
+
+        assert counter.get_object_store_memory_usage(upstream) == 0
+        assert counter.get_object_store_memory_usage(op) == 0
+
+    def test_rebundle_queue_blocks_untracked_on_finish(self):
+        """Blocks in both _pending_bundles and _ready_bundles of a RebundleQueue
+        are untracked when mark_execution_finished() is called. This exercises
+        RebundleQueue.__iter__ which covers both internal deques.
+        """
+        from ray.data._internal.execution.bundle_queue.bundler import (
+            EstimateSize,
+            RebundleQueue,
+        )
+
+        op, upstream, counter = self._make_op()
+
+        # Replace input buffer with a RebundleQueue (as used by TaskPoolMapOperator).
+        rebundle_queue = RebundleQueue(EstimateSize(min_rows_per_bundle=1000))
+        op._input_buffer = rebundle_queue
+
+        # Put one bundle in _pending_bundles (threshold not yet reached).
+        pending_ref = object()
+        counter.on_block_produced(pending_ref, 100, upstream)
+        rebundle_queue._pending_bundles.append(self._fake_bundle([(pending_ref, 100)]))
+
+        # Put one bundle directly in _ready_bundles (already merged).
+        ready_ref = object()
+        counter.on_block_produced(ready_ref, 200, upstream)
+        rebundle_queue._ready_bundles.append(self._fake_bundle([(ready_ref, 200)]))
+
+        op.mark_execution_finished()
+
+        assert counter.get_object_store_memory_usage(upstream) == 0
+
+
 if __name__ == "__main__":
     import sys
 

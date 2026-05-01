@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import abc
 from collections import deque
-from typing import TYPE_CHECKING, Any, Deque, List, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Deque, Iterator, List, Optional, Tuple
 
 from typing_extensions import override
 
@@ -275,6 +275,16 @@ class RebundleQueue(BaseBundleQueue):
             assert ready_bundles_built == 1
             self._consumed_bundles_list.append(self._curr_consumed_bundles)
             self._curr_consumed_bundles = []
+
+    def __iter__(self) -> Iterator["RefBundle"]:
+        """Yield all bundles currently held in the queue.
+
+        Iterates over _pending_bundles (not yet merged) and _ready_bundles
+        (already merged). These sets are mutually exclusive: once pending bundles
+        are merged into a ready bundle, they are removed from _pending_bundles.
+        """
+        yield from self._pending_bundles
+        yield from self._ready_bundles
 
     @override
     def clear(self):
