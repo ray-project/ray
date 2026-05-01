@@ -41,7 +41,7 @@ def run_torch():
 
 
 def run_lightning():
-    import pytorch_lightning as pl
+    import lightning.pytorch as pl
 
     from ray.train.lightning import (
         RayDDPStrategy,

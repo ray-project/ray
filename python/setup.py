@@ -218,12 +218,23 @@ ray_files += [
 # also update the matching section of requirements/requirements.txt
 # in this directory
 if setup_spec.type == SetupType.RAY:
-    pandas_dep = "pandas >= 1.3"
+    pandas_dep = "pandas >= 2.2.3"
     numpy_dep = "numpy >= 1.20"
     pyarrow_deps = [
-        "pyarrow >= 9.0.0",
+        "pyarrow >= 17.0.0",
     ]
-    pydantic_dep = "pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,!=2.5.*,!=2.6.*,!=2.7.*,!=2.8.*,!=2.9.*,!=2.10.*,!=2.11.*,<3"
+    pydantic_deps = [
+        "pydantic>=2.5.0,<3; python_version < '3.14'",
+        "pydantic>=2.13.0,<3; python_version >= '3.14'",
+    ]
+    tune_base_deps = [
+        "pandas",
+        "tensorboardX>=1.9",
+        "requests",
+        *pyarrow_deps,
+        "fsspec",
+    ]
+
     setup_spec.extras = {
         "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
@@ -254,7 +265,7 @@ if setup_spec.type == SetupType.RAY:
             "opentelemetry-sdk >= 1.30.0",
             "opentelemetry-exporter-prometheus",
             "opentelemetry-proto",
-            pydantic_dep,
+            *pydantic_deps,
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
@@ -270,13 +281,9 @@ if setup_spec.type == SetupType.RAY:
             "watchfiles",
         ],
         "tune": [
-            "pandas",
             # TODO: Remove pydantic dependency from tune once tune doesn't import train
-            pydantic_dep,
-            "tensorboardX>=1.9",
-            "requests",
-            *pyarrow_deps,
-            "fsspec",
+            *tune_base_deps,
+            *pydantic_deps,
         ],
     }
 
@@ -323,7 +330,10 @@ if setup_spec.type == SetupType.RAY:
         "scipy",
     ]
 
-    setup_spec.extras["train"] = setup_spec.extras["tune"] + [pydantic_dep]
+    # Train currently depends on Tune, so keep it as a superset of the Tune
+    # extra. If Tune drops its temporary pydantic dependency in the future,
+    # add `pydantic_deps` explicitly here as part of that refactor.
+    setup_spec.extras["train"] = list(setup_spec.extras["tune"])
 
     # Ray AI Runtime should encompass Data, Tune, and Serve.
     setup_spec.extras["air"] = list(
@@ -366,7 +376,7 @@ if setup_spec.type == SetupType.RAY:
     setup_spec.extras["llm"] = list(
         set(
             [
-                "vllm[audio]>=0.18.0",
+                "vllm[audio]>=0.19.0",
                 "nixl>=1.0.0",
                 "jsonref>=1.1.0",
                 "jsonschema",
@@ -619,7 +629,7 @@ def build(build_python, build_java, build_cpp, build_redis):
 
     if BAZEL_LIMIT_CPUS:
         n = int(BAZEL_LIMIT_CPUS)  # the value must be an int
-        bazel_flags.append(f"--local_cpu_resources={n}")
+        bazel_flags.append(f"--local_resources=cpu={n}")
         warnings.warn(
             "Setting BAZEL_LIMIT_CPUS is deprecated and will be removed in a future"
             " version. Please use BAZEL_ARGS instead.",

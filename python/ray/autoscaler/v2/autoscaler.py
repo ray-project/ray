@@ -139,7 +139,12 @@ class Autoscaler:
             storage=InMemoryStorage(),
         )
         subscribers: List[InstanceUpdatedSubscriber] = []
-        subscribers.append(CloudInstanceUpdater(cloud_provider=cloud_provider))
+        subscribers.append(
+            CloudInstanceUpdater(
+                cloud_provider=cloud_provider,
+                metrics_reporter=self._metrics_reporter,
+            )
+        )
         subscribers.append(
             RayStopper(gcs_client=gcs_client, error_queue=self._ray_stop_errors_queue)
         )

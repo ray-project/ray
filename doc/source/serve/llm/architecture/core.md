@@ -75,9 +75,10 @@ Ray Serve LLM provides:
   - Automatic prefix caching (APC).
   - LoRA adapter support.
 
+- **SGLangServer**: Community-supported integration using SGLang's in-process engine with RadixAttention. See the {doc}`SGLang integration guide <../user-guides/sglang>` for details.
+
 Future implementations could include:
 - **TensorRT-LLM**: NVIDIA's optimized inference engine.
-- **SGLang**: Fast serving with RadixAttention.
 
 Ray Serve LLM deeply integrates with vLLM since it has end-to-end Ray support in the engine, which gives benefits in fine-grained placement of workers and other optimizations. The engine abstraction makes it straightforward to add new implementations without changing the core serving logic.
 
@@ -210,7 +211,7 @@ class LLMServerProtocol(DeploymentProtocol):
         """Handle embedding request."""
 ```
 
-This protocol ensures that all LLM server implementations (`LLMServer`, `DPServer`, `PDProxyServer`) provide consistent methods for handling requests.
+This protocol ensures that all LLM server implementations (`LLMServer`, `DPServer`, `PDDecodeServer`, `PDPrefillServer`) provide consistent methods for handling requests.
 
 ## Builder pattern
 
