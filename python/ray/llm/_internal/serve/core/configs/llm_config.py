@@ -235,7 +235,10 @@ class LLMConfig(BaseModelExtended):
         "- `stream_batching_interval_ms`: Ray Serve LLM batches streaming "
         "requests together. This config decides how long to wait for the "
         "batch before processing the requests. Defaults to "
-        f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n",
+        f"{MODEL_RESPONSE_BATCH_TIMEOUT_MS}.\n"
+        "- `num_ingress_replicas`: The number of replicas for the router. Ray "
+        "Serve will take the max amount all the replicas. Default would be 2 "
+        "router replicas per model replica.\n",
     )
 
     log_engine_metrics: Optional[bool] = Field(
@@ -446,6 +449,19 @@ class LLMConfig(BaseModelExtended):
             raise ValueError(f"Invalid lora_config: {value}") from e
 
         return lora_config
+
+    @field_validator("experimental_configs")
+    def validate_experimental_configs(cls, value: Dict[str, Any]) -> Dict[str, Any]:
+        """Validates the experimental configs dictionary."""
+        # TODO(Kourosh): Remove this deprecation check after users have
+        # migrated.
+        if "num_router_replicas" in value:
+            raise ValueError(
+                "The 'num_router_replicas' key in experimental_configs has "
+                "been renamed to 'num_ingress_replicas'. Please update "
+                "your configuration to use 'num_ingress_replicas' instead."
+            )
+        return value
 
     @model_validator(mode="after")
     def _check_log_stats_with_metrics(self):
