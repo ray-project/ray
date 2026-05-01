@@ -127,6 +127,48 @@ The two-substrate comparison is itself a methodology-skepticism artifact: anyone
 
 **Proceed with caveats raised to maintainers.** RocksDB write numbers on commodity-PV-class substrates are 1–10 ms (fsync-bounded), not 0.01–0.1 ms. This is fast enough for GCS workloads (reads dominate; writes batch via group commit), but **the REP's perf section needs the correction** documented above. Reads on RocksDB are competitive with the in-memory backend.
 
+## Addendum (commit `e710272d`) — inline vs offload-IO path
+
+Triggered by gemini-bot review comment id [3165761812](https://github.com/ray-project/ray/pull/63032#discussion_r3165761812): the inline `Async*` path runs RocksDB ops (including the WAL fsync) on the GCS event loop, blocking other RPCs. The follow-up commit `e710272d` adds an *offload* path gated by `gcs_rocksdb_async_offload`, where each call posts its work to a `boost::asio::thread_pool` and the user callback still posts to `io_service`. The bench was extended with `--include-offload`, `--io-pool-size`, and `--sequential` flags so both paths can be measured side-by-side.
+
+Two regimes matter, because they answer different questions.
+
+### Sequential (one in-flight at a time) — honest per-op end-to-end
+
+Issuer waits for each callback before issuing the next. This matches what a single GCS RPC sees in isolation, and is the apples-to-apples comparison of inline vs offload latency.
+
+| backend             | wall-clock | ops/s |    p50  |    p95  |    p99   |
+|---------------------|-----------:|------:|--------:|--------:|---------:|
+| `rocksdb_inline`    | 47.19 s    | 211.9 | 3.78 ms | 8.35 ms | 11.76 ms |
+| `rocksdb_offload`   | 46.83 s    | 213.5 | 3.82 ms | 8.30 ms | 11.88 ms |
+
+**Single-op cost is identical within noise.** The offload path adds ~40 µs of dispatch overhead (post-to-pool + post-back-to-io_service); dwarfed by the 3.8 ms fsync.
+
+(`results/phase7-sequential-offload-vs-inline.json`, `--sequential --include-offload --io-pool-size 4`)
+
+### Pipelined (issuer fires kKeyCount writes back-to-back) — saturated throughput
+
+This is the regime where group commit pays off: many in-flight writes get aggregated into one fsync round-trip.
+
+| backend             | wall-clock | ops/s   |
+|---------------------|-----------:|--------:|
+| `rocksdb_inline`    | 46.40 s    |  215.5  |
+| `rocksdb_offload`   | 18.68 s    |  535.2  |
+
+**Offload is 2.5× the throughput of inline** because the inline path serialises on the issuer's thread (one fsync at a time, no parallelism for group commit to aggregate), while the 4-thread pool keeps several writers in-flight.
+
+The pipelined run's per-op p50 in offload mode shows 9.2 s — that is *not* a per-op cost; it is queue-depth latency under saturation (the issuer fires faster than the pool drains, so the 10000th op waits behind 9999 others). That number is a benchmark artifact, not what production GCS would see at sustainable rates.
+
+(`results/phase7-pipelined-offload-vs-inline.json`, `--include-offload --io-pool-size 4`)
+
+### What this means for the maintainer choice
+
+- *If GCS issues writes serially* (one at a time, waits for ack), inline and offload are within 1 % on per-op latency. The only effective difference is **whether the GCS event loop is blocked for 3.8 ms per write** (inline) or **frees up after a ~40 µs enqueue** (offload).
+- *If GCS issues concurrent writes* (multiple in-flight from the event loop), offload ships **2.5× the aggregate throughput** at the same per-op latency, because RocksDB's group commit aggregates fsyncs across in-flight writers.
+- The cost of offload is one extra `boost::asio::thread_pool` of `gcs_rocksdb_io_pool_size` (default 4) threads, plus the constant ~40 µs per call.
+
+The default in this PR is `gcs_rocksdb_async_offload = false` (inline path) — matches the existing `InMemoryStoreClient` semantics and is the simplest to reason about. Flipping the default — or making offload the only path — is a maintainer judgement; the numbers above are the input to that decision.
+
 ## Next concrete actions
 
 1. **Multi-threaded-writer variant** to capture group-commit benefit on aggregate throughput.
