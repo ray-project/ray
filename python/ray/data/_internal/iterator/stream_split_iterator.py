@@ -261,6 +261,8 @@ class SplitCoordinator:
                     self._output_iterator = execute_to_legacy_bundle_iterator(
                         self._current_executor, ds._plan
                     )
+                    # Register the streaming split external consumers with the executor's resource manager.
+                    self._current_executor.set_external_consumer_bytes(0)
                     logger.debug(
                         f"Starting epoch {self._cur_epoch} (all {self._n} clients "
                         "synced)."

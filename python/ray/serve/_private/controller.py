@@ -3,7 +3,6 @@ import logging
 import os
 import pickle
 import time
-from collections import defaultdict
 from typing import (
     Any,
     Dict,
@@ -60,7 +59,6 @@ from ray.serve._private.default_impl import (
 )
 from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve._private.deployment_state import (
-    DeploymentReplica,
     DeploymentStateManager,
 )
 from ray.serve._private.endpoint_state import EndpointState
@@ -122,6 +120,7 @@ _CRASH_AFTER_CHECKPOINT_PROBABILITY = 0
 
 CONFIG_CHECKPOINT_KEY = "serve-app-config-checkpoint"
 LOGGING_CONFIG_CHECKPOINT_KEY = "serve-logging-config-checkpoint"
+SHUTDOWN_IN_PROGRESS_KEY = "serve-shutdown-in-progress"
 
 
 class ServeController:
@@ -265,6 +264,10 @@ class ServeController:
             log_file_path=get_component_logger_file_path(),
         )
         self._shutting_down = False
+        self._shutdown_flag_persisted = False
+        if self.kv_store.get(SHUTDOWN_IN_PROGRESS_KEY) is not None:
+            self._shutting_down = True
+            self._shutdown_flag_persisted = True
         self._shutdown_event = asyncio.Event()
         self._shutdown_start_time = None
 
@@ -416,12 +419,14 @@ class ServeController:
         return self.autoscaling_state_manager.get_metrics_for_deployment(deployment_id)
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
-        return self.deployment_state_manager._deployment_states[deployment_id]._replicas
+        return self.deployment_state_manager._dump_replica_states_for_testing(
+            deployment_id
+        )
 
     def _stop_one_running_replica_for_testing(self, deployment_id):
-        self.deployment_state_manager._deployment_states[
+        self.deployment_state_manager._stop_one_running_replica_for_testing(
             deployment_id
-        ]._stop_one_running_replica_for_testing()
+        )
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
         """Proxy long pull client's listen request.
@@ -753,6 +758,11 @@ class ServeController:
         )
 
     def _recover_state_from_checkpoint(self):
+        if self._shutting_down:
+            # If we're recovering into a `shutdown-in-progress state, don't
+            # re-apply the config.
+            return
+
         (
             deployment_time,
             serve_config,
@@ -956,6 +966,9 @@ class ServeController:
             self._shutdown_start_time = time.time()
             logger.info("Controller shutdown started.", extra={"log_to_stderr": False})
 
+        if not self._shutdown_flag_persisted:
+            self.kv_store.put(SHUTDOWN_IN_PROGRESS_KEY, b"1")
+            self._shutdown_flag_persisted = True
         self.kv_store.delete(CONFIG_CHECKPOINT_KEY)
         self.kv_store.delete(LOGGING_CONFIG_CHECKPOINT_KEY)
         self.application_state_manager.shutdown()
@@ -980,6 +993,9 @@ class ServeController:
             and proxy_state_is_shutdown
         ):
             self._kill_registered_cleanup_actors()
+            self.application_state_manager.delete_checkpoint()
+            self.deployment_state_manager.delete_checkpoint()
+            self.kv_store.delete(SHUTDOWN_IN_PROGRESS_KEY)
             logger.warning(
                 "All resources have shut down, controller exiting.",
                 extra={"log_to_stderr": False},
@@ -1045,6 +1061,7 @@ class ServeController:
                         "replica_config_proto_bytes": args.replica_config,
                         "deployer_job_id": args.deployer_job_id,
                         "ingress": args.ingress,
+                        "ingress_request_router": args.ingress_request_router,
                         "route_prefix": (
                             args.route_prefix if args.HasField("route_prefix") else None
                         ),
@@ -1205,7 +1222,7 @@ class ServeController:
 
     def list_deployment_ids(self) -> List[DeploymentID]:
         """Gets the current list of all deployments' identifiers."""
-        return self.deployment_state_manager._deployment_states.keys()
+        return self.deployment_state_manager.get_deployment_ids()
 
     def update_deployment_replicas(
         self, deployment_id: DeploymentID, target_num_replicas: int
@@ -1554,24 +1571,7 @@ class ServeController:
         ]
 
     def _get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
-        node_id_to_alive_replica_ids = defaultdict(set)
-        # TODO(abrar): Expose the right APIs in the DeploymentStateManager
-        # to get the alive replicas for a deployment.
-        for ds in self.deployment_state_manager._deployment_states.values():
-            # here we get all the replicas irrespective of their state
-            # unlike in the get_running_replica_infos_for_ingress_deployment
-            # where we only get the replicas that are running, because we dont
-            # wish to agressively cleanup ports for replicas that are not running
-            # and are in the process of being updated or are in the process of
-            # being started.
-            replicas: List[DeploymentReplica] = ds._replicas.get()
-            for replica in replicas:
-                node_id: Optional[str] = replica.actor_node_id
-                if node_id is None:
-                    continue
-                replica_unique_id = replica.replica_id.unique_id
-                node_id_to_alive_replica_ids[node_id].add(replica_unique_id)
-        return node_id_to_alive_replica_ids
+        return self.deployment_state_manager.get_node_id_to_alive_replica_ids()
 
     def allocate_replica_port(
         self, node_id: str, replica_id: str, protocol: RequestProtocol
@@ -1741,6 +1741,14 @@ class ServeController:
                 is killed, which raises a RayActorError.
         """
         self._shutting_down = True
+        try:
+            self.kv_store.put(SHUTDOWN_IN_PROGRESS_KEY, b"1")
+            self._shutdown_flag_persisted = True
+        except Exception:
+            logger.warning(
+                "Failed to persist shutdown flag; will retry in control loop.",
+                extra={"log_to_stderr": False},
+            )
         if not wait:
             return
 

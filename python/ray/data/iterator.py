@@ -229,6 +229,9 @@ class DataIterator(abc.ABC):
             prefetch_bytes_callback = (
                 make_prefetch_callback(executor) if executor is not None else None
             )
+            if prefetch_bytes_callback is not None:
+                # Register the external consumer with the executor's resource manager.
+                prefetch_bytes_callback(0)
 
             batch_iterator = self._create_batch_iterator(
                 ref_bundles_iterator,
