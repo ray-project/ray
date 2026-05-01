@@ -120,19 +120,21 @@ class DataIterator(abc.ABC):
         """
         ...
 
-    def _on_iteration_end(self) -> None:
+    def _on_iteration_end(self, executor: Optional["StreamingExecutor"]) -> None:
         """Hook fired from the consumer's thread when iteration ends.
 
         Called from the ``finally`` in ``_iter_batches`` on normal
-        exhaustion, early ``break``, or an exception. The default is a
-        no-op; the local iterator path shuts the executor down via the
-        ``executor`` returned by ``_to_ref_bundle_iterator``.
-        ``StreamSplitDataIterator`` overrides this to signal the
-        ``SplitCoordinator`` actor on the consumer thread, since its inner
-        block-fetching generator runs in a separate prefetch thread whose
-        cleanup is GC-bound and therefore not deterministic.
+        exhaustion, early ``break``, or an exception. The default shuts
+        ``executor`` down (idempotent) so the local iterator path stops
+        producing blocks into the object store eagerly rather than waiting
+        for ``_ClosingIterator.__del__``. ``StreamSplitDataIterator``
+        overrides this to instead signal the ``SplitCoordinator`` actor
+        on the consumer thread, since its inner block-fetching generator
+        runs in a separate prefetch thread whose cleanup is GC-bound and
+        therefore not deterministic.
         """
-        pass
+        if executor is not None:
+            executor.shutdown(force=False)
 
     @PublicAPI
     def iter_batches(
@@ -296,16 +298,11 @@ class DataIterator(abc.ABC):
             finally:
                 # On early exit (e.g. ``break`` in the for-loop), the inner
                 # ``_ClosingIterator`` would only shut down the executor via
-                # its ``__del__``, which is non-deterministic. Shut it down
-                # eagerly so the executor stops producing blocks into the
-                # object store and releases resources for other datasets.
-                # ``shutdown`` is idempotent.
-                if executor is not None:
-                    executor.shutdown(force=False)
-                # ``StreamSplitDataIterator`` uses this hook to disengage
-                # from the remote ``SplitCoordinator``; the local path is a
-                # no-op (executor shutdown above already handles cleanup).
-                self._on_iteration_end()
+                # its ``__del__``, which is non-deterministic. The hook
+                # shuts it down eagerly (or, for ``StreamSplitDataIterator``,
+                # signals the remote ``SplitCoordinator``) so resources are
+                # released the moment the consumer stops pulling.
+                self._on_iteration_end(executor)
 
         return _IterableFromIterator(_create_iterator)
 
