@@ -266,17 +266,32 @@ class Test(dict):
         """
         Per-prefix worker for gen_microcheck_step_ids_for_prefixes. Accepts the
         prefix-independent test sets so callers can compute them once and reuse them
-        across prefixes.
+        across prefixes. Per-test S3 fetches run in parallel; the dedup logic that
+        depends on running step_ids state stays serial.
         """
         high_impact_tests = cls._gen_high_impact_tests(prefix)
-        test_targets = high_impact_tests.union(changed_tests, human_specified_tests)
+        test_targets = list(
+            high_impact_tests.union(changed_tests, human_specified_tests)
+        )
 
-        step_ids = set()
-        for test_target in test_targets:
+        def _fetch_recent_results(test_target: str):
             test = cls.gen_from_name(f"{prefix}{test_target}")
             if not test:
-                continue
-            recent_results = test.get_test_results()
+                return None
+            return test.get_test_results(use_async=True)
+
+        if test_targets:
+            with concurrent.futures.ThreadPoolExecutor(
+                max_workers=min(16, len(test_targets))
+            ) as executor:
+                all_recent_results = list(
+                    executor.map(_fetch_recent_results, test_targets)
+                )
+        else:
+            all_recent_results = []
+
+        step_ids: Set[str] = set()
+        for recent_results in all_recent_results:
             if not recent_results:
                 continue
             test_step_ids = {
