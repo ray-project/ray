@@ -186,21 +186,22 @@ std::pair<std::vector<double>, double> RunPutBench(StoreClient &client,
     std::string value = "v" + std::to_string(i) + "-payload-padding-data";
     int target = i + 1;
     auto op_start = std::chrono::steady_clock::now();
-    client.AsyncPut(kTable,
-                    key,
-                    value,
-                    true,
-                    {[op_start, i, &samples, &acked](bool) {
-                       if (i < kSampledOps) {
-                         auto cb_end = std::chrono::steady_clock::now();
-                         samples[i] = std::chrono::duration_cast<std::chrono::nanoseconds>(
-                                          cb_end - op_start)
-                                          .count() /
-                                      1000.0;
-                       }
-                       acked.fetch_add(1);
-                     },
-                     io_fixture.io()});
+    client.AsyncPut(
+        kTable,
+        key,
+        value,
+        true,
+        {[op_start, i, &samples, &acked](bool) {
+           if (i < kSampledOps) {
+             auto cb_end = std::chrono::steady_clock::now();
+             samples[i] =
+                 std::chrono::duration_cast<std::chrono::nanoseconds>(cb_end - op_start)
+                     .count() /
+                 1000.0;
+           }
+           acked.fetch_add(1);
+         },
+         io_fixture.io()});
     if (g_sequential) {
       while (acked.load() < target) {
         std::this_thread::sleep_for(std::chrono::microseconds(50));
@@ -327,8 +328,8 @@ BackendResult BenchRocksDb(IoFixture &io_fixture,
                            const std::string &db_path,
                            bool offload_io,
                            std::size_t io_pool_size) {
-  std::cerr << "==> RocksDbStoreClient (" << (offload_io ? "offload" : "inline") << ") at "
-            << db_path << std::endl;
+  std::cerr << "==> RocksDbStoreClient (" << (offload_io ? "offload" : "inline")
+            << ") at " << db_path << std::endl;
   RocksDbStoreClient client(io_fixture.io(),
                             db_path,
                             /*expected_cluster_id=*/"",

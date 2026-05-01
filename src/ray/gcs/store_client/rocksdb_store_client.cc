@@ -290,8 +290,8 @@ void RocksDbStoreClient::AsyncGetAll(
     for (it->SeekToFirst(); it->Valid(); it->Next()) {
       result.emplace(it->key().ToString(), it->value().ToString());
     }
-    RAY_CHECK(it->status().ok()) << "RocksDB iterator failed during GetAll: "
-                                 << it->status().ToString();
+    RAY_CHECK(it->status().ok())
+        << "RocksDB iterator failed during GetAll: " << it->status().ToString();
 
     std::move(callback).Post("GcsRocksDb.GetAll", std::move(result));
   });
@@ -390,8 +390,8 @@ void RocksDbStoreClient::AsyncBatchDelete(const std::string &table_name,
       RAY_CHECK(bs.ok()) << "WriteBatch Delete failed: " << bs.ToString();
     }
     auto write_status = db_->Write(SyncWriteOptions(), &batch);
-    RAY_CHECK(write_status.ok()) << "RocksDB BatchDelete write failed: "
-                                 << write_status.ToString();
+    RAY_CHECK(write_status.ok())
+        << "RocksDB BatchDelete write failed: " << write_status.ToString();
 
     std::move(callback).Post("GcsRocksDb.BatchDelete", deleted_count);
   });
@@ -419,8 +419,8 @@ void RocksDbStoreClient::AsyncGetKeys(const std::string &table_name,
       if (!it->key().starts_with(rocksdb::Slice(prefix))) break;
       result.emplace_back(it->key().ToString());
     }
-    RAY_CHECK(it->status().ok()) << "RocksDB iterator failed during GetKeys: "
-                                 << it->status().ToString();
+    RAY_CHECK(it->status().ok())
+        << "RocksDB iterator failed during GetKeys: " << it->status().ToString();
 
     std::move(callback).Post("GcsRocksDb.GetKeys", std::move(result));
   });

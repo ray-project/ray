@@ -11,18 +11,18 @@ cc_binary(
     name = "writer",
     srcs = ["writer.cc"],
     target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_github_facebook_rocksdb//:rocksdb",
     ],
-    visibility = ["//visibility:public"],
 )
 
 cc_binary(
     name = "verifier",
     srcs = ["verifier.cc"],
     target_compatible_with = ["@platforms//os:linux"],
+    visibility = ["//visibility:public"],
     deps = [
         "@com_github_facebook_rocksdb//:rocksdb",
     ],
-    visibility = ["//visibility:public"],
 )
