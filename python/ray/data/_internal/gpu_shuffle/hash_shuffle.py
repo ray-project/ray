@@ -2,8 +2,6 @@ import functools
 import logging
 import pickle
 import time
-from collections import deque
-import typing
 from typing import (
     Dict,
     Iterator,
