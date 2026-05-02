@@ -427,7 +427,7 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
         unit="GPUs",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_percentage{{{global_filters}}} / 100) by (Component)",
+                expr='sum(ray_component_gpu_percentage{{instance=~"$Instance",{global_filters}}} / 100) by (Component)',
                 legend="{{Component}}",
             ),
         ],
@@ -439,7 +439,7 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr="sum(ray_component_gpu_memory_mb{{{global_filters}}} * 1024 * 1024) by (Component)",
+                expr='sum(ray_component_gpu_memory_mb{{instance=~"$Instance",{global_filters}}} * 1024 * 1024) by (Component)',
                 legend="{{Component}}",
             ),
             Target(

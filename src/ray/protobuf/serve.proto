@@ -243,6 +243,12 @@ message DeploymentConfig {
 
   // Deployment-scoped actors managed by the controller.
   repeated DeploymentActorConfig deployment_actors = 22;
+
+  // The fraction of replicas to update at a time during a rolling update.
+  // Declared `optional` so that unset (e.g. from an older controller during a
+  // rolling upgrade) is distinguishable from an explicit value. When unset,
+  // the Python side falls back to DEFAULT_ROLLING_UPDATE_PERCENTAGE (0.2).
+  optional double rolling_update_percentage = 23;
 }
 
 // Deployment language.
@@ -347,6 +353,7 @@ message DeploymentInfo {
   int64 end_time_ms = 7;
   double target_capacity = 8;
   TargetCapacityDirection target_capacity_direction = 9;
+  bool ingress_request_router = 10;
 }
 
 // Wrap DeploymentInfo and route. The "" route value need to be convert to None/null.
@@ -506,6 +513,7 @@ message DeploymentArgs {
   optional string route_prefix = 5;
   bool ingress = 6;
   optional string docs_path = 7;
+  bool ingress_request_router = 8;
 }
 
 message ApplicationArgs {

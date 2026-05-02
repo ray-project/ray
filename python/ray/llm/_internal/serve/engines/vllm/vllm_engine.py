@@ -251,13 +251,6 @@ class VLLMEngine(LLMEngine):
             raise ImportError(
                 "vLLM is not installed. Please install it with `pip install ray[llm]`."
             )
-        from vllm import envs as vllm_envs
-
-        if hasattr(vllm_envs, "VLLM_USE_V1") and not vllm_envs.VLLM_USE_V1:
-            logger.error(
-                "vLLM v0 is fully deprecated. As a result in Ray Serve LLM only v1 is supported."
-            )
-
         self.llm_config.setup_engine_backend()
 
         self._running = False
@@ -436,21 +429,25 @@ class VLLMEngine(LLMEngine):
 
         engine_config: VLLMEngineConfig = self.llm_config.get_engine_config()
 
-        if engine_config.use_gpu:
-            # Create engine config on a task with access to GPU,
-            # as GPU capability may be queried.
+        # If the backend is anything other than CPU, we need to create the
+        # engine config on a task with hardware access.
+        if engine_config.accelerator.requires_remote_initialization:
+            accelerator = engine_config.accelerator
+            accelerator_type = self.llm_config.accelerator_type
+
+            # Initialize options required for the remote task and hardware backend
+            remote_options = {
+                "num_cpus": 0,
+                "runtime_env": callback_ctx.runtime_env,
+                "scheduling_strategy": PlacementGroupSchedulingStrategy(
+                    placement_group=callback_ctx.placement_group,
+                ),
+                **accelerator.get_remote_options(accelerator_type),
+            }
+
             ref = (
-                ray.remote(
-                    num_cpus=0,
-                    num_gpus=0.001,
-                    accelerator_type=self.llm_config.accelerator_type,
-                )(_get_vllm_engine_config)
-                .options(
-                    runtime_env=callback_ctx.runtime_env,
-                    scheduling_strategy=PlacementGroupSchedulingStrategy(
-                        placement_group=callback_ctx.placement_group,
-                    ),
-                )
+                ray.remote(_get_vllm_engine_config)
+                .options(**remote_options)
                 .remote(self.llm_config)
             )
             vllm_engine_args, vllm_engine_config = ray.get(ref)
