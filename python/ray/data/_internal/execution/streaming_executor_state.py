@@ -51,7 +51,7 @@ logger = logging.getLogger(__name__)
 # operator to tracked streaming exec state.
 Topology = Dict[PhysicalOperator, "OpState"]
 
-# Maximum time `process_completed_tasks` will block in `ray.wait()` waiting
+# Maximum time `process_completed_tasks` will block in `ray.wait()` waiting for tasks to complete.
 WAIT_FOR_TASK_COMPLETION_TIMEOUT_S = 0.1
 
 
