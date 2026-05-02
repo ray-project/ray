@@ -151,7 +151,6 @@ depsets:
     include_setuptools: true
 
   # TPU base deps: extends CPU base deps with jax[tpu] dependencies
-  # TPU base deps: extends CPU base deps with jax[tpu] dependencies
   - name: ray_base_deps_tpu_${PYTHON_SHORT}
     operation: expand
     requirements:
