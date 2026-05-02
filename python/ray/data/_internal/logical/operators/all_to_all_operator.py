@@ -27,6 +27,7 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractAllToAll(LogicalOperator):
     """Abstract class for logical operators should be converted to physical
     AllToAllOperator.
@@ -55,12 +56,12 @@ class AbstractAllToAll(LogicalOperator):
                 inspecting the logical plan of a Dataset.
         """
         super().__init__(
-            input_dependencies=[input_op],
-            num_outputs=num_outputs,
-            name=name,
+            _name=name or self.__class__.__name__,
+            _input_dependencies=[input_op],
+            _num_outputs=num_outputs,
         )
-        self.ray_remote_args = ray_remote_args or {}
-        self.sub_progress_bar_names = sub_progress_bar_names
+        object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
+        object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
 
     @property
     def num_outputs(self) -> Optional[int]:
