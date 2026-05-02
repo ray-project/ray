@@ -254,23 +254,24 @@ class TPUAccelerator(AcceleratorBackend):
         return True
 
     def get_remote_options(self, accelerator_type_str: str = None):
-        # TPUs use custom resource strings rather than a native kwarg
-        options: Dict[str, Any] = {"resources": {"TPU": 0.001}}
-
+        # The PlacementGroupSchedulingStrategy natively handles routing the task to
+        # the correct hardware. We omit TPU resource requests to avoid consuming
+        # chips that the model engine workers must use.
+        options: Dict[str, Any] = {"resources": {}}
         if accelerator_type_str:
-            options["accelerator_type"] = accelerator_type_str
+            # Pin the task to the TPU accelerator to avoid scheduling on a CPU bundle.
+            options["label_selector"] = {
+                "ray.io/accelerator-type": accelerator_type_str
+            }
         return options
 
     def shutdown(self):
-        if self._slice_pg_wrapper is not None:
+        slice_pg_wrapper = getattr(self, "_slice_pg_wrapper", None)
+        if slice_pg_wrapper is not None:
             try:
                 logger.info("Shutting down TPU slice PG for server replica.")
-                self._slice_pg_wrapper.shutdown()
+                slice_pg_wrapper.shutdown()
             except Exception as e:
                 logger.warning(f"Failed to shut down TPU slice PG: {e}")
             finally:
                 self._slice_pg_wrapper = None
-
-    def __del__(self):
-        """Ensure placement groups are cleaned up when this backend is garbage collected."""
-        self.shutdown()

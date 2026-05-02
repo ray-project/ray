@@ -417,6 +417,20 @@ class TestAcceleratorConfigLogic:
         tpu_accel_with_topo = TPUAccelerator(TPUConfig(kind="tpu", topology="4x4"))
         assert tpu_accel_with_topo.requires_deferred_placement_group is True
 
+    def test_tpu_accelerator_get_remote_options(self):
+        """Test that TPUAccelerator get_remote_options returns an empty resources dict and label selector."""
+        tpu_accel = TPUAccelerator(TPUConfig(kind="tpu"))
+
+        options_no_type = tpu_accel.get_remote_options()
+        assert options_no_type == {"resources": {}}
+
+        options_with_type = tpu_accel.get_remote_options("TPU-V6E")
+        assert options_with_type == {
+            "resources": {},
+            "accelerator_type": "TPU-V6E",
+            "label_selector": {"ray.io/accelerator-type": "TPU-V6E"},
+        }
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

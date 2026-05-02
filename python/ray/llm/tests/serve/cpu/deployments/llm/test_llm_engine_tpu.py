@@ -308,5 +308,34 @@ def test_tpu_serve_deployment_explicit_host_level_bundles(ray_tpu_cluster):
     serve.shutdown()
 
 
+def test_tpu_accelerator_remote_options_scheduling(ray_tpu_cluster):
+    """
+    Verifies that TPUAccelerator.get_remote_options returns resources, accelerator_type and label_selector,
+    and successfully schedules a task without causing Ray Core validation errors.
+    """
+    llm_config = LLMConfig(
+        model_loading_config=ModelLoadingConfig(model_id="test-tpu-model"),
+        accelerator_type="TPU-V6E",
+        accelerator_config={"kind": "tpu"},
+    )
+    engine_config = llm_config.get_engine_config()
+
+    options = engine_config.accelerator.get_remote_options("TPU-V6E")
+
+    # Ensure it returns the expected options
+    assert options == {
+        "resources": {},
+        "accelerator_type": "TPU-V6E",
+        "label_selector": {"ray.io/accelerator-type": "TPU-V6E"},
+    }
+
+    @ray.remote(**options)
+    def probe_metadata():
+        return True
+
+    # The task should successfully schedule and run without throwing a validation error.
+    assert ray.get(probe_metadata.remote()) is True
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", __file__]))

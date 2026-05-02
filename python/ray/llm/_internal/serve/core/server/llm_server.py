@@ -270,7 +270,14 @@ class LLMServer(LLMServerProtocol):
         """Add the request id to the request."""
         request_id = get_serve_request_id()
         if request_id:
-            request.request_id = request_id
+            if hasattr(request, "request_id"):
+                return
+            try:
+                request.request_id = request_id
+            except ValueError:
+                # Pydantic v2 strict schemas reject unknown fields.
+                # Safely ignore as request_id is only used for internal Ray Serve logging.
+                pass
 
     async def _maybe_resolve_lora_from_multiplex(self) -> None:
         """Handle the lora model for the request."""
