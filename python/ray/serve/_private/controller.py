@@ -1348,6 +1348,7 @@ class ServeController:
                     route_prefix="/",
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
+                    ingress_request_router_targets=[],
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1359,6 +1360,7 @@ class ServeController:
                             RequestProtocol.GRPC
                         ),
                         app_name="",
+                        ingress_request_router_targets=[],
                     )
                 )
         return target_groups
@@ -1538,6 +1540,7 @@ class ServeController:
                         route_prefix=route_prefix,
                         targets=grpc_targets,
                         app_name=app_name,
+                        ingress_request_router_targets=[],
                     )
                 )
 
@@ -1570,6 +1573,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=[],
                 )
             )
         if include_grpc:
@@ -1579,6 +1583,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=grpc_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=[],
                 )
             )
 
