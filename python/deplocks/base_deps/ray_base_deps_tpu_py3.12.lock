@@ -1,5 +1,5 @@
 --index-url https://pypi.org/simple
---find-links https://storage.googleapis.com/libtpu-releases/index.html
+--extra-index-url https://storage.googleapis.com/libtpu-releases/index.html
 
 absl-py==2.4.0 \
     --hash=sha256:88476fd881ca8aab94ffa78b7b6c632a782ab3ba1cd19c9bd423abc4fb4cd28d \

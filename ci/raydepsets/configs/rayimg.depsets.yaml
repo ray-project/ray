@@ -151,6 +151,7 @@ depsets:
     include_setuptools: true
 
   # TPU base deps: extends CPU base deps with jax[tpu] dependencies
+  # TPU base deps: extends CPU base deps with jax[tpu] dependencies
   - name: ray_base_deps_tpu_${PYTHON_SHORT}
     operation: expand
     requirements:
@@ -162,8 +163,8 @@ depsets:
     append_flags:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
-      - --python-platform=linux
-      - --find-links https://storage.googleapis.com/libtpu-releases/index.html
+      - --python-platform=x86_64-manylinux_2_31
+      - --index https://storage.googleapis.com/libtpu-releases/index.html
     build_arg_sets:
       - py310
       - py311
