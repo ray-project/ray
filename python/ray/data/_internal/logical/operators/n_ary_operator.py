@@ -14,6 +14,7 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class NAry(LogicalOperator):
     """Base class for n-ary operators, which take multiple input operators."""
 
@@ -27,8 +28,9 @@ class NAry(LogicalOperator):
             input_ops: The input operators.
         """
         super().__init__(
-            input_dependencies=list(input_ops),
-            num_outputs=num_outputs,
+            _name=self.__class__.__name__,
+            _input_dependencies=list(input_ops),
+            _num_outputs=num_outputs,
         )
 
     @property
