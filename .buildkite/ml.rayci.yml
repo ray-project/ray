@@ -8,7 +8,7 @@ steps:
   - name: minbuild-ml
     label: "wanda: minbuild-ml-py{{matrix}}"
     wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_test-multipy(*)
+    depends_on: oss-ci-base_test-multipy(python=3.10)
     matrix:
       - "3.10"
     env:
@@ -38,7 +38,7 @@ steps:
       BUILD_VARIANT: "lightning1gpubuild"
       RAYCI_IS_GPU_BUILD: "true"
     tags: cibase
-    depends_on: oss-ci-base_gpu-multipy(*)
+    depends_on: oss-ci-base_gpu-multipy(python=3.10)
 
   - name: mlgpubuild-multipy
     label: "wanda: mlgpubuild-py{{matrix}}"
@@ -201,7 +201,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tune/... ml
         --only-tags soft_imports
         --build-name oss-ci-base_build-py3.10 --python-version 3.10
-    depends_on: [ "oss-ci-base_build-multipy(*)", "forge" ]
+    depends_on: [ "oss-ci-base_build-multipy(python=3.10)", "forge" ]
 
   - label: ":train: ml: air tests"
     tags: ml
