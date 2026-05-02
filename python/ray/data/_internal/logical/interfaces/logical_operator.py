@@ -1,5 +1,5 @@
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
@@ -69,7 +69,33 @@ class LogicalOperator(Operator, ABC):
     def _apply_transform(
         self, transform: Callable[["LogicalOperator"], "LogicalOperator"]
     ) -> "LogicalOperator":
-        return super()._apply_transform(transform)  # type: ignore
+        input_dependencies = self.input_dependencies
+        transformed_inputs = [
+            input_op._apply_transform(transform) for input_op in input_dependencies
+        ]
+        if all(
+            transformed_input is input_op
+            for transformed_input, input_op in zip(
+                transformed_inputs, input_dependencies
+            )
+        ):
+            target = self
+        else:
+            target = self._with_new_input_dependencies(transformed_inputs)
+        return transform(target)
+
+    def _with_new_input_dependencies(
+        self, input_dependencies: List["LogicalOperator"]
+    ) -> "LogicalOperator":
+        if len(input_dependencies) != 1:
+            raise NotImplementedError(
+                f"{self.__class__.__name__} must define how to replace "
+                "multiple input dependencies."
+            )
+        return self._with_new_input(input_dependencies[0])
+
+    def _with_new_input(self, input_op: "LogicalOperator") -> "LogicalOperator":
+        return replace(self, input_op=input_op)
 
     def _get_args(self) -> Dict[str, Any]:
         """This Dict must be serializable"""
