@@ -293,7 +293,7 @@ certifi==2026.4.22
     #   requests
     #   sentry-sdk
     #   snowflake-connector-python
-cffi==1.17.1
+cffi==2.0.0
     # via
     #   -r python/requirements/py313/test-requirements.txt
     #   argon2-cffi-bindings

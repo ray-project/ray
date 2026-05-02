@@ -59,6 +59,7 @@ depsets:
       - py311
       - py312
       - py313
+      - py314
 
   - name: ray_base_extra_testdeps_llm_cuda_${PYTHON_SHORT}
     operation: expand
@@ -134,6 +135,7 @@ depsets:
       - py311
       - py312
       - py313
+      - py314
 
   # First layer of the ray release images. Contains all base layer python dependencies
   # and is a subset of the base extra test deps defined above (release image depset)
@@ -152,6 +154,7 @@ depsets:
       - py311
       - py312
       - py313
+      - py314
     include_setuptools: true
 
   # TPU base deps: extends CPU base deps with jax[tpu] dependencies
@@ -167,7 +170,7 @@ depsets:
       - --unsafe-package ray
       - --python-version=${PYTHON_VERSION}
       - --python-platform=linux
-      - --index https://storage.googleapis.com/libtpu-releases/index.html
+      - --find-links https://storage.googleapis.com/libtpu-releases/index.html
     build_arg_sets:
       - py310
       - py311
@@ -193,3 +196,4 @@ depsets:
       - py311
       - py312
       - py313
+      - py314
