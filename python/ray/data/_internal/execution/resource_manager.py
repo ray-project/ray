@@ -1012,15 +1012,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         )
 
     def _get_adjusted_object_store_usage(self, op: PhysicalOperator) -> float:
-        """Compute the adjusted object-store memory usage for an operator.
+        """OSM usage minus pre-paid bytes already covered by `_reserved_for_op_outputs`.
 
         Returns: internal_osm_usage + max(op_outputs_usage - _reserved_for_op_outputs, 0)
-
-        Output bytes within _reserved_for_op_outputs are considered pre-paid and
-        excluded from this total. This prevents them from:
-        (a) counting against the task-execution budget in get_budget(), and
-        (b) inflating op_shared_usage[op] in update_budgets(), which would
-            incorrectly reduce the remaining_shared pool available to other operators.
         """
         op_mem_usage = self._resource_manager.get_mem_op_internal(op)
         op_outputs_usage = self._resource_manager.get_mem_op_outputs(
@@ -1038,6 +1032,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         if planned_grant is None:
             return None
 
+        # Use adjusted_usage so OSM bytes already covered by `_reserved_for_op_outputs`
+        # don't count against the task-execution budget; they're paid out of the
+        # separate output reservation, added back in max_task_output_bytes_to_read().
         adjusted_usage = self._resource_manager.get_op_usage(op).copy(
             object_store_memory=self._get_adjusted_object_store_usage(op)
         )
