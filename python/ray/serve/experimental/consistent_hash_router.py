@@ -10,7 +10,7 @@ import asyncio
 import bisect
 import logging
 import time
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from typing import FrozenSet, List, Optional
 
 import mmh3
@@ -35,6 +35,18 @@ DEFAULT_FALLBACK_REPLICAS = 2
 
 # Bounded LRU size for the top-sessions gauge
 TOP_SESSIONS_MAX = 20
+
+# Bounded LRU size for the session-affinity tracker. Each entry is a
+# (session_id -> ReplicaID) pair used to decide whether the next routing
+# decision for the same session "stuck" to the previous replica. Larger
+# values smooth the affinity-rate metric (less noise per observation) at
+# linear cost in router-process memory.
+SESSION_AFFINITY_LRU_MAX = 1024
+
+# Number of recent session-affinity observations reflected in the direct
+# rolling-rate gauge. This is intentionally smaller than the LRU: the gauge is
+# an operator-facing signal for "dip then recover", not long-horizon accounting.
+DEFAULT_AFFINITY_RATE_WINDOW_SIZE = 128
 
 
 def _hash_bytes(key: bytes) -> int:
@@ -82,6 +94,27 @@ class ConsistentHashRouter(RequestRouter):
         }
         common_tag_keys = ("application", "deployment", "actor_id", "handle_source")
 
+        # Direct stickiness signal for dashboards. Unlike the two counters
+        # below, this is one low-cardinality metric family, so monitoring
+        # systems cannot ingest the numerator while dropping the denominator.
+        # Register it before high-cardinality/debug metric families so it is
+        # emitted early in scrape payloads.
+        rate_default_tags = {
+            "application": self._deployment_id.app_name,
+            "deployment": self._deployment_id.name,
+            "handle_source": self._handle_source.value,
+        }
+        self.session_affinity_rate_gauge = metrics.Gauge(
+            "serve_consistent_hash_affinity_rate",
+            description=(
+                "Rolling session-affinity hit rate over recent observations. "
+                "1.0 means recently observed sessions kept routing to the same "
+                "replica; dips indicate remapping after ring changes."
+            ),
+            tag_keys=("application", "deployment", "handle_source"),
+        ).set_default_tags(rate_default_tags)
+        self.session_affinity_rate_gauge.set(1.0)
+
         # Primary (rank=0) vs. fallback (rank>=1) usage; the affinity
         # health signal. rank=-1 means the accepting replica wasn't in
         # the current ranked list (staleness window).
@@ -118,9 +151,22 @@ class ConsistentHashRouter(RequestRouter):
             tag_keys=common_tag_keys,
         ).set_default_tags(default_tags)
 
+        # In-memory LRU backing the affinity-rate gauge. Bounded by
+        # SESSION_AFFINITY_LRU_MAX entries. Sampling is implicit:
+        # less-recently-active sessions stop contributing, which is fine -
+        # the affinity rate is a sliding-window aggregate, not a per-session
+        # invariant.
+        self._last_replica_per_session: "OrderedDict[str, ReplicaID]" = OrderedDict()
+        self._recent_affinity_hits = deque()
+        self._recent_affinity_hit_sum = 0
+        self._affinity_rate_window_size = DEFAULT_AFFINITY_RATE_WINDOW_SIZE
+
     def initialize_state(self, **kwargs) -> None:
         virtual_nodes = kwargs.get("virtual_nodes", DEFAULT_VIRTUAL_NODES)
         fallback_replicas = kwargs.get("fallback_replicas", DEFAULT_FALLBACK_REPLICAS)
+        affinity_rate_window_size = kwargs.get(
+            "affinity_rate_window_size", DEFAULT_AFFINITY_RATE_WINDOW_SIZE
+        )
 
         if not isinstance(virtual_nodes, int) or virtual_nodes <= 0:
             raise ValueError(
@@ -131,9 +177,18 @@ class ConsistentHashRouter(RequestRouter):
                 "fallback_replicas must be a non-negative int, got "
                 f"{fallback_replicas!r}."
             )
+        if (
+            not isinstance(affinity_rate_window_size, int)
+            or affinity_rate_window_size <= 0
+        ):
+            raise ValueError(
+                "affinity_rate_window_size must be a positive int, got "
+                f"{affinity_rate_window_size!r}."
+            )
 
         self._virtual_nodes = virtual_nodes
         self._fallback_replicas = fallback_replicas
+        self._affinity_rate_window_size = affinity_rate_window_size
 
     def update_replicas(self, replicas: List[RunningReplica]) -> None:
         """
@@ -355,8 +410,8 @@ class ConsistentHashRouter(RequestRouter):
         replica_id: ReplicaID,
         result: ReplicaResult,
     ) -> None:
-        """Emit per-rank and top-sessions metrics after a replica accepts
-        the request.
+        """Emit per-rank, top-sessions, and session-affinity metrics
+        after a replica accepts the request.
         """
         rank = self._compute_rank(self._routing_key(pending_request), replica_id)
         self.fallback_counter.inc(tags={"rank": str(rank)})
@@ -364,6 +419,37 @@ class ConsistentHashRouter(RequestRouter):
         session_id = pending_request.metadata.session_id if pending_request else ""
         if session_id:
             self._touch_top_session(session_id)
+            self._observe_session_affinity(session_id, replica_id)
+
+    def _observe_session_affinity(self, session_id: str, replica_id: ReplicaID) -> None:
+        """Update the bounded LRU and rolling affinity-rate gauge.
+
+        First sighting of a session_id only seeds the LRU because there is no
+        prior mapping to compare against. Subsequent sightings compare the
+        accepted replica with the previous placement, then advance the LRU so
+        the gauge reports a steady-state-1.0 / dip-and-recover signal across
+        ring rebuilds.
+        """
+        previous = self._last_replica_per_session.get(session_id)
+        if previous is not None:
+            hit = previous == replica_id
+            self._record_affinity_rate(hit)
+            self._last_replica_per_session.move_to_end(session_id)
+        else:
+            if len(self._last_replica_per_session) >= SESSION_AFFINITY_LRU_MAX:
+                self._last_replica_per_session.popitem(last=False)
+        self._last_replica_per_session[session_id] = replica_id
+
+    def _record_affinity_rate(self, hit: bool) -> None:
+        hit_value = 1 if hit else 0
+        self._recent_affinity_hits.append(hit_value)
+        self._recent_affinity_hit_sum += hit_value
+        if len(self._recent_affinity_hits) > self._affinity_rate_window_size:
+            self._recent_affinity_hit_sum -= self._recent_affinity_hits.popleft()
+
+        self.session_affinity_rate_gauge.set(
+            self._recent_affinity_hit_sum / len(self._recent_affinity_hits)
+        )
 
     def _compute_rank(self, routing_key: str, replica_id: ReplicaID) -> int:
         """Position of ``replica_id`` in the current ranked walk
