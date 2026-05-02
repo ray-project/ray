@@ -20,6 +20,7 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractOneToOne(LogicalOperator):
     """Abstract class for one-to-one logical operators, which
     have one input and one output dependency.
@@ -45,11 +46,11 @@ class AbstractOneToOne(LogicalOperator):
                 inspecting the logical plan of a Dataset.
         """
         super().__init__(
-            input_dependencies=[input_op] if input_op else [],
-            num_outputs=num_outputs,
-            name=name,
+            _name=name or self.__class__.__name__,
+            _input_dependencies=[input_op] if input_op else [],
+            _num_outputs=num_outputs,
         )
-        self.can_modify_num_rows = can_modify_num_rows
+        object.__setattr__(self, "can_modify_num_rows", can_modify_num_rows)
 
     @property
     def num_outputs(self) -> Optional[int]:
