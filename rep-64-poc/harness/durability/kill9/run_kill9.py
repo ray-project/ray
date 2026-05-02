@@ -230,7 +230,9 @@ def main() -> int:
 
     print(json.dumps(report, indent=2))
     if args.output:
-        os.makedirs(os.path.dirname(args.output), exist_ok=True)
+        # `or "."` guards against a bare-filename --output: dirname returns
+        # "" for that case, and os.makedirs("") raises FileNotFoundError.
+        os.makedirs(os.path.dirname(args.output) or ".", exist_ok=True)
         with open(args.output, "w") as f:
             json.dump(report, f, indent=2)
             f.write("\n")

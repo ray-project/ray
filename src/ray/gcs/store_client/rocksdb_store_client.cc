@@ -148,14 +148,23 @@ RocksDbStoreClient::RocksDbStoreClient(instrumented_io_context &io_service,
 RocksDbStoreClient::~RocksDbStoreClient() {
   // Drain any in-flight offloaded work BEFORE we touch db_/cf handles —
   // a pool task that ran after DestroyColumnFamilyHandle would dereference
-  // a freed handle. boost::asio::thread_pool::~thread_pool also joins,
-  // but we need the join to happen before the cf-handle-destroy block
-  // below, not after the body returns. Strands wrap the pool's executor,
-  // so joining the pool drains them too; clearing the strands_ vector
-  // is then safe.
+  // a freed handle, and a Postable callback that is supposed to fire
+  // after a write succeeded must not be silently dropped (a caller
+  // awaiting the ack would hang).
+  //
+  // Use wait(), not stop()+join(): boost::asio::thread_pool::stop()
+  // cancels handlers that have not yet been picked up by a worker,
+  // abandoning their captured Postable callbacks. wait() drops the
+  // pool's internal work guard, lets every queued and running handler
+  // complete, and then joins the worker threads. The dtor of the pool
+  // (which runs when io_pool_ resets below) will redundantly call
+  // stop()+join(), but at that point the queue is already drained, so
+  // there is nothing left to abandon.
+  //
+  // Strands wrap the pool's executor, so wait()'s drain covers them
+  // too; clearing the strands_ vector is then safe.
   if (io_pool_) {
-    io_pool_->stop();
-    io_pool_->join();
+    io_pool_->wait();
   }
   strands_.clear();
 
