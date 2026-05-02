@@ -309,15 +309,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def to_pandas(self) -> "pandas.DataFrame":
         from ray.data.util.data_batch_conversion import _cast_tensor_columns_to_ndarrays
 
-        # The conversion below uses ``self_destruct=True`` to release Arrow
-        # buffers as columns are converted, which leaves ``self._table``
-        # unusable afterwards. Cache the resulting DataFrame so subsequent
-        # calls (e.g. when a datasink retries ``write_block_to_file``) return
-        # the same materialized result instead of failing on a missing table.
-        cached_df = getattr(self, "_pandas_df_cache", None)
-        if cached_df is not None:
-            return cached_df
-
         # We specify ignore_metadata=True because pyarrow will use the metadata
         # to build the Table. This is handled incorrectly for older pyarrow versions
         ctx = DataContext.get_current()
@@ -356,19 +347,16 @@ class ArrowBlockAccessor(TableBlockAccessor):
         )
         split_blocks = not has_native_pa_extension
 
-        # Context on split_blocks and self_destruct: https://arrow.apache.org/docs/python/pandas.html#memory-usage-and-zero-copy
-        # Self destruct: Goes column by column, converts and then destructs the memory held in the arrow memory pool.
+        # Context on split_blocks and self_destruct:
+        # https://arrow.apache.org/docs/python/pandas.html#memory-usage-and-zero-copy
         df = table.to_pandas(
             ignore_metadata=ctx.pandas_block_ignore_metadata,
             split_blocks=split_blocks,
             self_destruct=True,
             types_mapper=_types_mapper,
         )
-        del self._table
-        del table
         if ctx.enable_tensor_extension_casting:
             df = _cast_tensor_columns_to_ndarrays(df, arrow_schema=arrow_schema)
-        self._pandas_df_cache = df
         return df
 
     def to_numpy(

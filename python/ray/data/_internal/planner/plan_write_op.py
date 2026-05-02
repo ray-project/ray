@@ -20,11 +20,11 @@ if TYPE_CHECKING:
 WRITE_UUID_KWARG_NAME = "write_uuid"
 # Key for storing pending checkpoint paths for commit phase
 PENDING_CHECKPOINTS_KWARG_NAME = "_pending_checkpoints"
-# Keys for stats recorded by ``generate_write_fn`` while the input blocks are
-# still live. These are consumed by ``generate_collect_write_stats_fn``. We
-# cannot recompute these from the post-write iterator because the write path
-# may destructively convert blocks (e.g. ``to_pandas(self_destruct=True)``),
-# leaving the underlying Arrow buffers freed and unsafe to access.
+# Keys for stats recorded by ``generate_write_fn`` while the input blocks
+# flow through the writer. These are consumed by
+# ``generate_collect_write_stats_fn`` so that stats stay accurate even if
+# the post-write iterator is no longer safe / cheap to re-iterate (e.g.
+# the writer mutated the blocks in place).
 _TOTAL_NUM_ROWS_KWARG_NAME = "_total_num_rows"
 _TOTAL_SIZE_BYTES_KWARG_NAME = "_total_size_bytes"
 
@@ -36,12 +36,9 @@ def generate_write_fn(
         """Writes the blocks to the given datasink or legacy datasource.
 
         Outputs the original blocks to be written."""
-        # Record per-block stats while the blocks are still live. The write
-        # path may destructively convert blocks (e.g.
-        # ``to_pandas(self_destruct=True)``), which frees the underlying
-        # Arrow buffers and makes the block unsafe to access afterwards.
-        # We accumulate totals here and stash them on ``ctx.kwargs`` so the
-        # downstream stats collector can read them without re-iterating.
+        # Record per-block stats inline so the downstream stats collector
+        # can read totals from ``ctx.kwargs`` without re-iterating blocks
+        # that the writer may have already mutated in place.
         total_num_rows = 0
         total_size_bytes = 0
 
@@ -56,10 +53,6 @@ def generate_write_fn(
         # ``tee`` lets us hand the blocks to the writer while still yielding
         # them downstream for post-transformations (e.g. checkpoint commit)
         # that pass blocks through without inspecting their contents.
-        # Downstream consumers MUST NOT read block contents — only the
-        # stats collector consumes the right tee branch, and it now reads
-        # from ``ctx.kwargs`` rather than re-iterating these (potentially
-        # destroyed) blocks.
         it1, it2 = itertools.tee(_record_stats_passthrough(blocks), 2)
         if isinstance(datasink_or_legacy_datasource, Datasink):
             ctx.kwargs["_datasink_write_return"] = datasink_or_legacy_datasource.write(
@@ -67,6 +60,17 @@ def generate_write_fn(
             )
         else:
             datasink_or_legacy_datasource.write(it1, ctx, **write_args)
+
+        # Drain ``it1`` so the stats generator runs for every block, even
+        # when the datasink ignores the iterator (e.g. test datasinks that
+        # only inspect the runtime context). Without this drain,
+        # ``total_num_rows`` / ``total_size_bytes`` would stay 0 and be
+        # propagated to ``WriteResult.num_rows`` via ``ctx.kwargs``. If the
+        # datasink already exhausted ``it1``, this loop is a no-op; if it
+        # didn't, ``tee`` buffers the yielded blocks for ``it2`` to consume
+        # next.
+        for _ in it1:
+            pass
 
         ctx.kwargs[_TOTAL_NUM_ROWS_KWARG_NAME] = total_num_rows
         ctx.kwargs[_TOTAL_SIZE_BYTES_KWARG_NAME] = total_size_bytes
@@ -83,11 +87,9 @@ def generate_collect_write_stats_fn() -> BlockMapTransformFn:
     # execution outcomes with `on_write_complete()`` and `on_write_failed()``.
     def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
         """Handles stats collection for block writes."""
-        # Stats are recorded by ``generate_write_fn`` while the input blocks
-        # are still live; re-iterating ``blocks`` here would be unsafe when
-        # the datasink calls a destructive conversion such as
-        # ``to_pandas(self_destruct=True)`` (the resulting pa.Table has its
-        # buffers freed and dereferencing it segfaults).
+        # Stats are recorded inline by ``generate_write_fn``. Re-iterating
+        # ``blocks`` here would be wasteful (the writer already walked the
+        # data) and unsafe if the writer mutated blocks in place.
         if (
             _TOTAL_NUM_ROWS_KWARG_NAME in ctx.kwargs
             and _TOTAL_SIZE_BYTES_KWARG_NAME in ctx.kwargs

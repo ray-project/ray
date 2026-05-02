@@ -1631,14 +1631,21 @@ class FailAfterWriteParquetDatasink(ParquetDatasink):
     def write(self, blocks, ctx):
         blocks_list = list(blocks)
 
-        # Check if any block has id > threshold
+        # Inspect the ID column directly via Arrow without converting to
+        # pandas. ``BlockAccessor.to_pandas`` destructively releases the
+        # underlying Arrow buffers (``self_destruct=True``); calling it
+        # here and then forwarding the same blocks to ``super().write``
+        # (which calls ``num_rows()`` / ``to_arrow()`` on each block in
+        # parquet_datasink) would segfault. Read what we need *before*
+        # any conversion.
         should_fail = False
         for block in blocks_list:
-            accessor = BlockAccessor.for_block(block)
-            df = accessor.to_pandas()
-            if ID_COL in df.columns and df[ID_COL].max() > self._fail_threshold:
-                should_fail = True
-                break
+            table = BlockAccessor.for_block(block).to_arrow()
+            if ID_COL in table.column_names:
+                max_id = pa.compute.max(table.column(ID_COL)).as_py()
+                if max_id is not None and max_id > self._fail_threshold:
+                    should_fail = True
+                    break
 
         # First, write the blocks normally
         result = super().write(iter(blocks_list), ctx)
@@ -1862,13 +1869,17 @@ class FailAfterWriteTextRowDatasink(TextRowDatasink):
     def write(self, blocks, ctx):
         blocks_list = list(blocks)
 
+        # Inspect the ID column via Arrow before forwarding to
+        # ``super().write``. See ``FailAfterWriteParquetDatasink.write``
+        # for why a destructive ``to_pandas()`` here would segfault.
         should_fail = False
         for block in blocks_list:
-            accessor = BlockAccessor.for_block(block)
-            df = accessor.to_pandas()
-            if ID_COL in df.columns and df[ID_COL].max() > self._fail_threshold:
-                should_fail = True
-                break
+            table = BlockAccessor.for_block(block).to_arrow()
+            if ID_COL in table.column_names:
+                max_id = pa.compute.max(table.column(ID_COL)).as_py()
+                if max_id is not None and max_id > self._fail_threshold:
+                    should_fail = True
+                    break
 
         result = super().write(iter(blocks_list), ctx)
 
