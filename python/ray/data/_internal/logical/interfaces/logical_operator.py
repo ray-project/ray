@@ -19,9 +19,13 @@ class LogicalOperator(Operator, ABC):
     physical operator.
     """
 
-    _name: str = field(repr=False)
+    _name: Optional[str] = field(init=False, default=None, repr=False)
     _input_dependencies: List["LogicalOperator"] = field(repr=False)
     _num_outputs: Optional[int] = field(default=None, repr=False)
+
+    @property
+    def name(self) -> str:
+        return self._name or self.__class__.__name__
 
     @property
     @abstractmethod
@@ -76,6 +80,7 @@ class LogicalOperator(Operator, ABC):
             else:
                 # Keep underscore-prefixed keys to preserve legacy export schema.
                 args[f"_{key}"] = value
+        args["_name"] = self.name
         # Preserve legacy export shape even though output deps are no longer tracked.
         args["_output_dependencies"] = []
         return args
