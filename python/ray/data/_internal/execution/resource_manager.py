@@ -881,6 +881,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
           op_proportional = 2*(2/4) = 1,  op_shared = 0
           _op_planned_grants = 1+1+0 = 2 => negative headroom signals autoscaler.
 
+    - _output_budgets[op]: cached return value of max_task_output_bytes_to_read(op),
+      i.e. the per-op budget (in bytes) for pulling new output blocks. Populated as
+      a side effect of max_task_output_bytes_to_read() for downstream observability.
+
     ## Eligibility
 
     An operator is eligible if throttling is enabled and it hasn't completed.
@@ -1109,7 +1113,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         op_proportional: ExecutionResources,
         op_shared: ExecutionResources,
         remaining_shared: ExecutionResources,
-        op_budgets: Dict[PhysicalOperator, ExecutionResources],
+        op_reserved_remaining: Dict[PhysicalOperator, ExecutionResources],
         max_resource_usage: ExecutionResources,
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         """Cap and borrow-adjust the proportional and shared grants for one op.
@@ -1145,7 +1149,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         # Applies to all ops regardless of cap.
         shortfall = (
             op.min_scheduling_resources()
-            .subtract(op_budgets[op].add(op_proportional).add(op_shared))
+            .subtract(op_reserved_remaining[op].add(op_proportional).add(op_shared))
             .max(ExecutionResources.zero())
         )
         if not shortfall.is_zero() and op_shared.add(shortfall).satisfies_limit(
@@ -1229,7 +1233,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             self._total_shared,
         ) = self._update_reservation(limits)
 
-        op_budgets = {}
+        # Per-op unused reserved floor (reserved - usage, clamped at 0). Used by
+        # _apply_op_grant_caps to compute the shortfall when borrowing from the
+        # shared pool to reach min_scheduling_resources.
+        op_reserved_remaining: Dict[PhysicalOperator, ExecutionResources] = {}
         op_planned_grants: Dict[PhysicalOperator, ExecutionResources] = {}
         eligible_ops = self._resource_manager.get_eligible_ops()
         if len(eligible_ops) == 0:
@@ -1248,10 +1255,9 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
             )
             op_reserved = self._op_reserved[op]
             # The following calculates how much of the reserved resources are remaining.
-            op_reserved_remaining = op_reserved.subtract(op_usage).max(
+            op_reserved_remaining[op] = op_reserved.subtract(op_usage).max(
                 ExecutionResources.zero()
             )
-            op_budgets[op] = op_reserved_remaining
             # The following calculates how much of the op's usage exceeds its reservation, i.e. how much
             # it is drawing from the shared pool.
             op_reserved_exceeded = op_usage.subtract(op_reserved).max(
@@ -1293,7 +1299,7 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 op_proportional,
                 op_shared,
                 remaining_shared,
-                op_budgets,
+                op_reserved_remaining,
                 op_max_resources[op],
             )
 

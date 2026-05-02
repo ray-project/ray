@@ -1396,8 +1396,8 @@ class TestReservationOpResourceAllocator:
         op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
 
         topo = build_streaming_topology(o4, ExecutionOptions())
-        # 4 CPUs total: 50% reserved = 2, so _op_reserved = 0.5 per op,
-        # _total_shared = 2 CPUs.
+        # 4 CPUs total: reservation_ratio * limits / N = 0.5 * 4 / 2 = 1 per op,
+        # so _op_reserved = 1 CPU per op and _total_shared = 4 - 2*1 = 2 CPUs.
         global_limits = ExecutionResources(cpu=4, gpu=0, object_store_memory=1000)
 
         resource_manager = ResourceManager(
@@ -1494,7 +1494,8 @@ class TestReservationOpResourceAllocator:
 
         op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
         topo = build_streaming_topology(o4, ExecutionOptions())
-        # 4 CPUs: 50% reserved → _op_reserved = 0.5 per op, _total_shared = 2.
+        # 4 CPUs: reservation_ratio * limits / N = 0.5 * 4 / 2 = 1 CPU per op,
+        # so _op_reserved = 1 CPU per op and _total_shared = 4 - 2*1 = 2 CPUs.
         global_limits = ExecutionResources(cpu=4, gpu=0, object_store_memory=1000)
 
         resource_manager = ResourceManager(
@@ -1528,6 +1529,105 @@ class TestReservationOpResourceAllocator:
         assert (
             headroom2.cpu < 0
         ), f"Expected negative signed_headroom for o2 (over max), got {headroom2.cpu}"
+
+    def test_proportional_shared_distribution_when_memory_over_subscribed(
+        self, restore_data_context
+    ):
+        """Logical memory (not just CPU) must drive proportional shared distribution.
+
+        When memory is the over-subscribed dimension, the allocator should
+        distribute the memory shared pool proportionally to each op's memory usage,
+        producing memory-aware negative `signed_headroom` for downscaling. CPU is
+        kept under-subscribed to confirm dimensions are tracked independently.
+
+        Memory values are in bytes (and integer-rounded by `ExecutionResources`),
+        so we use byte-scale values to keep proportional shares non-degenerate.
+        """
+        DataContext.get_current().op_resource_reservation_enabled = True
+        DataContext.get_current().op_resource_reservation_ratio = 0.5
+
+        o1 = InputDataBuffer(DataContext.get_current(), [])
+        o2 = mock_map_op(o1, ray_remote_args={"num_cpus": 1, "memory": 1})
+        o3 = mock_map_op(o2, ray_remote_args={"num_cpus": 1, "memory": 1})
+        o4 = LimitOperator(1, o3, DataContext.get_current())
+
+        for op in [o2, o3]:
+            op.min_max_resource_requirements = MagicMock(
+                return_value=(ExecutionResources.zero(), ExecutionResources.inf())
+            )
+
+        op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
+        op_internal_usage = dict.fromkeys([o1, o2, o3, o4], 0)
+        op_outputs_usages = dict.fromkeys([o1, o2, o3, o4], 0)
+
+        topo = build_streaming_topology(o4, ExecutionOptions())
+        # CPU=8, memory=4000 (bytes), OSM=1000. With ratio=0.5 / N=2 →
+        # default_reserved per op = (cpu=2, memory=1000, osm=250).
+        # reserved_for_outputs = (0, 0, 125), so _op_reserved per op =
+        # (cpu=2, memory=1000, osm=125) and _total_shared = (cpu=4, memory=2000, osm=500).
+        global_limits = ExecutionResources(
+            cpu=8, gpu=0, object_store_memory=1000, memory=4000
+        )
+
+        resource_manager = ResourceManager(
+            topo,
+            ExecutionOptions(),
+            MagicMock(),
+            DataContext.get_current(),
+        )
+        resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
+        resource_manager._mem_op_internal = op_internal_usage
+        resource_manager._mem_op_outputs = op_outputs_usages
+        resource_manager.get_global_limits = MagicMock(return_value=global_limits)
+
+        allocator = resource_manager._op_resource_allocator
+        assert isinstance(allocator, ReservationOpResourceAllocator)
+
+        allocator.update_budgets(limits=global_limits)
+
+        assert allocator._op_reserved[o2] == ExecutionResources(2, 0, 125, memory=1000)
+        assert allocator._op_reserved[o3] == ExecutionResources(2, 0, 125, memory=1000)
+        assert allocator._total_shared == ExecutionResources(4, 0, 500, memory=2000)
+
+        # Simulate memory pressure (e.g. larger-than-expected actor footprints):
+        # o2 uses memory=3000, o3 uses memory=1500. CPU stays at 0 (not over-subscribed).
+        # Shared-pool memory usage: o2 = max(3000-1000, 0) = 2000,
+        # o3 = max(1500-1000, 0) = 500. Total = 2500 > _total_shared.memory = 2000
+        # → over-subscribed on memory only.
+        op_usages[o2] = ExecutionResources(
+            cpu=0, gpu=0, object_store_memory=0, memory=3000
+        )
+        op_usages[o3] = ExecutionResources(
+            cpu=0, gpu=0, object_store_memory=0, memory=1500
+        )
+
+        allocator.update_budgets(limits=global_limits)
+
+        # Memory is over-subscribed: remaining_shared.memory = 0.
+        # Proportional grants on memory:
+        #   o2: 2000 * (2000 / 2500) = 1600
+        #   o3: 2000 * (500 / 2500)  = 400
+        # planned_grant.memory = _op_reserved.memory(1000) + proportional + even(0).
+        pg2 = allocator._op_planned_grants[o2]
+        pg3 = allocator._op_planned_grants[o3]
+        assert pg2.memory == 2600, pg2.memory
+        assert pg3.memory == 1400, pg3.memory
+        # The two grants should sum to the total memory (reserved + shared).
+        assert pg2.memory + pg3.memory == 4000
+
+        # signed_headroom on memory: planned_grant - usage.
+        # o2: 2600 - 3000 = -400, o3: 1400 - 1500 = -100 → both signal downscaling.
+        headroom2 = allocator.get_signed_headroom(o2)
+        headroom3 = allocator.get_signed_headroom(o3)
+        assert headroom2 is not None
+        assert headroom3 is not None
+        assert headroom2.memory == -400, headroom2.memory
+        assert headroom3.memory == -100, headroom3.memory
+
+        # CPU is not over-subscribed (usage = 0 each); falls through the
+        # even-distribution path and remains positive.
+        assert headroom2.cpu > 0, headroom2.cpu
+        assert headroom3.cpu > 0, headroom3.cpu
 
 
 if __name__ == "__main__":
