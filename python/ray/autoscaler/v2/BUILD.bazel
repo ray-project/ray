@@ -27,6 +27,7 @@ py_test_module_list(
         "tests/test_node_provider.py",
         "tests/test_ray_installer.py",
         "tests/test_reconciler.py",
+        "tests/test_report_cluster_config.py",
         "tests/test_scheduler.py",
         "tests/test_schema.py",
         "tests/test_storage.py",
