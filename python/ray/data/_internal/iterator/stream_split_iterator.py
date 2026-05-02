@@ -14,7 +14,6 @@ from ray.data.context import DataContext
 from ray.data.iterator import DataIterator
 from ray.types import ObjectRef
 from ray.util.debug import log_once
-from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
 
@@ -45,9 +44,9 @@ class StreamSplitDataIterator(DataIterator):
         # We add 1 to the concurrency to allow for a shutdown_executor thread to run.
         coord_actor = SplitCoordinator.options(
             max_concurrency=n + 1,
-            scheduling_strategy=NodeAffinitySchedulingStrategy(
-                ray.get_runtime_context().get_node_id(), soft=False
-            ),
+            label_selector={
+                ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+            },
         ).remote(base_dataset, n, locality_hints)
 
         return [StreamSplitDataIterator(coord_actor, i, n) for i in range(n)]
@@ -224,7 +223,7 @@ class SplitCoordinator:
         if self._current_executor:
             stats = self._current_executor.get_stats()
         else:
-            stats = self._base_dataset._plan.stats()
+            stats = self._base_dataset._raw_stats()
 
         # Set the tracked overhead time
         stats.streaming_split_coordinator_s.add(self._coordinator_overhead_s)
@@ -262,6 +261,8 @@ class SplitCoordinator:
                     self._output_iterator = execute_to_legacy_bundle_iterator(
                         self._current_executor, plan
                     )
+                    # Register the streaming split external consumers with the executor's resource manager.
+                    self._current_executor.set_external_consumer_bytes(0)
                     logger.debug(
                         f"Starting epoch {self._cur_epoch} (all {self._n} clients "
                         "synced)."
