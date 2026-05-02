@@ -81,7 +81,7 @@ def test_datasets_callback_replacement_round_trip(ray_start_4_cpus):
     original_provider_0 = providers[0]
     iter_0 = original_provider_0._dataset_iterators["train"]
     assert isinstance(iter_0, StreamSplitDataIterator)
-    assert iter_0._is_replacement is False
+    assert iter_0._rejoined_epoch is False
 
     # Shut down replica group
     fake_replica = MagicMock()
@@ -97,7 +97,7 @@ def test_datasets_callback_replacement_round_trip(ray_start_4_cpus):
     assert len(repl_providers) == 1
     assert repl_providers[0] is original_provider_0
     assert callback._shard_provider_active == [True, True]
-    assert iter_0._is_replacement is True
+    assert iter_0._rejoined_epoch is True
 
 
 def test_datasets_callback_replacement_before_shutdown_raises(ray_start_4_cpus):

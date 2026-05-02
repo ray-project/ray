@@ -83,7 +83,7 @@ class StreamSplitDataIterator(DataIterator):
         # the predecessor already counted toward the current epoch's barrier).
         # Cleared after the first iter_batches() call so subsequent epochs
         # follow the normal barrier path.
-        self._is_replacement = False
+        self._rejoined_epoch = False
         # 2PC mode: when True, gen_blocks tells the coord to reserve each
         # served block under our split_idx, and the BatchIterator fires a
         # synchronous coord.ack right before each yield via _ack_callback.
@@ -106,11 +106,11 @@ class StreamSplitDataIterator(DataIterator):
     def _to_ref_bundle_iterator(
         self,
     ) -> Tuple[Iterator[RefBundle], Optional[DatasetStats], bool, None]:
-        is_replacement = self._is_replacement
-        self._is_replacement = False
+        rejoined_epoch = self._rejoined_epoch
+        self._rejoined_epoch = False
 
         def gen_blocks() -> Iterator[RefBundle]:
-            if is_replacement:
+            if rejoined_epoch:
                 logger.debug(
                     f"Split {self._output_split_idx}: rejoining in-progress epoch."
                 )
@@ -230,6 +230,10 @@ class StreamSplitDataIterator(DataIterator):
             if self._pending_offsets[bid] >= self._block_num_rows.get(bid, 0):
                 del self._pending_offsets[bid]
                 self._block_num_rows.pop(bid, None)
+
+    def set_rejoined_epoch(self, rejoined_epoch: bool) -> None:
+        """Set whether this iterator rejoined this epoch."""
+        self._rejoined_epoch = rejoined_epoch
 
     def stats(self) -> str:
         """Implements DataIterator."""

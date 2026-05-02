@@ -194,6 +194,10 @@ class DatasetsCallback(WorkerGroupCallback, ReplicaGroupCallback, ControllerCall
 
     # --------------------------
     # ReplicaGroupCallback
+    # We should only call these methods if we are replacing worker(s) in a fixed
+    # size training group. If the number of workers changes, we need to shift from
+    # "handing a dataset shard to the replacement worker" to
+    # "having multiple workers pull from a common queue."
     # --------------------------
 
     def before_replica_group_shutdown(self, replica_group: ReplicaGroup):
@@ -262,7 +266,7 @@ class DatasetsCallback(WorkerGroupCallback, ReplicaGroupCallback, ControllerCall
             # auto-clears it after the first iter_batches() call.
             for ds_iter in provider._dataset_iterators.values():
                 if isinstance(ds_iter, StreamSplitDataIterator):
-                    ds_iter._is_replacement = True
+                    ds_iter.set_rejoined_epoch(True)
             providers.append(provider)
         return {"dataset_shard_provider": providers}
 
