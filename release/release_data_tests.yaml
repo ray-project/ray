@@ -26,6 +26,7 @@
 - name: "read_parquet_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -42,6 +43,7 @@
 - name: "read_large_parquet_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -63,6 +65,7 @@
 - name: "read_images_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -77,6 +80,8 @@
 
 - name: read_tfrecords
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 3600
     script: >
@@ -87,6 +92,7 @@
 - name: "read_from_uris_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -103,6 +109,8 @@
 
 - name: write_parquet
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 3600
     script: >
@@ -135,6 +143,7 @@
 - name: "count_parquet_{{scaling}}"
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_cpu_compute.yaml"
 
   matrix:
@@ -182,6 +191,7 @@
         - "column08 column13 column14"   # 84 groups
         - "column02 column14"  # 7M groups
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -202,6 +212,7 @@
         - "column02 column14"  # 7M groups
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -236,6 +247,7 @@
 - name: joins_{{dataset}}_{{join_type}}
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: fixed_size_100_cpu_compute.yaml
 
   matrix:
@@ -261,6 +273,7 @@
 - name: wide_schema_pipeline_{{data_type}}
   python: "3.10"
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         # Preserve the default verbose stats for resource manager.
@@ -287,6 +300,8 @@
 
 - name: streaming_split
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 300
     wait_for_nodes:
@@ -411,6 +426,8 @@
 
 - name: "iter_batches_{{format}}"
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   matrix:
     setup:
       format: [numpy, pandas, pyarrow]
@@ -424,6 +441,8 @@
 
 - name: to_tf
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 2400
     script: >
@@ -449,12 +468,16 @@
 
 - name: map
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 1800
     script: python map_benchmark.py --api map --sf 100
 
 - name: flat_map
   python: "3.10"
+  cluster:
+    anyscale_sdk_2026: true
   run:
     timeout: 1800
     script: python map_benchmark.py --api flat_map --sf 100
@@ -489,6 +512,7 @@
           repeat_map_batches: once
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -506,6 +530,7 @@
   python: "3.10"
   frequency: weekly
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: fixed_size_1000_cpu_compute.yaml
 
   matrix:
@@ -581,6 +606,7 @@
       scaling: [fixed_size]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -594,6 +620,7 @@
   working_dir: nightly_tests
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -620,6 +647,7 @@
       # TODO: https://github.com/anyscale/ray/issues/727
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -635,6 +663,7 @@
   frequency: manual
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -664,6 +693,7 @@
   group: data-batch-inference
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -682,6 +712,7 @@
   group: data-batch-inference
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
@@ -707,6 +738,7 @@
   group: data-batch-inference
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       runtime_env:
         - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
@@ -735,6 +767,7 @@
   group: data-batch-inference
 
   cluster:
+    anyscale_sdk_2026: true
     byod:
       # NOTE: Image classification have to pin Pyarrow to 19.0 due to dataset using
       #       previous tensor extension type inheriting from ``pyarrow.PyExtensionType``
@@ -781,6 +814,7 @@
           fail_on_dead_nodes: 0
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_uris/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
@@ -827,6 +861,7 @@
           fail_on_dead_nodes: 0
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: image_embedding_from_jsonl/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
@@ -868,6 +903,7 @@
           fail_on_dead_nodes: 0
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: text_embedding/{{cluster_type}}_cluster_compute.yaml
     byod:
       runtime_env:
@@ -917,6 +953,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -930,6 +967,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -943,6 +981,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -956,6 +995,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -969,6 +1009,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -982,6 +1023,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -995,6 +1037,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1017,6 +1060,7 @@
           frequency: nightly
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1030,6 +1074,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1043,6 +1088,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1056,6 +1102,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1069,6 +1116,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1082,6 +1130,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1095,6 +1144,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
@@ -1108,6 +1158,7 @@
       scaling: [fixed_size, autoscaling]
 
   cluster:
+    anyscale_sdk_2026: true
     cluster_compute: "{{scaling}}_all_to_all_compute.yaml"
 
   run:
