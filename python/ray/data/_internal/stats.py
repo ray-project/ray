@@ -24,6 +24,7 @@ if TYPE_CHECKING:
 from uuid import uuid4
 
 import ray
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 from ray.actor import ActorHandle
 from ray.data._internal.execution.dataset_state import DatasetState
 from ray.data._internal.execution.interfaces.common import RuntimeMetricsHistogram
@@ -893,16 +894,17 @@ def get_or_create_stats_actor() -> ActorHandle[_StatsActor]:
     logger.debug(f"Stats Actor located on cluster_id={current_cluster_id}")
 
     # so it fate-shares with the driver.
-    label_selector = {
-        ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
-    }
+    scheduling_strategy = NodeAffinitySchedulingStrategy(
+        ray.get_runtime_context().get_node_id(),
+        soft=False,
+    )
 
     return _StatsActor.options(
         name=STATS_ACTOR_NAME,
         namespace=STATS_ACTOR_NAMESPACE,
         get_if_exists=True,
         lifetime="detached",
-        label_selector=label_selector,
+        scheduling_strategy=scheduling_strategy,
     ).remote()
 
 
