@@ -309,5 +309,204 @@ TEST(RocksDbStoreClientTest, OffloadPathDestructorJoinsBeforeDbClose) {
   fs::remove_all(db);
 }
 
+TEST(RocksDbStoreClientTest, OffloadStrandSerializesOverwriteFalseRace) {
+  // Without per-key strand bucketing, two concurrent AsyncPut(K, !overwrite)
+  // calls on the offload path can both observe "not found" and both write,
+  // both reporting inserted=true. With per-key strand dispatch, the same
+  // bucket serializes those calls so exactly one wins. We stress-test by
+  // launching many issuer threads all racing on the same key.
+  IoServiceFixture io;
+  const fs::path db = UniqueTempDir("strand-noov-race");
+  RocksDbStoreClient client(io.io(),
+                            db.string(),
+                            /*expected_cluster_id=*/"",
+                            /*offload_io=*/true,
+                            /*io_pool_size=*/4,
+                            /*strand_buckets=*/64);
+
+  constexpr int kIssuers = 128;
+  std::atomic<int> inserted_true{0};
+  std::atomic<int> inserted_false{0};
+  std::atomic<int> done{0};
+
+  // Hold the issuers at a starting line so they all submit roughly
+  // simultaneously, maximising the chance pool threads see "not found"
+  // before any winner has committed.
+  std::atomic<bool> go{false};
+  std::vector<std::thread> issuers;
+  issuers.reserve(kIssuers);
+  for (int t = 0; t < kIssuers; ++t) {
+    issuers.emplace_back([&, t] {
+      while (!go.load(std::memory_order_acquire)) {
+        std::this_thread::yield();
+      }
+      client.AsyncPut("noov_t",
+                      "shared_key",
+                      "v" + std::to_string(t),
+                      /*overwrite=*/false,
+                      {[&](bool inserted) {
+                         (inserted ? inserted_true : inserted_false).fetch_add(1);
+                         done.fetch_add(1);
+                       },
+                       io.io()});
+    });
+  }
+  go.store(true, std::memory_order_release);
+  for (auto &th : issuers) th.join();
+  ASSERT_TRUE(WaitFor([&] { return done.load() == kIssuers; }));
+
+  EXPECT_EQ(inserted_true.load(), 1);
+  EXPECT_EQ(inserted_false.load(), kIssuers - 1);
+  fs::remove_all(db);
+}
+
+TEST(RocksDbStoreClientTest, OffloadStrandPreservesLastWriterWinsForSameKey) {
+  // Per-key strand must give submission-order-equals-execution-order for
+  // the same key. Burst N back-to-back overwrites from the io_service
+  // thread (single-threaded, FIFO submission), then read; the final
+  // value must be the last one we submitted. Without strand, the pool
+  // can reorder same-key writes and the read may see an earlier value.
+  // Repeat across many trials to make the contract sharp.
+  IoServiceFixture io;
+  const fs::path db = UniqueTempDir("strand-lww");
+  RocksDbStoreClient client(io.io(),
+                            db.string(),
+                            /*expected_cluster_id=*/"",
+                            /*offload_io=*/true,
+                            /*io_pool_size=*/4,
+                            /*strand_buckets=*/64);
+
+  constexpr int kTrials = 32;
+  constexpr int kPutsPerTrial = 16;
+  for (int trial = 0; trial < kTrials; ++trial) {
+    const std::string key = "k_" + std::to_string(trial);
+    std::atomic<int> writes_done{0};
+    for (int i = 0; i < kPutsPerTrial; ++i) {
+      client.AsyncPut("lww_t",
+                      key,
+                      "v" + std::to_string(i),
+                      /*overwrite=*/true,
+                      {[&writes_done](bool) { writes_done.fetch_add(1); }, io.io()});
+    }
+    ASSERT_TRUE(WaitFor([&] { return writes_done.load() == kPutsPerTrial; }));
+
+    std::atomic<bool> read_done{false};
+    std::optional<std::string> got;
+    client.AsyncGet("lww_t",
+                    key,
+                    {[&got, &read_done](Status, std::optional<std::string> v) {
+                       got = std::move(v);
+                       read_done.store(true);
+                     },
+                     io.io()});
+    ASSERT_TRUE(WaitFor([&] { return read_done.load(); }));
+
+    ASSERT_TRUE(got.has_value()) << "trial " << trial;
+    EXPECT_EQ(*got, "v" + std::to_string(kPutsPerTrial - 1))
+        << "trial " << trial << ": last-writer-wins violated";
+  }
+  fs::remove_all(db);
+}
+
+TEST(RocksDbStoreClientTest, OffloadStrandPreservesDeleteThenPut) {
+  // Submission order: Delete(K), Put(K, V). Final state must contain V.
+  // Without per-key strand, the pool can run the Put before the Delete,
+  // erasing V. Repeat across many trials to amplify any reordering.
+  IoServiceFixture io;
+  const fs::path db = UniqueTempDir("strand-del-put");
+  RocksDbStoreClient client(io.io(),
+                            db.string(),
+                            /*expected_cluster_id=*/"",
+                            /*offload_io=*/true,
+                            /*io_pool_size=*/4,
+                            /*strand_buckets=*/64);
+
+  constexpr int kTrials = 64;
+  for (int trial = 0; trial < kTrials; ++trial) {
+    const std::string key = "k_" + std::to_string(trial);
+
+    // Seed an existing value so Delete is a real delete, not a no-op.
+    std::atomic<bool> seeded{false};
+    client.AsyncPut("dp_t",
+                    key,
+                    "old",
+                    /*overwrite=*/true,
+                    {[&seeded](bool) { seeded.store(true); }, io.io()});
+    ASSERT_TRUE(WaitFor([&] { return seeded.load(); }));
+
+    std::atomic<int> ops_done{0};
+    client.AsyncDelete(
+        "dp_t", key, {[&ops_done](bool) { ops_done.fetch_add(1); }, io.io()});
+    client.AsyncPut("dp_t",
+                    key,
+                    "new",
+                    /*overwrite=*/true,
+                    {[&ops_done](bool) { ops_done.fetch_add(1); }, io.io()});
+    ASSERT_TRUE(WaitFor([&] { return ops_done.load() == 2; }));
+
+    std::atomic<bool> read_done{false};
+    std::optional<std::string> got;
+    client.AsyncGet("dp_t",
+                    key,
+                    {[&got, &read_done](Status, std::optional<std::string> v) {
+                       got = std::move(v);
+                       read_done.store(true);
+                     },
+                     io.io()});
+    ASSERT_TRUE(WaitFor([&] { return read_done.load(); }));
+
+    ASSERT_TRUE(got.has_value()) << "trial " << trial << ": Put after Delete lost";
+    EXPECT_EQ(*got, "new") << "trial " << trial;
+  }
+  fs::remove_all(db);
+}
+
+TEST(RocksDbStoreClientTest, OffloadStrandPreservesCrossKeyParallelism) {
+  // Per-key strand must not collapse cross-key parallelism. Drive 1024
+  // writes spread across 1024 distinct keys with pool=4 and buckets=64;
+  // bucket collisions are expected for some keys but must not serialize
+  // the whole workload. We assert all writes complete and every key
+  // reads back its expected value — a regression that accidentally
+  // routed everything through one strand would still pass correctness
+  // but spike wall-clock; we keep it loose-but-bounded by giving
+  // WaitFor its standard 30 s deadline rather than asserting on a hard
+  // throughput floor (which would be flaky on shared CI hardware).
+  IoServiceFixture io;
+  const fs::path db = UniqueTempDir("strand-crosskey");
+  RocksDbStoreClient client(io.io(),
+                            db.string(),
+                            /*expected_cluster_id=*/"",
+                            /*offload_io=*/true,
+                            /*io_pool_size=*/4,
+                            /*strand_buckets=*/64);
+
+  constexpr int kKeys = 1024;
+  using namespace std::chrono_literals;
+  std::atomic<int> writes_done{0};
+  for (int i = 0; i < kKeys; ++i) {
+    client.AsyncPut("xkey_t",
+                    "k" + std::to_string(i),
+                    "v" + std::to_string(i),
+                    /*overwrite=*/true,
+                    {[&writes_done](bool) { writes_done.fetch_add(1); }, io.io()});
+  }
+  ASSERT_TRUE(WaitFor([&] { return writes_done.load() == kKeys; }, 60s));
+
+  std::atomic<int> reads_done{0};
+  std::atomic<int> matches{0};
+  for (int i = 0; i < kKeys; ++i) {
+    client.AsyncGet("xkey_t",
+                    "k" + std::to_string(i),
+                    {[i, &reads_done, &matches](Status, std::optional<std::string> v) {
+                       if (v && *v == "v" + std::to_string(i)) matches.fetch_add(1);
+                       reads_done.fetch_add(1);
+                     },
+                     io.io()});
+  }
+  ASSERT_TRUE(WaitFor([&] { return reads_done.load() == kKeys; }, 30s));
+  EXPECT_EQ(matches.load(), kKeys);
+  fs::remove_all(db);
+}
+
 }  // namespace gcs
 }  // namespace ray

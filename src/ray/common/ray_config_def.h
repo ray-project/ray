@@ -454,6 +454,14 @@ RAY_CONFIG(bool, gcs_rocksdb_async_offload, false)
 /// aggregate-throughput benefit on the GCS metadata workload.
 RAY_CONFIG(uint32_t, gcs_rocksdb_io_pool_size, 4)
 
+/// REP-64: number of per-key strand buckets used for single-key op
+/// ordering on the offload path. Single-key ops (Put/Get/Delete/Exists)
+/// are bucketed by hash(table, key) and serialized within a bucket;
+/// different buckets run concurrently up to the pool size. Default 64
+/// gives ~16x headroom over the typical pool size (4). Only meaningful
+/// when gcs_rocksdb_async_offload is true.
+RAY_CONFIG(uint32_t, gcs_rocksdb_strand_buckets, 64)
+
 /// Duration to sleep after failing to put an object in plasma because it is full.
 RAY_CONFIG(uint32_t, object_store_full_delay_ms, 10)
 

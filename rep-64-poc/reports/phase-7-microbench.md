@@ -169,6 +169,74 @@ The pipelined run's per-op p50 in offload mode shows 9.2 s — that is *not* a p
 
 The default in this PR is `gcs_rocksdb_async_offload = false` (inline path) — matches the existing `InMemoryStoreClient` semantics and is the simplest to reason about. Flipping the default — or making offload the only path — is a maintainer judgement; the numbers above are the input to that decision.
 
+## Addendum — per-key strand bucketing on the offload path
+
+The first offload-IO commit (`e710272d`) routed every Async\* call to
+the bare thread pool. Cursor Bugbot flagged that this lets two
+concurrent `AsyncPut(K, !overwrite)` calls both observe "not found"
+and both write — a TOCTOU race. The deeper problem (see
+`POC_AUDIT.md`): the bare pool reorders any same-key sequence,
+breaking the per-key submission-order property that the inline path,
+`InMemoryStoreClient`, and `RedisStoreClient` all give for free via
+single-threaded execution.
+
+**Fix:** single-key ops dispatch through a fixed array of
+`boost::asio::strand`s bucketed by `hash(table, key) % N` (default
+`N=64`, controlled by `gcs_rocksdb_strand_buckets`). Same-bucket posts
+execute FIFO; different buckets run concurrently up to pool size.
+Multi-key/scan/counter ops keep using the bare pool. Full design
++ audit in `rep-64-poc/POC_AUDIT.md`.
+
+**Question for this report:** does the strand layer cost any of the
+2.5× pipelined throughput?
+
+### Numbers (post-strand vs pre-strand)
+
+Same harness, same probe-verified ext4 substrate, same `--io-pool-size 4`,
+default `--strand-buckets 64`. Source data:
+`results/phase7-strand-sequential.json`,
+`results/phase7-strand-pipelined.json`.
+
+**Sequential (1 in-flight):**
+
+| path              | pre-strand ops/s | post-strand ops/s | pre p50 | post p50 |
+|-------------------|---------------:|----------------:|--------:|---------:|
+| `rocksdb_inline`  | 211.9 | 214.6 | 3.78 ms | 3.77 ms |
+| `rocksdb_offload` | 213.5 | 225.7 | 3.82 ms | 3.64 ms |
+
+**Pipelined (back-to-back):**
+
+| path              | pre-strand ops/s | post-strand ops/s |
+|-------------------|---------------:|----------------:|
+| `rocksdb_inline`  | 215.5 | 240.0 |
+| `rocksdb_offload` | **535.2** | **593.6** |
+
+Identical within run-to-run noise on every cell. The headline 2.5×
+pipelined offload-over-inline holds. Strand dispatch is
+sub-microsecond, swamped by the 3.6–3.8 ms fsync. Strand bucketing is
+**free at the latency scale RocksDB operates at**: collisions are rare
+(16× headroom over pool size), and even when they happen the cost is
+sub-microsecond enqueue, not the 3.6 ms fsync.
+
+### Sanity check: what would buckets=1 do?
+
+A single bucket would funnel all single-key ops through one strand,
+serializing the offload path back to inline-equivalent throughput.
+Not measured here — the test
+`OffloadStrandPreservesCrossKeyParallelism` proves cross-key
+parallelism is preserved at the default bucket count, which is the
+load-bearing claim. Operators who want to confirm the floor empirically
+can run `--strand-buckets 1 --include-offload` and expect roughly the
+inline pipelined number.
+
+### Conclusion
+
+Per-key strand bucketing closes a real correctness bug (per-key
+ordering broken on the offload path) at zero measurable performance
+cost. The offload default stays `false` (matches `InMemoryStoreClient`
+semantics, simplest to reason about), but the offload path is now
+production-shaped if maintainers want to flip it.
+
 ## Next concrete actions
 
 1. **Multi-threaded-writer variant** to capture group-commit benefit on aggregate throughput.

@@ -327,14 +327,16 @@ BackendResult BenchInMemory(IoFixture &io_fixture) {
 BackendResult BenchRocksDb(IoFixture &io_fixture,
                            const std::string &db_path,
                            bool offload_io,
-                           std::size_t io_pool_size) {
+                           std::size_t io_pool_size,
+                           std::size_t strand_buckets) {
   std::cerr << "==> RocksDbStoreClient (" << (offload_io ? "offload" : "inline")
             << ") at " << db_path << std::endl;
   RocksDbStoreClient client(io_fixture.io(),
                             db_path,
                             /*expected_cluster_id=*/"",
                             offload_io,
-                            io_pool_size);
+                            io_pool_size,
+                            strand_buckets);
   BackendResult br;
   br.name = offload_io ? "rocksdb_offload" : "rocksdb_inline";
   auto [put_samples, put_total] = RunPutBench(client, io_fixture);
@@ -396,6 +398,7 @@ int main(int argc, char **argv) {
       "/.cache/rep64-microbench";
   bool include_offload = false;
   std::size_t io_pool_size = 4;
+  std::size_t strand_buckets = 64;
   for (int i = 1; i < argc; ++i) {
     std::string a = argv[i];
     if (a == "--output" && i + 1 < argc) {
@@ -406,6 +409,8 @@ int main(int argc, char **argv) {
       include_offload = true;
     } else if (a == "--io-pool-size" && i + 1 < argc) {
       io_pool_size = static_cast<std::size_t>(std::stoul(argv[++i]));
+    } else if (a == "--strand-buckets" && i + 1 < argc) {
+      strand_buckets = static_cast<std::size_t>(std::stoul(argv[++i]));
     } else if (a == "--sequential") {
       g_sequential = true;
     }
@@ -425,17 +430,24 @@ int main(int argc, char **argv) {
   fs::path inline_db = fs::path(db_dir) / ("phase7-inline-" + std::to_string(rng()));
   fs::create_directories(inline_db);
   std::cerr << "RocksDB inline working under: " << inline_db << std::endl;
-  results.push_back(
-      BenchRocksDb(io_fixture, inline_db.string(), /*offload_io=*/false, io_pool_size));
+  results.push_back(BenchRocksDb(io_fixture,
+                                 inline_db.string(),
+                                 /*offload_io=*/false,
+                                 io_pool_size,
+                                 strand_buckets));
   fs::remove_all(inline_db);
 
   if (include_offload) {
     fs::path offload_db = fs::path(db_dir) / ("phase7-offload-" + std::to_string(rng()));
     fs::create_directories(offload_db);
     std::cerr << "RocksDB offload working under: " << offload_db
-              << " (pool=" << io_pool_size << ")" << std::endl;
-    results.push_back(
-        BenchRocksDb(io_fixture, offload_db.string(), /*offload_io=*/true, io_pool_size));
+              << " (pool=" << io_pool_size << ", strand_buckets=" << strand_buckets << ")"
+              << std::endl;
+    results.push_back(BenchRocksDb(io_fixture,
+                                   offload_db.string(),
+                                   /*offload_io=*/true,
+                                   io_pool_size,
+                                   strand_buckets));
     fs::remove_all(offload_db);
   }
 

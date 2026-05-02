@@ -188,7 +188,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
             RayConfig::instance().gcs_storage_path(),
             /*expected_cluster_id=*/"",
             RayConfig::instance().gcs_rocksdb_async_offload(),
-            RayConfig::instance().gcs_rocksdb_io_pool_size()),
+            RayConfig::instance().gcs_rocksdb_io_pool_size(),
+            RayConfig::instance().gcs_rocksdb_strand_buckets()),
         metrics_.storage_operation_latency_in_ms_histogram,
         metrics_.storage_operation_count_counter);
     break;
@@ -706,7 +707,8 @@ void GcsServer::InitKVManager() {
             RayConfig::instance().gcs_storage_path(),
             /*expected_cluster_id=*/"",
             RayConfig::instance().gcs_rocksdb_async_offload(),
-            RayConfig::instance().gcs_rocksdb_io_pool_size()),
+            RayConfig::instance().gcs_rocksdb_io_pool_size(),
+            RayConfig::instance().gcs_rocksdb_strand_buckets()),
         metrics_.storage_operation_latency_in_ms_histogram,
         metrics_.storage_operation_count_counter);
     break;

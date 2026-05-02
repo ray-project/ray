@@ -22,6 +22,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "boost/asio/strand.hpp"
 #include "boost/asio/thread_pool.hpp"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/postable/postable.h"
@@ -52,6 +53,26 @@ namespace gcs {
 ///   `Postable::Post`. RocksDB's group-commit aggregates concurrent
 ///   in-flight writers into one fsync, so aggregate write throughput
 ///   scales with pool size while the event loop stays responsive.
+///
+///   *Per-key ordering.* Single-key ops (Put/Get/Delete/Exists) dispatch
+///   through a fixed array of `boost::asio::strand`s bucketed by
+///   `hash(table, key) % gcs_rocksdb_strand_buckets`. This restores the
+///   per-key submission-order execution that the inline path provides for
+///   free via the io_service thread, and that `InMemoryStoreClient` and
+///   `RedisStoreClient` provide via their own single-threaded execution
+///   models. Without strands, the offload pool would happily reorder a
+///   `Delete(K); Put(K, V)` pair, race two `AsyncPut(K, !overwrite)`
+///   calls so both observe "not found", or let an `AsyncGet(K)` see a
+///   value older than a Put that was submitted before it.
+///
+///   Multi-key/scan ops (MultiGet, GetAll, GetKeys, BatchDelete) post
+///   to the base pool without a strand. Their semantics are inherently
+///   "snapshot from whenever they ran" and matches Redis pipelining:
+///   per-key order is preserved among single-key ops, but a scan that
+///   races a single-key write may or may not see the write. Callers
+///   needing scan-after-write ordering must serialize via the write
+///   callback, which is the same contract `InMemoryStoreClient`
+///   imposes under the same races.
 ///
 /// In both paths the callback is dispatched via `Postable::Post` to the
 /// GCS event loop, which keeps callback ordering uniform with the rest
@@ -88,11 +109,18 @@ class RocksDbStoreClient : public StoreClient {
   ///   so they can exercise both paths.
   /// \param io_pool_size Worker-thread count. Ignored when
   ///   `offload_io == false`. Clamped to >= 1 when active.
+  /// \param strand_buckets Number of per-key `asio::strand` buckets used
+  ///   for single-key op ordering on the offload path. Ignored when
+  ///   `offload_io == false`. Clamped to >= 1 when active. Default 64
+  ///   gives ~16x headroom over the typical pool size (4) so collision-
+  ///   induced serialization is rare. See class docstring for the
+  ///   ordering guarantees this controls.
   RocksDbStoreClient(instrumented_io_context &io_service,
                      const std::string &db_path,
                      const std::string &expected_cluster_id,
                      bool offload_io = false,
-                     std::size_t io_pool_size = 4);
+                     std::size_t io_pool_size = 4,
+                     std::size_t strand_buckets = 64);
 
   ~RocksDbStoreClient() override;
 
@@ -158,10 +186,19 @@ class RocksDbStoreClient : public StoreClient {
   /// `WriteOptions{sync=true}` shorthand. fsync-on-WAL.
   rocksdb::WriteOptions SyncWriteOptions() const;
 
-  /// Dispatch \p work either inline (when `io_pool_` is null) or onto
-  /// the offload pool. The work closure runs the RocksDB op AND posts
-  /// the user callback, so the pool-vs-inline branch lives only here.
-  void RunIo(std::function<void()> work);
+  /// Dispatch \p work for a single-key operation. Inline path (no pool):
+  /// runs synchronously on the caller's thread. Offload path: posts to
+  /// the strand bucketed by `hash(table_name, key)`, so two operations
+  /// for the same key always execute in submission order.
+  void RunIoForKey(const std::string &table_name,
+                   const std::string &key,
+                   std::function<void()> work);
+
+  /// Dispatch \p work for an op whose ordering is intentionally loose
+  /// (multi-key probes, scans, the global job-counter increment which
+  /// uses its own internal mutex). Inline path: synchronous. Offload
+  /// path: posts to the base pool, no strand.
+  void RunIoUnordered(std::function<void()> work);
 
   static constexpr char kClusterIdKey[] = "__ray_rep64_cluster_id__";
   static constexpr char kJobCounterKey[] = "__ray_rep64_job_counter__";
@@ -176,6 +213,14 @@ class RocksDbStoreClient : public StoreClient {
   /// `db_` here — destructor walks members in reverse.)
   std::unique_ptr<rocksdb::DB> db_;
   std::unique_ptr<boost::asio::thread_pool> io_pool_;
+
+  /// Per-key strands bucketed by `hash(table, key)`. Empty when the
+  /// inline path is selected (`offload_io == false`). Each strand wraps
+  /// `io_pool_`'s executor, so destruction order requires draining the
+  /// pool before clearing this vector — the destructor handles that
+  /// explicitly.
+  using StrandT = boost::asio::strand<boost::asio::thread_pool::executor_type>;
+  std::vector<std::unique_ptr<StrandT>> strands_;
 
   absl::Mutex cf_mutex_;
   absl::flat_hash_map<std::string, rocksdb::ColumnFamilyHandle *> cf_handles_

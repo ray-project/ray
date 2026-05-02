@@ -23,6 +23,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/hash/hash.h"
 #include "boost/asio/post.hpp"
 #include "ray/util/logging.h"
 #include "rocksdb/options.h"
@@ -60,13 +61,23 @@ RocksDbStoreClient::RocksDbStoreClient(instrumented_io_context &io_service,
                                        const std::string &db_path,
                                        const std::string &expected_cluster_id,
                                        bool offload_io,
-                                       std::size_t io_pool_size)
+                                       std::size_t io_pool_size,
+                                       std::size_t strand_buckets)
     : io_service_(io_service) {
   if (offload_io) {
     // Boost requires >=1 thread; clamp here so pool_size=0 from a bad
     // config can't crash the GCS at startup.
     io_pool_ =
         std::make_unique<boost::asio::thread_pool>(io_pool_size > 0 ? io_pool_size : 1);
+    // Build the strand bucket array off the pool's executor. Strands
+    // wrap the executor; same-bucket posts run serialized, different
+    // buckets run concurrently up to pool size. Clamp to >= 1 for the
+    // same reason as io_pool_size.
+    const std::size_t buckets = strand_buckets > 0 ? strand_buckets : 1;
+    strands_.reserve(buckets);
+    for (std::size_t i = 0; i < buckets; ++i) {
+      strands_.emplace_back(std::make_unique<StrandT>(io_pool_->get_executor()));
+    }
   }
   RAY_CHECK(!db_path.empty()) << "RAY_GCS_STORAGE_PATH must be set when "
                                  "RAY_GCS_STORAGE=rocksdb.";
@@ -139,11 +150,14 @@ RocksDbStoreClient::~RocksDbStoreClient() {
   // a pool task that ran after DestroyColumnFamilyHandle would dereference
   // a freed handle. boost::asio::thread_pool::~thread_pool also joins,
   // but we need the join to happen before the cf-handle-destroy block
-  // below, not after the body returns.
+  // below, not after the body returns. Strands wrap the pool's executor,
+  // so joining the pool drains them too; clearing the strands_ vector
+  // is then safe.
   if (io_pool_) {
     io_pool_->stop();
     io_pool_->join();
   }
+  strands_.clear();
 
   absl::MutexLock lock(&cf_mutex_);
   for (auto &[_, handle] : cf_handles_) {
@@ -152,12 +166,30 @@ RocksDbStoreClient::~RocksDbStoreClient() {
   cf_handles_.clear();
 }
 
-void RocksDbStoreClient::RunIo(std::function<void()> work) {
-  if (io_pool_) {
-    boost::asio::post(*io_pool_, std::move(work));
-  } else {
+void RocksDbStoreClient::RunIoForKey(const std::string &table_name,
+                                     const std::string &key,
+                                     std::function<void()> work) {
+  if (strands_.empty()) {
+    // Inline path: io_service is single-threaded so per-key submission
+    // order is preserved by direct execution.
     work();
+    return;
   }
+  // absl::HashOf combines the table and key into a single 64-bit hash;
+  // collisions across (table, key) pairs are expected and harmless —
+  // they just mean two unrelated keys share a strand bucket and become
+  // serialized with each other (a small parallelism loss, never a
+  // correctness issue).
+  const std::size_t bucket = absl::HashOf(table_name, key) % strands_.size();
+  boost::asio::post(*strands_[bucket], std::move(work));
+}
+
+void RocksDbStoreClient::RunIoUnordered(std::function<void()> work) {
+  if (!io_pool_) {
+    work();
+    return;
+  }
+  boost::asio::post(*io_pool_, std::move(work));
 }
 
 void RocksDbStoreClient::ValidateOrWriteClusterIdMarker(
@@ -216,82 +248,76 @@ void RocksDbStoreClient::AsyncPut(const std::string &table_name,
                                   std::string data,
                                   bool overwrite,
                                   Postable<void(bool)> callback) {
-  RunIo([this,
-         table_name,
-         key,
-         data = std::move(data),
-         overwrite,
-         callback = std::move(callback)]() mutable {
-    auto *cf = GetOrCreateColumnFamily(table_name);
+  RunIoForKey(table_name,
+              key,
+              [this,
+               table_name,
+               key,
+               data = std::move(data),
+               overwrite,
+               callback = std::move(callback)]() mutable {
+                auto *cf = GetOrCreateColumnFamily(table_name);
 
-    bool inserted = true;
-    if (!overwrite) {
-      // Honour the !overwrite contract: only write if the key is absent.
-      //
-      // Inline path (offload_io=false, the default): RunIo executes
-      // synchronously on the issuer's thread, so the GCS event loop's
-      // single-writer model gives Get-then-Put atomicity for free.
-      //
-      // Offload path (offload_io=true): the Get and the Put run on a
-      // pool thread, so two concurrent AsyncPut calls for the same key
-      // can both observe "not found" and both write. The window is real
-      // but bounded — only !overwrite callers see it, only when offload
-      // is enabled, and only for the same key. Production hardening
-      // would use either RocksDB's OptimisticTransactionDB or a per-key
-      // strand keyed by hash(table, key); tracked as an open question
-      // in the PR description.
-      std::string existing;
-      auto get_status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
-      if (get_status.ok()) {
-        std::move(callback).Post("GcsRocksDb.PutSkip", false);
-        return;
-      }
-      RAY_CHECK(get_status.IsNotFound())
-          << "RocksDB Get failed: " << get_status.ToString();
-    } else {
-      std::string existing;
-      auto get_status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
-      if (get_status.ok()) {
-        inserted = false;
-      } else {
-        RAY_CHECK(get_status.IsNotFound())
-            << "RocksDB Get failed: " << get_status.ToString();
-      }
-    }
+                bool inserted = true;
+                if (!overwrite) {
+                  // Honour the !overwrite contract: only write if the key is absent.
+                  // Per-key strand dispatch (or inline path) makes this Get-then-Put
+                  // atomic against any other AsyncPut/AsyncDelete on the same key,
+                  // so the read-then-write window is closed.
+                  std::string existing;
+                  auto get_status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
+                  if (get_status.ok()) {
+                    std::move(callback).Post("GcsRocksDb.PutSkip", false);
+                    return;
+                  }
+                  RAY_CHECK(get_status.IsNotFound())
+                      << "RocksDB Get failed: " << get_status.ToString();
+                } else {
+                  std::string existing;
+                  auto get_status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
+                  if (get_status.ok()) {
+                    inserted = false;
+                  } else {
+                    RAY_CHECK(get_status.IsNotFound())
+                        << "RocksDB Get failed: " << get_status.ToString();
+                  }
+                }
 
-    auto put_status = db_->Put(SyncWriteOptions(), cf, key, std::move(data));
-    RAY_CHECK(put_status.ok()) << "RocksDB Put failed for table=" << table_name
-                               << " key=" << key << ": " << put_status.ToString();
+                auto put_status = db_->Put(SyncWriteOptions(), cf, key, std::move(data));
+                RAY_CHECK(put_status.ok())
+                    << "RocksDB Put failed for table=" << table_name << " key=" << key
+                    << ": " << put_status.ToString();
 
-    std::move(callback).Post("GcsRocksDb.Put", inserted);
-  });
+                std::move(callback).Post("GcsRocksDb.Put", inserted);
+              });
 }
 
 void RocksDbStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,
     ToPostable<rpc::OptionalItemCallback<std::string>> callback) {
-  RunIo([this, table_name, key, callback = std::move(callback)]() mutable {
-    auto *cf = GetOrCreateColumnFamily(table_name);
+  RunIoForKey(
+      table_name, key, [this, table_name, key, callback = std::move(callback)]() mutable {
+        auto *cf = GetOrCreateColumnFamily(table_name);
 
-    std::string raw_value;
-    auto status = db_->Get(rocksdb::ReadOptions(), cf, key, &raw_value);
+        std::string raw_value;
+        auto status = db_->Get(rocksdb::ReadOptions(), cf, key, &raw_value);
 
-    std::optional<std::string> data;
-    if (status.ok()) {
-      data = std::move(raw_value);
-    } else if (!status.IsNotFound()) {
-      RAY_LOG(FATAL) << "RocksDB Get failed for table=" << table_name << " key=" << key
-                     << ": " << status.ToString();
-    }
-    std::move(callback).Post("GcsRocksDb.Get", Status::OK(), std::move(data));
-  });
+        std::optional<std::string> data;
+        if (status.ok()) {
+          data = std::move(raw_value);
+        } else if (!status.IsNotFound()) {
+          RAY_LOG(FATAL) << "RocksDB Get failed for table=" << table_name
+                         << " key=" << key << ": " << status.ToString();
+        }
+        std::move(callback).Post("GcsRocksDb.Get", Status::OK(), std::move(data));
+      });
 }
 
 void RocksDbStoreClient::AsyncGetAll(
     const std::string &table_name,
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
-  RunIo([this, table_name, callback = std::move(callback)]() mutable {
+  RunIoUnordered([this, table_name, callback = std::move(callback)]() mutable {
     auto *cf = GetOrCreateColumnFamily(table_name);
 
     rocksdb::ReadOptions read_opts;
@@ -319,7 +345,7 @@ void RocksDbStoreClient::AsyncMultiGet(
     return;
   }
 
-  RunIo([this, table_name, keys, callback = std::move(callback)]() mutable {
+  RunIoUnordered([this, table_name, keys, callback = std::move(callback)]() mutable {
     absl::flat_hash_map<std::string, std::string> result;
     auto *cf = GetOrCreateColumnFamily(table_name);
     std::vector<rocksdb::ColumnFamilyHandle *> cfs(keys.size(), cf);
@@ -348,30 +374,31 @@ void RocksDbStoreClient::AsyncMultiGet(
 void RocksDbStoreClient::AsyncDelete(const std::string &table_name,
                                      const std::string &key,
                                      Postable<void(bool)> callback) {
-  RunIo([this, table_name, key, callback = std::move(callback)]() mutable {
-    auto *cf = GetOrCreateColumnFamily(table_name);
+  RunIoForKey(
+      table_name, key, [this, table_name, key, callback = std::move(callback)]() mutable {
+        auto *cf = GetOrCreateColumnFamily(table_name);
 
-    std::string existing;
-    auto get_status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
-    bool existed = get_status.ok();
-    if (!existed && !get_status.IsNotFound()) {
-      RAY_LOG(FATAL) << "RocksDB Get during Delete failed: " << get_status.ToString();
-    }
+        std::string existing;
+        auto get_status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
+        bool existed = get_status.ok();
+        if (!existed && !get_status.IsNotFound()) {
+          RAY_LOG(FATAL) << "RocksDB Get during Delete failed: " << get_status.ToString();
+        }
 
-    // Skip the synchronous Delete (and its fsync) when the key was
-    // already absent. RocksDB would otherwise write a tombstone that
-    // costs a full ~3.8 ms fsync on durable storage and adds a stale
-    // entry that compaction has to reap later. Callback contract is
-    // unchanged: the bool reports whether the key existed at the
-    // moment of the read.
-    if (existed) {
-      auto del_status = db_->Delete(SyncWriteOptions(), cf, key);
-      RAY_CHECK(del_status.ok()) << "RocksDB Delete failed for table=" << table_name
-                                 << " key=" << key << ": " << del_status.ToString();
-    }
+        // Skip the synchronous Delete (and its fsync) when the key was
+        // already absent. RocksDB would otherwise write a tombstone that
+        // costs a full ~3.8 ms fsync on durable storage and adds a stale
+        // entry that compaction has to reap later. Callback contract is
+        // unchanged: the bool reports whether the key existed at the
+        // moment of the read.
+        if (existed) {
+          auto del_status = db_->Delete(SyncWriteOptions(), cf, key);
+          RAY_CHECK(del_status.ok()) << "RocksDB Delete failed for table=" << table_name
+                                     << " key=" << key << ": " << del_status.ToString();
+        }
 
-    std::move(callback).Post("GcsRocksDb.Delete", existed);
-  });
+        std::move(callback).Post("GcsRocksDb.Delete", existed);
+      });
 }
 
 void RocksDbStoreClient::AsyncBatchDelete(const std::string &table_name,
@@ -382,11 +409,14 @@ void RocksDbStoreClient::AsyncBatchDelete(const std::string &table_name,
     return;
   }
 
-  RunIo([this, table_name, keys, callback = std::move(callback)]() mutable {
+  RunIoUnordered([this, table_name, keys, callback = std::move(callback)]() mutable {
     auto *cf = GetOrCreateColumnFamily(table_name);
 
     // Batch the existence probe via MultiGet so we issue one I/O round
     // instead of N sequential Gets. Mirrors AsyncMultiGet's structure.
+    // Skip the WriteBatch entry for keys the probe found absent so we
+    // do not write needless tombstones — matches AsyncDelete's
+    // "no fsync for no-op" optimization.
     std::vector<rocksdb::ColumnFamilyHandle *> cfs(keys.size(), cf);
     std::vector<rocksdb::Slice> key_slices;
     key_slices.reserve(keys.size());
@@ -402,23 +432,28 @@ void RocksDbStoreClient::AsyncBatchDelete(const std::string &table_name,
     for (size_t i = 0; i < keys.size(); ++i) {
       if (statuses[i].ok()) {
         ++deleted_count;
+        auto bs = batch.Delete(cf, keys[i]);
+        RAY_CHECK(bs.ok()) << "WriteBatch Delete failed: " << bs.ToString();
       } else if (!statuses[i].IsNotFound()) {
         RAY_LOG(FATAL) << "RocksDB Get during BatchDelete failed for key=" << keys[i]
                        << ": " << statuses[i].ToString();
       }
-      auto bs = batch.Delete(cf, keys[i]);
-      RAY_CHECK(bs.ok()) << "WriteBatch Delete failed: " << bs.ToString();
     }
-    auto write_status = db_->Write(SyncWriteOptions(), &batch);
-    RAY_CHECK(write_status.ok())
-        << "RocksDB BatchDelete write failed: " << write_status.ToString();
+    if (deleted_count > 0) {
+      auto write_status = db_->Write(SyncWriteOptions(), &batch);
+      RAY_CHECK(write_status.ok())
+          << "RocksDB BatchDelete write failed: " << write_status.ToString();
+    }
 
     std::move(callback).Post("GcsRocksDb.BatchDelete", deleted_count);
   });
 }
 
 void RocksDbStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
-  RunIo([this, callback = std::move(callback)]() mutable {
+  // GetNextJobIDSync uses its own internal mutex to serialize the
+  // increment-and-persist, so per-key strand ordering is unnecessary
+  // (and would just funnel all calls through one bucket).
+  RunIoUnordered([this, callback = std::move(callback)]() mutable {
     int next = GetNextJobIDSync();
     std::move(callback).Post("GcsRocksDb.GetNextJobID", next);
   });
@@ -427,7 +462,7 @@ void RocksDbStoreClient::AsyncGetNextJobID(Postable<void(int)> callback) {
 void RocksDbStoreClient::AsyncGetKeys(const std::string &table_name,
                                       const std::string &prefix,
                                       Postable<void(std::vector<std::string>)> callback) {
-  RunIo([this, table_name, prefix, callback = std::move(callback)]() mutable {
+  RunIoUnordered([this, table_name, prefix, callback = std::move(callback)]() mutable {
     auto *cf = GetOrCreateColumnFamily(table_name);
 
     // Byte-ordered prefix scan: Seek to the prefix and walk forward while
@@ -449,18 +484,19 @@ void RocksDbStoreClient::AsyncGetKeys(const std::string &table_name,
 void RocksDbStoreClient::AsyncExists(const std::string &table_name,
                                      const std::string &key,
                                      Postable<void(bool)> callback) {
-  RunIo([this, table_name, key, callback = std::move(callback)]() mutable {
-    auto *cf = GetOrCreateColumnFamily(table_name);
+  RunIoForKey(
+      table_name, key, [this, table_name, key, callback = std::move(callback)]() mutable {
+        auto *cf = GetOrCreateColumnFamily(table_name);
 
-    std::string v;
-    auto status = db_->Get(rocksdb::ReadOptions(), cf, key, &v);
-    bool exists = status.ok();
-    if (!exists && !status.IsNotFound()) {
-      RAY_LOG(FATAL) << "RocksDB Get for AsyncExists failed: " << status.ToString();
-    }
+        std::string v;
+        auto status = db_->Get(rocksdb::ReadOptions(), cf, key, &v);
+        bool exists = status.ok();
+        if (!exists && !status.IsNotFound()) {
+          RAY_LOG(FATAL) << "RocksDB Get for AsyncExists failed: " << status.ToString();
+        }
 
-    std::move(callback).Post("GcsRocksDb.Exists", exists);
-  });
+        std::move(callback).Post("GcsRocksDb.Exists", exists);
+      });
 }
 
 int RocksDbStoreClient::GetNextJobIDSync() {
