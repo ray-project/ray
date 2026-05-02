@@ -72,8 +72,8 @@ steps:
   - label: ":database: data: arrow v17 tests"
     tags:
       - data
-    instance_type: medium
-    parallelism: 4
+    instance_type: large
+    parallelism: 8
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}"
