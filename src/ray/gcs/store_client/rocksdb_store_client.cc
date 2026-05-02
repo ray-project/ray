@@ -227,7 +227,19 @@ void RocksDbStoreClient::AsyncPut(const std::string &table_name,
     bool inserted = true;
     if (!overwrite) {
       // Honour the !overwrite contract: only write if the key is absent.
-      // GCS's single-writer model makes the read-then-write race benign.
+      //
+      // Inline path (offload_io=false, the default): RunIo executes
+      // synchronously on the issuer's thread, so the GCS event loop's
+      // single-writer model gives Get-then-Put atomicity for free.
+      //
+      // Offload path (offload_io=true): the Get and the Put run on a
+      // pool thread, so two concurrent AsyncPut calls for the same key
+      // can both observe "not found" and both write. The window is real
+      // but bounded — only !overwrite callers see it, only when offload
+      // is enabled, and only for the same key. Production hardening
+      // would use either RocksDB's OptimisticTransactionDB or a per-key
+      // strand keyed by hash(table, key); tracked as an open question
+      // in the PR description.
       std::string existing;
       auto get_status = db_->Get(rocksdb::ReadOptions(), cf, key, &existing);
       if (get_status.ok()) {
@@ -346,9 +358,17 @@ void RocksDbStoreClient::AsyncDelete(const std::string &table_name,
       RAY_LOG(FATAL) << "RocksDB Get during Delete failed: " << get_status.ToString();
     }
 
-    auto del_status = db_->Delete(SyncWriteOptions(), cf, key);
-    RAY_CHECK(del_status.ok()) << "RocksDB Delete failed for table=" << table_name
-                               << " key=" << key << ": " << del_status.ToString();
+    // Skip the synchronous Delete (and its fsync) when the key was
+    // already absent. RocksDB would otherwise write a tombstone that
+    // costs a full ~3.8 ms fsync on durable storage and adds a stale
+    // entry that compaction has to reap later. Callback contract is
+    // unchanged: the bool reports whether the key existed at the
+    // moment of the read.
+    if (existed) {
+      auto del_status = db_->Delete(SyncWriteOptions(), cf, key);
+      RAY_CHECK(del_status.ok()) << "RocksDB Delete failed for table=" << table_name
+                                 << " key=" << key << ": " << del_status.ToString();
+    }
 
     std::move(callback).Post("GcsRocksDb.Delete", existed);
   });

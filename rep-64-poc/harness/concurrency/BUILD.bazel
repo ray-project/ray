@@ -15,6 +15,5 @@ ray_cc_test(
     target_compatible_with = ["@platforms//os:linux"],
     deps = [
         "//src/ray/gcs/store_client:rocksdb_store_client",
-        "@com_google_googletest//:gtest_main",
     ],
 )

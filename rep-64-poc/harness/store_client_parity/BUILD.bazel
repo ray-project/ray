@@ -16,6 +16,5 @@ ray_cc_test(
     deps = [
         "//src/ray/gcs/store_client:rocksdb_store_client",
         "//src/ray/gcs/store_client/tests:store_client_test_lib",
-        "@com_google_googletest//:gtest_main",
     ],
 )
