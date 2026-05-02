@@ -891,6 +891,25 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     Ineligible operators are unthrottled; their usage is attributed to their nearest
     eligible upstream op (e.g. in "map1->limit->map2", "limit" rolls up to "map1").
 
+    ## Priority strategy
+
+    When resources are constrained, the allocator favors *upstream* ops; when they
+    are abundant, it favors *downstream* ops. These are different concerns:
+
+    - **Scarcity** (cluster too small to reserve the minimum for every op):
+      `_update_reservation` iterates upstream-to-downstream, and downstream ops
+      fall through to an OSM-only fallback once `remaining` is exhausted. The
+      motivation is liveness — if upstream ops can't run, no data is produced
+      and the whole pipeline starves.
+    - **Surplus** (leftover shared pool after all ops took their planned grants):
+      the leftover-allocation block in `update_budgets` iterates downstream-to-
+      upstream and gives the leftover to the most-downstream uncapped op. The
+      motivation is drainage — granting headroom at the pipeline tail consumes
+      buffered data rather than letting more pile up upstream.
+
+    The two paths are mutually exclusive: scarcity exhausts `remaining`, leaving
+    no surplus to allocate later.
+
     ## Tuning
 
     reservation_ratio defaults to 50%. Higher values give more even allocation but
@@ -960,19 +979,23 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 reserved_for_tasks = reserved_for_tasks.min(max_resource_usage)
 
             # Check if the remaining resources are enough for both reserved_for_tasks
-            # and reserved_for_outputs. Note, we only consider CPU and GPU, but not
-            # object_store_memory, because object_store_memory can be oversubscribed,
-            # but CPU/GPU cannot.
+            # and reserved_for_outputs. We consider CPU, GPU, and logical memory but
+            # not object_store_memory: OSM can be oversubscribed, while Ray Core
+            # tracks CPU/GPU/memory for placement and cannot.
             if not reserved_for_tasks.add(reserved_for_outputs).satisfies_limit(
                 remaining, ignore_object_store_memory=True
             ):
                 # If the remaining resources are not enough to reserve the minimum
                 # resources for this operator, we'll only reserve the minimum object
-                # store memory, but not the CPU and GPU resources.
-                # Because Ray Core doesn't allow CPU/GPU resources to be oversubscribed.
-                # NOTE: we prioritize upstream operators for minimum resource reservation.
-                # ops. It's fine that downstream ops don't get the minimum reservation,
-                # because they can wait for upstream ops to finish and release resources.
+                # store memory and drop the CPU, GPU, and memory reservations
+                # NOTE: we prioritize upstream operators for minimum resource
+                # reservation; it's fine that downstream ops don't get the minimum,
+                # because they can wait for upstream ops to finish and release
+                # resources.
+                # TODO(rayhhome): logical memory is silently dropped from the reservation
+                # in this fallback path. As a result, can_submit_new_task() may
+                # admit memory-bound tasks that Ray Core then cannot place, which
+                # can stall the pipeline.
                 reserved_for_tasks = ExecutionResources(
                     0, 0, min_resource_usage.object_store_memory
                 )
@@ -996,7 +1019,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         return op_reserved, reserved_for_op_outputs, remaining
 
     def can_submit_new_task(self, op: PhysicalOperator) -> bool:
-        """Return whether the given operator can submit a new task based on budget."""
+        """Return whether the given operator can submit a new task based on budget.
+
+        Used by the streaming executor as the per-op admission gate: when False, the
+        operator stops issuing new tasks until its usage drops back under its planned
+        grant. Returning True when `get_budget` is None preserves the unthrottled
+        behavior for ineligible operators.
+        """
         budget = self.get_budget(op)
 
         if budget is None:
@@ -1115,10 +1144,13 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     ) -> Tuple[ExecutionResources, ExecutionResources]:
         """Cap and borrow-adjust the proportional and shared grants for one op.
 
-        For ops with a finite max_resource_usage, applies a three-step sequence:
-          1. Cap op_proportional so reserved + proportional <= max_resource_usage.
-          2. Borrow from remaining_shared to reach min_scheduling_resources if needed.
-          3. Cap op_shared so the total grant doesn't exceed max_resource_usage.
+        Performs up to three adjustments in order:
+          1. (only when max_resource_usage is finite) Cap op_proportional so
+             reserved + proportional <= max_resource_usage.
+          2. (always) Borrow from remaining_shared to reach
+             min_scheduling_resources if the current grant falls short.
+          3. (only when max_resource_usage is finite) Cap op_shared so the
+             total grant doesn't exceed max_resource_usage.
 
         Both caps are necessary because op_proportional and op_shared are drawn from
         different pools and can each independently push the total over the limit.
@@ -1196,8 +1228,20 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
         op_shared_usage: Dict[PhysicalOperator, ExecutionResources],
         total_shared_usage: ExecutionResources,
     ) -> Dict[PhysicalOperator, ExecutionResources]:
-        """Proportional share of the shared pool per op, non-zero only for
-        over-subscribed dimensions (collective shared-pool usage > shared pool)."""
+        """Proportional share of the shared pool per op, used to derive a usage-weighted
+        planned grant when the shared pool is over-subscribed.
+
+        When the shared pool is over-subscribed (e.g. after a cluster shrink),
+        distributing it equally — or not at all — would collapse every op's planned
+        grant to the reserved floor regardless of how much each op was actually
+        demanding. Distributing the pool in proportion to each op's shared-pool usage
+        gives ops asking for more a larger fair share, so each op's planned grant (and
+        the autoscaler's downscaling target) tracks its relative demand instead of
+        forcing every op down to the floor.
+
+        Returns non-zero only for over-subscribed dimensions (collective shared-pool
+        usage > shared pool).
+        """
         grants = {}
         for op in eligible_ops:
             u = op_shared_usage[op]
@@ -1306,8 +1350,10 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
                 op_proportional.add(op_shared)
             )
 
-        # Give any remaining shared resources to the most downstream uncapped op.
-        # This can happen when some ops have their shared allocation capped.
+        # Capped ops can't absorb extra shared resources (the cap immediately re-clips
+        # their grant), so any leftover shared pool goes to an uncapped op. The choice
+        # of "most downstream" follows the surplus-favors-downstream rule documented
+        # in the class docstring's "Priority strategy" section.
         if eligible_ops and not remaining_shared.is_zero():
             for op in reversed(eligible_ops):
                 if op_max_resources[op] == ExecutionResources.inf():
