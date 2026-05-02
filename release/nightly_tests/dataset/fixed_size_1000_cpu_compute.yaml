@@ -1,4 +1,4 @@
-cloud: {{env["ANYSCALE_CLOUD_ID"]}}
+cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 
 advanced_instance_config:
     IamInstanceProfile: {"Name": "ray-autoscaler-v1"}

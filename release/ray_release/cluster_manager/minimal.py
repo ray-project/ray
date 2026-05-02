@@ -2,6 +2,7 @@ import time
 
 from ray_release.anyscale_util import create_cluster_env_from_image
 from ray_release.cluster_manager.cluster_manager import ClusterManager
+from ray_release.config import get_test_cloud_id
 from ray_release.exception import (
     ClusterComputeCreateError,
     ClusterEnvBuildError,
@@ -186,11 +187,20 @@ class MinimalClusterManager(ClusterManager):
                     f"Creating with name {self.cluster_compute_name}."
                 )
                 try:
+                    # cloud_id must appear under config for the Anyscale API (see
+                    # CreateClusterComputeConfig); top-level keys are ignored by the SDK model.
+                    config_payload = dict(self.cluster_compute)
+                    cloud_id = config_payload.get("cloud_id") or get_test_cloud_id(
+                        self.test
+                    )
+                    config_payload["cloud_id"] = cloud_id
+                    config_payload.pop("cloud", None)
+
                     result = self.sdk.create_cluster_compute(
                         dict(
                             name=self.cluster_compute_name,
                             project_id=self.project_id,
-                            config=self.cluster_compute,
+                            config=config_payload,
                         )
                     )
                     self.cluster_compute_id = result.result.id
