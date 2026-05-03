@@ -37,6 +37,14 @@ def _check_valid_plan_and_result(
 
 
 class _DummyLogicalOperator(LogicalOperator):
+    def __init__(self, input_dependencies, name=None, num_outputs=None):
+        super().__init__(
+            _input_dependencies=input_dependencies,
+            _num_outputs=num_outputs,
+        )
+        if name is not None:
+            object.__setattr__(self, "_name", name)
+
     @property
     def num_outputs(self):
         return self._num_outputs

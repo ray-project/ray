@@ -1,5 +1,5 @@
 from dataclasses import InitVar, dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -27,6 +27,7 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractAllToAll(LogicalOperator):
     """Abstract class for logical operators should be converted to physical
     AllToAllOperator.
@@ -55,12 +56,13 @@ class AbstractAllToAll(LogicalOperator):
                 inspecting the logical plan of a Dataset.
         """
         super().__init__(
-            input_dependencies=[input_op],
-            num_outputs=num_outputs,
-            name=name,
+            _input_dependencies=[input_op],
+            _num_outputs=num_outputs,
         )
-        self.ray_remote_args = ray_remote_args or {}
-        self.sub_progress_bar_names = sub_progress_bar_names
+        if name is not None:
+            object.__setattr__(self, "_name", name)
+        object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
+        object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
 
     @property
     def num_outputs(self) -> Optional[int]:
@@ -75,7 +77,6 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
     seed_config: Optional[RandomSeedConfig] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -86,18 +87,6 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
         object.__setattr__(self, "_name", "RandomizeBlockOrder")
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        input_op = self.input_dependencies[0]
-        transformed_input = input_op._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is input_op:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -125,7 +114,6 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
     seed_config: Optional[RandomSeedConfig] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -146,17 +134,8 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        input_op = self.input_dependencies[0]
-        transformed_input = input_op._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is input_op:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input, name=self.name)
-        return transform(target)
+    def _with_new_input(self, input_op: LogicalOperator) -> LogicalOperator:
+        return replace(self, input_op=input_op, name=self._name)
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -186,7 +165,6 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
     sort: bool = False
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, repr=False)
 
@@ -202,25 +180,15 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
                 ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
             ]
         object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", num_outputs)
 
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        input_op = self.input_dependencies[0]
-        transformed_input = input_op._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is input_op:
-            target = self
-        else:
-            target = replace(
-                self,
-                input_op=transformed_input,
-                num_outputs=self.num_outputs,
-            )
-        return transform(target)
+    def _with_new_input(self, input_op: LogicalOperator) -> LogicalOperator:
+        return replace(
+            self,
+            input_op=input_op,
+            num_outputs=self.num_outputs,
+        )
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -248,7 +216,6 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     batch_format: Optional[str] = "default"
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -263,21 +230,8 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        input_op = self.input_dependencies[0]
-        transformed_input = input_op._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is input_op:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -307,7 +261,6 @@ class Aggregate(AbstractAllToAll):
     batch_format: Optional[str] = "default"
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -322,18 +275,5 @@ class Aggregate(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        input_op = self.input_dependencies[0]
-        transformed_input = input_op._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is input_op:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
