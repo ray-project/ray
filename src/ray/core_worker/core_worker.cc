@@ -2155,6 +2155,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       << "Attempt to emplace new actor handle for the actor being created with actor id: "
       << actor_id
       << " failed because an actor handle with the same actor id has already been added";
+  // Subscribe to actor state eagerly for owned actors so the owner receives
+  // notifications even if it never directly submits tasks to the actor.
+  // This is needed for owner-driven scheduling of non-detached actors.
+  if (!is_detached) {
+    actor_manager_->SubscribeActorState(actor_id);
+  }
   *return_actor_id = actor_id;
   TaskSpecification task_spec = std::move(builder).ConsumeAndBuild();
   RAY_LOG(DEBUG) << "Submitting actor creation task " << task_spec.DebugString();
@@ -2171,7 +2177,10 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     }
     return false;
   };
-  if (task_spec.MaxActorRestarts() != 0) {
+  // Only warn for detached actors — non-detached actors now have their constructor
+  // args pinned in plasma via extra ref counts. Detached actors have no owner to
+  // hold the extra refs, so restarts can still fail if args are evicted.
+  if (task_spec.MaxActorRestarts() != 0 && task_spec.IsDetachedActor()) {
     bool actor_restart_warning = false;
     for (size_t i = 0; i < task_spec.NumArgs(); i++) {
       if (task_spec.ArgByRef(i)) {
@@ -2194,12 +2203,12 @@ Status CoreWorker::CreateActor(const RayFunction &function,
     }
     if (actor_restart_warning) {
       RAY_LOG_ONCE_PER_PROCESS(ERROR)
-          << "Actor " << (actor_name.empty() ? "" : (actor_name + " "))
+          << "Detached actor " << (actor_name.empty() ? "" : (actor_name + " "))
           << "with class name: '" << function.GetFunctionDescriptor()->ClassName()
           << "' and ID: '" << task_spec.ActorCreationId()
-          << "' has constructor arguments in the object store and max_restarts > 0. If "
-             "the arguments in the object store go out of scope or are lost, the "
-             "actor restart will fail. See "
+          << "' has constructor arguments in the object store and max_restarts > 0. "
+             "Detached actors have no owner to pin constructor args, so if the "
+             "arguments are lost, the actor restart will fail. See "
              "https://github.com/ray-project/ray/issues/53727 for more details.";
     }
   }

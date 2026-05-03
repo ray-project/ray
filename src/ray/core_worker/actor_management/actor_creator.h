@@ -43,7 +43,8 @@ class ActorCreatorInterface {
   virtual void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      rpc::StatusCallback callback) = 0;
+      rpc::StatusCallback callback,
+      bool is_owner_driven_restart = false) = 0;
 
   virtual void AsyncReportActorOutOfScope(
       const ActorID &actor_id,
@@ -85,7 +86,8 @@ class ActorCreator : public ActorCreatorInterface {
   void AsyncRestartActorForLineageReconstruction(
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
-      rpc::StatusCallback callback) override;
+      rpc::StatusCallback callback,
+      bool is_owner_driven_restart = false) override;
 
   void AsyncReportActorOutOfScope(const ActorID &actor_id,
                                   uint64_t num_restarts_due_to_lineage_reconstruction,

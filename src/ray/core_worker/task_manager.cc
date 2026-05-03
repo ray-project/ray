@@ -336,6 +336,14 @@ std::vector<rpc::ObjectReference> TaskManager::AddPendingTask(
     auto inserted = submissible_tasks_.try_emplace(
         spec.TaskId(), spec, max_retries, num_returns, task_counter_, max_oom_retries);
     RAY_CHECK(inserted.second);
+    // For non-detached actor creation tasks with max_restarts > 0, add extra
+    // ref counts to keep constructor args pinned in plasma while the actor could
+    // still restart. These extra refs are released when the actor permanently dies.
+    if (spec.IsActorCreationTask() && !spec.IsDetachedActor() &&
+        spec.MaxActorRestarts() != 0) {
+      reference_counter_.AddActorCreationArgReferences(task_deps);
+      inserted.first->second.pinned_actor_creation_arg_ids = task_deps;
+    }
     num_pending_tasks_++;
   }
 
@@ -1438,6 +1446,24 @@ void TaskManager::RemoveFinishedTaskReferences(
                                                   borrowed_refs,
                                                   &deleted);
   in_memory_store_.Delete(deleted);
+}
+
+void TaskManager::ReleaseActorCreationReferences(const TaskID &task_id) {
+  std::vector<ObjectID> pinned_arg_ids;
+  {
+    absl::MutexLock lock(&mu_);
+    auto it = submissible_tasks_.find(task_id);
+    if (it == submissible_tasks_.end()) {
+      return;
+    }
+    pinned_arg_ids = std::move(it->second.pinned_actor_creation_arg_ids);
+    it->second.pinned_actor_creation_arg_ids.clear();
+  }
+  if (!pinned_arg_ids.empty()) {
+    std::vector<ObjectID> deleted;
+    reference_counter_.RemoveActorCreationArgReferences(pinned_arg_ids, &deleted);
+    in_memory_store_.Delete(deleted);
+  }
 }
 
 int64_t TaskManager::RemoveLineageReference(const ObjectID &object_id,

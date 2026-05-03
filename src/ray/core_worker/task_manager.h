@@ -533,6 +533,12 @@ class TaskManager : public TaskManagerInterface {
   /// Record OCL metrics.
   void RecordMetrics();
 
+  /// Release the extra pinned references for a restartable actor creation task's
+  /// constructor args. Called when the actor permanently dies.
+  ///
+  /// \param[in] actor_creation_task_id The task ID of the actor creation task.
+  void ReleaseActorCreationReferences(const TaskID &actor_creation_task_id);
+
  private:
   struct TaskEntry {
     TaskEntry(TaskSpecification spec,
@@ -626,6 +632,10 @@ class TaskManager : public TaskManagerInterface {
     int64_t lineage_footprint_bytes_ = 0;
     // Number of times this task successfully completed execution so far.
     int num_successful_executions_ = 0;
+    // If this is a non-detached actor creation task with max_restarts > 0,
+    // these are the arg dependency IDs that have extra ref counts to keep
+    // them pinned in plasma while the actor can still restart.
+    std::vector<ObjectID> pinned_actor_creation_arg_ids;
 
    private:
     // The task's current execution and metric status (name, status, is_retry).

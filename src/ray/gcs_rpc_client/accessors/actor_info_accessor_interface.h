@@ -142,7 +142,8 @@ class ActorInfoAccessorInterface {
       const ActorID &actor_id,
       uint64_t num_restarts_due_to_lineage_reconstructions,
       const rpc::StatusCallback &callback,
-      int64_t timeout_ms = -1) = 0;
+      int64_t timeout_ms = -1,
+      bool is_owner_driven_restart = false) = 0;
 
   /**
     Register actor to GCS synchronously.

@@ -1557,5 +1557,102 @@ def test_actor_graceful_shutdown_timeout_fallback(
     )
 
 
+def test_actor_restart_with_plasma_constructor_args(ray_start_cluster):
+    """Test that actor restarts work when constructor args are stored in plasma.
+
+    Reproduces https://github.com/ray-project/ray/issues/53727.
+    When a non-detached actor has max_restarts > 0 and its constructor args are
+    large enough to be stored in plasma (>100KB), the args must remain pinned
+    so the actor can be restarted after node failure.
+    """
+    config = {
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
+        "task_retry_delay_ms": 100,
+    }
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0, _system_config=config)
+    ray.init(address=cluster.address)
+    worker1 = cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+
+    @ray.remote(num_cpus=1, max_restarts=1, max_task_retries=-1)
+    class Actor:
+        def __init__(self, config):
+            self.config = config
+
+        def ping(self):
+            return len(self.config)
+
+    # Arg is >100KB so will go in the object store (plasma)
+    large_arg = np.zeros(200 * 1024, dtype=np.uint8)
+    actor = Actor.remote(large_arg)
+    assert ray.get(actor.ping.remote()) == len(large_arg)
+
+    # Add a second node and kill the first one to trigger actor restart
+    cluster.add_node(num_cpus=1)
+    cluster.wait_for_nodes()
+    cluster.remove_node(worker1, allow_graceful=False)
+
+    # The actor should be restarted successfully with its original args
+    assert ray.get(actor.ping.remote()) == len(large_arg)
+
+
+def test_actor_restart_with_retryable_task_output_as_arg(ray_start_cluster):
+    """Test that actor restarts work when constructor arg is output of a retryable task.
+
+    Tests the scenario from https://github.com/ray-project/ray/pull/51653#issuecomment-2960275776.
+    When the actor creation arg is the output of a retryable task and stored
+    in plasma, it must remain pinned (not just lineage-reconstructable) for
+    the actor to restart after node failure.
+    """
+    config = {
+        "health_check_failure_threshold": 10,
+        "health_check_period_ms": 100,
+        "health_check_initial_delay_ms": 0,
+        "task_retry_delay_ms": 100,
+    }
+    cluster = ray_start_cluster
+    cluster.add_node(
+        num_cpus=0,
+        object_store_memory=300 * 1024 * 1024,
+        _system_config=config,
+    )
+    ray.init(address=cluster.address)
+    worker1 = cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+
+    @ray.remote(max_retries=1)
+    def produce_config():
+        return np.zeros(200 * 1024, dtype=np.uint8)
+
+    @ray.remote(num_cpus=1, max_restarts=1, max_task_retries=-1)
+    class Actor:
+        def __init__(self, config):
+            self.config = config
+
+        def ping(self):
+            return len(self.config)
+
+    # Actor arg is the output of a retryable task, stored in plasma
+    config_ref = produce_config.remote()
+    actor = Actor.remote(config_ref)
+    result_len = ray.get(actor.ping.remote())
+
+    # Delete the Python reference to the config - only the actor's
+    # pinned ref should keep it alive
+    del config_ref
+
+    # Add a second node and kill the first one to trigger actor restart
+    cluster.add_node(num_cpus=2)
+    cluster.wait_for_nodes()
+    cluster.remove_node(worker1, allow_graceful=False)
+
+    # The actor should restart successfully - the arg should still be
+    # pinned/reconstructable
+    assert ray.get(actor.ping.remote()) == result_len
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-sv", __file__]))

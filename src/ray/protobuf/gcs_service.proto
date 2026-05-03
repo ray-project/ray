@@ -426,6 +426,10 @@ message RestartActorForLineageReconstructionRequest {
   // The target number of restarts due to lineage reconstructions.
   // This is used to filter out stale message.
   uint64 num_restarts_due_to_lineage_reconstruction = 2;
+  // If true, this is an owner-driven restart request to schedule a
+  // non-detached actor that is already in RESTARTING state with deferred
+  // scheduling. The lineage reconstruction counter is not used.
+  bool is_owner_driven_restart = 3;
 }
 
 message RestartActorForLineageReconstructionReply {
