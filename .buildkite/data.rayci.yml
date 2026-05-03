@@ -55,7 +55,7 @@ steps:
     wanda: ci/docker/docgpu.build.wanda.yaml
     env:
       PYTHON: "3.12"
-    depends_on: oss-ci-base_gpu-multipy(*)
+    depends_on: oss-ci-base_gpu-multipy(python=3.12)
     tags: cibase
 
   # type check
