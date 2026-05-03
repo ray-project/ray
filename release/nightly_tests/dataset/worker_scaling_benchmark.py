@@ -52,7 +52,7 @@ def main(args: argparse.Namespace):
 
     def benchmark_fn():
         num_workers = [1, 10, 100, 500, 1000, 2000, 5000, 10000]
-        for num_worker in reversed(num_workers):
+        for num_worker in num_workers:
             num_blocks = BLOCKS_PER_WORKER * num_worker
             num_rows = num_blocks * ROWS_PER_BLOCK
             ds = ray.data.range(num_rows, override_num_blocks=num_blocks)
