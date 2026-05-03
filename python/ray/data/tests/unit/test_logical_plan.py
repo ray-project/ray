@@ -60,6 +60,19 @@ def test_logical_operator_does_not_track_output_dependencies():
     assert not hasattr(sink, "_output_dependencies")
 
 
+def test_logical_operator_transform_supports_custom_subclasses():
+    source = DummyLogicalOperator([], name="source")
+    replacement = DummyLogicalOperator([], name="replacement")
+    sink = DummyLogicalOperator([source], name="sink")
+
+    transformed = sink._apply_transform(lambda op: replacement if op is source else op)
+
+    assert transformed is not sink
+    assert transformed.name == "sink"
+    assert transformed.input_dependencies == [replacement]
+    assert sink.input_dependencies == [source]
+
+
 if __name__ == "__main__":
     import sys
 
