@@ -666,8 +666,8 @@ def test_serialization_pydantic_runtime_env(ray_start_regular):
     def test(pydantic_model):
         return pydantic_model.x
 
-    @ray.remote(runtime_env={"pip": ["pydantic<2"]})
-    def py1():
+    @ray.remote(runtime_env={"pip": ["pydantic>=2"]})
+    def py():
         from pydantic import BaseModel
 
         class Foo(BaseModel):
@@ -675,17 +675,7 @@ def test_serialization_pydantic_runtime_env(ray_start_regular):
 
         return ray.get(test.remote(Foo(x=1)))
 
-    @ray.remote(runtime_env={"pip": ["pydantic>=2"]})
-    def py2():
-        from pydantic.v1 import BaseModel
-
-        class Foo(BaseModel):
-            x: int
-
-        return ray.get(test.remote(Foo(x=2)))
-
-    assert ray.get(py1.remote()) == 1
-    assert ray.get(py2.remote()) == 2
+    assert ray.get(py.remote()) == 1
 
 
 def test_usage_with_dataclass(ray_start_regular):

@@ -54,7 +54,7 @@ class _CheckpointManagerState(BaseModel):
     ray_version: str = ray.__version__
     checkpoint_results: List[_TrainingResultState]
     checkpoint_report_indices: List[int]
-    latest_checkpoint_result: Optional[_TrainingResultState]
+    latest_checkpoint_result: Optional[_TrainingResultState] = None
     pending_training_results: List[_TrainingResultState]
     pending_validation_specs: List[Union[bool, ValidationTaskConfig]]
     current_report_index: int
@@ -255,7 +255,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         # Delete the old checkpoints.
         for checkpoint_result in results_to_delete:
             checkpoint = checkpoint_result.checkpoint
-            logger.debug("Deleting checkpoint: ", checkpoint)
+            logger.debug("Deleting checkpoint: %s", checkpoint)
             delete_fs_path(fs=checkpoint.filesystem, fs_path=checkpoint.path)
 
     # --------------------------

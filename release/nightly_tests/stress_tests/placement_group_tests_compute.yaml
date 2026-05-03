@@ -1,28 +1,22 @@
-cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
-region: us-west-2
+cloud: {{env["ANYSCALE_CLOUD_NAME"]}}
 
-max_workers: 5
-
-advanced_configurations_json:
+advanced_instance_config:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
             DeleteOnTermination: true
             VolumeSize: 500
 
-head_node_type:
-    name: head_node
+head_node:
     instance_type: m6i.16xlarge
     resources:
-      cpu: 64
+        CPU: 64
 
-worker_node_types:
-   - name: worker_node
-     instance_type: m6i.large
-     min_workers: 5
-     max_workers: 5
-     use_spot: false
-     resources:
-      cpu: 2
-      custom_resources:
-        pg_custom: 666
+worker_nodes:
+    - instance_type: m6i.large
+      min_nodes: 5
+      max_nodes: 5
+      market_type: ON_DEMAND
+      resources:
+          CPU: 2
+          pg_custom: 666
