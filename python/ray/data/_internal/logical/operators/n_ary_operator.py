@@ -28,9 +28,9 @@ class NAry(LogicalOperator):
             input_ops: The input operators.
         """
         super().__init__(
-            _input_dependencies=list(input_ops),
             _num_outputs=num_outputs,
         )
+        object.__setattr__(self, "_input_dependencies", list(input_ops))
 
     @property
     def num_outputs(self) -> Optional[int]:

@@ -39,9 +39,9 @@ def _check_valid_plan_and_result(
 class _DummyLogicalOperator(LogicalOperator):
     def __init__(self, input_dependencies, name=None, num_outputs=None):
         super().__init__(
-            _input_dependencies=input_dependencies,
             _num_outputs=num_outputs,
         )
+        object.__setattr__(self, "_input_dependencies", input_dependencies)
         if name is not None:
             object.__setattr__(self, "_name", name)
 
@@ -53,11 +53,11 @@ class _DummyLogicalOperator(LogicalOperator):
 def test_limit_pushdown_recreates_frozen_download():
     input_op = _DummyLogicalOperator(input_dependencies=[], name="DummyInput")
     download_op = Download(
-        input_op=input_op,
         uri_column_names=["uri"],
         output_bytes_column_names=["bytes"],
+        input_dependencies=[input_op],
     )
-    limit_op = Limit(download_op, 1)
+    limit_op = Limit(1, input_dependencies=[download_op])
 
     result = LimitPushdownRule()._push_limit_down(limit_op)
 
