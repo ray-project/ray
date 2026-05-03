@@ -14,15 +14,8 @@ class Plan:
     """
 
     def __init__(self, context: "DataContext"):
-        self._context = context
+        self.context = context
 
     @property
     def dag(self) -> Operator:
         raise NotImplementedError
-
-    def set_context(self, context: "DataContext") -> None:
-        self._context = context
-
-    @property
-    def context(self) -> "DataContext":
-        return self._context

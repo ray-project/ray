@@ -302,7 +302,7 @@ class Dataset:
         self._write_ds = None
 
         # Bind context to logical plan.
-        self._logical_plan.set_context(context)
+        self._logical_plan.context = context
 
         # Create execution plan with shared references.
         # TODO (kyuds): to remove in near future.
@@ -6995,7 +6995,7 @@ class Dataset:
         Returns:
             An iterator over this Dataset's ``RefBundles``.
         """
-        # We don't capture iterator here so we can keep it alive post
+        # We don't capture executor here so we can keep it alive post
         # Dataset clean up.
         iter_ref_bundles, _, _ = self._execute_to_iterator(capture_executor=False)
         self._synchronize_progress_bar()
