@@ -1,6 +1,5 @@
-import copy
 from abc import ABC, abstractmethod
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 from enum import Enum
 from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
@@ -70,35 +69,7 @@ class LogicalOperator(Operator, ABC):
     def _apply_transform(
         self, transform: Callable[["LogicalOperator"], "LogicalOperator"]
     ) -> "LogicalOperator":
-        input_dependencies = self.input_dependencies
-        transformed_inputs = [
-            input_op._apply_transform(transform) for input_op in input_dependencies
-        ]
-        if all(
-            transformed_input is input_op
-            for transformed_input, input_op in zip(
-                transformed_inputs, input_dependencies
-            )
-        ):
-            target = self
-        else:
-            target = self._with_new_input_dependencies(transformed_inputs)
-        return transform(target)
-
-    def _with_new_input_dependencies(
-        self, input_dependencies: List["LogicalOperator"]
-    ) -> "LogicalOperator":
-        if len(input_dependencies) == 1 and "input_op" in getattr(
-            self, "__dataclass_fields__", {}
-        ):
-            return self._with_new_input(input_dependencies[0])
-
-        target = copy.copy(self)
-        object.__setattr__(target, "_input_dependencies", input_dependencies)
-        return target
-
-    def _with_new_input(self, input_op: "LogicalOperator") -> "LogicalOperator":
-        return replace(self, input_op=input_op)
+        return super()._apply_transform(transform)  # type: ignore
 
     def _get_args(self) -> Dict[str, Any]:
         """This Dict must be serializable"""

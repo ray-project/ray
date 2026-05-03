@@ -1,5 +1,5 @@
 from dataclasses import InitVar, dataclass, field, replace
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -88,6 +88,18 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        input_op = self.input_dependencies[0]
+        transformed_input = input_op._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is input_op:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)
+
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         assert isinstance(self.input_dependencies[0], LogicalOperator)
@@ -134,8 +146,17 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
-    def _with_new_input(self, input_op: LogicalOperator) -> LogicalOperator:
-        return replace(self, input_op=input_op, name=self._name)
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        input_op = self.input_dependencies[0]
+        transformed_input = input_op._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is input_op:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input, name=self.name)
+        return transform(target)
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -183,12 +204,21 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", num_outputs)
 
-    def _with_new_input(self, input_op: LogicalOperator) -> LogicalOperator:
-        return replace(
-            self,
-            input_op=input_op,
-            num_outputs=self.num_outputs,
-        )
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        input_op = self.input_dependencies[0]
+        transformed_input = input_op._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is input_op:
+            target = self
+        else:
+            target = replace(
+                self,
+                input_op=transformed_input,
+                num_outputs=self.num_outputs,
+            )
+        return transform(target)
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -232,6 +262,18 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
         )
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        input_op = self.input_dependencies[0]
+        transformed_input = input_op._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is input_op:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -277,3 +319,15 @@ class Aggregate(AbstractAllToAll):
         )
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        input_op = self.input_dependencies[0]
+        transformed_input = input_op._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is input_op:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)

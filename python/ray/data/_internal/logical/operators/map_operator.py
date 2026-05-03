@@ -1,7 +1,7 @@
 import functools
 import inspect
 import logging
-from dataclasses import InitVar, dataclass, field
+from dataclasses import InitVar, dataclass, field, replace
 from typing import Any, Callable, Dict, Iterable, Literal, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
@@ -221,6 +221,17 @@ class MapBatches(AbstractUDFMap):
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependency._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependency:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class MapRows(AbstractUDFMap):
@@ -248,6 +259,17 @@ class MapRows(AbstractUDFMap):
         object.__setattr__(self, "_name", self._get_operator_name("Map", self.fn))
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependency._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependency:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)
 
 
 @dataclass(frozen=True, repr=False, eq=False)
@@ -287,6 +309,17 @@ class Filter(AbstractUDFMap):
         )
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependency._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependency:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)
 
     def is_expression_based(self) -> bool:
         return self.predicate_expr is not None
@@ -341,6 +374,17 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
                 )
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependency._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependency:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)
 
     def _detect_and_get_compute_strategy(self, exprs: list["Expr"]) -> ComputeStrategy:
         """Detect if expressions contain callable class UDFs and return appropriate compute strategy.
@@ -427,6 +471,17 @@ class FlatMap(AbstractUDFMap):
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependency._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependency:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)
+
 
 @dataclass(frozen=True, repr=False, eq=False)
 class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
@@ -471,6 +526,17 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
         )
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependency._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependency:
+            target = self
+        else:
+            target = replace(self, input_op=transformed_input)
+        return transform(target)
 
     def predicate_passthrough_behavior(self) -> PredicatePassThroughBehavior:
         # StreamingRepartition only re-bundles rows into different block sizes.

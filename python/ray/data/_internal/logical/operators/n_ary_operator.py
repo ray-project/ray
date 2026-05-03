@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List, Optional
+from typing import Callable, List, Optional
 
 from ray.data._internal.logical.interfaces import (
     LogicalOperator,
@@ -36,11 +36,6 @@ class NAry(LogicalOperator):
     def num_outputs(self) -> Optional[int]:
         return self._num_outputs
 
-    def _with_new_input_dependencies(
-        self, input_dependencies: List[LogicalOperator]
-    ) -> LogicalOperator:
-        return self.__class__(*input_dependencies)
-
 
 @dataclass(frozen=True, repr=False, eq=False, init=False)
 class Zip(NAry):
@@ -57,6 +52,24 @@ class Zip(NAry):
             assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_input_dependencies", list(input_ops))
         object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_inputs = [
+            input_op._apply_transform(transform) for input_op in self.input_dependencies
+        ]
+        target: LogicalOperator
+        if all(
+            transformed_input is input_op
+            for transformed_input, input_op in zip(
+                transformed_inputs, self.input_dependencies
+            )
+        ):
+            target = self
+        else:
+            target = Zip(*transformed_inputs)
+        return transform(target)
 
     def estimated_num_outputs(self):
         total_num_outputs = 0
@@ -83,6 +96,24 @@ class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
             assert isinstance(input_op, LogicalOperator), input_op
         object.__setattr__(self, "_input_dependencies", list(input_ops))
         object.__setattr__(self, "_num_outputs", None)
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_inputs = [
+            input_op._apply_transform(transform) for input_op in self.input_dependencies
+        ]
+        target: LogicalOperator
+        if all(
+            transformed_input is input_op
+            for transformed_input, input_op in zip(
+                transformed_inputs, self.input_dependencies
+            )
+        ):
+            target = self
+        else:
+            target = Union(*transformed_inputs)
+        return transform(target)
 
     def estimated_num_outputs(self):
         total_num_outputs = 0

@@ -1,5 +1,5 @@
 from dataclasses import InitVar, dataclass, field
-from typing import Optional
+from typing import Callable, Optional
 
 from ray.data._internal.logical.interfaces import LogicalOperator
 
@@ -30,3 +30,14 @@ class Count(LogicalOperator):
     @property
     def num_outputs(self) -> Optional[int]:
         return self._num_outputs
+
+    def _apply_transform(
+        self, transform: Callable[[LogicalOperator], LogicalOperator]
+    ) -> LogicalOperator:
+        transformed_input = self.input_dependencies[0]._apply_transform(transform)
+        target: LogicalOperator
+        if transformed_input is self.input_dependencies[0]:
+            target = self
+        else:
+            target = Count(transformed_input)
+        return transform(target)
