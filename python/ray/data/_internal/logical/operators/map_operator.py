@@ -206,7 +206,6 @@ class MapBatches(AbstractUDFMap):
     ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -250,7 +249,6 @@ class MapRows(AbstractUDFMap):
     can_modify_num_rows: bool = field(init=False, default=False)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -291,7 +289,6 @@ class Filter(AbstractUDFMap):
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -360,7 +357,6 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
     batch_format: str = field(init=False, default="pyarrow")
     zero_copy_batch: bool = field(init=False, default=True)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -376,7 +372,6 @@ class Project(AbstractMap, LogicalOperatorSupportsPredicatePassThrough):
                     "All Project expressions must be named (use .alias(name) or col(name)), "
                     "or be a star() expression."
                 )
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
@@ -461,7 +456,6 @@ class FlatMap(AbstractUDFMap):
     can_modify_num_rows: bool = field(init=False, default=True)
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -513,7 +507,6 @@ class StreamingRepartition(AbstractMap, LogicalOperatorSupportsPredicatePassThro
     ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None
     compute: Optional[ComputeStrategy] = None
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
