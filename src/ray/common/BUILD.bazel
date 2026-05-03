@@ -45,7 +45,6 @@ ray_cc_library(
         "//src/ray/util:process",
         "//src/ray/util:time",
         "@boost//:optional",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -102,7 +101,6 @@ ray_cc_library(
     deps = [
         "//src/ray/common/cgroup2:cgroup_test_utils",
         "//src/ray/util:logging",
-        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -452,6 +450,21 @@ ray_cc_library(
         "@boost//:asio",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/synchronization",
+    ],
+)
+
+ray_cc_library(
+    name = "io_context_monitor",
+    srcs = ["asio/io_context_monitor.cc"],
+    hdrs = ["asio/io_context_monitor.h"],
+    deps = [
+        ":asio",
+        "//src/ray/observability:metric_interface",
+        "//src/ray/util:clock",
+        "//src/ray/util:logging",
+        "//src/ray/util:thread_utils",
+        "@com_google_absl//absl/synchronization",
+        "@com_google_absl//absl/time",
     ],
 )
 
