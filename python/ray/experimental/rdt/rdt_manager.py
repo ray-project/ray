@@ -40,8 +40,10 @@ logger = logging.getLogger(__name__)
 # - The tensor metadata is a list of tuples, each containing the shape and dtype
 #   of a tensor in the RDT store.
 class RDTMeta(NamedTuple):
-    src_actor: "ray.actor.ActorHandle"
-    tensor_transport_backend: str
+    # These are None only for a streamed object whose direct-transport metadata
+    # arrived before Python registered the yielded ObjectRef.
+    src_actor: Optional["ray.actor.ActorHandle"]
+    tensor_transport_backend: Optional[str]
     # This is set when the actual object is created and the metadata makes it back to the owner.
     # For ray.put the owner is the creator so it's immediately set.
     tensor_transport_meta: Optional["TensorTransportMetadata"]
@@ -140,6 +142,9 @@ class RDTManager:
         # A set of object ids that are queued to be freed. This is used when the object is freed
         # before the owner knows it's created (the tensor transport metadata is not available yet).
         self._queued_frees: Set[str] = set()
+        # Streaming generator control refs are normal refs. This stores only
+        # the metadata template to apply to yielded RDT refs.
+        self._streaming_generator_rdt_metadata: Dict[str, RDTMeta] = {}
 
         # This lock makes sure the _rdt_store and _monitor_failures_thread are only created once.
         self._init_lock = threading.Lock()
@@ -390,20 +395,120 @@ class RDTManager:
             tensor_transport_meta: The tensor transport metadata that is pre-computed.
                 This is known at ref creation time if the object is created through ray.put.
         """
-        self.set_rdt_metadata(
-            obj_ref.hex(),
-            RDTMeta(
+        obj_id = obj_ref.hex()
+        dst_actors = None
+        free_object = False
+        with self._lock:
+            current_meta = self._managed_rdt_metadata.get(obj_id)
+            if tensor_transport_meta is None:
+                if current_meta is not None:
+                    tensor_transport_meta = current_meta.tensor_transport_meta
+            target_buffers = None
+            if current_meta is not None:
+                target_buffers = current_meta.target_buffers
+            self._managed_rdt_metadata[obj_id] = RDTMeta(
                 src_actor=src_actor,
                 tensor_transport_backend=tensor_transport,
                 tensor_transport_meta=tensor_transport_meta,  # None if not from ray.put
                 sent_dest_actors=set(),
                 sent_to_src_actor_and_others_warned=False,
+                target_buffers=target_buffers,
+            )
+            if tensor_transport_meta is not None and obj_id in self._queued_frees:
+                self._queued_frees.remove(obj_id)
+                free_object = True
+            if tensor_transport_meta is not None:
+                dst_actors = self._queued_transfers.pop(obj_id, None)
+                if free_object:
+                    assert dst_actors is None
+
+        if free_object:
+            self.free_object_primary_copy(obj_id)
+        if dst_actors:
+            for dst_actor in dst_actors:
+                self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
+
+    def add_streaming_generator_rdt_ref(
+        self,
+        generator_ref: ObjectRef,
+        src_actor: "ray.actor.ActorHandle",
+        tensor_transport: str,
+    ):
+        """Register the RDT source metadata for a streaming generator control ref."""
+        generator_id = generator_ref.hex()
+        with self._lock:
+            self._streaming_generator_rdt_metadata[generator_id] = RDTMeta(
+                src_actor=src_actor,
+                tensor_transport_backend=tensor_transport,
+                tensor_transport_meta=None,
+                sent_dest_actors=set(),
+                sent_to_src_actor_and_others_warned=False,
                 target_buffers=None,
-            ),
-        )
+            )
+
+    def remove_streaming_generator_rdt_ref(self, generator_ref: ObjectRef):
+        generator_id = generator_ref.hex()
+        with self._lock:
+            self._streaming_generator_rdt_metadata.pop(generator_id, None)
+        # TODO: Clean up RDT metadata/free callbacks for yielded refs from generators
+        # that are dropped before being consumed to completion. For now streaming RDT
+        # assumes the caller drains the generator.
+
+    def add_rdt_ref_from_generator(
+        self, generator_ref: ObjectRef, obj_ref: ObjectRef
+    ) -> bool:
+        """Register a yielded ObjectRef if it came from an RDT streaming generator."""
+        generator_id = generator_ref.hex()
+        obj_id = obj_ref.hex()
+        dst_actors = None
+        free_object = False
+        with self._lock:
+            generator_meta = self._streaming_generator_rdt_metadata.get(generator_id)
+            if (
+                generator_meta is None
+                or generator_meta.src_actor is None
+                or generator_meta.tensor_transport_backend is None
+            ):
+                return False
+            current_meta = self._managed_rdt_metadata.get(obj_id)
+            if (
+                current_meta is not None
+                and current_meta.src_actor is not None
+                and current_meta.tensor_transport_backend is not None
+            ):
+                return True
+            tensor_transport_meta = (
+                None if current_meta is None else current_meta.tensor_transport_meta
+            )
+            self._managed_rdt_metadata[obj_id] = RDTMeta(
+                src_actor=generator_meta.src_actor,
+                tensor_transport_backend=generator_meta.tensor_transport_backend,
+                tensor_transport_meta=tensor_transport_meta,
+                sent_dest_actors=set(),
+                sent_to_src_actor_and_others_warned=False,
+                target_buffers=(
+                    None if current_meta is None else current_meta.target_buffers
+                ),
+            )
+            if tensor_transport_meta is not None and obj_id in self._queued_frees:
+                self._queued_frees.remove(obj_id)
+                free_object = True
+            if tensor_transport_meta is not None:
+                dst_actors = self._queued_transfers.pop(obj_id, None)
+                if free_object:
+                    assert dst_actors is None
+
+        if free_object:
+            self.free_object_primary_copy(obj_id)
+        if dst_actors:
+            for dst_actor in dst_actors:
+                self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
+        return True
 
     def set_tensor_transport_metadata_and_trigger_queued_operations(
-        self, obj_id: str, tensor_transport_meta: "TensorTransportMetadata"
+        self,
+        obj_id: str,
+        tensor_transport_meta: "TensorTransportMetadata",
     ):
         """
         Sets the tensor transport metadata for an object and triggers any queued
@@ -412,16 +517,32 @@ class RDTManager:
         dst_actors = None
         free_object = False
         with self._tensor_transport_meta_cv:
-            self._managed_rdt_metadata[obj_id] = self._managed_rdt_metadata[
-                obj_id
-            ]._replace(tensor_transport_meta=tensor_transport_meta)
-            dst_actors = self._queued_transfers.pop(obj_id, None)
-            free_object = obj_id in self._queued_frees
-            if free_object:
-                self._queued_frees.remove(obj_id)
-                # There shouldn't be any transfers queued if the free was queued,
-                # since we clear the queued transfers when queueing the free.
-                assert dst_actors is None
+            if obj_id in self._managed_rdt_metadata:
+                self._managed_rdt_metadata[obj_id] = self._managed_rdt_metadata[
+                    obj_id
+                ]._replace(tensor_transport_meta=tensor_transport_meta)
+            else:
+                self._managed_rdt_metadata[obj_id] = RDTMeta(
+                    src_actor=None,
+                    tensor_transport_backend=None,
+                    tensor_transport_meta=tensor_transport_meta,
+                    sent_dest_actors=set(),
+                    sent_to_src_actor_and_others_warned=False,
+                    target_buffers=None,
+                )
+            rdt_meta = self._managed_rdt_metadata[obj_id]
+            rdt_meta_complete = (
+                rdt_meta.src_actor is not None
+                and rdt_meta.tensor_transport_backend is not None
+            )
+            if rdt_meta_complete:
+                dst_actors = self._queued_transfers.pop(obj_id, None)
+                free_object = obj_id in self._queued_frees
+                if free_object:
+                    self._queued_frees.remove(obj_id)
+                    # There shouldn't be any transfers queued if the free was queued,
+                    # since we clear the queued transfers when queueing the free.
+                    assert dst_actors is None
             self._tensor_transport_meta_cv.notify_all()
 
         if free_object:
@@ -433,7 +554,10 @@ class RDTManager:
 
     def set_target_buffers_for_ref(self, ref: ObjectRef, target_buffers: List[Any]):
         with self._lock:
-            if ref.hex() not in self._managed_rdt_metadata:
+            if (
+                not ref.tensor_transport()
+                or ref.hex() not in self._managed_rdt_metadata
+            ):
                 raise ValueError(f"Ref {ref} is not an RDT object.")
 
             self._managed_rdt_metadata[ref.hex()] = self._managed_rdt_metadata[
@@ -478,6 +602,8 @@ class RDTManager:
 
         rdt_meta = self.get_rdt_metadata(obj_id)
         assert rdt_meta is not None
+        assert rdt_meta.src_actor is not None
+        assert rdt_meta.tensor_transport_backend is not None
 
         if use_object_store:
             if rdt_meta.target_buffers:
@@ -554,20 +680,26 @@ class RDTManager:
             if not isinstance(arg, ObjectRef):
                 continue
             obj_id = arg.hex()
-            if self.is_managed_object(obj_id):
+            if arg.tensor_transport() and self.is_managed_object(obj_id):
                 rdt_object_ids.add(obj_id)
         if rdt_object_ids:
             self.wait_until_custom_transports_registered(dst_actor)
             for obj_id in rdt_object_ids:
                 # Atomically gets the tensor transport metadata for an object and queues up a transfer
                 # if the tensor transport metadata is not available.
+                trigger_now = False
                 with self._lock:
-                    tensor_transport_meta = self._managed_rdt_metadata[
-                        obj_id
-                    ].tensor_transport_meta
-                    if tensor_transport_meta is None:
+                    rdt_meta = self._managed_rdt_metadata[obj_id]
+                    tensor_transport_meta = rdt_meta.tensor_transport_meta
+                    if (
+                        tensor_transport_meta is None
+                        or rdt_meta.src_actor is None
+                        or rdt_meta.tensor_transport_backend is None
+                    ):
                         self._queued_transfers[obj_id].append(dst_actor)
-                if tensor_transport_meta is not None:
+                    else:
+                        trigger_now = True
+                if trigger_now:
                     self.trigger_out_of_band_tensor_transfer(dst_actor, obj_id)
 
     def trigger_out_of_band_tensor_transfer(
@@ -605,7 +737,10 @@ class RDTManager:
             # Since sent_dest_actors is mutable, this whole block needs to be protected.
             rdt_meta = self._managed_rdt_metadata[obj_id]
             src_actor = rdt_meta.src_actor
+            tensor_transport_backend = rdt_meta.tensor_transport_backend
             tensor_transport_meta = rdt_meta.tensor_transport_meta
+            assert src_actor is not None
+            assert tensor_transport_backend is not None
 
             # Update the set of destination actors for this object
             # The set inside NamedTuple is mutable, so we can modify it directly
@@ -638,12 +773,12 @@ class RDTManager:
                 return
 
             tensor_transport_manager = get_tensor_transport_manager(
-                rdt_meta.tensor_transport_backend
+                tensor_transport_backend
             )
             communicator_meta = tensor_transport_manager.get_communicator_metadata(
                 src_actor,
                 dst_actor,
-                rdt_meta.tensor_transport_backend,
+                tensor_transport_backend,
             )
 
             send_ref = None
@@ -659,7 +794,7 @@ class RDTManager:
                     obj_id,
                     tensor_transport_meta,
                     communicator_meta,
-                    rdt_meta.tensor_transport_backend,
+                    tensor_transport_backend,
                 )
 
             # Receive tensors from the source rank and store them in the
@@ -675,7 +810,7 @@ class RDTManager:
                 obj_id,
                 tensor_transport_meta,
                 communicator_meta,
-                rdt_meta.tensor_transport_backend,
+                tensor_transport_backend,
             )
 
         self._unmonitored_transfers.put(
@@ -685,7 +820,7 @@ class RDTManager:
                 send_ref=send_ref,
                 recv_ref=recv_ref,
                 communicator_meta=communicator_meta,
-                backend=rdt_meta.tensor_transport_backend,
+                backend=tensor_transport_backend,
                 obj_id=obj_id,
                 timeout=time.time() + ray_constants.RDT_FETCH_FAIL_TIMEOUT_SECONDS,
             )
@@ -738,14 +873,21 @@ class RDTManager:
         # the NIXL ray.put / ray.get
         with self._lock:
             self._queued_transfers.pop(object_id, None)
-            rdt_meta = self._managed_rdt_metadata[object_id]
+            rdt_meta = self._managed_rdt_metadata.get(object_id)
+            if rdt_meta is None:
+                self._queued_frees.add(object_id)
+                return
             tensor_transport_meta = rdt_meta.tensor_transport_meta
-            if tensor_transport_meta is None:
+            if (
+                tensor_transport_meta is None
+                or rdt_meta.src_actor is None
+                or rdt_meta.tensor_transport_backend is None
+            ):
                 # The object hasn't been created at the time of the free.
                 self._queued_frees.add(object_id)
+                return
 
-        if tensor_transport_meta is not None:
-            self.free_object_primary_copy(object_id)
+        self.free_object_primary_copy(object_id)
 
     def free_object_primary_copy(self, object_id: str):
         from ray.experimental.rdt.rdt_store import (
@@ -757,6 +899,8 @@ class RDTManager:
         src_actor = rdt_meta.src_actor
         tensor_transport_backend = rdt_meta.tensor_transport_backend
         tensor_transport_meta = rdt_meta.tensor_transport_meta
+        assert src_actor is not None
+        assert tensor_transport_backend is not None
         src_actor.__ray_call__.options(concurrency_group="_ray_system").remote(
             __ray_free__,
             object_id,

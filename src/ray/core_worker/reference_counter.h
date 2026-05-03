@@ -108,8 +108,10 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void AddDynamicReturn(const ObjectID &object_id, const ObjectID &generator_id) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void OwnDynamicStreamingTaskReturnRef(const ObjectID &object_id,
-                                        const ObjectID &generator_id) override
+  bool OwnDynamicStreamingTaskReturnRef(
+      const ObjectID &object_id,
+      const ObjectID &generator_id,
+      const std::optional<std::string> &tensor_transport = std::nullopt) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   void TryReleaseLocalRefs(const std::vector<ObjectID> &object_ids,

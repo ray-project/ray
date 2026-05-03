@@ -260,6 +260,56 @@ def test_p2p(ray_start_regular):
     assert ray.get(result) == pytest.approx(medium_tensor * 2)
 
 
+def test_streaming_generator(ray_start_regular):
+    @ray.remote(enable_tensor_transport=True)
+    class Actor:
+        @ray.method(
+            num_returns="streaming",
+            tensor_transport="gloo",
+            _generator_backpressure_num_objects=1,
+        )
+        def stream(self, count):
+            for i in range(count):
+                yield torch.tensor([float(i), float(i + 1)])
+
+        @ray.method(num_returns="streaming", tensor_transport="gloo")
+        def stream_with_error(self):
+            yield torch.tensor([1.0, 2.0, 3.0])
+            raise ValueError("stream failed")
+
+        def sum(self, data):
+            return data.sum().item()
+
+    actors = [Actor.remote() for _ in range(2)]
+    create_collective_group(actors, backend="gloo")
+
+    gen = actors[0].stream.remote(3)
+    ready, unready = ray.wait([gen], timeout=10)
+    assert ready == [gen]
+    assert unready == []
+    assert gen.next_ready()
+
+    for i in range(3):
+        ref = next(gen)
+        assert ref.tensor_transport() == "GLOO"
+        expected = torch.tensor([float(i), float(i + 1)])
+        assert torch.equal(ray.get(ref, _use_object_store=True), expected)
+        assert ray.get(actors[1].sum.remote(ref)) == 2 * i + 1
+
+    with pytest.raises(StopIteration):
+        next(gen)
+    assert gen.is_finished()
+
+    error_gen = actors[0].stream_with_error.remote()
+    assert torch.equal(
+        ray.get(next(error_gen), _use_object_store=True), torch.tensor([1.0, 2.0, 3.0])
+    )
+    with pytest.raises(ray.exceptions.RayTaskError):
+        ray.get(next(error_gen))
+    with pytest.raises(StopIteration):
+        next(error_gen)
+
+
 def test_p2p_errors_before_group_creation(ray_start_regular):
     world_size = 2
     actors = [GPUTestActor.remote() for _ in range(world_size)]
