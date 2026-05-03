@@ -1,5 +1,5 @@
-from dataclasses import InitVar, dataclass, field, replace
-from typing import Any, Callable, Dict, Optional, Union
+from dataclasses import InitVar, dataclass, field
+from typing import Any, Dict, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -44,15 +44,3 @@ class Write(AbstractMap):
         )
         object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
-
-    def _apply_transform(
-        self, transform: Callable[[LogicalOperator], LogicalOperator]
-    ) -> LogicalOperator:
-        input_op = self.input_dependencies[0]
-        transformed_input = input_op._apply_transform(transform)
-        target: LogicalOperator
-        if transformed_input is input_op:
-            target = self
-        else:
-            target = replace(self, input_op=transformed_input)
-        return transform(target)
