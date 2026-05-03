@@ -1793,6 +1793,70 @@ def test_reconfigure_throttling(mock_deployment_state_manager):
     )
 
 
+@pytest.mark.parametrize(
+    ("num_replicas", "percentage", "expected_stopping"),
+    [
+        # The existing case: 50% of 10 replicas is 5.
+        (10, 0.5, 5),
+        # Test default percentage (20%) of 10 replicas is 2.
+        (10, None, 2),
+        # Test rounding down: 50% of 3 replicas is 1.5 -> 1.
+        (3, 0.5, 1),
+        # Test minimum of 1: 20% of 4 replicas is 0.8 -> 0, but minimum is 1.
+        (4, 0.2, 1),
+        # Test percentage that isn't a clean divisor.
+        (10, 0.21, 2),
+        # Test 100% update. All old replicas should be stopping.
+        (5, 1.0, 5),
+    ],
+)
+def test_rolling_update_percentage_configurable(
+    mock_deployment_state_manager, num_replicas, percentage, expected_stopping
+):
+    """Test that rolling_update_percentage controls how many replicas update per wave."""
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm: DeploymentStateManager = create_dsm()
+
+    deploy_kwargs = {"num_replicas": num_replicas, "version": "1"}
+    if percentage is not None:
+        deploy_kwargs["rolling_update_percentage"] = percentage
+
+    b_info_1, v1 = deployment_info(**deploy_kwargs)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    dsm.update()
+    for replica in ds._replicas.get():
+        replica._actor.set_ready()
+    dsm.update()
+    check_counts(
+        ds, total=num_replicas, by_state=[(ReplicaState.RUNNING, num_replicas, v1)]
+    )
+
+    # Deploy new version and check that the correct number of replicas are
+    # transitioning.
+    deploy_kwargs["version"] = "2"
+    b_info_2, v2 = deployment_info(**deploy_kwargs)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_2)
+    dsm.update()
+
+    expected_running_v1 = num_replicas - expected_stopping
+    # When there are 0 running v1 replicas, the check_counts `by_state`
+    # entry should be omitted.
+    expected_by_state = [
+        (ReplicaState.STOPPING, expected_stopping, v1),
+        (ReplicaState.STARTING, expected_stopping, v2),
+    ]
+    if expected_running_v1 > 0:
+        expected_by_state.insert(0, (ReplicaState.RUNNING, expected_running_v1, v1))
+
+    check_counts(
+        ds,
+        total=num_replicas + expected_stopping,
+        by_state=expected_by_state,
+    )
+
+
 def test_new_version_and_scale_down(mock_deployment_state_manager):
     # Test the case when we reduce the number of replicas and change the
     # version at the same time. First the number of replicas should be
@@ -3934,6 +3998,54 @@ def test_shutdown(mock_deployment_state_manager):
     assert dsm.is_ready_for_shutdown()
 
 
+def test_shutdown_does_not_delete_checkpoint(mock_deployment_state_manager):
+    """Tests checkpoint must survive `shutdown() and `is_ready_for_shutdown().
+    Only an explicit `delete_checkpoint() call should remove it.
+    """
+    create_dsm, timer, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    grace_period_s = 10
+    b_info_1, _ = deployment_info(graceful_shutdown_timeout_s=grace_period_s)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, b_info_1)
+    dsm.save_checkpoint()
+
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+
+    # Single replica should be created and become running.
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.STARTING, 1, None)])
+    ds._replicas.get()[0]._actor.set_ready()
+    dsm.update()
+    check_counts(ds, total=1, by_state=[(ReplicaState.RUNNING, 1, None)])
+
+    # Checkpoint should exist after save.
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is not None
+
+    # shutdown() must NOT delete the checkpoint.
+    dsm.shutdown()
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is not None
+
+    # save_checkpoint() after shutdown should be a no-op.
+    pre_shutdown_checkpoint = dsm._kv_store.get(CHECKPOINT_KEY)
+    dsm.save_checkpoint()
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is pre_shutdown_checkpoint
+
+    timer.advance(grace_period_s + 0.1)
+    dsm.update()
+    replica = ds._replicas.get()[0]
+    replica._actor.set_done_stopping()
+    dsm.update()
+    assert dsm.is_ready_for_shutdown()
+
+    # is_ready_for_shutdown() must NOT delete the checkpoint.
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is not None
+
+    # Only delete_checkpoint() should remove it.
+    dsm.delete_checkpoint()
+    assert dsm._kv_store.get(CHECKPOINT_KEY) is None
+
+
 def test_resource_requirements_none():
     """Ensure resource_requirements doesn't break if a requirement is None"""
 
@@ -4078,6 +4190,105 @@ def test_get_active_node_ids_none(mock_deployment_state_manager):
     check_counts(ds, total=3, by_state=[(ReplicaState.RUNNING, 3, v1)])
     assert None not in ds.get_active_node_ids()
     assert None not in dsm.get_active_node_ids()
+
+
+def test_get_deployment_ids(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    assert dsm.get_deployment_ids() == []
+
+    info1, _ = deployment_info(version="1", num_replicas=1)
+    info2, _ = deployment_info(version="2", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID_2, info2)
+
+    assert dsm.get_deployment_ids() == [TEST_DEPLOYMENT_ID, TEST_DEPLOYMENT_ID_2]
+
+
+def test_get_node_id_to_alive_replica_ids(mock_deployment_state_manager):
+    node1 = NodeID.from_random().hex()
+    node2 = NodeID.from_random().hex()
+
+    create_dsm, _, cluster_node_info_cache, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+    cluster_node_info_cache.add_node(node1)
+    cluster_node_info_cache.add_node(node2)
+
+    info1, v1 = deployment_info(version="1", num_replicas=2)
+    info2, v2 = deployment_info(version="2", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID_2, info2)
+
+    ds1 = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    ds2 = dsm._deployment_states[TEST_DEPLOYMENT_ID_2]
+
+    dsm.update()
+    check_counts(ds1, total=2, by_state=[(ReplicaState.STARTING, 2, v1)])
+    check_counts(ds2, total=1, by_state=[(ReplicaState.STARTING, 1, v2)])
+
+    replicas1 = ds1._replicas.get()
+    replicas2 = ds2._replicas.get()
+    replicas1[0]._actor.set_node_id(node1)
+    replicas1[1]._actor.set_node_id(node2)
+    replicas2[0]._actor.set_node_id(node1)
+
+    node_id_to_alive_replica_ids = dsm.get_node_id_to_alive_replica_ids()
+    assert type(node_id_to_alive_replica_ids) is dict
+    assert node_id_to_alive_replica_ids == {
+        node1: {
+            replicas1[0].replica_id.unique_id,
+            replicas2[0].replica_id.unique_id,
+        },
+        node2: {replicas1[1].replica_id.unique_id},
+    }
+
+    replicas1[0]._actor.set_ready()
+    replicas1[1]._actor.set_ready()
+    replicas2[0]._actor.set_node_id(None)
+    replicas2[0]._actor.set_ready()
+    dsm.update()
+
+    node_id_to_alive_replica_ids = dsm.get_node_id_to_alive_replica_ids()
+    assert type(node_id_to_alive_replica_ids) is dict
+    assert node_id_to_alive_replica_ids == {
+        node1: {replicas1[0].replica_id.unique_id},
+        node2: {replicas1[1].replica_id.unique_id},
+    }
+
+
+def test_dump_replica_states_for_testing(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    info1, _ = deployment_info(version="1", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    assert dsm._dump_replica_states_for_testing(TEST_DEPLOYMENT_ID) is ds._replicas
+
+    with pytest.raises(KeyError):
+        dsm._dump_replica_states_for_testing(TEST_DEPLOYMENT_ID_2)
+
+
+def test_stop_one_running_replica_for_testing(mock_deployment_state_manager):
+    create_dsm, _, _, _ = mock_deployment_state_manager
+    dsm = create_dsm()
+
+    info1, _ = deployment_info(version="1", num_replicas=1)
+    assert dsm.deploy(TEST_DEPLOYMENT_ID, info1)
+
+    ds = dsm._deployment_states[TEST_DEPLOYMENT_ID]
+    dsm.update()
+    replica = ds._replicas.get()[0]
+    replica._actor.set_ready()
+    dsm.update()
+    assert len(ds._replicas.get([ReplicaState.RUNNING])) == 1
+
+    dsm._stop_one_running_replica_for_testing(TEST_DEPLOYMENT_ID)
+
+    assert len(ds._replicas.get([ReplicaState.RUNNING])) == 0
+    assert len(ds._replicas.get([ReplicaState.STOPPING])) == 1
 
 
 class TestAutoscaling:

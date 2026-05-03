@@ -1419,9 +1419,11 @@ class HTTPProxy(GenericProxy):
                     yield asgi_message
                     response_started = True
         except BaseException as e:
-            status = get_http_response_status(e, request_timeout_s, request_id)
+            error_status = get_http_response_status(e, request_timeout_s, request_id)
+            if status is None:
+                status = error_status
             for asgi_message in send_http_response_on_exception(
-                status, response_started
+                error_status, response_started
             ):
                 yield asgi_message
             exc = e
@@ -1648,6 +1650,7 @@ class ProxyActor(ProxyActorInterface):
                 LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,
             },
             call_in_event_loop=event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
 
         try:
