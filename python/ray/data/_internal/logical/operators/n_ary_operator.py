@@ -28,7 +28,6 @@ class NAry(LogicalOperator):
             input_ops: The input operators.
         """
         super().__init__(
-            _name=self.__class__.__name__,
             _input_dependencies=list(input_ops),
             _num_outputs=num_outputs,
         )
@@ -42,7 +41,6 @@ class NAry(LogicalOperator):
 class Zip(NAry):
     """Logical operator for zip."""
 
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -52,7 +50,6 @@ class Zip(NAry):
     ):
         for input_op in input_ops:
             assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", list(input_ops))
         object.__setattr__(self, "_num_outputs", None)
 
@@ -88,7 +85,6 @@ class Zip(NAry):
 class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for union."""
 
-    _name: str = field(init=False, repr=False)
     _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
@@ -98,7 +94,6 @@ class Union(NAry, LogicalOperatorSupportsPredicatePassThrough):
     ):
         for input_op in input_ops:
             assert isinstance(input_op, LogicalOperator), input_op
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_input_dependencies", list(input_ops))
         object.__setattr__(self, "_num_outputs", None)
 

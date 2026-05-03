@@ -35,7 +35,6 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
     input_blocks: InitVar[List[ObjectRef[Block]]]
     input_metadata: InitVar[List[BlockMetadataWithSchema]]
     input_data: List[RefBundle] = field(init=False)
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list[LogicalOperator] = field(
         init=False, repr=False, default_factory=list
     )
@@ -64,7 +63,6 @@ class AbstractFrom(LogicalOperator, SourceOperator, metaclass=abc.ABCMeta):
                 for i in range(len(input_blocks))
             ],
         )
-        object.__setattr__(self, "_name", self.__class__.__name__)
         object.__setattr__(self, "_num_outputs", len(input_blocks))
 
     def output_data(self) -> Optional[List[RefBundle]]:

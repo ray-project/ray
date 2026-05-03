@@ -92,10 +92,10 @@ class DummyLogicalOperator(LogicalOperator):
 
     def __init__(self, input_op=None):
         super().__init__(
-            _name="DummyOperator",
             _input_dependencies=[],
             _num_outputs=None,
         )
+        object.__setattr__(self, "_name", "DummyOperator")
 
         # Test various data types that might be returned by _get_logical_args
         object.__setattr__(self, "_string_value", "test_string")

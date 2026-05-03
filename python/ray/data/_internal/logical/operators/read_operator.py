@@ -43,7 +43,6 @@ class Read(
     min_rows_per_bundled_input: Optional[int] = field(init=False, default=None)
     ray_remote_args_fn: None = field(init=False, default=None)
     per_block_limit: Optional[int] = None
-    _name: str = field(init=False, repr=False)
     _input_dependencies: list = field(init=False, repr=False, default_factory=list)
     _num_outputs: Optional[int] = field(init=False, repr=False)
 
