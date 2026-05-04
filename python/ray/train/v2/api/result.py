@@ -71,7 +71,7 @@ class Result(ResultV1):
 
         Returns:
             :class:`Checkpoint <ray.train.Checkpoint>` object or
-            ``(checkpoint, metrics)`` tuple if ``return_metric`` is True.
+            ``(checkpoint, metrics)`` tuple if ``return_metrics`` is True.
         """
         return super().get_best_checkpoint(metric, mode, return_metrics)
 

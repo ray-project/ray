@@ -263,7 +263,7 @@ class Result:
 
         Returns:
             :class:`Checkpoint <ray.tune.Checkpoint>` object or
-            ``(checkpoint, metrics)`` tuple if ``return_metric`` is True.
+            ``(checkpoint, metrics)`` tuple if ``return_metrics`` is True.
         """
         if not self.best_checkpoints:
             raise RuntimeError("No checkpoint exists in the trial directory!")
