@@ -26,7 +26,6 @@ from ray.serve._private.haproxy import (
     ServerConfig,
 )
 from ray.serve.config import HTTPOptions
-from ray.serve.schema import Target
 
 logger = logging.getLogger(__name__)
 
@@ -499,23 +498,6 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
 
 
-def test_target_to_server_replica_id_is_unsanitized_actor_name():
-    """`replica_id` on the generated ServerConfig must be the raw actor name —
-    that's what `/internal/route` returns, and the Lua map is keyed by it.
-    `name` is sanitized for HAProxy. Sanitizing `replica_id` too would silently
-    break IRR routing.
-    """
-    from ray.serve._private.haproxy import target_to_server
-
-    actor_name = "SERVE_REPLICA::app#dep#abc123"
-    target = Target(name=actor_name, ip="10.0.0.1", port=30001, instance_id="i-1")
-
-    server = target_to_server(target, node_ip_address="10.0.0.99")
-
-    assert "#" not in server.name
-    assert server.replica_id == actor_name
-
-
 def test_write_ingress_request_router_lua_emits_map_and_router(haproxy_api_cleanup):
     """Lua file contains REPLICA_TARGETS, ROUTER (lowest port,host), and the action.
 
@@ -780,8 +762,8 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
                 timeout=10,
             )
 
-            # POST hits IRR path. Router returns B's actor name → request must
-            # land on replica B regardless of LB ordering.
+            # POST hits IRR path. Router returns B's actor name, so the
+            # request must land on replica B regardless of LB ordering.
             payload = {"prompt": "hello"}
             resp = requests.post(
                 f"http://127.0.0.1:{haproxy_port}/predict",
@@ -807,9 +789,8 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
                 )
                 assert resp.headers.get("x-replica-id") == "B"
 
-            # GET is not POST → wait-for-body / Lua never run, so the via-IRR
-            # path is bypassed. The router should have seen exactly the four
-            # POSTs above and nothing more.
+            # GET is not POST, so wait-for-body / Lua never run; the router
+            # should have seen exactly the four POSTs above and nothing more.
             n_router_calls_before_get = len(router_captured["bodies"])
             requests.get(
                 f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5

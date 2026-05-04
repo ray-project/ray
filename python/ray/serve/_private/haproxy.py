@@ -75,26 +75,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
 
 
-def _get_safe_name(name: str) -> str:
-    """Sanitize an actor name for use as a HAProxy server/backend label."""
-    name = name.replace("#", "-").replace("/", ".")
-    return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
-
-
-def target_to_server(target: "Target", node_ip_address: str) -> "ServerConfig":
-    """Convert a Target to a ServerConfig.
-
-    `replica_id` is the unsanitized actor name (matches what `/internal/route`
-    returns); `name` is the sanitized form used in the HAProxy config.
-    """
-    return ServerConfig(
-        name=_get_safe_name(target.name),
-        host="127.0.0.1" if target.ip == node_ip_address else target.ip,
-        port=target.port,
-        replica_id=target.name,
-    )
-
-
 def get_haproxy_binary() -> str:
     """Return the path to the HAProxy binary.
 
@@ -1360,25 +1340,38 @@ class HAProxyManager(ProxyActorInterface):
 
         return log_file_path
 
+    def _target_to_server(self, target: Target) -> ServerConfig:
+        """Convert a target to a server."""
+        return ServerConfig(
+            # The server name is derived from the replica's actor name, with the
+            # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
+            # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
+            # Special characters in the names are converted to comply with haproxy
+            # config's allowed characters, e.g. `#` -> `-`.
+            name=self.get_safe_name(target.name),
+            # Use localhost if target is on the same node as HAProxy
+            host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
+            port=target.port,
+            # Unsanitized actor name; matches what /internal/route returns.
+            replica_id=target.name,
+        )
+
     def _create_backend_config(
         self,
         target_group: TargetGroup,
         fallback_target: Optional[Target],
     ) -> BackendConfig:
         """Create a backend configuration from a target group and fallback target."""
-        servers = [
-            target_to_server(target, self._node_ip_address)
-            for target in target_group.targets
-        ]
+        servers = [self._target_to_server(target) for target in target_group.targets]
 
         router_servers = [
-            target_to_server(target, self._node_ip_address)
+            self._target_to_server(target)
             for target in target_group.ingress_request_router_targets
         ]
 
         fallback_server = None
         if fallback_target is not None:
-            fallback_server = target_to_server(fallback_target, self._node_ip_address)
+            fallback_server = self._target_to_server(fallback_target)
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
@@ -1453,7 +1446,9 @@ class HAProxyManager(ProxyActorInterface):
     @staticmethod
     def get_safe_name(name: str) -> str:
         """Get a safe label name for the haproxy config."""
-        return _get_safe_name(name)
+        name = name.replace("#", "-").replace("/", ".")
+        # replace all remaining non-alphanumeric and non-{".", "_", "-"} with "_"
+        return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         """Return the set of replica IDs for targets matching the given route.
