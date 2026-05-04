@@ -26,7 +26,7 @@ HAPROXY_CONFIG_TEMPLATE = """global
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
-    {%- if has_custom_request_routing and lua_script_path %}
+    {%- if has_ingress_request_router and lua_script_path %}
     lua-load-per-thread {{ lua_script_path }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}
@@ -80,17 +80,16 @@ frontend http_frontend
     # Inject unique reload ID as header to track which HAProxy instance handled the request (testing only)
     http-request set-header x-haproxy-reload-id {{ config.reload_id }}
     {%- endif %}
-    {%- if has_custom_request_routing %}
+    {%- if has_ingress_request_router %}
     option http-buffer-request
-    acl is_streaming_path path /v1/chat/completions /v1/completions
-    http-request lua.route_direct_ingress_request if is_streaming_path METH_POST
+    http-request lua.route_via_ingress_request_router if METH_POST
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
-    {%- if backend.custom_request_routing %}
-    use_backend {{ backend.name or 'unknown' }}-custom-routed if is_{{ backend.name or 'unknown' }} { var(txn.custom_request_routed) -m found }
+    {%- if backend.router_servers %}
+    use_backend {{ backend.name or 'unknown' }}-via-ingress-request-router if is_{{ backend.name or 'unknown' }} { var(txn.via_ingress_request_router) -m found }
     {%- endif %}
     use_backend {{ backend.name or 'unknown' }} if is_{{ backend.name or 'unknown' }}
 {%- endfor %}
@@ -142,8 +141,8 @@ backend {{ backend.name or 'unknown' }}
     # Fallback to head node's Serve proxy when no ingress replicas are available
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
     {%- endif %}
-{%- if backend.custom_request_routing %}
-backend {{ backend.name or 'unknown' }}-custom-routed
+{%- if backend.router_servers %}
+backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     log global
     http-reuse always
     {%- if backend.timeout_connect_s is not none %}
@@ -161,10 +160,10 @@ backend {{ backend.name or 'unknown' }}-custom-routed
     {%- endif %}
     {{ hc.default_server_directive }}
     {%- for server in backend.servers %}
-    use-server {{ server.routing_key }} if { var(txn.direct_ingress_target) -m str "{{ server.routing_key }}" }
+    use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
     {%- endfor %}
     {%- for server in backend.servers %}
-    server {{ server.routing_key }} {{ server.host }}:{{ server.port }} check
+    server {{ server.name }} {{ server.host }}:{{ server.port }} check
     {%- endfor %}
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup

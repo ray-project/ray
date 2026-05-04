@@ -242,7 +242,10 @@ class ServerConfig:
     name: str  # Server identifier for HAProxy config
     host: str  # IP/hostname to connect to
     port: int  # Port to connect to
-    routing_key: Optional[str] = None  # Stable custom-routing selection key
+    # Replica identifier returned by /internal/route. Lua maps this to
+    # `name` to drive use-server selection in the
+    # `-via-ingress-request-router` backend.
+    replica_id: Optional[str] = None
 
     def __str__(self) -> str:
         return f"ServerConfig(name='{self.name}', host='{self.host}', port={self.port})"
@@ -307,12 +310,10 @@ class BackendConfig:
     # List of servers in this backend
     servers: List[ServerConfig] = field(default_factory=list)
 
-    # Router servers for ingress bypass Lua routing.
-    # When populated, HAProxy Lua calls these to get routing decisions.
+    # Ingress request router servers. When populated, HAProxy Lua calls
+    # /internal/route on one of these to pick a data-plane replica. Truthiness
+    # of this field also gates the `-via-ingress-request-router` backend section.
     router_servers: List[ServerConfig] = field(default_factory=list)
-
-    # Whether this backend should use the direct ingress custom request routing path.
-    custom_request_routing: bool = False
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
@@ -699,80 +700,57 @@ class HAProxyApi(ProxyApi):
             f"HAProxy did not enter running state within {timeout_s} seconds."
         )
 
-    def _write_lua_script(
+    def _write_ingress_request_router_lua(
         self,
         backends: List[BackendConfig],
-    ) -> str:
-        """Write the Lua routing script for direct ingress custom request routing.
+    ) -> Optional[str]:
+        """Write the Lua script that routes requests via the ingress request router.
 
-        Per-request routing: Lua calls /internal/route on an HTTP router
-        for every request, which calls choose_replicas() to pick a replica
-        and returns its backend HTTP host/port. HAProxy then resolves that
-        endpoint to a concrete backend server name inside the local config.
+        Per-request routing: Lua calls /internal/route on an ingress request
+        router for each POST, receives `{"replica_id": ...}`, and resolves
+        replica_id -> server name via an embedded map. HAProxy's use-server
+        directive in the `-via-ingress-request-router` backend then pins the
+        request to that server. The map is regenerated on every config reload,
+        in lockstep with the `server` directives.
 
-        Returns the path to the written Lua script.
+        Returns the path to the written Lua script, or None if no backend
+        has ingress request routers configured.
         """
         config_dir = os.path.dirname(self.config_file_path)
-        lua_path = os.path.join(config_dir, "direct_ingress_custom_request_routing.lua")
+        lua_path = os.path.join(config_dir, "ingress_request_router.lua")
 
-        router_entries = []
+        # Single router by design — round-robin caused TTFT regressions.
+        # All routable backends share the same router pool in practice.
+        router = None
+        replica_target_entries = []
         for backend in backends:
-            if not backend.custom_request_routing or not backend.router_servers:
+            if not backend.router_servers:
                 continue
-            # Single router by design — round-robin caused TTFT regressions.
-            router = sorted(
-                backend.router_servers, key=lambda server: (server.port, server.host)
-            )[0]
-            router_entries.append(
-                "    { path_prefix = "
-                f'{json.dumps(backend.path_prefix or "/")}, '
-                f"host = {json.dumps(router.host)}, "
-                f"port = {router.port} }}"
+            router = router or min(
+                backend.router_servers, key=lambda s: (s.port, s.host)
             )
+            for server in backend.servers:
+                if server.replica_id is None:
+                    continue
+                replica_target_entries.append(
+                    f"    [{json.dumps(server.replica_id)}] = "
+                    f"{json.dumps(server.name)}"
+                )
 
-        if not router_entries:
-            return lua_path
+        if router is None or not replica_target_entries:
+            return None
 
-        routers_lua = "{\n" + ",\n".join(router_entries) + "\n}"
+        replica_targets_lua = "{\n" + ",\n".join(replica_target_entries) + "\n}"
 
-        lua_content = f"""local STREAMING_PATHS = {{
-    ["/v1/chat/completions"] = true,
-    ["/v1/completions"] = true,
-}}
+        lua_content = f"""local REPLICA_TARGETS = {replica_targets_lua}
 
-local ROUTERS = {routers_lua}
+local ROUTER = {{ host = {json.dumps(router.host)}, port = {router.port} }}
 
-local function path_matches(path, prefix)
-    if prefix == "/" then
-        return true
-    end
-    return path == prefix or string.sub(path, 1, #prefix + 1) == prefix .. "/"
-end
-
-local function find_router(path)
-    for _, router in ipairs(ROUTERS) do
-        if path_matches(path, router.path_prefix) then
-            return router
-        end
-    end
-    return nil
-end
-
-local function strip_prefix(path, prefix)
-    if prefix == "/" then
-        return path
-    end
-    if path == prefix then
-        return "/"
-    end
-    return string.sub(path, #prefix + 1)
-end
-
-local function do_request(router, body)
+local function do_request(body)
     local sock = core.tcp()
     sock:settimeout(5)
 
-    if not sock:connect(router.host, tonumber(router.port)) then
+    if not sock:connect(ROUTER.host, tonumber(ROUTER.port)) then
         return nil
     end
 
@@ -792,40 +770,33 @@ local function do_request(router, body)
     return response
 end
 
-core.register_action("route_direct_ingress_request", {{"http-req"}}, function(txn)
-    local path = txn.sf:path()
-    local router = find_router(path)
-    if not router then
-        return
-    end
-
-    local relative_path = strip_prefix(path, router.path_prefix)
-    if not STREAMING_PATHS[relative_path] then
-        return
-    end
-
+-- Router response shape: {{"replica_id": "<id>"}} on a 200, anything else
+-- (non-200, missing field, unknown id) means "fall through to native LB".
+core.register_action("route_via_ingress_request_router", {{"http-req"}}, function(txn)
     local body = txn.sf:req_body()
     if not body or body == "" then
         return
     end
 
-    if not string.find(body, '"stream"') or not string.find(body, "true") then
+    local response = do_request(body)
+    if not response or not response:match("^HTTP/[%d%.]+ 200") then
         return
     end
 
-    local response = do_request(router, body)
-    if not response then
+    local _, body_start = response:find("\\r\\n\\r\\n", 1, true)
+    local resp_body = body_start and response:sub(body_start + 1) or ""
+    local replica_id = resp_body:match('"replica_id"%s*:%s*"([^"]+)"')
+    if not replica_id then
         return
     end
 
-    local host = response:match('"host"%s*:%s*"([^"]+)"')
-    local port = response:match('"port"%s*:%s*([0-9]+)')
-
-    if host and port then
-        local routing_key = "sc_" .. host:gsub("%.", "_") .. "_" .. port
-        txn:set_var("txn.direct_ingress_target", routing_key)
-        txn:set_var("txn.custom_request_routed", true)
+    local server_name = REPLICA_TARGETS[replica_id]
+    if not server_name then
+        return
     end
+
+    txn:set_var("txn.ingress_request_router_target", server_name)
+    txn:set_var("txn.via_ingress_request_router", true)
 end, 0)
 """
         with open(lua_path, "w") as f:
@@ -847,14 +818,14 @@ end, 0)
                 key=lambda be: (-len(be.path_prefix), be.path_prefix),
             )
 
-            has_custom_request_routing = any(
-                backend.custom_request_routing for backend in backends
+            has_ingress_request_router = any(
+                backend.router_servers for backend in backends
             )
 
-            # Write Lua script if direct ingress custom request routing is active.
+            # Write Lua script if any backend has ingress request routers.
             lua_script_path = None
-            if has_custom_request_routing:
-                lua_script_path = self._write_lua_script(backends)
+            if has_ingress_request_router:
+                lua_script_path = self._write_ingress_request_router_lua(backends)
 
             # Enrich backends with precomputed health check configuration strings
             backends_with_health_config = [
@@ -885,7 +856,7 @@ end, 0)
                     "backends_with_health_config": backends_with_health_config,
                     "healthz_rules": healthz_rules,
                     "route_info": health_route_info,
-                    "has_custom_request_routing": has_custom_request_routing,
+                    "has_ingress_request_router": has_ingress_request_router,
                     "lua_script_path": lua_script_path,
                 }
             )
@@ -1357,7 +1328,8 @@ class HAProxyManager(ProxyActorInterface):
             # Use localhost if target is on the same node as HAProxy
             host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
             port=target.port,
-            routing_key=f"sc_{target.ip.replace('.', '_')}_{target.port}",
+            # Unsanitized actor name; matches what /internal/route returns.
+            replica_id=target.name,
         )
 
     def _create_backend_config(
@@ -1366,22 +1338,19 @@ class HAProxyManager(ProxyActorInterface):
         fallback_target: Optional[Target],
     ) -> BackendConfig:
         """Create a backend configuration from a target group and fallback target."""
-        custom_request_routing = bool(target_group.ingress_request_router_targets)
         servers = [self._target_to_server(target) for target in target_group.targets]
 
         router_servers = [
             self._target_to_server(target)
             for target in target_group.ingress_request_router_targets
         ]
-        router_servers = sorted(
-            router_servers, key=lambda server: (server.port, server.host)
-        )
 
         fallback_server = None
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
 
-        health_path = "/health" if target_group.ingress_request_router_targets else None
+        # Data-plane replicas serve `/health`, not the proxy's `/-/healthz`.
+        health_path = "/health" if router_servers else None
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
@@ -1393,7 +1362,6 @@ class HAProxyManager(ProxyActorInterface):
             path_prefix=target_group.route_prefix,
             servers=servers,
             router_servers=router_servers,
-            custom_request_routing=custom_request_routing,
             app_name=target_group.app_name,
             fallback_server=fallback_server,
             health_check_path=health_path,
