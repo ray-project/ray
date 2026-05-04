@@ -242,9 +242,7 @@ class ServerConfig:
     name: str  # Server identifier for HAProxy config
     host: str  # IP/hostname to connect to
     port: int  # Port to connect to
-    # Replica identifier returned by /internal/route. Lua maps this to
-    # `name` to drive use-server selection in the
-    # `-via-ingress-request-router` backend.
+    # Replica identifier returned by /internal/route.
     replica_id: Optional[str] = None
 
     def __str__(self) -> str:
@@ -311,8 +309,7 @@ class BackendConfig:
     servers: List[ServerConfig] = field(default_factory=list)
 
     # Ingress request router servers. When populated, HAProxy Lua calls
-    # /internal/route on one of these to pick a data-plane replica. Truthiness
-    # of this field also gates the `-via-ingress-request-router` backend section.
+    # /internal/route on one of these to pick a data-plane replica.
     router_servers: List[ServerConfig] = field(default_factory=list)
 
     # The fallback server for this backend.
@@ -726,9 +723,8 @@ class HAProxyApi(ProxyApi):
         for backend in backends:
             if not backend.router_servers:
                 continue
-            router = router or min(
-                backend.router_servers, key=lambda s: (s.port, s.host)
-            )
+            if router is None:
+                router = min(backend.router_servers, key=lambda s: (s.port, s.host))
             for server in backend.servers:
                 if server.replica_id is None:
                     continue
