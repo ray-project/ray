@@ -5,7 +5,7 @@ across a range(N) -> map_batches(1000 actors) -> consume pipeline.
 """
 
 import argparse
-
+import time
 import ray
 from benchmark import (
     Benchmark,
@@ -69,8 +69,18 @@ def main(args: argparse.Namespace):
                     num_cpus=1,
                 )
 
-            for _ in ds.iter_internal_ref_bundles():
-                pass
+            i = 0
+            num_rows = 0
+            num_blocks = 0
+            num_bytes = 0
+            t0 = time.perf_counter()
+            for bundle in ds.iter_internal_ref_bundles():
+                num_rows += bundle.num_rows() or 0
+                num_bytes += bundle.size_bytes() or 0
+                num_blocks += len(bundle)
+                if time.perf_counter - t0 >= 600:
+                    print(f"{num_workers=} timed out")
+                    break
             metrics = collect_dataset_stats(ds)
             metrics["runtime_env_setup"] = RuntimeEnvSetupTracker.collect()
             metrics["num_blocks"] = num_blocks

@@ -78,7 +78,7 @@
       worker_type: [actors]
 
   run:
-    timeout: 3600
+    timeout: 7200
     script: python worker_scaling_benchmark.py --num-workers {{num_workers}} --worker-type {{worker_type}}
 
 - name: read_tfrecords
