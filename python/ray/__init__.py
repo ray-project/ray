@@ -55,7 +55,9 @@ def _configure_system():
     try:
         import psutil  # noqa: F401
     except ImportError as e:
-        _psutil_cext_names = ("_psutil_osx", "_psutil_linux", "_psutil_windows")
+        _psutil_cext_names = (
+                "_psutil_osx", "_psutil_linux", "_psutil_windows", "_psutil_posix"
+            )
         if os.path.exists(thirdparty_files) and any(
             name in str(e) for name in _psutil_cext_names
         ):
