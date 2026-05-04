@@ -203,6 +203,7 @@ py_test_module_list(
 # Large tests.
 py_test_module_list(
     size = "enormous",
+    data = glob(["test_config_files/**/*"]),
     files = [
         "test_autoscaling_policy.py",
         "test_deploy.py",
@@ -319,6 +320,9 @@ py_test_module_list(
         "RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S": "5",
         "RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S": "1",
         "RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS": "10",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S": "5",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S": "1",
+        "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS": "5",
         "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
     },
     files = [
@@ -750,11 +754,11 @@ py_test_module_list(
 
 py_test_module_list(
     size = "large",
+    timeout = "eternal",
     files = [
-        "test_direct_ingress_standalone.py",
+        "test_per_request_headers.py",
     ],
     tags = [
-        "direct_ingress",
         "exclusive",
         "team:serve",
     ],
@@ -786,13 +790,13 @@ py_test_module_list(
 
 py_test_module_list(
     size = "large",
+    timeout = "eternal",
     env = {"RAY_SERVE_USE_GRPC_BY_DEFAULT": "1"},
     files = [
-        "test_direct_ingress_standalone.py",
+        "test_per_request_headers.py",
     ],
     name_suffix = "_with_grpc",
     tags = [
-        "direct_ingress",
         "exclusive",
         "team:serve",
     ],
@@ -804,12 +808,30 @@ py_test_module_list(
 )
 
 # HAProxy tests (require RAY_SERVE_ENABLE_HA_PROXY=1).
-py_test_module_list(
+# Two variants:
+#   - system: uses the system-installed HAProxy binary (/usr/local/sbin/haproxy)
+#   - pip_haproxy: uses the ray-haproxy PyPI package (vendored binary).
+#     Requires ray-haproxy to be installed in CI (see ci/docker/serve.build.Dockerfile).
+py_test_module_list_with_env_variants(
     size = "large",
-    env = {
-        "RAY_SERVE_ENABLE_HA_PROXY": "1",
-        "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
-        "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
+    env_variants = {
+        "system": {
+            "env": {
+                "RAY_SERVE_ENABLE_HA_PROXY": "1",
+                "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+                "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
+            },
+            "name_suffix": "",
+        },
+        "pip_haproxy": {
+            "env": {
+                "RAY_SERVE_ENABLE_HA_PROXY": "1",
+                "RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY": "1",
+                "RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S": "0.01",
+                "RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S": "0.1",
+            },
+            "name_suffix": "_pip_haproxy",
+        },
     },
     files = [
         "test_haproxy.py",
