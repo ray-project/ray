@@ -1,7 +1,7 @@
-"""Router benchmark: CapacityQueueRouter vs PowerOfTwoChoices.
+"""Router benchmark for Serve request routers.
 
-Compares routers across small (8), medium (32), large (128),
-and xlarge (512) replica scales.
+Compares PowerOfTwoChoices, CapacityQueueRouter, and ConsistentHashRouter
+across small (8), medium (32), large (128), and xlarge (512) replica scales.
 
 Measures per configuration:
 - p50 throughput (req/s)
@@ -64,9 +64,12 @@ MAX_USERS_PER_TASK = 48  # max concurrent users per load-gen task
 # ---------------------------------------------------------------------------
 NUM_REPLICAS = [512, 128, 32, 8]
 
-ROUTER_TYPES = ["pow2", "capacity_queue"]
+ROUTER_TYPES = ["pow2", "capacity_queue", "consistent_hash"]
 
 APP_NAME = "router-benchmark"
+
+DEFAULT_CONSISTENT_HASH_VIRTUAL_NODES = 100
+DEFAULT_CONSISTENT_HASH_FALLBACK_REPLICAS = 2
 
 
 # ===================================================================
@@ -79,6 +82,7 @@ APP_NAME = "router-benchmark"
     graceful_shutdown_timeout_s=0.1,
     graceful_shutdown_wait_loop_s=0.1,
     ray_actor_options={"num_cpus": 1},
+    logging_config={"enable_access_log": False},
 )
 class BenchmarkChild:
     """Simulates work with variable latency drawn from an exponential distribution."""
@@ -106,6 +110,7 @@ class BenchmarkChild:
     graceful_shutdown_timeout_s=0.1,
     graceful_shutdown_wait_loop_s=0.1,
     ray_actor_options={"num_cpus": 1},
+    logging_config={"enable_access_log": False},
 )
 class BenchmarkParent:
     """Routes requests to the child deployment and returns child replica id."""
@@ -128,6 +133,25 @@ class WorkloadConfig:
     simulated_latency_cap_s: float
     max_ongoing_requests_child: int
     max_ongoing_requests_parent: int
+    num_cpus_child: float = 1.0
+    num_cpus_parent: float = 1.0
+    consistent_hash_virtual_nodes: int = DEFAULT_CONSISTENT_HASH_VIRTUAL_NODES
+    consistent_hash_fallback_replicas: int = DEFAULT_CONSISTENT_HASH_FALLBACK_REPLICAS
+
+
+def _consistent_hash_router_config(wl: WorkloadConfig) -> RequestRouterConfig:
+    return RequestRouterConfig(
+        request_router_class=(
+            "ray.serve.experimental.consistent_hash_router:ConsistentHashRouter"
+        ),
+        request_router_kwargs={
+            "virtual_nodes": wl.consistent_hash_virtual_nodes,
+            "fallback_replicas": wl.consistent_hash_fallback_replicas,
+        },
+        initial_backoff_s=0.01,
+        backoff_multiplier=2.0,
+        max_backoff_s=0.5,
+    )
 
 
 def _build_pow2_app(num_replicas: int, wl: WorkloadConfig):
@@ -135,10 +159,12 @@ def _build_pow2_app(num_replicas: int, wl: WorkloadConfig):
     child = BenchmarkChild.options(
         num_replicas=num_replicas,
         max_ongoing_requests=wl.max_ongoing_requests_child,
+        ray_actor_options={"num_cpus": wl.num_cpus_child},
     ).bind(wl.simulated_latency_mean_s, wl.simulated_latency_cap_s)
     return BenchmarkParent.options(
         num_replicas=num_replicas,
         max_ongoing_requests=wl.max_ongoing_requests_parent,
+        ray_actor_options={"num_cpus": wl.num_cpus_parent},
     ).bind(child)
 
 
@@ -173,14 +199,33 @@ def _build_capacity_queue_app(num_replicas: int, wl: WorkloadConfig):
     child = BenchmarkChild.options(
         num_replicas=num_replicas,
         max_ongoing_requests=wl.max_ongoing_requests_child,
+        ray_actor_options={"num_cpus": wl.num_cpus_child},
         request_router_config=router_config,
         deployment_actors=_capacity_queue_actors(),
     ).bind(wl.simulated_latency_mean_s, wl.simulated_latency_cap_s)
     return BenchmarkParent.options(
         num_replicas=num_replicas,
         max_ongoing_requests=wl.max_ongoing_requests_parent,
+        ray_actor_options={"num_cpus": wl.num_cpus_parent},
         request_router_config=router_config,
         deployment_actors=_capacity_queue_actors(),
+    ).bind(child)
+
+
+def _build_consistent_hash_app(num_replicas: int, wl: WorkloadConfig):
+    """Build app with ConsistentHashRouter on both parent and child."""
+    router_config = _consistent_hash_router_config(wl)
+    child = BenchmarkChild.options(
+        num_replicas=num_replicas,
+        max_ongoing_requests=wl.max_ongoing_requests_child,
+        ray_actor_options={"num_cpus": wl.num_cpus_child},
+        request_router_config=router_config,
+    ).bind(wl.simulated_latency_mean_s, wl.simulated_latency_cap_s)
+    return BenchmarkParent.options(
+        num_replicas=num_replicas,
+        max_ongoing_requests=wl.max_ongoing_requests_parent,
+        ray_actor_options={"num_cpus": wl.num_cpus_parent},
+        request_router_config=router_config,
     ).bind(child)
 
 
@@ -190,6 +235,8 @@ def _build_app(router_type: str, num_replicas: int, wl: WorkloadConfig):
         return _build_pow2_app(num_replicas, wl)
     elif router_type == "capacity_queue":
         return _build_capacity_queue_app(num_replicas, wl)
+    elif router_type == "consistent_hash":
+        return _build_consistent_hash_app(num_replicas, wl)
     raise ValueError(f"Unknown router type: {router_type}")
 
 
@@ -263,6 +310,7 @@ async def _run_load_test(
     num_concurrent: int,
     warmup_s: float,
     duration_s: float,
+    num_cpus_loadgen: float,
 ) -> List[RequestResult]:
     """Run a closed-loop load test and return per-request results.
 
@@ -282,7 +330,10 @@ async def _run_load_test(
         f"{warmup_s}s warmup + {duration_s}s measurement"
     )
 
-    tasks = [LoadGenTask.remote(APP_NAME) for _ in range(num_tasks)]
+    tasks = [
+        LoadGenTask.options(num_cpus=num_cpus_loadgen).remote(APP_NAME)
+        for _ in range(num_tasks)
+    ]
     futures = [
         t.run.remote(n, warmup_s, duration_s) for t, n in zip(tasks, users_per_task)
     ]
@@ -420,6 +471,7 @@ async def run_router_benchmark(
     duration_s: float = DURATION_S,
     num_replicas_list: Optional[List[int]] = None,
     router_types: Optional[List[str]] = None,
+    num_cpus_loadgen: float = 1.0,
 ) -> Dict:
     """Run the router benchmark and return results dict.
 
@@ -464,6 +516,7 @@ async def run_router_benchmark(
                     num_concurrent=num_concurrent,
                     warmup_s=scaled_warmup,
                     duration_s=duration_s,
+                    num_cpus_loadgen=num_cpus_loadgen,
                 )
 
                 successful = [r for r in results if r.success]
@@ -524,7 +577,19 @@ async def run_router_benchmark(
                 logger.info(f"Settling for {settle_s}s before next config...")
                 await asyncio.sleep(settle_s)
 
-    return {"perf_metrics": perf_metrics, "utilization_raw": utilization_raw}
+    return {
+        "perf_metrics": perf_metrics,
+        "utilization_raw": utilization_raw,
+        "metadata": {
+            "num_cpus_child": workload.num_cpus_child,
+            "num_cpus_parent": workload.num_cpus_parent,
+            "num_cpus_loadgen": num_cpus_loadgen,
+            "consistent_hash_virtual_nodes": workload.consistent_hash_virtual_nodes,
+            "consistent_hash_fallback_replicas": (
+                workload.consistent_hash_fallback_replicas
+            ),
+        },
+    }
 
 
 # ===================================================================
@@ -534,6 +599,13 @@ async def run_router_benchmark(
 
 @click.command()
 @click.option("--output-path", "-o", type=str, default=None)
+@click.option(
+    "--ray-address",
+    type=str,
+    default="auto",
+    show_default=True,
+    help="Ray cluster address to connect to before starting Serve.",
+)
 @click.option(
     "--num-replicas",
     "-n",
@@ -546,7 +618,7 @@ async def run_router_benchmark(
     "--router-type",
     "-r",
     multiple=True,
-    type=click.Choice(["pow2", "capacity_queue"]),
+    type=click.Choice(["pow2", "capacity_queue", "consistent_hash"]),
     required=True,
     help="Routers to benchmark. Repeat flag for multiple.",
 )
@@ -574,20 +646,69 @@ async def run_router_benchmark(
     required=True,
     help="max_ongoing_requests for the parent deployment.",
 )
+@click.option(
+    "--num-cpus-child",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Ray CPU resources reserved by each child replica actor.",
+)
+@click.option(
+    "--num-cpus-parent",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Ray CPU resources reserved by each parent replica actor.",
+)
+@click.option(
+    "--num-cpus-loadgen",
+    type=float,
+    default=1.0,
+    show_default=True,
+    help="Ray CPU resources reserved by each load-generator actor.",
+)
+@click.option(
+    "--consistent-hash-virtual-nodes",
+    type=int,
+    default=DEFAULT_CONSISTENT_HASH_VIRTUAL_NODES,
+    show_default=True,
+    help="Virtual nodes per replica for ConsistentHashRouter.",
+)
+@click.option(
+    "--consistent-hash-fallback-replicas",
+    type=int,
+    default=DEFAULT_CONSISTENT_HASH_FALLBACK_REPLICAS,
+    show_default=True,
+    help="Fallback replicas walked by ConsistentHashRouter after the primary.",
+)
 def main(
     output_path: Optional[str],
+    ray_address: str,
     num_replicas: List[int],
     router_type: List[str],
     simulated_latency_mean_s: float,
     simulated_latency_cap_s: float,
     max_ongoing_requests_child: int,
     max_ongoing_requests_parent: int,
+    num_cpus_child: float,
+    num_cpus_parent: float,
+    num_cpus_loadgen: float,
+    consistent_hash_virtual_nodes: int,
+    consistent_hash_fallback_replicas: int,
 ):
+    if not ray.is_initialized():
+        logger.info(f"Connecting to Ray cluster at address={ray_address!r}")
+        ray.init(address=ray_address)
+
     workload = WorkloadConfig(
         simulated_latency_mean_s=simulated_latency_mean_s,
         simulated_latency_cap_s=simulated_latency_cap_s,
         max_ongoing_requests_child=max_ongoing_requests_child,
         max_ongoing_requests_parent=max_ongoing_requests_parent,
+        num_cpus_child=num_cpus_child,
+        num_cpus_parent=num_cpus_parent,
+        consistent_hash_virtual_nodes=consistent_hash_virtual_nodes,
+        consistent_hash_fallback_replicas=consistent_hash_fallback_replicas,
     )
     logger.info(
         f"Running router benchmark: replicas={list(num_replicas)} "
@@ -601,6 +722,7 @@ def main(
             duration_s=DURATION_S,
             num_replicas_list=list(num_replicas),
             router_types=list(router_type),
+            num_cpus_loadgen=num_cpus_loadgen,
         )
     )
 

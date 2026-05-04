@@ -2,10 +2,9 @@
 """
 Plot router benchmark results from router_microbenchmark.py.
 
-Produces three side-by-side plots (all scales on one figure per metric):
+Produces multi-scale plots:
   1. Bar plot: p50 throughput by replica count, grouped by router
   2. Bar plot: p50 latency by replica count, grouped by router
-  3. Box plot: per-replica utilization distribution by replica count and router
 
 Example:
     python plot_router_benchmark.py results.json -o /tmp/plots
@@ -25,10 +24,18 @@ import numpy as np
 import pandas as pd
 
 
-ALGO_NAMES = {"pow2": "Power of Two", "capacity_queue": "CapacityQueue"}
-ALGO_COLORS = {"Power of Two": "lightsteelblue", "CapacityQueue": "plum"}
-# Ordered: pow2 first (left), capacity_queue second (right)
-ROUTER_ORDER = ["Power of Two", "CapacityQueue"]
+ALGO_NAMES = {
+    "pow2": "Power of Two",
+    "capacity_queue": "CapacityQueue",
+    "consistent_hash": "Consistent Hash",
+}
+ALGO_COLORS = {
+    "Power of Two": "lightsteelblue",
+    "CapacityQueue": "plum",
+    "Consistent Hash": "plum",
+}
+# Ordered: pow2 first (left), alternatives to the right.
+ROUTER_ORDER = ["Power of Two", "Consistent Hash", "CapacityQueue"]
 
 
 def load_results(path: str) -> dict:
@@ -102,35 +109,34 @@ def build_util_df(json_paths: list) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
-def _get_improvement(df, kind, replicas_list):
-    """Get CQ improvement over pow2 for each scale. Returns list of (pct_str, higher_is_better)."""
-    improvements = []
+def _get_delta_vs_pow2(df, kind, replicas_list, compare_router):
+    """Return compare_router deltas vs Power of Two for each scale."""
+    deltas = []
     for r in replicas_list:
         pow2_row = df[
             (df["replicas"] == r)
             & (df["router"] == "Power of Two")
             & (df["kind"] == kind)
         ]
-        cq_row = df[
+        compare_row = df[
             (df["replicas"] == r)
-            & (df["router"] == "CapacityQueue")
+            & (df["router"] == compare_router)
             & (df["kind"] == kind)
         ]
-        if pow2_row.empty or cq_row.empty:
-            improvements.append(None)
+        if pow2_row.empty or compare_row.empty:
+            deltas.append(None)
             continue
         v_pow2 = pow2_row["value"].values[0]
-        v_cq = cq_row["value"].values[0]
+        v_compare = compare_row["value"].values[0]
         if v_pow2 == 0:
-            improvements.append(None)
+            deltas.append(None)
             continue
-        pct = (v_cq - v_pow2) / v_pow2 * 100
-        improvements.append(pct)
-    return improvements
+        deltas.append((v_compare - v_pow2) / v_pow2 * 100)
+    return deltas
 
 
 def _bar_plot(ax, df, kind, ylabel, title, legend_loc="best"):
-    """Grouped bar: x=replicas, hue=router (pow2 left, CQ right)."""
+    """Grouped bar: x=replicas, hue=router."""
     subset = df[df["kind"] == kind].copy()
     if subset.empty:
         return
@@ -138,7 +144,7 @@ def _bar_plot(ax, df, kind, ylabel, title, legend_loc="best"):
     replicas_list = sorted(subset["replicas"].unique())
     routers = [r for r in ROUTER_ORDER if r in subset["router"].values]
     x = np.arange(len(replicas_list))
-    width = 0.6 / len(routers)
+    width = 0.42 / len(routers)
 
     bar_positions = {}
     for i, router in enumerate(routers):
@@ -179,33 +185,31 @@ def _bar_plot(ax, df, kind, ylabel, title, legend_loc="best"):
     legend.get_frame().set_alpha(1.0)
     legend.set_zorder(10)
 
-    # Annotate CQ improvement over pow2, stacked above the CQ value label
-    # (done after setting axes so we can compute offset in data coords)
-    improvements = _get_improvement(df, kind, replicas_list)
-    cq_positions, cq_vals = bar_positions.get(
-        "CapacityQueue", (x, [0] * len(replicas_list))
-    )
+    # Annotate each non-pow2 router's delta against pow2.
     ymax = max(max(v for v in vals) for _, vals in bar_positions.values())
     label_offset = ymax * 0.05  # gap between value label and improvement %
-    for j, pct in enumerate(improvements):
-        if pct is None:
-            continue
-        sign = "+" if pct >= 0 else ""
-        is_good = (kind == "p50_throughput_rps" and pct > 0) or (
-            kind == "p50_latency_ms" and pct < 0
+    for compare_router in [r for r in routers if r != "Power of Two"]:
+        deltas = _get_delta_vs_pow2(df, kind, replicas_list, compare_router)
+        positions, vals = bar_positions.get(
+            compare_router, (x, [0] * len(replicas_list))
         )
-        # Nudge latency annotations slightly right to avoid overlap with value
-        x_nudge = 0.03 if kind == "p50_latency_ms" else 0
-        ax.text(
-            cq_positions[j] + x_nudge,
-            cq_vals[j] + label_offset,
-            f"{sign}{pct:.1f}%",
-            ha="center",
-            va="bottom",
-            fontsize=7,
-            fontweight="bold",
-            color="green" if is_good else "red",
-        )
+        for j, pct in enumerate(deltas):
+            if pct is None:
+                continue
+            sign = "+" if pct >= 0 else ""
+            is_good = (kind == "p50_throughput_rps" and pct > 0) or (
+                kind == "p50_latency_ms" and pct < 0
+            )
+            ax.text(
+                positions[j],
+                vals[j] + label_offset,
+                f"{sign}{pct:.1f}%",
+                ha="center",
+                va="bottom",
+                fontsize=7,
+                fontweight="bold",
+                color="green" if is_good else "red",
+            )
 
     ax.set_ylim(top=ymax * 1.2)
 
@@ -317,34 +321,38 @@ def _util_fallback_plot(ax, metric_df):
     ax.set_ylim(0.7, 1.05)
 
 
-def plot_results(metric_df, util_df, output_dir, suffix=""):
-    """Produce one 3-panel figure with all scales side by side."""
+def plot_metric(metric_df, output_dir, kind, ylabel, title, filename, suffix=""):
+    """Produce one multi-scale figure for a single metric."""
     plt.style.use("seaborn-v0_8-whitegrid")
-    fig, axes = plt.subplots(1, 3, figsize=(18, 5))
-
-    _bar_plot(
-        axes[0], metric_df, "p50_throughput_rps", "Throughput (req/s)", "P50 Throughput"
-    )
-    _bar_plot(
-        axes[1],
-        metric_df,
-        "p50_latency_ms",
-        "Latency (ms)",
-        "P50 Latency",
-        legend_loc="lower left",
-    )
-
-    if not util_df.empty:
-        _util_box_plot(axes[2], util_df)
-    else:
-        _util_fallback_plot(axes[2], metric_df)
-
+    fig, ax = plt.subplots(figsize=(10, 5))
+    _bar_plot(ax, metric_df, kind, ylabel, title)
     plt.tight_layout()
-    name = f"router_benchmark{suffix}.png"
-    path = output_dir / name
+    path = output_dir / f"{filename}{suffix}.png"
     fig.savefig(path, dpi=150, bbox_inches="tight")
     plt.close(fig)
     print(f"Saved {path}")
+
+
+def plot_results(metric_df, output_dir, suffix=""):
+    """Produce throughput and latency figures with all scales on each plot."""
+    plot_metric(
+        metric_df,
+        output_dir,
+        "p50_throughput_rps",
+        "Throughput (req/s)",
+        "P50 Throughput",
+        "p50_throughput",
+        suffix=suffix,
+    )
+    plot_metric(
+        metric_df,
+        output_dir,
+        "p50_latency_ms",
+        "Latency (ms)",
+        "P50 Latency",
+        "p50_latency",
+        suffix=suffix,
+    )
 
 
 def _print_delta_table(df, baseline, compare):
@@ -397,18 +405,16 @@ def main():
     output_dir.mkdir(parents=True, exist_ok=True)
 
     metric_df = build_metric_df(args.json_files)
-    util_df = build_util_df(args.json_files)
     if metric_df.empty:
         raise ValueError("No valid router metrics found.")
 
     if len(args.json_files) == 1:
-        plot_results(metric_df, util_df, output_dir)
+        plot_results(metric_df, output_dir)
     else:
         files = sorted(metric_df["file"].unique())
         for f in files:
             plot_results(
                 metric_df[metric_df["file"] == f],
-                util_df[util_df["file"] == f] if not util_df.empty else util_df,
                 output_dir,
                 suffix=f"_{f}",
             )

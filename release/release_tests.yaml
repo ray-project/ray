@@ -1664,6 +1664,7 @@
           --max-ongoing-requests-child 5
           --max-ongoing-requests-parent 5
           --router-type pow2
+          --router-type consistent_hash
     # Supply-constrained workload
     - __suffix__: aws.supply_constraint
       run:
