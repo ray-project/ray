@@ -49,8 +49,8 @@ def test_random_shuffle_operator(ray_start_regular_shared_2_cpus):
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = RandomShuffle(
-        read_op,
         seed_config=RandomSeedConfig(seed=0),
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(plan)
@@ -84,7 +84,7 @@ def test_repartition_operator(ray_start_regular_shared_2_cpus, shuffle):
 
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
-    op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
+    op = Repartition(num_outputs=5, shuffle=shuffle, input_dependencies=[read_op])
     plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(plan)
     physical_op = physical_plan.dag
@@ -166,8 +166,8 @@ def test_write_operator(ray_start_regular_shared_2_cpus, tmp_path):
     datasink = ParquetDatasink(tmp_path)
     read_op = get_parquet_read_logical_op()
     op = Write(
-        read_op,
         datasink,
+        input_dependencies=[read_op],
         compute=TaskPoolStrategy(concurrency),
     )
     plan = LogicalPlan(op, ctx)
@@ -192,8 +192,8 @@ def test_sort_operator(
     planner = create_planner()
     read_op = get_parquet_read_logical_op()
     op = Sort(
-        read_op,
         sort_key=SortKey("col1"),
+        input_dependencies=[read_op],
     )
     plan = LogicalPlan(op, ctx)
     physical_plan, _ = planner.plan(plan)
@@ -268,9 +268,11 @@ def test_inherit_batch_format_rule():
     ctx = DataContext.get_current()
 
     operator1 = get_parquet_read_logical_op()
-    operator2 = MapBatches(operator1, fn=lambda g: g, batch_format="pandas")
+    operator2 = MapBatches(
+        fn=lambda g: g, batch_format="pandas", input_dependencies=[operator1]
+    )
     sort_key = SortKey("number", descending=True)
-    operator3 = Sort(operator2, sort_key)
+    operator3 = Sort(sort_key, input_dependencies=[operator2])
     original_plan = LogicalPlan(dag=operator3, context=ctx)
 
     rule = InheritBatchFormatRule()
