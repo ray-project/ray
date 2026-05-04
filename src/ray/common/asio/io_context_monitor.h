@@ -37,9 +37,10 @@ class IOContextMonitor {
  public:
   /// @param component_name Human-readable name for logging (e.g. "gcs", "raylet").
   /// @param io_contexts Named io_contexts to monitor. Must outlive the monitor.
-  /// @param lag_gauge Gauge metric for recording probe lag (ms). Tagged by "Name".
-  /// @param deadline_exceeded_counter Counter incremented each time a probe exceeds
-  ///   the deadline. Tagged by "Name".
+  /// @param latency_gauge Gauge metric for the most recent probe latency (ms),
+  ///   tagged by "Name".
+  /// @param health_gauge Gauge metric for the current health status (1 if
+  ///   healthy, 0 otherwise), tagged by "Name".
   /// @param healthy_deadline If a probe has been outstanding longer than this, the
   ///   io_context is considered unhealthy.
   /// @param clock Clock to use for time. Defaults to a real clock. Inject a
@@ -47,8 +48,8 @@ class IOContextMonitor {
   IOContextMonitor(
       std::string component_name,
       std::vector<std::pair<std::string, instrumented_io_context *>> io_contexts,
-      observability::MetricInterface &lag_gauge,
-      observability::MetricInterface &deadline_exceeded_counter,
+      observability::MetricInterface &latency_gauge,
+      observability::MetricInterface &health_gauge,
       absl::Duration healthy_deadline,
       std::shared_ptr<ClockInterface> clock = std::make_shared<Clock>());
 
@@ -77,7 +78,7 @@ class IOContextMonitor {
     // Only accessed from the monitor (via Tick/ProcessProbe).
     absl::Time probe_post_time = absl::InfinitePast();
     bool healthy = true;
-    bool deadline_exceeded_recorded = false;
+    bool deadline_warning_logged = false;
   };
 
   bool ProcessProbe(const std::shared_ptr<ProbeState> &probe);
@@ -87,8 +88,8 @@ class IOContextMonitor {
   const std::string component_name_;
   const absl::Duration healthy_deadline_;
   const std::shared_ptr<ClockInterface> clock_;
-  observability::MetricInterface &lag_gauge_;
-  observability::MetricInterface &deadline_exceeded_counter_;
+  observability::MetricInterface &latency_gauge_;
+  observability::MetricInterface &health_gauge_;
   std::vector<std::shared_ptr<ProbeState>> probe_states_;
 };
 

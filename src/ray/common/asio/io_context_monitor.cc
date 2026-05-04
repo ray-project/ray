@@ -27,15 +27,15 @@ namespace ray {
 IOContextMonitor::IOContextMonitor(
     std::string component_name,
     std::vector<std::pair<std::string, instrumented_io_context *>> io_contexts,
-    observability::MetricInterface &lag_gauge,
-    observability::MetricInterface &deadline_exceeded_counter,
+    observability::MetricInterface &latency_gauge,
+    observability::MetricInterface &health_gauge,
     absl::Duration healthy_deadline,
     std::shared_ptr<ClockInterface> clock)
     : component_name_(std::move(component_name)),
       healthy_deadline_(healthy_deadline),
       clock_(std::move(clock)),
-      lag_gauge_(lag_gauge),
-      deadline_exceeded_counter_(deadline_exceeded_counter) {
+      latency_gauge_(latency_gauge),
+      health_gauge_(health_gauge) {
   for (auto &[name, io_context] : io_contexts) {
     probe_states_.push_back(
         std::make_shared<ProbeState>(std::move(name), *io_context, clock_));
@@ -61,23 +61,24 @@ bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
   absl::Duration elapsed =
       (probe->last_probe_completed ? probe->probe_complete_time : now) -
       probe->probe_post_time;
+  bool has_active_probe = probe->probe_post_time != absl::InfinitePast();
 
   // Check if the probe has exceeded the deadline, whether or not it has finished.
-  if (probe->probe_post_time != absl::InfinitePast() && elapsed >= healthy_deadline_ &&
-      !probe->deadline_exceeded_recorded) {
+  if (has_active_probe && elapsed >= healthy_deadline_ &&
+      !probe->deadline_warning_logged) {
     RAY_LOG(WARNING) << "[" << component_name_ << "] io_context '" << probe->name
                      << "' exceeded probe deadline ("
                      << absl::ToInt64Milliseconds(elapsed) << "ms)";
-    deadline_exceeded_counter_.Record(1, {{"Name", probe->name}});
     probe->healthy = false;
-    probe->deadline_exceeded_recorded = true;
+    probe->deadline_warning_logged = true;
   }
 
   // A new probe will only be started once the existing one completes.
   if (probe->last_probe_completed) {
-    // Record lag and health status from the completed probe, then post a new one.
-    if (probe->probe_post_time != absl::InfinitePast()) {
-      lag_gauge_.Record(absl::ToDoubleMilliseconds(elapsed), {{"Name", probe->name}});
+    // Record latency and health status from the completed probe, then post a new one.
+    if (has_active_probe) {
+      latency_gauge_.Record(absl::ToDoubleMilliseconds(elapsed),
+                            {{"Name", probe->name}});
 
       // Only mark healthy if the probe's actual lag was within the deadline.
       if (elapsed < healthy_deadline_) {
@@ -90,11 +91,12 @@ bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
     // outstanding.
     probe->probe_post_time = now;
     probe->last_probe_completed = false;
-    probe->deadline_exceeded_recorded = false;
+    probe->deadline_warning_logged = false;
     probe->io_context.post([probe]() { ExecuteProbeOnIOContext(probe); },
                            "io_context_monitor_probe");
   }
 
+  health_gauge_.Record(probe->healthy ? 1 : 0, {{"Name", probe->name}});
   return probe->healthy;
 }
 

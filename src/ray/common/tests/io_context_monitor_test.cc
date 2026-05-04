@@ -29,14 +29,14 @@ class IOContextMonitorTest : public ::testing::Test {
       absl::Duration deadline = absl::Seconds(5)) {
     return IOContextMonitor(std::move(name),
                             std::move(io_contexts),
-                            lag_gauge_,
-                            deadline_counter_,
+                            latency_gauge_,
+                            health_gauge_,
                             deadline,
                             clock_);
   }
 
-  double GetLag(const std::string &ctx_name) {
-    for (const auto &[tags, value] : lag_gauge_.GetTagToValue()) {
+  double GetLatency(const std::string &ctx_name) {
+    for (const auto &[tags, value] : latency_gauge_.GetTagToValue()) {
       auto it = tags.find("Name");
       if (it != tags.end() && it->second == ctx_name) {
         return value;
@@ -45,19 +45,19 @@ class IOContextMonitorTest : public ::testing::Test {
     return -1;
   }
 
-  double GetDeadlineExceeded(const std::string &ctx_name) {
-    for (const auto &[tags, value] : deadline_counter_.GetTagToValue()) {
+  double GetHealth(const std::string &ctx_name) {
+    for (const auto &[tags, value] : health_gauge_.GetTagToValue()) {
       auto it = tags.find("Name");
       if (it != tags.end() && it->second == ctx_name) {
         return value;
       }
     }
-    return 0;
+    return -1;
   }
 
   std::shared_ptr<FakeClock> clock_ = std::make_shared<FakeClock>();
-  observability::FakeGauge lag_gauge_;
-  observability::FakeCounter deadline_counter_;
+  observability::FakeGauge latency_gauge_;
+  observability::FakeGauge health_gauge_;
 };
 
 TEST_F(IOContextMonitorTest, ProbeSucceeds) {
@@ -67,7 +67,7 @@ TEST_F(IOContextMonitorTest, ProbeSucceeds) {
   monitor.Tick();
   ctx.poll();
   EXPECT_TRUE(monitor.Tick());
-  EXPECT_GE(GetLag("ctx"), 0);
+  EXPECT_GE(GetLatency("ctx"), 0);
 }
 
 TEST_F(IOContextMonitorTest, DetectsStuckIOContext) {
@@ -75,14 +75,15 @@ TEST_F(IOContextMonitorTest, DetectsStuckIOContext) {
   auto monitor = MakeMonitor("test", {{"stuck", &stuck_ctx}}, absl::Milliseconds(100));
 
   EXPECT_TRUE(monitor.Tick());
+  EXPECT_EQ(GetHealth("stuck"), 1);
   clock_->AdvanceTime(absl::Milliseconds(200));
   EXPECT_FALSE(monitor.Tick());
-  EXPECT_EQ(GetDeadlineExceeded("stuck"), 1);
+  EXPECT_EQ(GetHealth("stuck"), 0);
 
-  // Additional ticks should not increment the counter again (already unhealthy).
+  // Additional ticks should keep it unhealthy.
   clock_->AdvanceTime(absl::Milliseconds(200));
   monitor.Tick();
-  EXPECT_EQ(GetDeadlineExceeded("stuck"), 1);
+  EXPECT_EQ(GetHealth("stuck"), 0);
 }
 
 TEST_F(IOContextMonitorTest, HealthyWithinDeadline) {
@@ -99,14 +100,14 @@ TEST_F(IOContextMonitorTest, LagNotRecordedWhileOutstanding) {
   auto monitor = MakeMonitor("test", {{"ctx", &ctx}});
 
   monitor.Tick();
-  EXPECT_EQ(GetLag("ctx"), -1);
+  EXPECT_EQ(GetLatency("ctx"), -1);
 
   monitor.Tick();
-  EXPECT_EQ(GetLag("ctx"), -1);
+  EXPECT_EQ(GetLatency("ctx"), -1);
 
   ctx.poll();
   monitor.Tick();
-  EXPECT_GE(GetLag("ctx"), 0);
+  EXPECT_GE(GetLatency("ctx"), 0);
 }
 
 TEST_F(IOContextMonitorTest, MultipleIOContexts) {
@@ -122,8 +123,9 @@ TEST_F(IOContextMonitorTest, MultipleIOContexts) {
   clock_->AdvanceTime(absl::Milliseconds(200));
 
   EXPECT_FALSE(monitor.Tick());
-  EXPECT_GE(GetLag("healthy"), 0);
-  EXPECT_EQ(GetDeadlineExceeded("stuck"), 1);
+  EXPECT_GE(GetLatency("healthy"), 0);
+  EXPECT_EQ(GetHealth("healthy"), 1);
+  EXPECT_EQ(GetHealth("stuck"), 0);
 
   // Unblock the stuck context.
   stuck_ctx.poll();
@@ -150,8 +152,8 @@ TEST_F(IOContextMonitorTest, CompletionPastDeadlineMarksUnhealthy) {
 
   // Tick 2 observes a completed probe whose lag (200ms) is past the deadline.
   EXPECT_FALSE(monitor.Tick());
-  EXPECT_EQ(GetDeadlineExceeded("ctx"), 1);
-  EXPECT_GE(GetLag("ctx"), 200);
+  EXPECT_EQ(GetHealth("ctx"), 0);
+  EXPECT_GE(GetLatency("ctx"), 200);
 }
 
 TEST_F(IOContextMonitorTest, LateCompletionDoesNotRestoreHealth) {
@@ -186,15 +188,15 @@ TEST_F(IOContextMonitorTest, DoesNotAccumulateProbesOnStuckContext) {
 
 TEST(IOContextMonitorThreadTest, CallbackAndShutdown) {
   InstrumentedIOContextWithThread ctx("test_ctx");
-  observability::FakeGauge lag_gauge;
-  observability::FakeCounter deadline_counter;
+  observability::FakeGauge latency_gauge;
+  observability::FakeGauge health_gauge;
 
   auto monitor = std::make_unique<IOContextMonitor>(
       "test",
       std::vector<std::pair<std::string, instrumented_io_context *>>{
           {"test_ctx", &ctx.GetIoService()}},
-      lag_gauge,
-      deadline_counter,
+      latency_gauge,
+      health_gauge,
       absl::Seconds(5));
 
   std::atomic<int> callback_count{0};
