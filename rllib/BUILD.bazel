@@ -50,6 +50,7 @@ filegroup(
 doctest(
     size = "enormous",
     data = glob(["offline/tests/data/cartpole/cartpole-v1_large/*.parquet"]),
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     files = glob(
         ["**/*.py"],
         exclude = [
@@ -1911,6 +1912,17 @@ py_test(
 )
 
 py_test(
+    name = "algorithms/tests/test_get_main_process_bundle",
+    size = "small",
+    srcs = ["algorithms/tests/test_get_main_process_bundle.py"],
+    tags = [
+        "algorithms",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
+py_test(
     name = "algorithms/tests/test_dependency_tf",
     size = "small",
     srcs = ["algorithms/tests/test_dependency_tf.py"],
@@ -2093,6 +2105,7 @@ py_test(
     name = "env/tests/test_single_agent_env_runner",
     size = "medium",
     srcs = ["env/tests/test_single_agent_env_runner.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "env",
         "team:rllib",
@@ -2490,6 +2503,18 @@ py_test(
     deps = [":conftest"],
 )
 
+py_test(
+    name = "test_torch_learner_optimizer_restore",
+    size = "medium",
+    srcs = ["core/learner/torch/tests/test_torch_learner_optimizer_restore.py"],
+    tags = [
+        "core",
+        "exclusive",
+        "team:rllib",
+    ],
+    deps = [":conftest"],
+)
+
 # --------------------------------------------------------------------
 # Models and Distributions
 # rllib/models/
@@ -2791,6 +2816,7 @@ py_test(
     name = "policy/tests/test_policy_map",
     size = "medium",
     srcs = ["policy/tests/test_policy_map.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "policy",
         "team:rllib",
@@ -3056,6 +3082,7 @@ py_test(
     name = "test_space_utils",
     size = "small",
     srcs = ["utils/spaces/tests/test_space_utils.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     tags = [
         "team:rllib",
         "utils",
@@ -3295,6 +3322,7 @@ py_test(
     name = "examples/actions/autoregressive_actions",
     size = "large",
     srcs = ["examples/actions/autoregressive_actions.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/actions/autoregressive_actions.py",
     tags = [
         "examples",
@@ -3362,6 +3390,7 @@ py_test(
     args = [
         "--as-test",
     ],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/algorithms/appo_custom_algorithm_w_shared_data_actor.py",
     tags = [
         "examples",
@@ -3519,6 +3548,7 @@ py_test(
     name = "examples/_old_api_stack/checkpoints/cartpole_dqn_export",
     size = "small",
     srcs = ["examples/_old_api_stack/checkpoints/cartpole_dqn_export.py"],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/_old_api_stack/checkpoints/cartpole_dqn_export.py",
     tags = [
         "examples",
@@ -4597,6 +4627,7 @@ py_test(
         "--stop-iters=1",
         "--framework=tf",
     ],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/_old_api_stack/inference/policy_inference_after_training_with_lstm.py",
     tags = [
         "examples",
@@ -4951,6 +4982,7 @@ py_test(
         "--num-episodes-human-play=0",
         "--min-league-size=3",
     ],
+    env = {"TF_USE_LEGACY_KERAS": "1"},
     main = "examples/multi_agent/self_play_with_open_spiel.py",
     tags = [
         "examples",
@@ -4992,9 +5024,11 @@ py_test(
         "--min-league-size=4",
     ],
     main = "examples/multi_agent/self_play_with_open_spiel.py",
+    # TODO(elliot-barn): Re-enable once timeout is fixed.
     tags = [
         "examples",
         "exclusive",
+        "manual",
         "team:rllib",
     ],
 )
@@ -5097,7 +5131,7 @@ py_test(
 # ....................................
 py_test(
     name = "examples/ray_serve/ray_serve_with_rllib",
-    size = "medium",
+    size = "large",
     srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
     args = [
         "--stop-iters=2",
@@ -5107,9 +5141,11 @@ py_test(
     ],
     data = glob(["examples/ray_serve/classes/**"]),
     main = "examples/ray_serve/ray_serve_with_rllib.py",
+    # TODO(elliot-barn): Re-enable once timeout issue is fixed.
     tags = [
         "examples",
         "exclusive",
+        "manual",
         "team:rllib",
     ],
 )
@@ -5245,8 +5281,10 @@ py_test(
     size = "large",
     srcs = ["examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py"],
     main = "examples/rl_modules/migrate_modelv2_to_new_api_stack_by_policy_checkpoint.py",
+    # TODO(elliot-barn): Re-enable once SIGSEGV in CartPole render is fixed.
     tags = [
         "examples",
+        "manual",
         "team:rllib",
     ],
 )

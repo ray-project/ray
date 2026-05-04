@@ -1,12 +1,16 @@
 import logging
 import math
-from typing import List, Optional
+from typing import TYPE_CHECKING, List, Optional
 
 import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 from pyarrow import compute as pc
 from pyarrow.fs import FileSystem
+from typing_extensions import override
+
+if TYPE_CHECKING:
+    from ray.data.datasource.partitioning import Partitioning
 
 from ray.data._internal.datasource_v2.readers.file_reader import (
     _ARROW_DEFAULT_BATCH_SIZE,
@@ -134,10 +138,11 @@ class ParquetFileReader(FileReader):
         predicate: Optional[pc.Expression] = None,
         limit: Optional[int] = None,
         filesystem: Optional[FileSystem] = None,
-        partitioning: Optional[pds.Partitioning] = None,
+        partitioning: "Optional[Partitioning]" = None,
         ignore_prefixes: Optional[List[str]] = None,
         target_block_size: Optional[int] = None,
         include_paths: bool = False,
+        schema: Optional[pa.Schema] = None,
     ):
         """Initialize the Parquet reader.
 
@@ -148,12 +153,16 @@ class ParquetFileReader(FileReader):
             predicate: PyArrow compute expression for filtering.
             limit: Maximum number of rows to read.
             filesystem: Filesystem for reading files.
-            partitioning: PyArrow partitioning for reading files.
+            partitioning: Ray ``Partitioning`` for synthesizing partition
+                columns from file paths.
             ignore_prefixes: Prefixes to ignore when reading files.
             target_block_size: Target in-memory size per batch in bytes.
                 Used for adaptive batch sizing when ``batch_size`` is not set.
             include_paths: If True, include the source file path in a
                 ``'path'`` column for each row.
+            schema: Caller-supplied unified schema forwarded to the base
+                :class:`FileReader` for per-fragment inference override
+                and partition-column type casting.
         """
         super().__init__(
             format=FileFormat.PARQUET,
@@ -165,6 +174,7 @@ class ParquetFileReader(FileReader):
             partitioning=partitioning,
             ignore_prefixes=ignore_prefixes,
             include_paths=include_paths,
+            schema=schema,
         )
         self._explicit_batch_size = batch_size
         self._target_block_size = target_block_size
@@ -172,6 +182,7 @@ class ParquetFileReader(FileReader):
             _UNSET  # pyrefly: ignore[bad-assignment]
         )
 
+    @override
     def _resolve_batch_size(self, dataset: pds.Dataset) -> int:
         """Determine batch size from explicit setting, metadata, or default.
 
@@ -206,9 +217,28 @@ class ParquetFileReader(FileReader):
         self._sampled_batch_size = batch_size
         return batch_size
 
+    @override
     def _on_batch_read(self, table: pa.Table) -> None:
         """Refine batch size estimate from actual in-memory data."""
         if self._target_block_size is None or table.nbytes == 0 or table.num_rows == 0:
             return
         row_size = table.nbytes / table.num_rows
         self._sampled_batch_size = max(math.ceil(self._target_block_size / row_size), 1)
+
+    @override
+    def _arrow_scanner_kwargs(self) -> dict:
+        # pre_buffer=True (pyarrow default) holds a whole fragment's worth of
+        # decoded column chunks resident before yielding batches, so
+        # pa.total_allocated_bytes() climbs monotonically across batches and
+        # peaks near full fragment size. Disabling pre_buffer with
+        # use_buffered_stream caps peak near a small multiple of one row group
+        # while keeping throughput equal to the default. batch_readahead=1
+        # (inherited from FileReader base kwargs) plus fragment_readahead=1
+        # is enough to keep decode pipelined. See apache/arrow#39808.
+        return {
+            "fragment_scan_options": pds.ParquetFragmentScanOptions(
+                pre_buffer=False,
+                use_buffered_stream=True,
+            ),
+            "fragment_readahead": 1,
+        }

@@ -4,7 +4,7 @@ steps:
     label: "wanda: docbuild-py{{matrix}}"
     wanda: ci/docker/doc.build.wanda.yaml
     depends_on:
-      - oss-ci-base_build-multipy
+      - oss-ci-base_build-multipy(python=3.10)
       - ray-core-build(*)
       - ray-dashboard-build
     matrix:
@@ -17,7 +17,7 @@ steps:
   - name: docgpubuild
     label: "wanda: docgpubuild-py3.10"
     wanda: ci/docker/docgpu.build.wanda.yaml
-    depends_on: oss-ci-base_gpu-multipy
+    depends_on: oss-ci-base_gpu-multipy(python=3.10)
     env:
       PYTHON: "3.10"
     tags: cibase
