@@ -147,9 +147,18 @@ class Mix(NAry):
             return None
 
         return estimate_num_mix_outputs(
-            [op.num_output_rows_total() for op in self.input_dependencies],
+            [op.estimated_num_outputs() for op in self.input_dependencies],
             self.weights,
             self.stopping_condition,
+        )
+
+    def _with_new_input_dependencies(
+        self, input_dependencies: List[LogicalOperator]
+    ) -> LogicalOperator:
+        return self.__class__(
+            *input_dependencies,
+            weights=self.weights,
+            stopping_condition=self.stopping_condition,
         )
 
 

@@ -125,7 +125,7 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
             return None
 
         return estimate_num_mix_outputs(
-            [op.num_output_rows_total() for op in self.input_dependencies],
+            [op.num_outputs_total() for op in self.input_dependencies],
             self._weights,
             self._stopping_condition,
         )
