@@ -4,7 +4,6 @@ SGLang fallback tests live in the llm_serve_sglang_e2e release test.
 """
 
 import importlib
-import importlib.util
 import sys
 
 import pytest
@@ -13,16 +12,12 @@ _OAI_MODELS_MOD = "ray.llm._internal.serve.core.configs.openai_api_models"
 
 
 class _VLLMImportBlocker:
-    def find_spec(self, fullname, path, target=None):
+    """Meta-path finder that makes every ``vllm.*`` import raise."""
+
+    def find_spec(self, fullname, path=None, target=None):
         if fullname == "vllm" or fullname.startswith("vllm."):
-            return importlib.util.spec_from_loader(fullname, self)
+            raise ImportError(f"Mocked: {fullname} is not installed")
         return None
-
-    def create_module(self, spec):
-        return None
-
-    def exec_module(self, module):
-        raise ImportError(f"Mocked: {module.__name__} is not installed")
 
 
 class TestVLLMBackend:
