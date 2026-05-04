@@ -560,7 +560,7 @@ class Dataset:
                         {"name": "Rory", "age": 14},
                         {"name": "Scout", "age": 9},
                     ])
-                    .map_batches(add_dog_years)
+                    .map_batches(add_dog_years, batch_size="auto")
                 )
                 ds.show()
 
@@ -584,7 +584,7 @@ class Dataset:
 
                 ds = (
                     ray.data.from_items([1])
-                    .map_batches(map_fn_with_large_output)
+                    .map_batches(map_fn_with_large_output, batch_size="auto")
                 )
 
             If you require stateful transformation,
@@ -628,13 +628,16 @@ class Dataset:
             fn: The function or generator to apply to a record batch, or a class type
                 that can be instantiated to create such a callable. Note ``fn`` must be
                 pickle-able.
-            batch_size: The desired number of rows in each batch, or ``None`` to use
-                entire blocks as batches (blocks may contain different numbers of rows).
+            batch_size: The desired number of rows in each batch. Use ``"auto"`` to
+                dynamically determine batch size based on the per-row size of the data. Use
+                ``None`` to pass entire blocks as batches (blocks may contain different
+                numbers of rows). Default ``batch_size`` is ``None``.
                 The actual size of the batch provided to ``fn`` may be smaller than
                 ``batch_size`` if ``batch_size`` doesn't evenly divide the block(s) sent
-                to a given map task. Default ``batch_size`` is ``None``. Only use
-                ``None`` if you intend to process entire blocks as batches. Otherwise,
-                prefer ``auto``, or an explicit batch size (e.g., ``1024``)
+                to a given map task. When ``num_gpus`` is set, ``batch_size`` must be an
+                explicit integer value, not ``"auto"`` or ``None``. Only use ``None``
+                if you intend to process entire blocks as batches. Otherwise,
+                prefer ``"auto"``, or an explicit batch size (e.g., ``1024``).
             compute: The compute strategy to use for the map operation.
 
                 * If ``compute`` is not specified for a function, will use ``ray.data.TaskPoolStrategy()`` to launch concurrent tasks based on the available resources and number of input blocks.
@@ -3152,7 +3155,7 @@ class Dataset:
             ...     df["variety"] = df["target"].map(classes)
             ...     return df
             >>> train_ds = ds.map_batches(
-            ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas")
+            ...     preprocessor, fn_kwargs={"classes": classes}, batch_format="pandas", batch_size="auto")
             >>> train_ds.sort("sepal length (cm)").take(1)  # Sort to make it deterministic
             [{'sepal length (cm)': 4.3, ..., 'variety': 'Setosa'}]
 
@@ -7485,7 +7488,14 @@ class Schema:
     @property
     def names(self) -> List[str]:
         """Lists the columns of this Dataset."""
-        return list(self.base_schema.names)
+        from ray.data._internal.arrow_block import _is_user_visible_column
+
+        # ``__bsp_stub`` is a physical placeholder the read path injects
+        # into zero-column blocks so ``pa.concat_tables`` doesn't collapse
+        # the row count. It's not part of the user-visible schema.
+        return [
+            name for name in self.base_schema.names if _is_user_visible_column(name)
+        ]
 
     @property
     def types(self) -> List[Union[type[object], "pyarrow.lib.DataType"]]:
@@ -7497,6 +7507,7 @@ class Schema:
         import pyarrow as pa
         from pandas.core.dtypes.dtypes import BaseMaskedDtype
 
+        from ray.data._internal.arrow_block import _is_user_visible_column
         from ray.data._internal.tensor_extensions.arrow import (
             create_arrow_fixed_shape_tensor_type,
         )
@@ -7515,10 +7526,16 @@ class Schema:
             return pa.from_numpy_dtype(dtype)
 
         if isinstance(self.base_schema, pa.lib.Schema):
-            return list(self.base_schema.types)
+            return [
+                t
+                for name, t in zip(self.base_schema.names, self.base_schema.types)
+                if _is_user_visible_column(name)
+            ]
 
         arrow_types = []
-        for dtype in self.base_schema.types:
+        for name, dtype in zip(self.base_schema.names, self.base_schema.types):
+            if not _is_user_visible_column(name):
+                continue
             if isinstance(dtype, TensorDtype):
                 pa_dtype = _convert_to_pa_type(dtype._dtype)
                 if any(dim is None for dim in dtype._shape):

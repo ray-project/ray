@@ -2872,7 +2872,7 @@ class DeploymentState:
         self._in_transition = True
 
         self._last_broadcasted_running_replica_infos: List[RunningReplicaInfo] = []
-        self._last_broadcasted_availability: bool = True
+        self._last_broadcasted_availability: Optional[bool] = None
         self._last_broadcasted_deployment_config = None
 
         self._docs_path: Optional[str] = None
@@ -2951,11 +2951,6 @@ class DeploymentState:
             self._replicas.add(ReplicaState.RECOVERING, new_deployment_replica)
             self._deployment_scheduler.on_replica_recovering(replica_id)
             logger.debug(f"RECOVERING {replica_id}.")
-
-        # TODO(jiaodong): this currently halts all traffic in the cluster
-        # briefly because we will broadcast a replica update with everything in
-        # RECOVERING. We should have a grace period where we recover the state
-        # of the replicas before doing this update.
 
     def _recover_deployment_actors(self):
         """Recover deployment-scoped actors that survived a controller restart.
@@ -3199,6 +3194,11 @@ class DeploymentState:
             not self._broadcasted_replicas_set_changed
             and not self._request_routing_info_updated
         ):
+            return
+
+        # Hold off on broadcasting while replicas are in RECOVERING state to avoid sending
+        # partial or empty routable set.
+        if self._replicas.count(states=[ReplicaState.RECOVERING]) > 0:
             return
 
         running_replica_infos = self.get_running_replica_infos()
@@ -3670,7 +3670,12 @@ class DeploymentState:
         # Maximum number of replicas that can be updating at any given time.
         # There should never be more than rollout_size old replicas stopping
         # or rollout_size new replicas starting.
-        rollout_size = max(int(0.2 * self._target_state.target_num_replicas), 1)
+        rolling_update_percentage = (
+            self._target_state.info.deployment_config.rolling_update_percentage
+        )
+        rollout_size = max(
+            int(rolling_update_percentage * self._target_state.target_num_replicas), 1
+        )
 
         # For gang deployments, ensure rollout_size is at least a multiple of
         # gang_size so that we always stop and start complete gangs.
@@ -5196,6 +5201,22 @@ class DeploymentStateManager:
             deployment_id, SpreadDeploymentSchedulingPolicy()
         )
 
+        # Evict any stale long-poll snapshots for this deployment_id from a
+        # prior deletion. The delete path tombstones DEPLOYMENT_TARGETS
+        # (is_available=False) so existing handles fail fast, but the
+        # tombstone persists in LongPollHost. A re-created DeploymentState's
+        # _last_broadcasted_* defaults match its own (True, []) state, so
+        # broadcast_running_replicas_if_changed short-circuits and never
+        # overwrites the tombstone — freshly-subscribed routers would then
+        # see is_available=False and reject every request.
+        self._long_poll_host.remove_keys(
+            [
+                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id),
+                (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id.name),
+                (LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id),
+            ]
+        )
+
         return DeploymentState(
             deployment_id,
             self._long_poll_host,
@@ -5354,24 +5375,19 @@ class DeploymentStateManager:
         for deployment_state in self._deployment_states.values():
             deployment_state.delete()
 
-        # TODO(jiaodong): This might not be 100% safe since we deleted
-        # everything without ensuring all shutdown goals are completed
-        # yet. Need to address in follow-up PRs.
-        self._kv_store.delete(CHECKPOINT_KEY)
-
         # TODO(jiaodong): Need to add some logic to prevent new replicas
         # from being created once shutdown signal is sent.
 
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all deployments are shutdown.
 
-        Check there are no deployment states and no checkpoints.
+        Check there are no deployment states.
         """
-        return (
-            self._shutting_down
-            and len(self._deployment_states) == 0
-            and self._kv_store.get(CHECKPOINT_KEY) is None
-        )
+        return self._shutting_down and len(self._deployment_states) == 0
+
+    def delete_checkpoint(self) -> None:
+        """Delete the deployment state checkpoint from KV store."""
+        self._kv_store.delete(CHECKPOINT_KEY)
 
     def save_checkpoint(self) -> None:
         """Write a checkpoint of all deployment states."""
@@ -5483,6 +5499,30 @@ class DeploymentStateManager:
             alive_replica_actor_ids |= ds.get_alive_replica_actor_ids()
 
         return alive_replica_actor_ids
+
+    def get_deployment_ids(self) -> List[DeploymentID]:
+        return list(self._deployment_states.keys())
+
+    def get_node_id_to_alive_replica_ids(self) -> Dict[str, Set[str]]:
+        node_id_to_alive_replica_ids = defaultdict(set)
+        for deployment_state in self._deployment_states.values():
+            # Keep replicas that are alive even if they are not yet fully running so
+            # ingress cleanup does not aggressively prune their allocated ports.
+            for replica in deployment_state._replicas.get():
+                if replica.actor_node_id is not None:
+                    node_id_to_alive_replica_ids[replica.actor_node_id].add(
+                        replica.replica_id.unique_id
+                    )
+
+        return dict(node_id_to_alive_replica_ids)
+
+    def _dump_replica_states_for_testing(
+        self, deployment_id: DeploymentID
+    ) -> ReplicaStateContainer:
+        return self._deployment_states[deployment_id]._replicas
+
+    def _stop_one_running_replica_for_testing(self, deployment_id: DeploymentID):
+        self._deployment_states[deployment_id]._stop_one_running_replica_for_testing()
 
     def deploy(
         self,
@@ -5667,6 +5707,23 @@ class DeploymentStateManager:
                 # Clean up the app_name entry if no deployments are left
                 if not self._app_deployment_mapping[deployment_id.app_name]:
                     del self._app_deployment_mapping[deployment_id.app_name]
+
+            # Tombstone TARGETS so routers fail fast on a deleted deployment.
+            # Don't evict in the same tick: the waiter wakes after update()
+            # returns and listen_for_change's guard would drop the payload.
+            tombstone = DeploymentTargetInfo(is_available=False, running_replicas=[])
+            self._long_poll_host.notify_changed(
+                {
+                    (LongPollNamespace.DEPLOYMENT_TARGETS, deployment_id): tombstone,
+                    (
+                        LongPollNamespace.DEPLOYMENT_TARGETS,
+                        deployment_id.name,
+                    ): tombstone,
+                }
+            )
+            self._long_poll_host.remove_keys(
+                [(LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id)]
+            )
 
         if len(deleted_ids):
             self._record_deployment_usage()

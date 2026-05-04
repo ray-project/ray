@@ -9,7 +9,6 @@ from ray.llm._internal.serve.config_generator.generator import (
 from ray.llm._internal.serve.config_generator.utils.gpu import (
     ALL_GPU_TYPES,
     DEFAULT_MODEL_ID_TO_GPU,
-    GPUType,
 )
 from ray.llm._internal.serve.config_generator.utils.models import (
     TextCompletionLoraModelConfig,
@@ -18,6 +17,7 @@ from ray.llm._internal.serve.config_generator.utils.models import (
 from ray.llm._internal.serve.config_generator.utils.text_completion import (
     populate_text_completion_model_config,
 )
+from ray.llm._internal.serve.core.configs.accelerators import AcceleratorType
 
 
 class TestTextCompletionModelConfig:
@@ -26,27 +26,48 @@ class TestTextCompletionModelConfig:
     def test_populate_default_models(
         self,
         model_id: str,
-        gpu_type: GPUType,
+        gpu_type: AcceleratorType,
     ):
         """
         We know a list of (model_id, gpu_type) combos that are not supported. So we skip testing them.
         """
         skipped_cases = {
-            ("meta-llama/Meta-Llama-3.1-70B-Instruct", GPUType.NVIDIA_TESLA_A10G),
-            ("meta-llama/Meta-Llama-3.1-70B-Instruct", GPUType.NVIDIA_L4),
-            ("meta-llama/Meta-Llama-3.1-70B-Instruct", GPUType.NVIDIA_L40S),
-            ("meta-llama/Meta-Llama-3.1-405B-Instruct-FP8", GPUType.NVIDIA_TESLA_A10G),
-            ("meta-llama/Meta-Llama-3.1-405B-Instruct-FP8", GPUType.NVIDIA_L4),
-            ("meta-llama/Meta-Llama-3.1-405B-Instruct-FP8", GPUType.NVIDIA_L40S),
-            ("meta-llama/Meta-Llama-3.1-405B-Instruct-FP8", GPUType.NVIDIA_A100_40G),
-            ("meta-llama/Meta-Llama-3.1-405B-Instruct-FP8", GPUType.NVIDIA_A100_80G),
-            ("mistral-community/pixtral-12b", GPUType.NVIDIA_TESLA_A10G),
-            ("mistral-community/pixtral-12b", GPUType.NVIDIA_L4),
-            ("meta-llama/Llama-3.2-11B-Vision-Instruct", GPUType.NVIDIA_TESLA_A10G),
-            ("meta-llama/Llama-3.2-11B-Vision-Instruct", GPUType.NVIDIA_L4),
-            ("meta-llama/Llama-3.2-90B-Vision-Instruct", GPUType.NVIDIA_TESLA_A10G),
-            ("meta-llama/Llama-3.2-90B-Vision-Instruct", GPUType.NVIDIA_L4),
-            ("meta-llama/Llama-3.2-90B-Vision-Instruct", GPUType.NVIDIA_L40S),
+            (
+                "meta-llama/Meta-Llama-3.1-70B-Instruct",
+                AcceleratorType.NVIDIA_TESLA_A10G,
+            ),
+            ("meta-llama/Meta-Llama-3.1-70B-Instruct", AcceleratorType.NVIDIA_L4),
+            ("meta-llama/Meta-Llama-3.1-70B-Instruct", AcceleratorType.NVIDIA_L40S),
+            (
+                "meta-llama/Meta-Llama-3.1-405B-Instruct-FP8",
+                AcceleratorType.NVIDIA_TESLA_A10G,
+            ),
+            ("meta-llama/Meta-Llama-3.1-405B-Instruct-FP8", AcceleratorType.NVIDIA_L4),
+            (
+                "meta-llama/Meta-Llama-3.1-405B-Instruct-FP8",
+                AcceleratorType.NVIDIA_L40S,
+            ),
+            (
+                "meta-llama/Meta-Llama-3.1-405B-Instruct-FP8",
+                AcceleratorType.NVIDIA_A100_40G,
+            ),
+            (
+                "meta-llama/Meta-Llama-3.1-405B-Instruct-FP8",
+                AcceleratorType.NVIDIA_A100_80G,
+            ),
+            ("mistral-community/pixtral-12b", AcceleratorType.NVIDIA_TESLA_A10G),
+            ("mistral-community/pixtral-12b", AcceleratorType.NVIDIA_L4),
+            (
+                "meta-llama/Llama-3.2-11B-Vision-Instruct",
+                AcceleratorType.NVIDIA_TESLA_A10G,
+            ),
+            ("meta-llama/Llama-3.2-11B-Vision-Instruct", AcceleratorType.NVIDIA_L4),
+            (
+                "meta-llama/Llama-3.2-90B-Vision-Instruct",
+                AcceleratorType.NVIDIA_TESLA_A10G,
+            ),
+            ("meta-llama/Llama-3.2-90B-Vision-Instruct", AcceleratorType.NVIDIA_L4),
+            ("meta-llama/Llama-3.2-90B-Vision-Instruct", AcceleratorType.NVIDIA_L40S),
         }
         if (model_id, gpu_type) in skipped_cases:
             return
@@ -71,7 +92,7 @@ class TestTextCompletionModelConfig:
     )
     def test_populate_custom_model(
         self,
-        gpu_type: GPUType,
+        gpu_type: AcceleratorType,
         tensor_parallelism: int,
         hf_token: Optional[str],
         max_num_lora_per_replica: Optional[int],

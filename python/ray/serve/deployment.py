@@ -63,6 +63,16 @@ class Application:
     def __init__(self, bound_deployment: "Deployment"):
         # This is used by `build_app`, but made private so users don't use it.
         self._bound_deployment = bound_deployment
+        # Optional peer ingress request router for ingress bypass mode.
+        self._ingress_request_router: Optional["Application"] = None
+
+    def _with_ingress_request_router(
+        self, ingress_request_router: "Application"
+    ) -> "Application":
+        # Internal-only, unstable hook for the Serve LLM direct-ingress stack.
+        # This is not a stable public Serve API.
+        self._ingress_request_router = ingress_request_router
+        return self
 
 
 @PublicAPI(stability="stable")
@@ -502,6 +512,7 @@ def deployment_to_schema(d: Deployment) -> DeploymentSchema:
         "request_router_config": d._deployment_config.request_router_config,
         "gang_scheduling_config": d._deployment_config.gang_scheduling_config,
         "deployment_actors": d._deployment_config.deployment_actors,
+        "rolling_update_percentage": d._deployment_config.rolling_update_percentage,
     }
 
     # Let non-user-configured options be set to defaults. If the schema
@@ -565,6 +576,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         request_router_config=s.request_router_config,
         gang_scheduling_config=s.gang_scheduling_config,
         deployment_actors=s.deployment_actors,
+        rolling_update_percentage=s.rolling_update_percentage,
     )
     deployment_config.user_configured_option_names = (
         s._get_user_configured_option_names()
