@@ -80,6 +80,48 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # Shared by the Lua router call and the frontend `wait-for-body`.
 INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
 
+_LUA_TEMPLATE = string.Template(
+    (Path(__file__).parent / "ingress_request_router.lua.tmpl").read_text()
+)
+
+
+def _pick_ingress_request_router(
+    backends: "List[BackendConfig]",
+) -> "Optional[ServerConfig]":
+    """Lowest-(port, host) router from the first backend with any.
+
+    Single router by design: round-robin caused TTFT regressions, and all
+    routable backends are expected to share the same router pool.
+    """
+    for backend in backends:
+        if backend.router_servers:
+            return min(backend.router_servers, key=lambda s: (s.port, s.host))
+    return None
+
+
+def _replica_target_entries(backends: "List[BackendConfig]") -> List[str]:
+    """Lua-table entries mapping replica_id -> sanitized server name."""
+    return [
+        f"    [{json.dumps(server.replica_id)}] = {json.dumps(server.name)}"
+        for backend in backends
+        if backend.router_servers
+        for server in backend.servers
+        if server.replica_id is not None
+    ]
+
+
+def _write_if_changed(path: str, content: str) -> bool:
+    """Write content to path only if it differs from what's there."""
+    try:
+        with open(path) as f:
+            if f.read() == content:
+                return False
+    except FileNotFoundError:
+        pass
+    with open(path, "w") as f:
+        f.write(content)
+    return True
+
 
 def _get_safe_name(name: str) -> str:
     """Sanitize an actor name for use as a HAProxy server/backend label."""
