@@ -498,143 +498,49 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
 
 
-def test_write_ingress_request_router_lua_emits_map_and_router(haproxy_api_cleanup):
-    """Lua file contains REPLICA_TARGETS, ROUTER (lowest port,host), and the action.
-
-    Servers without replica_id are skipped from the map.
-    """
+def test_irr_does_not_leak_into_non_irr_backends(haproxy_api_cleanup):
+    """Pin the Jinja guard: non-IRR backends get no via-IRR companion and
+    don't contribute to is_irr_eligible. The end-to-end test only has an IRR
+    backend, so this regression isn't caught there."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        backend = BackendConfig(
-            name="llm",
-            path_prefix="/",
-            app_name="llm",
-            servers=[
-                ServerConfig(
-                    name="replica_a",
-                    host="10.0.0.1",
-                    port=30001,
-                    replica_id="SERVE_REPLICA::app#dep#hash_a",
+        api = _make_api(
+            temp_dir,
+            {
+                "llm": BackendConfig(
+                    name="llm",
+                    path_prefix="/",
+                    app_name="llm",
+                    servers=[
+                        ServerConfig(
+                            name="r1",
+                            host="10.0.0.1",
+                            port=30001,
+                            replica_id="rid_1",
+                        )
+                    ],
+                    router_servers=[
+                        ServerConfig(name="router", host="10.0.0.10", port=9000)
+                    ],
                 ),
-                ServerConfig(
-                    name="replica_b",
-                    host="10.0.0.2",
-                    port=30002,
-                    replica_id="SERVE_REPLICA::app#dep#hash_b",
+                "api": BackendConfig(
+                    name="api",
+                    path_prefix="/api",
+                    app_name="api",
+                    servers=[ServerConfig(name="api1", host="10.0.0.20", port=8001)],
                 ),
-                # No replica_id -> excluded from REPLICA_TARGETS.
-                ServerConfig(name="anon", host="10.0.0.3", port=30003),
-            ],
-            router_servers=[
-                ServerConfig(name="router_high", host="10.0.0.10", port=9001),
-                ServerConfig(name="router_low", host="10.0.0.11", port=8999),
-            ],
+            },
         )
-        api = _make_api(temp_dir, {"llm": backend})
-
-        lua_path = api._write_ingress_request_router_lua([backend])
-
-        assert lua_path == os.path.join(temp_dir, "ingress_request_router.lua")
-        with open(lua_path) as f:
-            content = f.read()
-
-        # Lowest (port, host) wins among router_servers.
-        assert 'host = "10.0.0.11"' in content
-        assert "port = 8999" in content
-        assert "10.0.0.10" not in content  # the higher-port router
-
-        # Both servers with replica_id are mapped to their server.name.
-        assert '["SERVE_REPLICA::app#dep#hash_a"] = "replica_a"' in content
-        assert '["SERVE_REPLICA::app#dep#hash_b"] = "replica_b"' in content
-        # Server without replica_id is not a key in the map.
-        assert '= "anon"' not in content
-        assert '["anon"' not in content
-
-        assert 'core.register_action("route_via_ingress_request_router"' in content
-        assert 'txn:set_var("txn.ingress_request_router_target"' in content
-        assert 'txn:set_var("txn.via_ingress_request_router", true)' in content
-        assert 'response:match("^HTTP/[%d%.]+ 200")' in content
-        assert "local ROUTER_REQUEST_TIMEOUT_S = 5" in content
-        assert 'txn.sf:hdr("content-length")' in content
-        # Truncation is logged, not fatal.
-        assert "core.log(core.warning" in content
-
-
-def test_generate_config_with_ingress_request_router(haproxy_api_cleanup):
-    """Backend with router_servers gets the -via-ingress-request-router section.
-
-    Backends without router_servers do not.
-    """
-    with tempfile.TemporaryDirectory() as temp_dir:
-        with_router = BackendConfig(
-            name="llm",
-            path_prefix="/",
-            app_name="llm",
-            servers=[
-                ServerConfig(
-                    name="r1", host="10.0.0.1", port=30001, replica_id="rid_1"
-                ),
-            ],
-            router_servers=[
-                ServerConfig(name="router", host="10.0.0.10", port=9000),
-            ],
-        )
-        without_router = BackendConfig(
-            name="api",
-            path_prefix="/api",
-            app_name="api",
-            servers=[ServerConfig(name="api1", host="10.0.0.20", port=8001)],
-        )
-        api = _make_api(temp_dir, {"llm": with_router, "api": without_router})
-
         with mock.patch(
             "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
             api.config_file_path,
         ):
             api._generate_config_file_internal()
-
         with open(api.config_file_path) as f:
             cfg = f.read()
-        lua_path = os.path.join(temp_dir, "ingress_request_router.lua")
 
-        # Lua loaded once per thread, with bufsize bumped so chat-completion
-        # bodies fit before the Lua action runs.
-        assert f"lua-load-per-thread {lua_path}" in cfg
-        assert "tune.bufsize 65536" in cfg
-
-        # Frontend gates body buffering and the Lua call on POST + an
-        # IRR-eligible path so non-IRR traffic isn't penalized.
-        assert "acl is_irr_eligible path_beg /" in cfg
-        assert "http-request wait-for-body time 5s if METH_POST is_irr_eligible" in cfg
-        assert (
-            "http-request lua.route_via_ingress_request_router "
-            "if METH_POST is_irr_eligible" in cfg
-        )
-        # The blanket frontend buffer option is no longer used.
-        assert "option http-buffer-request" not in cfg
-        assert (
-            "use_backend llm-via-ingress-request-router if is_llm "
-            "{ var(txn.via_ingress_request_router) -m found }" in cfg
-        )
-
-        # Custom-routed backend exists for `llm` and pins via use-server
-        # against the same `r1` name as the regular backend.
         assert "backend llm-via-ingress-request-router" in cfg
-        assert "option redispatch" in cfg
-        assert (
-            'use-server r1 if { var(txn.ingress_request_router_target) -m str "r1" }'
-            in cfg
-        )
-        # Replicas in the via-IRR backend `track` the primary backend's
-        # server so they aren't double-health-checked.
-        assert "server r1 10.0.0.1:30001 track llm/r1" in cfg
-        # The primary backend keeps its own `check`.
-        assert "server r1 10.0.0.1:30001 check" in cfg
-
-        # The non-IRR backend gets no custom-routed counterpart, no IRR ACL
-        # contribution, and no rule.
         assert "backend api-via-ingress-request-router" not in cfg
-        assert "use_backend api-via-ingress-request-router" not in cfg
-        assert "acl is_irr_eligible path_beg /api/" not in cfg
+        assert "acl is_irr_eligible path /api" not in cfg
 
 
 def _create_irr_replica_server(port: int, replica_id_header: str):
