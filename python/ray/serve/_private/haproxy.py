@@ -1347,7 +1347,7 @@ class HAProxyManager(ProxyActorInterface):
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
 
-        kwargs = dict(
+        return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
             # characters in the name are converted to comply with haproxy config's
             # allowed characters, e.g. `#` -> `-`.
@@ -1360,11 +1360,6 @@ class HAProxyManager(ProxyActorInterface):
             app_name=target_group.app_name,
             fallback_server=fallback_server,
         )
-        if router_servers:
-            # Data-plane replicas serve `/health`, not the proxy's `/-/healthz`.
-            kwargs["health_check_path"] = "/health"
-
-        return BackendConfig(**kwargs)
 
     async def _reload_haproxy(self) -> None:
         # To avoid dropping updates from a long poll, we wait until HAProxy
