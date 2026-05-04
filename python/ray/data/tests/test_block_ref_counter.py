@@ -50,11 +50,40 @@ class TestBlockRefCounter:
         assert self.counter.get_object_store_memory_usage(self.op) == 100
         assert self.counter.get_object_store_memory_usage(op2) == 250
 
-    def test_produced_duplicate_raises(self):
+    def test_produced_duplicate_concurrent_dispatch(self):
+        """Duplicate on_block_produced (same ref in two bundles, e.g.
+        from_pandas_refs([ref, ref])) when both tasks run concurrently.
+
+        Size is not double-counted. Block freed only after both tasks complete.
+        """
         ref = make_ref()
         self.counter.on_block_produced(ref, 100, self.op)
-        with pytest.raises(AssertionError, match="already-tracked"):
-            self.counter.on_block_produced(ref, 100, self.op)
+        self.counter.on_block_produced(ref, 100, self.op)
+        assert self.counter.get_object_store_memory_usage(self.op) == 100
+        # Dispatch both bundles before either task completes.
+        self.counter.on_block_dispatched_to_task(ref)
+        self.counter.on_block_dispatched_to_task(ref)
+        self.counter.on_task_completed(ref)
+        assert self.counter.get_object_store_memory_usage(self.op) == 100  # still live
+        self.counter.on_task_completed(ref)
+        assert self.counter.get_object_store_memory_usage(self.op) == 0
+
+    def test_produced_duplicate_sequential_dispatch(self):
+        """Duplicate on_block_produced when task1 completes before task2 dispatches.
+
+        The second bundle's queue hold must keep the block alive across the gap.
+        """
+        ref = make_ref()
+        self.counter.on_block_produced(ref, 100, self.op)
+        self.counter.on_block_produced(ref, 100, self.op)
+        assert self.counter.get_object_store_memory_usage(self.op) == 100
+        # Dispatch bundle1, complete task1, *then* dispatch bundle2.
+        self.counter.on_block_dispatched_to_task(ref)
+        self.counter.on_task_completed(ref)
+        assert self.counter.get_object_store_memory_usage(self.op) == 100  # still live
+        self.counter.on_block_dispatched_to_task(ref)
+        self.counter.on_task_completed(ref)
+        assert self.counter.get_object_store_memory_usage(self.op) == 0
 
     # ------------------------------------------------------------------
     # on_task_completed (simple path, no dispatch)

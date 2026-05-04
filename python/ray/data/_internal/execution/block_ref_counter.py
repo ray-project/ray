@@ -16,7 +16,7 @@ class _BlockEntry:
     size_bytes: int
     owner: "PhysicalOperator"
     ref_count: int
-    first_task_dispatched: bool = False
+    queue_holds: int = 1
 
 
 class BlockRefCounter:
@@ -26,10 +26,11 @@ class BlockRefCounter:
     tasks currently hold it as input.
 
     Lifecycle of a block:
-      1. Produced by operator A -> on_block_produced(ref, size, A)   (ref_count = 1)
+      1. Produced by operator A -> on_block_produced(ref, size, A)   (ref_count = 1, queue_holds = 1)
+         Duplicate call (same ref in another bundle):                 (ref_count += 1, queue_holds += 1)
       2. Each task dispatch     -> on_block_dispatched_to_task(ref)
-           First dispatch:  ref_count unchanged (initial count "becomes" task holder)
-           Subsequent (strict repartition): ref_count += 1
+           queue_holds > 0: queue_holds -= 1, ref_count unchanged (task takes queue's slot)
+           queue_holds == 0: ref_count += 1  (strict repartition)
       3. Each task completion   -> on_task_completed(ref)             (ref_count -= 1)
            when ref_count reaches 0, block is removed and usage is updated
 
@@ -52,15 +53,18 @@ class BlockRefCounter:
         size_bytes: int,
         owner: "PhysicalOperator",
     ) -> None:
-        """Called when a block is first produced by an operator.
+        """Called when a block is produced by an operator.
 
-        Sets ref_count = 1, representing the block being alive in the pipeline.
-        Must be called exactly once per block_ref.
+        Sets ref_count = 1 on the first call. Duplicate calls for the same
+        ObjectRef (e.g. from_pandas_refs([ref, ref])) increment ref_count and
+        queue_holds without double-counting size_bytes.
         """
         with self._lock:
-            assert (
-                block_ref not in self._entries
-            ), f"on_block_produced called for already-tracked block {block_ref}."
+            if block_ref in self._entries:
+                entry = self._entries[block_ref]
+                entry.ref_count += 1
+                entry.queue_holds += 1
+                return
             self._entries[block_ref] = _BlockEntry(
                 size_bytes=size_bytes, owner=owner, ref_count=1
             )
@@ -69,21 +73,21 @@ class BlockRefCounter:
     def on_block_dispatched_to_task(self, block_ref: "ray.ObjectRef") -> None:
         """Called each time a task takes block_ref as input.
 
-        First dispatch: ref_count is unchanged. Initial count=1 represents the task holder.
+        If queue_holds > 0: queue_holds is decremented, ref_count unchanged
+        (task takes the queue's slot).
 
-        Subsequent dispatches (strict repartition, same ObjectRef in multiple
-        concurrent tasks): ref_count is incremented so the block is not removed
-        when the first task completes.
+        If queue_holds == 0 (strict repartition): ref_count is incremented so
+        the block is not removed when the first task completes.
         """
         with self._lock:
             assert (
                 block_ref in self._entries
             ), f"on_block_dispatched_to_task called for untracked block {block_ref}."
             entry = self._entries[block_ref]
-            if entry.first_task_dispatched:
-                entry.ref_count += 1
+            if entry.queue_holds > 0:
+                entry.queue_holds -= 1
             else:
-                entry.first_task_dispatched = True
+                entry.ref_count += 1
 
     def on_task_completed(self, block_ref: "ray.ObjectRef") -> None:
         """Called when a task that held block_ref completes, or when an inline
