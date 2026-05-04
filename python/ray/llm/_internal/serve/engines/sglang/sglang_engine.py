@@ -82,13 +82,16 @@ class SGLangWakeupConfig(BaseModel):
     """
 
 
+_SLEEP_TAGS: frozenset[str] = frozenset({"kv_cache", "weights", "cuda_graph"})
+
+
 class SGLangServer:
     def __init__(self, llm_config: LLMConfig):
 
         self._llm_config = llm_config
         self.engine_kwargs = llm_config.engine_kwargs
         self._is_paused = False
-        self._is_sleeping = False
+        self._sleeping_tags: set[str] = set()
 
         try:
             import sglang
@@ -717,7 +720,8 @@ class SGLangServer:
         assert self.engine is not None, "server is not initialized"
         config = SGLangSleepConfig(**kwargs)
         await self.engine.release_memory_occupation(tags=config.tags)
-        self._is_sleeping = True
+        # tags=None means "everything"; otherwise track only the requested tags.
+        self._sleeping_tags |= set(config.tags) if config.tags else set(_SLEEP_TAGS)
 
     async def wakeup(self, **kwargs: Any) -> None:
         """Wake up the SGLang server from sleep mode.
@@ -730,19 +734,25 @@ class SGLangServer:
         assert self.engine is not None, "server is not initialized"
         config = SGLangWakeupConfig(**kwargs)
         await self.engine.resume_memory_occupation(tags=config.tags)
-        self._is_sleeping = False
+        # tags=None wakes everything; otherwise only clear the woken tags so
+        # is_sleeping() still reports True while other components stay offloaded.
+        if config.tags is None:
+            self._sleeping_tags.clear()
+        else:
+            self._sleeping_tags -= set(config.tags)
 
     async def is_sleeping(self) -> bool:
         """Check whether the SGLang server is currently sleeping.
 
         Returns:
-            True if the server is sleeping, False otherwise.
+            True if any component is currently offloaded/discarded, False otherwise.
         """
-        return self._is_sleeping
+        return bool(self._sleeping_tags)
 
     async def reset_prefix_cache(self, timeout: Optional[float] = None) -> None:
         assert self.engine is not None, "server is not initialized"
-        await self.engine.flush_cache(timeout)
+        # SGLang flush_cache does not accept a timeout argument
+        await self.engine.flush_cache()
 
     async def collective_rpc(
         self,
