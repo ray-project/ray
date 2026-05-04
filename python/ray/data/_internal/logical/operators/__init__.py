@@ -35,7 +35,11 @@ from ray.data._internal.logical.operators.one_to_one_operator import (
     Download,
     Limit,
 )
-from ray.data._internal.logical.operators.read_operator import Read
+from ray.data._internal.logical.operators.read_operator import (
+    ListFiles,
+    Read,
+    ReadFiles,
+)
 from ray.data._internal.logical.operators.streaming_split_operator import StreamingSplit
 from ray.data._internal.logical.operators.write_operator import Write
 
@@ -60,6 +64,7 @@ __all__ = [
     "JoinSide",
     "JoinType",
     "Limit",
+    "ListFiles",
     "MapBatches",
     "MapRows",
     "NAry",
@@ -67,6 +72,7 @@ __all__ = [
     "RandomShuffle",
     "RandomizeBlocks",
     "Read",
+    "ReadFiles",
     "Repartition",
     "Sort",
     "StreamingRepartition",
