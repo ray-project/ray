@@ -128,9 +128,18 @@ class Checkpoint(metaclass=_CheckpointMetaClass):
         """
         self.path = str(path)
         self.filesystem = filesystem
+        # `from_uri`-parseable string preserved at construction time, so the
+        # filesystem can later be reconstructed without pickling.
+        self._source_uri: Optional[str] = None
 
         if path and not filesystem:
+            self._source_uri = str(path)
             self.filesystem, self.path = pyarrow.fs.FileSystem.from_uri(path)
+        elif (
+            isinstance(filesystem, pyarrow.fs.LocalFileSystem)
+            and Path(str(path)).is_absolute()
+        ):
+            self._source_uri = Path(str(path)).as_uri()
 
         # This random UUID is used to create a temporary directory name on the
         # local filesystem, which will be used for downloading checkpoint data.

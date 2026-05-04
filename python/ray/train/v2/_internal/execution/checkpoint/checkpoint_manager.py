@@ -3,6 +3,8 @@ import json
 import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import pyarrow.fs
+
 import ray
 from ray._common.pydantic_compat import BaseModel
 from ray._private.ray_constants import env_float
@@ -48,6 +50,15 @@ class _TrainingResultState(BaseModel):
     version: int = 0
     checkpoint_dir_name: str
     metrics: dict
+    # Set when the checkpoint's filesystem differs from the storage context's;
+    # holds a `pyarrow.fs.FileSystem.from_uri`-parseable string captured at
+    # `Checkpoint` construction time. Old snapshots load with this as None and
+    # fall back to the dir-name + storage-context-fs reconstruction.
+    checkpoint_uri: Optional[str] = None
+    # True when the checkpoint was reported with a custom filesystem that has
+    # no `from_uri`-parseable representation. Save still succeeds (the run
+    # continues) but resumption from this snapshot will raise.
+    is_unrestorable: bool = False
 
 
 class _CheckpointManagerState(BaseModel):
@@ -66,13 +77,27 @@ def _get_training_result_from_state(
     storage_context: StorageContext,
 ) -> _TrainingResult:
     """Get a TrainingResult object from a Pydantic state object."""
-    return _TrainingResult(
-        checkpoint=Checkpoint(
+    if state.is_unrestorable:
+        raise CheckpointManagerInitializationError(
+            f"Snapshot contains a checkpoint ({state.checkpoint_dir_name}) "
+            "that was reported with a custom filesystem and no URI; this run "
+            "cannot be resumed. Configure a new, unique `RunConfig(name)` to "
+            "start fresh, or re-report the checkpoint via "
+            "`Checkpoint(uri_string)` / `Checkpoint.from_directory(...)` so a "
+            "URI can be preserved."
+        )
+    if state.checkpoint_uri is not None:
+        filesystem, path = pyarrow.fs.FileSystem.from_uri(state.checkpoint_uri)
+        checkpoint = Checkpoint(path=path, filesystem=filesystem)
+    else:
+        checkpoint = Checkpoint(
             path=storage_context.build_checkpoint_path_from_name(
                 state.checkpoint_dir_name
             ),
             filesystem=storage_context.storage_filesystem,
-        ),
+        )
+    return _TrainingResult(
+        checkpoint=checkpoint,
         metrics=state.metrics,
     )
 
@@ -82,11 +107,35 @@ def _get_state_from_training_result(
     storage_context: StorageContext,
 ) -> _TrainingResultState:
     """Get a Pydantic state object from a TrainingResult object."""
+    checkpoint = training_result.checkpoint
+    checkpoint_uri: Optional[str] = None
+    is_unrestorable = False
+    if checkpoint.filesystem != storage_context.storage_filesystem:
+        # Out-of-band checkpoint on a different filesystem: persisting the
+        # dir name alone would lose the filesystem on restore. We need the
+        # original URI string captured by `Checkpoint.__init__`.
+        source_uri = getattr(checkpoint, "_source_uri", None)
+        if source_uri is None:
+            logger.warning(
+                "Checkpoint %s was reported with a custom filesystem "
+                "(`Checkpoint(path=..., filesystem=...)`) and no URI was "
+                "captured at construction time. The current run will "
+                "continue, but this snapshot cannot be restored. To make "
+                "the checkpoint restorable, construct it via "
+                "`Checkpoint(uri_string)` (e.g. `Checkpoint('s3://...')`) "
+                "or `Checkpoint.from_directory(absolute_path)`.",
+                checkpoint,
+            )
+            is_unrestorable = True
+        else:
+            checkpoint_uri = source_uri
     return _TrainingResultState(
         checkpoint_dir_name=storage_context.extract_checkpoint_dir_name_from_path(
-            training_result.checkpoint.path
+            checkpoint.path
         ),
         metrics=training_result.metrics,
+        checkpoint_uri=checkpoint_uri,
+        is_unrestorable=is_unrestorable,
     )
 
 

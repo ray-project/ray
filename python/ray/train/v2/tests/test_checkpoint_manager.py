@@ -1,3 +1,4 @@
+import logging
 import os
 import tempfile
 import uuid
@@ -5,6 +6,7 @@ from pathlib import Path
 from typing import Optional
 from unittest.mock import create_autospec
 
+import pyarrow.fs
 import pytest
 
 import ray
@@ -13,6 +15,9 @@ from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
+    _TrainingResultState,
+    _get_state_from_training_result,
+    _get_training_result_from_state,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
 from ray.train.v2._internal.execution.worker_group import Worker
@@ -343,6 +348,124 @@ def test_update_checkpoints_with_metrics_not_in_checkpoint_results(tmp_path):
         checkpoint_manager.update_checkpoints_with_metrics(
             {training_reports[0].checkpoint: {"score": 100}}
         )
+
+
+def test_save_load_state_oob_uri_round_trip(tmp_path):
+    """A checkpoint whose filesystem differs from the storage context's
+    round-trips through the snapshot via the captured URI rather than the
+    dir-name path.
+    """
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="oob_uri_round_trip",
+    )
+
+    # `?region=...` keeps `from_uri` from making a network call to detect the
+    # bucket's region.
+    oob_uri = "s3://my-bucket/checkpoint-key?region=us-east-1"
+    oob_checkpoint = Checkpoint(oob_uri)
+    assert oob_checkpoint._source_uri == oob_uri
+    training_result = _TrainingResult(
+        checkpoint=oob_checkpoint,
+        metrics={"score": 1.0},
+    )
+
+    state = _get_state_from_training_result(training_result, storage_context)
+    assert state.checkpoint_uri == oob_uri
+
+    restored = _get_training_result_from_state(state, storage_context)
+    assert isinstance(restored.checkpoint.filesystem, pyarrow.fs.S3FileSystem)
+    assert restored.checkpoint.path == "my-bucket/checkpoint-key"
+    assert restored.metrics == {"score": 1.0}
+
+
+def test_save_load_state_local_oob_via_from_directory(tmp_path):
+    """`Checkpoint.from_directory` populates _source_uri so that even local
+    out-of-band checkpoints (where fs == storage fs) on a *different* fs
+    instance would still round-trip — and confirms same-fs local OOB still
+    uses the cheaper dir-name path.
+    """
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="oob_from_directory",
+    )
+
+    oob_dir = tmp_path / "outside_experiment" / "checkpoint-0"
+    oob_dir.mkdir(parents=True)
+    oob_checkpoint = Checkpoint.from_directory(oob_dir)
+    # from_directory hands in a LocalFileSystem with an absolute path, so the
+    # constructor derives a file:// URI even though no URI was passed.
+    assert oob_checkpoint._source_uri == oob_dir.as_uri()
+
+    training_result = _TrainingResult(
+        checkpoint=oob_checkpoint,
+        metrics={"score": 2.0},
+    )
+    state = _get_state_from_training_result(training_result, storage_context)
+    # Same filesystem (local == local), so URI is not persisted; dir-name path
+    # already round-trips correctly for absolute local OOB paths.
+    assert state.checkpoint_uri is None
+
+    restored = _get_training_result_from_state(state, storage_context)
+    assert restored.checkpoint == oob_checkpoint
+
+
+def test_save_state_warns_when_filesystem_differs_without_uri(tmp_path):
+    """`Checkpoint(path=..., filesystem=remote_fs)` provides no URI to capture.
+    The save helper emits a warning and marks the state unrestorable, but the
+    run is allowed to continue — the failure surfaces at resumption time.
+    """
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="oob_no_uri",
+    )
+
+    s3_fs = pyarrow.fs.S3FileSystem(anonymous=True, region="us-east-1")
+    checkpoint = Checkpoint(path="my-bucket/key", filesystem=s3_fs)
+    assert checkpoint._source_uri is None
+
+    records: list[logging.LogRecord] = []
+
+    class _ListHandler(logging.Handler):
+        def emit(self, record):
+            records.append(record)
+
+    target_logger = logging.getLogger(
+        "ray.train.v2._internal.execution.checkpoint.checkpoint_manager"
+    )
+    handler = _ListHandler(level=logging.WARNING)
+    target_logger.addHandler(handler)
+    try:
+        training_result = _TrainingResult(checkpoint=checkpoint, metrics={})
+        state = _get_state_from_training_result(training_result, storage_context)
+    finally:
+        target_logger.removeHandler(handler)
+
+    assert state.is_unrestorable is True
+    assert state.checkpoint_uri is None
+    assert any("cannot be restored" in r.getMessage() for r in records)
+
+
+def test_load_state_raises_for_unrestorable_checkpoint(tmp_path):
+    """A snapshot entry flagged as unrestorable must not silently restore with
+    the wrong filesystem — `_get_training_result_from_state` raises so the
+    failure surfaces at `CheckpointManager.__init__` time.
+    """
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name="oob_load_unrestorable",
+    )
+
+    state = _TrainingResultState(
+        checkpoint_dir_name="my-bucket/key",
+        metrics={"score": 1.0},
+        checkpoint_uri=None,
+        is_unrestorable=True,
+    )
+    with pytest.raises(
+        CheckpointManagerInitializationError, match="cannot be resumed"
+    ):
+        _get_training_result_from_state(state, storage_context)
 
 
 def test_out_of_band_checkpointing(tmp_path):
