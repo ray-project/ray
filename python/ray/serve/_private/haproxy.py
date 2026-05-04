@@ -96,7 +96,7 @@ def _routers_and_targets_by_backend(
     routers: Dict[str, ServerConfig] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
-        if not backend.router_servers:
+        if not backend.ingress_request_router_servers:
             continue
         entries = [
             (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
@@ -104,7 +104,7 @@ def _routers_and_targets_by_backend(
         if not entries:
             continue
         routers[backend.name] = min(
-            backend.router_servers, key=lambda s: (s.port, s.host)
+            backend.ingress_request_router_servers, key=lambda s: (s.port, s.host)
         )
         targets[backend.name] = entries
     return routers, targets
