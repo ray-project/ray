@@ -550,12 +550,14 @@ class vLLMEngineWrapper:
                 prompt=llm_prompt,
                 pooling_params=request.params,
                 tokenization_kwargs=request.tokenization_kwargs,
+                lora_request=request.lora_request,
             )
         else:
             stream = self.engine.generate(
                 request_id=str(request.request_id),
                 prompt=llm_prompt,
                 sampling_params=request.params,
+                lora_request=request.lora_request,
             )
 
         # Consume the stream until the request is finished.
