@@ -50,8 +50,6 @@ local function http_response_body(response)
     return response:sub(separator_end + 1)
 end
 
--- Hand-rolled to avoid pulling lua-cjson (or similar) into the HAProxy
--- Lua runtime as an extra dep on every host running Ray.
 local function extract_replica_id(json_body)
     return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
 end
