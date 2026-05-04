@@ -10,6 +10,7 @@ import ray
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import Project
+from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules import (
     ProjectionPushdown,
@@ -154,7 +155,9 @@ class TestProjectionFusion:
             if isinstance(current, Project):
                 count += 1
             current = (
-                current.input_dependencies[0] if current.input_dependencies else None
+                current.input_dependencies[0]
+                if isinstance(current, AbstractOneToOne)
+                else None
             )
 
         return count
@@ -171,7 +174,9 @@ class TestProjectionFusion:
             else:
                 operators.append(current.__class__.__name__)
             current = (
-                current.input_dependencies[0] if current.input_dependencies else None
+                current.input_dependencies[0]
+                if isinstance(current, AbstractOneToOne)
+                else None
             )
 
         return " -> ".join(operators)
