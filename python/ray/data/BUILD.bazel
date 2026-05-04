@@ -351,6 +351,20 @@ py_test(
 )
 
 py_test(
+    name = "test_block_ref_counter",
+    size = "small",
+    srcs = ["tests/test_block_ref_counter.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_context_propagation",
     size = "small",
     srcs = ["tests/test_context_propagation.py"],
