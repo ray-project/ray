@@ -716,12 +716,13 @@ def _map_task(
 
         if retry_on:
 
-            def transform_iter_factory():
-                blocks_iter = (
-                    _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
-                )
-                return map_transformer.apply_transform(blocks_iter, ctx)
+        def transform_iter_factory():
+            blocks_iter = (
+                _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
+            )
+            return map_transformer.apply_transform(blocks_iter, ctx)
 
+        if retry_on:
             block_iter = iterate_with_retry(
                 transform_iter_factory,
                 description="apply UDF transform",
@@ -729,10 +730,7 @@ def _map_task(
                 max_attempts=data_context.max_udf_retries + 1,
             )
         else:
-            blocks_iter = (
-                _iter_sliced_blocks(blocks, slices) if slices else iter(blocks)
-            )
-            block_iter = map_transformer.apply_transform(blocks_iter, ctx)
+            block_iter = transform_iter_factory()
 
         with MemoryProfiler(data_context.memory_usage_poll_interval_s) as profiler:
             for block in block_iter:
