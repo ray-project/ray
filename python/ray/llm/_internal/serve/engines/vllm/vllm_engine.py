@@ -678,7 +678,8 @@ class VLLMEngine(LLMEngine):
             raw_request_info
         )
         try:
-            score_response = await self._oai_serving_scores.create_score(
+            assert self._oai_serving_scores is not None
+            score_response = await self._oai_serving_scores(
                 request,
                 raw_request=raw_request,
             )
@@ -688,6 +689,9 @@ class VLLMEngine(LLMEngine):
 
         if isinstance(score_response, VLLMErrorResponse):
             yield ErrorResponse(**score_response.model_dump())
+        elif hasattr(score_response, "body"):
+            content = json.loads(score_response.body)
+            yield ScoreResponse(**content)
         else:
             yield ScoreResponse(**score_response.model_dump())
 

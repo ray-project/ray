@@ -291,7 +291,9 @@ asttokens==2.4.1 \
 astunparse==1.6.3 \
     --hash=sha256:5ad93a8456f0d084c3456d059fd9a92cce667963232cbf763eac3bc5b7940872 \
     --hash=sha256:c2652417f2c8b5bb325c885ae329bdf3f86424075c4fd1a128674bc6fba4b8e8
-    # via tensorflow
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   tensorflow
 async-lru==2.0.5 \
     --hash=sha256:481d52ccdd27275f42c43a928b4a50c3bfb2d67af4e78b170e3e0bb39c66e5bb \
     --hash=sha256:ab95404d8d2605310d345932697371a5f40def0487c03d6d0ad9138de52c9943
@@ -301,7 +303,9 @@ async-lru==2.0.5 \
 async-timeout==5.0.1 ; python_full_version < '3.11' \
     --hash=sha256:39e3809566ff85354557ec2398b55e096c8364bacac9405a7a1fa429e77fe76c \
     --hash=sha256:d9321a7a3d5a6a5e187e824d2fa0793ce379a202935782d555d6e9d2735677d3
-    # via aiohttp
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   aiohttp
 attrs==25.1.0 \
     --hash=sha256:1c97078a80c814273a76b2a298a932eb681c87415c11dee0a6921de7f1b02c3e \
     --hash=sha256:c75a69e28a550a7e93789579c22aa26b0f5b83b75dc4e08fe092980051e1090a
@@ -750,7 +754,9 @@ click-repl==0.3.0 \
 cloudpickle==2.2.0 \
     --hash=sha256:3f4219469c55453cfe4737e564b67c2a149109dabf7f242478948b895f61106f \
     --hash=sha256:7428798d5926d8fcbfd092d18d01a2a03daf8237d8fcdc8095d256b8490796f0
-    # via gymnasium
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   gymnasium
 cmake==4.1.0 \
     --hash=sha256:0e2fea746d746f52aa52b8498777ff665a0627d9b136bec4ae0465c38b75e799 \
     --hash=sha256:2a8790473afbb895b8e684e479f26773e4fc5c86845e3438e8488d38de9db807 \
@@ -1094,6 +1100,7 @@ exceptiongroup==1.3.1 ; python_full_version < '3.11' \
     --hash=sha256:8b412432c6055b0b7d14c310000ae93352ed6754f70fa8f7c34141f91c4e3219 \
     --hash=sha256:a7a39a3bd276781e98394987d3a5701d0c4edffb633bb7a5144577f82c773598
     # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
     #   anyio
     #   pytest
 executing==2.0.1 \
@@ -1340,7 +1347,9 @@ future==1.0.0 \
 gast==0.7.0 \
     --hash=sha256:0bb14cd1b806722e91ddbab6fb86bba148c22b40e7ff11e248974e04c8adfdae \
     --hash=sha256:99cbf1365633a74099f69c59bd650476b96baa5ef196fec88032b00b31ba36f7
-    # via tensorflow
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   tensorflow
 gcs-oauth2-boto-plugin==3.0 \
     --hash=sha256:f4120b08b7f8d32904674c98f07d4caf4083a58343c0c0fa0016e0f0254dfe31
     # via
@@ -1712,7 +1721,9 @@ google-pasta==0.2.0 \
     --hash=sha256:4612951da876b1a10fe3960d7226f0c7682cf901e16ac06e473b267a5afa8954 \
     --hash=sha256:b32482794a366b5366a32c92a9a9201b107821889935a02b3e51f6b432ea84ed \
     --hash=sha256:c9f2c8dfc8f96d0d5808299920721be30c9eec37f2389f28904f454565c8a16e
-    # via tensorflow
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   tensorflow
 google-reauth==0.1.1 \
     --hash=sha256:cb39074488d74c8853074dde47368bbf8f739d4a4338b89aab696c895b6d8368 \
     --hash=sha256:f9f6852a55c2c5453d581cd01f3d1278e86147c03d008409800390a834235892
@@ -2252,7 +2263,9 @@ jupyterlab-widgets==3.0.11 \
 keras==2.15.0 \
     --hash=sha256:2dcc6d2e30cf9c951064b63c1f4c404b966c59caf09e01f3549138ec8ee0dd1f \
     --hash=sha256:81871d298c064dc4ac6b58440fdae67bfcf47c8d7ad28580fab401834c06a575
-    # via tensorflow
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   tensorflow
 kombu==5.5.4 \
     --hash=sha256:886600168275ebeada93b888e831352fe578168342f0d1d5833d88ba0d847363 \
     --hash=sha256:a12ed0557c238897d8e518f1d1fdf84bd1516c5e305af2dacd85c2015115feb8
@@ -2270,7 +2283,9 @@ libclang==18.1.1 \
     --hash=sha256:a1214966d08d73d971287fc3ead8dfaf82eb07fb197680d8b3859dbbbbf78250 \
     --hash=sha256:c533091d8a3bbf7460a00cb6c1a71da93bffe148f172c7d03b1c31fbf8aa2a0b \
     --hash=sha256:cf4a99b05376513717ab5d82a0db832c56ccea4fd61a69dbb7bccf2dfb207dbe
-    # via tensorflow
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   tensorflow
 lightgbm==4.6.0 \
     --hash=sha256:2dafd98d4e02b844ceb0b61450a660681076b1ea6c7adb8c566dfd66832aafad \
     --hash=sha256:37089ee95664b6550a7189d887dbf098e3eadab03537e411f52c63c121e3ba4b \
@@ -2644,7 +2659,9 @@ ml-dtypes==0.3.2 \
     --hash=sha256:d1a746fe5fb9cd974a91070174258f0be129c592b93f9ce7df6cc336416c3fbd \
     --hash=sha256:e8505946df1665db01332d885c2020b4cb9e84a8b1241eb4ba69d59591f65855 \
     --hash=sha256:f47619d978ab1ae7dfdc4052ea97c636c6263e1f19bd1be0e42c346b98d15ff4
-    # via tensorflow
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   tensorflow
 mmh3==4.1.0 \
     --hash=sha256:0033d60c7939168ef65ddc396611077a7268bde024f2c23bdc283a19123f9e9c \
     --hash=sha256:01bb9b90d61854dfc2407c5e5192bfb47222d74f29d140cb2dd2a69f2353f7cc \
@@ -3569,7 +3586,9 @@ py-spy==0.4.2 ; python_full_version < '3.12' \
     --hash=sha256:90e600b27bb6bb40479637baca5a5b4bc2ba3395c93d889e672315d93042c4ae \
     --hash=sha256:a0e6f6810ccf0fc5e64e85e0182a5b626c4496eec01b14fb8755154b363a4831 \
     --hash=sha256:aeb0323409199c785f730645e9f4bb7a7b9ca2c481f2c331a55642b5d13fa52f
-    # via ray
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   ray
 py4j==0.10.9.7 \
     --hash=sha256:0b6e5315bb3ada5cf62ac651d107bb2ebc02def3dee9d9548e3baac644ea8dbb \
     --hash=sha256:85defdfd2b2376eb3abf5ca6474b51ab7e0de341c75a02f46dc9b5976f5a5c1b
@@ -4438,7 +4457,9 @@ tensorflow==2.15.1 \
     --hash=sha256:e73d43dbc68d8c711e70edecc4ac70472799a25ec4ec18a84d479ee18033d3c5 \
     --hash=sha256:ea290e435464cf0794f657b48786e5fa413362abe55ed771c172c25980d070ce \
     --hash=sha256:f8e85821317c9c0fbf1256e9f721cfb1400ba1e09becb844b3ddd91f744805fc
-    # via -r release/ray_release/byod/requirements_byod_3.10.in
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   -r release/ray_release/byod/requirements_byod_3.10.in
 tensorflow-estimator==2.15.0 \
     --hash=sha256:aedf21eec7fb2dc91150fc91a1ce12bc44dbb72278a08b58e79ff87c9e28f153
     # via
@@ -4464,7 +4485,9 @@ tensorflow-io-gcs-filesystem==0.31.0 \
     --hash=sha256:e6d8cc7b14ade870168b9704ee44f9c55b468b9a00ed40e12d20fffd321193b5 \
     --hash=sha256:f0adfbcd264262797d429311843733da2d5c1ffb119fbfa6339269b6c0414113 \
     --hash=sha256:fbcfb4aa2eaa9a3038d2487e570ff93feb1dbe51c3a4663d7d9ab9f9a9f9a9d8
-    # via tensorflow
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   tensorflow
 termcolor==2.4.0 \
     --hash=sha256:9297c0df9c99445c2412e832e882a7884038a25617c60cea2ad69488d4040d63 \
     --hash=sha256:aab9e56047c8ac41ed798fa36d892a37aca6b3e9159f3e0c24bc64a9b3ac7b7a
@@ -4699,7 +4722,9 @@ uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'c
     --hash=sha256:ea721dd3203b809039fcc2983f14608dae82b212288b346e0bfe46ec2fab0b7c \
     --hash=sha256:ef6f0d4cc8a9fa1f6a910230cd53545d9a14479311e87e3cb225495952eb672c \
     --hash=sha256:fe94b4564e865d968414598eea1a6de60adba0c040ba4ed05ac1300de402cd42
-    # via uvicorn
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.10.txt
+    #   uvicorn
 vine==5.1.0 \
     --hash=sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc \
     --hash=sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0

@@ -2547,17 +2547,17 @@ ninja==1.13.0 \
     #   -r python/requirements/llm/llm-requirements.txt
     #   flashinfer-python
     #   vllm
-nixl-cu13==1.0.1 \
-    --hash=sha256:056fa1335a4c46439e42e8e65c3b69bf2f9b6e79bcfa34b8ba4f2c28a9e17769 \
-    --hash=sha256:059278069b98a40722e04d710f537c03b4b7b9935b70c3dc2ec4f09f66daa454 \
-    --hash=sha256:461c18d6b0382772cfaffff8de30d47b1e20706741521bde6e367ccbbc37bb01 \
-    --hash=sha256:6abcb31c1a8df204d8738d18a2e362c54c60938cc8faaf13f5c39dc0abcfab98 \
-    --hash=sha256:953e4911a5f58d7e58d97fe97576cb47841a76201c6e21e1b7d9e36869a2e271 \
-    --hash=sha256:9ce6a3b395c3be76b7f9a87401db375adbb5a04460e6a01cf86b02801c428f37 \
-    --hash=sha256:a4a0b4c4f377c6dd86e10ae47798e6ba1ec372aa11243113b1cf7fc8292562d4 \
-    --hash=sha256:dde218558617d93cb0952b4a15a0ec6667cc726422939e366376e0f952753903 \
-    --hash=sha256:e1d73d89863f3b3c123b1be57165b7217252417b3aa3806ea1ff062a4acd0190 \
-    --hash=sha256:f21e8abb0b4f3d4e2e09c15db1f8a798ee8402bf1542804b866b89b92cce951e
+nixl-cu13==0.10.1 \
+    --hash=sha256:0cbd4ffc25398f565a378e6da09b60d8d2625f1eda96bfe20d6d9c5f3fdba2c0 \
+    --hash=sha256:129f41f6855cf13837b55516319512ee1561e0a8cbbc2e4a9be3d839631ebf36 \
+    --hash=sha256:234752e979465e98aae5866e32777a4d98892c1d9fd2f59f25fef69e1e26716e \
+    --hash=sha256:322e4702606ad498a493d99a065af46c0c16ce84a4bed6495f85efab75670f0a \
+    --hash=sha256:66ad915a090da0b8928d9fea2aaac98c3468bb5e08a1a293ef211615bd49e460 \
+    --hash=sha256:67c913c0345f8703f1b3c96dd5f63c914bc6c173e3f283f62c46c07b5fcc5618 \
+    --hash=sha256:909d00ffc1929ef45cd3cfa0cd3585999274c90a6bcf0799000677cf83a8f0e2 \
+    --hash=sha256:9346f26d4b97088ee23921d567b7836eceb57473638455eac73b2f2b7388cbfc \
+    --hash=sha256:efa8f95ac57b9cf71fd5a0dcaa51ecef8d40510ca5ab3347e046a972905edbf1 \
+    --hash=sha256:f32bfd6f649ef1968e4f6d37d7c3cae61a58fe1f57a987d2fad324f18d5dc6e5
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cpu.lock
     #   -r python/requirements/llm/llm-requirements.txt

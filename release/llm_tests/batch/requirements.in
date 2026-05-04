@@ -1,1 +1,3 @@
 datasets==4.4.1
+# Keep compatible with transformers in the llm-cu130 image.
+huggingface-hub<1.0; python_version >= "3.12"
