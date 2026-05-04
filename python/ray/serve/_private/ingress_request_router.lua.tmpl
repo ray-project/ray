@@ -9,7 +9,7 @@ local REPLICA_TARGETS = ${REPLICA_TARGETS}
 local ROUTER = { host = ${ROUTER_HOST}, port = ${ROUTER_PORT} }
 local ROUTER_HOST_HEADER = ROUTER.host .. ":" .. ROUTER.port
 
-local function do_request(body)
+local function call_router(body)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
@@ -36,31 +36,50 @@ local function do_request(body)
     return response
 end
 
+local function is_http_200(response)
+    return response:match("^HTTP/[%d%.]+ 200") ~= nil
+end
+
+local function http_response_body(response)
+    local _, separator_end = response:find("\r\n\r\n", 1, true)
+    if not separator_end then
+        return ""
+    end
+    return response:sub(separator_end + 1)
+end
+
+-- Trusted control-plane response, so a full JSON parser would be overkill.
+local function extract_replica_id(json_body)
+    return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
+end
+
+local function warn_if_truncated(txn, body)
+    local content_length = txn.sf:hdr("content-length")
+    if not content_length then
+        return
+    end
+    local cl = tonumber(content_length)
+    if cl and #body < cl then
+        core.log(core.warning,
+            "ingress_request_router: routing on truncated body ("
+                .. #body .. "/" .. cl .. " bytes)")
+    end
+end
+
 core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
     local body = txn.sf:req_body()
     if not body or body == "" then
         return
     end
 
-    -- Best-effort on truncated body: route on what we have, but warn.
-    local content_length = txn.sf:hdr("content-length")
-    if content_length then
-        local cl = tonumber(content_length)
-        if cl and #body < cl then
-            core.log(core.warning,
-                "ingress_request_router: routing on truncated body ("
-                    .. #body .. "/" .. cl .. " bytes)")
-        end
-    end
+    warn_if_truncated(txn, body)
 
-    local response = do_request(body)
-    if not response or not response:match("^HTTP/[%d%.]+ 200") then
+    local response = call_router(body)
+    if not response or not is_http_200(response) then
         return
     end
 
-    local _, body_start = response:find("\r\n\r\n", 1, true)
-    local resp_body = body_start and response:sub(body_start + 1) or ""
-    local replica_id = resp_body:match('"replica_id"%s*:%s*"([^"]+)"')
+    local replica_id = extract_replica_id(http_response_body(response))
     if not replica_id then
         return
     end
