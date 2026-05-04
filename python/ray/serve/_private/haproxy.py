@@ -85,43 +85,37 @@ _LUA_TEMPLATE = string.Template(
 )
 
 
-def _routers_by_backend(
+def _routers_and_targets_by_backend(
     backends: "List[BackendConfig]",
-) -> "Dict[str, ServerConfig]":
-    """Per-backend deterministic router selection.
+) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
+    """Per-backend router and replica map, restricted to backends with both.
 
-    Each backend with router_servers gets its own router pool; we pick
-    the lowest (port, host) within the pool. Deterministic-rather-than-
-    round-robin avoids the TTFT regression from cycling routers.
+    Deterministic min-(port, host) within each router pool avoids the
+    TTFT regression from cycling routers across requests.
     """
-    return {
-        backend.name: min(backend.router_servers, key=lambda s: (s.port, s.host))
-        for backend in backends
-        if backend.router_servers
-    }
-
-
-def _replica_targets_by_backend(
-    backends: "List[BackendConfig]",
-) -> "Dict[str, List[Tuple[str, str]]]":
-    """Per-backend (replica_id, server_name) pairs for the Lua replica map."""
-    out: Dict[str, List[Tuple[str, str]]] = {}
+    routers: Dict[str, ServerConfig] = {}
+    targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
         if not backend.router_servers:
             continue
         entries = [
             (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
         ]
-        if entries:
-            out[backend.name] = entries
-    return out
+        if not entries:
+            continue
+        routers[backend.name] = min(
+            backend.router_servers, key=lambda s: (s.port, s.host)
+        )
+        targets[backend.name] = entries
+    return routers, targets
 
 
 def _format_routers_lua(routers: "Dict[str, ServerConfig]") -> str:
     """Render {backend_name: ServerConfig} as a Lua table literal."""
     body = ",\n".join(
         f"    [{json.dumps(name)}] = "
-        f"{{ host = {json.dumps(s.host)}, port = {s.port} }}"
+        f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
+        f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
         for name, s in routers.items()
     )
     return "{\n" + body + "\n}"
@@ -899,8 +893,6 @@ class HAProxyApi(ProxyApi):
         routers, targets = _routers_and_targets_by_backend(backends)
         if not routers:
             return None
-        routers = {k: routers[k] for k in keys}
-        targets = {k: targets[k] for k in keys}
 
         content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
