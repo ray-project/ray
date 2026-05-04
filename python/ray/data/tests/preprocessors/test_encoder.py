@@ -1335,7 +1335,7 @@ def test_categorizer(predefined_dtypes):
     transformed = encoder.transform(ds)
     out_df = transformed.to_pandas()
 
-    assert out_df.dtypes["A"] == np.object_
+    assert out_df.dtypes["A"].name in ["object", "str"]
     assert out_df.dtypes["B"] == expected_dtypes["B"]
     assert out_df.dtypes["C"] == expected_dtypes["C"]
 
@@ -1349,7 +1349,7 @@ def test_categorizer(predefined_dtypes):
 
     pred_out_df = encoder.transform_batch(pred_in_df)
 
-    assert pred_out_df.dtypes["A"] == np.object_
+    assert pred_out_df.dtypes["A"].name in ["object", "str"]
     assert pred_out_df.dtypes["B"] == expected_dtypes["B"]
     assert pred_out_df.dtypes["C"] == expected_dtypes["C"]
 
@@ -1369,11 +1369,47 @@ def test_categorizer(predefined_dtypes):
     )
     pred_out_df = encoder.transform_batch(pred_in_df)
 
-    assert pred_out_df.dtypes["A"] == np.object_
-    assert pred_out_df.dtypes["B"] == np.object_
+    assert pred_out_df.dtypes["A"].name in ["object", "str"]
+    assert pred_out_df.dtypes["B"].name in ["object", "str"]
     assert pred_out_df.dtypes["C"] == np.int64
     assert pred_out_df.dtypes["B_categorized"] == expected_dtypes["B"]
     assert pred_out_df.dtypes["C_categorized"] == expected_dtypes["C"]
+
+
+def test_categorizer_schema_types_with_categorical_dtype():
+    """Tests that Schema.types() correctly returns CategoricalDtype instead of None.
+    Regression test for https://github.com/ray-project/ray/issues/50285
+    """
+    df = pd.DataFrame(
+        {
+            "sex": ["male", "female", "male", "female"],
+            "level": ["L4", "L5", "L3", "L4"],
+        }
+    )
+    ds = ray.data.from_pandas(df)
+
+    categorizer = Categorizer(
+        columns=["sex", "level"],
+        dtypes={"level": pd.CategoricalDtype(["L3", "L4", "L5", "L6"], ordered=True)},
+    )
+    result_types = categorizer.fit_transform(ds).schema().types
+
+    # Should NOT return [None, None]
+    assert result_types[0] is not None, "sex column type should not be None"
+    assert result_types[1] is not None, "level column type should not be None"
+
+    # Both should be Dictionary
+    assert isinstance(
+        result_types[0], pa.DictionaryType
+    ), f"Expected DictionaryType, got {type(result_types[0])}"
+    assert isinstance(
+        result_types[1], pa.DictionaryType
+    ), f"Expected DictionaryType, got {type(result_types[1])}"
+
+    # Verify correct categories
+    assert result_types[1].value_type == pa.string()
+    assert result_types[1].ordered is True
+    assert result_types[0].ordered is False
 
 
 class TestEncoderSerialization:
