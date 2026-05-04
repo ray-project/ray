@@ -57,10 +57,6 @@ class AbstractOneToOne(LogicalOperator):
     def num_outputs(self) -> Optional[int]:
         return self._num_outputs
 
-    @property
-    def input_dependency(self) -> LogicalOperator:
-        return self.input_dependencies[0]
-
 
 @dataclass(frozen=True, repr=False, eq=False)
 class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):

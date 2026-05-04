@@ -384,7 +384,7 @@ class FuseOperators(Rule):
         ):
             op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
-        input_op = up_logical_op.input_dependency
+        input_op = up_logical_op.input_dependencies[0]
         logical_op = AbstractUDFMap(
             name,
             input_op,
@@ -550,7 +550,7 @@ class FuseOperators(Rule):
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
         # on a lower-level operator spec.
         if isinstance(up_logical_op, AbstractUDFMap):
-            input_op = up_logical_op.input_dependency
+            input_op = up_logical_op.input_dependencies[0]
         else:
             # Bottom out at the source logical op (e.g. Read()).
             input_op = up_logical_op

@@ -46,12 +46,13 @@ class LimitPushdownRule(Rule):
         def transform(node: LogicalOperator) -> LogicalOperator:
             if isinstance(node, Limit):
                 # First, try to fuse with upstream Limit if possible (reuse fusion logic)
-                upstream_op = node.input_dependency
+                upstream_op = node.input_dependencies[0]
                 if isinstance(upstream_op, Limit):
                     # Fuse consecutive Limits: Limit[n] -> Limit[m] becomes Limit[min(n,m)]
                     new_limit = min(node.limit, upstream_op.limit)
                     return Limit(
-                        new_limit, input_dependencies=[upstream_op.input_dependency]
+                        new_limit,
+                        input_dependencies=[upstream_op.input_dependencies[0]],
                     )
 
                 # If no fusion, apply pushdown logic
@@ -75,7 +76,7 @@ class LimitPushdownRule(Rule):
 
         def transform(node: LogicalOperator) -> LogicalOperator:
             if isinstance(node, Limit):
-                if isinstance(node.input_dependency, Union):
+                if isinstance(node.input_dependencies[0], Union):
                     return self._push_limit_into_union(node)
                 return self._push_limit_down(node)
             return node
@@ -103,7 +104,7 @@ class LimitPushdownRule(Rule):
             after:
                 child -> Limit(n) -> Union -> Limit(n)   (no extra branch limit inserted)
         """
-        union_op = limit_op.input_dependency
+        union_op = limit_op.input_dependencies[0]
         assert isinstance(union_op, Union)
 
         def _branch_has_limit(op: LogicalOperator, limit: int) -> bool:
@@ -115,8 +116,8 @@ class LimitPushdownRule(Rule):
             ):
                 if isinstance(current, Limit):
                     return current.limit == limit
-                # Safe to use input_dependency: current is an AbstractOneToOne here.
-                current = current.input_dependency
+                # Safe to use the first dependency: current is one-to-one here.
+                current = current.input_dependencies[0]
 
             return isinstance(current, Limit) and current.limit == limit
 
@@ -130,7 +131,7 @@ class LimitPushdownRule(Rule):
                 continue
             raw_limit = Limit(limit_op.limit, input_dependencies=[child])
 
-            if isinstance(raw_limit.input_dependency, Union):
+            if isinstance(raw_limit.input_dependencies[0], Union):
                 # This represents the limit operator appended after the union.
                 pushed_tail = self._push_limit_into_union(raw_limit)
             else:
@@ -148,7 +149,7 @@ class LimitPushdownRule(Rule):
         """
         # Traverse up the DAG until we reach the first operator that meets
         # one of the stopping conditions
-        current_op = limit_op.input_dependency
+        current_op = limit_op.input_dependencies[0]
         num_rows_preserving_ops: List[LogicalOperator] = []
         while (
             isinstance(current_op, AbstractOneToOne)
@@ -164,7 +165,7 @@ class LimitPushdownRule(Rule):
                     )
                     break
             num_rows_preserving_ops.append(current_op)
-            current_op = current_op.input_dependency
+            current_op = current_op.input_dependencies[0]
 
         # If we couldn't push through any operators, return original
         if not num_rows_preserving_ops:
@@ -202,7 +203,7 @@ class LimitPushdownRule(Rule):
                 assert len(op.input_dependencies) == 1, len(op.input_dependencies)
                 return replace(
                     op,
-                    input_dependencies=[op.input_dependency],
+                    input_dependencies=[op.input_dependencies[0]],
                     per_block_limit=limit,
                 )
             new_op = copy.copy(op)
