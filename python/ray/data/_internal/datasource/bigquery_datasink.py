@@ -128,5 +128,6 @@ class BigQueryDatasink(Datasink[None]):
             [
                 _write_single_block.remote(block, self.project_id, self.dataset)
                 for block in blocks
+                if BlockAccessor.for_block(block).num_rows > 0
             ]
         )
