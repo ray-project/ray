@@ -88,6 +88,10 @@ bool GcsPlacementGroup::HasUnplacedBundles() const {
   return !GetUnplacedBundles().empty();
 }
 
+bool GcsPlacementGroup::AllUnplacedBundles() const {
+  return GetBundles().size() == GetUnplacedBundles().size();
+}
+
 rpc::PlacementStrategy GcsPlacementGroup::GetStrategy() const {
   return placement_group_table_data_.strategy();
 }

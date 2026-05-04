@@ -142,7 +142,53 @@ def _check_ray_version(gcs_client):
         )
 
 
-@click.group()
+class RayCLI(click.Group):
+    """Custom click.Group that groups observability commands (State CLI commands) in help output.
+
+    This overrides format_commands to split subcommands into "Observability"
+    and "Commands" sections for better readability of ray --help output.
+    """
+
+    def format_commands(self, ctx, formatter):
+        commands = []
+        for subcommand in self.list_commands(ctx):
+            cmd = self.get_command(ctx, subcommand)
+            if cmd is None:
+                continue
+            if cmd.hidden:
+                continue
+            commands.append((subcommand, cmd))
+
+        if len(commands):
+            limit = formatter.width - 6 - max(len(cmd[0]) for cmd in commands)
+
+            observability_commands = []
+            other_commands = []
+
+            observability_names = {
+                "summary",
+                "list",
+                "get",
+                "logs",
+            }
+
+            for subcommand, cmd in commands:
+                help = cmd.get_short_help_str(limit)
+                if subcommand in observability_names:
+                    observability_commands.append((subcommand, help))
+                else:
+                    other_commands.append((subcommand, help))
+
+            if other_commands:
+                with formatter.section("Commands"):
+                    formatter.write_dl(other_commands)
+
+            if observability_commands:
+                with formatter.section("Observability"):
+                    formatter.write_dl(observability_commands)
+
+
+@click.group(cls=RayCLI)
 @click.option(
     "--logging-level",
     required=False,
@@ -2594,10 +2640,14 @@ def drain_node(
     reason_message: str,
     deadline_remaining_seconds: int,
 ):
-    """
-    This is NOT a public API.
+    """Manually drain a worker node.
 
-    Manually drain a worker node.
+    This is a developer-facing command used to request that GCS gracefully
+    drain a node (e.g., before manual termination). The same underlying API
+    is invoked by autoscaler v2 for idle and preemption-based termination.
+
+    The command is hidden from the top-level `ray --help` output and its
+    interface is not covered by Ray's public API stability guarantees.
     """
     # This should be before get_runtime_context() so get_runtime_context()
     # doesn't start a new worker here.

@@ -5,6 +5,7 @@ import json
 import logging
 import os
 import re
+import shutil
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
@@ -27,6 +28,7 @@ from ray.serve._private.constants import (
     NO_ROUTES_MESSAGE,
     PROXY_MIN_DRAINING_PERIOD_S,
     RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG,
+    RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY,
     RAY_SERVE_HAPROXY_BALANCE_ALGORITHM,
     RAY_SERVE_HAPROXY_BINARY_PATH,
     RAY_SERVE_HAPROXY_CONFIG_FILE_LOC,
@@ -42,6 +44,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_SERVER_STATE_BASE,
     RAY_SERVE_HAPROXY_SERVER_STATE_FILE,
     RAY_SERVE_HAPROXY_SOCKET_PATH,
+    RAY_SERVE_HAPROXY_STATS_PORT,
     RAY_SERVE_HAPROXY_SYSLOG_PORT,
     RAY_SERVE_HAPROXY_TCP_NODELAY,
     RAY_SERVE_HAPROXY_TIMEOUT_CLIENT_S,
@@ -67,6 +70,57 @@ from ray.serve.schema import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+
+def get_haproxy_binary() -> str:
+    """Return the path to the HAProxy binary.
+
+    When RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY is disabled (default), returns
+    RAY_SERVE_HAPROXY_BINARY_PATH (defaults to "haproxy", i.e. system PATH).
+
+    When enabled, resolution order:
+      1. ``RAY_SERVE_HAPROXY_BINARY_PATH`` if explicitly set to an absolute path.
+      2. The binary bundled in the ``ray-haproxy`` package.
+      3. ``haproxy`` on the system PATH (fallback).
+
+    Raises ``FileNotFoundError`` if no usable binary is found.
+    """
+    if not RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY:
+        return RAY_SERVE_HAPROXY_BINARY_PATH
+
+    # 1. If RAY_SERVE_HAPROXY_BINARY_PATH was explicitly set (not the default),
+    # use it as an override.
+    if RAY_SERVE_HAPROXY_BINARY_PATH != "haproxy":
+        if os.path.isfile(RAY_SERVE_HAPROXY_BINARY_PATH) and os.access(
+            RAY_SERVE_HAPROXY_BINARY_PATH, os.X_OK
+        ):
+            return RAY_SERVE_HAPROXY_BINARY_PATH
+        raise FileNotFoundError(
+            f"RAY_SERVE_HAPROXY_BINARY_PATH={RAY_SERVE_HAPROXY_BINARY_PATH!r} "
+            "does not point to an executable file."
+        )
+
+    # 2. Bundled binary from the ray-haproxy package.
+    try:
+        from ray_haproxy import get_haproxy_binary as _pip_binary
+
+        return _pip_binary()
+    except ImportError:
+        pass
+    except OSError:
+        pass
+
+    # 3. System PATH fallback.
+    system_haproxy = shutil.which("haproxy")
+    if system_haproxy:
+        return system_haproxy
+
+    raise FileNotFoundError(
+        "Could not find an HAProxy binary. "
+        "Install 'ray[haproxy]' for the bundled binary, "
+        "set RAY_SERVE_HAPROXY_BINARY_PATH, "
+        "or ensure 'haproxy' is on PATH."
+    )
 
 
 @dataclass
@@ -343,7 +397,7 @@ class HAProxyConfig:
     enable_hap_optimization: bool = RAY_SERVE_ENABLE_HAPROXY_OPTIMIZED_CONFIG
     maxconn: int = RAY_SERVE_HAPROXY_MAXCONN
     nbthread: int = RAY_SERVE_HAPROXY_NBTHREAD
-    stats_port: int = 8404
+    stats_port: int = RAY_SERVE_HAPROXY_STATS_PORT
     stats_uri: str = "/stats"
     metrics_port: int = RAY_SERVE_HAPROXY_METRICS_PORT
     metrics_uri: str = "/metrics"
@@ -546,7 +600,8 @@ class HAProxyApi(ProxyApi):
         self, *extra_args: str, timeout_s: int = 5
     ) -> asyncio.subprocess.Process:
         # Build command args
-        args = [RAY_SERVE_HAPROXY_BINARY_PATH, "-db", "-f", self.config_file_path]
+        haproxy_bin = get_haproxy_binary()
+        args = [haproxy_bin, "-db", "-f", self.config_file_path]
 
         if not self.cfg.enable_so_reuseport:
             args.append("-dR")
@@ -973,6 +1028,7 @@ class HAProxyManager(ProxyActorInterface):
                 LongPollNamespace.FALLBACK_TARGETS: self.update_fallback_targets,
             },
             call_in_event_loop=self.event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
 
         is_head = self._node_id == get_head_node_id()
