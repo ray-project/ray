@@ -77,6 +77,30 @@ from ray.serve.schema import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# Shared by the Lua → router call and the frontend `wait-for-body`: HAProxy
+# never holds the request longer than the router itself would.
+INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
+
+
+def _get_safe_name(name: str) -> str:
+    """Sanitize an actor name for use as a HAProxy server/backend label."""
+    name = name.replace("#", "-").replace("/", ".")
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+
+
+def target_to_server(target: "Target", node_ip_address: str) -> "ServerConfig":
+    """Convert a Target to a ServerConfig.
+
+    `replica_id` is the unsanitized actor name (matches what `/internal/route`
+    returns); `name` is the sanitized form used in the HAProxy config.
+    """
+    return ServerConfig(
+        name=_get_safe_name(target.name),
+        host="127.0.0.1" if target.ip == node_ip_address else target.ip,
+        port=target.port,
+        replica_id=target.name,
+    )
+
 
 @functools.cache
 def _load_lua_template() -> string.Template:
@@ -1369,7 +1393,10 @@ class HAProxyManager(ProxyActorInterface):
         fallback_target: Optional[Target],
     ) -> BackendConfig:
         """Create a backend configuration from a target group and fallback target."""
-        servers = [self._target_to_server(target) for target in target_group.targets]
+        servers = [
+            target_to_server(target, self._node_ip_address)
+            for target in target_group.targets
+        ]
 
         ingress_request_router_servers = [
             self._target_to_server(target)
@@ -1378,7 +1405,7 @@ class HAProxyManager(ProxyActorInterface):
 
         fallback_server = None
         if fallback_target is not None:
-            fallback_server = self._target_to_server(fallback_target)
+            fallback_server = target_to_server(fallback_target, self._node_ip_address)
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
@@ -1453,9 +1480,7 @@ class HAProxyManager(ProxyActorInterface):
     @staticmethod
     def get_safe_name(name: str) -> str:
         """Get a safe label name for the haproxy config."""
-        name = name.replace("#", "-").replace("/", ".")
-        # replace all remaining non-alphanumeric and non-{".", "_", "-"} with "_"
-        return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+        return _get_safe_name(name)
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         """Return the set of replica IDs for targets matching the given route.
