@@ -249,8 +249,8 @@ class Result:
 
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(
-        self, metric: str, mode: str
-    ) -> Optional["ray.tune.Checkpoint"]:
+        self, metric: str, mode: str, return_metrics: bool = False
+    ) -> Union["ray.tune.Checkpoint", Tuple["ray.tune.Checkpoint", Dict[str, Any]]]:
         """Get the best checkpoint from this trial based on a specific metric.
 
         Any checkpoints without an associated metric value will be filtered out.
@@ -258,10 +258,12 @@ class Result:
         Args:
             metric: The key for checkpoints to order on.
             mode: One of ["min", "max"].
+            return_metrics: If True, returns the best checkpoint and all its
+                recorded metrics.
 
         Returns:
-            :class:`Checkpoint <ray.train.Checkpoint>` object, or None if there is
-            no valid checkpoint associated with the metric.
+            :class:`Checkpoint <ray.tune.Checkpoint>` object or
+            ``(checkpoint, metrics)`` tuple if ``return_metric`` is True.
         """
         if not self.best_checkpoints:
             raise RuntimeError("No checkpoint exists in the trial directory!")
@@ -273,15 +275,17 @@ class Result:
 
         op = max if mode == "max" else min
         valid_checkpoints = [
-            ckpt_info
-            for ckpt_info in self.best_checkpoints
-            if unflattened_lookup(metric, ckpt_info[1], default=None) is not None
+            (ckpt, metrics, value)
+            for ckpt, metrics in self.best_checkpoints
+            if (value := unflattened_lookup(metric, metrics, default=None)) is not None
         ]
 
-        if not valid_checkpoints:
-            raise RuntimeError(
-                f"Invalid metric name {metric}! "
-                f"You may choose from the following metrics: {self.metrics.keys()}."
-            )
+        if len(valid_checkpoints) == 0:
+            raise RuntimeError(f"No checkpoint's metrics contain {metric} as a key.")
 
-        return op(valid_checkpoints, key=lambda x: unflattened_lookup(metric, x[1]))[0]
+        best_ckpt, best_metrics, best_value = op(
+            valid_checkpoints, key=lambda ckpt_metrics_value: ckpt_metrics_value[2]
+        )
+        if return_metrics:
+            return best_ckpt, best_metrics
+        return best_ckpt

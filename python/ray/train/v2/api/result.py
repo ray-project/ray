@@ -57,9 +57,23 @@ class Result(ResultV1):
 
     @PublicAPI(stability="alpha")
     def get_best_checkpoint(
-        self, metric: str, mode: str
-    ) -> Optional["ray.train.Checkpoint"]:
-        return super().get_best_checkpoint(metric, mode)
+        self, metric: str, mode: str, return_metrics: bool = False
+    ) -> Union["ray.train.Checkpoint", Tuple["ray.train.Checkpoint", Dict[str, Any]]]:
+        """Get the best checkpoint from this trial based on a specific metric.
+
+        Any checkpoints without an associated metric value will be filtered out.
+
+        Args:
+            metric: The key for checkpoints to order on.
+            mode: One of ["min", "max"].
+            return_metrics: If True, returns the best checkpoint and all its
+                recorded metrics.
+
+        Returns:
+            :class:`Checkpoint <ray.train.Checkpoint>` object or
+            ``(checkpoint, metrics)`` tuple if ``return_metric`` is True.
+        """
+        return super().get_best_checkpoint(metric, mode, return_metrics)
 
     @classmethod
     def from_path(
