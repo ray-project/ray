@@ -29,7 +29,13 @@ from ray.data._internal.logical.operators.map_operator import (
     Project,
     StreamingRepartition,
 )
-from ray.data._internal.logical.operators.n_ary_operator import NAry, Union, Zip
+from ray.data._internal.logical.operators.n_ary_operator import (
+    Mix,
+    MixStoppingCondition,
+    NAry,
+    Union,
+    Zip,
+)
 from ray.data._internal.logical.operators.one_to_one_operator import (
     AbstractOneToOne,
     Download,
@@ -67,6 +73,8 @@ __all__ = [
     "ListFiles",
     "MapBatches",
     "MapRows",
+    "Mix",
+    "MixStoppingCondition",
     "NAry",
     "Project",
     "RandomShuffle",
