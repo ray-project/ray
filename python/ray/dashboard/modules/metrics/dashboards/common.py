@@ -184,6 +184,18 @@ GRAPH_PANEL_TEMPLATE = {
             "fill": 0,
             "stack": False,
         },
+        {
+            "alias": "/Container /",
+            "hiddenSeries": True,
+        },
+        {
+            "alias": "Container MAX",
+            "dashes": True,
+            "color": "#73BF69",
+            "fill": 0,
+            "stack": False,
+            "hiddenSeries": True,
+        },
     ],
     "spaceLength": 10,
     "stack": True,
