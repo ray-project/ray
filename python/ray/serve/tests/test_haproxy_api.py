@@ -498,10 +498,13 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
 
 
-def test_irr_does_not_leak_into_non_irr_backends(haproxy_api_cleanup):
-    """Pin the Jinja guard: non-IRR backends get no via-IRR companion and
-    don't contribute to is_irr_eligible. The end-to-end test only has an IRR
-    backend, so this regression isn't caught there."""
+def test_ingress_request_router_does_not_leak_into_other_backends(
+    haproxy_api_cleanup,
+):
+    """Pin the Jinja guard: a backend without router_servers gets no
+    via-ingress-request-router companion and doesn't contribute to
+    is_via_ingress_request_router. The end-to-end test only exercises a
+    single router-routed backend, so this regression isn't caught there."""
     with tempfile.TemporaryDirectory() as temp_dir:
         api = _make_api(
             temp_dir,
@@ -540,10 +543,10 @@ def test_irr_does_not_leak_into_non_irr_backends(haproxy_api_cleanup):
 
         assert "backend llm-via-ingress-request-router" in cfg
         assert "backend api-via-ingress-request-router" not in cfg
-        assert "acl is_irr_eligible path /api" not in cfg
+        assert "acl is_via_ingress_request_router path /api" not in cfg
 
 
-def _create_irr_replica_server(port: int, replica_id_header: str):
+def _create_replica_server(port: int, replica_id_header: str):
     """Fake data-plane replica that echoes its identity in a response header."""
     app = FastAPI()
 
@@ -560,7 +563,7 @@ def _create_irr_replica_server(port: int, replica_id_header: str):
     return _serve_fastapi_app(app, port, _healthz_ready(port))
 
 
-def _create_irr_router_server(port: int, replica_id_to_return: str):
+def _create_router_server(port: int, replica_id_to_return: str):
     """Fake /internal/route. Captures bodies so tests can verify HAProxy
     actually buffered + forwarded the request."""
     app = FastAPI()
@@ -587,8 +590,8 @@ def _create_irr_router_server(port: int, replica_id_to_return: str):
 @pytest.mark.asyncio
 async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
     """Run actual HAProxy against a fake router + two replicas; verify a POST
-    is pinned to the replica the router selects, while a GET (non-IRR) is not
-    routed through the Lua path."""
+    is pinned to the replica the router selects, while a GET (which doesn't
+    trigger the router-routed path) is not."""
     with tempfile.TemporaryDirectory() as temp_dir:
         haproxy_port = 8200
         stats_port = 8201
@@ -599,13 +602,13 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
         actor_name_a = "SERVE_REPLICA::app#dep#aaa"
         actor_name_b = "SERVE_REPLICA::app#dep#bbb"
 
-        replica_a, replica_a_thread = _create_irr_replica_server(
+        replica_a, replica_a_thread = _create_replica_server(
             replica_a_port, replica_id_header="A"
         )
-        replica_b, replica_b_thread = _create_irr_replica_server(
+        replica_b, replica_b_thread = _create_replica_server(
             replica_b_port, replica_id_header="B"
         )
-        router, router_thread, router_captured = _create_irr_router_server(
+        router, router_thread, router_captured = _create_router_server(
             router_port, replica_id_to_return=actor_name_b  # always pick B
         )
 
@@ -668,8 +671,8 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
                 timeout=10,
             )
 
-            # POST hits IRR path. Router returns B's actor name, so the
-            # request must land on replica B regardless of LB ordering.
+            # POST goes through the router. Router returns B's actor name,
+            # so the request must land on replica B regardless of LB ordering.
             payload = {"prompt": "hello"}
             resp = requests.post(
                 f"http://127.0.0.1:{haproxy_port}/predict",

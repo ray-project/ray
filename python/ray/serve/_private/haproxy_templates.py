@@ -84,12 +84,12 @@ frontend http_frontend
     {%- if has_ingress_request_router %}
     {%- for backend in backends %}
     {%- if backend.router_servers %}
-    acl is_irr_eligible path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
-    acl is_irr_eligible path {{ backend.path_prefix or '/' }}
+    acl is_via_ingress_request_router path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
+    acl is_via_ingress_request_router path {{ backend.path_prefix or '/' }}
     {%- endif %}
     {%- endfor %}
-    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST is_irr_eligible
-    http-request lua.route_via_ingress_request_router if METH_POST is_irr_eligible
+    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST is_via_ingress_request_router
+    http-request lua.route_via_ingress_request_router if METH_POST is_via_ingress_request_router
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}

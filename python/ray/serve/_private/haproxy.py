@@ -6,9 +6,11 @@ import logging
 import os
 import re
 import shutil
+import string
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from jinja2 import Environment
@@ -73,6 +75,48 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 # Shared by the Lua router call and the frontend `wait-for-body`.
 INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
+
+_LUA_TEMPLATE = string.Template(
+    (Path(__file__).parent / "ingress_request_router.lua.tmpl").read_text()
+)
+
+
+def _pick_ingress_request_router(
+    backends: "List[BackendConfig]",
+) -> "Optional[ServerConfig]":
+    """Lowest-(port, host) router from the first backend with any.
+
+    Single router by design: round-robin caused TTFT regressions, and all
+    routable backends are expected to share the same router pool.
+    """
+    for backend in backends:
+        if backend.router_servers:
+            return min(backend.router_servers, key=lambda s: (s.port, s.host))
+    return None
+
+
+def _replica_target_entries(backends: "List[BackendConfig]") -> List[str]:
+    """Lua-table entries mapping replica_id -> sanitized server name."""
+    return [
+        f"    [{json.dumps(server.replica_id)}] = {json.dumps(server.name)}"
+        for backend in backends
+        if backend.router_servers
+        for server in backend.servers
+        if server.replica_id is not None
+    ]
+
+
+def _write_if_changed(path: str, content: str) -> bool:
+    """Write content to path only if it differs from what's there."""
+    try:
+        with open(path) as f:
+            if f.read() == content:
+                return False
+    except FileNotFoundError:
+        pass
+    with open(path, "w") as f:
+        f.write(content)
+    return True
 
 
 def get_haproxy_binary() -> str:
@@ -704,124 +748,30 @@ class HAProxyApi(ProxyApi):
         self,
         backends: List[BackendConfig],
     ) -> Optional[str]:
-        """Write the Lua script that routes requests via the ingress request router.
+        """Render the ingress-request-router Lua action and write it to disk.
 
-        Per-request routing: Lua calls /internal/route on an ingress request
-        router for each POST, receives `{"replica_id": ...}`, and resolves
-        replica_id -> server name via an embedded map. HAProxy's use-server
-        directive in the `-via-ingress-request-router` backend then pins the
-        request to that server. The map is regenerated on every config reload,
-        in lockstep with the `server` directives.
-
-        Returns the path to the written Lua script, or None if no backend
-        has ingress request routers configured.
+        Returns the script path, or None if no backend has ingress request
+        routers configured (or none of their servers carry replica IDs).
         """
-        # Single router by design — round-robin caused TTFT regressions.
-        # All routable backends are expected to share the same router pool;
-        # the first one wins and others' router_servers are ignored.
-        router = None
-        for backend in backends:
-            if backend.router_servers:
-                router = min(backend.router_servers, key=lambda s: (s.port, s.host))
-                break
+        router = _pick_ingress_request_router(backends)
         if router is None:
             return None
-
-        replica_target_entries = [
-            f"    [{json.dumps(server.replica_id)}] = {json.dumps(server.name)}"
-            for backend in backends
-            if backend.router_servers
-            for server in backend.servers
-            if server.replica_id is not None
-        ]
-        if not replica_target_entries:
+        entries = _replica_target_entries(backends)
+        if not entries:
             return None
 
-        config_dir = os.path.dirname(self.config_file_path)
-        lua_path = os.path.join(config_dir, "ingress_request_router.lua")
-        replica_targets_lua = "{\n" + ",\n".join(replica_target_entries) + "\n}"
+        content = _LUA_TEMPLATE.substitute(
+            TIMEOUT_S=INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+            ROUTER_HOST=json.dumps(router.host),
+            ROUTER_PORT=router.port,
+            REPLICA_TARGETS="{\n" + ",\n".join(entries) + "\n}",
+        )
 
-        lua_content = f"""local ROUTER_REQUEST_TIMEOUT_S = {INGRESS_REQUEST_ROUTER_TIMEOUT_S}
-
-local REPLICA_TARGETS = {replica_targets_lua}
-
-local ROUTER = {{ host = {json.dumps(router.host)}, port = {router.port} }}
-local ROUTER_HOST_HEADER = ROUTER.host .. ":" .. ROUTER.port
-
-local function do_request(body)
-    local sock = core.tcp()
-    sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
-
-    if not sock:connect(ROUTER.host, ROUTER.port) then
-        return nil
-    end
-
-    -- Connection: close so sock:receive("*a") terminates on EOF.
-    local req = "POST /internal/route HTTP/1.0\\r\\n"
-        .. "Host: " .. ROUTER_HOST_HEADER .. "\\r\\n"
-        .. "Connection: close\\r\\n"
-        .. "Content-Type: application/json\\r\\n"
-        .. "Content-Length: " .. #body .. "\\r\\n"
-        .. "\\r\\n"
-        .. body
-
-    if not sock:send(req) then
-        sock:close()
-        return nil
-    end
-
-    local response = sock:receive("*a")
-    sock:close()
-    return response
-end
-
-core.register_action("route_via_ingress_request_router", {{"http-req"}}, function(txn)
-    local body = txn.sf:req_body()
-    if not body or body == "" then
-        return
-    end
-
-    -- Best-effort on truncated body: route on what we have, but warn.
-    local content_length = txn.sf:hdr("content-length")
-    if content_length then
-        local cl = tonumber(content_length)
-        if cl and #body < cl then
-            core.log(core.warning,
-                "IRR: routing on truncated body (" .. #body .. "/" .. cl .. " bytes)")
-        end
-    end
-
-    local response = do_request(body)
-    if not response or not response:match("^HTTP/[%d%.]+ 200") then
-        return
-    end
-
-    local _, body_start = response:find("\\r\\n\\r\\n", 1, true)
-    local resp_body = body_start and response:sub(body_start + 1) or ""
-    local replica_id = resp_body:match('"replica_id"%s*:%s*"([^"]+)"')
-    if not replica_id then
-        return
-    end
-
-    local server_name = REPLICA_TARGETS[replica_id]
-    if not server_name then
-        return
-    end
-
-    txn:set_var("txn.ingress_request_router_target", server_name)
-    txn:set_var("txn.via_ingress_request_router", true)
-end, 0)
-"""
-        # Skip if unchanged.
-        try:
-            with open(lua_path) as f:
-                if f.read() == lua_content:
-                    return lua_path
-        except FileNotFoundError:
-            pass
-        with open(lua_path, "w") as f:
-            f.write(lua_content)
-        logger.debug(f"Wrote Lua routing script to {lua_path}")
+        lua_path = os.path.join(
+            os.path.dirname(self.config_file_path), "ingress_request_router.lua"
+        )
+        if _write_if_changed(lua_path, content):
+            logger.debug(f"Wrote Lua routing script to {lua_path}")
         return lua_path
 
     def _generate_config_file_internal(self) -> None:

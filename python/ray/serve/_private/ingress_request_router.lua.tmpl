@@ -1,0 +1,75 @@
+-- HAProxy Lua action that picks a backend replica via the ingress request
+-- router. Templated at config-reload time; placeholders are filled in by
+-- _write_ingress_request_router_lua in haproxy.py.
+
+local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
+
+local REPLICA_TARGETS = ${REPLICA_TARGETS}
+
+local ROUTER = { host = ${ROUTER_HOST}, port = ${ROUTER_PORT} }
+local ROUTER_HOST_HEADER = ROUTER.host .. ":" .. ROUTER.port
+
+local function do_request(body)
+    local sock = core.tcp()
+    sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
+
+    if not sock:connect(ROUTER.host, ROUTER.port) then
+        return nil
+    end
+
+    -- Connection: close so sock:receive("*a") terminates on EOF.
+    local req = "POST /internal/route HTTP/1.0\r\n"
+        .. "Host: " .. ROUTER_HOST_HEADER .. "\r\n"
+        .. "Connection: close\r\n"
+        .. "Content-Type: application/json\r\n"
+        .. "Content-Length: " .. #body .. "\r\n"
+        .. "\r\n"
+        .. body
+
+    if not sock:send(req) then
+        sock:close()
+        return nil
+    end
+
+    local response = sock:receive("*a")
+    sock:close()
+    return response
+end
+
+core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
+    local body = txn.sf:req_body()
+    if not body or body == "" then
+        return
+    end
+
+    -- Best-effort on truncated body: route on what we have, but warn.
+    local content_length = txn.sf:hdr("content-length")
+    if content_length then
+        local cl = tonumber(content_length)
+        if cl and #body < cl then
+            core.log(core.warning,
+                "ingress_request_router: routing on truncated body ("
+                    .. #body .. "/" .. cl .. " bytes)")
+        end
+    end
+
+    local response = do_request(body)
+    if not response or not response:match("^HTTP/[%d%.]+ 200") then
+        return
+    end
+
+    local _, body_start = response:find("\r\n\r\n", 1, true)
+    local resp_body = body_start and response:sub(body_start + 1) or ""
+    local replica_id = resp_body:match('"replica_id"%s*:%s*"([^"]+)"')
+    if not replica_id then
+        return
+    end
+
+    local server_name = REPLICA_TARGETS[replica_id]
+    if not server_name then
+        return
+    end
+
+    txn:set_var("txn.ingress_request_router_target", server_name)
+    txn:set_var("txn.via_ingress_request_router", true)
+end, 0)
