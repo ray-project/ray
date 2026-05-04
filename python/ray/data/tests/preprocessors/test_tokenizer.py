@@ -22,7 +22,9 @@ def test_tokenizer():
         ["the", "quick", "brown", "fox", "jumps", "over", "the", "lazy", "dog"],
         ["banana", "banana"],
     ]
-    expected_df = pd.DataFrame.from_dict({"A": processed_col_a, "B": processed_col_b})
+    expected_df = pd.DataFrame.from_dict(
+        {"A": processed_col_a, "B": processed_col_b}
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -45,7 +47,7 @@ def test_tokenizer():
             "A_tokenized": processed_col_a,
             "B_tokenized": processed_col_b,
         }
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
@@ -73,7 +75,7 @@ def test_tokenizer():
             "A_custom": custom_processed_col_a,
             "B_custom": custom_processed_col_b,
         }
-    )
+    ).astype(out_df.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
