@@ -26,18 +26,25 @@ def _wait_for_watermark(bootstrap_server, topic, expected_count, timeout=5):
         }
     )
     try:
-        deadline = time.time() + timeout
-        total = 0
-        while time.time() < deadline:
-            metadata = consumer.list_topics(topic, timeout=5)
-            topic_meta = metadata.topics.get(topic)
-            if topic_meta and topic_meta.partitions:
-                total = 0
-                for pid in topic_meta.partitions:
-                    _, high = consumer.get_watermark_offsets(
-                        TopicPartition(topic, pid), timeout=10
-                    )
-                    total += high
+       deadline = time.monotonic() + timeout
+       total = 0
+       while True:
+           remaining = deadline - time.monotonic()
+           if remaining <= 0:
+               break
+
+           metadata = consumer.list_topics(topic, timeout=remaining)
+           topic_meta = metadata.topics.get(topic)
+           if topic_meta and topic_meta.partitions:
+               total = 0
+               for pid in topic_meta.partitions:
+                   remaining = deadline - time.monotonic()
+                   if remaining <= 0:
+                       break
+                   _, high = consumer.get_watermark_offsets(
+                       TopicPartition(topic, pid), timeout=remaining
+                   )
+                   total += high
                 if total >= expected_count:
                     return
             time.sleep(0.1)
