@@ -44,6 +44,13 @@ class MockTest(dict):
     def get_name(self) -> str:
         return self.get("name", "")
 
+    def get_target(self) -> str:
+        name = self.get_name()
+        for prefix in (LINUX_TEST_PREFIX, MACOS_TEST_PREFIX, WINDOWS_TEST_PREFIX):
+            if name.startswith(prefix):
+                return name[len(prefix) :]
+        return name
+
     def get_test_results(self, *args, **kwargs) -> List[TestResult]:
         return self.get("test_results", [])
 
@@ -476,38 +483,71 @@ def test_gen_microcheck_step_ids_for_prefixes_dedups_prefix_independent_calls(
 
 
 @patch("ray_release.test.Test.gen_from_name")
-@patch("ray_release.test.Test._gen_high_impact_tests")
-def test_gen_microcheck_step_ids_for_prefix_parallel_fetches(
-    mock_gen_high_impact_tests,
+@patch("ray_release.test.Test.gen_from_s3")
+def test_gen_microcheck_step_ids_for_prefix_uses_single_s3_load(
+    mock_gen_from_s3,
     mock_gen_from_name,
 ) -> None:
-    mock_gen_high_impact_tests.return_value = {"//a", "//b", "//c"}
-
     a = MockTest(
         {
             "name": "linux://a",
+            Test.KEY_IS_HIGH_IMPACT: "true",
             "test_results": [_stub_test_result(rayci_step_id="step-a", commit="c1")],
         }
     )
     b = MockTest(
         {
             "name": "linux://b",
+            Test.KEY_IS_HIGH_IMPACT: "true",
             "test_results": [_stub_test_result(rayci_step_id="step-b", commit="c1")],
         }
     )
     c = MockTest(
         {
             "name": "linux://c",
+            Test.KEY_IS_HIGH_IMPACT: "true",
             "test_results": [_stub_test_result(rayci_step_id="step-a", commit="c1")],
         }
     )
-    by_name = {t.get_name(): t for t in (a, b, c)}
-    mock_gen_from_name.side_effect = lambda name: by_name.get(name)
+    not_high_impact = MockTest(
+        {
+            "name": "linux://skip",
+            Test.KEY_IS_HIGH_IMPACT: "false",
+            "test_results": [_stub_test_result(rayci_step_id="step-skip", commit="c1")],
+        }
+    )
+    mock_gen_from_s3.return_value = [a, b, c, not_high_impact]
 
     result = Test._gen_microcheck_step_ids_for_prefix(LINUX_TEST_PREFIX, set(), set())
 
     assert result == {"step-a", "step-b"}
-    assert mock_gen_from_name.call_count == 3
+    mock_gen_from_s3.assert_called_once_with(LINUX_TEST_PREFIX)
+    mock_gen_from_name.assert_not_called()
+
+
+@patch("ray_release.test.Test.gen_from_name")
+@patch("ray_release.test.Test.gen_from_s3")
+def test_gen_microcheck_step_ids_for_prefix_falls_back_for_unknown_target(
+    mock_gen_from_s3,
+    mock_gen_from_name,
+) -> None:
+    mock_gen_from_s3.return_value = []
+    new_test = MockTest(
+        {
+            "name": "linux://new_target",
+            "test_results": [_stub_test_result(rayci_step_id="step-new", commit="c1")],
+        }
+    )
+    mock_gen_from_name.side_effect = lambda name: (
+        new_test if name == "linux://new_target" else None
+    )
+
+    result = Test._gen_microcheck_step_ids_for_prefix(
+        LINUX_TEST_PREFIX, {"//new_target"}, set()
+    )
+
+    assert result == {"step-new"}
+    mock_gen_from_name.assert_called_once_with("linux://new_target")
 
 
 def test_gen_microcheck_tests() -> None:

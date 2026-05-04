@@ -1,6 +1,7 @@
 import asyncio
 import concurrent.futures
 import enum
+import functools
 import json
 import os
 import platform
@@ -52,6 +53,13 @@ WINDOWS_BISECT_DAILY_RATE_LIMIT = 3
 BISECT_DAILY_RATE_LIMIT = 10
 
 _asyncio_thread_pool = concurrent.futures.ThreadPoolExecutor()
+
+
+@functools.lru_cache(maxsize=1)
+def _get_s3_client():
+    """Return a process-wide boto3 S3 client. Clients are thread-safe per AWS docs;
+    sharing avoids re-running IAM credential discovery on every call."""
+    return boto3.client("s3")
 
 
 def _convert_env_list_to_dict(env_list: List[str]) -> Dict[str, str]:
@@ -197,7 +205,7 @@ class Test(dict):
         Obtain all tests whose names start with the given prefix from s3
         """
         bucket = get_read_state_machine_aws_bucket()
-        s3_client = boto3.client("s3")
+        s3_client = _get_s3_client()
         pages = s3_client.get_paginator("list_objects_v2").paginate(
             Bucket=bucket,
             Prefix=f"{AWS_TEST_KEY}/{prefix}",
@@ -264,18 +272,27 @@ class Test(dict):
         human_specified_tests: Set[str],
     ) -> Set[str]:
         """
-        Per-prefix worker for gen_microcheck_step_ids_for_prefixes. Accepts the
-        prefix-independent test sets so callers can compute them once and reuse them
-        across prefixes. Per-test S3 fetches run in parallel; the dedup logic that
-        depends on running step_ids state stays serial.
+        Per-prefix worker for gen_microcheck_step_ids_for_prefixes. Loads every Test
+        for the prefix in a single S3 listing pass and reuses the loaded objects to
+        derive both high-impact targets and per-target lookups. gen_from_name is only
+        consulted on cache miss (e.g. a brand-new changed test not yet in S3). Per-
+        test S3 fetches run in parallel; the dedup logic that depends on running
+        step_ids state stays serial.
         """
-        high_impact_tests = cls._gen_high_impact_tests(prefix)
+        prefix_tests = cls.gen_from_s3(prefix)
+        tests_by_full_name: Dict[str, "Test"] = {
+            test.get_name(): test for test in prefix_tests
+        }
+        high_impact_targets = {
+            test.get_target() for test in prefix_tests if test.is_high_impact()
+        }
         test_targets = list(
-            high_impact_tests.union(changed_tests, human_specified_tests)
+            high_impact_targets.union(changed_tests, human_specified_tests)
         )
 
         def _fetch_recent_results(test_target: str):
-            test = cls.gen_from_name(f"{prefix}{test_target}")
+            full_name = f"{prefix}{test_target}"
+            test = tests_by_full_name.get(full_name) or cls.gen_from_name(full_name)
             if not test:
                 return None
             return test.get_test_results(use_async=True)
@@ -719,7 +736,7 @@ class Test(dict):
             return self.test_results
 
         bucket = aws_bucket or get_read_state_machine_aws_bucket()
-        s3_client = boto3.client("s3")
+        s3_client = _get_s3_client()
         pages = s3_client.get_paginator("list_objects_v2").paginate(
             Bucket=bucket,
             Prefix=f"{AWS_TEST_RESULT_KEY}/{self._get_s3_name(self.get_name())}-",
@@ -758,6 +775,10 @@ class Test(dict):
         bucket: str,
         keys: List[str],
     ) -> Awaitable[List[TestResult]]:
+        # A fresh aioboto3.Session per call keeps the credentials provider's
+        # IMDS sockets bound to the current asyncio.run() event loop. Reusing
+        # one Session across asyncio.run() invocations leaks loop-bound futures
+        # at process exit ("Future ... attached to a different loop").
         session = aioboto3.Session()
         async with session.client("s3") as s3_client:
             return await asyncio.gather(
