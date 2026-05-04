@@ -24,6 +24,10 @@ PYARROW_HUDI_TEST_SKIP_REASON = (
     f"Hudi only supported if pyarrow >= {MIN_PYARROW_VERSION_FOR_HUDI}"
 )
 
+# Commit timestamps baked into the v6_trips_8i1u test fixture.
+FIRST_COMMIT = "20250715043008154"
+SECOND_COMMIT = "20250715043011090"
+
 
 def _extract_testing_table(fixture_path: str, table_dir: str, target_dir: str) -> str:
     with zipfile.ZipFile(fixture_path, "r") as zip_ref:
@@ -75,29 +79,27 @@ def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, fs, data_p
         .sort("fare")
         .take_all()
     )
-    first_commit = "20250715043008154"
-    second_commit = "20250715043011090"
     assert rows == [
         {
-            "_hoodie_commit_time": first_commit,
+            "_hoodie_commit_time": FIRST_COMMIT,
             "ts": 1695159649087,
             "rider": "rider-A",
             "fare": 19.10,
         },
         {
-            "_hoodie_commit_time": second_commit,
+            "_hoodie_commit_time": SECOND_COMMIT,
             "ts": 1695046462179,
             "rider": "rider-D",
             "fare": 25.0,
         },
         {
-            "_hoodie_commit_time": first_commit,
+            "_hoodie_commit_time": FIRST_COMMIT,
             "ts": 1695091554788,
             "rider": "rider-C",
             "fare": 27.70,
         },
         {
-            "_hoodie_commit_time": first_commit,
+            "_hoodie_commit_time": FIRST_COMMIT,
             "ts": 1695332066204,
             "rider": "rider-E",
             "fare": 93.50,
@@ -119,15 +121,11 @@ def test_hudi_snapshot_query_v6_trips_table(ray_start_regular_shared, fs, data_p
 def test_hudi_incremental_query_v6_trips_table(ray_start_regular_shared, fs, data_path):
     table_path = _get_hudi_table_path(fs, data_path, "v6_trips_8i1u")
 
-    first_commit = "20250715043008154"
-    second_commit = "20250715043011090"
     ds = ray.data.read_hudi(
         table_path,
         query_type="incremental",
-        hudi_options={
-            "hoodie.read.file_group.start_timestamp": first_commit,
-            "hoodie.read.file_group.end_timestamp": second_commit,
-        },
+        start_timestamp=FIRST_COMMIT,
+        end_timestamp=SECOND_COMMIT,
     )
 
     assert ds.schema().names == [
@@ -147,12 +145,68 @@ def test_hudi_incremental_query_v6_trips_table(ray_start_regular_shared, fs, dat
     rows = ds.select_columns(["_hoodie_commit_time", "ts", "rider", "fare"]).take_all()
     assert rows == [
         {
-            "_hoodie_commit_time": second_commit,
+            "_hoodie_commit_time": SECOND_COMMIT,
             "ts": 1695046462179,
             "rider": "rider-D",
             "fare": 25.0,
         },
     ]
+
+
+@pytest.mark.skipif(
+    not PYARROW_VERSION_MEETS_REQUIREMENT,
+    reason=PYARROW_HUDI_TEST_SKIP_REASON,
+)
+def test_hudi_snapshot_as_of_with_columns_projection(
+    ray_start_regular_shared, local_path
+):
+    """Time-travel snapshot at the first commit, with projection.
+
+    At ``FIRST_COMMIT``, rider-D's fare is the original 33.90 (the update to
+    25.0 lands in the second commit). Projection should narrow the schema and
+    the data.
+    """
+    table_path = _get_hudi_table_path(None, local_path, "v6_trips_8i1u")
+
+    ds = ray.data.read_hudi(
+        table_path,
+        as_of_timestamp=FIRST_COMMIT,
+        filters=[("city", "=", "san_francisco")],
+        columns=["rider", "fare"],
+    )
+
+    assert ds.schema().names == ["rider", "fare"]
+    rows = ds.sort("rider").take_all()
+    assert rows == [
+        {"rider": "rider-A", "fare": 19.10},
+        {"rider": "rider-C", "fare": 27.70},
+        {"rider": "rider-D", "fare": 33.90},
+        {"rider": "rider-E", "fare": 93.50},
+    ]
+
+
+@pytest.mark.skipif(
+    not PYARROW_VERSION_MEETS_REQUIREMENT,
+    reason=PYARROW_HUDI_TEST_SKIP_REASON,
+)
+def test_hudi_incremental_query_honors_filters(ray_start_regular_shared, local_path):
+    """Filters now apply to incremental queries (previously silently ignored).
+
+    The only changed row in the (FIRST_COMMIT, SECOND_COMMIT] range is rider-D
+    in san_francisco, so filtering ``city != san_francisco`` must return 0
+    rows.
+    """
+    table_path = _get_hudi_table_path(None, local_path, "v6_trips_8i1u")
+
+    ds = ray.data.read_hudi(
+        table_path,
+        query_type="incremental",
+        start_timestamp=FIRST_COMMIT,
+        end_timestamp=SECOND_COMMIT,
+        filters=[("city", "!=", "san_francisco")],
+    )
+
+    assert ds.count() == 0
 
 
 if __name__ == "__main__":

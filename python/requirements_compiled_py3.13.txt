@@ -805,7 +805,7 @@ httpx==0.28.1
     #   jupyterlab
     #   openlineage-python
     #   safehttpx
-hudi==0.4.0
+hudi @ git+https://github.com/xushiyan/hudi-rs.git@023625379f33254a88032f120328697f1cb8296f#subdirectory=python
     # via -r python/requirements/ml/py313/data-test-requirements.txt
 huey==2.6.0
     # via mlflow

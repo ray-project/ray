@@ -23,7 +23,7 @@ pyiceberg[sql-sqlite]==0.11.0
 clickhouse-connect
 confluent-kafka
 pybase64
-hudi==0.4.0
+hudi @ git+https://github.com/xushiyan/hudi-rs.git@023625379f33254a88032f120328697f1cb8296f#subdirectory=python
 datasketches
 testcontainers[kafka]
 pyarrow
