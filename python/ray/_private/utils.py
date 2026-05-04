@@ -524,40 +524,56 @@ def get_cgroup_used_memory(
 
 
 def get_cgroup_mem_stats() -> Optional[Tuple[int, int]]:
-    """Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
+    """
+    Return (used_bytes, total_bytes) from cgroups, or None if unavailable.
 
     Supports both cgroups v1 and v2. Total is capped at the host physical
-    memory so callers always get a sensible upper bound.
+    memory.
     """
-    mem_usage_v1 = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
-    mem_stat_v1 = "/sys/fs/cgroup/memory/memory.stat"
-    mem_limit_v1 = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
-    mem_usage_v2 = "/sys/fs/cgroup/memory.current"
-    mem_stat_v2 = "/sys/fs/cgroup/memory.stat"
-    mem_limit_v2 = "/sys/fs/cgroup/memory.max"
+    mem_usage_v1_file = "/sys/fs/cgroup/memory/memory.usage_in_bytes"
+    mem_stat_v1_file = "/sys/fs/cgroup/memory/memory.stat"
+    mem_limit_v1_file = "/sys/fs/cgroup/memory/memory.limit_in_bytes"
+    mem_usage_v2_file = "/sys/fs/cgroup/memory.current"
+    mem_stat_v2_file = "/sys/fs/cgroup/memory.stat"
+    mem_limit_v2_file = "/sys/fs/cgroup/memory.max"
 
     cgroup_used = None
     cgroup_total = None
     system_total = get_system_memory()
 
-    if os.path.exists(mem_usage_v1) and os.path.exists(mem_stat_v1):
+    if os.path.exists(mem_usage_v1_file) and os.path.exists(mem_stat_v1_file):
         cgroup_used = get_cgroup_used_memory(
-            mem_stat_v1, mem_usage_v1, "total_inactive_file", "total_active_file"
+            mem_stat_v1_file,
+            mem_usage_v1_file,
+            "total_inactive_file",
+            "total_active_file",
         )
-        if os.path.exists(mem_limit_v1):
-            with open(mem_limit_v1, "r") as f:
+        try:
+            with open(mem_limit_v1_file, "r") as f:
                 cgroup_total = min(int(f.read().strip()), system_total)
-    elif os.path.exists(mem_usage_v2) and os.path.exists(mem_stat_v2):
+        except Exception as exception:
+            logger.warning(
+                f"Failed to obtain current container memory limit from {mem_limit_v1_file}: {repr(exception)}"
+                "Falling back to system total memory."
+            )
+            cgroup_total = system_total
+    elif os.path.exists(mem_usage_v2_file) and os.path.exists(mem_stat_v2_file):
         cgroup_used = get_cgroup_used_memory(
-            mem_stat_v2, mem_usage_v2, "inactive_file", "active_file"
+            mem_stat_v2_file, mem_usage_v2_file, "inactive_file", "active_file"
         )
-        if os.path.exists(mem_limit_v2):
-            with open(mem_limit_v2, "r") as f:
+        try:
+            with open(mem_limit_v2_file, "r") as f:
                 max_val = f.read().strip()
             if max_val.isnumeric():
                 cgroup_total = min(int(max_val), system_total)
             else:
                 cgroup_total = system_total
+        except Exception as exception:
+            logger.warning(
+                f"Failed to obtain current container memory limit from {mem_limit_v2_file}: {repr(exception)}"
+                "Falling back to system total memory."
+            )
+            cgroup_total = system_total
 
     if cgroup_used is not None and cgroup_total is not None:
         return cgroup_used, cgroup_total
@@ -623,13 +639,14 @@ def resolve_object_store_memory(
 
 
 def get_used_memory():
-    """Return the currently used system memory in bytes
+    """
+    Return the currently used system memory in bytes
+    If cgroup memory utilization files (e.g. memory.stat) are available,
+    we are in a container/cgroup. Use the cgroup memory usage instead.
 
     Returns:
         The total amount of used memory
     """
-    # Try to accurately figure out the memory usage if we are in a docker
-    # container.
     cgroup_stats = get_cgroup_mem_stats()
     if cgroup_stats is not None:
         return cgroup_stats[0]

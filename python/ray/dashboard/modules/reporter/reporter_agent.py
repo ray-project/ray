@@ -168,25 +168,25 @@ METRICS_GAUGES = {
     ),
     "node_mem_used_host": Gauge(
         "node_mem_used_host",
-        "Host (meminfo/psutil) memory usage on a ray node",
+        "Host memory usage on a ray node",
         "bytes",
         NODE_TAG_KEYS,
     ),
     "node_mem_total_host": Gauge(
         "node_mem_total_host",
-        "Total host (meminfo/psutil) memory on a ray node",
+        "Total host memory on a ray node",
         "bytes",
         NODE_TAG_KEYS,
     ),
     "node_cgroup_mem_used": Gauge(
         "node_cgroup_mem_used",
-        "Container (cgroup) memory usage on a ray node",
+        "Container memory usage on a ray node",
         "bytes",
         NODE_TAG_KEYS,
     ),
     "node_cgroup_mem_total": Gauge(
         "node_cgroup_mem_total",
-        "Container (cgroup) memory limit on a ray node",
+        "Container memory limit on a ray node",
         "bytes",
         NODE_TAG_KEYS,
     ),
@@ -918,6 +918,11 @@ class ReporterAgent(
         return total, available, percent, used
 
     @staticmethod
+    def _get_host_mem_usage():
+        vmem = psutil.virtual_memory()
+        return vmem.used, vmem.total
+
+    @staticmethod
     def _get_disk_usage(temp_dir: str):
         if IN_KUBERNETES_POD and not ENABLE_K8S_DISK_USAGE:
             # If in a K8s pod, disable disk display by passing in dummy values.
@@ -1168,7 +1173,7 @@ class ReporterAgent(
             "mem": self._get_mem_usage(),
             # Unit is in bytes. None if
             "shm": self._get_shm_usage(),
-            "host_mem": psutil.virtual_memory(),
+            "host_mem": self._get_host_mem_usage(),
             "cgroup_mem": utils.get_cgroup_mem_stats(),
             "workers": await self._async_get_workers_and_agents(gpus),
             "raylet": raylet,
@@ -1540,24 +1545,22 @@ class ReporterAgent(
             )
             records_reported.append(node_mem_shared)
 
-        # -- Host mem (always psutil/meminfo) --
-        host_vmem = stats["host_mem"]
+        host_mem_used, host_mem_total = stats["host_mem"]
         records_reported.extend(
             [
                 Record(
                     gauge=METRICS_GAUGES["node_mem_used_host"],
-                    value=host_vmem.used,
+                    value=host_mem_used,
                     tags=node_tags,
                 ),
                 Record(
                     gauge=METRICS_GAUGES["node_mem_total_host"],
-                    value=host_vmem.total,
+                    value=host_mem_total,
                     tags=node_tags,
                 ),
             ]
         )
 
-        # -- Cgroup mem (only emitted when cgroups are available) --
         cgroup_stats = stats["cgroup_mem"]
         if cgroup_stats is not None:
             cgroup_used, cgroup_total = cgroup_stats

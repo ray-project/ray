@@ -26,6 +26,8 @@
               "ray_node_mem_available": "Bytes",
               "ray_node_mem_total": "Bytes",
               "ray_node_mem_used": "Bytes",
+              "ray_node_mem_total_host": "Bytes",
+              "ray_node_mem_used_host": "Bytes",
               "ray_node_network_receive_speed": "Bytes",
               "ray_node_network_received": "Bytes",
               "ray_node_network_send_speed": "Bytes",
