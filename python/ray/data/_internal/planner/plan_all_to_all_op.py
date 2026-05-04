@@ -91,6 +91,33 @@ def _plan_hash_shuffle_aggregate(
     )
 
 
+def _plan_gpu_shuffle_aggregate(
+    data_context: DataContext,
+    logical_op: Aggregate,
+    input_physical_op: PhysicalOperator,
+) -> PhysicalOperator:
+    from ray.data._internal.gpu_shuffle.hash_aggregate import (
+        GPUHashAggregateOperator,
+        build_gpu_aggregation_plan,
+    )
+    from ray.data._internal.planner.exchange.sort_task_spec import SortKey
+
+    normalized_key_columns = SortKey(logical_op.key).get_columns()
+    key_columns = tuple(normalized_key_columns)
+    aggregation_fns = tuple(logical_op.aggs)
+
+    if build_gpu_aggregation_plan(key_columns, aggregation_fns) is None:
+        return _plan_hash_shuffle_aggregate(data_context, logical_op, input_physical_op)
+
+    return GPUHashAggregateOperator(
+        data_context,
+        input_physical_op,
+        key_columns=key_columns,  # noqa: type
+        aggregation_fns=aggregation_fns,  # noqa: type
+        num_partitions=logical_op.num_partitions,
+    )
+
+
 def plan_all_to_all_op(
     op: AbstractAllToAll,
     physical_children: List[PhysicalOperator],
@@ -165,10 +192,9 @@ def plan_all_to_all_op(
         )
 
     elif isinstance(op, Aggregate):
-        if data_context.shuffle_strategy in (
-            ShuffleStrategy.HASH_SHUFFLE,
-            ShuffleStrategy.GPU_SHUFFLE,
-        ):
+        if data_context.shuffle_strategy == ShuffleStrategy.GPU_SHUFFLE:
+            return _plan_gpu_shuffle_aggregate(data_context, op, input_physical_dag)
+        elif data_context.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE:
             return _plan_hash_shuffle_aggregate(data_context, op, input_physical_dag)
 
         debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(

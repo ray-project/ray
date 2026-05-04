@@ -7,6 +7,7 @@ All Ray actor calls are mocked so the tests run on a standard CPU cluster.
 from typing import List
 from unittest.mock import MagicMock, patch
 
+import pandas as pd
 import pyarrow as pa
 import pytest
 
@@ -22,10 +23,16 @@ from ray.data._internal.gpu_shuffle.hash_shuffle import (
     GPUShuffleOperator,
     _derive_num_gpu_ranks,
 )
+from ray.data._internal.gpu_shuffle.hash_aggregate import (
+    GPUHashAggregateOperator,
+    build_gpu_aggregation_plan,
+    _group_aggregate,
+)
 from ray.data._internal.logical.interfaces import LogicalOperator
-from ray.data._internal.logical.operators import Repartition
+from ray.data._internal.logical.operators import Aggregate, Repartition
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.util import explain_plan
+from ray.data.aggregate import AsList, Count, Max, Mean, Min, Sum
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext, ShuffleStrategy
 
@@ -644,6 +651,137 @@ class TestPlanAllToAllOpRouting:
 
         assert "col_a" in op._key_columns
         assert "col_b" in op._key_columns
+
+
+# ---------------------------------------------------------------------------
+# GPU hash aggregate planning
+# ---------------------------------------------------------------------------
+
+
+class TestGPUHashAggregatePlanning:
+    def _make_aggregate_op(self, aggs, key="user_id", num_partitions=8):
+        return Aggregate(
+            input_op=MagicMock(LogicalOperator),
+            key=key,
+            aggs=list(aggs),
+            num_partitions=num_partitions,
+        )
+
+    def test_builtin_aggregation_plan_supported(self):
+        plan = build_gpu_aggregation_plan(
+            ("user_id",),
+            (
+                Count(),
+                Count(on="value", ignore_nulls=True),
+                Sum("value"),
+                Min("value"),
+                Max("value"),
+                Mean("value"),
+            ),
+        )
+
+        assert plan is not None
+        assert plan.shuffle_key_columns == ("user_id",)
+        assert plan.output_names == (
+            "count()",
+            "count(value)",
+            "sum(value)",
+            "min(value)",
+            "max(value)",
+            "mean(value)",
+        )
+        assert "user_id" in plan.required_columns
+        assert "value" in plan.required_columns
+
+    def test_unsupported_aggregation_plan_rejected(self):
+        assert build_gpu_aggregation_plan(("user_id",), (AsList("value"),)) is None
+
+    def test_gpu_shuffle_routes_supported_aggregate_to_gpu_operator(self):
+        ctx = DataContext()
+        ctx.gpu_shuffle_num_actors = 4
+        ctx._shuffle_strategy = ShuffleStrategy.GPU_SHUFFLE
+
+        logical_op = self._make_aggregate_op([Count(), Sum("value")])
+        input_physical_op = _make_input_op_mock()
+
+        op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+
+        assert isinstance(op, GPUHashAggregateOperator)
+        assert op._num_partitions == 8
+        assert "GPUHashAggregate" in op.name
+
+    def test_gpu_shuffle_unsupported_aggregate_falls_back_to_cpu_hash_aggregate(self):
+        from ray.data._internal.execution.operators.hash_aggregate import (
+            HashAggregateOperator,
+        )
+
+        ctx = DataContext()
+        ctx.gpu_shuffle_num_actors = 4
+        ctx._shuffle_strategy = ShuffleStrategy.GPU_SHUFFLE
+
+        logical_op = self._make_aggregate_op([AsList("value")])
+        input_physical_op = _make_input_op_mock(num_blocks=8, size_bytes=1024)
+
+        with patch(
+            "ray.data._internal.execution.operators.hash_shuffle"
+            "._get_total_cluster_resources",
+            return_value=ExecutionResources(cpu=4, memory=1024 * 1024 * 1024),
+        ):
+            op = plan_all_to_all_op(logical_op, [input_physical_op], ctx)
+
+        assert isinstance(op, HashAggregateOperator)
+
+    def test_global_aggregate_uses_synthetic_shuffle_key(self):
+        plan = build_gpu_aggregation_plan(tuple(), (Count(), Sum("value")))
+
+        assert plan is not None
+        assert len(plan.shuffle_key_columns) == 1
+        assert plan.shuffle_key_columns[0].startswith("__ray_gpu_hash_aggregate")
+
+    def test_sum_falls_back_when_cudf_min_count_unimplemented(self):
+        class _FakeAggregated:
+            def reset_index(self):
+                return pd.DataFrame({"user_id": [1], "value": [3]})
+
+        class _FakeGroupedColumn:
+            def __init__(self):
+                self.sum_calls = []
+
+            def sum(self, **kwargs):
+                self.sum_calls.append(kwargs)
+                if "min_count" in kwargs:
+                    raise NotImplementedError("min_count is not implemented yet")
+                return _FakeAggregated()
+
+        class _FakeGrouped:
+            def __init__(self, grouped_column):
+                self._grouped_column = grouped_column
+
+            def __getitem__(self, column):
+                assert column == "value"
+                return self._grouped_column
+
+        class _FakeDataFrame:
+            def __init__(self, grouped_column):
+                self._grouped_column = grouped_column
+
+            def groupby(self, columns, dropna=False):
+                assert columns == ["user_id"]
+                assert dropna is False
+                return _FakeGrouped(self._grouped_column)
+
+        grouped_column = _FakeGroupedColumn()
+
+        result = _group_aggregate(
+            _FakeDataFrame(grouped_column),
+            ("user_id",),
+            "value",
+            "sum",
+            "total",
+        )
+
+        assert grouped_column.sum_calls == [{"min_count": 1}, {}]
+        assert result.to_dict("list") == {"user_id": [1], "total": [3]}
 
 
 # ---------------------------------------------------------------------------
