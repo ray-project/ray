@@ -31,3 +31,4 @@ aioboto3
 tf_keras
 numexpr
 taskiq-redis
+mmh3
