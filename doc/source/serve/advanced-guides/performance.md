@@ -156,7 +156,7 @@ class Caller:
 ### Enable throughput-optimized serving
 
 :::{note}
-In Ray v2.54.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` will change to `0` for improved performance.
+As of Ray v2.55.0, the defaults for `RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD` and `RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP` are `0` for improved performance.
 :::
 
 This section details how to enable Ray Serve options focused on improving throughput and reducing latency. These configurations focus on the following:
