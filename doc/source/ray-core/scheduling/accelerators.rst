@@ -42,6 +42,9 @@ The accelerators natively supported by Ray Core are:
    * - METAX GPU
      - GPU
      - Experimental, supported by the community
+   * - FuriosaAI
+     - FURIOSA
+     - Experimental, supported by the community
 
 Starting Ray nodes with accelerators
 ------------------------------------
@@ -142,6 +145,20 @@ If you need to, you can :ref:`override <specify-node-resources>` this.
             to limit the METAX GPUs that are visible to Ray.
             For example, ``CUDA_VISIBLE_DEVICES=1,3 ray start --head --num-gpus=2``
             lets Ray only see devices 1 and 3.
+
+    .. tab-item:: FuriosaAI
+        :sync: FuriosaAI
+
+        .. tip::
+
+            You can set the ``FURIOSA_DEVICES`` environment variable before starting a Ray node
+            to limit the FuriosaAI NPUs that are visible to Ray.
+            The value uses the same ``npu:<id>`` notation accepted by
+            ``furiosa-llm --devices``, so it can be passed straight through to the runtime.
+            For example, ``FURIOSA_DEVICES=npu:1,npu:3 ray start --head --resources='{"FURIOSA": 2}'``
+            lets Ray only see devices 1 and 3, and a worker can run
+            ``furiosa-llm serve --devices "$FURIOSA_DEVICES" ...`` without reformatting.
+            Bare integer IDs (e.g., ``FURIOSA_DEVICES=1,3``) are also accepted on read.
 .. note::
 
   There's nothing preventing you from specifying a larger number of
