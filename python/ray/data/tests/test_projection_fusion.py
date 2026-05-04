@@ -141,7 +141,7 @@ class TestProjectionFusion:
             levels.append(
                 {expr.name for expr in current.exprs if not isinstance(expr, StarExpr)}
             )
-            current = current.input_dependency
+            current = current.input_dependencies[0]
 
         return list(reversed(levels))  # Return bottom-up order
 
@@ -153,7 +153,9 @@ class TestProjectionFusion:
         while current:
             if isinstance(current, Project):
                 count += 1
-            current = getattr(current, "input_dependency", None)
+            current = (
+                current.input_dependencies[0] if current.input_dependencies else None
+            )
 
         return count
 
@@ -168,7 +170,9 @@ class TestProjectionFusion:
                 operators.append(f"Project({expr_count} exprs)")
             else:
                 operators.append(current.__class__.__name__)
-            current = getattr(current, "input_dependency", None)
+            current = (
+                current.input_dependencies[0] if current.input_dependencies else None
+            )
 
         return " -> ".join(operators)
 
