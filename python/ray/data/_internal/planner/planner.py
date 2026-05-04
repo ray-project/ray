@@ -15,6 +15,7 @@ from ray.data._internal.execution.operators.input_data_buffer import (
 )
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
+from ray.data._internal.execution.operators.mix_operator import MixOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
@@ -34,6 +35,7 @@ from ray.data._internal.logical.operators import (
     Join,
     Limit,
     ListFiles,
+    Mix,
     Project,
     Read,
     ReadFiles,
@@ -95,6 +97,16 @@ def plan_from_op(
 def plan_zip_op(_, physical_children, data_context):
     assert len(physical_children) >= 2
     return ZipOperator(data_context, *physical_children)
+
+
+def plan_mix_op(logical_op, physical_children, data_context):
+    assert len(physical_children) >= 1
+    return MixOperator(
+        data_context,
+        *physical_children,
+        weights=logical_op.weights,
+        stopping_condition=logical_op.stopping_condition,
+    )
 
 
 def plan_union_op(_, physical_children, data_context):
@@ -167,6 +179,7 @@ class Planner:
         Filter: plan_filter_op,
         AbstractUDFMap: plan_udf_map_op,
         AbstractAllToAll: plan_all_to_all_op,
+        Mix: plan_mix_op,
         Union: plan_union_op,
         Zip: plan_zip_op,
         Limit: plan_limit_op,
