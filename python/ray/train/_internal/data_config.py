@@ -1,4 +1,5 @@
 import copy
+import os
 from collections import defaultdict
 from typing import TYPE_CHECKING, Dict, List, Literal, Optional, Union
 
@@ -124,15 +125,14 @@ class DataConfig:
             execution_options = self._get_execution_options(name)
 
             if execution_options.is_resource_limits_default():
-                # If "resource_limits" is not overridden by the user,
-                # add training-reserved resources to Data's exclude_resources.
-                execution_options.exclude_resources = (
-                    execution_options.exclude_resources.add(
-                        ExecutionResources(
-                            cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                if not self._scaling_policy_reserves_train_resources():
+                    execution_options.exclude_resources = (
+                        execution_options.exclude_resources.add(
+                            ExecutionResources(
+                                cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                            )
                         )
                     )
-                )
 
             ds = ds.copy(ds)
             ds.context.execution_options = execution_options
@@ -149,6 +149,39 @@ class DataConfig:
                     output[i][name] = ds.iterator()
 
         return output
+
+    @staticmethod
+    def _is_v2_autoscaler() -> bool:
+        """Check if Ray Data is set to use the V2 cluster autoscaler."""
+        from ray.data._internal.cluster_autoscaler import (
+            CLUSTER_AUTOSCALER_ENV_KEY,
+            DEFAULT_CLUSTER_AUTOSCALER_VERSION,
+            ClusterAutoscalerVersion,
+        )
+
+        return (
+            os.environ.get(
+                CLUSTER_AUTOSCALER_ENV_KEY, DEFAULT_CLUSTER_AUTOSCALER_VERSION
+            )
+            == ClusterAutoscalerVersion.V2
+        )
+
+    @classmethod
+    def _scaling_policy_reserves_train_resources(cls) -> bool:
+        """True iff Ray Train V2's ScalingPolicy will register training resources
+        with the AutoscalingCoordinator for this run.
+
+        Only the combination of Ray Train V2 AND the V2 cluster autoscaler wires
+        this registration end-to-end: the V2 ScalingPolicy registers training
+        resources with the AutoscalingCoordinator, which adjusts each executor's
+        share accordingly. Under Ray Train V1 there is no scaling policy, and
+        under the V1 cluster autoscaler the coordinator is not consulted.
+        In either of those cases, DataConfig must reserve training resources via
+        exclude_resources instead to avoid Ray Data over-booking the cluster.
+        """
+        from ray.train.v2._internal.constants import is_v2_enabled
+
+        return is_v2_enabled() and cls._is_v2_autoscaler()
 
     @staticmethod
     def default_ingest_options() -> "ExecutionOptions":

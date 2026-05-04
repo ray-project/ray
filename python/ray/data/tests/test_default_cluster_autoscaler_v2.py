@@ -17,6 +17,7 @@ from ray.data._internal.cluster_autoscaler.resource_utilization_gauge import (
     ResourceUtilizationGauge,
 )
 from ray.data._internal.execution.interfaces.execution_options import ExecutionResources
+from ray.data._internal.util import GiB
 
 
 class StubUtilizationGauge(ResourceUtilizationGauge):
@@ -28,6 +29,12 @@ class StubUtilizationGauge(ResourceUtilizationGauge):
 
     def get(self):
         return self._utilization
+
+
+_IS_AUTOSCALING_ENABLED_PATH = (
+    "ray.data._internal.cluster_autoscaler."
+    "default_cluster_autoscaler_v2.is_autoscaling_enabled"
+)
 
 
 class TestClusterAutoscaling:
@@ -300,6 +307,99 @@ class TestClusterAutoscaling:
         autoscaler.try_trigger_scaling()
         assert autoscaler.get_total_resources() == ExecutionResources(cpu=1)
 
+    def test_low_utilization_grace_period_keeps_explicit_request(self):
+        """Below the scale-up threshold, the last explicit request is resent briefly.
+
+        This avoids immediately dropping explicit autoscaler demand (and avoids
+        re-submitting ``get_allocated_resources()`` shapes as explicit demand).
+        """
+        current_time = {"t": 0.0}
+
+        def get_time() -> float:
+            return current_time["t"]
+
+        node_resource_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=0)
+        fake_coordinator = FakeAutoscalingCoordinator(get_time=get_time)
+        utilization_holder = {
+            "u": ExecutionResources(
+                cpu=0.9, gpu=0.9, object_store_memory=0.9, memory=0.9
+            )
+        }
+
+        class MutableUtilGauge(ResourceUtilizationGauge):
+            def observe(self):
+                pass
+
+            def get(self):
+                return utilization_holder["u"]
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
+            execution_id="test_low_util_grace",
+            resource_utilization_calculator=MutableUtilGauge(),
+            min_gap_between_autoscaling_requests_s=0,
+            low_util_request_release_delay_s=100,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {node_resource_spec: 0},
+            get_time=get_time,
+        )
+        autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
+
+        current_time["t"] = 10.0
+        autoscaler.try_trigger_scaling()
+        expected = ExecutionResources(cpu=1.0)
+        assert autoscaler.get_total_resources() == expected
+
+        utilization_holder["u"] = ExecutionResources.zero()
+        current_time["t"] = 20.0
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == expected
+
+    def test_low_utilization_after_grace_sends_empty_request(self):
+        """After the grace window, low utilization renews with an empty request."""
+        current_time = {"t": 0.0}
+
+        def get_time() -> float:
+            return current_time["t"]
+
+        node_resource_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=0)
+        fake_coordinator = FakeAutoscalingCoordinator(get_time=get_time)
+        utilization_holder = {
+            "u": ExecutionResources(
+                cpu=0.9, gpu=0.9, object_store_memory=0.9, memory=0.9
+            )
+        }
+
+        class MutableUtilGauge(ResourceUtilizationGauge):
+            def observe(self):
+                pass
+
+            def get(self):
+                return utilization_holder["u"]
+
+        autoscaler = DefaultClusterAutoscalerV2(
+            resource_manager=MagicMock(),
+            resource_limits=ExecutionResources.inf(),
+            execution_id="test_low_util_release",
+            resource_utilization_calculator=MutableUtilGauge(),
+            min_gap_between_autoscaling_requests_s=0,
+            low_util_request_release_delay_s=100,
+            autoscaling_coordinator=fake_coordinator,
+            get_node_counts=lambda: {node_resource_spec: 0},
+            get_time=get_time,
+        )
+        autoscaler.AUTOSCALING_REQUEST_EXPIRE_TIME_S = 3600
+
+        current_time["t"] = 10.0
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources(cpu=1.0)
+
+        utilization_holder["u"] = ExecutionResources.zero()
+        current_time["t"] = 200.0
+        autoscaler.try_trigger_scaling()
+        assert autoscaler.get_total_resources() == ExecutionResources.zero()
+
     def test_get_node_resource_spec_and_count_skips_max_count_zero(self):
         """Test that node types with max_count=0 are skipped."""
         # Simulate a cluster with only head node (no worker nodes)
@@ -392,10 +492,10 @@ class TestClusterAutoscaling:
                 1,
                 2,
             ),
-            # Memory limit: 4000 allows 2 nodes (4000 mem), not 3 (6000 mem)
+            # Memory limit: 4 GiB allows 2 nodes (4 GiB), not 3 (6 GiB)
             (
-                ExecutionResources.for_limits(memory=4000),
-                _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000),
+                ExecutionResources.for_limits(memory=4 * GiB),
+                _NodeResourceSpec.of(cpu=4, gpu=0, mem=2 * GiB),
                 2,
                 1,
                 2,
@@ -455,8 +555,8 @@ class TestClusterAutoscaling:
         # CPU limit of 10 allows the initial state (4 CPUs) plus room for growth
         resource_limits = ExecutionResources.for_limits(cpu=10)
 
-        large_node_spec = _NodeResourceSpec.of(cpu=8, gpu=1, mem=4000)
-        small_node_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2000)
+        large_node_spec = _NodeResourceSpec.of(cpu=8, gpu=1, mem=4 * GiB)
+        small_node_spec = _NodeResourceSpec.of(cpu=4, gpu=0, mem=2 * GiB)
 
         scale_up_threshold = 0.75
         utilization = ExecutionResources(cpu=0.9, gpu=0.9, object_store_memory=0.9)
@@ -500,7 +600,7 @@ class TestClusterAutoscaling:
             "Smaller bundles should be included even when larger ones exceed limits."
         )
         assert resources_allocated.gpu == 0
-        assert resources_allocated.memory == 4000
+        assert resources_allocated.memory == 4 * GiB
 
     def test_try_scale_up_existing_nodes_prioritized_over_delta(self):
         """Test that existing node bundles are prioritized over scale-up delta bundles.
@@ -569,16 +669,17 @@ class TestClusterAutoscaling:
 
     def test_try_scale_up_logs_info_message(self, propagate_logs, caplog):
         fake_coordinator = FakeAutoscalingCoordinator()
-        node_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=8 * 1024**3)
+        node_spec = _NodeResourceSpec.of(cpu=1, gpu=0, mem=8 * GiB)
         utilization = ExecutionResources(cpu=1, gpu=1, object_store_memory=1)
-        autoscaler = DefaultClusterAutoscalerV2(
-            resource_manager=MagicMock(),
-            execution_id="test_execution_id",
-            resource_utilization_calculator=StubUtilizationGauge(utilization),
-            min_gap_between_autoscaling_requests_s=0,
-            autoscaling_coordinator=fake_coordinator,
-            get_node_counts=lambda: {node_spec: 1},
-        )
+        with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=True):
+            autoscaler = DefaultClusterAutoscalerV2(
+                resource_manager=MagicMock(),
+                execution_id="test_execution_id",
+                resource_utilization_calculator=StubUtilizationGauge(utilization),
+                min_gap_between_autoscaling_requests_s=0,
+                autoscaling_coordinator=fake_coordinator,
+                get_node_counts=lambda: {node_spec: 1},
+            )
 
         with caplog.at_level(logging.INFO):
             autoscaler.try_trigger_scaling()
@@ -595,6 +696,40 @@ class TestClusterAutoscaling:
             f"Expected: {expected_message}\n"
             f"Actual logs: {log_messages}"
         )
+
+    def test_nodes_with_similar_memory_grouped(self):
+        """Test that nodes with slightly different memory are grouped together.
+
+        Nodes of the same type can report slightly different physical memory
+        (e.g. 14.85 GiB vs 14.94 GiB) due to non-deterministic physical memory
+        availability at Ray init time. They should produce the same spec.
+        """
+        spec_a = _NodeResourceSpec.of(cpu=8, gpu=0, mem=int(14.87 * GiB))
+        spec_b = _NodeResourceSpec.of(cpu=8, gpu=0, mem=int(14.93 * GiB))
+        assert spec_a == spec_b
+
+    def test_debug_log_when_autoscaling_disabled(self, propagate_logs, caplog):
+        """Test that autoscaling log is at DEBUG level when autoscaling is disabled."""
+        fake_coordinator = FakeAutoscalingCoordinator()
+        node_spec = _NodeResourceSpec.of(cpu=8, gpu=0, mem=1000)
+        utilization = ExecutionResources(cpu=1, gpu=0, object_store_memory=1)
+
+        with patch(_IS_AUTOSCALING_ENABLED_PATH, return_value=False):
+            autoscaler = DefaultClusterAutoscalerV2(
+                resource_manager=MagicMock(),
+                execution_id="test_execution_id",
+                resource_utilization_calculator=StubUtilizationGauge(utilization),
+                min_gap_between_autoscaling_requests_s=0,
+                autoscaling_coordinator=fake_coordinator,
+                get_node_counts=lambda: {node_spec: 2},
+            )
+
+        with caplog.at_level(logging.DEBUG):
+            autoscaler.try_trigger_scaling()
+
+        scaling_records = [r for r in caplog.records if "Requesting" in r.message]
+        assert len(scaling_records) == 1
+        assert scaling_records[0].levelno == logging.DEBUG
 
 
 if __name__ == "__main__":

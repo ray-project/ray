@@ -116,12 +116,6 @@ class ClusterResourceManager {
   bool AddNodeAvailableResources(scheduling::NodeID node_id,
                                  const ResourceSet &resource_set);
 
-  /// Update node normal task resources.
-  /// Return false if such node doesn't exist.
-  /// TODO(Shanly): Integrated this method into `UpdateNode` later.
-  bool UpdateNodeNormalTaskResources(scheduling::NodeID node_id,
-                                     const rpc::ResourcesData &resource_data);
-
   /// Return if the node is tracked.
   bool HasNode(const scheduling::NodeID &node_id) const {
     return nodes_.count(node_id) > 0;
@@ -156,6 +150,25 @@ class ClusterResourceManager {
 
   void SetNodeLabels(const scheduling::NodeID &node_id,
                      absl::flat_hash_map<std::string, std::string> labels);
+
+  /// Get the labels for a given node.
+  ///
+  /// \param node_id The ID of the node whose labels to retrieve.
+  /// \return The node's labels.
+  /// \note Crashes (via map_find_or_die) if the node_id does not exist in the
+  ///   cluster. Callers must ensure the node exists before calling this method.
+  const absl::flat_hash_map<std::string, std::string> &GetNodeLabels(
+      scheduling::NodeID node_id) const;
+
+  /// Get the total capacity of a specific resource on a given node.
+  ///
+  /// \param node_id The ID of the node to query.
+  /// \param resource_id The ID of the resource whose total capacity to retrieve.
+  /// \return The total capacity of the resource as a FixedPoint value.
+  /// \note Crashes (via map_find_or_die) if the node_id does not exist in the
+  ///   cluster. Callers must ensure the node exists before calling this method.
+  FixedPoint GetNodeTotalResources(scheduling::NodeID node_id,
+                                   scheduling::ResourceID resource_id) const;
 
  private:
   friend class ClusterResourceScheduler;

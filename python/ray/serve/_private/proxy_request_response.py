@@ -10,6 +10,7 @@ from starlette.types import Receive, Scope, Send
 
 from ray.serve._private.common import StreamingHTTPRequest, gRPCRequest
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.logging_utils import format_grpc_peer_address
 from ray.serve._private.tracing_utils import (
     extract_propagated_context,
     is_tracing_enabled,
@@ -63,6 +64,10 @@ class ProxyRequest(ABC):
     @abstractmethod
     def is_health_request(self) -> bool:
         raise NotImplementedError
+
+    @property
+    def client(self) -> str:
+        return ""
 
     @abstractmethod
     def populate_tracing_context(self):
@@ -188,6 +193,7 @@ class gRPCProxyRequest(ProxyRequest):
         self.request_id = None
         self.method_name = "__call__"
         self.multiplexed_model_id = DEFAULT.VALUE
+        self.session_id = DEFAULT.VALUE
         # ray_serve_grpc_context is a class implemented by us to be able to serialize
         # the object and pass it into the deployment.
         self.ray_serve_grpc_context = RayServegRPCContext(context)
@@ -204,6 +210,8 @@ class gRPCProxyRequest(ProxyRequest):
                     self.request_id = value
                 elif key == "multiplexed_model_id":
                     self.multiplexed_model_id = value
+                elif key == "session_id":
+                    self.session_id = value
 
     @property
     def request_type(self) -> str:
@@ -224,6 +232,10 @@ class gRPCProxyRequest(ProxyRequest):
     @property
     def is_health_request(self) -> bool:
         return self.service_method == "/ray.serve.RayServeAPIService/Healthz"
+
+    @property
+    def client(self) -> str:
+        return format_grpc_peer_address(self.context.peer())
 
     @property
     def has_input_stream(self) -> bool:

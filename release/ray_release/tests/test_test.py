@@ -10,12 +10,14 @@ from unittest.mock import AsyncMock, patch
 import aioboto3
 import boto3
 import pytest
+import responses
 
 from ray_release.bazel import bazel_runfile
 from ray_release.configs.global_config import (
     get_global_config,
     init_global_config,
 )
+from ray_release.github_client import GitHubClient
 from ray_release.test import (
     DATAPLANE_ECR_ML_REPO,
     DATAPLANE_ECR_REPO,
@@ -176,28 +178,44 @@ def test_get_anyscale_byod_image_ray_version():
     )
 
 
-@patch("github.Repository")
-@patch("github.Issue")
-def test_is_jailed_with_open_issue(mock_repo, mock_issue) -> None:
-    assert not Test(state="passing").is_jailed_with_open_issue(mock_repo)
-    mock_repo.get_issue.return_value = mock_issue
-    mock_issue.state = "open"
+_ISSUE_URL = "https://api.github.com/repos/owner/repo/issues/1"
+_ISSUE_JSON = {"number": 1, "state": "open", "title": "", "html_url": "", "labels": []}
+
+
+def _repo():
+    return GitHubClient("token").get_repo("owner/repo")
+
+
+def test_is_jailed_with_open_issue_not_jailed() -> None:
+    assert not Test(state="passing").is_jailed_with_open_issue(_repo())
+
+
+def test_is_jailed_with_open_issue_no_issue_number() -> None:
+    assert not Test(state="jailed").is_jailed_with_open_issue(_repo())
+
+
+@responses.activate
+def test_is_jailed_with_open_issue_open() -> None:
+    responses.add(responses.GET, _ISSUE_URL, json={**_ISSUE_JSON, "state": "open"})
     assert Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
-        mock_repo
+        _repo()
     )
-    mock_issue.state = "closed"
+
+
+@responses.activate
+def test_is_jailed_with_open_issue_closed() -> None:
+    responses.add(responses.GET, _ISSUE_URL, json={**_ISSUE_JSON, "state": "closed"})
     assert not Test(state="jailed", github_issue_number="1").is_jailed_with_open_issue(
-        mock_repo
+        _repo()
     )
 
 
-@patch("github.Repository")
-def test_is_jailed_with_open_issue_github_exception(mock_repo) -> None:
-    from github import GithubException
-
-    mock_repo.get_issue.side_effect = GithubException(404, {"message": "Not Found"}, {})
-    test = Test(name="test", state="jailed", github_issue_number="1")
-    assert not test.is_jailed_with_open_issue(mock_repo)
+@responses.activate
+def test_is_jailed_with_open_issue_github_exception() -> None:
+    responses.add(responses.GET, _ISSUE_URL, json={"message": "Not Found"}, status=404)
+    assert not Test(
+        name="test", state="jailed", github_issue_number="1"
+    ).is_jailed_with_open_issue(_repo())
 
 
 def test_is_stable() -> None:
@@ -621,6 +639,17 @@ def test_get_byod_image_tag_with_runtime_env_and_script(mock_get_byod_base_image
         "python_depset": None,
     }
     assert dict_hash(custom_info) != dict_hash(custom_info_no_env)
+
+
+def test_uses_anyscale_sdk_2026():
+    assert not Test({"name": "t", "cluster": {}}).uses_anyscale_sdk_2026()
+    assert not Test({"name": "t"}).uses_anyscale_sdk_2026()
+    assert Test(
+        {"name": "t", "cluster": {"anyscale_sdk_2026": True}}
+    ).uses_anyscale_sdk_2026()
+    assert not Test(
+        {"name": "t", "cluster": {"anyscale_sdk_2026": False}}
+    ).uses_anyscale_sdk_2026()
 
 
 if __name__ == "__main__":

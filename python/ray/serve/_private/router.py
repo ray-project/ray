@@ -9,6 +9,7 @@ from asyncio import AbstractEventLoop, ensure_future, futures
 from collections import defaultdict
 from collections.abc import MutableMapping
 from contextlib import contextmanager
+from dataclasses import replace
 from functools import lru_cache, partial
 from typing import (
     Any,
@@ -23,7 +24,7 @@ from typing import (
 
 import ray
 from ray.actor import ActorHandle
-from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError
+from ray.exceptions import ActorDiedError, ActorUnavailableError, RayError, RayTaskError
 from ray.serve._private.common import (
     RUNNING_REQUESTS_KEY,
     DeploymentHandleSource,
@@ -36,12 +37,14 @@ from ray.serve._private.common import (
 )
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    DEFAULT_LATENCY_BUCKET_MS,
     RAY_SERVE_AUTOSCALING_METRIC_RECORD_INTERVAL_FACTOR,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
     SERVE_LOGGER_NAME,
 )
+from ray.serve._private.constants_utils import warn_if_deprecated_env_var_set
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
 from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import (
@@ -74,7 +77,11 @@ from ray.serve._private.utils import (
     resolve_deployment_response,
 )
 from ray.serve.config import AutoscalingConfig
-from ray.serve.exceptions import BackPressureError, DeploymentUnavailableError
+from ray.serve.exceptions import (
+    BackPressureError,
+    DeploymentUnavailableError,
+    RayServeException,
+)
 from ray.types import ObjectRef
 from ray.util import metrics
 
@@ -164,12 +171,15 @@ class RouterMetricsManager:
         # If the interval is set to 0, eagerly sets all metrics.
         self._cached_metrics_enabled = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS != 0
         self._cached_metrics_interval_s = RAY_SERVE_METRICS_EXPORT_INTERVAL_MS / 1000
+        self._cached_metrics_task: Optional[asyncio.Task] = None
 
         if self._cached_metrics_enabled:
             self._cached_num_router_requests = defaultdict(int)
 
             def create_metrics_task():
-                event_loop.create_task(self._report_cached_metrics_forever())
+                self._cached_metrics_task = event_loop.create_task(
+                    self._report_cached_metrics_forever()
+                )
 
             # the constructor is called in the user thread, but its trying to create a task on the event loop
             # which is running in the router thread. This is not thread safe, so we need to use call_soon_threadsafe
@@ -495,8 +505,20 @@ class RouterMetricsManager:
 
         self._shutdown = True
 
+        if self._cached_metrics_task is not None:
+            self._cached_metrics_task.cancel()
+            try:
+                await self._cached_metrics_task
+            except asyncio.CancelledError:
+                pass
+
 
 class Router(ABC):
+    @property
+    def event_loop(self) -> Optional[AbstractEventLoop]:
+        """The event loop the router runs on, or None (e.g. local testing)."""
+        return getattr(self, "_asyncio_loop", None)
+
     @abstractmethod
     def running_replicas_populated(self) -> bool:
         pass
@@ -508,6 +530,15 @@ class Router(ABC):
         *request_args,
         **request_kwargs,
     ) -> concurrent.futures.Future[ReplicaResult]:
+        pass
+
+    @abstractmethod
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
         pass
 
     @abstractmethod
@@ -579,6 +610,10 @@ class AsyncioRouter:
         # replica set at least once.
         self._running_replicas_populated: bool = False
 
+        self._initial_backoff_s: Optional[float] = None
+        self._backoff_multiplier: Optional[float] = None
+        self._max_backoff_s: Optional[float] = None
+
         # Initializing `self._metrics_manager` before `self.long_poll_client` is
         # necessary to avoid race condition where `self.update_deployment_config()`
         # might be called before `self._metrics_manager` instance is created.
@@ -612,6 +647,24 @@ class AsyncioRouter:
             event_loop,
         )
 
+        self._objref_resolution_latency_ms = metrics.Histogram(
+            "serve_router_args_resolution_latency_ms",
+            description=(
+                "Time in milliseconds spent resolving upstream ObjectRef or "
+                "DeploymentResponse arguments before a request enters the "
+                "routing queue."
+            ),
+            boundaries=DEFAULT_LATENCY_BUCKET_MS,
+            tag_keys=("deployment", "application", "handle", "actor_id"),
+        ).set_default_tags(
+            {
+                "deployment": deployment_id.name,
+                "application": deployment_id.app_name,
+                "handle": handle_id,
+                "actor_id": self_actor_id,
+            }
+        )
+
         # The Router needs to stay informed about changes to the target deployment's
         # running replicas and deployment config. We do this via the long poll system.
         # However, for efficiency, we don't want to create a LongPollClient for every
@@ -633,6 +686,9 @@ class AsyncioRouter:
                 ): self.update_deployment_config,
             },
             call_in_event_loop=self._event_loop,
+            # Multiple AsyncioRouters can share an actor (one per downstream
+            # handle), so include the deployment id to disambiguate.
+            client_id=f"{type(self).__name__}:{self_actor_id}:{deployment_id}",
         )
 
         shared = SharedRouterLongPollClient.get_or_create(
@@ -651,6 +707,14 @@ class AsyncioRouter:
         router is initialized.
         """
         if not self._request_router and self._request_router_class:
+            backoff_kwargs = {}
+            if self._initial_backoff_s is not None:
+                backoff_kwargs["initial_backoff_s"] = self._initial_backoff_s
+            if self._backoff_multiplier is not None:
+                backoff_kwargs["backoff_multiplier"] = self._backoff_multiplier
+            if self._max_backoff_s is not None:
+                backoff_kwargs["max_backoff_s"] = self._max_backoff_s
+
             request_router = self._request_router_class(
                 deployment_id=self.deployment_id,
                 handle_source=self._handle_source,
@@ -665,6 +729,7 @@ class AsyncioRouter:
                 prefer_local_node_routing=self._prefer_local_node_routing,
                 prefer_local_az_routing=RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
                 self_availability_zone=self._availability_zone,
+                **backoff_kwargs,
             )
             request_router.initialize_state(**(self._request_router_kwargs))
 
@@ -710,6 +775,27 @@ class AsyncioRouter:
         self._request_router_kwargs = (
             deployment_config.request_router_config.request_router_kwargs
         )
+
+        # Warn if deprecated env vars are set
+        warn_if_deprecated_env_var_set("RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S")
+        warn_if_deprecated_env_var_set("RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER")
+        warn_if_deprecated_env_var_set("RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S")
+
+        self._initial_backoff_s = (
+            deployment_config.request_router_config.initial_backoff_s
+        )
+        self._backoff_multiplier = (
+            deployment_config.request_router_config.backoff_multiplier
+        )
+        self._max_backoff_s = deployment_config.request_router_config.max_backoff_s
+
+        if self._request_router:
+            self._request_router.update_backoff_params(
+                initial_backoff_s=self._initial_backoff_s,
+                backoff_multiplier=self._backoff_multiplier,
+                max_backoff_s=self._max_backoff_s,
+            )
+
         self._metrics_manager.update_deployment_config(
             deployment_config,
             curr_num_replicas=len(self.request_router.curr_replicas),
@@ -761,6 +847,7 @@ class AsyncioRouter:
         self,
         replica_id: ReplicaID,
         internal_request_id: str,
+        replica_actor_id: Optional[ray.ActorID],
         result: Union[Any, RayError],
     ) -> None:
         if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
@@ -770,15 +857,10 @@ class AsyncioRouter:
         if self.request_router:
             self.request_router.on_request_completed(replica_id, internal_request_id)
 
-        if isinstance(result, ActorDiedError):
-            # Replica has died but controller hasn't notified the router yet.
-            # Don't consider this replica for requests in the future, and retry
-            # routing request.
-            if self.request_router:
-                self.request_router.on_replica_actor_died(replica_id)
-            logger.warning(
-                f"{replica_id} will not be considered for future "
-                "requests because it has died."
+        actor_died_error = self._get_actor_died_error(result)
+        if actor_died_error is not None:
+            self._handle_actor_died_error(
+                replica_id, replica_actor_id, actor_died_error
             )
         elif isinstance(result, ActorUnavailableError):
             # There are network issues, or replica has died but GCS is down so
@@ -791,6 +873,78 @@ class AsyncioRouter:
             logger.warning(
                 f"Request failed because {replica_id} is temporarily unavailable."
             )
+
+    def _get_actor_died_error(
+        self, result: Union[Any, RayError]
+    ) -> Optional[ActorDiedError]:
+        if isinstance(result, ActorDiedError):
+            return result
+
+        if isinstance(result, RayTaskError) and isinstance(
+            getattr(result, "cause", None), ActorDiedError
+        ):
+            # RayTaskError wrapping ActorDiedError (e.g., from failed object ref
+            # resolution in chained deployment calls).
+            return result.cause
+
+        return None
+
+    def _handle_actor_died_error(
+        self,
+        replica_id: ReplicaID,
+        replica_actor_id: Optional[ray.ActorID],
+        actor_died_error: ActorDiedError,
+    ) -> bool:
+        """Handle an ActorDiedError from a replica request.
+
+        Returns True if the error is from this replica (i.e., this replica
+        died and should be retried on another replica). Returns False if the
+        error is from an upstream dependency (i.e., this replica is healthy
+        but the request failed due to a bad input).
+        """
+        # Only mark the replica as dead if the ActorDiedError refers to this
+        # replica. With chained DeploymentResponses, the error may come from
+        # an upstream deployment that was passed as an object ref to this
+        # replica. In that case, this replica is still healthy.
+        error_actor_id = getattr(actor_died_error, "actor_id", None)
+        replica_actor_id_hex = (
+            replica_actor_id.hex() if replica_actor_id is not None else None
+        )
+        # When error_actor_id or replica_actor_id_hex is None, we cannot
+        # definitively compare. Treat as match to preserve conservative
+        # behavior: mark replica dead rather than leaving it in rotation.
+        if (
+            error_actor_id is None
+            or replica_actor_id_hex is None
+            or error_actor_id == replica_actor_id_hex
+        ):
+            # Replica has died but controller hasn't notified the router yet.
+            if self.request_router:
+                self.request_router.on_replica_actor_died(replica_id)
+            logger.warning(
+                f"{replica_id} will not be considered for future "
+                "requests because it has died."
+            )
+            return True
+        else:
+            # Error from upstream dependency, not from this replica.
+            logger.debug(
+                f"ActorDiedError from upstream (actor_id={error_actor_id}), "
+                f"not from {replica_id} (actor_id={replica_actor_id_hex}). "
+                "Replica remains in rotation."
+            )
+            return False
+
+    def _make_upstream_crash_error(self, e: ActorDiedError) -> RayServeException:
+        """Surface a clear Serve error while preserving Ray's actor death details."""
+        msg = (
+            f"Request to deployment '{self.deployment_id.name}' failed because "
+            f"an upstream actor died before finishing a dependent task. "
+            f"Ray reported:\n{e}"
+        )
+        wrapped = RayServeException(msg)
+        wrapped.__cause__ = e
+        return wrapped
 
     async def _route_and_send_request_once(
         self,
@@ -807,7 +961,10 @@ class AsyncioRouter:
             # not time spent waiting for upstream DeploymentResponse arguments.
             # See: https://github.com/ray-project/ray/issues/60624
             if not pr.resolved:
+                resolution_start = time.monotonic()
                 await self._resolve_request_arguments(pr)
+                resolution_ms = (time.monotonic() - resolution_start) * 1000
+                self._objref_resolution_latency_ms.observe(resolution_ms)
 
             num_curr_replicas = len(self.request_router.curr_replicas)
             with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
@@ -823,7 +980,6 @@ class AsyncioRouter:
                     and not replica.is_cross_language
                 )
                 result = replica.try_send_request(pr, with_rejection=with_rejection)
-
                 # Proactively update the queue length cache.
                 self.request_router.on_send_request(replica.replica_id)
 
@@ -834,22 +990,50 @@ class AsyncioRouter:
                 )
             # Always register callback to notify router when request completes
             # (needed for token release in queue-based routing, metrics tracking, etc.)
+            # NOTE: add_done_callback fires from a C++ worker thread (for actor
+            # ObjectRefs) or a gRPC callback thread. _process_finished_request
+            # and decrement_queue_len_cache both access shared router state
+            # (e.g., _replica_queue_len_cache) that is not thread-safe, so we
+            # schedule them on the router's event loop.
             callback = partial(
                 self._process_finished_request,
                 replica.replica_id,
                 pr.metadata.internal_request_id,
+                replica.actor_id,
             )
-            result.add_done_callback(callback)
+            result.add_done_callback(
+                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
+            )
             callback_registered = True
 
             if not with_rejection:
+                result.add_done_callback(
+                    lambda _: self._event_loop.call_soon_threadsafe(
+                        self.request_router.decrement_queue_len_cache,
+                        replica.replica_id,
+                    )
+                )
                 return result
 
             queue_info = await result.get_rejection_response()
             self.request_router.on_new_queue_len_info(replica.replica_id, queue_info)
             if queue_info.accepted:
                 self.request_router.on_request_routed(pr, replica.replica_id, result)
+                result.add_done_callback(
+                    lambda _: self._event_loop.call_soon_threadsafe(
+                        self.request_router.decrement_queue_len_cache,
+                        replica.replica_id,
+                    )
+                )
                 return result
+
+            # Request was rejected: cancel so done callbacks fire.
+            # Without this, same-loop (means the router is running on the main event loop,
+            # where the DeploymentHandle lives) gRPC streaming results are
+            # never consumed (no background drain task exists in that mode).
+            # The call stays open, the running request counter is never decremented,
+            # and the autoscaler sees load that blocks downscaling.
+            result.cancel()
 
         except asyncio.CancelledError:
             # NOTE(edoakes): this is not strictly necessary because there are
@@ -859,16 +1043,24 @@ class AsyncioRouter:
                 result.cancel()
 
             raise
-        except ActorDiedError:
-            # Replica has died but controller hasn't notified the router yet.
-            # Don't consider this replica for requests in the future, and retry
-            # routing request.
+        except ActorDiedError as e:
             if replica is not None:
-                self.request_router.on_replica_actor_died(replica.replica_id)
-                logger.warning(
-                    f"{replica.replica_id} will not be considered for future "
-                    "requests because it has died."
+                is_from_this_replica = self._handle_actor_died_error(
+                    replica.replica_id, replica.actor_id, e
                 )
+                if not is_from_this_replica and callback_registered:
+                    # Error from an upstream dependency during request
+                    # execution (e.g., a chained DeploymentResponse whose
+                    # source actor died). The request was already accepted
+                    # by this (healthy) replica, but the input is
+                    # permanently failed — retrying with another replica
+                    # won't help. Propagate immediately so the caller gets
+                    # a fast error.
+                    raise self._make_upstream_crash_error(e)
+            elif not pr.resolved:
+                # ActorDiedError during argument resolution — same upstream
+                # cause as above, caught before a replica was even chosen.
+                raise self._make_upstream_crash_error(e)
         except ActorUnavailableError:
             # There are network issues, or replica has died but GCS is down so
             # ActorUnavailableError will be raised until GCS recovers. For the
@@ -1003,6 +1195,115 @@ class AsyncioRouter:
                         )
                     if exc:
                         set_span_exception(exc, escaped=True)
+
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        """Send a request to all running replicas in parallel.
+
+        Bypasses the normal load-balancing path and sends the request
+        directly to every replica. Waits for the request router to be
+        initialized so the replica set is populated.
+        """
+        # Propagate tracing context, matching assign_request behavior.
+        if is_span_recording():
+            propagate_context = create_propagated_context()
+            request_meta.tracing_context = propagate_context
+        else:
+            request_meta.tracing_context = None
+
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        await self._request_router_initialized.wait()
+
+        if not self._deployment_available:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        replicas: List[RunningReplica] = list(
+            self.request_router.curr_replicas.values()
+        )
+        if not replicas:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        # Resolve arguments (e.g. DeploymentResponse objects) before sending.
+        pr = PendingRequest(
+            args=list(request_args),
+            kwargs=dict(request_kwargs),
+            metadata=request_meta,
+        )
+        await self._resolve_request_arguments(pr)
+
+        results: List[ReplicaResult] = []
+        for replica in replicas:
+            replica_pr = PendingRequest(
+                args=list(pr.args),
+                kwargs=dict(pr.kwargs),
+                metadata=replace(
+                    request_meta,
+                    internal_request_id=generate_request_id(),
+                ),
+            )
+            replica_pr.resolved = True
+            try:
+                result = replica.try_send_request(replica_pr, with_rejection=False)
+            except ActorDiedError:
+                # Replica has died but controller hasn't notified the router yet.
+                # Skip this replica and continue broadcasting to healthy replicas.
+                self.request_router.on_replica_actor_died(replica.replica_id)
+                logger.warning(
+                    f"{replica.replica_id} will not be considered for future "
+                    "requests because it has died."
+                )
+                continue
+            except ActorUnavailableError:
+                # Replica is temporarily unavailable. Invalidate the cache entry
+                # and continue broadcasting to other replicas.
+                self.request_router.on_replica_actor_unavailable(replica.replica_id)
+                logger.warning(f"{replica.replica_id} is temporarily unavailable.")
+                continue
+
+            # Proactively update the queue length cache.
+            self.request_router.on_send_request(replica.replica_id)
+
+            # Track running requests and register callback for completion
+            # handling, matching the pattern in _route_and_send_request_once.
+            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+                self._metrics_manager.inc_num_running_requests_for_replica(
+                    replica.replica_id
+                )
+            # NOTE: add_done_callback fires from a C++ worker thread (for
+            # actor ObjectRefs) or a gRPC callback thread.
+            # _process_finished_request and decrement_queue_len_cache both
+            # access shared router state that is not thread-safe, so we
+            # schedule them on the router's event loop.
+            callback = partial(
+                self._process_finished_request,
+                replica.replica_id,
+                replica_pr.metadata.internal_request_id,
+                replica.actor_id,
+            )
+            result.add_done_callback(
+                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
+            )
+            result.add_done_callback(
+                lambda _, rid=replica.replica_id: (
+                    self._event_loop.call_soon_threadsafe(
+                        self.request_router.decrement_queue_len_cache,
+                        rid,
+                    )
+                )
+            )
+
+            results.append(result)
+
+        if not results:
+            raise DeploymentUnavailableError(self.deployment_id)
+
+        return results
 
     async def shutdown(self):
         await self._metrics_manager.shutdown()
@@ -1148,6 +1449,16 @@ class SingletonThreadRouter(Router):
         self._asyncio_loop.call_soon_threadsafe(create_task_and_setup)
         return concurrent_future
 
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        return await self._asyncio_router.broadcast(
+            request_meta, *request_args, **request_kwargs
+        )
+
     def shutdown(self) -> concurrent.futures.Future:
         return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
@@ -1170,6 +1481,7 @@ class SharedRouterLongPollClient:
             controller_handle,
             key_listeners={},
             call_in_event_loop=self.event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_worker_id()}",
         )
 
     @classmethod
@@ -1264,6 +1576,16 @@ class CurrentLoopRouter(Router):
             self._asyncio_router.assign_request(
                 request_meta, *request_args, **request_kwargs
             ),
+        )
+
+    async def broadcast(
+        self,
+        request_meta: RequestMetadata,
+        *request_args,
+        **request_kwargs,
+    ) -> List[ReplicaResult]:
+        return await self._asyncio_router.broadcast(
+            request_meta, *request_args, **request_kwargs
         )
 
     def shutdown(self) -> asyncio.Future:

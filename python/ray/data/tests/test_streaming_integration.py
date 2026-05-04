@@ -158,6 +158,59 @@ def test_output_split_e2e(ray_start_10_cpus_shared):
     assert len(c1.out) == 10, c0.out
 
 
+def test_output_split_shutdown_preserves_sibling_split_queues(ray_start_10_cpus_shared):
+    """If one split consumer finishes first, executor shutdown must not clear the
+    other split's output queue; slower consumers still need those RefBundles.
+    """
+    executor = StreamingExecutor(DataContext.get_current())
+    inputs = make_ref_bundles([[x] for x in range(20)])
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = OutputSplitter(o1, 2, equal=True, data_context=DataContext.get_current())
+    it = executor.execute(o2)
+
+    slow_ready = threading.Event()
+    slow_go = threading.Event()
+    c0_out: List[RefBundle] = []
+    c1_out: List[RefBundle] = []
+    thread_errors: List[BaseException] = []
+
+    def consume_split(idx: int, out: List[RefBundle], hold_before_reads: bool):
+        try:
+            if hold_before_reads:
+                slow_ready.set()
+                slow_go.wait()
+            while True:
+                try:
+                    out.append(it.get_next(output_split_idx=idx))
+                except StopIteration:
+                    break
+        except BaseException as e:
+            thread_errors.append(e)
+
+    t_slow = threading.Thread(target=consume_split, args=(1, c1_out, True))
+    t_fast = threading.Thread(target=consume_split, args=(0, c0_out, False))
+    t_slow.start()
+    assert slow_ready.wait(timeout=30)
+    t_fast.start()
+    t_fast.join(timeout=60)
+    assert not t_fast.is_alive()
+    slow_go.set()
+    t_slow.join(timeout=60)
+    assert not t_slow.is_alive()
+    assert not thread_errors, thread_errors
+
+    def get_outputs(out: List[RefBundle]):
+        outputs = []
+        for bundle in out:
+            for block_ref in bundle.block_refs:
+                ids: pd.Series = ray.get(block_ref)["id"]
+                outputs.extend(ids.values)
+        return outputs
+
+    assert get_outputs(c0_out) == list(range(0, 20, 2))
+    assert get_outputs(c1_out) == list(range(1, 20, 2))
+
+
 def test_streaming_split_e2e(ray_start_10_cpus_shared):
     def get_lengths(*iterators, use_iter_batches=True):
         lengths = []
@@ -387,6 +440,95 @@ def test_streaming_split_error_propagation(
     assert res == ["ok"] * num_splits
 
 
+def test_streaming_split_schema_before_execution(ray_start_10_cpus_shared):
+    """Test schema retrieval from splits before execution starts."""
+    ds = ray.data.range(20, override_num_blocks=20)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    schema1 = i1.schema()
+    schema2 = i2.schema()
+
+    assert schema1 is not None
+    assert "id" in schema1.names
+    assert schema1 == schema2
+
+
+def test_streaming_split_schema_during_execution(ray_start_10_cpus_shared):
+    """Test schema retrieval from splits during execution."""
+    from ray._common.test_utils import SignalActor
+
+    # Use two signals to coordinate: `started` confirms the executor is running,
+    # `blocker` keeps map tasks alive so the executor stays active.
+    started = SignalActor.remote()
+    blocker = SignalActor.remote()
+
+    def blocking_fn(row):
+        ray.get(started.send.remote())
+        ray.get(blocker.wait.remote())
+        return row
+
+    ds = ray.data.range(20, override_num_blocks=20).map(blocking_fn)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x):
+        for _ in x.iter_rows():
+            pass
+
+    # Start consumers — this triggers the executor on the coordinator.
+    refs = [consume.remote(i1), consume.remote(i2)]
+
+    # Wait until a map task has started, guaranteeing the executor is alive.
+    ray.get(started.wait.remote())
+
+    # schema() should raise because execution is active.
+    with pytest.raises(ray.exceptions.RayTaskError, match="Cannot call schema()"):
+        i1.schema()
+
+    # Unblock map tasks so consumers can finish.
+    ray.get(blocker.send.remote())
+    ray.get(refs)
+
+
+def test_streaming_split_schema_after_execution(ray_start_10_cpus_shared):
+    """Test schema retrieval after execution completes."""
+    ds = ray.data.range(20, override_num_blocks=20)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    @ray.remote
+    def consume(x):
+        for _ in x.iter_rows():
+            pass
+
+    # Run a full epoch to completion.
+    ray.get([consume.remote(i1), consume.remote(i2)])
+
+    # schema() should work after execution finishes.
+    schema = i1.schema()
+    assert schema is not None
+    assert "id" in schema.names
+
+
+def test_streaming_split_context(ray_start_10_cpus_shared):
+    """Test that get_context() returns a valid DataContext from the coordinator."""
+    ds = ray.data.range(10)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    ctx = i1.get_context()
+    assert isinstance(ctx, ray.data.DataContext)
+
+
+def test_streaming_split_dataset_tag(ray_start_10_cpus_shared):
+    """Test that _get_dataset_tag() returns correct tags from the coordinator."""
+    ds = ray.data.range(10)
+    i1, i2 = ds.streaming_split(2, equal=True)
+
+    tag1 = i1._get_dataset_tag()
+    tag2 = i2._get_dataset_tag()
+    assert "_split_0" in tag1
+    assert "_split_1" in tag2
+
+
 def test_configure_spread_e2e(ray_start_10_cpus_shared, restore_data_context):
     from ray import remote_function
 
@@ -445,7 +587,9 @@ def test_scheduling_progress_when_output_blocked(
     assert [b["id"] for b in it] == [[x] for x in range(1, 100)]
 
 
-def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context):
+def test_task_submission_backpressure_from_paused_consumer(
+    ray_start_10_cpus_shared, restore_data_context
+):
     # Here we set the memory limit low enough so the output getting blocked will
     # actually stall execution.
     block_size = 10 * 1024 * 1024
@@ -493,6 +637,60 @@ def test_backpressure_from_output(ray_start_10_cpus_shared, restore_data_context
     # Check final stats reporting.
     stats = ds.stats()
     assert "100 tasks executed" in stats, stats
+
+
+@pytest.mark.parametrize("streaming_split", [False, True])
+def test_output_backpressure_from_paused_consumer(
+    ray_start_10_cpus_shared, restore_data_context, streaming_split
+):
+    """The terminal operator's output queue should not grow beyond the
+    budget from pulling blocks from in-flight tasks when a consumer is paused."""
+    ctx = DataContext.get_current()
+    block_size = 1024
+    ctx.target_max_block_size = block_size
+    ctx.execution_options.resource_limits = ctx.execution_options.resource_limits.copy(
+        object_store_memory=block_size
+    )
+    # Disable downstream capacity backpressure to isolate the test to
+    # the resource budget escape hatch.
+    ctx.downstream_capacity_backpressure_ratio = None
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.n = 0
+
+        def inc(self):
+            self.n += 1
+
+        def get(self):
+            return self.n
+
+    counter = Counter.remote()
+
+    def generate_many_blocks(batch):
+        while True:
+            ray.get(counter.inc.remote())
+            yield {"data": np.zeros((1, block_size), dtype=np.uint8)}
+
+    ds = ray.data.range(1, override_num_blocks=1).map_batches(
+        generate_many_blocks, batch_size=None
+    )
+    if streaming_split:
+        ds = ds.streaming_split(1)[0]
+    it = iter(ds.iter_batches(batch_size=None, prefetch_batches=0))
+
+    # Consume first batch to start the pipeline and get the executor.
+    next(it)
+
+    # Let the pipeline run and fill up the budget.
+    time.sleep(3)
+    count_before = ray.get(counter.get.remote())
+    # Make sure the consumer is not still pulling -- it should have been throttled by the budget.
+    time.sleep(1)
+    count_after = ray.get(counter.get.remote())
+    growth = count_after - count_before
+    assert growth == 0
 
 
 def test_e2e_autoscaling_down(ray_start_10_cpus_shared, restore_data_context):

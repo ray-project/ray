@@ -1,5 +1,4 @@
 import logging
-import math
 import threading
 import time
 import typing
@@ -128,45 +127,15 @@ class StreamingExecutor(Executor, threading.Thread):
         # by comparing it with the current timestamp.
         self._metrics_last_updated: float = 0.0
 
-        self._initialize_metrics_gauges()
-
-        Executor.__init__(self, self._data_context.execution_options)
-        thread_name = f"StreamingExecutor-{self._dataset_id}"
-        threading.Thread.__init__(self, daemon=True, name=thread_name)
-
-    def _initialize_metrics_gauges(self) -> None:
-        """Initialize all Prometheus-style metrics gauges for monitoring execution."""
         self._sched_loop_duration_s = Gauge(
             "data_sched_loop_duration_s",
             description="Duration of the scheduling loop in seconds",
             tag_keys=("dataset",),
         )
 
-        self._cpu_budget_gauge: Gauge = Gauge(
-            "data_cpu_budget",
-            "Budget (CPU) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._gpu_budget_gauge: Gauge = Gauge(
-            "data_gpu_budget",
-            "Budget (GPU) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._memory_budget_gauge: Gauge = Gauge(
-            "data_memory_budget",
-            "Budget (Memory) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._osm_budget_gauge: Gauge = Gauge(
-            "data_object_store_memory_budget",
-            "Budget (Object Store Memory) per operator",
-            tag_keys=("dataset", "operator"),
-        )
-        self._max_bytes_to_read_gauge: Gauge = Gauge(
-            "data_max_bytes_to_read",
-            description="Maximum bytes to read from streaming generator buffer.",
-            tag_keys=("dataset", "operator"),
-        )
+        Executor.__init__(self, self._data_context.execution_options)
+        thread_name = f"StreamingExecutor-{self._dataset_id}"
+        threading.Thread.__init__(self, daemon=True, name=thread_name)
 
     def execute(
         self,
@@ -180,7 +149,11 @@ class StreamingExecutor(Executor, threading.Thread):
         event using `ray.wait`, updating operator state and dispatching new tasks.
         """
 
-        self._callbacks = callbacks if callbacks is not None else []
+        if callbacks is not None:
+            self._callbacks = callbacks
+        else:
+            self._callbacks = []
+
         self._initial_stats = initial_stats
         self._start_time = time.perf_counter()
 
@@ -325,6 +298,8 @@ class StreamingExecutor(Executor, threading.Thread):
             for op in self._topology.keys():
                 op.shutdown(timer, force=force)
 
+            self._clear_topology_queues_post_shutdown(force, exception)
+
             min_ = round(timer.min(), 3)
             max_ = round(timer.max(), 3)
             total = round(timer.get(), 3)
@@ -354,6 +329,26 @@ class StreamingExecutor(Executor, threading.Thread):
             self._data_context.set_dataset_logger_id(
                 unregister_dataset_logger(self._dataset_id)
             )
+
+    def _clear_topology_queues_post_shutdown(
+        self, force: bool, exception: Optional[Exception] = None
+    ) -> None:
+        """Drain topology queues after operator shutdown (releases block refs)."""
+        for op, state in self._topology.items():
+            if isinstance(op, InternalQueueOperatorMixin):
+                op.clear_internal_input_queue()
+                op.clear_internal_output_queue()
+            # Input queues alias upstream output queues; clears the DAG except the sink.
+            for inqueue in state.input_queues:
+                inqueue.clear()
+
+        output_op, _ = self._output_node
+        # Clear sink output unless cooperative multi-split success (splits may still read).
+        is_live_multi_split_sink = (
+            output_op.num_output_splits() > 1 and not force and exception is None
+        )
+        if not is_live_multi_split_sink:
+            self._topology[output_op].output_queue.clear()
 
     def run(self):
         """Run the control loop in a helper thread.
@@ -393,48 +388,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self._sched_loop_duration_s.set(
             sched_loop_duration, tags={"dataset": self._dataset_id}
         )
-        for i, op in enumerate(self._topology):
-            tags = {
-                "dataset": self._dataset_id,
-                "operator": self._get_operator_id(op, i),
-            }
-            self._update_budget_metrics(op, tags)
-            self._update_max_bytes_to_read_metric(op, tags)
-
-    def _update_budget_metrics(self, op: PhysicalOperator, tags: Dict[str, str]):
-        budget = self._resource_manager.get_budget(op)
-        if budget is None:
-            cpu_budget = 0
-            gpu_budget = 0
-            memory_budget = 0
-            object_store_memory_budget = 0
-        else:
-            # Convert inf to -1 to represent unlimited budget in metrics
-            cpu_budget = -1 if math.isinf(budget.cpu) else budget.cpu
-            gpu_budget = -1 if math.isinf(budget.gpu) else budget.gpu
-            memory_budget = -1 if math.isinf(budget.memory) else budget.memory
-            object_store_memory_budget = (
-                -1
-                if math.isinf(budget.object_store_memory)
-                else budget.object_store_memory
-            )
-
-        self._cpu_budget_gauge.set(cpu_budget, tags=tags)
-        self._gpu_budget_gauge.set(gpu_budget, tags=tags)
-        self._memory_budget_gauge.set(memory_budget, tags=tags)
-        self._osm_budget_gauge.set(object_store_memory_budget, tags=tags)
-
-    def _update_max_bytes_to_read_metric(
-        self, op: PhysicalOperator, tags: Dict[str, str]
-    ):
-        if self._resource_manager.op_resource_allocator_enabled():
-            resource_allocator = self._resource_manager.op_resource_allocator
-            output_budget_bytes = resource_allocator.get_output_budget(op)
-            if output_budget_bytes is not None:
-                if math.isinf(output_budget_bytes):
-                    # Convert inf to -1 to represent unlimited bytes to read
-                    output_budget_bytes = -1
-                self._max_bytes_to_read_gauge.set(output_budget_bytes, tags)
 
     def get_stats(self):
         """Return the stats object for the streaming execution.
@@ -538,7 +491,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 self._export_operator_schema(op)
 
             # Log metrics of newly completed operators.
-            if op.has_completed() and not self._has_op_completed[op]:
+            if not op.has_completed():
+                op.refresh_state()
+            elif not self._has_op_completed[op]:
                 log_str = (
                     f"Operator {op} completed. "
                     f"Operator Metrics:\n{op._metrics.as_dict(skip_internal_metrics=True)}"

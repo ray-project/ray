@@ -22,6 +22,7 @@
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "ray/common/memory_monitor_interface.h"
+#include "ray/common/ray_config.h"
 #include "ray/util/logging.h"
 
 namespace ray {
@@ -292,23 +293,67 @@ int64_t MemoryMonitorUtils::NullableMin(int64_t left, int64_t right) {
   }
 }
 
-int64_t MemoryMonitorUtils::GetMemoryThreshold(int64_t total_memory_bytes,
-                                               float usage_threshold,
-                                               int64_t min_memory_free_bytes) {
+int64_t MemoryMonitorUtils::GetMemoryThreshold(
+    int64_t total_memory_bytes,
+    float usage_threshold,
+    int64_t min_memory_free_bytes,
+    bool resource_isolation_enabled,
+    const CgroupManagerInterface &cgroup_manager) {
   RAY_CHECK_GE(total_memory_bytes, MemoryMonitorInterface::kNull);
   RAY_CHECK_GE(min_memory_free_bytes, MemoryMonitorInterface::kNull);
-  RAY_CHECK_GE(usage_threshold, 0);
-  RAY_CHECK_LE(usage_threshold, 1);
+  RAY_CHECK_GE(usage_threshold, 0)
+      << "Invalid configuration: usage_threshold must be >= 0";
+  RAY_CHECK_LE(usage_threshold, 1)
+      << "Invalid configuration: usage_threshold must be <= 1";
 
-  int64_t threshold_fraction = (int64_t)(total_memory_bytes * usage_threshold);
+  int64_t resolved_memory_threshold_bytes;
+  int64_t threshold_fraction = static_cast<int64_t>(total_memory_bytes * usage_threshold);
 
   if (min_memory_free_bytes > MemoryMonitorInterface::kNull) {
     int64_t threshold_absolute = total_memory_bytes - min_memory_free_bytes;
     RAY_CHECK_GE(threshold_absolute, 0);
-    return std::max(threshold_fraction, threshold_absolute);
+    resolved_memory_threshold_bytes = std::max(threshold_fraction, threshold_absolute);
   } else {
-    return threshold_fraction;
+    resolved_memory_threshold_bytes = threshold_fraction;
   }
+
+  if (resource_isolation_enabled) {
+    StatusOr<std::string> user_slice_upper_bound_bytes_or =
+        cgroup_manager.GetUserCgroupConstraintValue("memory.high");
+    RAY_CHECK(user_slice_upper_bound_bytes_or.ok()) << absl::StrFormat(
+        "Failed to get user cgroup memory limit from user cgroup %s "
+        "when setting up memory monitor: %s. "
+        "Does the cgroup path exist and/or matches the resource isolation hierarchy?",
+        cgroup_manager.GetUserCgroupPath(),
+        user_slice_upper_bound_bytes_or.ToString());
+    std::string user_slice_upper_bound_bytes_str =
+        user_slice_upper_bound_bytes_or.value();
+    RAY_CHECK(!user_slice_upper_bound_bytes_str.empty()) << absl::StrFormat(
+        "Failed to get upper bound memory constraints from user cgroup %s. "
+        "Does the cgroup path exist and/or matches the resource isolation hierarchy?",
+        cgroup_manager.GetUserCgroupPath());
+
+    if (!user_slice_upper_bound_bytes_str.empty() &&
+        std::all_of(user_slice_upper_bound_bytes_str.begin(),
+                    user_slice_upper_bound_bytes_str.end(),
+                    ::isdigit)) {
+      resolved_memory_threshold_bytes = std::stoll(user_slice_upper_bound_bytes_str);
+    }
+  }
+
+  return resolved_memory_threshold_bytes;
+}
+
+int64_t MemoryMonitorUtils::GetProcessUsedMemoryBytes(
+    const ProcessesMemorySnapshot &snapshot, pid_t pid) {
+  const ProcessesMemorySnapshot::const_iterator it = snapshot.find(pid);
+  if (it == snapshot.end()) {
+    RAY_LOG_EVERY_MS(INFO, 60000) << "Can't find memory usage in process memory snapshot "
+                                     "for PID, reporting zero. PID: "
+                                  << pid;
+    return 0;
+  }
+  return it->second;
 }
 
 const std::vector<pid_t> MemoryMonitorUtils::GetPidsFromDir(const std::string proc_dir) {

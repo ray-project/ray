@@ -1,0 +1,176 @@
+build_arg_sets:
+  py310:
+    PYTHON_VERSION: "3.10"
+    PYTHON_SHORT: "310"
+  py311:
+    PYTHON_VERSION: "3.11"
+    PYTHON_SHORT: "311"
+  py312:
+    PYTHON_VERSION: "3.12"
+    PYTHON_SHORT: "312"
+
+depsets:
+  - name: data_base_ci_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - ray_img_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/ml/py313/data-requirements.txt
+      - python/requirements/ml/py313/data-test-requirements.txt
+      - python/requirements/ml/py313/dl-cpu-requirements.txt
+      - python/requirements/ml/py313/dl-gpu-requirements.txt
+    constraints:
+      - /tmp/ray-deps/requirements_compiled_py3.13.txt
+    output: python/deplocks/ci/data-base-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+      - py311
+      - py312
+    pre_hooks:
+      - ci/raydepsets/pre_hooks/remove-compiled-headers.sh 3.13
+
+  - name: relaxed_data_ci_depset_${PYTHON_SHORT}
+    operation: relax
+    source_depset: data_base_ci_depset_${PYTHON_SHORT}
+    packages:
+    # these packages are relaxed for alternate fixed-pyarrow depsets
+      - pyarrow
+      - numpy
+      - datasets
+      - delta-sharing
+      - hudi
+      - pylance
+      - pandas
+      - modin
+      # datasets==2.14.4 (pyarrow-v9) caps dill<0.3.8, but the py313 lock pins
+      # dill==0.4.1 via pymoo, and multiprocess==0.70.19 via datasets/evaluate
+      # requires dill>=0.4.1. Relax both so the v9 expand can downgrade the
+      # datasets→multiprocess→dill trio together.
+      - dill
+      - multiprocess
+    output: python/deplocks/ci/relaxed_data-ci_depset_py${PYTHON_VERSION}.lock
+    build_arg_sets:
+      - py310
+      - py312
+
+  - name: data_pyarrow_latest_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - relaxed_data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-latest.txt
+    output: python/deplocks/ci/data-pyarrow-latest-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+      - py312
+
+  - name: data_pyarrow_v17_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - relaxed_data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-v17.txt
+    output: python/deplocks/ci/data-pyarrow-v17-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+
+  - name: data_mongo_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - relaxed_data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/mongo.txt
+    output: python/deplocks/ci/data-mongo-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --index https://download.pytorch.org/whl/cpu
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+
+  - name: data_pyarrow_nightly_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - relaxed_data_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/pyarrow-nightly.txt
+    output: python/deplocks/ci/data-pyarrow-nightly-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py310
+
+  - name: relaxed_data_tfxbsl_ci_depset_${PYTHON_SHORT}
+    operation: relax
+    source_depset: data_base_ci_depset_${PYTHON_SHORT}
+    packages:
+    # these packages are relaxed for alternate fixed-pyarrow depsets
+      - datasets
+      - delta-sharing
+      - tensorflow-metadata
+      - tensorflow
+      - tf-keras
+      - pyarrow
+      - pandas
+      - protobuf
+      - hudi
+      - modin
+      - opentelemetry-proto
+      - pylance
+      - numpy
+      - cloudpickle
+      - dill
+      - dask
+      - distributed
+      - multiprocess
+      - tensorboard
+      - ml-dtypes
+      - cudf-cu12
+      - pymars
+      # tfx-bsl up through 1.17.1 caps absl-py<2.0.0, but the py3.13 lock has
+      # absl-py==2.4.0 from transitive resolution. Relax so uv picks an absl-py
+      # 1.x version that tfx-bsl accepts.
+      - absl-py
+      # grpcio-status / grpcio-tools >=1.72 require protobuf>=6, but tfx-bsl 1.16.1
+      # caps protobuf<6. Relax so uv can drop to 1.71.x (grpcio itself has no
+      # protobuf pin but typically moves in lockstep).
+      - grpcio-status
+      # contourpy 1.3.3 (gated py>=3.11 in the lock) needs numpy>=1.25, but
+      # apache-beam 2.53.0 caps numpy<1.25.
+      - contourpy
+      - scipy
+    output: python/deplocks/ci/relaxed_data_tfxbsl-ci_depset_py${PYTHON_VERSION}.lock
+    build_arg_sets:
+      - py311
+
+  - name: data_tfxbsl_depset_${PYTHON_SHORT}
+    operation: expand
+    depsets:
+      - relaxed_data_tfxbsl_ci_depset_${PYTHON_SHORT}
+    requirements:
+      - python/requirements/data/tfxbsl.txt
+    output: python/deplocks/ci/data-tfxbsl-ci_depset_py${PYTHON_VERSION}.lock
+    append_flags:
+      - --python-version=${PYTHON_VERSION}
+      - --python-platform=linux
+      - --unsafe-package ray
+    build_arg_sets:
+      - py311

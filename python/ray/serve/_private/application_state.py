@@ -1,4 +1,3 @@
-import inspect
 import json
 import logging
 import os
@@ -12,7 +11,7 @@ from typing import Dict, List, Optional, Tuple
 import ray
 from ray import cloudpickle
 from ray._common.utils import import_attr, import_module_and_attr
-from ray.exceptions import RuntimeEnvSetupError
+from ray.exceptions import RayTaskError, RuntimeEnvSetupError
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.common import (
@@ -28,6 +27,7 @@ from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY_NAME,
     DEFAULT_REQUEST_ROUTER_PATH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
+    RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S,
     SERVE_LOGGER_NAME,
 )
 from ray.serve._private.deploy_utils import (
@@ -47,7 +47,6 @@ from ray.serve._private.utils import (
     override_runtime_envs_except_env_vars,
     validate_route_prefix,
 )
-from ray.serve.api import ASGIAppReplicaWrapper
 from ray.serve.config import (
     AutoscalingConfig,
     AutoscalingPolicy,
@@ -861,6 +860,14 @@ class ApplicationState:
                 + traceback.format_exc()
             )
             return None, None, BuildAppStatus.FAILED, error_msg
+        except RayTaskError:
+            return (
+                None,
+                None,
+                BuildAppStatus.FAILED,
+                f"Deploying app '{self._name}' failed with exception:\n"
+                f"{traceback.format_exc()}",
+            )
         except Exception:
             error_msg = (
                 f"Unexpected error occurred while deploying application "
@@ -1192,6 +1199,8 @@ class ApplicationStateManager:
             tag_keys=("application",),
         )
 
+        self._app_status_gauge_cache: Dict[str, Tuple[int, float]] = {}
+
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
@@ -1460,16 +1469,35 @@ class ApplicationStateManager:
                 logger.debug(f"Application '{name}' deleted successfully.")
 
         # Record application status metrics
+        now = time.time()
         for name, app in self._application_states.items():
-            self._application_status_gauge.set(
-                app.status.to_numeric(),
-                tags={"application": name},
+            cached = self._app_status_gauge_cache.get(name)
+            value = app.status.to_numeric()
+
+            # Throttle gauge reporting to avoid redundant FFI calls each control loop.
+            # Two independent conditions trigger a write:
+            #   - value_changed: reports status transitions (e.g. DEPLOYING -> RUNNING)
+            #     immediately, without waiting for the interval to expire.
+            #   - interval_elapsed: refreshes the gauge periodically even when status is
+            #     unchanged, preventing stale/empty time series in Grafana/Prometheus.
+            # We skip ONLY when both say it is safe — value unchanged AND reported recently.
+            value_changed = cached is None or cached[0] != value
+            interval_elapsed = (
+                cached is None
+                or (now - cached[1]) >= RAY_SERVE_STATUS_GAUGE_REPORT_INTERVAL_S
             )
+
+            if not value_changed and not interval_elapsed:
+                continue
+
+            self._application_status_gauge.set(value, tags={"application": name})
+            self._app_status_gauge_cache[name] = (value, now)
 
         if len(apps_to_be_deleted) > 0:
             for app_name in apps_to_be_deleted:
                 self._autoscaling_state_manager.deregister_application(app_name)
                 del self._application_states[app_name]
+                self._app_status_gauge_cache.pop(app_name, None)
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
         if any_target_state_changed:
@@ -1482,8 +1510,6 @@ class ApplicationStateManager:
         for app_state in self._application_states.values():
             app_state.delete()
 
-        self._kv_store.delete(CHECKPOINT_KEY)
-
     def is_ready_for_shutdown(self) -> bool:
         """Return whether all applications have shut down.
 
@@ -1493,6 +1519,10 @@ class ApplicationStateManager:
         return self._shutting_down and all(
             app_state.is_deleted() for app_state in self._application_states.values()
         )
+
+    def delete_checkpoint(self) -> None:
+        """Delete the application state checkpoint from KV store."""
+        self._kv_store.delete(CHECKPOINT_KEY)
 
     def save_checkpoint(self) -> None:
         """Write a checkpoint of all application states."""
@@ -1512,7 +1542,7 @@ class ApplicationStateManager:
         )
 
 
-@ray.remote(num_cpus=0, max_calls=1)
+@ray.remote(num_cpus=0, max_calls=1, max_retries=3, retry_exceptions=True)
 def build_serve_application(
     import_path: str,
     code_version: str,
@@ -1527,7 +1557,8 @@ def build_serve_application(
     """Import and build a Serve application.
 
     Args:
-        import_path: import path to top-level bound deployment.
+        import_path: import path to a top-level Serve application object or
+            application builder return value.
         code_version: code version inferred from app config. All
             deployment versions are set to this code version.
         name: application name. If specified, application will be deployed
@@ -1571,7 +1602,7 @@ def build_serve_application(
             name=name,
             default_runtime_env=ray.get_runtime_context().runtime_env,
         )
-        num_ingress_deployments = 0
+        built_app.validate_single_fastapi_ingress()
 
         def _get_serialized_def(attr_path: str) -> bytes:
             module, attr = import_module_and_attr(attr_path)
@@ -1585,13 +1616,13 @@ def build_serve_application(
             application_serialized_autoscaling_policy_def = _get_serialized_def(
                 application_autoscaling_policy_function
             )
-        for deployment in built_app.deployments:
-            if inspect.isclass(deployment.func_or_class) and issubclass(
-                deployment.func_or_class, ASGIAppReplicaWrapper
-            ):
-                num_ingress_deployments += 1
-            is_ingress = deployment.name == built_app.ingress_deployment_name
 
+        def _append_deploy_args(
+            deployment,
+            *,
+            is_ingress: bool,
+            is_ingress_request_router: bool,
+        ) -> None:
             if deployment._deployment_config.deployment_actors:
                 for cfg in deployment._deployment_config.deployment_actors:
                     if not cfg._serialized_actor_class:
@@ -1624,6 +1655,7 @@ def build_serve_application(
                     name=deployment._name,
                     replica_config=deployment._replica_config,
                     ingress=is_ingress,
+                    ingress_request_router=is_ingress_request_router,
                     deployment_config=deployment._deployment_config,
                     version=code_version,
                     route_prefix="/" if is_ingress else None,
@@ -1632,17 +1664,23 @@ def build_serve_application(
                     serialized_deployment_actors=serialized_deployment_actors,
                 )
             )
-        if num_ingress_deployments > 1:
-            return (
-                None,
-                None,
-                (
-                    f'Found multiple FastAPI deployments in application "{built_app.name}". '
-                    "Please only include one deployment with @serve.ingress "
-                    "in your application to avoid this issue."
-                ),
+
+        for deployment in built_app.deployments:
+            _append_deploy_args(
+                deployment,
+                is_ingress=deployment.name == built_app.ingress_deployment_name,
+                is_ingress_request_router=False,
+            )
+
+        if built_app.ingress_request_router_deployment is not None:
+            _append_deploy_args(
+                built_app.ingress_request_router_deployment,
+                is_ingress=False,
+                is_ingress_request_router=True,
             )
         return application_serialized_autoscaling_policy_def, deploy_args_list, None
+    except RayServeException as e:
+        return None, None, str(e)
     except KeyboardInterrupt:
         # Error is raised when this task is canceled with ray.cancel(), which
         # happens when deploy_apps() is called.
@@ -1652,10 +1690,13 @@ def build_serve_application(
         )
         return None, None, None
     except Exception:
-        logger.error(
-            f"Exception importing application '{name}'.\n{traceback.format_exc()}"
-        )
-        return None, None, traceback.format_exc()
+        # Wrap the user traceback in a RuntimeError so that user exceptions
+        # which are unpickleable (e.g. NonserializableException) or lose detail
+        # through Ray's serialization round-trip (e.g. SyntaxError) still
+        # propagate their original traceback intact through Ray's retry path.
+        err_str = traceback.format_exc()
+        logger.warning(f"Exception importing application '{name}'.")
+        raise RuntimeError(err_str) from None
 
 
 def override_deployment_info(

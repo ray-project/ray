@@ -6,14 +6,37 @@ Validating checkpoints asynchronously
 During training, you may want to validate the model periodically to monitor training progress.
 The standard way to do this is to periodically switch between training and validation within
 the training loop. Instead, Ray Train allows you to asynchronously validate the model in a
-separate Ray task, which has following benefits:
+separate Ray task, which does the following:
 
-* Running validation in parallel without blocking the training loop
-* Running validation on different hardware than training
-* Leveraging :ref:`autoscaling <vms-autoscaling>` to launch user-specified machines only for the duration of the validation
-* Letting training continue immediately after saving a checkpoint with partial metrics (for example, loss)
-  and then receiving validation metrics (for example, accuracy) as soon as they are available. If the initial
+* Runs validation in parallel without blocking the training loop
+* Runs validation on different, potentially cheaper hardware than training, since validation
+  doesn't require optimizer states or gradients and can use 2-4x less GPU memory
+* Leverages :ref:`autoscaling <vms-autoscaling>` to launch user-specified machines only for the duration of the validation
+* Lets training continue immediately after saving a checkpoint with partial metrics (for example, loss)
+  and then receives validation metrics (for example, accuracy) as soon as they are available. If the initial
   and validated metrics share the same key, the validated metrics overwrite the initial metrics.
+
+When to use async validation
+----------------------------
+
+Asynchronous validation is preferable to alternating between training and validation within the
+same training loop in the following scenarios:
+
+* **Validation takes a large percentage of total training time.** If validation is a significant
+  fraction of your end-to-end training time, running it asynchronously can substantially reduce
+  wall clock time by overlapping validation with training.
+* **Cheaper GPUs are available for validation.** Validation doesn't require optimizer states or
+  gradients, so it can use 2-4x less GPU memory than training. If you have a pool of cheaper GPUs
+  or an autoscaling setup that can provision them, async validation lets you run validation on
+  those cheaper machines instead of occupying your expensive training GPUs.
+* **Training throughput stops scaling linearly with more workers.** As worker count increases,
+  allreduce overhead grows and limits training speed, so doubling workers no longer doubles
+  throughput. Validation, however, scales more linearly since it requires no gradient synchronization.
+  Asynchronous validation can therefore utilize otherwise idle cluster capacity without impacting
+  training.
+
+The best way to know if async validation helps your workload is to try it. Converting is
+straightforward (see the tutorial below), so you can run both approaches and compare.
 
 Tutorial
 --------
@@ -99,10 +122,12 @@ Example: validation with Ray Train TorchTrainer
 Here is a ``validation_fn`` that uses a ``TorchTrainer`` to calculate average cross entropy
 loss on a validation set. Note the following about this example:
 
-* It ``report``\s a dummy checkpoint so that the ``TorchTrainer`` keeps the metrics.
-* While you typically use the ``TorchTrainer`` for training, you can use it solely for validation like in this example.
-* Because training generally has a higher GPU memory requirement than inference, you can set different
-  resource requirements for training and validation, for example, A100 for training and A10G for validation.
+* ``TorchTrainer`` is typically used for training, but you can use it for validation like in this
+  example allowing different resource requirements for training and validation, for example,
+  A100 for training and A10G for validation.
+* The validation train function returns its metrics directly from worker 0 rather than calling
+  ``ray.train.report`` which is accessible via ``result.return_value``. These values can't be torch
+  tensors and must be python based like ``ray.train.report``.
 
 .. literalinclude:: ../doc_code/asynchronous_validation.py
     :language: python
@@ -121,6 +146,33 @@ calculate average accuracy on a validation set. To learn more about how to use
     :start-after: __validation_fn_map_batches_start__
     :end-before: __validation_fn_map_batches_end__
 
+Tuning asynchronous validation
+------------------------------
+
+Overlapping validation and training
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Asynchronous validation is most beneficial when training and validation fully overlap. If one
+finishes before the other, some workers sit idle. :ref:`Autoscaling <vms-autoscaling>` lets you
+spin up workers only for the duration of validation, which mitigates this but doesn't fully
+eliminate the gap.
+
+You can tune the following knobs to overlap validation and training as closely as possible:
+
+* **Number of workers**: Tune the number of validation workers relative to training workers so that
+  the two phases overlap as closely as possible.
+* **Batch size**: A larger batch size typically improves throughput, but it can negatively impact
+  training convergence and may lead to out-of-memory (OOM) errors.
+* **Validation frequency**: Choose a validation cadence and dataset size that balance overlap with
+  training. Validating too frequently or over too many rows can create a long validation tail.
+  Also note that breaking early from a Ray Data iterator may lead to resource leaks - this will be
+  fixed in a future release.
+
+Ray Data production vs consumption
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+See :ref:`balancing-data-production-consumption` for tips on balancing data production and consumption rates.
+
 Checkpoint metrics lifecycle
 -----------------------------
 
@@ -138,3 +190,72 @@ During the training loop the following happens to your checkpoints and metrics :
 .. figure:: ../images/checkpoint_metrics_lifecycle.png
 
     How Ray Train populates checkpoint metrics during training and how you access them after training.
+
+Experiment tracking
+-------------------
+
+In normal :ref:`experiment tracking with Ray Train <train-experiment-tracking-native>`,
+you handle creating, logging to, and finishing the experiment tracking run from
+the rank 0 training worker. However, asynchronous validation complicates this because
+validation metrics are computed outside of the training worker, in a separate
+Ray task.
+
+Most modern experiment tracking configurations (for example,
+`W&B distributed training <https://docs.wandb.ai/models/track/log/distributed-training#track-all-processes-to-a-single-run>`_)
+support writing to the same run from different threads or processes. Other configurations,
+such as the `MLflow fluent API <https://mlflow.org/docs/latest/api_reference/python_api/mlflow.html>`_, may not.
+
+Writing to the same run
+~~~~~~~~~~~~~~~~~~~~~~~
+
+If your experiment tracking library supports writing to the same run from different
+processes, the rank 0 training worker can start the run and the validation task can
+join it and log validation metrics directly.
+
+.. tab-set::
+
+    .. tab-item:: W&B
+
+        .. literalinclude:: ../doc_code/asynchronous_validation.py
+            :language: python
+            :start-after: __exp_tracking_same_run_wandb_start__
+            :end-before: __exp_tracking_same_run_wandb_end__
+
+    .. tab-item:: MLflow (non-fluent)
+
+        .. literalinclude:: ../doc_code/asynchronous_validation.py
+            :language: python
+            :start-after: __exp_tracking_same_run_mlflow_start__
+            :end-before: __exp_tracking_same_run_mlflow_end__
+
+Reliability
+~~~~~~~~~~~
+
+If experiment tracking logging fails (for example, due to a transient network error),
+you have two options for retrying:
+
+1. **Wrap your logging calls in a try/except block** within the ``validation_fn`` and
+   retry the logging manually with your experiment tracker's API.
+2. **Use** :func:`ray.train.get_all_reported_checkpoints` **periodically during training** to
+   retrieve all reported checkpoints and their associated metrics, then re-log any missing
+   entries to your experiment tracker.
+
+Writing to different runs
+~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If your experiment tracking library does not support writing to the same run from different
+processes, the validation task must start a new run each time it logs validation metrics.
+Many tracking libraries provide ways to group related runs together so that training and
+validation runs are still associated.
+
+.. tab-set::
+
+    .. tab-item:: W&B
+
+        Use `W&B run grouping <https://docs.wandb.ai/models/runs/grouping>`_ to group
+        the training run and validation runs together.
+
+    .. tab-item:: MLflow
+
+        Use `MLflow parent and child runs <https://mlflow.org/docs/latest/ml/traditional-ml/tutorials/hyperparameter-tuning/part1-child-runs/#adapting-for-parent-and-child-runs>`_
+        to group the training run and validation runs together.

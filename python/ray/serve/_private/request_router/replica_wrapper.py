@@ -2,7 +2,7 @@ import asyncio
 import logging
 import pickle
 from abc import ABC, abstractmethod
-from typing import Any, Dict, Optional, Set
+from typing import Any, Dict, Optional, Set, Tuple
 
 import grpc
 
@@ -201,6 +201,24 @@ class RunningReplica:
         self._actor_replica_wrapper = ActorReplicaWrapper(self._actor_handle)
         self._grpc_replica_wrapper = None
 
+    def update_replica_info(self, replica_info: RunningReplicaInfo) -> None:
+        """Update mutable fields from a new RunningReplicaInfo.
+
+        Called when reusing an existing wrapper in _update_running_replicas.
+        Replicas dynamically load/unload models via record_multiplexed_model_ids,
+        which triggers a broadcast with updated RunningReplicaInfo. Without this
+        update, the router would use stale multiplexed_model_ids and break
+        multiplexed model routing.
+
+        Because we reassign _replica_info, any property that reads from it
+        (including max_ongoing_requests, node_id, availability_zone, etc.)
+        will reflect the new values. Fields that are cached separately
+        (e.g., _actor_handle) are NOT refreshed here because they are tied
+        to the replica's identity and should never change for a live replica.
+        """
+        self._replica_info = replica_info
+        self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
+
     @property
     def replica_id(self) -> ReplicaID:
         """ID of this replica."""
@@ -240,6 +258,15 @@ class RunningReplica:
     def is_cross_language(self) -> bool:
         """Whether this replica is cross-language (Java)."""
         return self._replica_info.is_cross_language
+
+    @property
+    def backend_http_endpoint(self) -> Optional[Tuple[str, int]]:
+        """Return (host, port) of the replica's backend HTTP server."""
+        port = self._replica_info.backend_http_port
+        host = self._replica_info.node_ip
+        if host is not None and port is not None:
+            return (host, port)
+        return None
 
     @property
     def stub(self):
