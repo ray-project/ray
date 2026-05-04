@@ -52,6 +52,26 @@ def _configure_system():
     )
     sys.path.insert(0, thirdparty_files)
 
+    try:
+        import psutil  # noqa: F401
+    except ImportError as e:
+        _psutil_cext_names = ("_psutil_osx", "_psutil_linux", "_psutil_windows")
+        if os.path.exists(thirdparty_files) and any(
+            name in str(e) for name in _psutil_cext_names
+        ):
+            raise ImportError(
+                f"Ray failed to import psutil: {e}\n\n"
+                "This usually happens when building Ray from source and the "
+                "thirdparty_files directory is incomplete or stale. "
+                "To fix this, run:\n\n"
+                "    rm -rf python/ray/thirdparty_files/\n"
+                "    python3 -m pip install psutil\n\n"
+                "Then rebuild Ray from source. "
+                "See https://docs.ray.io/en/latest/ray-contribute/development.html"
+                " for full build instructions."
+            ) from e
+        raise
+
     if (
         platform.system() == "Linux"
         and "Microsoft".lower() in platform.release().lower()
