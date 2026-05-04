@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections import defaultdict, deque
-from typing import TYPE_CHECKING, DefaultDict, Deque, Optional, Set
+from typing import TYPE_CHECKING, DefaultDict, Deque, Iterator, Optional, Set
 
 from typing_extensions import override
 
@@ -80,6 +80,10 @@ class ReorderingBundleQueue(BaseBundleQueue):
     def finalize(self, key: int):
         assert key is not None and key >= self._current_key
         self._finalized_keys.add(key)
+
+    def __iter__(self) -> Iterator["RefBundle"]:
+        for deque_ in self._inner.values():
+            yield from deque_
 
     @override
     def clear(self):
