@@ -736,10 +736,6 @@ class HAProxyApi(ProxyApi):
         """Perform a graceful reload of HAProxy by starting a new process with -sf."""
         try:
             old_proc = self._proc
-            if old_proc is None:
-                self._proc = await self._start_and_wait_for_haproxy()
-                return
-
             await self._wait_for_hap_availability(old_proc)
 
             # Save server state if optimization is enabled
