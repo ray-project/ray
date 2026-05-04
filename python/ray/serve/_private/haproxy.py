@@ -646,10 +646,6 @@ class HAProxyApi(ProxyApi):
         """Perform a graceful reload of HAProxy by starting a new process with -sf."""
         try:
             old_proc = self._proc
-            if old_proc is None:
-                self._proc = await self._start_and_wait_for_haproxy()
-                return
-
             await self._wait_for_hap_availability(old_proc)
 
             # Save server state if optimization is enabled
@@ -723,6 +719,7 @@ class HAProxyApi(ProxyApi):
         for backend in backends:
             if not backend.custom_request_routing or not backend.router_servers:
                 continue
+            # Single router by design — round-robin caused TTFT regressions.
             router = sorted(
                 backend.router_servers, key=lambda server: (server.port, server.host)
             )[0]
@@ -775,8 +772,7 @@ local function do_request(router, body)
     local sock = core.tcp()
     sock:settimeout(5)
 
-    local ok, err = sock:connect(router.host, tonumber(router.port))
-    if not ok then
+    if not sock:connect(router.host, tonumber(router.port)) then
         return nil
     end
 
@@ -786,19 +782,13 @@ local function do_request(router, body)
         .. "\\r\\n"
         .. body
 
-    local ok, err = sock:send(req)
-    if not ok then
+    if not sock:send(req) then
         sock:close()
         return nil
     end
 
     local response = sock:receive("*a")
     sock:close()
-
-    if not response then
-        return nil
-    end
-
     return response
 end
 
