@@ -704,10 +704,11 @@ void GcsServer::InitKVService() {
 
 void GcsServer::InitPubSubHandler() {
   auto &io_context = io_context_provider_.GetIOContext<pubsub::GcsPublisher>();
-  pubsub_handler_ = std::make_unique<InternalPubSubHandler>(io_context, *gcs_publisher_);
+  pubsub_handler_ =
+      std::make_unique<ControlPlanePubSubHandler>(io_context, *gcs_publisher_);
 
   // This service is used to handle long poll requests, so we don't limit active RPCs.
-  rpc_server_.RegisterService(std::make_unique<rpc::InternalPubSubGrpcService>(
+  rpc_server_.RegisterService(std::make_unique<rpc::ControlPlanePubSubGrpcService>(
       io_context, *pubsub_handler_, /*max_active_rpcs_per_handler_=*/-1));
 
   auto &obs_io = io_context_provider_.GetIOContext<pubsub::ObservabilityPublisher>();
