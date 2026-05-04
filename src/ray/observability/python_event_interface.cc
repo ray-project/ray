@@ -69,19 +69,14 @@ rpc::events::RayEvent PythonRayEvent::Serialize() && {
 
   // Use protobuf reflection to set the nested event message by field number.
   // this way, adding new Python event types will not require C++ changes.
-  const google::protobuf::Descriptor *descriptor = event.GetDescriptor();
+  // The field number is validated in CreatePythonRayEvent.
   const google::protobuf::FieldDescriptor *field =
-      descriptor->FindFieldByNumber(nested_event_field_number_);
-  if (field != nullptr &&
-      field->type() == google::protobuf::FieldDescriptor::TYPE_MESSAGE) {
-    google::protobuf::Message *nested =
-        event.GetReflection()->MutableMessage(&event, field);
-    if (!nested->ParseFromString(serialized_event_data_)) {
-      RAY_LOG(ERROR) << "Failed to parse nested event data for field " << field->name();
-      event.GetReflection()->ClearField(&event, field);
-    }
-  } else {
-    RAY_LOG(ERROR) << "Invalid nested event field number: " << nested_event_field_number_;
+      event.GetDescriptor()->FindFieldByNumber(nested_event_field_number_);
+  google::protobuf::Message *nested =
+      event.GetReflection()->MutableMessage(&event, field);
+  if (!nested->ParseFromString(serialized_event_data_)) {
+    RAY_LOG(ERROR) << "Failed to parse nested event data for field " << field->name();
+    event.GetReflection()->ClearField(&event, field);
   }
 
   return event;
@@ -108,6 +103,11 @@ std::unique_ptr<RayEventInterface> CreatePythonRayEvent(
       << "Invalid EventType enum value: " << event_type;
   RAY_CHECK(rpc::events::RayEvent::Severity_IsValid(severity))
       << "Invalid Severity enum value: " << severity;
+  const google::protobuf::FieldDescriptor *field =
+      rpc::events::RayEvent::descriptor()->FindFieldByNumber(nested_event_field_number);
+  RAY_CHECK(field != nullptr &&
+            field->type() == google::protobuf::FieldDescriptor::TYPE_MESSAGE)
+      << "Invalid nested event field number: " << nested_event_field_number;
 
   return std::make_unique<PythonRayEvent>(
       static_cast<rpc::events::RayEvent::SourceType>(source_type),

@@ -107,5 +107,5 @@ class InternalEventBuilder(ABC):
             serialized_data=self.serialize_event_data(),
             nested_event_field_number=self._nested_event_field_number,
             event_id=event_id if event_id is not None else b"",
-            timestamp_ns=timestamp_ns if timestamp_ns is not None else 0,
+            timestamp_ns=int(timestamp_ns) if timestamp_ns is not None else 0,
         )

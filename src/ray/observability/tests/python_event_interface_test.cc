@@ -99,33 +99,19 @@ TEST(PythonRayEventTest, TestSerializeLifecycleEvent) {
   EXPECT_EQ(nested.state_transitions(0).message(), "Job started running");
 }
 
-TEST(PythonRayEventTest, TestSerializeInvalidFieldNumber) {
-  // Use an invalid field number — should log error but not crash.
-  rpc::events::SubmissionJobDefinitionEvent def_event;
-  def_event.set_submission_id("test-submission");
-  std::string serialized = def_event.SerializeAsString();
-
-  auto event = CreatePythonRayEvent(
-      /*source_type=*/static_cast<int>(rpc::events::RayEvent::GCS),
-      /*event_type=*/
-      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
-      /*severity=*/static_cast<int>(rpc::events::RayEvent::INFO),
-      /*entity_id=*/"test-submission",
-      /*message=*/"",
-      /*session_name=*/"test-session",
-      /*serialized_event_data=*/serialized,
-      /*nested_event_field_number=*/9999);  // Invalid field number
-
-  // Should not crash — just log an error and not set the nested field.
-  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
-
-  // Common fields should still be set.
-  EXPECT_EQ(ray_event.source_type(), rpc::events::RayEvent::GCS);
-  EXPECT_EQ(ray_event.session_name(), "test-session");
-
-  // No nested event should be set.
-  EXPECT_FALSE(ray_event.has_submission_job_definition_event());
-  EXPECT_FALSE(ray_event.has_submission_job_lifecycle_event());
+TEST(PythonRayEventDeathTest, TestInvalidFieldNumberCrashes) {
+  EXPECT_DEATH(
+      CreatePythonRayEvent(
+          /*source_type=*/static_cast<int>(rpc::events::RayEvent::GCS),
+          /*event_type=*/
+          static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+          /*severity=*/static_cast<int>(rpc::events::RayEvent::INFO),
+          /*entity_id=*/"test-submission",
+          /*message=*/"",
+          /*session_name=*/"test-session",
+          /*serialized_event_data=*/"",
+          /*nested_event_field_number=*/9999),
+      "Invalid nested event field number");
 }
 
 TEST(PythonRayEventTest, TestExplicitEventIdIsPreserved) {
