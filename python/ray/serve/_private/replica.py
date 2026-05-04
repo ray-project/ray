@@ -116,6 +116,7 @@ from ray.serve._private.http_util import (
     convert_object_to_asgi_messages,
     parse_disconnect_disabled_header,
     parse_request_timeout_header,
+    parse_session_id_header,
     start_asgi_http_server,
 )
 from ray.serve._private.logging_utils import (
@@ -2136,6 +2137,7 @@ class Replica:
                     _internal_request_id=request_metadata.internal_request_id,
                     app_name=self._deployment_id.app_name,
                     multiplexed_model_id=request_metadata.multiplexed_model_id,
+                    session_id=request_metadata.session_id,
                     grpc_context=request_metadata.grpc_context,
                     _client=request_metadata._client,
                     cancel_on_parent_request_cancel=self._ingress
@@ -2549,6 +2551,7 @@ class Replica:
         )
         request_disconnect_disabled = parse_disconnect_disabled_header(headers)
         request_timeout_s = self._parse_request_timeout(headers)
+        session_id = parse_session_id_header(headers)
 
         request_metadata = RequestMetadata(
             request_id=request_id,
@@ -2558,6 +2561,7 @@ class Replica:
             app_name=self._deployment_id.app_name,
             # TODO(edoakes): populate the multiplexed model ID.
             multiplexed_model_id="",
+            session_id=session_id,
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
             tracing_context=self.get_asgi_tracing_context(scope["headers"]),
