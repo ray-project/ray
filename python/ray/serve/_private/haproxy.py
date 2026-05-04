@@ -77,8 +77,7 @@ from ray.serve.schema import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-# Shared by the Lua → router call and the frontend `wait-for-body`: HAProxy
-# never holds the request longer than the router itself would.
+# Shared by the Lua router call and the frontend `wait-for-body`.
 INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
 
 
