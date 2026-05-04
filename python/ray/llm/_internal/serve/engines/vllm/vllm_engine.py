@@ -687,13 +687,8 @@ class VLLMEngine(LLMEngine):
             yield self._make_error_response(self._oai_serving_scores, e)
             return
 
-        if isinstance(score_response, VLLMErrorResponse):
-            yield ErrorResponse(**score_response.model_dump())
-        elif hasattr(score_response, "body"):
-            content = json.loads(score_response.body)
-            yield ScoreResponse(**content)
-        else:
-            yield ScoreResponse(**score_response.model_dump())
+        content = json.loads(score_response.body)
+        yield ScoreResponse(**content)
 
     async def tokenize(
         self,

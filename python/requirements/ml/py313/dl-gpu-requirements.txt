@@ -21,7 +21,7 @@ nvidia-nccl-cu12; platform_system == 'Linux' and platform_machine != 'aarch64'
 
 cupy-cuda12x==13.6.0; sys_platform != 'darwin'
 cudf-cu12>=24.12.0; sys_platform != 'darwin' and python_version >= '3.11'
-nixl-cu13==1.0.0; sys_platform != 'darwin'
+nixl-cu13>=0.7.1,<=0.10.1; sys_platform != 'darwin'
 
 jax==0.4.33; sys_platform != 'darwin'
 jaxlib==0.4.33; sys_platform != 'darwin'
