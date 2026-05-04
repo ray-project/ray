@@ -61,7 +61,7 @@ def test_to_pandas(spark):
     df = spark.range(100)
     ds = ray.data.from_spark(df)
     pdf = ds.to_pandas()
-    pdf2 = df.toPandas()
+    pdf2 = df.toPandas().astype(pdf.dtypes.to_dict())
     pandas.testing.assert_frame_equal(pdf, pdf2)
 
 

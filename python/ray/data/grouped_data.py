@@ -64,9 +64,9 @@ class GroupedData:
         """
 
         op = Aggregate(
-            self._dataset._logical_plan.dag,
             key=self._key,
             aggs=aggs,
+            input_dependencies=[self._dataset._logical_plan.dag],
             num_partitions=self._num_partitions,
         )
         logical_plan = LogicalPlan(op, self._dataset.context)

@@ -483,8 +483,8 @@ class Dataset:
         )
 
         map_op = MapRows(
-            self._logical_plan.dag,
             fn,
+            input_dependencies=[self._logical_plan.dag],
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -848,8 +848,8 @@ class Dataset:
         batch_format = _apply_batch_format(batch_format)
 
         map_batches_op = MapBatches(
-            self._logical_plan.dag,
             fn,
+            input_dependencies=[self._logical_plan.dag],
             batch_size=batch_size,
             can_modify_num_rows=udf_modifying_row_count,
             batch_format=batch_format,
@@ -948,17 +948,17 @@ class Dataset:
 
         if isinstance(expr, DownloadExpr):
             download_op = Download(
-                self._logical_plan.dag,
                 uri_column_names=[expr.uri_column_name],
                 output_bytes_column_names=[column_name],
+                input_dependencies=[self._logical_plan.dag],
                 ray_remote_args=ray_remote_args,
                 filesystem=expr.filesystem,
             )
             logical_plan = LogicalPlan(download_op, self.context)
         else:
             project_op = Project(
-                self._logical_plan.dag,
                 exprs=[StarExpr(), expr.alias(column_name)],
+                input_dependencies=[self._logical_plan.dag],
                 compute=compute,
                 ray_remote_args=ray_remote_args,
             )
@@ -1228,8 +1228,8 @@ class Dataset:
         compute = TaskPoolStrategy(size=concurrency)
 
         select_op = Project(
-            self._logical_plan.dag,
             exprs=exprs,
+            input_dependencies=[self._logical_plan.dag],
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -1355,8 +1355,8 @@ class Dataset:
         compute = TaskPoolStrategy(size=concurrency)
 
         select_op = Project(
-            self._logical_plan.dag,
             exprs=[StarExpr(), *exprs],
+            input_dependencies=[self._logical_plan.dag],
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -1493,8 +1493,8 @@ class Dataset:
         )
 
         op = FlatMap(
-            input_op=self._logical_plan.dag,
             fn=fn,
+            input_dependencies=[self._logical_plan.dag],
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
             fn_constructor_args=fn_constructor_args,
@@ -1692,9 +1692,9 @@ class Dataset:
 
         # Create Filter operator with explicitly typed arguments
         filter_op = Filter(
-            input_op=input_op,
             predicate_expr=predicate_expr,
             fn=filter_fn,
+            input_dependencies=[input_op],
             fn_args=filter_fn_args,
             fn_kwargs=filter_fn_kwargs,
             fn_constructor_args=filter_fn_constructor_args,
@@ -1831,14 +1831,14 @@ class Dataset:
             )
         if target_num_rows_per_block is not None:
             op = StreamingRepartition(
-                self._logical_plan.dag,
                 target_num_rows_per_block=target_num_rows_per_block,
+                input_dependencies=[self._logical_plan.dag],
                 strict=strict,
             )
         else:
             op = Repartition(
-                self._logical_plan.dag,
                 num_outputs=num_blocks,
+                input_dependencies=[self._logical_plan.dag],
                 shuffle=shuffle,
                 keys=keys,
                 sort=sort,
@@ -1921,8 +1921,8 @@ class Dataset:
         )
 
         op = RandomShuffle(
-            self._logical_plan.dag,
             seed_config=seed_config,
+            input_dependencies=[self._logical_plan.dag],
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
@@ -1974,8 +1974,8 @@ class Dataset:
         seed_config = RandomSeedConfig.create_seed_config(seed)
 
         op = RandomizeBlocks(
-            self._logical_plan.dag,
             seed_config=seed_config,
+            input_dependencies=[self._logical_plan.dag],
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset._from_transform(self, logical_plan)
@@ -2159,9 +2159,9 @@ class Dataset:
                 materializes the dataset in memory.
         """
         op = StreamingSplit(
-            self._logical_plan.dag,
             num_splits=n,
             equal=equal,
+            input_dependencies=[self._logical_plan.dag],
             locality_hints=locality_hints,
         )
         logical_plan = LogicalPlan(op, self.context)
@@ -3679,8 +3679,8 @@ class Dataset:
             raise ValueError("The 'key' parameter cannot be None for sorting.")
         sort_key = SortKey(key, descending, boundaries)
         op = Sort(
-            self._logical_plan.dag,
             sort_key=sort_key,
+            input_dependencies=[self._logical_plan.dag],
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset._from_transform(self, logical_plan)
@@ -3748,7 +3748,7 @@ class Dataset:
         Returns:
             The truncated dataset.
         """
-        op = Limit(self._logical_plan.dag, limit=limit)
+        op = Limit(limit=limit, input_dependencies=[self._logical_plan.dag])
         logical_plan = LogicalPlan(op, self.context)
         return Dataset._from_transform(self, logical_plan)
 
@@ -3969,7 +3969,11 @@ class Dataset:
 
         # NOTE: Project the dataset to avoid the need to carry actual
         #       data when we're only interested in the total count
-        count_op = Count(Project(self._logical_plan.dag, exprs=[]))
+        count_op = Count(
+            input_dependencies=[
+                Project(exprs=[], input_dependencies=[self._logical_plan.dag])
+            ]
+        )
         logical_plan = LogicalPlan(count_op, self.context)
         count_ds = Dataset._from_transform(self, logical_plan)
 
@@ -5759,8 +5763,8 @@ class Dataset:
             )
 
         write_op = Write(
-            self._logical_plan.dag,
             datasink,
+            input_dependencies=[self._logical_plan.dag],
             ray_remote_args=ray_remote_args,
             compute=TaskPoolStrategy(concurrency),
         )
