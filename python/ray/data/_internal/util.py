@@ -1536,10 +1536,10 @@ def iterate_with_retry(
 
     Args:
         iterable_factory: A no-argument function that creates the iterable.
-        match: A list of strings to match in the exception message. If ``None``, any
-            error is retried.
         description: An imperitive description of the function being retried. For
             example, "open the file".
+        match: A list of strings to match in the exception message. If ``None``, any
+            error is retried.
         max_attempts: The maximum number of attempts to retry.
         max_backoff_s: The maximum number of seconds to backoff.
         unwrap_cause: If ``True``, include ``e.__cause__`` in the string matched
@@ -1561,7 +1561,9 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            error_str = f"{e} {e.__cause__}" if (unwrap_cause and e.__cause__) else str(e)
+            error_str = (
+                f"{e} {e.__cause__}" if (unwrap_cause and e.__cause__) else str(e)
+            )
             is_retryable = match is None or any(
                 pattern in error_str for pattern in match
             )
