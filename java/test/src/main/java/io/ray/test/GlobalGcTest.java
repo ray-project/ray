@@ -53,10 +53,14 @@ public class GlobalGcTest extends BaseTest {
     /**
      * Release the strong reference so the cyclic object becomes eligible for
      * collection by the next JVM GC. Call this immediately before triggering
-     * the global GC event the test is exercising.
+     * the global GC event the test is exercising. Returns a boolean so the
+     * caller can `.get()` on the resulting ObjectRef to synchronously wait for
+     * the release to take effect on the actor process; Ray's Java API does not
+     * surface an ObjectRef for void actor methods.
      */
-    public void releaseStrongRef() {
+    public boolean releaseStrongRef() {
       strongRef = null;
+      return true;
     }
 
     public TestUtils.LargeObject returnLargeObject() {
