@@ -666,14 +666,14 @@ class FuseOperators(Rule):
 
         if isinstance(down_logical_op, RandomShuffle):
             logical_op = RandomShuffle(
-                input_op,
                 name=name,
+                input_dependencies=[input_op],
                 ray_remote_args=ray_remote_args,
             )
         elif isinstance(down_logical_op, Repartition):
             logical_op = Repartition(
-                input_op,
                 num_outputs=down_logical_op.num_outputs,
+                input_dependencies=[input_op],
                 shuffle=down_logical_op.shuffle,
             )
         self._op_map[op] = logical_op
