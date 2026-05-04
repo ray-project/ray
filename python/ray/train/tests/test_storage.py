@@ -11,6 +11,7 @@ from ray.train import Checkpoint, SyncConfig
 from ray.train._internal.storage import (
     _VALIDATE_STORAGE_MARKER_FILENAME,
     StorageContext,
+    _alias_s3_compatible_credentials_to_aws_env_vars,
     _list_at_fs_path,
 )
 from ray.train.tests.test_new_persistence import _resolve_storage_type
@@ -199,6 +200,140 @@ def test_persist_artifacts_failures(storage: StorageContext):
 
     with pytest.raises(FileNotFoundError):
         storage.persist_artifacts(force=True)
+
+
+def test_b2_env_vars_alias_to_aws_when_aws_unset(monkeypatch):
+    """``B2_APPLICATION_KEY_ID`` / ``B2_APPLICATION_KEY`` are mapped onto the
+    AWS-named credentials env vars pyarrow reads, when the AWS-named ones
+    are not already set."""
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.setenv("B2_APPLICATION_KEY_ID", "b2-key-id")
+    monkeypatch.setenv("B2_APPLICATION_KEY", "b2-secret")
+
+    _alias_s3_compatible_credentials_to_aws_env_vars()
+
+    assert os.environ["AWS_ACCESS_KEY_ID"] == "b2-key-id"
+    assert os.environ["AWS_SECRET_ACCESS_KEY"] == "b2-secret"
+
+
+def test_b2_env_var_alias_no_op_without_b2_vars(monkeypatch):
+    """No B2 env vars set means no AWS env vars are touched."""
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("B2_APPLICATION_KEY_ID", raising=False)
+    monkeypatch.delenv("B2_APPLICATION_KEY", raising=False)
+
+    _alias_s3_compatible_credentials_to_aws_env_vars()
+
+    assert "AWS_ACCESS_KEY_ID" not in os.environ
+    assert "AWS_SECRET_ACCESS_KEY" not in os.environ
+
+
+def test_b2_env_var_alias_warns_and_no_ops_when_b2_pair_incomplete(
+    monkeypatch, caplog, propagate_logs
+):
+    """If only one of the B2 credential pair is set, the alias is a no-op
+    AND emits a warning so the user can correct the inconsistent state."""
+    import logging
+
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.delenv("B2_APPLICATION_KEY_ID", raising=False)
+    monkeypatch.setenv("B2_APPLICATION_KEY", "b2-secret")  # only secret set
+
+    with caplog.at_level(logging.WARNING):
+        _alias_s3_compatible_credentials_to_aws_env_vars()
+
+    # Incomplete B2 pair — neither AWS-named var is populated.
+    assert "AWS_ACCESS_KEY_ID" not in os.environ
+    assert "AWS_SECRET_ACCESS_KEY" not in os.environ
+    # Warning identifies the missing half of the pair.
+    assert any(
+        "B2_APPLICATION_KEY_ID" in r.message and "requires both" in r.message
+        for r in caplog.records
+    )
+
+
+def test_b2_env_var_alias_silent_when_full_aws_pair_set(
+    monkeypatch, caplog, propagate_logs
+):
+    """If BOTH AWS-named credentials are already set, the alias defers
+    silently — this is a benign 'user prefers AWS' state, not user error."""
+    import logging
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "explicit-aws-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "explicit-aws-secret")
+    monkeypatch.setenv("B2_APPLICATION_KEY_ID", "b2-id")
+    monkeypatch.setenv("B2_APPLICATION_KEY", "b2-secret")
+
+    with caplog.at_level(logging.WARNING):
+        _alias_s3_compatible_credentials_to_aws_env_vars()
+
+    # AWS-named credentials win; no warning emitted (this is a normal,
+    # explicit user choice).
+    assert os.environ["AWS_ACCESS_KEY_ID"] == "explicit-aws-key"
+    assert os.environ["AWS_SECRET_ACCESS_KEY"] == "explicit-aws-secret"
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_b2_env_var_alias_no_warning_when_aws_full_and_b2_partial(
+    monkeypatch, caplog, propagate_logs
+):
+    """When AWS pair is fully set, a partial provider pair must NOT warn —
+    aliasing is intentionally bypassed, so the partial provider pair is
+    benign noise (e.g. B2 CLI env left in shell)."""
+    import logging
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "aws-key")
+    monkeypatch.setenv("AWS_SECRET_ACCESS_KEY", "aws-secret")
+    monkeypatch.setenv("B2_APPLICATION_KEY_ID", "b2-id")  # only id, no secret
+    monkeypatch.delenv("B2_APPLICATION_KEY", raising=False)
+
+    with caplog.at_level(logging.WARNING):
+        _alias_s3_compatible_credentials_to_aws_env_vars()
+
+    assert not [r for r in caplog.records if r.levelno >= logging.WARNING]
+
+
+def test_b2_env_var_alias_warns_and_skips_on_partial_aws_pair(
+    monkeypatch, caplog, propagate_logs
+):
+    """Partial AWS pair (only one var set, or one set to empty string) must
+    emit a warning and NOT silently overwrite from a provider pair."""
+    import logging
+
+    monkeypatch.setenv("AWS_ACCESS_KEY_ID", "explicit-aws-id")
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.setenv("B2_APPLICATION_KEY_ID", "b2-id")
+    monkeypatch.setenv("B2_APPLICATION_KEY", "b2-secret")
+
+    with caplog.at_level(logging.WARNING):
+        _alias_s3_compatible_credentials_to_aws_env_vars()
+
+    # Partial AWS state preserved; B2 alias did NOT silently overwrite.
+    assert os.environ["AWS_ACCESS_KEY_ID"] == "explicit-aws-id"
+    assert "AWS_SECRET_ACCESS_KEY" not in os.environ
+    assert any(
+        "AWS_ACCESS_KEY_ID" in r.message and "AWS_SECRET_ACCESS_KEY" in r.message
+        for r in caplog.records
+    )
+
+
+def test_b2_env_var_alias_skipped_for_non_s3_storage_paths(monkeypatch, tmp_path):
+    """Non-s3:// storage paths must not trigger credential aliasing — the
+    user's B2 env vars should not leak into AWS_* for a local fs path."""
+    from ray.train._internal.storage import get_fs_and_path
+
+    monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
+    monkeypatch.delenv("AWS_SECRET_ACCESS_KEY", raising=False)
+    monkeypatch.setenv("B2_APPLICATION_KEY_ID", "b2-id")
+    monkeypatch.setenv("B2_APPLICATION_KEY", "b2-secret")
+
+    get_fs_and_path(str(tmp_path))
+
+    assert "AWS_ACCESS_KEY_ID" not in os.environ
+    assert "AWS_SECRET_ACCESS_KEY" not in os.environ
 
 
 if __name__ == "__main__":
