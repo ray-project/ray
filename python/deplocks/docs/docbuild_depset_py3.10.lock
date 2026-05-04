@@ -1663,6 +1663,10 @@ sphinx-docsearch==0.0.7 \
 sphinx-jsonschema==1.19.1 \
     --hash=sha256:b2385fe1c7acf2e759152aefed0cb17c920645b2a75c9934000c9c528e7d53c1
     # via -r doc/requirements-doc.txt
+sphinx-last-updated-by-git==0.3.8 \
+    --hash=sha256:6382c8285ac1f222483a58569b78c0371af5e55f7fbf9c01e5e8a72d6fdfa499 \
+    --hash=sha256:c145011f4609d841805b69a9300099fc02fed8f5bb9e5bcef77d97aea97b7761
+    # via sphinx-sitemap
 sphinx-remove-toctrees==0.0.3 \
     --hash=sha256:1077ebc00652f8a896ce27404d31cb5bdde9eeaefc80ada72d95a7a0a7b99a9d \
     --hash=sha256:e4792cc4e5d25ceb1a44dd1490c45d578e6b36f1b1e385ede659e4c324b98cba
