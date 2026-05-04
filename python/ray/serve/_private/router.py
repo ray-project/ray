@@ -957,9 +957,7 @@ class AsyncioRouter:
             # (`route_and_send_request` resolves them before invoking this).
             # Hold `num_queued_requests` incremented for the full attempt.
             num_curr_replicas = len(self.request_router.curr_replicas)
-            with self._metrics_manager.wrap_queued_request(
-                is_retry, num_curr_replicas
-            ):
+            with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
                 replica = await self.request_router._choose_replica_for_request(
                     pr, is_retry=is_retry
                 )
