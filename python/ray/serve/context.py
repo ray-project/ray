@@ -286,6 +286,7 @@ class _RequestContext:
     _internal_request_id: str = ""
     app_name: str = ""
     multiplexed_model_id: str = ""
+    session_id: str = ""
     grpc_context: Optional[RayServegRPCContext] = None
     is_http_request: bool = False
     cancel_on_parent_request_cancel: bool = False
