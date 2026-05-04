@@ -542,7 +542,9 @@ click-repl==0.3.0 \
 cloudpickle==2.2.0 \
     --hash=sha256:3f4219469c55453cfe4737e564b67c2a149109dabf7f242478948b895f61106f \
     --hash=sha256:7428798d5926d8fcbfd092d18d01a2a03daf8237d8fcdc8095d256b8490796f0
-    # via gymnasium
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
+    #   gymnasium
 colorama==0.4.6 \
     --hash=sha256:4f1d9991f5acc0ca119f9d443620b77f9d6b33703e51011c16baf57afb285fc6
     # via
@@ -2632,16 +2634,18 @@ pure-eval==0.2.2 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
     #   stack-data
-py-spy==0.4.1 ; python_full_version < '3.12' \
-    --hash=sha256:1fb8bf71ab8df95a95cc387deed6552934c50feef2cf6456bc06692a5508fd0c \
-    --hash=sha256:4972c21890b6814017e39ac233c22572c4a61fd874524ebc5ccab0f2237aee0a \
-    --hash=sha256:532d3525538254d1859b49de1fbe9744df6b8865657c9f0e444bf36ce3f19226 \
-    --hash=sha256:6a80ec05eb8a6883863a367c6a4d4f2d57de68466f7956b6367d4edd5c61bb29 \
-    --hash=sha256:809094208c6256c8f4ccadd31e9a513fe2429253f48e20066879239ba12cd8cc \
-    --hash=sha256:d92e522bd40e9bf7d87c204033ce5bb5c828fca45fa28d970f58d71128069fdc \
-    --hash=sha256:e53aa53daa2e47c2eef97dd2455b47bb3a7e7f962796a86cc3e7dbde8e6f4db4 \
-    --hash=sha256:ee776b9d512a011d1ad3907ed53ae32ce2f3d9ff3e1782236554e22103b5c084
-    # via ray
+py-spy==0.4.2 ; python_full_version < '3.12' \
+    --hash=sha256:142887e984a4e541071c99a4401ff8c3770f255d329dbd0f64e8c1dd51882cce \
+    --hash=sha256:1ccf688393105111684435f035bc14ec3f22117dd2b85b2414612cf27a22755a \
+    --hash=sha256:24720573f95230653b457671a1dcc3c5a381fcf4e92677761e328a430ad251b2 \
+    --hash=sha256:7f1c6d9b0e2379ead5bf792df43f4cf36153aa79e6dda4fb8ac7740cf8017110 \
+    --hash=sha256:8b06a353c177677e4e1701b288d8c58e2f8d4208ee81a8048d9f72ba800918f8 \
+    --hash=sha256:90e600b27bb6bb40479637baca5a5b4bc2ba3395c93d889e672315d93042c4ae \
+    --hash=sha256:a0e6f6810ccf0fc5e64e85e0182a5b626c4496eec01b14fb8755154b363a4831 \
+    --hash=sha256:aeb0323409199c785f730645e9f4bb7a7b9ca2c481f2c331a55642b5d13fa52f
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
+    #   ray
 pyarrow==19.0.1 \
     --hash=sha256:008a4009efdb4ea3d2e18f05cd31f9d43c388aad29c636112c2966605ba33466 \
     --hash=sha256:0148bb4fc158bfbc3d6dfe5001d93ebeed253793fff4435167f6ce1dc4bddeae \
@@ -3563,7 +3567,9 @@ uvloop==0.22.1 ; platform_python_implementation != 'PyPy' and sys_platform != 'c
     --hash=sha256:ea721dd3203b809039fcc2983f14608dae82b212288b346e0bfe46ec2fab0b7c \
     --hash=sha256:ef6f0d4cc8a9fa1f6a910230cd53545d9a14479311e87e3cb225495952eb672c \
     --hash=sha256:fe94b4564e865d968414598eea1a6de60adba0c040ba4ed05ac1300de402cd42
-    # via uvicorn
+    # via
+    #   -c /tmp/ray-deps/requirements_compiled_py3.11.txt
+    #   uvicorn
 vine==5.1.0 \
     --hash=sha256:40fdf3c48b2cfe1c38a49e9ae2da6fda88e4794c810050a728bd7413811fb1dc \
     --hash=sha256:8b62e981d35c41049211cf62a0a1242d8c1ee9bd15bb196ce38aefd6799e61e0
