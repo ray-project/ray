@@ -56,9 +56,9 @@ class AbstractAllToAll(LogicalOperator):
                 inspecting the logical plan of a Dataset.
         """
         super().__init__(
-            _input_dependencies=[input_op],
             _num_outputs=num_outputs,
         )
+        object.__setattr__(self, "_input_dependencies", [input_op])
         if name is not None:
             object.__setattr__(self, "_name", name)
         object.__setattr__(self, "ray_remote_args", ray_remote_args or {})
@@ -73,19 +73,17 @@ class AbstractAllToAll(LogicalOperator):
 class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for randomize_block_order."""
 
-    input_op: InitVar[LogicalOperator]
     seed_config: Optional[RandomSeedConfig] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
-    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.seed_config is None:
             object.__setattr__(self, "seed_config", RandomSeedConfig())
         object.__setattr__(self, "_name", "RandomizeBlockOrder")
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
     def infer_metadata(self) -> "BlockMetadata":
@@ -109,16 +107,15 @@ class RandomizeBlocks(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThro
 class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for random_shuffle."""
 
-    input_op: InitVar[LogicalOperator]
     name: InitVar[str] = "RandomShuffle"
     seed_config: Optional[RandomSeedConfig] = None
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
-    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator, name: str):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self, name: str):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.seed_config is None:
             object.__setattr__(self, "seed_config", RandomSeedConfig())
         if self.sub_progress_bar_names is None:
@@ -131,11 +128,12 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
                 ],
             )
         object.__setattr__(self, "_name", name)
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
-    def _with_new_input(self, input_op: LogicalOperator) -> LogicalOperator:
-        return replace(self, input_op=input_op, name=self._name)
+    def _with_new_input_dependencies(
+        self, input_dependencies: List[LogicalOperator]
+    ) -> LogicalOperator:
+        return replace(self, input_dependencies=input_dependencies, name=self._name)
 
     def infer_metadata(self) -> "BlockMetadata":
         assert len(self.input_dependencies) == 1, len(self.input_dependencies)
@@ -158,18 +156,17 @@ class RandomShuffle(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThroug
 class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for repartition."""
 
-    input_op: InitVar[LogicalOperator]
     num_outputs: InitVar[int]
     shuffle: bool = False
     keys: Optional[List[str]] = None
     sort: bool = False
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
-    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     _num_outputs: Optional[int] = field(init=False, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator, num_outputs: int):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self, num_outputs: int):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         if self.shuffle:
             sub_progress_bar_names = [
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
@@ -180,13 +177,14 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
                 ShuffleTaskSpec.SPLIT_REPARTITION_SUB_PROGRESS_BAR_NAME,
             ]
         object.__setattr__(self, "sub_progress_bar_names", sub_progress_bar_names)
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", num_outputs)
 
-    def _with_new_input(self, input_op: LogicalOperator) -> LogicalOperator:
+    def _with_new_input_dependencies(
+        self, input_dependencies: List[LogicalOperator]
+    ) -> LogicalOperator:
         return replace(
             self,
-            input_op=input_op,
+            input_dependencies=input_dependencies,
             num_outputs=self.num_outputs,
         )
 
@@ -211,16 +209,15 @@ class Repartition(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough)
 class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for sort."""
 
-    input_op: InitVar[LogicalOperator]
     sort_key: SortKey
     batch_format: Optional[str] = "default"
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
-    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         object.__setattr__(
             self,
             "sub_progress_bar_names",
@@ -230,7 +227,6 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)
 
     def infer_metadata(self) -> "BlockMetadata":
@@ -254,18 +250,17 @@ class Sort(AbstractAllToAll, LogicalOperatorSupportsPredicatePassThrough):
 class Aggregate(AbstractAllToAll):
     """Logical operator for aggregate."""
 
-    input_op: InitVar[LogicalOperator]
     key: Optional[str]
     aggs: List[AggregateFn]
     num_partitions: Optional[int] = None
     batch_format: Optional[str] = "default"
     ray_remote_args: Dict[str, Any] = field(default_factory=dict)
     sub_progress_bar_names: Optional[List[str]] = None
-    _input_dependencies: List[LogicalOperator] = field(init=False, repr=False)
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
     _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
 
-    def __post_init__(self, input_op: LogicalOperator):
-        assert isinstance(input_op, LogicalOperator), input_op
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
         object.__setattr__(
             self,
             "sub_progress_bar_names",
@@ -275,5 +270,4 @@ class Aggregate(AbstractAllToAll):
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
-        object.__setattr__(self, "_input_dependencies", [input_op])
         object.__setattr__(self, "_num_outputs", None)

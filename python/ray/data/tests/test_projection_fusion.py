@@ -123,7 +123,11 @@ class TestProjectionFusion:
                 named_expr = expr.alias(name)
                 exprs.append(named_expr)
 
-            current_op = Project(current_op, exprs=[star()] + exprs, ray_remote_args={})
+            current_op = Project(
+                exprs=[star()] + exprs,
+                input_dependencies=[current_op],
+                ray_remote_args={},
+            )
 
         return current_op
 

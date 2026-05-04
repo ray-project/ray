@@ -574,8 +574,8 @@ class TestPlanAllToAllOpRouting:
 
     def _make_repartition_op(self, keys=("user_id",), num_outputs=8):
         return Repartition(
-            input_op=MagicMock(LogicalOperator),
             num_outputs=num_outputs,
+            input_dependencies=[MagicMock(LogicalOperator)],
             shuffle=True,
             keys=list(keys),
         )
