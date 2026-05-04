@@ -64,15 +64,13 @@ Each replica in a gang has access to a `GangContext` through the replica context
 :language: python
 ```
 
-`GangContext` contains the following information:
+Here's the interface of `GangContext`:
 
-| Attribute | Type | Description |
-|-------|------|-------------|
-| `gang_id` | `str` | Unique identifier for this gang |
-| `rank` | `int` | This replica's rank within the gang (0-indexed) |
-| `world_size` | `int` | Total number of replicas in this gang (equal to `gang_size`) |
-| `member_replica_ids` | `List[str]` | Replica IDs of all gang members, ordered by rank |
-| `pg_name` | `str` | Name of the gang placement group |
+```{eval-rst}
+.. autoclass:: ray.serve.context.GangContext
+   :members:
+   :no-index:
+```
 
 Replicas can use `rank` and `world_size` to set up distributed communication, e.g. initializing NCCL process groups, and `member_replica_ids` to discover and connect to their peers.
 
@@ -83,6 +81,8 @@ Gang scheduling supports two placement group strategies that control how replica
 ### PACK (default)
 
 Packs all replicas in a gang onto as few nodes as possible. This is best for workloads that benefit from locality, such as data parallel ranks within data parallel attention - expert parallelism deployment for MoE LLMs.
+
+Although PACK colocates as many replicas per node as possible, it does not guarantee that ranks are contiguous within a node. For example, a gang of 8 replicas split across 2 nodes may be assigned ranks `{0, 3, 5, 7}` on one node and `{1, 2, 4, 6}` on the other, rather than `{0, 1, 2, 3}` and `{4, 5, 6, 7}`. Applications should not assume that consecutive ranks share a node. This is particularly important when a single replica owns multiple bundles, such as a tensor-parallel group. In that case, the bundles belonging to one replica may land on different nodes, splitting collective communication across the network. To ensure that the bundles for a single replica land on the same node, sort the gang placement group's bundle indices by node IP and assign each replica a contiguous slice of the sorted order.
 
 ```{literalinclude} ../doc_code/gang_scheduling.py
 :start-after: __pack_strategy_start__
