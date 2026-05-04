@@ -27,7 +27,6 @@ from ray.serve._private.haproxy import (
     ServerConfig,
 )
 from ray.serve.config import HTTPOptions
-from ray.serve.schema import Target
 
 logger = logging.getLogger(__name__)
 

@@ -1392,10 +1392,7 @@ class HAProxyManager(ProxyActorInterface):
         fallback_target: Optional[Target],
     ) -> BackendConfig:
         """Create a backend configuration from a target group and fallback target."""
-        servers = [
-            target_to_server(target, self._node_ip_address)
-            for target in target_group.targets
-        ]
+        servers = [self._target_to_server(target) for target in target_group.targets]
 
         ingress_request_router_servers = [
             self._target_to_server(target)
@@ -1404,7 +1401,7 @@ class HAProxyManager(ProxyActorInterface):
 
         fallback_server = None
         if fallback_target is not None:
-            fallback_server = target_to_server(fallback_target, self._node_ip_address)
+            fallback_server = self._target_to_server(fallback_target)
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
@@ -1479,7 +1476,9 @@ class HAProxyManager(ProxyActorInterface):
     @staticmethod
     def get_safe_name(name: str) -> str:
         """Get a safe label name for the haproxy config."""
-        return _get_safe_name(name)
+        name = name.replace("#", "-").replace("/", ".")
+        # replace all remaining non-alphanumeric and non-{".", "_", "-"} with "_"
+        return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         """Return the set of replica IDs for targets matching the given route.
