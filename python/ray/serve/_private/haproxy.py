@@ -673,7 +673,7 @@ class HAProxyApi(ProxyApi):
         socket_dir = os.path.dirname(self.cfg.socket_path)
         os.makedirs(socket_dir, exist_ok=True)
 
-        # Create a server state directory only if persistence is enabled
+        # Create a server state directory only if optimization is enabled
         if self.cfg.enable_hap_optimization:
             server_state_dir = os.path.dirname(self.cfg.server_state_file)
             os.makedirs(server_state_dir, exist_ok=True)
@@ -1080,6 +1080,7 @@ class HAProxyApi(ProxyApi):
             # Regenerate the config file with the deny rule
             self._generate_config_file_internal()
 
+            # Perform a graceful reload to apply changes
             await self._graceful_reload()
             logger.info("Successfully disabled health checks.")
         except Exception as e:
@@ -1092,6 +1093,7 @@ class HAProxyApi(ProxyApi):
             self.cfg.pass_health_checks = True
 
             self._generate_config_file_internal()
+            # Perform a graceful reload to apply changes
             await self._graceful_reload()
             logger.info("Successfully enabled health checks.")
         except Exception as e:
