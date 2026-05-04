@@ -302,6 +302,7 @@ def test_batch_format_on_sort(ray_start_regular_shared_2_cpus):
         .sort("col2", descending=True)
         .to_pandas()
     )
+    df_expected = df_expected.astype(df_actual.dtypes.to_dict())
     pd.testing.assert_frame_equal(df_actual, df_expected)
 
 
