@@ -119,7 +119,7 @@ class OpBufferQueue:
 
     def __iter__(self):
         for q in self._queues:
-            yield from q._inner
+            yield from q
 
     def clear(self):
         for q in self._queues:

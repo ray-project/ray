@@ -40,6 +40,9 @@ class LimitOperator(OneToOneOperator):
         assert not self.has_completed()
         assert input_index == 0, input_index
         if self._limit_reached():
+            if self._block_ref_counter is not None:
+                for block_ref, _ in refs.blocks:
+                    self._block_ref_counter.on_task_completed(block_ref)
             return
         out_blocks: List[ObjectRef[Block]] = []
         out_metadata: List[BlockMetadata] = []
