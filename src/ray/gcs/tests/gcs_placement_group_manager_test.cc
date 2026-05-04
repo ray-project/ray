@@ -26,6 +26,7 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_metric.h"
+#include "ray/observability/fake_ray_event_recorder.h"
 #include "ray/raylet/scheduling/cluster_resource_manager.h"
 #include "ray/util/counter_map.h"
 
@@ -40,6 +41,7 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
 
   void ScheduleUnplacedBundles(const SchedulePgRequest &request) override {
     placement_groups_.push_back(request.placement_group);
+    schedule_requests_.push_back(request);
   }
 
   MOCK_METHOD1(DestroyPlacementGroupBundleResourcesIfExists,
@@ -75,6 +77,7 @@ class MockPlacementGroupScheduler : public gcs::GcsPlacementGroupSchedulerInterf
   PlacementGroupID group_on_dead_node_;
   std::vector<int64_t> bundles_on_dead_node_;
   std::vector<std::shared_ptr<gcs::GcsPlacementGroup>> placement_groups_;
+  std::vector<SchedulePgRequest> schedule_requests_;
 };
 
 class GcsPlacementGroupManagerTest : public ::testing::Test {
@@ -98,7 +101,9 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         fake_placement_group_gauge_,
         fake_placement_group_creation_latency_in_ms_histogram_,
         fake_placement_group_scheduling_latency_in_ms_histogram_,
-        fake_placement_group_count_gauge_));
+        fake_placement_group_count_gauge_,
+        fake_ray_event_recorder_,
+        "test_session"));
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
     for (int i = 1; i <= 10; i++) {
       auto job_id = JobID::FromInt(i);
@@ -225,6 +230,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   ray::observability::FakeHistogram
       fake_placement_group_scheduling_latency_in_ms_histogram_;
   ray::observability::FakeGauge fake_placement_group_count_gauge_;
+  ray::observability::FakeRayEventRecorder fake_ray_event_recorder_;
 
  private:
   ClusterResourceManager cluster_resource_manager_;
@@ -251,6 +257,93 @@ TEST_F(GcsPlacementGroupManagerTest, TestPlacementGroupBundleCache) {
   // Invalidate the cache and verify it.
   RAY_UNUSED(placement_group->GetMutableBundle(0));
   ASSERT_TRUE(placement_group->cached_bundle_specs_.empty());
+}
+
+TEST_F(GcsPlacementGroupManagerTest,
+       TestPreparedCallbackEmitsLifecycleEventWithPlacements) {
+  auto request = GenCreatePlacementGroupRequest();
+  std::atomic<int> registered_placement_group_count(0);
+  RegisterPlacementGroup(request,
+                         [&registered_placement_group_count](const Status &status) {
+                           ++registered_placement_group_count;
+                         });
+  ASSERT_EQ(registered_placement_group_count, 1);
+  ASSERT_EQ(mock_placement_group_scheduler_->schedule_requests_.size(), 1);
+
+  auto schedule_request = mock_placement_group_scheduler_->schedule_requests_.back();
+  auto placement_group = schedule_request.placement_group;
+  placement_group->GetMutableBundle(0)->set_node_id("node_a");
+  placement_group->GetMutableBundle(1)->set_node_id("node_b");
+  placement_group->UpdateState(rpc::PlacementGroupTableData::PREPARED);
+
+  ASSERT_TRUE(static_cast<bool>(schedule_request.prepared_callback));
+  schedule_request.prepared_callback(placement_group);
+
+  auto recorded_events = fake_ray_event_recorder_.FlushBuffer();
+  bool found_prepared_event = false;
+  for (auto &event : recorded_events) {
+    if (event->GetEventType() != rpc::events::RayEvent::PLACEMENT_GROUP_LIFECYCLE_EVENT) {
+      continue;
+    }
+    auto serialized = std::move(*event).Serialize();
+    auto transitions = serialized.placement_group_lifecycle_event().state_transitions();
+    if (transitions.size() != 1 ||
+        transitions[0].state() != rpc::events::PlacementGroupLifecycleEvent::PREPARED) {
+      continue;
+    }
+    found_prepared_event = true;
+    ASSERT_EQ(transitions[0].bundle_placements_size(), 2);
+    ASSERT_EQ(transitions[0].bundle_placements(0).bundle_index(), 0);
+    ASSERT_EQ(transitions[0].bundle_placements(0).node_id(), "node_a");
+    ASSERT_EQ(transitions[0].bundle_placements(1).bundle_index(), 1);
+    ASSERT_EQ(transitions[0].bundle_placements(1).node_id(), "node_b");
+  }
+  ASSERT_TRUE(found_prepared_event);
+}
+
+TEST_F(GcsPlacementGroupManagerTest,
+       TestPreparedCallbackEmitsUpdatedPlacementsAfterReschedule) {
+  auto request = GenCreatePlacementGroupRequest();
+  RegisterPlacementGroup(request, [](const Status &status) {});
+  ASSERT_EQ(mock_placement_group_scheduler_->schedule_requests_.size(), 1);
+
+  auto schedule_request = mock_placement_group_scheduler_->schedule_requests_.back();
+  auto placement_group = schedule_request.placement_group;
+  ASSERT_TRUE(static_cast<bool>(schedule_request.prepared_callback));
+
+  placement_group->GetMutableBundle(0)->set_node_id("node_a");
+  placement_group->GetMutableBundle(1)->set_node_id("node_b");
+  placement_group->UpdateState(rpc::PlacementGroupTableData::PREPARED);
+  schedule_request.prepared_callback(placement_group);
+
+  placement_group->GetMutableBundle(0)->set_node_id("node_c");
+  placement_group->GetMutableBundle(1)->set_node_id("node_d");
+  placement_group->UpdateState(rpc::PlacementGroupTableData::PREPARED);
+  schedule_request.prepared_callback(placement_group);
+
+  auto recorded_events = fake_ray_event_recorder_.FlushBuffer();
+  std::vector<std::pair<std::string, std::string>> prepared_node_pairs;
+  for (auto &event : recorded_events) {
+    if (event->GetEventType() != rpc::events::RayEvent::PLACEMENT_GROUP_LIFECYCLE_EVENT) {
+      continue;
+    }
+    auto serialized = std::move(*event).Serialize();
+    const auto &lifecycle_event = serialized.placement_group_lifecycle_event();
+    if (lifecycle_event.state_transitions_size() != 1 ||
+        lifecycle_event.state_transitions(0).state() !=
+            rpc::events::PlacementGroupLifecycleEvent::PREPARED ||
+        lifecycle_event.state_transitions(0).bundle_placements_size() != 2) {
+      continue;
+    }
+    prepared_node_pairs.emplace_back(
+        lifecycle_event.state_transitions(0).bundle_placements(0).node_id(),
+        lifecycle_event.state_transitions(0).bundle_placements(1).node_id());
+  }
+
+  ASSERT_GE(prepared_node_pairs.size(), 2);
+  EXPECT_NE(prepared_node_pairs.front(), prepared_node_pairs.back());
+  EXPECT_EQ(prepared_node_pairs.back().first, "node_c");
+  EXPECT_EQ(prepared_node_pairs.back().second, "node_d");
 }
 
 TEST_F(GcsPlacementGroupManagerTest, TestBasic) {
