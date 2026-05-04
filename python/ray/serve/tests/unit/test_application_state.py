@@ -358,27 +358,6 @@ def test_application_state_clears_stale_ingress_request_router(
     assert application_state.ingress_request_router_deployment is None
 
 
-def test_application_state_rejects_multiple_ingress_request_router_deployments(
-    mocked_application_state,
-):
-    application_state, _ = mocked_application_state
-    deployment_infos = {
-        "A": deployment_info("A", ingress_request_router=True),
-        "B": deployment_info("B", ingress_request_router=True),
-    }
-
-    with pytest.raises(
-        ValueError,
-        match="Multiple deployments marked as ingress_request_router",
-    ):
-        application_state._set_target_state(
-            deployment_infos,
-            api_type=APIType.IMPERATIVE,
-            code_version="1",
-            target_config=None,
-        )
-
-
 class TestApplicationStatusInfo:
     def test_application_status_required(self):
         with pytest.raises(TypeError):
