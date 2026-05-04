@@ -19,10 +19,9 @@ local function call_router(router, body)
         return nil
     end
 
-    local host_header = router.host .. ":" .. router.port
     -- Connection: close so sock:receive("*a") terminates on EOF.
     local req = "POST /internal/route HTTP/1.0\r\n"
-        .. "Host: " .. host_header .. "\r\n"
+        .. "Host: " .. router.host_header .. "\r\n"
         .. "Connection: close\r\n"
         .. "Content-Type: application/json\r\n"
         .. "Content-Length: " .. #body .. "\r\n"

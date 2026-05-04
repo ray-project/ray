@@ -96,8 +96,9 @@ frontend http_frontend
     http-request set-var(txn.ingress_request_router_app) str({{ backend.name or 'unknown' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.ingress_request_router_app) -m found }
     {%- endif %}
     {%- endfor %}
-    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST { var(txn.ingress_request_router_app) -m found }
-    http-request lua.route_via_ingress_request_router if METH_POST { var(txn.ingress_request_router_app) -m found }
+    acl has_ingress_request_router_app var(txn.ingress_request_router_app) -m found
+    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST has_ingress_request_router_app
+    http-request lua.route_via_ingress_request_router if METH_POST has_ingress_request_router_app
     {%- endif %}
     # Static routing based on path prefixes in decreasing length then alphabetical order
 {%- for backend in backends %}
