@@ -122,7 +122,7 @@ def test_result_restore(ray_start_4_cpus, tmpdir, mock_s3_bucket_uri, storage, m
     best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")
     assert load_dict_checkpoint(best_ckpt_b)["iter"] == NUM_ITERATIONS - NUM_CHECKPOINTS
 
-    with pytest.raises(RuntimeError, match="Invalid metric name.*"):
+    with pytest.raises(RuntimeError, match="No checkpoint's metrics contains.*"):
         result.get_best_checkpoint(metric="invalid_metric", mode="max")
 
     # Check if we properly restored errors
