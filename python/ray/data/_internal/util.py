@@ -1527,6 +1527,7 @@ def iterate_with_retry(
     match: Optional[List[str]] = None,
     max_attempts: int = 10,
     max_backoff_s: int = 32,
+    unwrap_cause: bool = False,
 ) -> Any:
     """Iterate through an iterable with retries.
 
@@ -1541,6 +1542,9 @@ def iterate_with_retry(
             example, "open the file".
         max_attempts: The maximum number of attempts to retry.
         max_backoff_s: The maximum number of seconds to backoff.
+        unwrap_cause: If ``True``, include ``e.__cause__`` in the string matched
+            against ``match``. Use this when exceptions are wrapped (e.g.
+            ``UserCodeException``) and the original error is in the cause chain.
     """
     assert max_attempts >= 1, f"`max_attempts` must be positive. Got {max_attempts}."
 
@@ -1557,7 +1561,7 @@ def iterate_with_retry(
                 yield item
             return
         except Exception as e:
-            error_str = f"{e} {e.__cause__}" if e.__cause__ else str(e)
+            error_str = f"{e} {e.__cause__}" if (unwrap_cause and e.__cause__) else str(e)
             is_retryable = match is None or any(
                 pattern in error_str for pattern in match
             )

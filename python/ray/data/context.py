@@ -227,9 +227,9 @@ DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS = False
 
 DEFAULT_ACTOR_INIT_MAX_RETRIES = 3
 
-DEFAULT_RETRIED_UDF_ERRORS: Union[bool, List[str]] = False
+DEFAULT_RETRIED_MAP_ERRORS: Union[bool, List[str]] = False
 
-DEFAULT_MAX_UDF_RETRIES = 3
+DEFAULT_MAX_MAP_RETRIES = 3
 
 DEFAULT_ENABLE_OP_RESOURCE_RESERVATION = env_bool(
     "RAY_DATA_ENABLE_OP_RESOURCE_RESERVATION", True
@@ -557,12 +557,12 @@ class DataContext:
         actor_init_max_retries: Maximum number of consecutive retries for actor
             initialization failures. The counter resets when an actor successfully
             initializes. Default is 3. Set to -1 for infinite retries.
-        retried_udf_errors: Controls which user exceptions are retried in map
+        retried_map_errors: Controls which user exceptions are retried in map
             tasks. ``False`` (default) disables retries. ``True`` retries any user
             exception. A list of strings retries only when the exception message
-            contains one of the substrings. Bounded by ``max_udf_retries``.
-        max_udf_retries: Maximum number of retry attempts per map task for user
-            exceptions. Default is 3. Ignored if ``retried_udf_errors`` is
+            contains one of the substrings. Bounded by ``max_map_retries``.
+        max_map_retries: Maximum number of retry attempts per map task for user
+            exceptions. Default is 3. Ignored if ``retried_map_errors`` is
             empty.
         op_resource_reservation_enabled: Whether to enable resource reservation for
             operators to prevent resource contention.
@@ -767,8 +767,8 @@ class DataContext:
     ] = DEFAULT_ACTOR_TASK_RETRY_ON_ERRORS
     actor_init_retry_on_errors: bool = DEFAULT_ACTOR_INIT_RETRY_ON_ERRORS
     actor_init_max_retries: int = DEFAULT_ACTOR_INIT_MAX_RETRIES
-    retried_udf_errors: Union[bool, List[str]] = DEFAULT_RETRIED_UDF_ERRORS
-    max_udf_retries: int = DEFAULT_MAX_UDF_RETRIES
+    retried_map_errors: Union[bool, List[str]] = DEFAULT_RETRIED_MAP_ERRORS
+    max_map_retries: int = DEFAULT_MAX_MAP_RETRIES
     op_resource_reservation_enabled: bool = DEFAULT_ENABLE_OP_RESOURCE_RESERVATION
     op_resource_reservation_ratio: float = DEFAULT_OP_RESOURCE_RESERVATION_RATIO
     max_errored_blocks: int = DEFAULT_MAX_ERRORED_BLOCKS
