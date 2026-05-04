@@ -311,7 +311,7 @@ class Dataset:
         self._set_uuid(_StatsManager.gen_dataset_id_from_stats_actor())
 
     @classmethod
-    def _from_transform(cls, parent: "Dataset", logical_plan: LogicalPlan) -> "Dataset":
+    def _from_parent(cls, parent: "Dataset", logical_plan: LogicalPlan) -> "Dataset":
         """Create a new Dataset from a transformation on a parent Dataset.
 
         Copies the parent's cache (shallow), in_stats, context, and dataset_name.
@@ -494,7 +494,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @Deprecated(message="Use set_name() instead", warning=True)
     def _set_name(self, name: Optional[str]):
@@ -864,7 +864,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(map_batches_op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=EXPRESSION_API_GROUP, stability="alpha")
     def with_column(
@@ -963,7 +963,7 @@ class Dataset:
                 ray_remote_args=ray_remote_args,
             )
             logical_plan = LogicalPlan(project_op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @Deprecated(message="Use `with_column` API instead")
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1234,7 +1234,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(select_op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def rename_columns(
@@ -1361,7 +1361,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(select_op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(
@@ -1504,7 +1504,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def filter(
@@ -1705,7 +1705,7 @@ class Dataset:
         )
 
         logical_plan = LogicalPlan(filter_op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=SSR_API_GROUP)
     def repartition(
@@ -1845,7 +1845,7 @@ class Dataset:
             )
 
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
@@ -1926,7 +1926,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @AllToAllAPI
     @PublicAPI(api_group=SSR_API_GROUP)
@@ -1978,7 +1978,7 @@ class Dataset:
             input_dependencies=[self._logical_plan.dag],
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def random_sample(
@@ -2165,7 +2165,7 @@ class Dataset:
             locality_hints=locality_hints,
         )
         logical_plan = LogicalPlan(op, self.context)
-        split_dataset = Dataset._from_transform(self, logical_plan)
+        split_dataset = Dataset._from_parent(self, logical_plan)
         split_dataset._set_uuid(self._uuid)
 
         return StreamSplitDataIterator.create(split_dataset, n, locality_hints)
@@ -3092,7 +3092,7 @@ class Dataset:
             aggregator_ray_remote_args=aggregator_ray_remote_args,
         )
 
-        return Dataset._from_transform(self, LogicalPlan(op, self.context))
+        return Dataset._from_parent(self, LogicalPlan(op, self.context))
 
     @AllToAllAPI
     @PublicAPI(api_group=GGA_API_GROUP)
@@ -3683,7 +3683,7 @@ class Dataset:
             input_dependencies=[self._logical_plan.dag],
         )
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=SMJ_API_GROUP)
     def zip(self, *other: "Dataset") -> "Dataset":
@@ -3724,7 +3724,7 @@ class Dataset:
         """
         op = Zip(self._logical_plan.dag, *[other._logical_plan.dag for other in other])
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def limit(self, limit: int) -> "Dataset":
@@ -3750,7 +3750,7 @@ class Dataset:
         """
         op = Limit(limit=limit, input_dependencies=[self._logical_plan.dag])
         logical_plan = LogicalPlan(op, self.context)
-        return Dataset._from_transform(self, logical_plan)
+        return Dataset._from_parent(self, logical_plan)
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
@@ -3975,7 +3975,7 @@ class Dataset:
             ]
         )
         logical_plan = LogicalPlan(count_op, self.context)
-        count_ds = Dataset._from_transform(self, logical_plan)
+        count_ds = Dataset._from_parent(self, logical_plan)
 
         count = 0
         for batch in count_ds.iter_batches(batch_size=None):
@@ -5784,7 +5784,7 @@ class Dataset:
                     )
                     return
 
-            self._write_ds = Dataset._from_transform(self, logical_plan).materialize()
+            self._write_ds = Dataset._from_parent(self, logical_plan).materialize()
 
             iter_, stats, _ = self._write_ds._execute_to_iterator()
             write_results = []

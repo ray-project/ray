@@ -405,7 +405,7 @@ class TestProjectionFusion:
         # Verify correctness using rows_same
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset._from_transform(ds, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -452,7 +452,7 @@ class TestProjectionFusion:
         # Verify correctness using rows_same
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset._from_transform(ds, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -492,7 +492,7 @@ class TestProjectionFusion:
         # Verify execution correctness
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset._from_transform(ds, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(
@@ -540,7 +540,7 @@ class TestProjectionFusion:
         optimized_plan = rule.apply(ds_with_column._logical_plan)
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset._from_transform(ds_with_column, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds_with_column, optimized_plan)
 
         # Create dataset using single map_batches (optimal case)
         ds_optimal = ray.data.from_items(input_data)
@@ -593,7 +593,7 @@ class TestProjectionFusion:
         # Verify execution correctness
         from ray.data.dataset import Dataset
 
-        optimized_ds = Dataset._from_transform(ds, optimized_plan)
+        optimized_ds = Dataset._from_parent(ds, optimized_plan)
         result_df = optimized_ds.to_pandas()
 
         expected_df = pd.DataFrame(

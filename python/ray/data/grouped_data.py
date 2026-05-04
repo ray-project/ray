@@ -70,7 +70,7 @@ class GroupedData:
             num_partitions=self._num_partitions,
         )
         logical_plan = LogicalPlan(op, self._dataset.context)
-        return Dataset._from_transform(self._dataset, logical_plan)
+        return Dataset._from_parent(self._dataset, logical_plan)
 
     def _aggregate_on(
         self,
