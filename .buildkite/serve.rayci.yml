@@ -23,7 +23,7 @@ steps:
   - name: minbuild-serve
     label: "wanda: minbuild-{{matrix.extra}}-py{{matrix.python}}"
     wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_test-multipy(*)
+    depends_on: oss-ci-base_test-multipy(python=3.10)
     matrix:
       setup:
         python: ["3.10"]
