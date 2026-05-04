@@ -87,15 +87,19 @@ def generate_collect_write_stats_fn() -> BlockMapTransformFn:
     # execution outcomes with `on_write_complete()`` and `on_write_failed()``.
     def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
         """Handles stats collection for block writes."""
-        # Stats are recorded inline by ``generate_write_fn``. Re-iterating
-        # ``blocks`` here would be wasteful (the writer already walked the
-        # data) and unsafe if the writer mutated blocks in place.
+        # Stats are recorded inline by ``generate_write_fn``. Totals come from
+        # ``ctx.kwargs``; we still exhaust ``blocks`` to clear ``tee`` buffers
+        # (see ``generate_write_fn``) without re-reading block metadata.
         if (
             _TOTAL_NUM_ROWS_KWARG_NAME in ctx.kwargs
             and _TOTAL_SIZE_BYTES_KWARG_NAME in ctx.kwargs
         ):
             total_num_rows = ctx.kwargs[_TOTAL_NUM_ROWS_KWARG_NAME]
             total_size_bytes = ctx.kwargs[_TOTAL_SIZE_BYTES_KWARG_NAME]
+            # ``generate_write_fn`` tees the block stream: after ``it1`` is
+            # drained, tee still holds each value until ``it2`` is consumed.
+            for _ in blocks:
+                pass
         else:
             # Fallback for callers that invoke this transform without going
             # through ``generate_write_fn`` first (e.g. some unit tests).
