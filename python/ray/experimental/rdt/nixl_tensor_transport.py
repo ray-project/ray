@@ -212,7 +212,11 @@ class NixlTensorTransport(TensorTransportManager):
                 )
                 if pool_eligible:
                     pool_views = self._memory_pool.allocate_for_tensors(rdt_object)
-                    xfer_descs = nixl_agent.get_xfer_descs(pool_views)
+                    try:
+                        xfer_descs = nixl_agent.get_xfer_descs(pool_views)
+                    except Exception:
+                        self._memory_pool.free_tensors(rdt_object)
+                        raise
                     self._add_pool_tensor_descs(rdt_object)
                 else:
                     self._add_tensor_descs(rdt_object)
