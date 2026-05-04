@@ -954,72 +954,82 @@ class AsyncioRouter:
         callback_registered = False
         try:
             # Request arguments are always already resolved at this point
-            replica = await self.request_router._choose_replica_for_request(
-                pr, is_retry=is_retry
-            )
-
-            # If the queue len cache is disabled or we're sending a request to Java,
-            # then directly send the query and hand the response back. The replica will
-            # never reject requests in this code path.
-            with_rejection = (
-                self._enable_strict_max_ongoing_requests
-                and not replica.is_cross_language
-            )
-            result = replica.try_send_request(pr, with_rejection=with_rejection)
-            # Proactively update the queue length cache.
-            self.request_router.on_send_request(replica.replica_id)
-
-            # Keep track of requests that have been sent out to replicas
-            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-                self._metrics_manager.inc_num_running_requests_for_replica(
-                    replica.replica_id
+            # (`route_and_send_request` resolves them before invoking this).
+            # Hold `num_queued_requests` incremented for the full attempt.
+            num_curr_replicas = len(self.request_router.curr_replicas)
+            with self._metrics_manager.wrap_queued_request(
+                is_retry, num_curr_replicas
+            ):
+                replica = await self.request_router._choose_replica_for_request(
+                    pr, is_retry=is_retry
                 )
-            # Always register callback to notify router when request completes
-            # (needed for token release in queue-based routing, metrics tracking, etc.)
-            # NOTE: add_done_callback fires from a C++ worker thread (for actor
-            # ObjectRefs) or a gRPC callback thread. _process_finished_request
-            # and decrement_queue_len_cache both access shared router state
-            # (e.g., _replica_queue_len_cache) that is not thread-safe, so we
-            # schedule them on the router's event loop.
-            callback = partial(
-                self._process_finished_request,
-                replica.replica_id,
-                pr.metadata.internal_request_id,
-                replica.actor_id,
-            )
-            result.add_done_callback(
-                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
-            )
-            callback_registered = True
 
-            if not with_rejection:
-                result.add_done_callback(
-                    lambda _: self._event_loop.call_soon_threadsafe(
-                        self.request_router.decrement_queue_len_cache,
-                        replica.replica_id,
+                # If the queue len cache is disabled or we're sending a request to Java,
+                # then directly send the query and hand the response back. The replica will
+                # never reject requests in this code path.
+                with_rejection = (
+                    self._enable_strict_max_ongoing_requests
+                    and not replica.is_cross_language
+                )
+                result = replica.try_send_request(pr, with_rejection=with_rejection)
+                # Proactively update the queue length cache.
+                self.request_router.on_send_request(replica.replica_id)
+
+                # Keep track of requests that have been sent out to replicas
+                if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+                    self._metrics_manager.inc_num_running_requests_for_replica(
+                        replica.replica_id
                     )
+                # Always register callback to notify router when request completes
+                # (needed for token release in queue-based routing, metrics tracking, etc.)
+                # NOTE: add_done_callback fires from a C++ worker thread (for actor
+                # ObjectRefs) or a gRPC callback thread. _process_finished_request
+                # and decrement_queue_len_cache both access shared router state
+                # (e.g., _replica_queue_len_cache) that is not thread-safe, so we
+                # schedule them on the router's event loop.
+                callback = partial(
+                    self._process_finished_request,
+                    replica.replica_id,
+                    pr.metadata.internal_request_id,
+                    replica.actor_id,
                 )
-                return result
-
-            queue_info = await result.get_rejection_response()
-            self.request_router.on_new_queue_len_info(replica.replica_id, queue_info)
-            if queue_info.accepted:
-                self.request_router.on_request_routed(pr, replica.replica_id, result)
                 result.add_done_callback(
-                    lambda _: self._event_loop.call_soon_threadsafe(
-                        self.request_router.decrement_queue_len_cache,
-                        replica.replica_id,
-                    )
+                    lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
                 )
-                return result
+                callback_registered = True
 
-            # Request was rejected: cancel so done callbacks fire.
-            # Without this, same-loop (means the router is running on the main event loop,
-            # where the DeploymentHandle lives) gRPC streaming results are
-            # never consumed (no background drain task exists in that mode).
-            # The call stays open, the running request counter is never decremented,
-            # and the autoscaler sees load that blocks downscaling.
-            result.cancel()
+                if not with_rejection:
+                    result.add_done_callback(
+                        lambda _: self._event_loop.call_soon_threadsafe(
+                            self.request_router.decrement_queue_len_cache,
+                            replica.replica_id,
+                        )
+                    )
+                    return result
+
+                queue_info = await result.get_rejection_response()
+                self.request_router.on_new_queue_len_info(
+                    replica.replica_id, queue_info
+                )
+                if queue_info.accepted:
+                    self.request_router.on_request_routed(
+                        pr, replica.replica_id, result
+                    )
+                    result.add_done_callback(
+                        lambda _: self._event_loop.call_soon_threadsafe(
+                            self.request_router.decrement_queue_len_cache,
+                            replica.replica_id,
+                        )
+                    )
+                    return result
+
+                # Request was rejected: cancel so done callbacks fire.
+                # Without this, same-loop (means the router is running on the main event loop,
+                # where the DeploymentHandle lives) gRPC streaming results are
+                # never consumed (no background drain task exists in that mode).
+                # The call stays open, the running request counter is never decremented,
+                # and the autoscaler sees load that blocks downscaling.
+                result.cancel()
 
         except asyncio.CancelledError:
             # NOTE(edoakes): this is not strictly necessary because there are
@@ -1091,24 +1101,20 @@ class AsyncioRouter:
                 raise self._make_upstream_crash_error(e)
 
         is_retry = False
-        # Hold the `num_queued_requests` incremented across all routing retries.
-        # Without this, the counter would oscillate each time a replica rejects.
-        num_curr_replicas = len(self.request_router.curr_replicas)
-        with self._metrics_manager.wrap_queued_request(is_retry, num_curr_replicas):
-            while True:
-                result = await self._route_and_send_request_once(
-                    pr,
-                    response_id,
-                    is_retry,
-                )
-                if result is not None:
-                    return result
+        while True:
+            result = await self._route_and_send_request_once(
+                pr,
+                response_id,
+                is_retry,
+            )
+            if result is not None:
+                return result
 
-                # If the replica rejects the request, retry the routing process. The
-                # request will be placed on the front of the queue to avoid tail latencies.
-                # TODO(edoakes): this retry procedure is not perfect because it'll reset the
-                # process of choosing candidates replicas (i.e., for locality-awareness).
-                is_retry = True
+            # If the replica rejects the request, retry the routing process. The
+            # request will be placed on the front of the queue to avoid tail latencies.
+            # TODO(edoakes): this retry procedure is not perfect because it'll reset the
+            # process of choosing candidates replicas (i.e., for locality-awareness).
+            is_retry = True
 
     @tracing_decorator_factory(
         trace_name="route_to_replica",
