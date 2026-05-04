@@ -819,9 +819,11 @@ end, 0)
             )
 
             # Write Lua script if any backend has ingress request routers.
-            lua_script_path = None
+            ingress_request_router_lua_path = None
             if has_ingress_request_router:
-                lua_script_path = self._write_ingress_request_router_lua(backends)
+                ingress_request_router_lua_path = (
+                    self._write_ingress_request_router_lua(backends)
+                )
 
             # Enrich backends with precomputed health check configuration strings
             backends_with_health_config = [
@@ -853,7 +855,7 @@ end, 0)
                     "healthz_rules": healthz_rules,
                     "route_info": health_route_info,
                     "has_ingress_request_router": has_ingress_request_router,
-                    "lua_script_path": lua_script_path,
+                    "ingress_request_router_lua_path": ingress_request_router_lua_path,
                 }
             )
 
@@ -1345,10 +1347,7 @@ class HAProxyManager(ProxyActorInterface):
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
 
-        # Data-plane replicas serve `/health`, not the proxy's `/-/healthz`.
-        health_path = "/health" if router_servers else None
-
-        return BackendConfig(
+        kwargs = dict(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
             # characters in the name are converted to comply with haproxy config's
             # allowed characters, e.g. `#` -> `-`.
@@ -1360,8 +1359,12 @@ class HAProxyManager(ProxyActorInterface):
             router_servers=router_servers,
             app_name=target_group.app_name,
             fallback_server=fallback_server,
-            health_check_path=health_path,
         )
+        if router_servers:
+            # Data-plane replicas serve `/health`, not the proxy's `/-/healthz`.
+            kwargs["health_check_path"] = "/health"
+
+        return BackendConfig(**kwargs)
 
     async def _reload_haproxy(self) -> None:
         # To avoid dropping updates from a long poll, we wait until HAProxy
