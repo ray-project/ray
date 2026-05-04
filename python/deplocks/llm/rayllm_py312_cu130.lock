@@ -2553,6 +2553,26 @@ ninja==1.13.0 \
     #   -r python/requirements/llm/llm-requirements.txt
     #   flashinfer-python
     #   vllm
+nixl==0.10.1 \
+    --hash=sha256:616465673dae5180d296525a03237af4cd5f2c00c3228d185bc06dbe621509b7
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py312_cu130.lock
+    #   -r python/requirements/llm/llm-requirements.txt
+nixl-cu12==0.10.1 \
+    --hash=sha256:0bb1b3532f95c2f376e21008e91e8ec5791304a29af19e75d29fd1bcc754c9bc \
+    --hash=sha256:15376c1527c68d77fff5c6bb7cf7466a16dae0ab3bb32de152a602ba9edaaa9d \
+    --hash=sha256:26e59f9841985cf5b547202865036f84ae6dc23184789446fe5833e7499e21a9 \
+    --hash=sha256:277cde28bc45f706df689ed399327d0cce5432382606a5fc1d19fc470fcc57b4 \
+    --hash=sha256:3dde565c9d6e1d5af139a4dca240e902d5dbb32ea622acb31cdca3fb25cb859f \
+    --hash=sha256:48d3d9cc882edaa0a323d0ddfed39e0864b873ef1fa56e774c5a793629bcf083 \
+    --hash=sha256:685a0b8c5cdaa9cdbd826ea54cf46b4b3e46b016ee73a919cd2cf489402c56fd \
+    --hash=sha256:7641bc2bd3aeeefcf2ea3a3fd9f940f54a62d985ce2426dde6b3860d0edce13e \
+    --hash=sha256:b4712c6e0f18f57fee34cd970faac01480f0caf12da33d4a40ef4e9096a4caf7 \
+    --hash=sha256:ba46837abee8e06c8d86bd9b2cd7dab8c3d1e8407e04d52e6db3a9b137478c4b
+    # via
+    #   -c python/deplocks/llm/rayllm_test_py312_cu130.lock
+    #   -r python/requirements/llm/llm-requirements.txt
+    #   nixl
 nixl-cu13==0.10.1 \
     --hash=sha256:0cbd4ffc25398f565a378e6da09b60d8d2625f1eda96bfe20d6d9c5f3fdba2c0 \
     --hash=sha256:129f41f6855cf13837b55516319512ee1561e0a8cbbc2e4a9be3d839631ebf36 \
@@ -2567,6 +2587,7 @@ nixl-cu13==0.10.1 \
     # via
     #   -c python/deplocks/llm/rayllm_test_py312_cu130.lock
     #   -r python/requirements/llm/llm-requirements.txt
+    #   nixl
 numba==0.65.0 \
     --hash=sha256:032b0b8e879512cd424d79eed6d772a1399c6387ded184c2cf3cc22c08d750a6 \
     --hash=sha256:05c0a9fdf75d85f57dee47b719e8d6415707b80aae45d75f63f9dc1b935c29f7 \
@@ -2662,6 +2683,7 @@ numpy==2.2.6 \
     #   gymnasium
     #   mistral-common
     #   ml-dtypes
+    #   nixl-cu12
     #   nixl-cu13
     #   numba
     #   nvidia-cutlass-dsl-libs-base
@@ -5115,6 +5137,7 @@ torch==2.11.0+cu130 \
     #   -c python/deplocks/llm/rayllm_test_py312_cu130.lock
     #   compressed-tensors
     #   flashinfer-python
+    #   nixl-cu12
     #   nixl-cu13
     #   quack-kernels
     #   tilelang
