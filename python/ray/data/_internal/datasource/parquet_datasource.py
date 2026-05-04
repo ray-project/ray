@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import math
 import os
@@ -358,6 +359,7 @@ class ParquetDatasource(Datasource):
         partitioning: Optional[Partitioning] = Partitioning("hive"),
         shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
+        include_row_hash: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
         super().__init__()
@@ -500,6 +502,7 @@ class ParquetDatasource(Datasource):
             _block_udf=_block_udf,
             shuffle=shuffle,
             include_paths=include_paths,
+            include_row_hash=include_row_hash,
         )
 
     def _init_state(
@@ -522,6 +525,7 @@ class ParquetDatasource(Datasource):
         _block_udf: Optional[Callable[[Block], Block]],
         shuffle: Union["FileShuffleConfig", Literal["files"], None],
         include_paths: bool,
+        include_row_hash: bool = False,
     ):
         """Shared initialization for all instance state and sampling estimates.
 
@@ -551,6 +555,7 @@ class ParquetDatasource(Datasource):
         self._partition_schema = partition_schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
+        self._include_row_hash = include_row_hash
         self._partitioning = partitioning
         _validate_shuffle_arg(shuffle)
         self._shuffle = shuffle
@@ -609,6 +614,7 @@ class ParquetDatasource(Datasource):
         schema: Optional["pyarrow.lib.Schema"] = None,
         shuffle: "FileShuffleConfig" | Literal["files"] | None = None,
         include_paths: bool = False,
+        include_row_hash: bool = False,
     ) -> "ParquetDatasource":
         """Create a ParquetDatasource from a pre-built PyArrow dataset.
 
@@ -676,6 +682,7 @@ class ParquetDatasource(Datasource):
             _block_udf=_block_udf,
             shuffle=shuffle,
             include_paths=include_paths,
+            include_row_hash=include_row_hash,
         )
 
     @property
@@ -753,6 +760,7 @@ class ParquetDatasource(Datasource):
             projected_columns=self.get_current_projection(),
             _block_udf=self._block_udf,
             include_paths=self._include_paths,
+            include_row_hash=self._include_row_hash,
         )
 
         read_tasks = []
@@ -787,6 +795,7 @@ class ParquetDatasource(Datasource):
                 partition_columns,
                 read_schema,
                 include_paths,
+                include_row_hash,
                 partitioning,
             ) = (
                 self._block_udf,
@@ -796,6 +805,7 @@ class ParquetDatasource(Datasource):
                 self._get_partition_columns(),
                 self._read_schema,
                 self._include_paths,
+                self._include_row_hash,
                 self._partitioning,
             )
 
@@ -810,6 +820,7 @@ class ParquetDatasource(Datasource):
                         read_schema,
                         f,
                         include_paths,
+                        include_row_hash,
                         partitioning,
                         filter_expr,
                         filter_columns,
@@ -854,6 +865,8 @@ class ParquetDatasource(Datasource):
             #       via _derive_schema, so we only need to add it when there is a projection.
             if self._include_paths and "path" not in result:
                 result = result + ["path"]
+            if self._include_row_hash and "row_hash" not in result:
+                result = result + ["row_hash"]
 
         return result
 
@@ -913,11 +926,13 @@ class ParquetDatasource(Datasource):
 
         # Get partition columns and filter them out from the projection
         partition_cols = self._partition_columns
-        # Also filter out "path" column if include_paths is True, as it's a
-        # synthetic column added after reading from the file
+        # Also filter out synthetic columns (path, row_hash) as they are
+        # added after reading from the file
         cols_to_filter = set(partition_cols)
         if self._include_paths:
             cols_to_filter.add("path")
+        if self._include_row_hash:
+            cols_to_filter.add("row_hash")
         data_cols = [
             col for col in self._projection_map.keys() if col not in cols_to_filter
         ]
@@ -995,6 +1010,7 @@ class ParquetDatasource(Datasource):
         projected_columns: Optional[List[str]],
         _block_udf,
         include_paths: bool = False,
+        include_row_hash: bool = False,
     ) -> "pyarrow.Schema":
         """Derives target schema for read operation"""
 
@@ -1027,6 +1043,15 @@ class ParquetDatasource(Datasource):
         # Add path column if include_paths is True and path column is not already present
         if include_paths and target_schema.get_field_index("path") == -1:
             target_schema = target_schema.append(pa.field("path", pa.string()))
+
+        if include_row_hash:
+            idx = target_schema.get_field_index("row_hash")
+            if idx == -1:
+                target_schema = target_schema.append(pa.field("row_hash", pa.uint64()))
+            elif target_schema.field(idx).type != pa.uint64():
+                target_schema = target_schema.set(
+                    idx, pa.field("row_hash", pa.uint64())
+                )
 
         # Project schema if necessary
         if projected_columns is not None:
@@ -1064,6 +1089,7 @@ def read_fragments(
     schema: Optional[Union[type, "pyarrow.lib.Schema"]],
     fragments: List[_ParquetFragment],
     include_paths: bool,
+    include_row_hash: bool,
     partitioning: Partitioning,
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
@@ -1089,6 +1115,7 @@ def read_fragments(
                 partition_columns=partition_columns,
                 partitioning=partitioning,
                 include_path=include_paths,
+                include_row_hash=include_row_hash,
                 filter_expr=filter_expr,
                 filter_columns=filter_columns,
                 to_batches_kwargs=to_batches_kwargs,
@@ -1452,6 +1479,7 @@ def _read_batches_from(
     filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     filter_columns: Optional[List[str]] = None,
     include_path: bool = False,
+    include_row_hash: bool = False,
     use_threads: bool = False,
     to_batches_kwargs: Optional[Dict[str, Any]] = None,
 ) -> Iterable["pyarrow.Table"]:
@@ -1492,8 +1520,11 @@ def _read_batches_from(
         fragment, partition_columns, partitioning
     )
 
+    row_offset = 0
+
     def _generate_tables() -> "pa.Table":
         """Inner generator that yields tables without renaming."""
+        nonlocal row_offset
 
         def _postprocess_table(table):
             if partition_col_values:
@@ -1535,7 +1566,16 @@ def _read_batches_from(
                 use_threads=use_threads,
                 to_batches_kwargs=to_batches_kwargs,
             ):
-                yield _postprocess_table(pa.Table.from_batches([batch]))
+                table = _postprocess_table(pa.Table.from_batches([batch]))
+                if include_row_hash:
+                    hashes = _compute_row_hashes(
+                        fragment.path, row_offset, table.num_rows
+                    )
+                    table = ArrowBlockAccessor.for_block(table).fill_column(
+                        "row_hash", pa.array(hashes, type=pa.uint64())
+                    )
+                    row_offset += table.num_rows
+                yield table
 
         except pa.lib.ArrowInvalid as e:
             error_message = str(e)
@@ -1555,6 +1595,38 @@ def _read_batches_from(
     yield from _DatasourceProjectionPushdownMixin._apply_rename_to_tables(
         _generate_tables(), data_columns_rename_map
     )
+
+
+def _compute_row_hashes(file_path: str, start_row: int, num_rows: int) -> np.ndarray:
+    """Compute deterministic uint64 hashes from file path and output row position.
+
+    ``start_row`` is the position within the output stream (post-filter), not
+    the physical file offset.  This means hashes are reproducible for a given
+    pipeline configuration (same file + same filter) but will differ across
+    reads with different filters.
+
+    Hashes the file path with MD5 to obtain a 64-bit seed, adds the row indices,
+    then applies the splitmix64 finalizer (a bijective 64-bit mixing function) to
+    produce well-distributed, reproducible hashes.  Fully vectorized via numpy.
+    """
+    path_seed = np.uint64(
+        int.from_bytes(
+            hashlib.md5(file_path.encode("utf-8")).digest()[:8], byteorder="little"
+        )
+    )
+    keys = path_seed + np.arange(start_row, start_row + num_rows, dtype=np.uint64)
+
+    # splitmix64 finalizer – a bijective 64-bit mixing function from
+    # Steele, Lea & Flood, "Fast Splittable Pseudorandom Number Generators",
+    # OOPSLA 2014.  Also used in Java's SplittableRandom.
+    # Reference: https://xorshift.di.unimi.it/splitmix64.c
+    keys ^= keys >> np.uint64(30)
+    keys *= np.uint64(0xBF58476D1CE4E5B9)
+    keys ^= keys >> np.uint64(27)
+    keys *= np.uint64(0x94D049BB133111EB)
+    keys ^= keys >> np.uint64(31)
+
+    return keys
 
 
 def _parse_partition_column_values(
