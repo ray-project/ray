@@ -17,6 +17,7 @@ The shuffle has up to three stages:
 
 import functools
 import logging
+import pickle
 import time
 import typing
 from collections import defaultdict, deque
@@ -234,6 +235,9 @@ def _shuffle_map(
     return (input_block_metadata, non_empty_pids, shard_sizes), *groups
 
 
+_REDUCE_BATCH_SIZE = 256  # refs per ray.get() batch in reducer
+
+
 @ray.remote
 def _shuffle_reduce(
     group_refs: List[ObjectRef],
@@ -241,12 +245,16 @@ def _shuffle_reduce(
     target_max_block_size: Optional[int] = None,
     should_sort: bool = False,
     key_columns: Optional[List[str]] = None,
+    estimated_group_bytes: int = 0,
+    node_memory: int = 0,
 ) -> Generator[Union[Block, BlockMetadataWithSchema], None, None]:
-    """Reduce stage: concatenate shards for a group of partitions.
+    """Reduce stage: process shards for a group of partitions.
 
-    Each group_ref resolves to a dict ``{partition_id: pa.Table}`` containing
-    shards from one mapper.  This reducer unpacks all ``partition_ids`` from
-    each group, concatenates per-partition, and yields output blocks.
+    Uses a hybrid strategy:
+    - **Accumulate** (fast): when partition fits in node memory, or sort is
+      required.  One big ray.get + concat per partition.
+    - **Streaming** (memory-safe): when partition exceeds node memory.
+      Batched ray.get, accumulate shards up to ~128MB, yield incrementally.
 
     Args:
         group_refs: Object references to grouped shard dicts from all mappers.
@@ -255,23 +263,158 @@ def _shuffle_reduce(
             target size.
         should_sort: Whether to sort the output by ``key_columns``.
         key_columns: Columns to sort by (required when ``should_sort=True``).
+        estimated_group_bytes: Estimated total bytes for all partitions in
+            this group.  Used to decide accumulate vs streaming.
+        node_memory: Usable memory per node in bytes.
     """
     start_time_s = time.perf_counter()
 
     if not group_refs or not partition_ids:
         return
 
-    groups = ray.get(group_refs)
+    # Decide strategy: accumulate if partition fits in node memory (fast),
+    # streaming if it doesn't (memory-safe).
+    use_accumulate = should_sort
+    if not use_accumulate and estimated_group_bytes > 0 and node_memory > 0:
+        # Accumulate needs ~2x group bytes (decompressed + output).
+        use_accumulate = estimated_group_bytes * 2 <= node_memory
 
-    # Decompress ZSTD-compressed Arrow IPC streams and accumulate.
-    # Each group is a single IPC stream with partition IDs in schema
-    # metadata, one data batch per partition in the listed order.
+    if use_accumulate:
+        yield from _shuffle_reduce_accumulate(
+            group_refs,
+            partition_ids,
+            target_max_block_size,
+            key_columns if should_sort else None,
+            start_time_s,
+        )
+    else:
+        yield from _shuffle_reduce_streaming(
+            group_refs,
+            partition_ids,
+            start_time_s,
+        )
+
+
+_STREAMING_YIELD_TARGET_BYTES = 128 * 1024 * 1024  # 128 MB
+
+
+def _shuffle_reduce_streaming(
+    group_refs: List[ObjectRef],
+    partition_ids: List[int],
+    start_time_s: float,
+) -> Generator[Union[Block, bytes], None, None]:
+    """Streaming reduce: accumulate shards up to a target size, then yield.
+
+    Memory usage is O(YIELD_TARGET_BYTES) per partition being accumulated,
+    independent of total partition size.  Produces reasonably-sized output
+    blocks (~128MB) to avoid generator round-trip overhead from tiny shards.
+    """
+    import json as _json
+
+    partition_ids_set = set(partition_ids)
+
+    # Per-partition accumulators: pid -> (list of tables, accumulated bytes)
+    accum_tables: Dict[int, List] = {pid: [] for pid in partition_ids}
+    accum_bytes: Dict[int, int] = {pid: 0 for pid in partition_ids}
+
+    def _flush_partition(pid):
+        """Concat accumulated tables for a partition and yield."""
+        tables = accum_tables[pid]
+        if not tables:
+            return
+        block = pa.concat_tables(tables)
+        accum_tables[pid] = []
+        accum_bytes[pid] = 0
+        return block
+
+    for batch_start in range(0, len(group_refs), _REDUCE_BATCH_SIZE):
+        batch_refs = group_refs[batch_start : batch_start + _REDUCE_BATCH_SIZE]
+        batch_groups = ray.get(batch_refs)
+
+        for group in batch_groups:
+            if group is not None:
+                reader = pa.ipc.open_stream(group)
+                group_pids = _json.loads(reader.schema.metadata[b"__pids__"])
+                for pid_key in group_pids:
+                    batch = reader.read_next_batch()
+                    if pid_key in partition_ids_set and batch.num_rows > 0:
+                        table = pa.Table.from_batches([batch], schema=reader.schema)
+                        accum_tables[pid_key].append(table)
+                        accum_bytes[pid_key] += table.nbytes
+
+                        if accum_bytes[pid_key] >= _STREAMING_YIELD_TARGET_BYTES:
+                            block = _flush_partition(pid_key)
+                            if block is not None:
+                                exec_stats_builder = BlockExecStats.builder()
+                                exec_stats_builder.finish()
+
+                                gen_stats: StreamingGeneratorStats = yield block
+
+                                exec_stats = exec_stats_builder.build(
+                                    block_ser_time_s=(
+                                        gen_stats.object_creation_dur_s
+                                        if gen_stats
+                                        else None
+                                    ),
+                                )
+                                yield pickle.dumps(
+                                    BlockMetadataWithSchema.from_block(
+                                        block,
+                                        block_exec_stats=exec_stats,
+                                        task_exec_stats=TaskExecWorkerStats(
+                                            task_wall_time_s=(
+                                                time.perf_counter() - start_time_s
+                                            ),
+                                        ),
+                                    )
+                                )
+        del batch_groups
+
+    # Flush remaining accumulated data for all partitions.
+    for pid in sorted(partition_ids):
+        block = _flush_partition(pid)
+        if block is not None:
+            exec_stats_builder = BlockExecStats.builder()
+            exec_stats_builder.finish()
+
+            gen_stats: StreamingGeneratorStats = yield block
+
+            exec_stats = exec_stats_builder.build(
+                block_ser_time_s=(
+                    gen_stats.object_creation_dur_s if gen_stats else None
+                ),
+            )
+            yield pickle.dumps(
+                BlockMetadataWithSchema.from_block(
+                    block,
+                    block_exec_stats=exec_stats,
+                    task_exec_stats=TaskExecWorkerStats(
+                        task_wall_time_s=(time.perf_counter() - start_time_s),
+                    ),
+                )
+            )
+
+
+def _shuffle_reduce_accumulate(
+    group_refs: List[ObjectRef],
+    partition_ids: List[int],
+    target_max_block_size: Optional[int],
+    key_columns: Optional[List[str]],
+    start_time_s: float,
+) -> Generator[Union[Block, bytes], None, None]:
+    """Accumulating reduce: collect all shards per partition, then yield.
+
+    Used when sort is required or partition fits in node memory (fast path).
+    Single ray.get() for all refs — no batching overhead.
+    """
     import json as _json
 
     partition_builders: Dict[int, ArrowBlockBuilder] = {
         pid: ArrowBlockBuilder() for pid in partition_ids
     }
     partition_ids_set = set(partition_ids)
+
+    groups = ray.get(group_refs)
 
     for group in groups:
         if group is not None:
@@ -285,7 +428,6 @@ def _shuffle_reduce(
                     )
     del groups
 
-    # Yield each partition as a separate output block.
     for pid in sorted(partition_ids):
         exec_stats_builder = BlockExecStats.builder()
         result = partition_builders[pid].build()
@@ -293,7 +435,7 @@ def _shuffle_reduce(
         if result.num_rows == 0:
             continue
 
-        if should_sort and key_columns:
+        if key_columns:
             result = result.sort_by([(k, "ascending") for k in key_columns])
 
         if target_max_block_size is not None:
@@ -318,12 +460,14 @@ def _shuffle_reduce(
                 )
                 exec_stats_builder = BlockExecStats.builder()
 
-                yield BlockMetadataWithSchema.from_block(
-                    out_block,
-                    block_exec_stats=exec_stats,
-                    task_exec_stats=TaskExecWorkerStats(
-                        task_wall_time_s=time.perf_counter() - start_time_s,
-                    ),
+                yield pickle.dumps(
+                    BlockMetadataWithSchema.from_block(
+                        out_block,
+                        block_exec_stats=exec_stats,
+                        task_exec_stats=TaskExecWorkerStats(
+                            task_wall_time_s=time.perf_counter() - start_time_s,
+                        ),
+                    )
                 )
         else:
             exec_stats_builder.finish()
@@ -336,12 +480,14 @@ def _shuffle_reduce(
                 ),
             )
 
-            yield BlockMetadataWithSchema.from_block(
-                result,
-                block_exec_stats=exec_stats,
-                task_exec_stats=TaskExecWorkerStats(
-                    task_wall_time_s=time.perf_counter() - start_time_s,
-                ),
+            yield pickle.dumps(
+                BlockMetadataWithSchema.from_block(
+                    result,
+                    block_exec_stats=exec_stats,
+                    task_exec_stats=TaskExecWorkerStats(
+                        task_wall_time_s=time.perf_counter() - start_time_s,
+                    ),
+                )
             )
 
 
@@ -897,13 +1043,20 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
 
             # Estimate memory for all partitions in this group.
             # Request 2x uncompressed size: decompressed input + output during
-            # build/yield.
+            # build/yield.  Cap at node memory so the task is always
+            # schedulable (the reducer will spill if it truly exceeds RAM).
             estimated_bytes = sum(
                 self._estimate_partition_bytes(pid) for pid in partition_ids
             )
+            cluster_res = ray.cluster_resources()
+            num_nodes = max(len(ray.nodes()), 1)
+            node_memory = cluster_res.get("memory", 30e9) / num_nodes
             reduce_resources = {"num_cpus": self._reduce_task_num_cpus}
             if estimated_bytes > 0:
-                reduce_resources["memory"] = estimated_bytes * 2
+                requested_memory = estimated_bytes * 2
+                if requested_memory > node_memory:
+                    requested_memory = 0
+                reduce_resources["memory"] = requested_memory
 
             block_gen = _shuffle_reduce.options(
                 **reduce_resources,
@@ -915,6 +1068,8 @@ class ActorlessHashShuffleOperator(PhysicalOperator, SubProgressBarMixin):
                 target_max_block_size=target_max_block_size,
                 should_sort=self._should_sort,
                 key_columns=self._key_columns if self._should_sort else None,
+                estimated_group_bytes=estimated_bytes,
+                node_memory=int(node_memory),
             )
 
             data_task = DataOpTask(
