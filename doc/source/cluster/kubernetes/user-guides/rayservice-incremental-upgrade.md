@@ -318,7 +318,7 @@ status:
 
 ## How to upgrade safely?
 
-Since this feature is alpha and rollback is not yet supported, we recommend conservative parameter settings to minimize risk during upgrades.
+Since this feature is alpha and remains open to adjustments based on feedback, we recommend conservative parameter settings to minimize risk during upgrades.
 
 ### Recommended Parameters
 
@@ -378,6 +378,51 @@ upgradeStrategy:
   intervalSeconds: 60  # Wait 1 minute between steps
 ```
 
+## Rollback
+
+RayService incremental upgrades support rollback, which is triggered when you update the `RayService` spec during an ongoing upgrade.
+
+### Rollback Behavior
+
+The KubeRay controller tracks three `RayCluster` specs at any given time:
+
+- Original `RayCluster` spec `A`
+- Upgraded `RayCluster` spec `B`
+- Desired `RayCluster` spec `C` (the latest update)
+
+When you modify `RayClusterSpec` in the `RayService` spec during an upgrade, the rollback behavior depends on how the desired spec `C` relates to the orginal spec `A` and upgraded spec `B`:
+
+**Case 1: `C == A` (reverting to the original spec)**
+
+The controller scales the original cluster back to 100% `TargetCapacity` and shifts all traffic back to it.
+
+Pipeline: `A -> B -> A`
+
+**Case 2: `C != A` and `C != B` (submitting a new spec)**
+
+The controller first completes the rollback to `A` as defined in **Case 1**, then begins a fresh upgrade toward `C`.
+
+Pipeline: `A -> B -> A -> C`
+
+<!-- As the KubeRay controller adopts a safe rollback-first approach, -->
+
+### Rollback Cycle
+
+<!-- How does A -> B -> A work? -->
+
+## What triggers an upgrade or rollback?
+
+There are two types of changes in the `RayService` spec:
+
+| Change | Trigger | Behavior |
+|--------|---------|-----------|
+| `RayClusterSpec` (e.g., `image`, `resources`) | Upgrade or rollback | Creates a new pending cluster and gradually migrates traffic (upgrade) or switches traffic back to the original cluster (rollback) |
+| `ServeConfigV2` | In-place update | Updates the running deployment directly without creating a new cluster or shifting traffic |
+
+:::info
+If both `RayClusterSpec` and `ServeConfigV2` change simultaneously, the `RayClusterSpec` change takes precedence. Therefore, a new pending cluster is created and the updated `ServeConfigV2` is applied to it.
+:::
+
 ## API Overview (Reference)
 
 This section details the new and updated fields in the `RayService` CRD.
@@ -413,4 +458,3 @@ Three new fields are added to both the `activeServiceStatus` and `pendingService
 #### Next steps:
 * See [Deploy on Kubernetes](https://docs.ray.io/en/latest/serve/production-guide/kubernetes.html) for more information about deploying Ray Serve with KubeRay.
 * See [Ray Serve Autoscaling](https://docs.ray.io/en/latest/serve/autoscaling-guide.html) to configure your Serve deployments to scale based on traffic load.
-
