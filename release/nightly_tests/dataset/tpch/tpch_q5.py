@@ -65,7 +65,7 @@ def main(args):
             right_on=("n_regionkey",),
         ).select_columns(["n_nationkey", "n_name"])
 
-        # TODO: manual rename n_nationkey to c_nationkey as workaround, the join planner or operator should be able to infer the correct join column to keep. See https://github.com/ray-project/ray/issues/62846 
+        # TODO: manual rename n_nationkey to c_nationkey as workaround, the join planner or operator should be able to infer the correct join column to keep. See https://github.com/ray-project/ray/issues/62846
         customer_nation = (
             nation_region.join(
                 customer,
