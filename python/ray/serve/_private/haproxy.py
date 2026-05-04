@@ -242,7 +242,6 @@ class ServerConfig:
     name: str  # Server identifier for HAProxy config
     host: str  # IP/hostname to connect to
     port: int  # Port to connect to
-    real_ip: Optional[str] = None  # Original IP before localhost conversion
     routing_key: Optional[str] = None  # Stable custom-routing selection key
 
     def __str__(self) -> str:
@@ -584,7 +583,7 @@ class HAProxyApi(ProxyApi):
         socket_dir = os.path.dirname(self.cfg.socket_path)
         os.makedirs(socket_dir, exist_ok=True)
 
-        # Create a server state directory only if persistence is enabled
+        # Create a server state directory only if optimization is enabled
         if self.cfg.enable_hap_optimization:
             server_state_dir = os.path.dirname(self.cfg.server_state_file)
             os.makedirs(server_state_dir, exist_ok=True)
@@ -1102,6 +1101,7 @@ end, 0)
             # Regenerate the config file with the deny rule
             self._generate_config_file_internal()
 
+            # Perform a graceful reload to apply changes
             await self._graceful_reload()
             logger.info("Successfully disabled health checks.")
         except Exception as e:
@@ -1114,6 +1114,7 @@ end, 0)
             self.cfg.pass_health_checks = True
 
             self._generate_config_file_internal()
+            # Perform a graceful reload to apply changes
             await self._graceful_reload()
             logger.info("Successfully enabled health checks.")
         except Exception as e:
@@ -1366,7 +1367,6 @@ class HAProxyManager(ProxyActorInterface):
             # Use localhost if target is on the same node as HAProxy
             host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
             port=target.port,
-            real_ip=target.ip,
             routing_key=f"sc_{target.ip.replace('.', '_')}_{target.port}",
         )
 
