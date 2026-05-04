@@ -1663,6 +1663,7 @@
           --simulated-latency-cap-s 0.1
           --max-ongoing-requests-child 5
           --max-ongoing-requests-parent 5
+          --max-users-per-task 24
           --router-type pow2
     # Supply-constrained workload
     - __suffix__: aws.supply_constraint
