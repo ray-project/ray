@@ -74,7 +74,7 @@ class MemoryPoolManager:
         """
         return self._pool_tensor
 
-    def _has_block(self, storage_ptr: int) -> bool:
+    def has_block(self, storage_ptr: int) -> bool:
         """Check if a storage pointer has an allocated block in the pool.
 
         Args:
@@ -145,7 +145,7 @@ class MemoryPoolManager:
                 if ptr in storage_idx:
                     continue
                 ptr_to_tensor[ptr] = tensor
-                if self._has_block(ptr):
+                if self.has_block(ptr):
                     storage_idx[ptr] = -1
                 else:
                     storage_idx[ptr] = len(alloc_sizes)

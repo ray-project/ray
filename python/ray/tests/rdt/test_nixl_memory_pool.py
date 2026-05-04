@@ -38,7 +38,7 @@ class TestAllocateForTensors:
 
         assert len(views) == 1
         assert torch.equal(views[0], t)
-        assert pool._has_block(_storage_ptr(t))
+        assert pool.has_block(_storage_ptr(t))
 
     def test_multiple_independent_tensors(self):
         t1 = _make_tensor([1.0, 2.0])
@@ -49,8 +49,8 @@ class TestAllocateForTensors:
         assert len(views) == 2
         assert torch.equal(views[0], t1)
         assert torch.equal(views[1], t2)
-        assert pool._has_block(_storage_ptr(t1))
-        assert pool._has_block(_storage_ptr(t2))
+        assert pool.has_block(_storage_ptr(t1))
+        assert pool.has_block(_storage_ptr(t2))
 
     def test_pool_views_are_backed_by_pool_tensor(self):
         """Returned views should be backed by the pool's internal tensor,
@@ -140,7 +140,7 @@ class TestStorageDeduplication:
         assert len(views) == 2
         assert torch.equal(views[0], t1)
         assert torch.equal(views[1], t2)
-        assert pool._has_block(_storage_ptr(t2))
+        assert pool.has_block(_storage_ptr(t2))
 
 
 # ---------------------------------------------------------------------------
@@ -171,7 +171,7 @@ class TestOOM:
             pool.allocate_for_tensors([t2])
 
         # Pool should still be intact — t1's block is still valid.
-        assert pool._has_block(_storage_ptr(t1))
+        assert pool.has_block(_storage_ptr(t1))
 
     def test_atomic_allocation_failure(self):
         """When allocating multiple tensors atomically, if one doesn't fit,
@@ -184,8 +184,8 @@ class TestOOM:
             pool.allocate_for_tensors([t1, t2])
 
         # Neither tensor should have been tracked.
-        assert not pool._has_block(_storage_ptr(t1))
-        assert not pool._has_block(_storage_ptr(t2))
+        assert not pool.has_block(_storage_ptr(t1))
+        assert not pool.has_block(_storage_ptr(t2))
 
 
 # ---------------------------------------------------------------------------
@@ -200,10 +200,10 @@ class TestFreeTensors:
         pool = MemoryPoolManager(pool_size=8, device=torch.device("cpu"))
 
         pool.allocate_for_tensors([t1])
-        assert pool._has_block(_storage_ptr(t1))
+        assert pool.has_block(_storage_ptr(t1))
 
         pool.free_tensors([t1])
-        assert not pool._has_block(_storage_ptr(t1))
+        assert not pool.has_block(_storage_ptr(t1))
 
         # Now a new tensor of the same size should fit.
         t2 = _make_tensor([3.0, 4.0])
@@ -226,8 +226,8 @@ class TestFreeTensors:
         pool.allocate_for_tensors([t2])
         pool.free_tensors([t1, t2])
 
-        assert not pool._has_block(_storage_ptr(t1))
-        assert not pool._has_block(_storage_ptr(t2))
+        assert not pool.has_block(_storage_ptr(t1))
+        assert not pool.has_block(_storage_ptr(t2))
 
     def test_free_then_cross_call_reuse_is_broken(self):
         """After freeing, the same tensor should NOT get a cache hit — it
@@ -237,12 +237,12 @@ class TestFreeTensors:
 
         pool.allocate_for_tensors([t])
         pool.free_tensors([t])
-        assert not pool._has_block(_storage_ptr(t))
+        assert not pool.has_block(_storage_ptr(t))
 
         # Re-allocate — should work (fresh allocation, not cache hit).
         views = pool.allocate_for_tensors([t])
         assert torch.equal(views[0], t)
-        assert pool._has_block(_storage_ptr(t))
+        assert pool.has_block(_storage_ptr(t))
 
     def test_double_free_is_noop(self):
         """Freeing an already-freed tensor should not raise or corrupt state."""
@@ -253,7 +253,7 @@ class TestFreeTensors:
         pool.free_tensors([t])
         # Second free — should be a no-op.
         pool.free_tensors([t])
-        assert not pool._has_block(_storage_ptr(t))
+        assert not pool.has_block(_storage_ptr(t))
 
 
 # ---------------------------------------------------------------------------

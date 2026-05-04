@@ -694,7 +694,7 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     meta1 = transport.extract_tensor_transport_metadata(obj_id1, [view_a, view_b])
     ptr = base.untyped_storage().data_ptr()
     pool = transport._memory_pool
-    assert pool._has_block(ptr)
+    assert pool.has_block(ptr)
     assert ptr in transport._tensor_desc_cache
     assert transport._tensor_desc_cache[ptr].reg_desc is None
     assert transport._tensor_desc_cache[ptr].metadata_count == 2
@@ -702,7 +702,7 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     # Second put of the same view — should reuse the same pool slot (cross-call cache)
     obj_id2 = "view_obj_2"
     meta2 = transport.extract_tensor_transport_metadata(obj_id2, [view_a])
-    assert pool._has_block(ptr)
+    assert pool.has_block(ptr)
     assert transport._tensor_desc_cache[ptr].metadata_count == 3
 
     # GC: metadata_count decrements once per tensor passed in, symmetric with
@@ -714,7 +714,7 @@ def test_nixl_memory_pool_view_deduplication(ray_start_regular):
     transport.garbage_collect(obj_id2, meta2, [view_a])
     # All refs gone, pool block freed
     assert ptr not in transport._tensor_desc_cache
-    assert not pool._has_block(ptr)
+    assert not pool.has_block(ptr)
 
 
 if __name__ == "__main__":

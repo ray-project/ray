@@ -211,13 +211,7 @@ class NixlTensorTransport(TensorTransportManager):
                     and not any(self._tensor_memory_registered(t) for t in rdt_object)
                 )
                 if pool_eligible:
-                    pool_views = self._memory_pool.allocate_for_tensors(rdt_object)
-                    try:
-                        xfer_descs = nixl_agent.get_xfer_descs(pool_views)
-                    except Exception:
-                        self._memory_pool.free_tensors(rdt_object)
-                        raise
-                    self._add_pool_tensor_descs(rdt_object)
+                    xfer_descs = self._allocate_pool_xfer_descs(rdt_object)
                 else:
                     self._add_tensor_descs(rdt_object)
                     xfer_descs = nixl_agent.get_xfer_descs(rdt_object)
@@ -517,3 +511,31 @@ class NixlTensorTransport(TensorTransportManager):
                     self._tensor_desc_cache[key] = TensorDesc(
                         reg_desc=None, metadata_count=1
                     )
+
+    def _allocate_pool_xfer_descs(self, tensors: List["torch.Tensor"]) -> Any:
+        """Allocate pool memory for tensors and return NIXL transfer descriptors.
+
+        Handles rollback of newly allocated pool blocks if get_xfer_descs
+        fails, without disturbing cached blocks from prior calls.
+        """
+        pool = self._memory_pool
+        # Remember which storages already have a pool block (cache hits)
+        # so we don't free them on rollback.
+        pre_existing = {
+            t.untyped_storage().data_ptr()
+            for t in tensors
+            if pool.has_block(t.untyped_storage().data_ptr())
+        }
+        pool_tensor_views = pool.allocate_for_tensors(tensors)
+        try:
+            xfer_descs = self._nixl_agent.get_xfer_descs(pool_tensor_views)
+        except Exception:
+            # Only free newly allocated blocks, not cache hits.
+            new_tensors = [
+                t for t in tensors if t.untyped_storage().data_ptr() not in pre_existing
+            ]
+            if new_tensors:
+                pool.free_tensors(new_tensors)
+            raise
+        self._add_pool_tensor_descs(tensors)
+        return xfer_descs
