@@ -118,8 +118,14 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
 
     @override
     def num_outputs_total(self) -> Optional[int]:
+        if self._stopping_condition == MixStoppingCondition.STOP_ON_SHORTEST:
+            # Can't accurately estimate output block count because weights
+            # control row ratios, not block ratios. With non-uniform block
+            # sizes, the block count doesn't follow the weight distribution.
+            return None
+
         return estimate_num_mix_outputs(
-            [op.num_outputs_total() for op in self.input_dependencies],
+            [op.num_output_rows_total() for op in self.input_dependencies],
             self._weights,
             self._stopping_condition,
         )
@@ -168,6 +174,7 @@ class MixOperator(InternalQueueOperatorMixin, NAryOperator):
                 continue
             # How far behind this input is: positive means underrepresented.
             gap = self._weights[i] * total - self._rows_seen[i]
+            # Tie-break by weight.
             if gap > most_behind or (
                 gap == most_behind and self._weights[i] > best_weight
             ):

@@ -179,8 +179,11 @@ class Mix(NAry):
         return transform(target)
 
     def estimated_num_outputs(self) -> Optional[int]:
+        if self.stopping_condition == MixStoppingCondition.STOP_ON_SHORTEST:
+            return None
+
         return estimate_num_mix_outputs(
-            [dep.estimated_num_outputs() for dep in self.input_dependencies],
+            [op.num_output_rows_total() for op in self.input_dependencies],
             self.weights,
             self.stopping_condition,
         )
