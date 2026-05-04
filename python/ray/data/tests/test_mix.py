@@ -247,6 +247,79 @@ class TestEstimateNumMixOutputs:
             )
 
 
+class TestMixOperatorEstimates:
+    """Test that MixOperator.num_outputs_total and num_output_rows_total
+    query the correct methods on input operators (blocks vs rows)."""
+
+    def _make_mock_input(self, num_blocks, num_rows):
+        """Create a mock PhysicalOperator with known block/row counts."""
+        from unittest.mock import MagicMock
+
+        op = MagicMock(spec=["num_outputs_total", "num_output_rows_total", "name"])
+        op.num_outputs_total.return_value = num_blocks
+        op.num_output_rows_total.return_value = num_rows
+        op.name = "MockInput"
+        return op
+
+    def test_num_outputs_total_stop_on_longest_drop(self):
+        from ray.data._internal.execution.operators.mix_operator import MixOperator
+
+        input1 = self._make_mock_input(num_blocks=10, num_rows=1000)
+        input2 = self._make_mock_input(num_blocks=20, num_rows=500)
+        op = MixOperator.__new__(MixOperator)
+        op._weights = [0.5, 0.5]
+        op._stopping_condition = MixStoppingCondition.STOP_ON_LONGEST_DROP
+        op._input_dependencies = [input1, input2]
+
+        # Should sum block counts (10 + 20 = 30), not row counts.
+        assert op.num_outputs_total() == 30
+        input1.num_outputs_total.assert_called()
+        input1.num_output_rows_total.assert_not_called()
+
+    def test_num_outputs_total_stop_on_shortest(self):
+        from ray.data._internal.execution.operators.mix_operator import MixOperator
+
+        input1 = self._make_mock_input(num_blocks=10, num_rows=1000)
+        input2 = self._make_mock_input(num_blocks=20, num_rows=500)
+        op = MixOperator.__new__(MixOperator)
+        op._weights = [0.5, 0.5]
+        op._stopping_condition = MixStoppingCondition.STOP_ON_SHORTEST
+        op._input_dependencies = [input1, input2]
+
+        # Can't estimate block count for STOP_ON_SHORTEST.
+        assert op.num_outputs_total() is None
+
+    def test_num_output_rows_total_stop_on_longest_drop(self):
+        from ray.data._internal.execution.operators.mix_operator import MixOperator
+
+        input1 = self._make_mock_input(num_blocks=10, num_rows=1000)
+        input2 = self._make_mock_input(num_blocks=20, num_rows=500)
+        op = MixOperator.__new__(MixOperator)
+        op._weights = [0.5, 0.5]
+        op._stopping_condition = MixStoppingCondition.STOP_ON_LONGEST_DROP
+        op._input_dependencies = [input1, input2]
+
+        # Should sum row counts (1000 + 500 = 1500), not block counts.
+        assert op.num_output_rows_total() == 1500
+        input1.num_output_rows_total.assert_called()
+        input1.num_outputs_total.assert_not_called()
+
+    def test_num_output_rows_total_stop_on_shortest(self):
+        from ray.data._internal.execution.operators.mix_operator import MixOperator
+
+        input1 = self._make_mock_input(num_blocks=10, num_rows=1000)
+        input2 = self._make_mock_input(num_blocks=20, num_rows=500)
+        op = MixOperator.__new__(MixOperator)
+        op._weights = [0.75, 0.25]
+        op._stopping_condition = MixStoppingCondition.STOP_ON_SHORTEST
+        op._input_dependencies = [input1, input2]
+
+        # ds1: 1000/0.75 = 1333, ds2: 500/0.25 = 2000. Min = 1333.
+        assert op.num_output_rows_total() == 1333
+        input1.num_output_rows_total.assert_called()
+        input1.num_outputs_total.assert_not_called()
+
+
 if __name__ == "__main__":
     import sys
 
