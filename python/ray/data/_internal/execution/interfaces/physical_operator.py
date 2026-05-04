@@ -167,6 +167,15 @@ class DataOpTask(OpTask):
         self._start_output_backpressure_s: Optional[float] = None
         self._total_output_backpressure_s: float = 0
 
+        # Stall-detection: track when this task was submitted and whether it
+        # has ever produced an output block (used by the watchdog in
+        # process_completed_tasks to detect tasks that are stuck on workers).
+        self._submit_time: float = time.monotonic()
+        self._has_produced_output: bool = False
+        # Monotonic timestamp of the last time a stall warning was emitted for
+        # this task; 0.0 means never.
+        self._last_stall_warn_time: float = 0.0
+
     def get_waitable(self) -> ObjectRefGenerator:
         return self._streaming_gen
 
@@ -279,6 +288,7 @@ class DataOpTask(OpTask):
                     schema=meta_with_schema.schema,
                 ),
             )
+            self._has_produced_output = True
 
             self._last_block_meta = meta
             self._pending_block_ref = ray.ObjectRef.nil()

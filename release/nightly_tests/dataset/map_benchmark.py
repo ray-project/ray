@@ -1,5 +1,7 @@
 import argparse
 import functools
+import os
+import sys
 import time
 import numpy
 import pyarrow as pa
@@ -149,7 +151,43 @@ def flat_increment_row(row):
     return [row]
 
 
+_mem_batch_counts = {}
+
+_HEAVY_LIBS = ["cudf", "torch", "tensorflow", "jax"]
+_REPORT_AT_BATCHES = {1, 100, 500}
+
+
+def _get_rss_fields():
+    """Read RSS breakdown from /proc/self/status (Linux only)."""
+    try:
+        with open("/proc/self/status") as f:
+            fields = {}
+            for line in f:
+                if line.startswith(("VmRSS", "RssAnon", "RssFile", "RssShmem")):
+                    key = line.split(":")[0]
+                    fields[key] = line.strip()
+            return fields
+    except FileNotFoundError:
+        return None
+
+
+def _report_memory(pid, batch_num):
+    fields = _get_rss_fields()
+    if not fields:
+        return
+    parts = [f"batch={batch_num}"] + list(fields.values())
+    if batch_num == 1:
+        loaded = [lib for lib in _HEAVY_LIBS if lib in sys.modules]
+        parts.append(f"heavy_libs={loaded or 'none'}")
+    print(f"[mem] pid={pid} " + " | ".join(parts))
+
+
 def increment_batch(batch, map_batches_sleep_ms=0):
+    pid = os.getpid()
+    _mem_batch_counts[pid] = _mem_batch_counts.get(pid, 0) + 1
+    if _mem_batch_counts[pid] in _REPORT_AT_BATCHES:
+        _report_memory(pid, _mem_batch_counts[pid])
+
     if map_batches_sleep_ms > 0:
         time.sleep(map_batches_sleep_ms / 1000.0)
 
