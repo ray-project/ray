@@ -386,6 +386,7 @@ def test_map_timestamp_nanosecs(
     result = ray_data.map(process_timestamp_data)
     processed_df = result.to_pandas()
     processed_df["timestamp"] = processed_df["timestamp"].astype("datetime64[ns]")
+    expected_df = expected_df.astype(processed_df.dtypes.to_dict())
     pd.testing.assert_frame_equal(processed_df, expected_df)
 
 
