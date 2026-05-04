@@ -34,9 +34,11 @@ from ray.data._internal.logical.operators import (
     InputData,
     Join,
     Limit,
+    ListFiles,
     Mix,
     Project,
     Read,
+    ReadFiles,
     StreamingRepartition,
     StreamingSplit,
     Union,
@@ -49,6 +51,8 @@ from ray.data._internal.planner.checkpoint import (
 )
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.planner.plan_download_op import plan_download_op
+from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
+from ray.data._internal.planner.plan_read_files_op import plan_read_files_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
     plan_filter_op,
@@ -167,6 +171,8 @@ class Planner:
 
     _DEFAULT_PLAN_FNS = {
         Read: plan_read_op,
+        ReadFiles: plan_read_files_op,
+        ListFiles: plan_list_files_op,
         InputData: plan_input_data_op,
         Write: plan_write_op,
         AbstractFrom: plan_from_op,
