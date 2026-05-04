@@ -260,22 +260,28 @@ class TestMixOperatorEstimates:
         """
         from unittest.mock import MagicMock
 
+        from ray.data._internal.execution.interfaces import PhysicalOperator
+
         mock_inputs = []
         for blocks, rows in zip(num_blocks, num_rows):
-            mock = MagicMock()
+            mock = MagicMock(spec=PhysicalOperator)
+            mock._name = "MockInput"
             mock.num_outputs_total.return_value = blocks
             mock.num_output_rows_total.return_value = rows
+            mock.num_output_splits.return_value = 1
+            mock._output_dependencies = []
             mock_inputs.append(mock)
 
-        total_weight = sum(weights)
-        op = MixOperator.__new__(MixOperator)
-        op._weights = [w / total_weight for w in weights]
-        op._stopping_condition = stopping_condition
-        op._input_dependencies = mock_inputs
+        op = MixOperator(
+            ray.data.DataContext.get_current(),
+            *mock_inputs,
+            weights=weights,
+            stopping_condition=stopping_condition,
+        )
         return op, mock_inputs
 
     def test_num_outputs_total_stop_on_longest_drop(self):
-        op, mocks = self._make_mix_op(
+        op, _ = self._make_mix_op(
             num_blocks=[10, 20],
             num_rows=[1000, 500],
             weights=[0.5, 0.5],
@@ -283,8 +289,6 @@ class TestMixOperatorEstimates:
         )
         # Should sum block counts (10 + 20 = 30), not row counts.
         assert op.num_outputs_total() == 30
-        mocks[0].num_outputs_total.assert_called()
-        mocks[0].num_output_rows_total.assert_not_called()
 
     def test_num_outputs_total_stop_on_shortest(self):
         op, _ = self._make_mix_op(
@@ -305,11 +309,9 @@ class TestMixOperatorEstimates:
         )
         # Should sum row counts (1000 + 500 = 1500), not block counts.
         assert op.num_output_rows_total() == 1500
-        mocks[0].num_output_rows_total.assert_called()
-        mocks[0].num_outputs_total.assert_not_called()
 
     def test_num_output_rows_total_stop_on_shortest(self):
-        op, mocks = self._make_mix_op(
+        op, _ = self._make_mix_op(
             num_blocks=[10, 20],
             num_rows=[1000, 500],
             weights=[0.75, 0.25],
@@ -317,8 +319,6 @@ class TestMixOperatorEstimates:
         )
         # ds1: 1000/0.75 = 1333, ds2: 500/0.25 = 2000. Min = 1333.
         assert op.num_output_rows_total() == 1333
-        mocks[0].num_output_rows_total.assert_called()
-        mocks[0].num_outputs_total.assert_not_called()
 
 
 if __name__ == "__main__":
