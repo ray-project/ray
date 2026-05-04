@@ -573,6 +573,8 @@ def test_write_ingress_request_router_lua_emits_map_and_router(haproxy_api_clean
         assert 'response:match("^HTTP/[%d%.]+ 200")' in content
         assert "local ROUTER_REQUEST_TIMEOUT_S = 5" in content
         assert 'txn.sf:hdr("content-length")' in content
+        # Truncation is logged, not fatal.
+        assert "core.log(core.warning" in content
 
 
 def test_generate_config_with_ingress_request_router(haproxy_api_cleanup):

@@ -71,8 +71,7 @@ from ray.serve.schema import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-# Shared by the Lua → router call and the frontend `wait-for-body`: HAProxy
-# never holds the request longer than the router itself would.
+# Shared by the Lua router call and the frontend `wait-for-body`.
 INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
 
 
@@ -777,8 +776,7 @@ local function do_request(body)
         return nil
     end
 
-    -- Connection: close so sock:receive("*a") terminates on EOF even if the
-    -- router defaults to keep-alive in the future.
+    -- Connection: close so sock:receive("*a") terminates on EOF.
     local req = "POST /internal/route HTTP/1.0\\r\\n"
         .. "Host: " .. ROUTER_HOST_HEADER .. "\\r\\n"
         .. "Connection: close\\r\\n"
@@ -797,19 +795,19 @@ local function do_request(body)
     return response
 end
 
--- Any non-200 / missing-field / unknown-id response falls through to native LB.
 core.register_action("route_via_ingress_request_router", {{"http-req"}}, function(txn)
     local body = txn.sf:req_body()
     if not body or body == "" then
         return
     end
 
-    -- Bail on truncated body — routing on a partial payload would be wrong.
+    -- Best-effort on truncated body: route on what we have, but warn.
     local content_length = txn.sf:hdr("content-length")
     if content_length then
         local cl = tonumber(content_length)
         if cl and #body < cl then
-            return
+            core.log(core.warning,
+                "IRR: routing on truncated body (" .. #body .. "/" .. cl .. " bytes)")
         end
     end
 
@@ -834,8 +832,7 @@ core.register_action("route_via_ingress_request_router", {{"http-req"}}, functio
     txn:set_var("txn.via_ingress_request_router", true)
 end, 0)
 """
-        # Skip the write if content is byte-identical — avoids bumping mtime
-        # on every reload when only unrelated config changed.
+        # Skip if unchanged.
         try:
             with open(lua_path) as f:
                 if f.read() == lua_content:

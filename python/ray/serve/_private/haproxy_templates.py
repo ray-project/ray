@@ -28,7 +28,6 @@ HAPROXY_CONFIG_TEMPLATE = """global
     nbthread {{ config.nbthread }}
     {%- if has_ingress_request_router and ingress_request_router_lua_path %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
-    # Fits chat-completion POST bodies; Lua falls through if exceeded.
     tune.bufsize 65536
     {%- endif %}
     {%- if config.enable_hap_optimization %}
@@ -83,8 +82,6 @@ frontend http_frontend
     http-request set-header x-haproxy-reload-id {{ config.reload_id }}
     {%- endif %}
     {%- if has_ingress_request_router %}
-    # is_irr_eligible: union of IRR-enabled backend prefixes; gates body
-    # buffering + Lua so non-IRR POSTs aren't penalized.
     {%- for backend in backends %}
     {%- if backend.router_servers %}
     acl is_irr_eligible path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
@@ -155,8 +152,7 @@ backend {{ backend.name or 'unknown' }}
 backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     log global
     http-reuse always
-    # use-server falls through to LB if the pinned server is DOWN;
-    # redispatch handles failure mid-connect.
+    # use-server falls through to LB if the pinned server is DOWN.
     option redispatch
     {%- if backend.timeout_connect_s is not none %}
     timeout connect {{ backend.timeout_connect_s }}s
@@ -170,7 +166,7 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     {%- for server in backend.servers %}
     use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
     {%- endfor %}
-    # `track` mirrors primary-backend health — no double health-checking.
+    # `track` mirrors primary-backend health to avoid double-checking.
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} track {{ backend.name or 'unknown' }}/{{ server.name }}
     {%- endfor %}
