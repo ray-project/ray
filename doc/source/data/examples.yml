@@ -70,4 +70,4 @@ examples:
     use_cases:
       - document processing
       - data ingestion
-    link: ../_collections/data/examples/unstructured_data_ingestion/unstructured_data_ingestion
+    link: ../_collections/data/examples/unstructured_data_ingestion/README

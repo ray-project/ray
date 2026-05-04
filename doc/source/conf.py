@@ -424,7 +424,6 @@ exclude_patterns = [
     # Sidecar README.md files in fetched template dirs duplicate the canonical
     # notebook that the gallery / toctree already links to. Exclude to avoid
     # orphan warnings without losing reachable content.
-    "_collections/data/examples/unstructured_data_ingestion/README.md",
     "_collections/serve/tutorials/asynchronous-inference/README.md",
     "_collections/tune/examples/tune_pytorch_asha/README.md",
     # deployment-serve-llm top README is an umbrella overview; the size
