@@ -465,6 +465,156 @@ def test_generate_backends_in_order(haproxy_api_cleanup):
         assert backend_lines == expected_order
 
 
+def _make_api(temp_dir, backend_configs):
+    config_file_path = os.path.join(temp_dir, "haproxy.cfg")
+    return HAProxyApi(
+        cfg=HAProxyConfig(socket_path=os.path.join(temp_dir, "admin.sock")),
+        config_file_path=config_file_path,
+        backend_configs=backend_configs,
+    )
+
+
+def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
+    """No backend has router_servers -> returns None and writes no Lua file."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = BackendConfig(
+            name="plain",
+            path_prefix="/",
+            app_name="plain",
+            servers=[
+                ServerConfig(
+                    name="s1", host="10.0.0.1", port=8001, replica_id="replica_1"
+                ),
+            ],
+        )
+        api = _make_api(temp_dir, {"plain": backend})
+
+        result = api._write_ingress_request_router_lua([backend])
+
+        assert result is None
+        assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
+
+
+def test_write_ingress_request_router_lua_emits_map_and_router(haproxy_api_cleanup):
+    """Lua file contains REPLICA_TARGETS, ROUTER (lowest port,host), and the action.
+
+    Servers without replica_id are skipped from the map.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        backend = BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            servers=[
+                ServerConfig(
+                    name="replica_a",
+                    host="10.0.0.1",
+                    port=30001,
+                    replica_id="SERVE_REPLICA::app#dep#hash_a",
+                ),
+                ServerConfig(
+                    name="replica_b",
+                    host="10.0.0.2",
+                    port=30002,
+                    replica_id="SERVE_REPLICA::app#dep#hash_b",
+                ),
+                # No replica_id -> excluded from REPLICA_TARGETS.
+                ServerConfig(name="anon", host="10.0.0.3", port=30003),
+            ],
+            router_servers=[
+                ServerConfig(name="router_high", host="10.0.0.10", port=9001),
+                ServerConfig(name="router_low", host="10.0.0.11", port=8999),
+            ],
+        )
+        api = _make_api(temp_dir, {"llm": backend})
+
+        lua_path = api._write_ingress_request_router_lua([backend])
+
+        assert lua_path == os.path.join(temp_dir, "ingress_request_router.lua")
+        with open(lua_path) as f:
+            content = f.read()
+
+        # Lowest (port, host) wins among router_servers.
+        assert 'host = "10.0.0.11"' in content
+        assert "port = 8999" in content
+        assert "10.0.0.10" not in content  # the higher-port router
+
+        # Both servers with replica_id are mapped to their server.name.
+        assert '["SERVE_REPLICA::app#dep#hash_a"] = "replica_a"' in content
+        assert '["SERVE_REPLICA::app#dep#hash_b"] = "replica_b"' in content
+        # Server without replica_id is not in the map.
+        assert '"anon"' not in content
+
+        # The action and the txn vars the template depends on.
+        assert 'core.register_action("route_via_ingress_request_router"' in content
+        assert 'txn:set_var("txn.ingress_request_router_target"' in content
+        assert 'txn:set_var("txn.via_ingress_request_router", true)' in content
+        # Hardened response parsing.
+        assert 'response:match("^HTTP/[%d%.]+ 200")' in content
+
+
+def test_generate_config_with_ingress_request_router(haproxy_api_cleanup):
+    """Backend with router_servers gets the -via-ingress-request-router section.
+
+    Backends without router_servers do not.
+    """
+    with tempfile.TemporaryDirectory() as temp_dir:
+        with_router = BackendConfig(
+            name="llm",
+            path_prefix="/",
+            app_name="llm",
+            servers=[
+                ServerConfig(
+                    name="r1", host="10.0.0.1", port=30001, replica_id="rid_1"
+                ),
+            ],
+            router_servers=[
+                ServerConfig(name="router", host="10.0.0.10", port=9000),
+            ],
+        )
+        without_router = BackendConfig(
+            name="api",
+            path_prefix="/api",
+            app_name="api",
+            servers=[ServerConfig(name="api1", host="10.0.0.20", port=8001)],
+        )
+        api = _make_api(temp_dir, {"llm": with_router, "api": without_router})
+
+        with mock.patch(
+            "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+            api.config_file_path,
+        ):
+            api._generate_config_file_internal()
+
+        with open(api.config_file_path) as f:
+            cfg = f.read()
+        lua_path = os.path.join(temp_dir, "ingress_request_router.lua")
+
+        # Lua loaded once per thread.
+        assert f"lua-load-per-thread {lua_path}" in cfg
+
+        # Frontend gates Lua on POST and routes via the new var.
+        assert "option http-buffer-request" in cfg
+        assert "http-request lua.route_via_ingress_request_router if METH_POST" in cfg
+        assert (
+            "use_backend llm-via-ingress-request-router if is_llm "
+            "{ var(txn.via_ingress_request_router) -m found }" in cfg
+        )
+
+        # Custom-routed backend exists for `llm` and pins via use-server
+        # against the same `r1` name as the regular backend.
+        assert "backend llm-via-ingress-request-router" in cfg
+        assert (
+            'use-server r1 if { var(txn.ingress_request_router_target) -m str "r1" }'
+            in cfg
+        )
+        assert "server r1 10.0.0.1:30001 check" in cfg
+
+        # The non-IRR backend gets no custom-routed counterpart and no rule.
+        assert "backend api-via-ingress-request-router" not in cfg
+        assert "use_backend api-via-ingress-request-router" not in cfg
+
+
 @pytest.mark.asyncio
 async def test_graceful_reload(haproxy_api_cleanup):
     """Test that graceful reload preserves long-running connections."""
