@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock
 import grpc
 import pytest
 
+import ray
 from ray.serve._private.common import DeploymentID, EndpointInfo, RequestMetadata
 from ray.serve._private.constants import HEALTHY_MESSAGE
 from ray.serve._private.proxy import (
@@ -813,6 +814,59 @@ class TestHTTPProxy:
         assert ctx.multiplexed_model_id == model_id, (
             f"Header key {header_key!r} was not recognised; "
             f"got multiplexed_model_id={ctx.multiplexed_model_id!r}"
+        )
+
+    @pytest.mark.parametrize(
+        "header_key",
+        [
+            # Underscore form (direct connection, no intermediate proxy)
+            b"x_session_id",
+            # Hyphen form (the canonical form in HTTP; also what nginx /
+            # AWS API Gateway produce)
+            b"x-session-id",
+            # Title-cased hyphen form
+            b"X-Session-Id",
+        ],
+    )
+    def test_setup_request_context_session_id_header_normalization(
+        self, header_key: bytes
+    ):
+        """The session_id header must be extracted regardless of case or
+        hyphen/underscore form.
+
+        Session-aware routers use this value to hash the request onto a replica.
+        """
+        session_id = "sess_user_42"
+        scope = {
+            "type": "http",
+            "method": "GET",
+            "path": "/",
+            "root_path": "",
+            "headers": [
+                (header_key, session_id.encode()),
+                (b"x-request-id", b"test-request-id"),
+            ],
+            "client": ("127.0.0.1", 12345),
+        }
+        proxy_request = ASGIProxyRequest(
+            scope=scope,
+            receive=AsyncMock(),
+            send=AsyncMock(),
+        )
+
+        http_proxy = self.create_http_proxy()
+        http_proxy.setup_request_context_and_handle(
+            app_name="test_app",
+            handle=FakeHTTPHandle(messages=[]),
+            route="/",
+            proxy_request=proxy_request,
+            internal_request_id="fake-internal-id",
+        )
+
+        ctx = ray.serve.context._get_serve_request_context()
+        assert ctx.session_id == session_id, (
+            f"Header key {header_key!r} was not recognized; "
+            f"got session_id={ctx.session_id!r}"
         )
 
 
