@@ -77,8 +77,7 @@ bool IOContextMonitor::ProcessProbe(const std::shared_ptr<ProbeState> &probe) {
   if (probe->last_probe_completed) {
     // Record latency and health status from the completed probe, then post a new one.
     if (has_active_probe) {
-      latency_gauge_.Record(absl::ToDoubleMilliseconds(elapsed),
-                            {{"Name", probe->name}});
+      latency_gauge_.Record(absl::ToDoubleMilliseconds(elapsed), {{"Name", probe->name}});
 
       // Only mark healthy if the probe's actual lag was within the deadline.
       if (elapsed < healthy_deadline_) {
