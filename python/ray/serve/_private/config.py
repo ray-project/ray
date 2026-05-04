@@ -15,6 +15,7 @@ from pydantic import (
     field_validator,
     model_validator,
 )
+from pydantic_core import PydanticUndefined
 
 from ray import cloudpickle
 from ray._common import ray_option_utils
@@ -244,10 +245,11 @@ class DeploymentConfig(BaseModel):
         # are absent from the restored `__dict__` and accessing them raises
         # AttributeError. Fill any missing fields with their declared defaults
         # so the recovered model behaves like a freshly-constructed one.
-        from pydantic_core import PydanticUndefined
-
+        # `get_default(call_default_factory=True)` returns a fresh value per
+        # call (it `smart_deepcopy`s static defaults and re-invokes factories),
+        # so static mutable defaults are not shared across recovered instances.
         super().__setstate__(state)
-        for name, field in type(self).__pydantic_fields__.items():
+        for name, field in type(self).model_fields.items():
             if name in self.__dict__:
                 continue
             default = field.get_default(call_default_factory=True)
