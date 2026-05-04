@@ -1,9 +1,21 @@
 """Memory pool management for NIXL RDT optimization."""
 
-from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
+import logging
+from typing import TYPE_CHECKING, Dict, List, Optional
 
 if TYPE_CHECKING:
     import torch
+
+logger = logging.getLogger(__name__)
+
+
+class NixlOutOfMemoryError(RuntimeError):
+    """Raised when the NIXL memory pool runs out of space.
+
+    The pre-allocated memory pool does not have enough free space for the
+    requested allocation. Increase the pool size passed to
+    ``register_nixl_memory_pool`` to avoid this error.
+    """
 
 
 class MemoryBlock:
@@ -46,13 +58,13 @@ class MemoryPoolManager:
             pool_size, dtype=torch.uint8, device=self.device
         )
 
-        # Track free blocks using a first-fit allocator
-        # List of (offset, size) tuples for free blocks, sorted by offset
+        # Track free blocks using a largest-request-first, first-fit allocator.
+        # List of MemoryBlock for free blocks, sorted by offset.
         self._free_blocks: List[MemoryBlock] = [MemoryBlock(offset=0, size=pool_size)]
 
         # Track allocated blocks by storage data pointer.
-        # Maps storage_data_ptr -> (offset, size) in the pool.
-        self._allocated_blocks: Dict[int, Tuple[int, int]] = {}
+        # Maps storage_data_ptr -> MemoryBlock in the pool.
+        self._allocated_blocks: Dict[int, MemoryBlock] = {}
 
     def get_pool_tensor(self) -> "torch.Tensor":
         """Get the underlying pool tensor.
@@ -62,7 +74,7 @@ class MemoryPoolManager:
         """
         return self._pool_tensor
 
-    def has_block(self, storage_ptr: int) -> bool:
+    def _has_block(self, storage_ptr: int) -> bool:
         """Check if a storage pointer has an allocated block in the pool.
 
         Args:
@@ -73,94 +85,19 @@ class MemoryPoolManager:
         """
         return storage_ptr in self._allocated_blocks
 
-    def track_allocation(self, storage_ptr: int, offset: int, size: int) -> None:
-        """Record a new allocation in the block tracking.
+    def free_tensors(self, tensors: List["torch.Tensor"]) -> None:
+        """Return pool blocks for the given tensors back to the pool.
 
         Args:
-            storage_ptr: The storage data pointer to associate with this block.
-            offset: Offset of the allocated block in the pool.
-            size: Size of the allocated block in bytes.
+            tensors: Tensors whose pool blocks should be freed.
         """
-        self._allocated_blocks[storage_ptr] = (offset, size)
-
-    def untrack_allocation(self, storage_ptr: int) -> None:
-        """Remove a storage pointer from the block tracking without freeing memory.
-
-        This is used for error rollback — the corresponding pool memory should
-        be freed separately via ``free_multiple``.
-
-        Args:
-            storage_ptr: The storage data pointer to remove from tracking.
-        """
-        self._allocated_blocks.pop(storage_ptr, None)
-
-    def return_blocks(self, storage_ptrs: List[int]) -> None:
-        """Return multiple allocated blocks to the pool.
-
-        Args:
-            storage_ptrs: List of storage data pointers whose blocks to return.
-        """
-        offsets = []
-        sizes = []
-        for ptr in storage_ptrs:
+        blocks = []
+        for tensor in tensors:
+            ptr = tensor.untyped_storage().data_ptr()
             if ptr in self._allocated_blocks:
-                offset, size = self._allocated_blocks.pop(ptr)
-                offsets.append(offset)
-                sizes.append(size)
-        if offsets:
-            self.free_multiple(offsets, sizes)
-
-    def copy_storage_to_pool_block(
-        self, storage_ptr: int, src_tensor: "torch.Tensor"
-    ) -> None:
-        """Copy ``src_tensor``'s full underlying storage into the pool block.
-
-        The block must have been previously allocated and tracked for
-        ``storage_ptr`` (via ``allocate_multiple`` + ``track_allocation``).
-
-        Args:
-            storage_ptr: The storage data pointer identifying the pool block.
-            src_tensor: Tensor whose underlying storage will be copied in.
-
-        Raises:
-            KeyError: If no block is allocated for this storage pointer.
-        """
-        import torch
-
-        offset, _ = self._allocated_blocks[storage_ptr]
-        storage_size = src_tensor.untyped_storage().nbytes()
-        storage_bytes = torch.tensor(
-            [], dtype=torch.uint8, device=src_tensor.device
-        ).set_(src_tensor.untyped_storage())
-        self._pool_tensor[offset : offset + storage_size].copy_(storage_bytes)
-
-    def get_tensor_view_in_block(
-        self,
-        storage_ptr: int,
-        storage_offset_bytes: int,
-        byte_size: int,
-        dtype: "torch.dtype",
-        shape: "torch.Size",
-    ) -> "torch.Tensor":
-        """Return a tensor view into a tensor's region of its pool block.
-
-        Args:
-            storage_ptr: The storage data pointer identifying the pool block.
-            storage_offset_bytes: Byte offset of the tensor within its storage.
-            byte_size: Byte length of the tensor view.
-            dtype: Torch dtype of the resulting view.
-            shape: Shape of the resulting view.
-
-        Returns:
-            A tensor view of ``shape`` and ``dtype`` backed by the pool block.
-
-        Raises:
-            KeyError: If no block is allocated for this storage pointer.
-        """
-        block_offset, _ = self._allocated_blocks[storage_ptr]
-        pool_offset = block_offset + storage_offset_bytes
-        pool_bytes = self._pool_tensor[pool_offset : pool_offset + byte_size]
-        return pool_bytes.view(dtype).reshape(shape)
+                blocks.append(self._allocated_blocks.pop(ptr))
+        if blocks:
+            self._free_multiple(blocks)
 
     def sync_device(self) -> None:
         """Synchronize the pool's CUDA stream if the pool is on CUDA."""
@@ -169,7 +106,112 @@ class MemoryPoolManager:
         if self.device.type == "cuda":
             torch.cuda.synchronize(self.device)
 
-    def allocate_multiple(self, sizes: List[int]) -> Optional[List[Tuple[int, int]]]:
+    def allocate_for_tensors(
+        self, tensors: List["torch.Tensor"]
+    ) -> List["torch.Tensor"]:
+        """Allocate pool blocks for unique storages, copy data in,
+        and return pool-backed tensor views for each input tensor.
+
+        Handles storage-level deduplication: views of the same storage share
+        one pool block within a single call, and the same storage reuses its
+        existing pool slot across calls.
+
+        Args:
+            tensors: Source tensors to allocate pool memory for.
+
+        Returns:
+            List of pool-backed tensor views, one per input tensor,
+            in the same order.
+
+        Raises:
+            NixlOutOfMemoryError: If the pool has insufficient space.
+        """
+        new_allocations = None
+        newly_tracked_ptrs: List[int] = []
+        try:
+            import torch
+
+            # Deduplicate storages: group tensors by storage data_ptr so
+            # views of the same storage share one pool allocation.
+            # Maps storage data_ptr -> index in alloc_sizes/new_allocations,
+            # or -1 for storages that already have a pool block (cache hit).
+            storage_idx: Dict[int, int] = {}
+            # Maps storage data_ptr -> a representative tensor (for copy).
+            ptr_to_tensor: Dict[int, "torch.Tensor"] = {}
+            alloc_sizes: List[int] = []
+
+            for tensor in tensors:
+                ptr = tensor.untyped_storage().data_ptr()
+                if ptr in storage_idx:
+                    continue
+                ptr_to_tensor[ptr] = tensor
+                if self._has_block(ptr):
+                    storage_idx[ptr] = -1
+                else:
+                    storage_idx[ptr] = len(alloc_sizes)
+                    alloc_sizes.append(tensor.untyped_storage().nbytes())
+
+            # Allocate new (non-cached) storages atomically.
+            if alloc_sizes:
+                new_allocations = self._allocate_multiple(alloc_sizes)
+                if new_allocations is None:
+                    raise NixlOutOfMemoryError(
+                        f"NIXL memory pool out of memory: cannot allocate "
+                        f"{len(alloc_sizes)} block(s) totaling "
+                        f"{sum(alloc_sizes)} bytes. Consider increasing "
+                        f"the pool size when calling "
+                        f"register_nixl_memory_pool."
+                    )
+
+            # Track and copy newly allocated blocks. Cache hits keep the
+            # originally copied data -- any mutations to the source storage
+            # since the first ray.put are not reflected in outstanding refs.
+            for ptr, idx in storage_idx.items():
+                if idx < 0:
+                    continue
+                blk = new_allocations[idx]
+                self._allocated_blocks[ptr] = blk
+                newly_tracked_ptrs.append(ptr)
+                # Copy the tensor's full underlying storage into the pool block.
+                src = ptr_to_tensor[ptr]
+                storage_size = src.untyped_storage().nbytes()
+                storage_bytes = torch.tensor(
+                    [], dtype=torch.uint8, device=src.device
+                ).set_(src.untyped_storage())
+                self._pool_tensor[blk.offset : blk.offset + storage_size].copy_(
+                    storage_bytes
+                )
+
+            self.sync_device()
+
+            # Build pool-backed tensor views for each input tensor.
+            pool_views: List["torch.Tensor"] = []
+            for tensor in tensors:
+                ptr = tensor.untyped_storage().data_ptr()
+                blk = self._allocated_blocks[ptr]
+                pool_offset = blk.offset + (
+                    tensor.storage_offset() * tensor.element_size()
+                )
+                view_byte_size = tensor.numel() * tensor.element_size()
+                pool_bytes = self._pool_tensor[
+                    pool_offset : pool_offset + view_byte_size
+                ]
+                pool_views.append(pool_bytes.view(tensor.dtype).reshape(tensor.shape))
+
+            return pool_views
+
+        except Exception:
+            # Roll back any pool mutations made in this call, then re-raise.
+            try:
+                if new_allocations is not None:
+                    self._free_multiple(new_allocations)
+                for ptr in newly_tracked_ptrs:
+                    self._allocated_blocks.pop(ptr, None)
+            except Exception as cleanup_err:
+                logger.error(f"Memory pool cleanup failed: {cleanup_err}.")
+            raise
+
+    def _allocate_multiple(self, sizes: List[int]) -> Optional[List[MemoryBlock]]:
         """Allocate multiple memory blocks from the pool atomically.
 
         Either all allocations succeed, or none of them do.
@@ -178,7 +220,7 @@ class MemoryPoolManager:
             sizes: List of sizes to allocate in bytes.
 
         Returns:
-            List of (offset, size) tuples if all allocations succeed, None otherwise.
+            List of MemoryBlock if all allocations succeed, None otherwise.
         """
         if not sizes or any(s <= 0 for s in sizes):
             raise ValueError("Invalid allocation request")
@@ -194,7 +236,7 @@ class MemoryPoolManager:
         sorted_sizes = [sizes[i] for i in order]
 
         # Try to allocate all blocks atomically.
-        allocations: List[Tuple[int, int]] = []
+        allocations: List[MemoryBlock] = []
         temp_free_blocks = [MemoryBlock(b.offset, b.size) for b in self._free_blocks]
 
         for size in sorted_sizes:
@@ -211,18 +253,19 @@ class MemoryPoolManager:
                         block.offset = offset + size
                         block.size = remaining_after
 
-                    allocations.append((offset, size))
+                    allocations.append(MemoryBlock(offset, size))
                     allocated = True
                     break
 
             if not allocated:
-                # If any size cannot be allocated, the entire batch fails, do not modify the real state
+                # If any size cannot be allocated, the entire batch fails,
+                # do not modify the real state.
                 return None
 
         # Reorder allocations back to original request order
-        result: List[Tuple[int, int]] = [(0, 0)] * len(sizes)
-        for k, (offset, size) in enumerate(allocations):
-            result[order[k]] = (offset, size)
+        result: List[MemoryBlock] = [MemoryBlock(0, 0)] * len(sizes)
+        for k, alloc in enumerate(allocations):
+            result[order[k]] = alloc
 
         # All successful, submit modifications
         temp_free_blocks.sort(key=lambda b: b.offset)
@@ -230,20 +273,15 @@ class MemoryPoolManager:
 
         return result
 
-    def free_multiple(self, offsets: List[int], sizes: List[int]) -> None:
+    def _free_multiple(self, blocks: List[MemoryBlock]) -> None:
         """Free multiple memory blocks back to the pool.
 
         Args:
-            offsets: Offsets of the memory blocks to free.
-            sizes: Sizes of the memory blocks to free (same length as offsets).
-
-        Returns:
-            None.
+            blocks: Memory blocks to free.
         """
-        if not offsets:
+        if not blocks:
             raise ValueError("Invalid free request")
-        for offset, size in zip(offsets, sizes):
-            self._free_blocks.append(MemoryBlock(offset=offset, size=size))
+        self._free_blocks.extend(blocks)
 
         # Single pass: merge all adjacent free blocks
         self._free_blocks.sort(key=lambda b: b.offset)

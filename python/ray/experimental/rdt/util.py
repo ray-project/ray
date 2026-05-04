@@ -311,7 +311,7 @@ def register_nixl_memory_pool(size: int, device: "torch.device") -> None:
     Clone the tensor before ``ray.put`` if snapshot semantics are required.
 
     If the pool has insufficient space for an allocation,
-    :class:`MemoryPoolAllocationError` is raised.
+    :class:`NixlOutOfMemoryError` is raised.
 
     Args:
         size: Size of the memory pool in bytes.
