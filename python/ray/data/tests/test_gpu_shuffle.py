@@ -319,20 +319,18 @@ class TestGPUShuffleOperatorConstructor:
 
     def test_progress_bar_names(self):
         op = self._make_op()
-        names = op.get_sub_progress_bar_names()
+        names = list(op.get_sub_progress_metrics().keys())
         assert names == ["GPU Shuffle", "GPU Reduce"]
 
-    def test_set_sub_progress_bar_shuffle(self):
+    def test_sub_progress_metric_shuffle(self):
         op = self._make_op()
-        mock_bar = MagicMock()
-        op.set_sub_progress_bar("GPU Shuffle", mock_bar)
-        assert op._shuffle_bar is mock_bar
+        metric = op.get_sub_progress_metrics()["GPU Shuffle"]
+        assert metric is not None
 
-    def test_set_sub_progress_bar_reduce(self):
+    def test_sub_progress_metric_reduce(self):
         op = self._make_op()
-        mock_bar = MagicMock()
-        op.set_sub_progress_bar("GPU Reduce", mock_bar)
-        assert op._reduce_bar is mock_bar
+        metric = op.get_sub_progress_metrics()["GPU Reduce"]
+        assert metric is not None
 
     def test_initial_state(self):
         op = self._make_op()
