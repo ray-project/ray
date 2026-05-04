@@ -656,6 +656,7 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
+
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
 
