@@ -341,6 +341,11 @@ class CoreWorker : public std::enable_shared_from_this<CoreWorker> {
   /// It should not be nil.
   std::pair<rpc::ObjectReference, bool> PeekObjectRefStream(const ObjectID &generator_id);
 
+  /// Read multiple next indexes of a ObjectRefStream of generator_id without
+  /// consuming them.
+  std::vector<std::pair<rpc::ObjectReference, bool>> PeekObjectRefStreamN(
+      const ObjectID &generator_id, int64_t num_items);
+
   /// Asynchronously delete the ObjectRefStream that was created upon the
   /// initial task submission. This method triggers a timer. On each interval,
   /// we check whether the generator ref and all dynamic return refs have been

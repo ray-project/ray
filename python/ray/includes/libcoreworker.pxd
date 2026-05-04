@@ -196,6 +196,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool StreamingGeneratorIsFinished(const CObjectID &generator_id) const
         pair[CObjectReference, c_bool] PeekObjectRefStream(
             const CObjectID &generator_id)
+        c_vector[pair[CObjectReference, c_bool]] PeekObjectRefStreamN(
+            const CObjectID &generator_id, int64_t num_items)
         CObjectID AllocateDynamicReturnId(
             const CAddress &owner_address,
             const CTaskID &task_id,

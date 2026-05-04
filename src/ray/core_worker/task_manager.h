@@ -101,6 +101,13 @@ class ObjectRefStream {
 
   std::pair<ObjectID, bool> PeekNextItem();
 
+  /// Read multiple upcoming indexes without consuming them.
+  ///
+  /// Returned refs start at the next unconsumed index and are deterministic.
+  /// Each bool indicates whether the corresponding index has been written to
+  /// the stream.
+  std::vector<std::pair<ObjectID, bool>> PeekNextItems(int64_t num_items);
+
   /// Return True if the item_index is already consumed.
   bool IsObjectConsumed(int64_t item_index) const;
 
@@ -138,9 +145,9 @@ class ObjectRefStream {
   /// caller should pass 1 past the highest index that the generator is
   /// guaranteed to return. The EOF index will be set to the max of this index
   /// and the next index for the caller to consume.
-  /// \param[out] The ObjectID for the EOF index. If non-nil, then the caller
-  /// should store a sentinel value for this object in the in-memory store.
-  void MarkEndOfStream(int64_t item_index, ObjectID *object_id_in_last_index);
+  /// \param[out] The ObjectIDs that should be marked with the EOF sentinel. This
+  /// includes the EOF index itself and any already-peeked refs after EOF.
+  void MarkEndOfStream(int64_t item_index, std::vector<ObjectID> *object_ids_to_eof);
 
   /// Get all the ObjectIDs that are not read yet via TryReadNextItem.
   ///
@@ -433,6 +440,18 @@ class TaskManager : public TaskManagerInterface {
   /// It should not be nil.
   std::pair<ObjectID, bool> PeekObjectRefStream(const ObjectID &generator_id)
       ABSL_LOCKS_EXCLUDED(mu_);
+
+  /// Read multiple next indexes of a ObjectRefStream of generator_id without
+  /// consuming them.
+  ///
+  /// This API must be idempotent.
+  ///
+  /// \param[in] generator_id The object ref id of the streaming
+  /// generator task.
+  /// \param[in] num_items Number of next refs to peek.
+  /// \return Object references for the next indexes and whether each object is ready.
+  std::vector<std::pair<ObjectID, bool>> PeekObjectRefStreamN(
+      const ObjectID &generator_id, int64_t num_items) ABSL_LOCKS_EXCLUDED(mu_);
 
   void MarkGeneratorFailedAndResubmit(const TaskID &task_id) override;
 

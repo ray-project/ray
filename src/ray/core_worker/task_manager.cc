@@ -159,12 +159,35 @@ bool ObjectRefStream::IsFinished() const {
 }
 
 std::pair<ObjectID, bool> ObjectRefStream::PeekNextItem() {
+  if (end_of_stream_index_ != -1 && next_index_ >= end_of_stream_index_) {
+    return {GetObjectRefAtIndex(next_index_), true};
+  }
+
   const auto &object_id = GetObjectRefAtIndex(next_index_);
   if (refs_written_to_stream_.find(object_id) == refs_written_to_stream_.end()) {
     return {object_id, false};
   } else {
     return {object_id, true};
   }
+}
+
+std::vector<std::pair<ObjectID, bool>> ObjectRefStream::PeekNextItems(int64_t num_items) {
+  RAY_CHECK_GT(num_items, 0);
+  std::vector<std::pair<ObjectID, bool>> results;
+  results.reserve(num_items);
+  for (int64_t i = 0; i < num_items; i++) {
+    const auto index = next_index_ + i;
+    if (end_of_stream_index_ != -1 && index >= end_of_stream_index_) {
+      results.emplace_back(GetObjectRefAtIndex(index), true);
+      continue;
+    }
+
+    const auto &object_id = GetObjectRefAtIndex(index);
+    results.emplace_back(
+        object_id,
+        refs_written_to_stream_.find(object_id) != refs_written_to_stream_.end());
+  }
+  return results;
 }
 
 bool ObjectRefStream::TemporarilyInsertToStreamIfNeeded(const ObjectID &object_id) {
@@ -209,7 +232,8 @@ bool ObjectRefStream::InsertToStream(const ObjectID &object_id, int64_t item_ind
 }
 
 void ObjectRefStream::MarkEndOfStream(int64_t item_index,
-                                      ObjectID *object_id_in_last_index) {
+                                      std::vector<ObjectID> *object_ids_to_eof) {
+  RAY_CHECK(object_ids_to_eof != nullptr);
   if (end_of_stream_index_ != -1) {
     return;
   }
@@ -225,7 +249,14 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
   end_of_stream_index_ = std::max(next_index_, item_index);
 
   auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);
-  *object_id_in_last_index = end_of_stream_id;
+  object_ids_to_eof->push_back(end_of_stream_id);
+  for (const auto &object_id : temporarily_owned_refs_) {
+    if (object_id.TaskId() == generator_task_id_ &&
+        object_id.ObjectIndex() >
+            static_cast<ObjectIDIndexType>(end_of_stream_index_ + 2)) {
+      object_ids_to_eof->push_back(object_id);
+    }
+  }
 }
 
 ObjectID ObjectRefStream::GetObjectRefAtIndex(int64_t generator_index) const {
@@ -743,6 +774,31 @@ std::pair<ObjectID, bool> TaskManager::PeekObjectRefStream(const ObjectID &gener
   return result;
 }
 
+std::vector<std::pair<ObjectID, bool>> TaskManager::PeekObjectRefStreamN(
+    const ObjectID &generator_id, int64_t num_items) {
+  absl::MutexLock lock(&object_ref_stream_ops_mu_);
+  auto stream_it = object_ref_streams_.find(generator_id);
+  RAY_CHECK(stream_it != object_ref_streams_.end())
+      << "PeekObjectRefStream API can be used only when the stream has been "
+         "created and not removed.";
+  auto results = stream_it->second.PeekNextItems(num_items);
+
+  // Temporarily own refs since the corresponding references are probably
+  // not reported yet.
+  RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);
+  for (const auto &result : results) {
+    TemporarilyOwnGeneratorReturnRefIfNeededInternal(result.first /*=object_id*/,
+                                                     generator_id);
+    if (stream_it->second.EofIndex() != -1 &&
+        result.first.ObjectIndex() >=
+            static_cast<ObjectIDIndexType>(stream_it->second.EofIndex() + 2)) {
+      in_memory_store_.Put(
+          error, result.first, reference_counter_.HasReference(result.first));
+    }
+  }
+  return results;
+}
+
 bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
   auto it = object_ref_streams_.find(generator_id);
@@ -752,7 +808,7 @@ bool TaskManager::ObjectRefStreamExists(const ObjectID &generator_id) {
 void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
                                   int64_t end_of_stream_index) {
   absl::MutexLock lock(&object_ref_stream_ops_mu_);
-  ObjectID last_object_id;
+  std::vector<ObjectID> object_ids_to_eof;
 
   auto stream_it = object_ref_streams_.find(generator_id);
   if (stream_it == object_ref_streams_.end()) {
@@ -760,19 +816,19 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
     return;
   }
 
-  stream_it->second.MarkEndOfStream(end_of_stream_index, &last_object_id);
-  if (!last_object_id.IsNil()) {
-    RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
-                   << stream_it->second.EofIndex()
-                   << ". Last object id: " << last_object_id;
-
-    reference_counter_.OwnDynamicStreamingTaskReturnRef(last_object_id, generator_id);
+  stream_it->second.MarkEndOfStream(end_of_stream_index, &object_ids_to_eof);
+  if (!object_ids_to_eof.empty()) {
     RayObject error(rpc::ErrorType::END_OF_STREAMING_GENERATOR);
-    // Put a dummy object at the end of the stream. We don't need to check if
-    // the object should be stored in plasma because the end of the stream is a
-    // fake ObjectRef that should never be read by the application.
-    in_memory_store_.Put(
-        error, last_object_id, reference_counter_.HasReference(last_object_id));
+    for (const auto &object_id : object_ids_to_eof) {
+      RAY_LOG(DEBUG) << "Write EoF to the object ref stream. Index: "
+                     << stream_it->second.EofIndex() << ". Object id: " << object_id;
+
+      reference_counter_.OwnDynamicStreamingTaskReturnRef(object_id, generator_id);
+      // Put a dummy object at the end of the stream and for any already-peeked
+      // refs after EOF. These fake ObjectRefs should raise EOF when read by
+      // the application.
+      in_memory_store_.Put(error, object_id, reference_counter_.HasReference(object_id));
+    }
   }
 }
 
