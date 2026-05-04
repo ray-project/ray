@@ -281,7 +281,12 @@ class Result:
         ]
 
         if len(valid_checkpoints) == 0:
-            raise RuntimeError(f"No checkpoint's metrics contain {metric} as a key.")
+            # this is technically missing recursive keys from "unflattened_lookup"
+            available = sorted({k for _, m in self.best_checkpoints for k in m})
+            raise RuntimeError(
+                f"No checkpoint's metrics contains {metric!r} as a key. "
+                f"Available metrics are {available}"
+            )
 
         best_ckpt, best_metrics, best_value = op(
             valid_checkpoints, key=lambda ckpt_metrics_value: ckpt_metrics_value[2]

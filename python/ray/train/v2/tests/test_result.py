@@ -1,3 +1,4 @@
+import re
 import uuid
 from pathlib import Path
 from urllib.parse import urlparse, urlunparse
@@ -129,6 +130,14 @@ def test_get_best_checkpoint():
     )
     assert metric == {"iter": 0, "metric": 1.0}
 
+    with pytest.raises(
+        RuntimeError,
+        match=re.escape(
+            "No checkpoint's metrics contains 'missing-metric' as a key. Available metrics are ['iter', 'metric']"
+        ),
+    ):
+        res.get_best_checkpoint(metric="missing-metric", mode="max")
+
 
 def test_get_best_checkpoint_nested_metrics():
     """Test that get_best_checkpoint works with nested metric dictionaries."""
@@ -227,6 +236,15 @@ def test_get_best_checkpoint_nested_metrics():
         metric="env_runners/episode_return_mean", mode="max", return_metrics=True
     )
     assert metrics == {"iter": 1, "env_runners/episode_return_mean": 200.0}
+
+    # Test if the key is missing
+    with pytest.raises(
+        RuntimeError,
+        match=re.escape(
+            "No checkpoint's metrics contains 'missing-metric' as a key. Available metrics are ['env_runners', 'iter']"
+        ),
+    ):
+        res.get_best_checkpoint(metric="missing-metric", mode="max")
 
 
 @pytest.mark.parametrize("path_type", ["str", "PathLike"])
