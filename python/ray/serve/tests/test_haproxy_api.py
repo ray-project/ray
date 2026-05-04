@@ -480,7 +480,7 @@ def _make_api(temp_dir, backend_configs):
 
 
 def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
-    """No backend has router_servers -> returns None and writes no Lua file."""
+    """No backend has ingress_request_router_servers -> returns None and writes no Lua file."""
     with tempfile.TemporaryDirectory() as temp_dir:
         backend = BackendConfig(
             name="plain",
@@ -503,7 +503,7 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
 def test_ingress_request_router_does_not_leak_into_other_backends(
     haproxy_api_cleanup,
 ):
-    """Pin the Jinja guard: a backend without router_servers gets no
+    """Pin the Jinja guard: a backend without ingress_request_router_servers gets no
     via-ingress-request-router companion and doesn't contribute to
     is_via_ingress_request_router. The end-to-end test only exercises a
     single router-routed backend, so this regression isn't caught there."""
@@ -523,7 +523,7 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
                             replica_id="rid_1",
                         )
                     ],
-                    router_servers=[
+                    ingress_request_router_servers=[
                         ServerConfig(name="router", host="10.0.0.10", port=9000)
                     ],
                 ),
@@ -653,7 +653,7 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
                         replica_id=actor_name_b,
                     ),
                 ],
-                router_servers=[
+                ingress_request_router_servers=[
                     ServerConfig(name="router", host="127.0.0.1", port=router_port),
                 ],
             )

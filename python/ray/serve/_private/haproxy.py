@@ -92,7 +92,7 @@ def _routers_and_targets_by_backend(
     routers: Dict[str, ServerConfig] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
     for backend in backends:
-        if not backend.router_servers:
+        if not backend.ingress_request_router_servers:
             continue
         entries = [
             (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
@@ -100,7 +100,7 @@ def _routers_and_targets_by_backend(
         if not entries:
             continue
         routers[backend.name] = min(
-            backend.router_servers, key=lambda s: (s.port, s.host)
+            backend.ingress_request_router_servers, key=lambda s: (s.port, s.host)
         )
         targets[backend.name] = entries
     return routers, targets
@@ -384,7 +384,7 @@ class BackendConfig:
 
     # Ingress request router servers. When populated, HAProxy Lua calls
     # /internal/route on one of these to pick a data-plane replica.
-    router_servers: List[ServerConfig] = field(default_factory=list)
+    ingress_request_router_servers: List[ServerConfig] = field(default_factory=list)
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
@@ -811,7 +811,7 @@ class HAProxyApi(ProxyApi):
             )
 
             has_ingress_request_router = any(
-                backend.router_servers for backend in backends
+                backend.ingress_request_router_servers for backend in backends
             )
 
             # Write Lua script if any backend has ingress request routers.
@@ -1337,7 +1337,7 @@ class HAProxyManager(ProxyActorInterface):
         """Create a backend configuration from a target group and fallback target."""
         servers = [self._target_to_server(target) for target in target_group.targets]
 
-        router_servers = [
+        ingress_request_router_servers = [
             self._target_to_server(target)
             for target in target_group.ingress_request_router_targets
         ]
@@ -1355,7 +1355,7 @@ class HAProxyManager(ProxyActorInterface):
             ),
             path_prefix=target_group.route_prefix,
             servers=servers,
-            router_servers=router_servers,
+            ingress_request_router_servers=ingress_request_router_servers,
             app_name=target_group.app_name,
             fallback_server=fallback_server,
         )
