@@ -81,20 +81,26 @@ frontend http_frontend
     # Inject unique reload ID as header to track which HAProxy instance handled the request (testing only)
     http-request set-header x-haproxy-reload-id {{ config.reload_id }}
     {%- endif %}
-    {%- if has_ingress_request_router %}
-    {%- for backend in backends %}
-    {%- if backend.router_servers %}
-    acl is_via_ingress_request_router path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
-    acl is_via_ingress_request_router path {{ backend.path_prefix or '/' }}
-    {%- endif %}
-    {%- endfor %}
-    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST is_via_ingress_request_router
-    http-request lua.route_via_ingress_request_router if METH_POST is_via_ingress_request_router
-    {%- endif %}
-    # Static routing based on path prefixes in decreasing length then alphabetical order
+    # Per-backend path ACLs (used for both ingress-request-router dispatch
+    # and static use_backend selection below).
 {%- for backend in backends %}
     acl is_{{ backend.name or 'unknown' }} path_beg {{ '/' if not backend.path_prefix or backend.path_prefix == '/' else backend.path_prefix ~ '/' }}
     acl is_{{ backend.name or 'unknown' }} path {{ backend.path_prefix or '/' }}
+{%- endfor %}
+    {%- if has_ingress_request_router %}
+    # Set txn.ingress_request_router_app to the first matching router-bearing
+    # backend. Backends are sorted longest-prefix-first, and the !found guard
+    # ensures only the longest match wins.
+    {%- for backend in backends %}
+    {%- if backend.router_servers %}
+    http-request set-var(txn.ingress_request_router_app) str({{ backend.name or 'unknown' }}) if is_{{ backend.name or 'unknown' }} !{ var(txn.ingress_request_router_app) -m found }
+    {%- endif %}
+    {%- endfor %}
+    http-request wait-for-body time {{ ingress_request_router_timeout_s }}s if METH_POST { var(txn.ingress_request_router_app) -m found }
+    http-request lua.route_via_ingress_request_router if METH_POST { var(txn.ingress_request_router_app) -m found }
+    {%- endif %}
+    # Static routing based on path prefixes in decreasing length then alphabetical order
+{%- for backend in backends %}
     {%- if backend.router_servers %}
     use_backend {{ backend.name or 'unknown' }}-via-ingress-request-router if is_{{ backend.name or 'unknown' }} { var(txn.via_ingress_request_router) -m found }
     {%- endif %}

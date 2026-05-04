@@ -4,22 +4,25 @@
 
 local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 
+-- Per-app state. The frontend sets txn.ingress_request_router_app to the
+-- backend name whose path prefix matched, and we look up that app's
+-- router pool and replica map here. Each app routes through its own
+-- router; replica IDs are scoped to the app to avoid cross-app pinning.
+local ROUTERS = ${ROUTERS}
 local REPLICA_TARGETS = ${REPLICA_TARGETS}
 
-local ROUTER = { host = ${ROUTER_HOST}, port = ${ROUTER_PORT} }
-local ROUTER_HOST_HEADER = ROUTER.host .. ":" .. ROUTER.port
-
-local function call_router(body)
+local function call_router(router, body)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
-    if not sock:connect(ROUTER.host, ROUTER.port) then
+    if not sock:connect(router.host, router.port) then
         return nil
     end
 
+    local host_header = router.host .. ":" .. router.port
     -- Connection: close so sock:receive("*a") terminates on EOF.
     local req = "POST /internal/route HTTP/1.0\r\n"
-        .. "Host: " .. ROUTER_HOST_HEADER .. "\r\n"
+        .. "Host: " .. host_header .. "\r\n"
         .. "Connection: close\r\n"
         .. "Content-Type: application/json\r\n"
         .. "Content-Length: " .. #body .. "\r\n"
@@ -68,6 +71,16 @@ local function warn_if_truncated(txn, body)
 end
 
 core.register_action("route_via_ingress_request_router", {"http-req"}, function(txn)
+    local app = txn:get_var("txn.ingress_request_router_app")
+    if not app then
+        return
+    end
+    local router = ROUTERS[app]
+    local replica_map = REPLICA_TARGETS[app]
+    if not router or not replica_map then
+        return
+    end
+
     local body = txn.sf:req_body()
     if not body or body == "" then
         return
@@ -75,7 +88,7 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
 
     warn_if_truncated(txn, body)
 
-    local response = call_router(body)
+    local response = call_router(router, body)
     if not response or not is_http_200(response) then
         return
     end
@@ -85,7 +98,7 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
         return
     end
 
-    local server_name = REPLICA_TARGETS[replica_id]
+    local server_name = replica_map[replica_id]
     if not server_name then
         return
     end

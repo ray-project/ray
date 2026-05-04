@@ -317,12 +317,14 @@ frontend http_frontend
     # Routes endpoint
     acl routes path -i /-/routes
     http-request return status 200 content-type application/json string "{routes}" if routes
-    # Static routing based on path prefixes in decreasing length then alphabetical order
+    # Per-backend path ACLs (used for both ingress-request-router dispatch
+    # and static use_backend selection below).
     acl is_api_backend path_beg /api/
     acl is_api_backend path /api
-    use_backend api_backend if is_api_backend
     acl is_web_backend path_beg /web/
     acl is_web_backend path /web
+    # Static routing based on path prefixes in decreasing length then alphabetical order
+    use_backend api_backend if is_api_backend
     use_backend web_backend if is_web_backend
     default_backend default_backend
 backend default_backend
@@ -543,7 +545,10 @@ def test_ingress_request_router_does_not_leak_into_other_backends(
 
         assert "backend llm-via-ingress-request-router" in cfg
         assert "backend api-via-ingress-request-router" not in cfg
-        assert "acl is_via_ingress_request_router path /api" not in cfg
+        # Only router-bearing backends contribute a set-var directive that
+        # arms the Lua dispatch; the plain `api` backend must not.
+        assert "set-var(txn.ingress_request_router_app) str(llm)" in cfg
+        assert "set-var(txn.ingress_request_router_app) str(api)" not in cfg
 
 
 def _create_replica_server(port: int, replica_id_header: str):

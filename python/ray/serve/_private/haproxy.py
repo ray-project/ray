@@ -81,29 +81,62 @@ _LUA_TEMPLATE = string.Template(
 )
 
 
-def _pick_ingress_request_router(
+def _routers_by_backend(
     backends: "List[BackendConfig]",
-) -> "Optional[ServerConfig]":
-    """Lowest-(port, host) router from the first backend with any.
+) -> "Dict[str, ServerConfig]":
+    """Per-backend deterministic router selection.
 
-    Single router by design: round-robin caused TTFT regressions, and all
-    routable backends are expected to share the same router pool.
+    Each backend with router_servers gets its own router pool; we pick
+    the lowest (port, host) within the pool. Deterministic-rather-than-
+    round-robin avoids the TTFT regression from cycling routers.
     """
-    for backend in backends:
-        if backend.router_servers:
-            return min(backend.router_servers, key=lambda s: (s.port, s.host))
-    return None
-
-
-def _replica_target_entries(backends: "List[BackendConfig]") -> List[str]:
-    """Lua-table entries mapping replica_id -> sanitized server name."""
-    return [
-        f"    [{json.dumps(server.replica_id)}] = {json.dumps(server.name)}"
+    return {
+        backend.name: min(backend.router_servers, key=lambda s: (s.port, s.host))
         for backend in backends
         if backend.router_servers
-        for server in backend.servers
-        if server.replica_id is not None
-    ]
+    }
+
+
+def _replica_targets_by_backend(
+    backends: "List[BackendConfig]",
+) -> "Dict[str, List[Tuple[str, str]]]":
+    """Per-backend (replica_id, server_name) pairs for the Lua replica map."""
+    out: Dict[str, List[Tuple[str, str]]] = {}
+    for backend in backends:
+        if not backend.router_servers:
+            continue
+        entries = [
+            (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
+        ]
+        if entries:
+            out[backend.name] = entries
+    return out
+
+
+def _format_routers_lua(routers: "Dict[str, ServerConfig]") -> str:
+    """Render {backend_name: ServerConfig} as a Lua table literal."""
+    body = ",\n".join(
+        f"    [{json.dumps(name)}] = "
+        f"{{ host = {json.dumps(s.host)}, port = {s.port} }}"
+        for name, s in routers.items()
+    )
+    return "{\n" + body + "\n}"
+
+
+def _format_replica_targets_lua(
+    targets: "Dict[str, List[Tuple[str, str]]]",
+) -> str:
+    """Render {backend_name: {replica_id: server_name}} as nested Lua tables."""
+    backends_lua = []
+    for backend_name, entries in targets.items():
+        inner = ",\n".join(
+            f"        [{json.dumps(rid)}] = {json.dumps(sname)}"
+            for rid, sname in entries
+        )
+        backends_lua.append(
+            f"    [{json.dumps(backend_name)}] = " + "{\n" + inner + "\n    }"
+        )
+    return "{\n" + ",\n".join(backends_lua) + "\n}"
 
 
 def _write_if_changed(path: str, content: str) -> bool:
@@ -750,21 +783,23 @@ class HAProxyApi(ProxyApi):
     ) -> Optional[str]:
         """Render the ingress-request-router Lua action and write it to disk.
 
-        Returns the script path, or None if no backend has ingress request
-        routers configured (or none of their servers carry replica IDs).
+        Returns the script path, or None if no backend has both ingress
+        request routers AND replicas with replica IDs.
         """
-        router = _pick_ingress_request_router(backends)
-        if router is None:
+        routers = _routers_by_backend(backends)
+        targets = _replica_targets_by_backend(backends)
+        # Only emit Lua entries for backends that have BOTH a router pool
+        # and at least one replica with a replica_id.
+        keys = routers.keys() & targets.keys()
+        if not keys:
             return None
-        entries = _replica_target_entries(backends)
-        if not entries:
-            return None
+        routers = {k: routers[k] for k in keys}
+        targets = {k: targets[k] for k in keys}
 
         content = _LUA_TEMPLATE.substitute(
             TIMEOUT_S=INGRESS_REQUEST_ROUTER_TIMEOUT_S,
-            ROUTER_HOST=json.dumps(router.host),
-            ROUTER_PORT=router.port,
-            REPLICA_TARGETS="{\n" + ",\n".join(entries) + "\n}",
+            ROUTERS=_format_routers_lua(routers),
+            REPLICA_TARGETS=_format_replica_targets_lua(targets),
         )
 
         lua_path = os.path.join(
