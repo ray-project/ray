@@ -62,9 +62,9 @@ def test_limit_pushdown_recreates_frozen_download():
     result = LimitPushdownRule()._push_limit_down(limit_op)
 
     assert isinstance(result, Download)
-    assert isinstance(result.input_dependency, Limit)
-    assert result.input_dependency.limit == 1
-    assert result.input_dependency.input_dependency is input_op
+    assert isinstance(result.input_dependencies[0], Limit)
+    assert result.input_dependencies[0].limit == 1
+    assert result.input_dependencies[0].input_dependencies[0] is input_op
 
 
 def test_limit_pushdown_basic_limit_fusion(ray_start_regular_shared_2_cpus):
