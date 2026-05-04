@@ -50,6 +50,14 @@ from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# Number of consecutive ActorUnavailableError probes before the router treats a
+# replica as dead and evicts it from the local routing table. This avoids
+# repeatedly probing replicas that Ray has already marked unavailable while we
+# wait for the (slow) long-poll DEPLOYMENT_TARGETS update from the controller.
+# Tuned to balance fast convergence during downscale waves vs. tolerance for
+# transient network blips.
+REPLICA_UNAVAILABLE_EVICTION_THRESHOLD = 3
+
 
 class LocalityScope(str, enum.Enum):
     NODE = "NODE"
@@ -505,6 +513,13 @@ class RequestRouter(ABC):
         # Throttle state for router queue length gauge updates.
         # Maps replica_id -> last update timestamp to avoid excessive metric updates.
         self._queue_len_gauge_last_update: Dict[ReplicaID, float] = {}
+
+        # Per-replica consecutive ActorUnavailableError probe count. Reset on
+        # success or other-error. When a replica accumulates >=
+        # REPLICA_UNAVAILABLE_EVICTION_THRESHOLD, we treat it as dead and evict
+        # from the local routing table without waiting for the long-poll
+        # DEPLOYMENT_TARGETS update from the controller.
+        self._replica_unavailable_consecutive_count: Dict[ReplicaID, int] = {}
 
         # NOTE(edoakes): Python 3.10 removed the `loop` parameter to `asyncio.Event`.
         # Now, the `asyncio.Event` will call `get_running_loop` in its constructor to
@@ -1003,19 +1018,45 @@ class RequestRouter(ABC):
                 # See https://github.com/ray-project/ray/issues/44185 for details.
                 if isinstance(t.exception(), ActorDiedError):
                     self.on_replica_actor_died(replica.replica_id)
+                    self._replica_unavailable_consecutive_count.pop(
+                        replica.replica_id, None
+                    )
                     msg += " This replica will no longer be considered for requests."
                 # Replica is temporarily unavailable because of network issues, or
                 # replica has died but GCS is down so ActorUnavailableError will
-                # be raised until the GCS recovers. For the time being, invalidate
-                # the cache entry so that we don't try to send requests to this
-                # replica without actively probing.
+                # be raised until the GCS recovers. After
+                # REPLICA_UNAVAILABLE_EVICTION_THRESHOLD consecutive failures we
+                # treat the replica as dead and evict it from the local routing
+                # table to avoid further probing while waiting for the long-poll
+                # DEPLOYMENT_TARGETS update.
                 elif isinstance(t.exception(), ActorUnavailableError):
-                    self.on_replica_actor_unavailable(replica.replica_id)
-                    msg = (
-                        "Failed to fetch queue length for "
-                        f"{replica.replica_id}. Replica is temporarily "
-                        "unavailable."
+                    count = (
+                        self._replica_unavailable_consecutive_count.get(
+                            replica.replica_id, 0
+                        )
+                        + 1
                     )
+                    self._replica_unavailable_consecutive_count[
+                        replica.replica_id
+                    ] = count
+                    if count >= REPLICA_UNAVAILABLE_EVICTION_THRESHOLD:
+                        self.on_replica_actor_died(replica.replica_id)
+                        self._replica_unavailable_consecutive_count.pop(
+                            replica.replica_id, None
+                        )
+                        msg += (
+                            f" Evicted after {count} consecutive "
+                            "ActorUnavailableErrors; will no longer be "
+                            "considered for requests."
+                        )
+                    else:
+                        self.on_replica_actor_unavailable(replica.replica_id)
+                        msg = (
+                            "Failed to fetch queue length for "
+                            f"{replica.replica_id}. Replica is temporarily "
+                            f"unavailable ({count}/"
+                            f"{REPLICA_UNAVAILABLE_EVICTION_THRESHOLD})."
+                        )
 
                 logger.warning(msg)
             else:
@@ -1023,6 +1064,10 @@ class RequestRouter(ABC):
                 result.append((replica, queue_len))
                 self._replica_queue_len_cache.update(replica.replica_id, queue_len)
                 self._update_router_queue_len_gauge(replica.replica_id, queue_len)
+                # Reset consecutive failure counter on a successful probe.
+                self._replica_unavailable_consecutive_count.pop(
+                    replica.replica_id, None
+                )
 
         assert len(result) == len(replicas)
         return result

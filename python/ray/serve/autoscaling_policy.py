@@ -21,28 +21,6 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 # configured delay may compare as 399.9999999999999 >= 400.0).
 _DELAY_ELAPSED_EPS_S = 1e-6
 
-# Tolerance for the in-flight scaling debounce. If |current - target| exceeds
-# max(1, _INFLIGHT_SCALING_TOLERANCE_RATIO * target), we consider the previous
-# scaling decision still in-flight and suppress new decisions to break
-# oscillation when large scaling jumps haven't yet propagated to the cluster.
-_INFLIGHT_SCALING_TOLERANCE_RATIO = 0.1
-
-
-def _is_scaling_in_flight(ctx) -> bool:
-    """Return True if the previous scaling decision is not yet fully applied.
-
-    Suppressing decisions while the previous scaling delta is still being
-    applied prevents oscillation when large scaling jumps (e.g.
-    upscaling_factor * error_ratio) haven't yet propagated to the cluster.
-    Cold-start (current == 0) and scale-to-zero (target == 0) transitions
-    bypass this check so they can complete.
-    """
-    if ctx.current_num_replicas == 0 or ctx.target_num_replicas == 0:
-        return False
-    delta = abs(ctx.current_num_replicas - ctx.target_num_replicas)
-    threshold = max(1, int(_INFLIGHT_SCALING_TOLERANCE_RATIO * ctx.target_num_replicas))
-    return delta > threshold
-
 
 def _apply_scaling_factors(
     desired_num_replicas: Union[int, float],
@@ -170,12 +148,6 @@ def _apply_default_params(
     policy_state: Dict[str, Any],
 ) -> Tuple[int, Dict[str, Any]]:
     """Apply the default parameters to the desired number of replicas."""
-
-    # In-flight scaling debounce: if the previous scaling decision has not
-    # been fully applied to the cluster yet, suppress new decisions to
-    # prevent oscillation. See `_is_scaling_in_flight` for details.
-    if _is_scaling_in_flight(ctx):
-        return ctx.target_num_replicas, policy_state
 
     desired_num_replicas = _apply_scaling_factors(
         desired_num_replicas, ctx.current_num_replicas, ctx.config
