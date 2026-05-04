@@ -321,7 +321,7 @@ def test_result_restore(
     best_ckpt_b = result.get_best_checkpoint(metric="metric_b", mode="max")
     assert load_dict_checkpoint(best_ckpt_b)["iter"] == num_iterations - num_checkpoints
 
-    with pytest.raises(RuntimeError, match="Invalid metric name.*"):
+    with pytest.raises(RuntimeError, match="No checkpoint's metrics contains.*"):
         result.get_best_checkpoint(metric="invalid_metric", mode="max")
 
 
