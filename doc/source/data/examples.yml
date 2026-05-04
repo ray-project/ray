@@ -36,7 +36,7 @@ examples:
     use_cases:
       - large language models
       - generative ai
-    link: ../_collections/data/examples/llm_batch_inference_text/README
+    link: examples/llm_batch_inference_text/content/README
   - title: Batch Inference with Structural Output
     skill_level: beginner
     frameworks:
@@ -61,7 +61,7 @@ examples:
       - large language models
       - generative ai
       - computer vision
-    link: ../_collections/data/examples/llm_batch_inference_vision/README
+    link: examples/llm_batch_inference_vision/content/README
   - title: Unstructured Data Ingestion and Processing
     skill_level: intermediate
     frameworks:
@@ -70,4 +70,4 @@ examples:
     use_cases:
       - document processing
       - data ingestion
-    link: ../_collections/data/examples/unstructured_data_ingestion/README
+    link: examples/unstructured_data_ingestion/content/unstructured_data_ingestion
