@@ -244,7 +244,6 @@ class ServerConfig:
     port: int  # Port to connect to
     real_ip: Optional[str] = None  # Original IP before localhost conversion
     routing_key: Optional[str] = None  # Stable custom-routing selection key
-    replica_id: Optional[str] = None
 
     def __str__(self) -> str:
         return f"ServerConfig(name='{self.name}', host='{self.host}', port={self.port})"
@@ -315,10 +314,6 @@ class BackendConfig:
 
     # Whether this backend should use the direct ingress custom request routing path.
     custom_request_routing: bool = False
-
-    # Per-server connection limit for the custom-routed backend.
-    # When set, HAProxy queues excess requests instead of forwarding them all.
-    max_server_conns: Optional[int] = None
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
@@ -572,6 +567,7 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
+
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
 
@@ -807,11 +803,7 @@ local function do_request(router, body)
     return response
 end
 
-local DISABLE_ROUTING_PATH = "/tmp/ray-serve-disable-ingress-bypass-routing"
-
 core.register_action("route_direct_ingress_request", {{"http-req"}}, function(txn)
-    local f = io.open(DISABLE_ROUTING_PATH, "r")
-    if f then f:close() return end
     local path = txn.sf:path()
     local router = find_router(path)
     if not router then
@@ -1211,10 +1203,7 @@ class HAProxyManager(ProxyActorInterface):
         )
 
         self._haproxy = HAProxyApi(
-            cfg=HAProxyConfig(
-                http_options=http_options,
-                is_head=is_head,
-            )
+            cfg=HAProxyConfig(http_options=http_options, is_head=is_head)
         )
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
@@ -1379,7 +1368,6 @@ class HAProxyManager(ProxyActorInterface):
             port=target.port,
             real_ip=target.ip,
             routing_key=f"sc_{target.ip.replace('.', '_')}_{target.port}",
-            replica_id=target.name,
         )
 
     def _create_backend_config(
@@ -1416,7 +1404,6 @@ class HAProxyManager(ProxyActorInterface):
             servers=servers,
             router_servers=router_servers,
             custom_request_routing=custom_request_routing,
-            max_server_conns=None,
             app_name=target_group.app_name,
             fallback_server=fallback_server,
             health_check_path=health_path,

@@ -134,6 +134,7 @@ backend {{ backend.name or 'unknown' }}
     http-check expect status 200
     {%- endif %}
     {{ hc.default_server_directive }}
+    # Servers in this backend
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} check
     {%- endfor %}
@@ -163,7 +164,7 @@ backend {{ backend.name or 'unknown' }}-custom-routed
     use-server {{ server.routing_key }} if { var(txn.direct_ingress_target) -m str "{{ server.routing_key }}" }
     {%- endfor %}
     {%- for server in backend.servers %}
-    server {{ server.routing_key }} {{ server.host }}:{{ server.port }} check{% if backend.max_server_conns %} maxconn {{ backend.max_server_conns }}{% endif %}
+    server {{ server.routing_key }} {{ server.host }}:{{ server.port }} check
     {%- endfor %}
     {%- if backend.fallback_server %}
     server {{ backend.fallback_server.name }} {{ backend.fallback_server.host }}:{{ backend.fallback_server.port }} check backup
