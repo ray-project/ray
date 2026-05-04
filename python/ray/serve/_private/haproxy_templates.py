@@ -173,7 +173,7 @@ backend {{ backend.name or 'unknown' }}-via-ingress-request-router
     {%- for server in backend.servers %}
     use-server {{ server.name }} if { var(txn.ingress_request_router_target) -m str "{{ server.name }}" }
     {%- endfor %}
-    # `track` mirrors primary-backend health to avoid double-checking.
+    # `track` allows us to mirror primary-backend health and avoid double-checking.
     {%- for server in backend.servers %}
     server {{ server.name }} {{ server.host }}:{{ server.port }} track {{ backend.name or 'unknown' }}/{{ server.name }}
     {%- endfor %}
