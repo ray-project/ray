@@ -71,6 +71,30 @@ from ray.serve.schema import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
+# Shared by the Lua → router call and the frontend `wait-for-body`: HAProxy
+# never holds the request longer than the router itself would.
+INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
+
+
+def _get_safe_name(name: str) -> str:
+    """Sanitize an actor name for use as a HAProxy server/backend label."""
+    name = name.replace("#", "-").replace("/", ".")
+    return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+
+
+def target_to_server(target: "Target", node_ip_address: str) -> "ServerConfig":
+    """Convert a Target to a ServerConfig.
+
+    `replica_id` is the unsanitized actor name (matches what `/internal/route`
+    returns); `name` is the sanitized form used in the HAProxy config.
+    """
+    return ServerConfig(
+        name=_get_safe_name(target.name),
+        host="127.0.0.1" if target.ip == node_ip_address else target.ip,
+        port=target.port,
+        replica_id=target.name,
+    )
+
 
 def get_haproxy_binary() -> str:
     """Return the path to the HAProxy binary.
@@ -713,44 +737,51 @@ class HAProxyApi(ProxyApi):
         Returns the path to the written Lua script, or None if no backend
         has ingress request routers configured.
         """
-        config_dir = os.path.dirname(self.config_file_path)
-        lua_path = os.path.join(config_dir, "ingress_request_router.lua")
-
         # Single router by design — round-robin caused TTFT regressions.
-        # All routable backends share the same router pool in practice.
+        # All routable backends are expected to share the same router pool;
+        # the first one wins and others' router_servers are ignored.
         router = None
-        replica_target_entries = []
         for backend in backends:
-            if not backend.router_servers:
-                continue
-            if router is None:
+            if backend.router_servers:
                 router = min(backend.router_servers, key=lambda s: (s.port, s.host))
-            for server in backend.servers:
-                if server.replica_id is None:
-                    continue
-                replica_target_entries.append(
-                    f"    [{json.dumps(server.replica_id)}] = "
-                    f"{json.dumps(server.name)}"
-                )
-
-        if router is None or not replica_target_entries:
+                break
+        if router is None:
             return None
 
+        replica_target_entries = [
+            f"    [{json.dumps(server.replica_id)}] = {json.dumps(server.name)}"
+            for backend in backends
+            if backend.router_servers
+            for server in backend.servers
+            if server.replica_id is not None
+        ]
+        if not replica_target_entries:
+            return None
+
+        config_dir = os.path.dirname(self.config_file_path)
+        lua_path = os.path.join(config_dir, "ingress_request_router.lua")
         replica_targets_lua = "{\n" + ",\n".join(replica_target_entries) + "\n}"
 
-        lua_content = f"""local REPLICA_TARGETS = {replica_targets_lua}
+        lua_content = f"""local ROUTER_REQUEST_TIMEOUT_S = {INGRESS_REQUEST_ROUTER_TIMEOUT_S}
+
+local REPLICA_TARGETS = {replica_targets_lua}
 
 local ROUTER = {{ host = {json.dumps(router.host)}, port = {router.port} }}
+local ROUTER_HOST_HEADER = ROUTER.host .. ":" .. ROUTER.port
 
 local function do_request(body)
     local sock = core.tcp()
-    sock:settimeout(5)
+    sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
-    if not sock:connect(ROUTER.host, tonumber(ROUTER.port)) then
+    if not sock:connect(ROUTER.host, ROUTER.port) then
         return nil
     end
 
+    -- Connection: close so sock:receive("*a") terminates on EOF even if the
+    -- router defaults to keep-alive in the future.
     local req = "POST /internal/route HTTP/1.0\\r\\n"
+        .. "Host: " .. ROUTER_HOST_HEADER .. "\\r\\n"
+        .. "Connection: close\\r\\n"
         .. "Content-Type: application/json\\r\\n"
         .. "Content-Length: " .. #body .. "\\r\\n"
         .. "\\r\\n"
@@ -766,12 +797,20 @@ local function do_request(body)
     return response
 end
 
--- Router response shape: {{"replica_id": "<id>"}} on a 200, anything else
--- (non-200, missing field, unknown id) means "fall through to native LB".
+-- Any non-200 / missing-field / unknown-id response falls through to native LB.
 core.register_action("route_via_ingress_request_router", {{"http-req"}}, function(txn)
     local body = txn.sf:req_body()
     if not body or body == "" then
         return
+    end
+
+    -- Bail on truncated body — routing on a partial payload would be wrong.
+    local content_length = txn.sf:hdr("content-length")
+    if content_length then
+        local cl = tonumber(content_length)
+        if cl and #body < cl then
+            return
+        end
     end
 
     local response = do_request(body)
@@ -795,10 +834,17 @@ core.register_action("route_via_ingress_request_router", {{"http-req"}}, functio
     txn:set_var("txn.via_ingress_request_router", true)
 end, 0)
 """
+        # Skip the write if content is byte-identical — avoids bumping mtime
+        # on every reload when only unrelated config changed.
+        try:
+            with open(lua_path) as f:
+                if f.read() == lua_content:
+                    return lua_path
+        except FileNotFoundError:
+            pass
         with open(lua_path, "w") as f:
             f.write(lua_content)
-
-        logger.info(f"Wrote Lua routing script to {lua_path}")
+        logger.debug(f"Wrote Lua routing script to {lua_path}")
         return lua_path
 
     def _generate_config_file_internal(self) -> None:
@@ -856,6 +902,9 @@ end, 0)
                     "route_info": health_route_info,
                     "has_ingress_request_router": has_ingress_request_router,
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,
+                    "ingress_request_router_timeout_s": (
+                        INGRESS_REQUEST_ROUTER_TIMEOUT_S
+                    ),
                 }
             )
 
@@ -1314,38 +1363,25 @@ class HAProxyManager(ProxyActorInterface):
 
         return log_file_path
 
-    def _target_to_server(self, target: Target) -> ServerConfig:
-        """Convert a target to a server."""
-        return ServerConfig(
-            # The server name is derived from the replica's actor name, with the
-            # format `SERVE_REPLICA::<app>#<deployment>#<replica_id>`, or the
-            # proxy's actor name, with the format `SERVE_PROXY_ACTOR-<node_id>`.
-            # Special characters in the names are converted to comply with haproxy
-            # config's allowed characters, e.g. `#` -> `-`.
-            name=self.get_safe_name(target.name),
-            # Use localhost if target is on the same node as HAProxy
-            host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
-            port=target.port,
-            # Unsanitized actor name; matches what /internal/route returns.
-            replica_id=target.name,
-        )
-
     def _create_backend_config(
         self,
         target_group: TargetGroup,
         fallback_target: Optional[Target],
     ) -> BackendConfig:
         """Create a backend configuration from a target group and fallback target."""
-        servers = [self._target_to_server(target) for target in target_group.targets]
+        servers = [
+            target_to_server(target, self._node_ip_address)
+            for target in target_group.targets
+        ]
 
         router_servers = [
-            self._target_to_server(target)
+            target_to_server(target, self._node_ip_address)
             for target in target_group.ingress_request_router_targets
         ]
 
         fallback_server = None
         if fallback_target is not None:
-            fallback_server = self._target_to_server(fallback_target)
+            fallback_server = target_to_server(fallback_target, self._node_ip_address)
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
@@ -1420,9 +1456,7 @@ class HAProxyManager(ProxyActorInterface):
     @staticmethod
     def get_safe_name(name: str) -> str:
         """Get a safe label name for the haproxy config."""
-        name = name.replace("#", "-").replace("/", ".")
-        # replace all remaining non-alphanumeric and non-{".", "_", "-"} with "_"
-        return re.sub(r"[^A-Za-z0-9._-]+", "_", name)
+        return _get_safe_name(name)
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         """Return the set of replica IDs for targets matching the given route.

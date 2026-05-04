@@ -26,6 +26,7 @@ from ray.serve._private.haproxy import (
     ServerConfig,
 )
 from ray.serve.config import HTTPOptions
+from ray.serve.schema import Target
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,34 @@ def check_haproxy_ready(stats_port: int, timeout: int = 2) -> bool:
         return False
 
 
+def _serve_fastapi_app(
+    app: FastAPI, port: int, ready_check, timeout_keep_alive: int = 60
+):
+    """Run `app` on uvicorn in a daemon thread; block until `ready_check()` is True."""
+    config = uvicorn.Config(
+        app=app,
+        host="127.0.0.1",
+        port=port,
+        log_level="error",
+        access_log=False,
+        timeout_keep_alive=timeout_keep_alive,
+    )
+    server = uvicorn.Server(config)
+    thread = threading.Thread(target=lambda: asyncio.run(server.serve()), daemon=True)
+    thread.start()
+    wait_for_condition(ready_check)
+    return server, thread
+
+
+def _healthz_ready(port: int):
+    return (
+        lambda: requests.get(
+            f"http://127.0.0.1:{port}/-/healthz", timeout=2
+        ).status_code
+        == 200
+    )
+
+
 def create_test_backend_server(port: int):
     """Create a test backend server with slow and fast endpoints using uvicorn."""
     app = FastAPI()
@@ -66,32 +95,7 @@ def create_test_backend_server(port: int):
 
         return "Fast response"
 
-    # Configure uvicorn server with 60s keep-alive timeout
-    config = uvicorn.Config(
-        app=app,
-        host="127.0.0.1",
-        port=port,
-        log_level="error",  # Reduce log noise
-        access_log=False,
-        timeout_keep_alive=60,  # 60 seconds keep-alive timeout
-    )
-    server = uvicorn.Server(config)
-
-    # Run server in a separate thread
-    def run_server():
-        asyncio.run(server.serve())
-
-    thread = threading.Thread(target=run_server, daemon=True)
-    thread.start()
-
-    # Wait for the server to start
-    def wait_for_server():
-        r = requests.get(f"http://127.0.0.1:{port}/-/healthz")
-        assert r.status_code == 200
-        return True
-
-    wait_for_condition(wait_for_server)
-    return server, thread
+    return _serve_fastapi_app(app, port, _healthz_ready(port))
 
 
 def process_exists(pid: int) -> bool:
@@ -495,6 +499,23 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
 
 
+def test_target_to_server_replica_id_is_unsanitized_actor_name():
+    """`replica_id` on the generated ServerConfig must be the raw actor name —
+    that's what `/internal/route` returns, and the Lua map is keyed by it.
+    `name` is sanitized for HAProxy. Sanitizing `replica_id` too would silently
+    break IRR routing.
+    """
+    from ray.serve._private.haproxy import target_to_server
+
+    actor_name = "SERVE_REPLICA::app#dep#abc123"
+    target = Target(name=actor_name, ip="10.0.0.1", port=30001, instance_id="i-1")
+
+    server = target_to_server(target, node_ip_address="10.0.0.99")
+
+    assert "#" not in server.name
+    assert server.replica_id == actor_name
+
+
 def test_write_ingress_request_router_lua_emits_map_and_router(haproxy_api_cleanup):
     """Lua file contains REPLICA_TARGETS, ROUTER (lowest port,host), and the action.
 
@@ -542,15 +563,16 @@ def test_write_ingress_request_router_lua_emits_map_and_router(haproxy_api_clean
         # Both servers with replica_id are mapped to their server.name.
         assert '["SERVE_REPLICA::app#dep#hash_a"] = "replica_a"' in content
         assert '["SERVE_REPLICA::app#dep#hash_b"] = "replica_b"' in content
-        # Server without replica_id is not in the map.
-        assert '"anon"' not in content
+        # Server without replica_id is not a key in the map.
+        assert '= "anon"' not in content
+        assert '["anon"' not in content
 
-        # The action and the txn vars the template depends on.
         assert 'core.register_action("route_via_ingress_request_router"' in content
         assert 'txn:set_var("txn.ingress_request_router_target"' in content
         assert 'txn:set_var("txn.via_ingress_request_router", true)' in content
-        # Hardened response parsing.
         assert 'response:match("^HTTP/[%d%.]+ 200")' in content
+        assert "local ROUTER_REQUEST_TIMEOUT_S = 5" in content
+        assert 'txn.sf:hdr("content-length")' in content
 
 
 def test_generate_config_with_ingress_request_router(haproxy_api_cleanup):
@@ -590,12 +612,21 @@ def test_generate_config_with_ingress_request_router(haproxy_api_cleanup):
             cfg = f.read()
         lua_path = os.path.join(temp_dir, "ingress_request_router.lua")
 
-        # Lua loaded once per thread.
+        # Lua loaded once per thread, with bufsize bumped so chat-completion
+        # bodies fit before the Lua action runs.
         assert f"lua-load-per-thread {lua_path}" in cfg
+        assert "tune.bufsize 65536" in cfg
 
-        # Frontend gates Lua on POST and routes via the new var.
-        assert "option http-buffer-request" in cfg
-        assert "http-request lua.route_via_ingress_request_router if METH_POST" in cfg
+        # Frontend gates body buffering and the Lua call on POST + an
+        # IRR-eligible path so non-IRR traffic isn't penalized.
+        assert "acl is_irr_eligible path_beg /" in cfg
+        assert "http-request wait-for-body time 5s if METH_POST is_irr_eligible" in cfg
+        assert (
+            "http-request lua.route_via_ingress_request_router "
+            "if METH_POST is_irr_eligible" in cfg
+        )
+        # The blanket frontend buffer option is no longer used.
+        assert "option http-buffer-request" not in cfg
         assert (
             "use_backend llm-via-ingress-request-router if is_llm "
             "{ var(txn.via_ingress_request_router) -m found }" in cfg
@@ -604,15 +635,198 @@ def test_generate_config_with_ingress_request_router(haproxy_api_cleanup):
         # Custom-routed backend exists for `llm` and pins via use-server
         # against the same `r1` name as the regular backend.
         assert "backend llm-via-ingress-request-router" in cfg
+        assert "option redispatch" in cfg
         assert (
             'use-server r1 if { var(txn.ingress_request_router_target) -m str "r1" }'
             in cfg
         )
+        # Replicas in the via-IRR backend `track` the primary backend's
+        # server so they aren't double-health-checked.
+        assert "server r1 10.0.0.1:30001 track llm/r1" in cfg
+        # The primary backend keeps its own `check`.
         assert "server r1 10.0.0.1:30001 check" in cfg
 
-        # The non-IRR backend gets no custom-routed counterpart and no rule.
+        # The non-IRR backend gets no custom-routed counterpart, no IRR ACL
+        # contribution, and no rule.
         assert "backend api-via-ingress-request-router" not in cfg
         assert "use_backend api-via-ingress-request-router" not in cfg
+        assert "acl is_irr_eligible path_beg /api/" not in cfg
+
+
+def _create_irr_replica_server(port: int, replica_id_header: str):
+    """Fake data-plane replica that echoes its identity in a response header."""
+    app = FastAPI()
+
+    @app.get("/-/healthz")
+    async def health():
+        return {"status": "OK"}
+
+    @app.post("/{path:path}")
+    async def root(path: str, req: Request, res: Response):
+        res.headers["x-replica-id"] = replica_id_header
+        body = await req.body()
+        return {"replica": replica_id_header, "echo": body.decode("utf-8")}
+
+    return _serve_fastapi_app(app, port, _healthz_ready(port))
+
+
+def _create_irr_router_server(port: int, replica_id_to_return: str):
+    """Fake /internal/route. Captures bodies so tests can verify HAProxy
+    actually buffered + forwarded the request."""
+    app = FastAPI()
+    captured = {"bodies": []}
+
+    @app.post("/internal/route")
+    async def route(req: Request):
+        body = await req.body()
+        captured["bodies"].append(body.decode("utf-8"))
+        return {"replica_id": replica_id_to_return}
+
+    def ready():
+        return (
+            requests.post(
+                f"http://127.0.0.1:{port}/internal/route", json={}, timeout=2
+            ).status_code
+            == 200
+        )
+
+    server, thread = _serve_fastapi_app(app, port, ready)
+    return server, thread, captured
+
+
+@pytest.mark.asyncio
+async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
+    """Run actual HAProxy against a fake router + two replicas; verify a POST
+    is pinned to the replica the router selects, while a GET (non-IRR) is not
+    routed through the Lua path."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        haproxy_port = 8200
+        stats_port = 8201
+        replica_a_port = 8202
+        replica_b_port = 8203
+        router_port = 8204
+
+        actor_name_a = "SERVE_REPLICA::app#dep#aaa"
+        actor_name_b = "SERVE_REPLICA::app#dep#bbb"
+
+        replica_a, replica_a_thread = _create_irr_replica_server(
+            replica_a_port, replica_id_header="A"
+        )
+        replica_b, replica_b_thread = _create_irr_replica_server(
+            replica_b_port, replica_id_header="B"
+        )
+        router, router_thread, router_captured = _create_irr_router_server(
+            router_port, replica_id_to_return=actor_name_b  # always pick B
+        )
+
+        try:
+            config = HAProxyConfig(
+                http_options=HTTPOptions(
+                    host="127.0.0.1",
+                    port=haproxy_port,
+                    keep_alive_timeout_s=58,
+                ),
+                stats_port=stats_port,
+                socket_path=os.path.join(temp_dir, "admin.sock"),
+                has_received_routes=True,
+                has_received_servers=True,
+                health_check_path="/-/healthz",
+                health_check_inter="500ms",
+                health_check_rise=1,
+                health_check_fall=2,
+            )
+
+            backend = BackendConfig(
+                name="llm",
+                path_prefix="/",
+                app_name="llm",
+                health_check_path="/-/healthz",
+                servers=[
+                    ServerConfig(
+                        name="A",
+                        host="127.0.0.1",
+                        port=replica_a_port,
+                        replica_id=actor_name_a,
+                    ),
+                    ServerConfig(
+                        name="B",
+                        host="127.0.0.1",
+                        port=replica_b_port,
+                        replica_id=actor_name_b,
+                    ),
+                ],
+                router_servers=[
+                    ServerConfig(name="router", host="127.0.0.1", port=router_port),
+                ],
+            )
+
+            api = HAProxyApi(
+                cfg=config,
+                backend_configs={"llm": backend},
+                config_file_path=os.path.join(temp_dir, "haproxy.cfg"),
+            )
+            haproxy_api_cleanup(api)
+            await api.start()
+
+            wait_for_condition(lambda: check_haproxy_ready(stats_port), timeout=10)
+            # Wait for primary-backend health checks to mark both replicas UP.
+            await async_wait_for_condition(
+                lambda: requests.get(
+                    f"http://127.0.0.1:{haproxy_port}/-/healthz", timeout=2
+                ).status_code
+                == 200,
+                timeout=10,
+            )
+
+            # POST hits IRR path. Router returns B's actor name → request must
+            # land on replica B regardless of LB ordering.
+            payload = {"prompt": "hello"}
+            resp = requests.post(
+                f"http://127.0.0.1:{haproxy_port}/predict",
+                json=payload,
+                timeout=5,
+            )
+            assert resp.status_code == 200, resp.text
+            assert resp.headers.get("x-replica-id") == "B"
+
+            # The router actually saw the original body (via wait-for-body +
+            # txn.sf:req_body()). Just check the field made it through.
+            assert any(
+                '"prompt"' in body and "hello" in body
+                for body in router_captured["bodies"]
+            )
+
+            # Repeat to confirm the pin holds across requests.
+            for _ in range(3):
+                resp = requests.post(
+                    f"http://127.0.0.1:{haproxy_port}/predict",
+                    json=payload,
+                    timeout=5,
+                )
+                assert resp.headers.get("x-replica-id") == "B"
+
+            # GET is not POST → wait-for-body / Lua never run, so the via-IRR
+            # path is bypassed. The router should have seen exactly the four
+            # POSTs above and nothing more.
+            n_router_calls_before_get = len(router_captured["bodies"])
+            requests.get(
+                f"http://127.0.0.1:{haproxy_port}/health-passthrough", timeout=5
+            )
+            assert (
+                len(router_captured["bodies"]) == n_router_calls_before_get
+            ), "GET must not invoke /internal/route"
+
+        finally:
+            for srv in (replica_a, replica_b, router):
+                try:
+                    srv.should_exit = True
+                except Exception:
+                    pass
+            for thr in (replica_a_thread, replica_b_thread, router_thread):
+                try:
+                    thr.join(timeout=5)
+                except Exception:
+                    pass
 
 
 @pytest.mark.asyncio
