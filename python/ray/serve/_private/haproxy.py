@@ -40,6 +40,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_FASTINTER,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE,
     RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
@@ -848,6 +849,9 @@ class HAProxyApi(ProxyApi):
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,
                     "ingress_request_router_timeout_s": (
                         RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
+                    ),
+                    "ingress_request_router_bufsize": (
+                        RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_BUFSIZE
                     ),
                 }
             )

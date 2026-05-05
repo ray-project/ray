@@ -28,7 +28,7 @@ HAPROXY_CONFIG_TEMPLATE = """global
     nbthread {{ config.nbthread }}
     {%- if has_ingress_request_router %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
-    tune.bufsize 65536
+    tune.bufsize {{ ingress_request_router_bufsize }}
     {%- endif %}
     {%- if config.enable_hap_optimization %}
     server-state-base {{ config.server_state_base }}

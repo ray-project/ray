@@ -1,6 +1,9 @@
 -- HAProxy Lua action that picks a backend replica via the ingress request
 -- router. Templated at config-reload time; placeholders are filled in by
 -- _write_ingress_request_router_lua in haproxy.py.
+--
+-- Bodies exceeding tune.bufsize are truncated; we forward what we have with
+-- X-Body-Truncated since prefix-routing only needs the head of the body.
 
 local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 
@@ -11,12 +14,18 @@ local ROUTER_REQUEST_TIMEOUT_S = ${TIMEOUT_S}
 local ROUTERS = ${ROUTERS}
 local REPLICA_TARGETS = ${REPLICA_TARGETS}
 
-local function call_router(router, body)
+local function call_router(router, body, truncated_length)
     local sock = core.tcp()
     sock:settimeout(ROUTER_REQUEST_TIMEOUT_S)
 
     if not sock:connect(router.host, router.port) then
         return nil
+    end
+
+    local truncation_header = ""
+    if truncated_length then
+        truncation_header = "X-Body-Truncated: "
+            .. #body .. "/" .. truncated_length .. "\r\n"
     end
 
     -- Connection: close so sock:receive("*a") terminates on EOF.
@@ -25,6 +34,7 @@ local function call_router(router, body)
         .. "Connection: close\r\n"
         .. "Content-Type: application/json\r\n"
         .. "Content-Length: " .. #body .. "\r\n"
+        .. truncation_header
         .. "\r\n"
         .. body
 
@@ -54,16 +64,12 @@ local function extract_replica_id(json_body)
     return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
 end
 
-local function warn_if_truncated(txn, body)
-    local content_length = txn.sf:hdr("content-length")
-    if not content_length then
-        return
-    end
-    local cl = tonumber(content_length)
+-- Returns the original Content-Length when `body` is shorter than the
+-- advertised length (truncated by tune.bufsize), or nil otherwise.
+local function truncated_full_length(txn, body)
+    local cl = tonumber(txn.sf:hdr("content-length"))
     if cl and #body < cl then
-        core.log(core.warning,
-            "ingress_request_router: routing on truncated body ("
-                .. #body .. "/" .. cl .. " bytes)")
+        return cl
     end
 end
 
@@ -83,9 +89,14 @@ core.register_action("route_via_ingress_request_router", {"http-req"}, function(
         return
     end
 
-    warn_if_truncated(txn, body)
+    local truncated = truncated_full_length(txn, body)
+    if truncated then
+        core.log(core.warning,
+            "ingress_request_router: forwarding truncated body to router ("
+                .. #body .. "/" .. truncated .. " bytes)")
+    end
 
-    local response = call_router(router, body)
+    local response = call_router(router, body, truncated)
     if not response or not is_http_200(response) then
         return
     end
