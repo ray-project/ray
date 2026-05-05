@@ -864,7 +864,7 @@ def resolve_tpu_slice_kwargs(
         raise ValueError(
             "A TPU topology was requested, but 'ray.io/accelerator-type' "
             "was not found in the placement group bundle labels. The accelerator type "
-            "(e.g., 'TPU-V6E') is required to provision a multi-host slice."
+            "(e.g. 'TPU-V6E') is required to provision a multi-host slice."
         )
 
     raw_version = first_bundle_labels["ray.io/accelerator-type"]

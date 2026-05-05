@@ -98,7 +98,7 @@ class AcceleratorBackend(ABC):
     def get_placement_group_bundle_label_selector(
         self, accelerator_type_str: Optional[str] = None
     ) -> Optional[Dict[str, str]]:
-        """Returns labels to be applied to the placement group bundles."""
+        """Returns label selectors to apply to the placement group bundles."""
         return None
 
     def apply_placement_group_bundle_label_selector(
@@ -107,11 +107,11 @@ class AcceleratorBackend(ABC):
         accelerator_type_str: Optional[str],
         num_bundles: int,
     ) -> None:
-        """Safely applies hardware-specific labels to the deployment options."""
-        accel_labels = self.get_placement_group_bundle_label_selector(
+        """Safely applies hardware-specific label selectors to the deployment options."""
+        accel_selectors = self.get_placement_group_bundle_label_selector(
             accelerator_type_str
         )
-        if not accel_labels:
+        if not accel_selectors:
             return
 
         existing_selectors = (
@@ -120,13 +120,13 @@ class AcceleratorBackend(ABC):
         merged_selectors = []
 
         for i in range(num_bundles):
-            labels = (
+            selector = (
                 existing_selectors[i].copy()
                 if i < len(existing_selectors) and existing_selectors[i]
                 else {}
             )
-            labels.update(accel_labels)
-            merged_selectors.append(labels)
+            selector.update(accel_selectors)
+            merged_selectors.append(selector)
 
         deployment_options["placement_group_bundle_label_selector"] = merged_selectors
 
