@@ -185,7 +185,7 @@ GRAPH_PANEL_TEMPLATE = {
             "stack": False,
         },
         {
-            "alias": "/Container /",
+            "alias": "/Container/",
             "hiddenSeries": True,
         },
         {
