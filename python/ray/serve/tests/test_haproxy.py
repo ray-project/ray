@@ -344,9 +344,8 @@ async def test_drain_and_undrain_haproxy_manager(
 
     assert len(proxy_actor_ids) == 3
 
-    # 3 HAProxies share *:8000 via SO_REUSEPORT; ping until 20 successive
-    # requests succeed so every shard is hit at least once with high
-    # probability (P(miss) ~= 3 * (2/3)^20 ~= 0.1%).
+    # 3 HAProxies share *:8000 via SO_REUSEPORT; 20 successive 200s makes it
+    # very likely each shard has served at least one request and converged.
     def all_haproxies_ready():
         try:
             return all(
