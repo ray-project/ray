@@ -1005,12 +1005,13 @@ class RequestRouter(ABC):
                 f"within {queue_len_response_deadline_s}s."
             )
             if deadline_was_max:
-                count = self._replica_unavailable_consecutive_count.get(
-                    replica.replica_id, 0
-                ) + 1
-                self._replica_unavailable_consecutive_count[
-                    replica.replica_id
-                ] = count
+                count = (
+                    self._replica_unavailable_consecutive_count.get(
+                        replica.replica_id, 0
+                    )
+                    + 1
+                )
+                self._replica_unavailable_consecutive_count[replica.replica_id] = count
                 if count >= REPLICA_UNAVAILABLE_EVICTION_THRESHOLD:
                     self.on_replica_actor_died(replica.replica_id)
                     self._replica_unavailable_consecutive_count.pop(
