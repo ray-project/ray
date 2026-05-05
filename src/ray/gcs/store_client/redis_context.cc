@@ -14,6 +14,7 @@
 
 #include "ray/gcs/store_client/redis_context.h"
 
+#include <cerrno>
 #include <memory>
 #include <sstream>
 #include <string>
@@ -286,6 +287,30 @@ void RedisContext::Disconnect() {
   redis_async_context_.reset();
 }
 
+Status SetRedisProbeTimeout(redisContext *context) {
+  const auto timeout_ms = RayConfig::instance().redis_db_probe_timeout_milliseconds();
+  RAY_CHECK_GT(timeout_ms, 0) << "redis_db_probe_timeout_milliseconds must be positive.";
+  struct timeval timeout;
+  timeout.tv_sec = timeout_ms / 1000;
+  timeout.tv_usec = (timeout_ms % 1000) * 1000;
+  if (::redisSetTimeout(context, timeout) != REDIS_OK) {
+    return Status::RedisError(std::string("Failed to set Redis probe timeout: ") +
+                              context->errstr);
+  }
+  return Status::OK();
+}
+
+Status RestoreRedisTimeout(redisContext *context) {
+  struct timeval no_timeout;
+  no_timeout.tv_sec = 0;
+  no_timeout.tv_usec = 0;
+  if (::redisSetTimeout(context, no_timeout) != REDIS_OK) {
+    return Status::RedisError(std::string("Failed to restore Redis timeout: ") +
+                              context->errstr);
+  }
+  return Status::OK();
+}
+
 Status AuthenticateRedis(redisContext *context,
                          const std::string &username,
                          const std::string &password) {
@@ -293,6 +318,8 @@ Status AuthenticateRedis(redisContext *context,
     RAY_CHECK(username.empty());
     return Status::OK();
   }
+  RAY_RETURN_NOT_OK(SetRedisProbeTimeout(context));
+
   redisReply *reply;
   if (username.empty()) {
     reply = reinterpret_cast<redisReply *>(
@@ -301,8 +328,16 @@ Status AuthenticateRedis(redisContext *context,
     reply = reinterpret_cast<redisReply *>(
         redisCommand(context, "AUTH %s %s", username.c_str(), password.c_str()));
   }
+
+  if (reply == nullptr) {
+    if (context->err == REDIS_ERR_IO && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      return Status::RedisError("Timed out waiting for Redis auth reply");
+    }
+  }
   REDIS_CHECK_ERROR(context, reply);
+
   freeReplyObject(reply);
+  RAY_RETURN_NOT_OK(RestoreRedisTimeout(context));
   return Status::OK();
 }
 
@@ -455,7 +490,16 @@ void RedisContext::ValidateRedisDB() {
 }
 
 bool RedisContext::IsRedisSentinel() {
+  RAY_CHECK_OK(SetRedisProbeTimeout(sync_context()));
+
   auto reply = RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
+
+  RAY_CHECK(reply) << "Failed to get Redis info within "
+                   << RayConfig::instance().redis_db_probe_timeout_milliseconds()
+                   << "ms.";
+
+  RAY_CHECK_OK(RestoreRedisTimeout(sync_context()));
+
   if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
     return false;
   } else {
@@ -661,7 +705,11 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
   auto redis_reply = reinterpret_cast<redisReply *>(
       ::redisCommandArgv(context_.get(), args.size(), argv.data(), argc.data()));
   if (redis_reply == nullptr) {
-    RAY_LOG(ERROR) << "Failed to send redis command (sync): " << context_->errstr;
+    if (context_->err == REDIS_ERR_IO && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+      RAY_LOG(ERROR) << "Timed out waiting for redis command reply (sync).";
+    } else {
+      RAY_LOG(ERROR) << "Failed to run redis command (sync): " << context_->errstr;
+    }
     return nullptr;
   }
   auto callback_reply = std::make_unique<CallbackReply>(*redis_reply);
