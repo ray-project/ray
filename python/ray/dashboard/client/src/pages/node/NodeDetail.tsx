@@ -11,6 +11,7 @@ import RayletWorkerTable from "../../components/WorkerTable";
 import { memoryConverter } from "../../util/converter";
 import { MainNavPageInfo } from "../layout/mainNavContext";
 import { useNodeDetail } from "./hook/useNodeDetail";
+import { PlatformEvents } from "./PlatformEvents";
 
 const NodeDetailPage = () => {
   const {
@@ -23,6 +24,7 @@ const NodeDetailPage = () => {
     onRefreshChange,
     raylet,
     handleChange,
+    platformEvents,
   } = useNodeDetail();
 
   return (
@@ -70,6 +72,7 @@ const NodeDetailPage = () => {
               Object.values(nodeDetail?.actors || {}).length || 0
             })`}
           />
+          <Tab value="platform-events" label="Platform Events" />
         </Tabs>
         {nodeDetail && selectedTab === "info" && (
           <Box sx={{ padding: 2, marginTop: 2, marginBottom: 2 }}>
@@ -236,6 +239,20 @@ const NodeDetailPage = () => {
               />
             </TableContainer>
           </React.Fragment>
+        )}
+        {selectedTab === "platform-events" && (
+          <Box
+            sx={{
+              padding: 2,
+              marginTop: 2,
+              marginBottom: 2,
+            }}
+          >
+            <PlatformEvents
+              events={platformEvents || []}
+              emptyMessage="No platform events found for this node."
+            />
+          </Box>
         )}
       </TitleCard>
     </Box>
