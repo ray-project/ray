@@ -70,13 +70,13 @@ cdef c_vector[CFunctionDescriptor] prepare_function_descriptors(pyfd_list):
 
 cdef int prepare_actor_concurrency_groups(
         dict concurrency_groups_dict,
-        c_vector[CConcurrencyGroup] *concurrency_groups):
+        c_vector[CConcurrencyGroup] *concurrency_groups) except -1:
 
     cdef:
         c_vector[CFunctionDescriptor] c_fd_list
 
     if concurrency_groups_dict is None:
-        raise ValueError("Must provide it...")
+        raise ValueError("Must provide actor concurrency groups dictionary.")
 
     concurrency_groups.reserve(len(concurrency_groups_dict))
     for key, value in concurrency_groups_dict.items():
@@ -124,6 +124,11 @@ cdef int prepare_resources(
     if resource_dict is None:
         raise ValueError("Must provide resource map.")
 
+    unit_resources = (
+        f"{RayConfig.instance().predefined_unit_instance_resources().decode('utf-8')},"
+        f"{RayConfig.instance().custom_unit_instance_resources().decode('utf-8')}"
+    ).split(",")
+
     resource_map[0].reserve(len(resource_dict))
     for key, value in resource_dict.items():
         if not (isinstance(value, int) or isinstance(value, float)):
@@ -131,17 +136,10 @@ cdef int prepare_resources(
         if value < 0:
             raise ValueError("Resource quantities may not be negative.")
         if value > 0:
-            unit_resources = (
-                f"{RayConfig.instance().predefined_unit_instance_resources()\
-                .decode('utf-8')},"
-                f"{RayConfig.instance().custom_unit_instance_resources()\
-                .decode('utf-8')}"
-            ).split(",")
-
             if (value >= 1 and isinstance(value, float)
                     and not value.is_integer() and str(key) in unit_resources):
                 raise ValueError(
-                    f"{key} resource quantities >1 must",
-                    f" be whole numbers. The specified quantity {value} is invalid.")
+                    f"{key} resource quantities >1 must "
+                    f"be whole numbers. The specified quantity {value} is invalid.")
             resource_map[0][key.encode("ascii")] = float(value)
     return 0
