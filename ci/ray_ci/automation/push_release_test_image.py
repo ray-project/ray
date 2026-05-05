@@ -16,6 +16,7 @@ Run with --help to see all options.
 """
 
 import logging
+import os
 import subprocess
 import sys
 from typing import List
@@ -48,6 +49,25 @@ _runfiles = runfiles.Create()
 
 class PushReleaseTestImageError(Exception):
     """Error raised when pushing release test images fails."""
+
+
+def _annotate_pushed_image(image_uri: str, image_type: str) -> None:
+    if os.environ.get("BUILDKITE") != "true":
+        return
+    step_key = os.environ.get("BUILDKITE_STEP_KEY")
+    rayci_select = os.environ.get("RAYCI_SELECT")
+    if step_key and rayci_select and step_key not in rayci_select:
+        return
+    subprocess.run(
+        [
+            "buildkite-agent",
+            "annotate",
+            "--style=info",
+            f"--context=release-test-{image_type}-images",
+            "--append",
+            f"{image_uri}<br/>",
+        ],
+    )
 
 
 def _run_gcloud_docker_login() -> None:
@@ -318,6 +338,7 @@ def main(
                 dest_image = f"{registry}/anyscale/{image_type}:{tag}"
                 logger.info(f"Pushing to {name}: {dest_image}")
                 copy_image(source_tag, dest_image, dry_run=False)
+                _annotate_pushed_image(dest_image, image_type)
     except ImageTagsError as e:
         raise PushReleaseTestImageError(str(e))
 

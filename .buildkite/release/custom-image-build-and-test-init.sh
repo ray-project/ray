@@ -42,6 +42,7 @@ UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project "${UV_PYTHON_VERSION}")"
 
 if [[ "${AUTOMATIC:-0}" == "1" && "${RAYCI_SELECT:-}" != "" ]]; then
   echo "Skipping custom image build and test init because RAYCI_SELECT is set"
+  echo "RAYCI_SELECT: ${RAYCI_SELECT}"
   exit 0
 fi
 
