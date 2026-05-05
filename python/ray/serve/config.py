@@ -35,6 +35,7 @@ from ray.serve._private.constants import (
     DEFAULT_REQUEST_ROUTING_STATS_TIMEOUT_S,
     DEFAULT_TARGET_ONGOING_REQUESTS,
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_ENABLE_DIRECT_INGRESS,
     RAY_SERVE_ROUTER_RETRY_BACKOFF_MULTIPLIER,
     RAY_SERVE_ROUTER_RETRY_INITIAL_BACKOFF_S,
     RAY_SERVE_ROUTER_RETRY_MAX_BACKOFF_S,
@@ -809,7 +810,12 @@ class HTTPOptions(BaseModel):
       internal Serve HTTP proxy actor.
     """
 
-    host: Optional[str] = DEFAULT_HTTP_HOST
+    # Direct ingress replica HTTP ports are HAProxy backends that must be
+    # reachable from HAProxy on other nodes, so the default flips to 0.0.0.0
+    # when RAY_SERVE_ENABLE_DIRECT_INGRESS=1.
+    host: Optional[str] = (
+        "0.0.0.0" if RAY_SERVE_ENABLE_DIRECT_INGRESS else DEFAULT_HTTP_HOST
+    )
     port: int = DEFAULT_HTTP_PORT
     middlewares: List[Any] = []
     location: Optional[DeploymentMode] = DeploymentMode.HeadOnly

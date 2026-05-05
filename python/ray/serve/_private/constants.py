@@ -43,15 +43,8 @@ SERVE_PROXY_NAME = "SERVE_PROXY_ACTOR"
 #: Ray namespace used for all Serve actors
 SERVE_NAMESPACE = "serve"
 
-#: HTTP Host. Defaults to "0.0.0.0" when direct ingress is enabled because
-#: replica HTTP ports are HAProxy backends that must be reachable from
-#: HAProxy on other nodes.
-DEFAULT_HTTP_HOST = get_env_str(
-    "RAY_SERVE_DEFAULT_HTTP_HOST",
-    "0.0.0.0"
-    if os.environ.get("RAY_SERVE_ENABLE_DIRECT_INGRESS", "0") == "1"
-    else "127.0.0.1",
-)
+#: HTTP Host
+DEFAULT_HTTP_HOST = get_env_str("RAY_SERVE_DEFAULT_HTTP_HOST", "127.0.0.1")
 
 #: HTTP Port
 DEFAULT_HTTP_PORT = 8000
