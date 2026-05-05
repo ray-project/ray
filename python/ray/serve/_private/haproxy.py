@@ -1039,7 +1039,7 @@ class HAProxyManager(ProxyActorInterface):
         )
 
         # Scope paths under node_id so co-located managers (multi-raylet
-        # test clusters on one host) don't stomp each other's files.
+        # test clusters on one host) don't overwrite each other's files.
         def _per_node(path: str) -> str:
             d, f = os.path.split(path)
             return os.path.join(d, self._node_id, f)
