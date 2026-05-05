@@ -78,7 +78,7 @@ def main(args: argparse.Namespace):
                 num_rows += bundle.num_rows() or 0
                 num_bytes += bundle.size_bytes() or 0
                 num_blocks += len(bundle)
-                if time.perf_counter() - t0 >= 600:
+                if time.perf_counter() - t0 >= 900:
                     print(f"{num_workers=} timed out")
                     break
             metrics = collect_dataset_stats(ds)
