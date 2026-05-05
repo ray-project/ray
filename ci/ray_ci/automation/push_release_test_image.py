@@ -56,7 +56,10 @@ def _annotate_pushed_image(image_uri: str, image_type: str) -> None:
         return
     step_key = os.environ.get("BUILDKITE_STEP_KEY")
     rayci_select = os.environ.get("RAYCI_SELECT")
-    if step_key and rayci_select and step_key not in rayci_select:
+    selected_step_keys = (
+        {key.strip() for key in rayci_select.split(",")} if rayci_select else set()
+    )
+    if step_key and selected_step_keys and step_key not in selected_step_keys:
         return
     subprocess.run(
         [
