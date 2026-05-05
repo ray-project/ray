@@ -80,6 +80,19 @@ external_toc_path = "_toc.yml"
 
 html_extra_path = ["robots.txt"]
 
+# Set the canonical base URL to the version's published path on docs.ray.io.
+# Without this, sphinx-sitemap falls back to Read the Docs' internal hostname
+# and produces sitemap.xml entries like
+#   https://anyscale-ray.readthedocs-hosted.com/en/latest/en/2.0.0/<page>
+# instead of the public docs.ray.io URLs.
+html_baseurl = "https://docs.ray.io/en/releases-2.0.0/"
+
+# `html_baseurl` already encodes the language and version path, so override
+# sphinx-sitemap's default `{lang}{version}{link}` scheme to just `{link}`.
+# Otherwise the extension prepends the language again, producing doubled
+# paths in the sitemap.
+sitemap_url_scheme = "{link}"
+
 
 # There's a flaky autodoc import for "TensorFlowVariables" that fails depending on the doc structure / order
 # of imports.

@@ -41,6 +41,12 @@ git+https://github.com/ray-project/ray_lightning@6aed848f757a03c03166c1a9bddfeea
 # Syntax highlighting
 Pygments==2.11.2
 
+# Pin setuptools below 81 so `pkg_resources` is still available for
+# sphinxemoji 0.2.0, which imports it at module load. setuptools 81+
+# removed pkg_resources, breaking the docs build on Read the Docs'
+# current build images. Backport of ray-project/ray#60887.
+setuptools<81
+
 # Sphinx
 sphinx==4.3.2
 sphinx-click==3.0.2
