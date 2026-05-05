@@ -86,83 +86,8 @@ _TEMPLATES_CI_BASE = "https://templates.ci.ray.io"
 _TEMPLATE_CHANNEL_API = _TEMPLATES_CI_BASE + "/templates/{name}/latest/channel.json"
 
 _TEMPLATE_COLLECTIONS = {
-    "asynchronous_inference": {
-        "target": "serve/tutorials/asynchronous-inference",
-    },
-    "audio-dataset-curation-llm-judge": {
-        "target": "ray-overview/examples/e2e-audio",
-    },
-    "deepspeed_finetune": {
-        "target": "train/examples/pytorch/deepspeed_finetune",
-    },
     "deployment-serve-llm": {
         "target": "serve/tutorials/deployment-serve-llm",
-    },
-    "distributing-pytorch": {
-        "target": "train/examples/pytorch/distributing-pytorch",
-    },
-    "e2e-rag-deepdive": {
-        "target": "ray-overview/examples/e2e-rag",
-    },
-    "e2e-timeseries-forecasting": {
-        "target": "ray-overview/examples/e2e-timeseries",
-    },
-    "entity-recognition-with-llms": {
-        "target": "ray-overview/examples/entity-recognition-with-llms",
-    },
-    "image-search-and-classification": {
-        "target": "ray-overview/examples/e2e-multimodal-ai-workloads",
-    },
-    "llm_batch_inference_text": {
-        "target": "data/examples/llm_batch_inference_text",
-    },
-    "llm_batch_inference_vision": {
-        "target": "data/examples/llm_batch_inference_vision",
-    },
-    "langchain-agent-ray-serve": {
-        "target": "ray-overview/examples/langchain_agent_ray_serve/content",
-    },
-    "llm_finetuning": {
-        "target": "ray-overview/examples/llamafactory-llm-fine-tune",
-    },
-    "multi_agent_a2a": {
-        "target": "ray-overview/examples/multi_agent_a2a",
-    },
-    "mcp-ray-serve": {
-        "target": "ray-overview/examples/mcp-ray-serve",
-    },
-    "model-composition-recsys": {
-        "target": "serve/tutorials/model-composition-recsys",
-    },
-    "model-multiplexing": {
-        "target": "serve/tutorials/model_multiplexing_forecast",
-    },
-    "object-detection-video-processing": {
-        "target": "ray-overview/examples/object-detection",
-    },
-    "ray_train_workloads": {
-        "target": "train/tutorials",
-    },
-    "pytorch-fsdp": {
-        "target": "train/examples/pytorch/pytorch-fsdp",
-    },
-    "pytorch-profiling": {
-        "target": "train/examples/pytorch/pytorch-profiling",
-    },
-    "tensor_parallel_autotp": {
-        "target": "train/examples/pytorch/tensor_parallel_autotp",
-    },
-    "tensor_parallel_dtensor": {
-        "target": "train/examples/pytorch/tensor_parallel_dtensor",
-    },
-    "tune_pytorch_asha": {
-        "target": "tune/examples/tune_pytorch_asha",
-    },
-    "unstructured_data_ingestion": {
-        "target": "data/examples/unstructured_data_ingestion",
-    },
-    "xgboost-training-and-serving": {
-        "target": "ray-overview/examples/e2e-xgboost",
     },
 }
 
@@ -411,57 +336,9 @@ exclude_patterns = [
     # Legacy/backward compatibility
     "ray-overview/examples/**/README.md",
     "train/examples/**/README.md",
-    # Each template ships README.md + README.ipynb at the same docname; keep
-    # only the .md and exclude the duplicate .ipynb at the template root and
-    # in any sub-template directories. The template root README.md is the
-    # actual content page that toctrees / examples.yml refer to.
-    *[
-        pattern
-        for coll in _TEMPLATE_COLLECTIONS.values()
-        for pattern in (
-            f"_collections/{coll['target']}/README.ipynb",
-            f"_collections/{coll['target']}/**/README.ipynb",
-        )
-    ],
-    # ray_train_workloads bundles sub-folder READMEs that aren't part of any
-    # toctree (only the notebooks are). Exclude them to avoid orphan warnings.
-    "_collections/train/tutorials/**/README.*",
-    # Sidecar README.md files in fetched template dirs duplicate the canonical
-    # notebook that the gallery / toctree already links to. Exclude to avoid
-    # orphan warnings without losing reachable content.
-    "_collections/serve/tutorials/asynchronous-inference/README.md",
-    "_collections/tune/examples/tune_pytorch_asha/README.md",
-    # deployment-serve-llm top README is an umbrella overview; the size
-    # variants (small/medium/large/...) are what the gallery links to.
-    # Matches the legacy in-tree handling from #59980.
     "_collections/serve/tutorials/deployment-serve-llm/README.*",
-    # llamafactory: master excludes the in-tree paths only, but this branch
-    # also pulls a copy via sphinx-collections (see _TEMPLATE_COLLECTIONS).
-    # Mirror the in-tree patterns under _collections/ so the fetched copy
-    # is suppressed too. The template has no landing page on docs.ray.io.
-    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/README.*",
-    "_collections/ray-overview/examples/llamafactory-llm-fine-tune/**/*.ipynb",
-    # TODO(@elliot-barn): Remove the patterns below once the in-tree template
-    # directories are deleted in the follow-up PR. The bulk-sync branch
-    # repointed examples.yml + toctrees at /_collections/... so the in-tree
-    # copies restored by the revert are duplicates and orphan-warn until they
-    # are removed.
-    "ray-overview/examples/*/README.ipynb",
-    "ray-overview/examples/*/content/README.ipynb",
-    "serve/tutorials/deployment-serve-llm/content/*/README.ipynb",
-    "serve/tutorials/asynchronous-inference/content/*.ipynb",
-    "train/tutorials/content/README.md",
-    "tune/examples/tune_pytorch_asha/content/*.ipynb",
-    # Numbered child notebooks of the excluded in-tree READMEs above. Their
-    # parent README's embedded {toctree} no longer fires (README is excluded),
-    # so the children orphan-warn until the in-tree directories are deleted.
-    "ray-overview/examples/e2e-multimodal-ai-workloads/notebooks/*.ipynb",
-    "ray-overview/examples/e2e-rag/notebooks/*.ipynb",
-    "ray-overview/examples/e2e-timeseries/e2e_timeseries/*.ipynb",
-    "ray-overview/examples/e2e-xgboost/notebooks/*.ipynb",
-    "ray-overview/examples/mcp-ray-serve/*.ipynb",
-    "ray-overview/examples/object-detection/*.ipynb",
-    "train/tutorials/content/workload-patterns/*.ipynb",
+    "_collections/serve/tutorials/deployment-serve-llm/*.ipynb",
+    "_collections/serve/tutorials/deployment-serve-llm/**/*.ipynb",
 ] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.

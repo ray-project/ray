@@ -355,6 +355,17 @@ class Learner(Checkpointable):
         self._log_trainable_parameters()
         self._is_built = True
 
+    @OverrideToImplementCustomLogic
+    def shutdown(self) -> None:
+        """Releases resources held by this Learner.
+
+        Subclasses that own background threads (e.g. IMPALA's `_LearnerThread`)
+        should override this to stop and join those threads, so that
+        `LearnerGroup.shutdown()` can tear them down deterministically.
+
+        The default implementation is a no-op.
+        """
+
     @property
     def distributed(self) -> bool:
         """Whether the learner is running in distributed mode."""
