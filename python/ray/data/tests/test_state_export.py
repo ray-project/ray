@@ -1,7 +1,7 @@
 import json
 import os
-from dataclasses import asdict, dataclass
-from typing import Tuple
+from dataclasses import asdict, dataclass, field
+from typing import Any, Dict, List, Tuple
 
 import pytest
 
@@ -87,21 +87,26 @@ class TestDataclass:
         self.tuple_field = (1, 2, 3)
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class DummyLogicalOperator(LogicalOperator):
     """A dummy logical operator for testing _get_logical_args with various data types."""
 
-    def __init__(self, input_op=None):
-        super().__init__(input_dependencies=[], name="DummyOperator")
-
-        # Test various data types that might be returned by _get_logical_args
-        self._string_value = "test_string"
-        self._int_value = 42
-        self._float_value = 3.14
-        self._bool_value = True
-        self._none_value = None
-        self._list_value = [1, 2, 3, "string", None]
-        self._dict_value = {"key1": "value1", "key2": 123, "key3": None}
-        self._nested_dict = {
+    _name: str = field(init=False, default="DummyOperator", repr=False)
+    _input_dependencies: List[LogicalOperator] = field(
+        init=False, default_factory=list, repr=False
+    )
+    _num_outputs: None = field(init=False, default=None, repr=False)
+    _string_value: str = "test_string"
+    _int_value: int = 42
+    _float_value: float = 3.14
+    _bool_value: bool = True
+    _none_value: None = None
+    _list_value: List[Any] = field(default_factory=lambda: [1, 2, 3, "string", None])
+    _dict_value: Dict[str, Any] = field(
+        default_factory=lambda: {"key1": "value1", "key2": 123, "key3": None}
+    )
+    _nested_dict: Dict[str, Any] = field(
+        default_factory=lambda: {
             "level1": {
                 "level2": {
                     "level3": "deep_value",
@@ -110,21 +115,30 @@ class DummyLogicalOperator(LogicalOperator):
                 }
             }
         }
-        self._tuple_value = (1, "string", None, 3.14)
-        self._set_value = {1}
-        self._bytes_value = b"binary_data"
-        self._complex_dict = {
+    )
+    _tuple_value: Tuple[Any, ...] = (1, "string", None, 3.14)
+    _set_value: set = field(default_factory=lambda: {1})
+    _bytes_value: bytes = b"binary_data"
+    _complex_dict: Dict[str, Any] = field(
+        default_factory=lambda: {
             "string_keys": {"a": 1, "b": 2},
-            "int_keys": {1: "one", 2: "two"},  # This should cause issues if not handled
+            "int_keys": {
+                1: "one",
+                2: "two",
+            },  # This should cause issues if not handled
             "mixed_keys": {"str": "value", 1: "int_key", None: "none_key"},
         }
-        self._empty_containers = {
+    )
+    _empty_containers: Dict[str, Any] = field(
+        default_factory=lambda: {
             "empty_list": [],
             "empty_dict": {},
             "empty_tuple": (),
             "empty_set": set(),
         }
-        self._special_values = {
+    )
+    _special_values: Dict[str, Any] = field(
+        default_factory=lambda: {
             "zero": 0,
             "negative": -1,
             "large_int": 999999999999999999,
@@ -133,8 +147,12 @@ class DummyLogicalOperator(LogicalOperator):
             "neg_inf": float("-inf"),
             "nan": float("nan"),
         }
+    )
+    _data_class: TestDataclass = field(default_factory=TestDataclass)
 
-        self._data_class = TestDataclass()
+    @property
+    def num_outputs(self):
+        return self._num_outputs
 
 
 @pytest.fixture

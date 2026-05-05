@@ -22,8 +22,10 @@
 #include "ray/common/asio/fake_periodical_runner.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/status.h"
 #include "ray/pubsub/gcs_publisher.h"
 #include "ray/pubsub/publisher.h"
+#include "src/ray/protobuf/gcs_service.pb.h"
 
 namespace ray {
 namespace gcs {
@@ -32,6 +34,7 @@ class PubSubHandlerTest : public ::testing::Test {
  public:
   PubSubHandlerTest() {
     fake_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
+    fake_obs_periodical_runner_ = std::make_unique<FakePeriodicalRunner>();
 
     // Create a publisher with specific channels (matching GCS server setup).
     auto inner_publisher = std::make_unique<pubsub::Publisher>(
@@ -41,10 +44,7 @@ class PubSubHandlerTest : public ::testing::Test {
             rpc::ChannelType::GCS_JOB_CHANNEL,
             rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
             rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
-            rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL,
-            rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
-            rpc::ChannelType::RAY_LOG_CHANNEL,
-            rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
+            rpc::ChannelType::GCS_NODE_ADDRESS_AND_LIVENESS_CHANNEL},
         /*periodical_runner=*/*fake_periodical_runner_,
         /*get_time_ms=*/[]() { return 0.0; },
         /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
@@ -53,17 +53,36 @@ class PubSubHandlerTest : public ::testing::Test {
 
     gcs_publisher_ = std::make_unique<pubsub::GcsPublisher>(std::move(inner_publisher));
 
+    auto obs_inner = std::make_unique<pubsub::Publisher>(
+        /*channels=*/
+        std::vector<rpc::ChannelType>{rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
+                                      rpc::ChannelType::RAY_LOG_CHANNEL,
+                                      rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL},
+        /*periodical_runner=*/*fake_obs_periodical_runner_,
+        /*get_time_ms=*/[]() { return 0.0; },
+        /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
+        /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
+        /*publisher_id=*/NodeID::FromRandom());
+
+    observability_publisher_ =
+        std::make_unique<pubsub::ObservabilityPublisher>(std::move(obs_inner));
+
     pubsub_handler_ =
-        std::make_unique<InternalPubSubHandler>(io_service_, *gcs_publisher_);
+        std::make_unique<ControlPlanePubSubHandler>(io_service_, *gcs_publisher_);
+    observability_pubsub_handler_ = std::make_unique<ObservabilityPubSubHandler>(
+        io_service_, *observability_publisher_);
   }
 
  protected:
-  std::unique_ptr<InternalPubSubHandler> pubsub_handler_;
+  std::unique_ptr<ControlPlanePubSubHandler> pubsub_handler_;
+  std::unique_ptr<ObservabilityPubSubHandler> observability_pubsub_handler_;
 
  private:
   instrumented_io_context io_service_;
   std::unique_ptr<FakePeriodicalRunner> fake_periodical_runner_;
+  std::unique_ptr<FakePeriodicalRunner> fake_obs_periodical_runner_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
 };
 
 TEST_F(PubSubHandlerTest, HandleGcsSubscriberCommandBatchInvalidChannelType) {
@@ -146,10 +165,84 @@ TEST_F(
   ASSERT_TRUE(received_status.IsInvalidArgument());
 }
 
+TEST_F(PubSubHandlerTest, HandleReportJobErrorPublishesToSubscribedErrorChannel) {
+  const auto subscriber_id = UniqueID::FromRandom();
+  const JobID job_id = JobID::FromInt(42);
+
+  rpc::GcsSubscriberCommandBatchRequest sub_req;
+  sub_req.set_subscriber_id(subscriber_id.Binary());
+  auto *cmd = sub_req.add_commands();
+  cmd->set_channel_type(rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  cmd->mutable_subscribe_message();
+
+  rpc::GcsSubscriberCommandBatchReply sub_reply;
+  Status sub_status;
+  observability_pubsub_handler_->HandleGcsSubscriberCommandBatch(
+      sub_req,
+      &sub_reply,
+      [&sub_status](const Status &status, std::function<void()>, std::function<void()>) {
+        sub_status = status;
+      });
+  ASSERT_TRUE(sub_status.ok()) << sub_status;
+
+  rpc::ReportJobErrorRequest err_req;
+  err_req.mutable_job_error()->set_job_id(job_id.Binary());
+  err_req.mutable_job_error()->set_error_message("test job error");
+
+  rpc::ReportJobErrorReply err_reply;
+  Status err_status;
+  observability_pubsub_handler_->HandleReportJobError(
+      err_req,
+      &err_reply,
+      [&err_status](const Status &status, std::function<void()>, std::function<void()>) {
+        err_status = status;
+      });
+  ASSERT_TRUE(err_status.ok()) << err_status;
+  EXPECT_EQ(StatusCode(err_reply.status().code()), StatusCode::OK);
+
+  rpc::GcsSubscriberPollRequest poll_req;
+  poll_req.set_subscriber_id(subscriber_id.Binary());
+  poll_req.set_max_processed_sequence_id(0);
+  rpc::GcsSubscriberPollReply poll_reply;
+  Status poll_status;
+  observability_pubsub_handler_->HandleGcsSubscriberPoll(
+      poll_req,
+      &poll_reply,
+      [&poll_status](const Status &status, std::function<void()>, std::function<void()>) {
+        poll_status = status;
+      });
+  ASSERT_TRUE(poll_status.ok()) << poll_status;
+  ASSERT_EQ(poll_reply.pub_messages_size(), 1);
+  const auto &msg = poll_reply.pub_messages(0);
+  EXPECT_EQ(msg.channel_type(), rpc::ChannelType::RAY_ERROR_INFO_CHANNEL);
+  EXPECT_EQ(msg.key_id(), job_id.Hex());
+  EXPECT_EQ(msg.error_info_message().error_message(), "test job error");
+}
+
+TEST_F(PubSubHandlerTest, HandleReportJobErrorRejectsInvalidJobIdLength) {
+  rpc::ReportJobErrorRequest err_req;
+  err_req.mutable_job_error()->set_job_id("");
+  err_req.mutable_job_error()->set_error_message("x");
+
+  rpc::ReportJobErrorReply err_reply;
+  Status err_status;
+  observability_pubsub_handler_->HandleReportJobError(
+      err_req,
+      &err_reply,
+      [&err_status](const Status &status, std::function<void()>, std::function<void()>) {
+        err_status = status;
+      });
+  ASSERT_TRUE(err_status.IsInvalidArgument()) << err_status;
+
+  err_req.mutable_job_error()->set_job_id("short");
+  observability_pubsub_handler_->HandleReportJobError(
+      err_req,
+      &err_reply,
+      [&err_status](const Status &status, std::function<void()>, std::function<void()>) {
+        err_status = status;
+      });
+  ASSERT_TRUE(err_status.IsInvalidArgument()) << err_status;
+}
+
 }  // namespace gcs
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

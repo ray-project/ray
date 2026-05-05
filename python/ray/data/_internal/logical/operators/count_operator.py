@@ -1,3 +1,6 @@
+from dataclasses import dataclass, field
+from typing import Optional
+
 from ray.data._internal.logical.interfaces import LogicalOperator
 
 __all__ = [
@@ -5,6 +8,7 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class Count(LogicalOperator):
     """Logical operator that represents counting the number of rows in inputs.
 
@@ -15,8 +19,12 @@ class Count(LogicalOperator):
 
     COLUMN_NAME = "__num_rows"
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-    ):
-        super().__init__(input_dependencies=[input_op])
+    input_dependencies: list[LogicalOperator] = field(repr=False, kw_only=True)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+
+    @property
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs

@@ -268,7 +268,7 @@ def test_worker_thread_count(monkeypatch, shutdown_only):
         ray.get(actor.get_thread_count.remote())
     # Lowering these numbers in this assert should be celebrated,
     # increasing these numbers should be scrutinized
-    assert ray.get(actor.get_thread_count.remote()) in {21, 22, 23}
+    assert ray.get(actor.get_thread_count.remote()) in {20, 21, 22, 23}
 
 
 # https://github.com/ray-project/ray/issues/7287
@@ -603,13 +603,7 @@ print("task check", ray.get(check.remote()))
 print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
 """
 
-    run_string_as_driver(
-        not_override_check_script,
-        dict(
-            os.environ,
-            **{"RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO": "0"},
-        ),
-    )
+    run_string_as_driver(not_override_check_script)
 
     override_check_script = """
 import ray
@@ -631,7 +625,13 @@ print("task check", ray.get(check.remote()))
 print("actor check", ray.get(Actor.options(num_gpus=0).remote().check.remote()))
 """
 
-    run_string_as_driver(override_check_script)
+    run_string_as_driver(
+        override_check_script,
+        dict(
+            os.environ,
+            **{"RAY_ACCEL_ENV_VAR_OVERRIDE_ON_ZERO": "1"},
+        ),
+    )
 
 
 def test_put_get(shutdown_only):

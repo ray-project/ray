@@ -52,7 +52,8 @@ void NodeInfoGrpcService::InitServerCallFactories(
                                   max_active_rpcs_per_handler_,
                                   ClusterIdAuthType::EMPTY_AUTH);
   RPC_SERVICE_HANDLER(NodeInfoGcsService, RegisterNode, max_active_rpcs_per_handler_)
-  RPC_SERVICE_HANDLER(NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER_WITH_GRPC_PEER(
+      NodeInfoGcsService, UnregisterNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, DrainNode, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(NodeInfoGcsService, GetAllNodeInfo, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
@@ -75,16 +76,34 @@ void NodeResourceInfoGrpcService::InitServerCallFactories(
       NodeResourceInfoGcsService, GetAllResourceUsage, max_active_rpcs_per_handler_)
 }
 
-void InternalPubSubGrpcService::InitServerCallFactories(
+void ControlPlanePubSubGrpcService::InitServerCallFactories(
     const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
     std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
     const ClusterID &cluster_id,
     std::shared_ptr<const AuthenticationToken> auth_token) {
-  RPC_SERVICE_HANDLER(InternalPubSubGcsService, GcsPublish, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
-      InternalPubSubGcsService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
+      ControlPlanePubSubGcsService, GcsPublish, max_active_rpcs_per_handler_);
   RPC_SERVICE_HANDLER(
-      InternalPubSubGcsService, GcsSubscriberCommandBatch, max_active_rpcs_per_handler_);
+      ControlPlanePubSubGcsService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
+  RPC_SERVICE_HANDLER(ControlPlanePubSubGcsService,
+                      GcsSubscriberCommandBatch,
+                      max_active_rpcs_per_handler_);
+}
+
+void ObservabilityPubSubGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id,
+    std::shared_ptr<const AuthenticationToken> auth_token) {
+  RPC_SERVICE_HANDLER(
+      ObservabilityPubSubService, GcsPublish, max_active_rpcs_per_handler_);
+  RPC_SERVICE_HANDLER(
+      ObservabilityPubSubService, ReportJobError, max_active_rpcs_per_handler_);
+  RPC_SERVICE_HANDLER(
+      ObservabilityPubSubService, GcsSubscriberPoll, max_active_rpcs_per_handler_);
+  RPC_SERVICE_HANDLER(ObservabilityPubSubService,
+                      GcsSubscriberCommandBatch,
+                      max_active_rpcs_per_handler_);
 }
 
 void JobInfoGrpcService::InitServerCallFactories(
@@ -95,7 +114,6 @@ void JobInfoGrpcService::InitServerCallFactories(
   RPC_SERVICE_HANDLER(JobInfoGcsService, AddJob, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, MarkJobFinished, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, GetAllJobInfo, max_active_rpcs_per_handler_)
-  RPC_SERVICE_HANDLER(JobInfoGcsService, ReportJobError, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(JobInfoGcsService, GetNextJobID, max_active_rpcs_per_handler_)
 }
 
@@ -166,9 +184,12 @@ void PlacementGroupInfoGrpcService::InitServerCallFactories(
       PlacementGroupInfoGcsService, GetNamedPlacementGroup, max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       PlacementGroupInfoGcsService, GetAllPlacementGroup, max_active_rpcs_per_handler_)
-  RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService,
-                      WaitPlacementGroupUntilReady,
-                      max_active_rpcs_per_handler_)
+  // WaitPlacementGroupUntilReady (pg.ready()) must stay uncapped (-1). Otherwise,
+  // We may have a deadlock on it since the PG scheduling order may differ from the client
+  // pg.ready() order. Example: cap=2, client waits for PG A, B, C to be ready. Only
+  // Wait(A) and Wait(B) are active; Wait(C) stays queued until A or B completes. If A and
+  // B never become ready, Wait(C) is never handled even if C is already scheduled.
+  RPC_SERVICE_HANDLER(PlacementGroupInfoGcsService, WaitPlacementGroupUntilReady, -1)
 }
 
 namespace autoscaler {
@@ -189,7 +210,10 @@ void AutoscalerStateGrpcService::InitServerCallFactories(
                       max_active_rpcs_per_handler_)
   RPC_SERVICE_HANDLER(
       AutoscalerStateService, GetClusterStatus, max_active_rpcs_per_handler_)
-  RPC_SERVICE_HANDLER(AutoscalerStateService, DrainNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER_WITH_GRPC_PEER(
+      AutoscalerStateService, DrainNode, max_active_rpcs_per_handler_)
+  RPC_SERVICE_HANDLER(
+      AutoscalerStateService, ResizeRayletResourceInstances, max_active_rpcs_per_handler_)
 }
 
 }  // namespace autoscaler
@@ -205,6 +229,36 @@ void RayEventExportGrpcService::InitServerCallFactories(
 }
 
 }  // namespace events
+
+void HealthCheckGrpcService::InitServerCallFactories(
+    const std::unique_ptr<grpc::ServerCompletionQueue> &cq,
+    std::vector<std::unique_ptr<ServerCallFactory>> *server_call_factories,
+    const ClusterID &cluster_id,
+    std::shared_ptr<const AuthenticationToken> auth_token) {
+  // Manually construct the ServerCallFactory for the health check proto.
+  // We can't use the RPC_SERVICE_HANDLER macro because the health proto's naming
+  // conventions differ from Ray's (HealthCheckRequest/HealthCheckResponse vs
+  // CheckRequest/CheckReply).
+  std::unique_ptr<ServerCallFactory> Check_call_factory(
+      new ServerCallFactoryImpl<grpc::health::v1::Health,
+                                HealthCheckGrpcService,
+                                grpc::health::v1::HealthCheckRequest,
+                                grpc::health::v1::HealthCheckResponse,
+                                ClusterIdAuthType::NO_AUTH,
+                                false>(
+          service_,
+          &grpc::health::v1::Health::AsyncService::RequestCheck,
+          *this,
+          &HealthCheckGrpcService::HandleCheck,
+          cq,
+          main_service_,
+          "grpc.health.v1.Health.grpc_server.Check",
+          ClusterID::Nil(),
+          auth_token,
+          -1,
+          true));
+  server_call_factories->emplace_back(std::move(Check_call_factory));
+}
 
 }  // namespace rpc
 }  // namespace ray

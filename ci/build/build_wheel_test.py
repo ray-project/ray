@@ -9,6 +9,7 @@ from unittest import mock
 from build_wheel import (
     BuildConfig,
     BuildError,
+    main,
 )
 
 
@@ -17,58 +18,34 @@ class TestBuildConfigPlatformDetection(unittest.TestCase):
 
     def test_darwin_arm64(self):
         with mock.patch(
-            "build_wheel.platform.system", return_value="Darwin"
-        ), mock.patch("build_wheel.platform.machine", return_value="arm64"):
+            "ci.build.build_common._platform.system", return_value="Darwin"
+        ), mock.patch("ci.build.build_common._platform.machine", return_value="arm64"):
             hosttype, arch_suffix = BuildConfig._detect_platform()
         self.assertEqual((hosttype, arch_suffix), ("aarch64", "-aarch64"))
 
     def test_linux_x86_64(self):
         with mock.patch(
-            "build_wheel.platform.system", return_value="Linux"
-        ), mock.patch("build_wheel.platform.machine", return_value="x86_64"):
+            "ci.build.build_common._platform.system", return_value="Linux"
+        ), mock.patch("ci.build.build_common._platform.machine", return_value="x86_64"):
             hosttype, arch_suffix = BuildConfig._detect_platform()
         self.assertEqual((hosttype, arch_suffix), ("x86_64", ""))
 
     def test_linux_aarch64(self):
         with mock.patch(
-            "build_wheel.platform.system", return_value="Linux"
-        ), mock.patch("build_wheel.platform.machine", return_value="aarch64"):
+            "ci.build.build_common._platform.system", return_value="Linux"
+        ), mock.patch(
+            "ci.build.build_common._platform.machine", return_value="aarch64"
+        ):
             hosttype, arch_suffix = BuildConfig._detect_platform()
         self.assertEqual((hosttype, arch_suffix), ("aarch64", "-aarch64"))
 
     def test_unsupported_platform_raises(self):
         with mock.patch(
-            "build_wheel.platform.system", return_value="Windows"
-        ), mock.patch("build_wheel.platform.machine", return_value="AMD64"):
+            "ci.build.build_common._platform.system", return_value="Windows"
+        ), mock.patch("ci.build.build_common._platform.machine", return_value="AMD64"):
             with self.assertRaises(BuildError) as ctx:
                 BuildConfig._detect_platform()
         self.assertIn("Unsupported platform", str(ctx.exception))
-
-
-class TestBuildConfigParseFile(unittest.TestCase):
-    """Test _parse_file() extracts values from config files."""
-
-    def test_parses_quoted_value(self):
-        with tempfile.NamedTemporaryFile(mode="w", suffix=".env", delete=False) as f:
-            f.write('MANYLINUX_VERSION="260128.221a193"\n')
-            f.flush()
-            result = BuildConfig._parse_file(
-                Path(f.name), r'MANYLINUX_VERSION=["\']?([^"\'\s]+)'
-            )
-        self.assertEqual(result, "260128.221a193")
-
-    def test_missing_file_raises(self):
-        with self.assertRaises(BuildError) as ctx:
-            BuildConfig._parse_file(Path("/nonexistent"), r".*")
-        self.assertIn("Missing", str(ctx.exception))
-
-    def test_missing_pattern_raises(self):
-        with tempfile.NamedTemporaryFile(mode="w", delete=False) as f:
-            f.write("OTHER_VAR=value\n")
-            f.flush()
-            with self.assertRaises(BuildError) as ctx:
-                BuildConfig._parse_file(Path(f.name), r"MISSING_VAR=(\w+)")
-        self.assertIn("not found in", str(ctx.exception))
 
 
 class TestBuildConfigProperties(unittest.TestCase):
@@ -106,13 +83,13 @@ class TestBuildConfigFromEnv(unittest.TestCase):
             (ray_root / "rayci.env").write_text('MANYLINUX_VERSION="260128.221a193"')
 
             with mock.patch(
-                "build_wheel.platform.system", return_value="Linux"
+                "ci.build.build_common._platform.system", return_value="Linux"
             ), mock.patch(
-                "build_wheel.platform.machine", return_value="x86_64"
-            ), mock.patch.object(
-                BuildConfig, "_find_ray_root", return_value=ray_root
-            ), mock.patch.object(
-                BuildConfig, "_get_git_commit", return_value="abc1234"
+                "ci.build.build_common._platform.machine", return_value="x86_64"
+            ), mock.patch(
+                "build_wheel.find_ray_root", return_value=ray_root
+            ), mock.patch(
+                "build_wheel.get_git_commit", return_value="abc1234"
             ):
                 config = BuildConfig.from_env("3.11", ".whl")
 
@@ -122,6 +99,16 @@ class TestBuildConfigFromEnv(unittest.TestCase):
             self.assertEqual(config.hosttype, "x86_64")
             self.assertEqual(config.raymake_version, "0.28.0")
             self.assertEqual(config.manylinux_version, "260128.221a193")
+
+
+class TestHelpOutput(unittest.TestCase):
+    """Test that --help prints without error."""
+
+    def test_no_args_prints_help_and_exits_zero(self):
+        with mock.patch("build_wheel.sys.argv", ["build_wheel"]):
+            with self.assertRaises(SystemExit) as ctx:
+                main()
+        self.assertEqual(ctx.exception.code, 0)
 
 
 if __name__ == "__main__":

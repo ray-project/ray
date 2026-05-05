@@ -224,6 +224,54 @@ def test_default_config_cluster(ray_start_cluster_enabled):
     ray.get([task.remote() for _ in range(2)])
 
 
+def test_default_config_cluster_with_different_temp_dir(ray_start_cluster_enabled):
+    cluster = ray_start_cluster_enabled
+    nodes = []
+    nodes.append(
+        cluster.add_node(
+            num_cpus=1,
+            object_store_memory=75 * 1024 * 1024,
+            temp_dir="/tmp/spill_dir_0",
+        )
+    )
+    nodes.append(
+        cluster.add_node(
+            num_cpus=1,
+            object_store_memory=75 * 1024 * 1024,
+            temp_dir="/tmp/spill_dir_1",
+        )
+    )
+    ray.init(cluster.address)
+    cluster.wait_for_nodes()
+
+    # Make sure the spill directory is empty before running `the workload.
+    for node in nodes:
+        assert is_dir_empty(Path(node._session_dir), node.node_id)
+
+    # Run spilling workload on both nodes
+    @ray.remote
+    def task():
+        arr = np.random.rand(5 * 1024 * 1024)  # 40 MB
+        refs = []
+        refs.append([ray.put(arr) for _ in range(2)])
+        return refs
+
+    tasks = [
+        task.options(label_selector={"ray.io/node-id": node.node_id}).remote()
+        for node in nodes
+    ]
+    res = ray.get(tasks)
+    # Make sure the spill directory is not empty
+    for node in nodes:
+        wait_for_condition(
+            lambda node=node: not is_dir_empty(Path(node._session_dir), node.node_id)
+        )
+
+    # We hold the object refs until the end to prevent them from being deleted
+    # due to out of scope.
+    del res
+
+
 def test_custom_spill_dir_env_var(shutdown_only):
     os.environ["RAY_object_spilling_directory"] = "/tmp/custom_spill_dir"
     ray_context = ray.init(num_cpus=0, object_store_memory=75 * 1024 * 1024)

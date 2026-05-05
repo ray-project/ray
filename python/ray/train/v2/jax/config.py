@@ -1,7 +1,7 @@
 import logging
 import os
 from dataclasses import dataclass
-from typing import Optional
+from typing import Any, Dict, Optional
 
 import ray
 from ray._private import ray_constants
@@ -12,6 +12,7 @@ from ray.train.constants import (
     DEFAULT_JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
     JAX_DISTRIBUTED_SHUTDOWN_TIMEOUT_S,
 )
+from ray.train.v2._internal.util import TrainingFramework
 from ray.util import PublicAPI
 from ray.util.tpu import get_tpu_coordinator_env_vars, get_tpu_worker_resources
 
@@ -27,6 +28,17 @@ class JaxConfig(BackendConfig):
     @property
     def backend_cls(self):
         return _JaxBackend
+
+    @property
+    def framework(self):
+        return TrainingFramework.JAX
+
+    def to_dict(self) -> Dict[str, Any]:
+        config_dict = {
+            "use_tpu": self.use_tpu,
+            "use_gpu": self.use_gpu,
+        }
+        return config_dict
 
 
 def _setup_jax_distributed_environment(
@@ -80,11 +92,12 @@ def _setup_jax_distributed_environment(
 
     import jax
 
-    if "tpu" in jax_platforms.split(","):
+    jax_platforms_list = jax_platforms.split(",")
+
+    if "tpu" in jax_platforms_list:
         jax.distributed.initialize(master_addr_with_port, num_workers, index)
         logger.info("Initialized JAX distributed on TPU.")
-
-    if "cuda" in jax_platforms.split(","):
+    elif "cuda" in jax_platforms_list:
         if num_gpus_per_worker > 0:
             local_device_ids = list(range(num_gpus_per_worker))
         else:
@@ -93,6 +106,9 @@ def _setup_jax_distributed_environment(
             master_addr_with_port, num_workers, index, local_device_ids
         )
         logger.info("Initialized JAX distributed on CUDA.")
+    elif "cpu" in jax_platforms_list:
+        jax.distributed.initialize(master_addr_with_port, num_workers, index)
+        logger.info("Initialized JAX distributed on CPU.")
 
 
 def _shutdown_jax_distributed():

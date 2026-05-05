@@ -1,5 +1,6 @@
 import asyncio
-from typing import Dict, List, Optional
+from copy import deepcopy
+from typing import Dict, List, Optional, Tuple
 from unittest import mock
 
 import pytest
@@ -52,10 +53,19 @@ class FakeLongPollHost:
 
 # Application State Manager for dependency injection
 class FakeApplicationStateManager:
-    def __init__(self, app_statuses, route_prefixes, ingress_deployments):
+    def __init__(
+        self,
+        app_statuses,
+        route_prefixes,
+        ingress_deployments,
+        ingress_request_router_deployments=None,
+    ):
         self.app_statuses = app_statuses
         self.route_prefixes = route_prefixes
         self.ingress_deployments = ingress_deployments
+        self.ingress_request_router_deployments = (
+            ingress_request_router_deployments or {}
+        )
 
     def list_app_statuses(self):
         return self.app_statuses
@@ -66,11 +76,8 @@ class FakeApplicationStateManager:
     def get_ingress_deployment_name(self, app_name):
         return self.ingress_deployments.get(app_name, f"{app_name}_ingress")
 
-
-class FakeDeploymentReplica:
-    def __init__(self, node_id, replica_id: ReplicaID):
-        self.actor_node_id = node_id
-        self.replica_id = replica_id
+    def get_ingress_request_router_deployment_name(self, app_name):
+        return self.ingress_request_router_deployments.get(app_name)
 
 
 class FakeProxyState:
@@ -87,6 +94,8 @@ class FakeProxyStateManager:
         self._grpc_options = gRPCOptions(
             grpc_servicer_functions=["f1"],
         )
+        self._fallback_proxy_targets = {}
+        self._started_fallback_proxy = False
 
     def add_proxy_details(self, node_id, node_ip, name):
 
@@ -94,6 +103,21 @@ class FakeProxyStateManager:
             node_id=node_id,
             node_ip=node_ip,
             name=name,
+        )
+
+    def add_fallback_proxy_target(
+        self,
+        node_ip,
+        port,
+        node_instance_id,
+        actor_name,
+        protocol,
+    ):
+        self._fallback_proxy_targets[protocol] = Target(
+            ip=node_ip,
+            port=port,
+            instance_id=node_instance_id,
+            name=actor_name,
         )
 
     def get_proxy_details(self):
@@ -117,22 +141,11 @@ class FakeProxyStateManager:
     def get_grpc_config(self):
         return self._grpc_options
 
+    def get_fallback_proxy_targets(self):
+        return deepcopy(self._fallback_proxy_targets)
 
-class FakeReplicaStateContainer:
-    def __init__(self, replica_infos: List[RunningReplicaInfo]):
-        self.replica_infos = replica_infos
-
-    def get(self):
-        return [
-            FakeDeploymentReplica(replica_info.node_id, replica_info.replica_id)
-            for replica_info in self.replica_infos
-        ]
-
-
-class FakeDeploymentState:
-    def __init__(self, id, replica_infos):
-        self.id = id
-        self._replicas = FakeReplicaStateContainer(replica_infos)
+    def started_fallback_proxy_at_least_once(self):
+        return self._started_fallback_proxy
 
 
 # Deployment State Manager for dependency injection
@@ -143,13 +156,22 @@ class FakeDeploymentStateManager:
     ):
         self.running_replica_infos = running_replica_infos
 
-        self._deployment_states = {}
-        for deployment_id, replica_infos in self.running_replica_infos.items():
-            deployment_state = FakeDeploymentState(deployment_id, replica_infos)
-            self._deployment_states[deployment_id] = deployment_state
-
     def get_running_replica_infos(self):
         return self.running_replica_infos
+
+    def get_deployment_ids(self):
+        return list(self.running_replica_infos.keys())
+
+    def get_node_id_to_alive_replica_ids(self):
+        node_id_to_alive_replica_ids = {}
+        for replica_infos in self.running_replica_infos.values():
+            for replica_info in replica_infos:
+                if replica_info.node_id is None:
+                    continue
+                node_id_to_alive_replica_ids.setdefault(
+                    replica_info.node_id, set()
+                ).add(replica_info.replica_id.unique_id)
+        return node_id_to_alive_replica_ids
 
     def get_replica_details(self, replica_info: RunningReplicaInfo) -> ReplicaDetails:
         return ReplicaDetails(
@@ -174,11 +196,28 @@ class FakeDeploymentStateManager:
             status=DeploymentStatus.HEALTHY,
             status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
             message="",
-            deployment_config=mock.Mock(spec=DeploymentSchema),
+            deployment_config=DeploymentSchema(name=id.name),
             target_num_replicas=1,
             required_resources={},
             replicas=replica_details,
         )
+
+    def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
+        return []
+
+
+class FakeTestingDeploymentStateManager:
+    def __init__(self):
+        self.dumped_deployment_id = None
+        self.stopped_deployment_id = None
+        self.replica_states = object()
+
+    def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
+        self.dumped_deployment_id = deployment_id
+        return self.replica_states
+
+    def _stop_one_running_replica_for_testing(self, deployment_id: DeploymentID):
+        self.stopped_deployment_id = deployment_id
 
 
 # Test Controller that overrides methods and dependencies
@@ -198,6 +237,7 @@ class FakeDirectIngressController(ServeController):
         self.deployment_state_manager = deployment_state_manager
         self.proxy_state_manager = proxy_state_manager
         self._direct_ingress_enabled = True
+        self._ha_proxy_enabled = False
         self._controller_node_id = "head_node_id"
 
         self._shutting_down = False
@@ -205,6 +245,7 @@ class FakeDirectIngressController(ServeController):
         self.done_recovering_event.set()
 
         self.node_update_duration_gauge_s = mock.Mock()
+        self._last_broadcasted_fallback_targets = {}
 
     def _update_proxy_nodes(self):
         pass
@@ -362,7 +403,7 @@ def test_get_target_groups_with_running_apps(
         node_id="node1",
         node_ip="10.0.0.1",
         availability_zone="az1",
-        actor_name=mock.Mock(),
+        actor_name="replica1",
         max_ongoing_requests=100,
     )
     replica_info2 = RunningReplicaInfo(
@@ -370,7 +411,7 @@ def test_get_target_groups_with_running_apps(
         node_id="node2",
         node_ip="10.0.0.2",
         availability_zone="az2",
-        actor_name=mock.Mock(),
+        actor_name="replica2",
         max_ongoing_requests=100,
     )
 
@@ -421,6 +462,7 @@ def test_get_target_groups_with_running_apps(
         TargetGroup(
             protocol=RequestProtocol.HTTP,
             route_prefix="/app1",
+            app_name="app1",
             targets=[
                 Target(ip="10.0.0.1", port=http_port1, instance_id="", name="replica1"),
             ],
@@ -428,6 +470,7 @@ def test_get_target_groups_with_running_apps(
         TargetGroup(
             protocol=RequestProtocol.GRPC,
             route_prefix="/app1",
+            app_name="app1",
             targets=[
                 Target(ip="10.0.0.1", port=grpc_port1, instance_id="", name="replica1"),
             ],
@@ -435,6 +478,7 @@ def test_get_target_groups_with_running_apps(
         TargetGroup(
             protocol=RequestProtocol.HTTP,
             route_prefix="/app2",
+            app_name="app2",
             targets=[
                 Target(ip="10.0.0.2", port=http_port2, instance_id="", name="replica2"),
             ],
@@ -442,6 +486,7 @@ def test_get_target_groups_with_running_apps(
         TargetGroup(
             protocol=RequestProtocol.GRPC,
             route_prefix="/app2",
+            app_name="app2",
             targets=[
                 Target(ip="10.0.0.2", port=grpc_port2, instance_id="", name="replica2"),
             ],
@@ -464,13 +509,13 @@ def test_get_target_groups_with_running_apps(
     )
 
     # verify the ports are released
-    assert not direct_ingress_controller.is_port_allocated(
+    assert not direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             replica_info1
         ),
         RequestProtocol.HTTP,
     )
-    assert not direct_ingress_controller.is_port_allocated(
+    assert not direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             replica_info2
         ),
@@ -483,6 +528,7 @@ def test_get_target_groups_with_running_apps(
         TargetGroup(
             protocol=RequestProtocol.GRPC,
             route_prefix="/app1",
+            app_name="app1",
             targets=[
                 Target(ip="10.0.0.1", port=grpc_port1, instance_id="", name="replica1"),
             ],
@@ -490,6 +536,7 @@ def test_get_target_groups_with_running_apps(
         TargetGroup(
             protocol=RequestProtocol.HTTP,
             route_prefix="/app2",
+            app_name="app2",
             targets=[
                 Target(ip="10.0.0.2", port=http_port2, instance_id="", name="replica2"),
             ],
@@ -522,7 +569,7 @@ def test_get_target_groups_with_port_not_allocated(
         node_id="node1",
         node_ip="10.0.0.1",
         availability_zone="az1",
-        actor_name=mock.Mock(),
+        actor_name="replica1",
         max_ongoing_requests=100,
     )
     replica_info2 = RunningReplicaInfo(
@@ -530,7 +577,7 @@ def test_get_target_groups_with_port_not_allocated(
         node_id="node2",
         node_ip="10.0.0.2",
         availability_zone="az2",
-        actor_name=mock.Mock(),
+        actor_name="replica2",
         max_ongoing_requests=100,
     )
 
@@ -566,6 +613,7 @@ def test_get_target_groups_with_port_not_allocated(
         TargetGroup(
             protocol=RequestProtocol.HTTP,
             route_prefix="/app1",
+            app_name="app1",
             targets=[
                 Target(ip="10.0.0.1", port=http_port1, instance_id="", name="replica1"),
             ],
@@ -573,6 +621,7 @@ def test_get_target_groups_with_port_not_allocated(
         TargetGroup(
             protocol=RequestProtocol.GRPC,
             route_prefix="/app1",
+            app_name="app1",
             targets=[
                 Target(ip="10.0.0.1", port=grpc_port1, instance_id="", name="replica1"),
             ],
@@ -606,7 +655,7 @@ def test_get_target_groups_only_includes_ingress_deployments(
         node_id="node1",
         node_ip="10.0.0.1",
         availability_zone="az1",
-        actor_name=mock.Mock(),
+        actor_name="ingress_replica",
         max_ongoing_requests=100,
     )
 
@@ -620,7 +669,7 @@ def test_get_target_groups_only_includes_ingress_deployments(
         node_id="node2",
         node_ip="10.0.0.2",
         availability_zone="az2",
-        actor_name=mock.Mock(),
+        actor_name="regular_replica",
         max_ongoing_requests=100,
     )
 
@@ -664,6 +713,7 @@ def test_get_target_groups_only_includes_ingress_deployments(
         TargetGroup(
             protocol=RequestProtocol.HTTP,
             route_prefix="/app1",
+            app_name="app1",
             targets=[
                 Target(
                     ip="10.0.0.1",
@@ -676,6 +726,7 @@ def test_get_target_groups_only_includes_ingress_deployments(
         TargetGroup(
             protocol=RequestProtocol.GRPC,
             route_prefix="/app1",
+            app_name="app1",
             targets=[
                 Target(
                     ip="10.0.0.1",
@@ -695,30 +746,105 @@ def test_get_target_groups_only_includes_ingress_deployments(
     assert target_groups == expected_target_groups
 
     # Verify all ports are still allocated even though not all are included in target groups
-    assert direct_ingress_controller.is_port_allocated(
+    assert direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             ingress_replica_info
         ),
         RequestProtocol.HTTP,
     )
-    assert direct_ingress_controller.is_port_allocated(
+    assert direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             ingress_replica_info
         ),
         RequestProtocol.GRPC,
     )
-    assert direct_ingress_controller.is_port_allocated(
+    assert direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             regular_replica_info
         ),
         RequestProtocol.HTTP,
     )
-    assert direct_ingress_controller.is_port_allocated(
+    assert direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             regular_replica_info
         ),
         RequestProtocol.GRPC,
     )
+
+
+def test_get_target_groups_populates_ingress_request_router_targets(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    app_name = "app1"
+    route_prefix = "/app1"
+    ingress_deployment_id = DeploymentID(name="app1_ingress", app_name=app_name)
+    router_deployment_id = DeploymentID(name="app1_router", app_name=app_name)
+    ingress_replica_id = ReplicaID(
+        unique_id="ingress_replica", deployment_id=ingress_deployment_id
+    )
+    router_replica_id = ReplicaID(
+        unique_id="router_replica", deployment_id=router_deployment_id
+    )
+    ingress_replica_info = RunningReplicaInfo(
+        replica_id=ingress_replica_id,
+        node_id="node1",
+        node_ip="10.0.0.1",
+        availability_zone="az1",
+        actor_name="ingress_replica",
+        max_ongoing_requests=100,
+    )
+    router_replica_info = RunningReplicaInfo(
+        replica_id=router_replica_id,
+        node_id="node2",
+        node_ip="10.0.0.2",
+        availability_zone="az2",
+        actor_name="router_replica",
+        max_ongoing_requests=100,
+    )
+
+    direct_ingress_controller.application_state_manager = FakeApplicationStateManager(
+        app_statuses={app_name: {}},
+        route_prefixes={app_name: route_prefix},
+        ingress_deployments={app_name: ingress_deployment_id.name},
+        ingress_request_router_deployments={app_name: router_deployment_id.name},
+    )
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={
+            ingress_deployment_id: [ingress_replica_info],
+            router_deployment_id: [router_replica_info],
+        },
+    )
+
+    ingress_http_port = direct_ingress_controller.allocate_replica_port(
+        "node1", ingress_replica_id.unique_id, RequestProtocol.HTTP
+    )
+    router_http_port = direct_ingress_controller.allocate_replica_port(
+        "node2", router_replica_id.unique_id, RequestProtocol.HTTP
+    )
+
+    assert direct_ingress_controller.get_target_groups(app_name=app_name) == [
+        TargetGroup(
+            protocol=RequestProtocol.HTTP,
+            route_prefix=route_prefix,
+            app_name=app_name,
+            targets=[
+                Target(
+                    ip="10.0.0.1",
+                    port=ingress_http_port,
+                    instance_id="",
+                    name="ingress_replica",
+                )
+            ],
+            ingress_request_router_targets=[
+                Target(
+                    ip="10.0.0.2",
+                    port=router_http_port,
+                    instance_id="",
+                    name="router_replica",
+                )
+            ],
+        )
+    ]
 
 
 def test_get_target_groups_app_with_no_running_replicas(
@@ -747,7 +873,7 @@ def test_get_target_groups_app_with_no_running_replicas(
         node_id="node1",
         node_ip="10.0.0.1",
         availability_zone="az1",
-        actor_name=mock.Mock(),
+        actor_name="replica1",
         max_ongoing_requests=100,
     )
 
@@ -795,6 +921,7 @@ def test_get_target_groups_app_with_no_running_replicas(
         TargetGroup(
             protocol=RequestProtocol.HTTP,
             route_prefix="/app1",
+            app_name="app1",
             targets=[
                 Target(ip="10.0.0.1", port=http_port, instance_id="", name="replica1"),
             ],
@@ -802,6 +929,7 @@ def test_get_target_groups_app_with_no_running_replicas(
         TargetGroup(
             protocol=RequestProtocol.GRPC,
             route_prefix="/app1",
+            app_name="app1",
             targets=[
                 Target(ip="10.0.0.1", port=grpc_port, instance_id="", name="replica1"),
             ],
@@ -809,6 +937,7 @@ def test_get_target_groups_app_with_no_running_replicas(
         TargetGroup(
             protocol=RequestProtocol.HTTP,
             route_prefix="/app2",
+            app_name="app2",
             targets=[
                 Target(ip="10.0.0.1", port=8000, instance_id="", name="proxy1"),
                 Target(ip="10.0.0.2", port=8000, instance_id="", name="proxy2"),
@@ -817,6 +946,7 @@ def test_get_target_groups_app_with_no_running_replicas(
         TargetGroup(
             protocol=RequestProtocol.GRPC,
             route_prefix="/app2",
+            app_name="app2",
             targets=[
                 Target(ip="10.0.0.1", port=9000, instance_id="", name="proxy1"),
                 Target(ip="10.0.0.2", port=9000, instance_id="", name="proxy2"),
@@ -832,8 +962,7 @@ def test_get_target_groups_app_with_no_running_replicas(
     assert target_groups == expected_target_groups
 
 
-@pytest.mark.asyncio
-async def test_control_loop_pruning(
+def test_control_loop_pruning(
     direct_ingress_controller: FakeDirectIngressController,
 ):
     """Test that the controller loop properly prunes stale node port managers."""
@@ -848,7 +977,7 @@ async def test_control_loop_pruning(
         node_id="node1",
         node_ip="10.0.0.1",
         availability_zone="az1",
-        actor_name=mock.Mock(),
+        actor_name="replica1",
         max_ongoing_requests=100,
     )
     replica_info2 = RunningReplicaInfo(
@@ -856,7 +985,7 @@ async def test_control_loop_pruning(
         node_id="node1",
         node_ip="10.0.0.1",
         availability_zone="az1",
-        actor_name=mock.Mock(),
+        actor_name="replica2",
         max_ongoing_requests=100,
     )
     replica_info3 = RunningReplicaInfo(
@@ -864,7 +993,7 @@ async def test_control_loop_pruning(
         node_id="node2",
         node_ip="10.0.0.2",
         availability_zone="az2",
-        actor_name=mock.Mock(),
+        actor_name="replica3",
         max_ongoing_requests=100,
     )
 
@@ -895,19 +1024,19 @@ async def test_control_loop_pruning(
     )  # Node should be pruned
 
     # Verify ports are initially allocated
-    assert direct_ingress_controller.is_port_allocated(
+    assert direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             replica_info1
         ),
         RequestProtocol.HTTP,
     )
-    assert direct_ingress_controller.is_port_allocated(
+    assert direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             replica_info2
         ),
         RequestProtocol.HTTP,
     )
-    assert direct_ingress_controller.is_port_allocated(
+    assert direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             replica_info3
         ),
@@ -921,22 +1050,22 @@ async def test_control_loop_pruning(
     assert node3_manager.is_port_allocated("replica4", RequestProtocol.HTTP)
 
     # Call the control loop step - this should trigger port pruning
-    await direct_ingress_controller.run_control_loop_step(0, 0, 0)
+    direct_ingress_controller._maybe_update_ingress_ports()
 
     # Verify the active replicas still have their ports
-    assert direct_ingress_controller.is_port_allocated(
+    assert direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             replica_info1
         ),
         RequestProtocol.HTTP,
     )
-    assert direct_ingress_controller.is_port_allocated(
+    assert direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             replica_info2
         ),
         RequestProtocol.HTTP,
     )
-    assert direct_ingress_controller.is_port_allocated(
+    assert direct_ingress_controller._is_port_allocated(
         direct_ingress_controller.deployment_state_manager.get_replica_details(
             replica_info3
         ),
@@ -948,6 +1077,63 @@ async def test_control_loop_pruning(
         replica_id3.unique_id, RequestProtocol.HTTP
     )
     assert "node3" not in NodePortManager._node_managers  # Entire node should be pruned
+
+
+def test_control_loop_pruning_does_not_require_private_deployment_states(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    deployment_id = DeploymentID(name="app1_ingress", app_name="app1")
+    replica_id = ReplicaID(unique_id="replica1", deployment_id=deployment_id)
+    replica_info = RunningReplicaInfo(
+        replica_id=replica_id,
+        node_id="node1",
+        node_ip="10.0.0.1",
+        availability_zone="az1",
+        actor_name="replica1",
+        max_ongoing_requests=100,
+    )
+
+    direct_ingress_controller.deployment_state_manager = FakeDeploymentStateManager(
+        running_replica_infos={deployment_id: [replica_info]},
+    )
+
+    direct_ingress_controller.allocate_replica_port(
+        "node1", replica_id.unique_id, RequestProtocol.HTTP
+    )
+    direct_ingress_controller._maybe_update_ingress_ports()
+
+    assert direct_ingress_controller._is_port_allocated(
+        direct_ingress_controller.deployment_state_manager.get_replica_details(
+            replica_info
+        ),
+        RequestProtocol.HTTP,
+    )
+
+
+def test_dump_replica_states_for_testing_delegates_to_manager(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    deployment_id = DeploymentID(name="app1_ingress", app_name="app1")
+    deployment_state_manager = FakeTestingDeploymentStateManager()
+    direct_ingress_controller.deployment_state_manager = deployment_state_manager
+
+    assert (
+        direct_ingress_controller._dump_replica_states_for_testing(deployment_id)
+        is deployment_state_manager.replica_states
+    )
+    assert deployment_state_manager.dumped_deployment_id == deployment_id
+
+
+def test_stop_one_running_replica_for_testing_delegates_to_manager(
+    direct_ingress_controller: FakeDirectIngressController,
+):
+    deployment_id = DeploymentID(name="app1_ingress", app_name="app1")
+    deployment_state_manager = FakeTestingDeploymentStateManager()
+    direct_ingress_controller.deployment_state_manager = deployment_state_manager
+
+    direct_ingress_controller._stop_one_running_replica_for_testing(deployment_id)
+
+    assert deployment_state_manager.stopped_deployment_id == deployment_id
 
 
 if __name__ == "__main__":

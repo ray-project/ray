@@ -27,7 +27,7 @@ Consider this pattern when:
 
 ## Basic deployment
 
-The following example shows how to deploy with data parallel attention:
+The following example shows how to deploy with data parallel attention. Each data parallel deployment requires `num_replicas * data_parallel_size * tensor_parallel_size` GPUs.
 
 ```{literalinclude} ../../../llm/doc_code/serve/multi_gpu/dp_basic_example.py
 :language: python
@@ -37,7 +37,7 @@ The following example shows how to deploy with data parallel attention:
 
 ## Production YAML configuration
 
-For production deployments, use a YAML configuration file:
+For production deployments, use a declarative YAML configuration file:
 
 ```yaml
 applications:
@@ -48,46 +48,45 @@ applications:
     llm_config:
       model_loading_config:
         model_id: Qwen/Qwen2.5-0.5B-Instruct
+      deployment_config:
+        num_replicas: 2
       engine_kwargs:
         data_parallel_size: 4
         tensor_parallel_size: 2
-      experimental_configs:
-        dp_size_per_node: 4
 ```
 
-Deploy with:
+Deploy with CLI:
 
 ```bash
 serve deploy dp_config.yaml
 ```
 
-:::{note}
-The `num_replicas` in `deployment_config` must equal `data_parallel_size` in `engine_kwargs`. Autoscaling is not supported for data parallel attention deployments since all replicas must be present and coordinated.
-:::
-
 ## Configuration parameters
 
 ### Required parameters
 
-- `data_parallel_size`: Number of data parallel replicas to create. Must be a positive integer.
-- `dp_size_per_node`: Number of DP replicas per node. Must be set in `experimental_configs`. This controls how replicas are distributed across nodes. This is a temporary required config that we will remove in future versions. 
+- `data_parallel_size`: Number of data parallel replicas within a data parallel group. Must be a positive integer and passed in via `engine_kwargs`.
 
 ### Deployment configuration
 
-- `num_replicas`: Must be set to `data_parallel_size`. Data parallel attention requires a fixed number of replicas.
-- `placement_group_strategy`: Automatically set to `"STRICT_PACK"` to ensure replicas are properly placed.
+- `num_replicas`: Can be set to any positive integer, unset (defaults to 1), or `"auto"` to enable autoscaling based on request queue length.
 
-## Understanding replica coordination
+:::{note}
+Within a data parallel deployment, `num_replicas` under the `deployment_config` refers to the number of data parallel groups, which translates to `num_replicas * data_parallel_size` data parallel replicas (equivalent to the number of Ray serve replicas). Each data parallel replica inherently runs a vLLM data parallel server.
+:::
 
-In data parallel attention, all replicas work together as a cohesive unit:
+## Understanding data parallel replica coordination
 
-1. **Rank assignment**: Each replica receives a unique rank (0 to `dp_size-1`) from a coordinator.
+In data parallel attention, all data parallel replicas within a data parallel group work together as a cohesive unit by leveraging Ray Serve's gang scheduling capability:
+
+1. **Rank assignment**: Each replica receives a unique rank (0 to `data_parallel_size-1`) from Ray Serve's controller to start a vLLM data parallel server.
 2. **Request distribution**: Ray Serve's request router distributes requests across replicas using load balancing.
-3. **Collective operations**: Replicas coordinate for collective operations (e.g., all-reduce) required by the model.
-4. **Synchronization**: All replicas must be present and healthy for the deployment to function correctly.
+3. **Collective operations**: Replicas coordinate for collective operations (e.g., all-reduce, dispatch and combine) required by the model.
+4. **Synchronization**: All data parallel replicas in a data parallel group must be present and healthy. MoE layers use all-to-all collectives to route tokens to experts across DP ranks. If any data parallel replica is unavailable, these collectives hang and tokens can't reach experts assigned to that rank.
+5. **Fault tolerance**: If any data parallel replica in a data parallel group fails, the entire group becomes unavailable because the remaining replicas can't complete collective operations. While Ray Serve controller detects the failure and restarts the entire group, other data parallel groups keep serving requests without any downtime if `num_replicas > 1`.
 
-The coordination overhead is minimal:
-- **Startup**: Each replica makes one RPC call to get its rank.
+There's no coordination overhead introduced by Ray Serve LLM:
+- **Startup**: Data parallel ranks are assigned when Ray Serve's controller creates the data parallel replica.
 - **Runtime**: No coordination overhead during request processing.
 
 For more details, see {doc}`../architecture/serving-patterns/data-parallel`.
@@ -149,7 +148,7 @@ The following example shows a complete, functional deployment:
 This configuration creates:
 - **Prefill phase**: 2 data parallel replicas for processing input prompts
 - **Decode phase**: 2 data parallel replicas for generating tokens
-- **PDProxyServer**: Coordinates requests between prefill and decode phases
+- **PDDecodeServer**: Orchestrates remote prefill then runs local decode
 - **OpenAI ingress**: Provides OpenAI-compatible API endpoints
 
 This allows you to:

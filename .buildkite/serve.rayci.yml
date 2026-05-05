@@ -1,19 +1,20 @@
 group: serve tests
 depends_on:
   - forge
-  - oss-ci-base_build-multipy
-  - ray-core-build
+  - oss-ci-base_build-multipy(*)
+  - ray-core-build(*)
   - ray-dashboard-build
 steps:
   # builds
   - name: servebuild-multipy
-    label: "wanda: servebuild-py{{matrix}}"
+    label: "wanda: servebuild-py{{array.python}}"
     wanda: ci/docker/serve.build.wanda.yaml
-    matrix:
-      - "3.10"
-      - "3.12"
+    array:
+      python:
+        - "3.10"
+        - "3.12"
     env:
-      PYTHON: "{{matrix}}"
+      PYTHON: "{{array.python}}"
     tags: cibase
 
 
@@ -21,16 +22,15 @@ steps:
     wanda: ci/docker/servetracing.build.wanda.yaml
 
   - name: minbuild-serve
-    label: "wanda: minbuild-{{matrix.extra}}-py{{matrix.python}}"
+    label: "wanda: minbuild-{{array.extra}}-py{{array.python}}"
     wanda: ci/docker/min.build.wanda.yaml
-    depends_on: oss-ci-base_test-multipy
-    matrix:
-      setup:
-        python: ["3.10"]
-        extra: ["serve", "default"]
+    depends_on: oss-ci-base_test-multipy(python=3.10)
+    array:
+      python: ["3.10"]
+      extra: ["serve", "default"]
     env:
-      PYTHON_VERSION: "{{matrix.python}}"
-      EXTRA_DEPENDENCY: "{{matrix.extra}}"
+      PYTHON_VERSION: "{{array.python}}"
+      EXTRA_DEPENDENCY: "{{array.extra}}"
     tags: cibase
 
   # tests
@@ -45,7 +45,7 @@ steps:
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress,haproxy
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --python-version 3.10
-    depends_on: servebuild-multipy
+    depends_on: servebuild-multipy(python=3.10)
 
   - label: ":ray-serve: serve: gRPC tests"
     parallelism: 2
@@ -57,7 +57,7 @@ steps:
         --build-name servebuild-py3.10 --python-version 3.10
         --test-env=RAY_SERVE_USE_GRPC_BY_DEFAULT=1
         --test-env=RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH=10500000
-    depends_on: servebuild-multipy
+    depends_on: servebuild-multipy(python=3.10)
     tags:
       - serve
 
@@ -75,9 +75,10 @@ steps:
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --build-name servebuild-py3.10 --test-env=EXPECTED_PYTHON_VERSION=3.10 --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
         --python-version 3.10
-    depends_on: servebuild-multipy
+    depends_on: servebuild-multipy(python=3.10)
 
-  - label: ":ray-serve: serve: python {{matrix.python}} tests ({{matrix.worker_id}})"
+  - label: ":ray-serve: serve: python {{array.python}} tests ({{array.worker_id}})"
+    key: serve_python_tests
     if: build.pull_request.labels includes "continuous-build" || pipeline.id == "0189e759-8c96-4302-b6b5-b4274406bf89" || pipeline.id == "018f4f1e-1b73-4906-9802-92422e3badaa"
     tags:
       - serve
@@ -86,14 +87,13 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/serve/... //python/ray/tests/...  serve
         --except-tags post_wheel_build,gpu,ha_integration,serve_tracing,direct_ingress,haproxy
-        --workers 2 --worker-id {{matrix.worker_id}} --parallelism-per-worker 3
-        --python-version {{matrix.python}}
-        --test-env=EXPECTED_PYTHON_VERSION={{matrix.python}}
-    depends_on: servebuild-multipy
-    matrix:
-      setup:
-        python: ["3.12"]
-        worker_id: ["0", "1"]
+        --workers 2 --worker-id {{array.worker_id}} --parallelism-per-worker 3
+        --python-version {{array.python}}
+        --test-env=EXPECTED_PYTHON_VERSION={{array.python}}
+    depends_on: servebuild-multipy($)
+    array:
+      python: ["3.12"]
+      worker_id: ["0", "1"]
 
   - label: ":ray-serve: serve: release tests"
     tags:
@@ -105,7 +105,7 @@ steps:
       - bazel run //ci/ray_ci:test_in_docker -- //release/... serve --parallelism-per-worker 3
         --build-name servebuild-py3.10
         --python-version 3.10
-    depends_on: servebuild-multipy
+    depends_on: servebuild-multipy(python=3.10)
 
   - label: ":ray-serve: serve: wheel tests"
     tags:
@@ -122,9 +122,9 @@ steps:
         --python-version 3.10
     depends_on:
       - manylinux-x86_64
-      - servebuild-multipy
+      - servebuild-multipy(python=3.10)
       - forge
-      - ray-wheel-build
+      - ray-wheel-build(python=3.10)
 
   - label: ":ray-serve: serve: doc tests"
     tags:
@@ -145,7 +145,7 @@ steps:
         --skip-ray-installation
         --build-name servebuild-py3.10
         --python-version 3.10
-    depends_on: servebuild-multipy
+    depends_on: servebuild-multipy(python=3.10)
 
   - label: ":ray-serve: serve: default minimal"
     tags:
@@ -160,7 +160,7 @@ steps:
         --python-version 3.10
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
-    depends_on: minbuild-serve
+    depends_on: minbuild-serve(python=3.10, extra=default)
 
   - label: ":ray-serve: serve: serve minimal"
     tags:
@@ -176,7 +176,7 @@ steps:
         --test-env=EXPECTED_PYTHON_VERSION=3.10
         --test-env=RAY_DEFAULT=1
         --only-tags minimal
-    depends_on: minbuild-serve
+    depends_on: minbuild-serve(python=3.10, extra=serve)
 
   - label: ":ray-serve: serve: dashboard tests"
     tags:
@@ -189,7 +189,7 @@ steps:
         --parallelism-per-worker 3
         --build-name servebuild-py3.10
         --python-version 3.10
-    depends_on: servebuild-multipy
+    depends_on: servebuild-multipy(python=3.10)
 
   - label: ":ray-serve: serve: HA integration tests"
     tags:
@@ -203,8 +203,8 @@ steps:
     depends_on:
       - manylinux-x86_64
       - forge
-      - raycpubase
-      - servebuild-multipy
+      - raycpubase(python=3.10)
+      - servebuild-multipy(python=3.10)
 
   - label: ":ray-serve: serve: tracing tests"
     tags:
@@ -230,9 +230,25 @@ steps:
         --test-env=RAY_SERVE_ENABLE_HA_PROXY=1
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=0
         --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
-        --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
         --test-env=SERVE_SOCKET_REUSE_PORT_ENABLED=1
-    depends_on: servebuild-multipy
+    depends_on: servebuild-multipy(python=3.10)
+
+  - label: ":ray-serve: serve: HAProxy tests (pip)"
+    parallelism: 2
+    tags:
+      - serve
+      - python
+    instance_type: large
+    commands:
+      - bazel run //ci/ray_ci:test_in_docker -- $(cat ci/ray_ci/serve_hap_test_names.txt) serve
+        --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
+        --build-name servebuild-py3.10 --python-version 3.10
+        --test-env=RAY_SERVE_ENABLE_HA_PROXY=1
+        --test-env=RAY_SERVE_EXPERIMENTAL_PIP_HAPROXY=1
+        --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=0
+        --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
+        --test-env=SERVE_SOCKET_REUSE_PORT_ENABLED=1
+    depends_on: servebuild-multipy(python=3.10)
 
   - label: ":ray-serve: serve: direct ingress tests"
     tags:
@@ -245,8 +261,7 @@ steps:
         --build-name servebuild-py3.10 --python-version 3.10
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
         --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
-        --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
-    depends_on: servebuild-multipy
+    depends_on: servebuild-multipy(python=3.10)
 
   - label: ":ray-serve: serve: direct ingress tests (same loop)"
     tags:
@@ -260,8 +275,7 @@ steps:
         --test-env=RAY_SERVE_ENABLE_DIRECT_INGRESS=1
         --test-env=RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S=0.01
         --test-env=RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
-        --test-env=RAY_SERVE_DISABLE_SHUTTING_DOWN_INGRESS_REPLICAS_FORCEFULLY=0
-    depends_on: servebuild-multipy
+    depends_on: servebuild-multipy(python=3.10)
 
   - label: ":ray-serve: serve: doc gpu tests"
     tags:
@@ -282,9 +296,9 @@ steps:
       - python
       - flaky
       - skip-on-premerge
-    instance_type: medium
+    instance_type: large
     soft_fail: true
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... serve --run-flaky-tests --parallelism-per-worker 3
         --python-version 3.10 --build-name servebuild-py3.10
-    depends_on: servebuild-multipy
+    depends_on: servebuild-multipy(python=3.10)

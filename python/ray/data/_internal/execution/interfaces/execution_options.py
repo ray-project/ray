@@ -34,8 +34,8 @@ class ExecutionResources:
         #       digit, hence we round the values here up to it
         self._cpu: Optional[float] = safe_round(cpu, 5)
         self._gpu: Optional[float] = safe_round(gpu, 5)
-        self._object_store_memory: Optional[float] = safe_round(object_store_memory)
-        self._memory: Optional[float] = safe_round(memory)
+        self._object_store_memory: Optional[float] = safe_round(object_store_memory, 0)
+        self._memory: Optional[float] = safe_round(memory, 0)
 
     @classmethod
     def from_resource_dict(
@@ -298,8 +298,9 @@ class ExecutionOptions:
         exclude_resources: Amount of resources to exclude from Ray Data.
             Set this if you have other workloads running on the same cluster.
             Note,
-            - If using Ray Data with Ray Train, training resources will be
-            automatically excluded.
+            - If using Ray Data with Ray Train, training resources are
+            automatically reserved and you don't need to set exclude_resources
+            for them.
             - For each resource type, resource_limits and exclude_resources can
             not be both set.
         preserve_order: Set this to preserve the ordering between blocks processed by
@@ -316,11 +317,22 @@ class ExecutionOptions:
         self,
         resource_limits: Optional[ExecutionResources] = None,
         exclude_resources: Optional[ExecutionResources] = None,
-        locality_with_output: Union[bool, List[NodeIdStr]] = False,
         preserve_order: bool = False,
         actor_locality_enabled: bool = True,
         verbose_progress: Optional[bool] = None,
     ):
+        """Initialize execution options.
+
+        Args:
+            resource_limits: Limit on logical resources a Dataset can use.
+                Defaults to auto-detected limits.
+            exclude_resources: Resources to exclude from Ray Data.
+            preserve_order: Whether to preserve block processing order.
+            actor_locality_enabled: Whether to enable locality-aware dispatch for
+                stateful map and streaming split operations.
+            verbose_progress: Whether to report progress per operator. If None,
+                read from ``RAY_DATA_VERBOSE_PROGRESS``.
+        """
         if resource_limits is None:
             resource_limits = ExecutionResources.for_limits()
         self.resource_limits = resource_limits
@@ -339,7 +351,6 @@ class ExecutionOptions:
         return (
             f"ExecutionOptions(resource_limits={self.resource_limits}, "
             f"exclude_resources={self.exclude_resources}, "
-            f"locality_with_output={self.locality_with_output}, "
             f"preserve_order={self.preserve_order}, "
             f"actor_locality_enabled={self.actor_locality_enabled}, "
             f"verbose_progress={self.verbose_progress})"
@@ -383,7 +394,9 @@ class ExecutionOptions:
         if value:
             warnings.warn(
                 "`ExecutionOptions.locality_with_output` has been removed and is now "
-                "a no-op.",
+                "a no-op. We don't recommend using it anymore, but if you still want "
+                "to replicate its behavior, follow the instructions in this gist: "
+                "https://gist.github.com/bveeramani/51e0383bb3680dd78fdfb92d76ea22a8.",
                 DeprecationWarning,
                 stacklevel=2,
             )
@@ -398,7 +411,7 @@ def safe_round(
 ) -> Optional[float]:
     if value is None:
         return None
-    elif math.isinf(value):
+    elif ndigits is None or math.isinf(value):
         return value
     else:
         return round(value, ndigits)

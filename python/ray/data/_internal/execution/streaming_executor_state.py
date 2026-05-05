@@ -3,6 +3,7 @@
 This is split out from streaming_executor.py to facilitate better unit testing.
 """
 
+import dataclasses
 import logging
 import threading
 import time
@@ -11,8 +12,12 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
+from ray.data._internal.actor_autoscaler.autoscaling_actor_pool import ActorPoolInfo
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
-from ray.data._internal.execution.bundle_queue import create_bundle_queue
+from ray.data._internal.execution.bundle_queue import (
+    ThreadSafeBundleQueue,
+    create_bundle_queue,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     PhysicalOperator,
@@ -23,7 +28,6 @@ from ray.data._internal.execution.interfaces.physical_operator import (
     MetadataOpTask,
     OpTask,
     Waitable,
-    _ActorPoolInfo,
 )
 from ray.data._internal.execution.operators.base_physical_operator import (
     InternalQueueOperatorMixin,
@@ -51,107 +55,87 @@ Topology = Dict[PhysicalOperator, "OpState"]
 class OpBufferQueue:
     """A FIFO queue to buffer RefBundles between upstream and downstream operators.
     This class is thread-safe.
+
+    Args:
+        num_splits: Number of output splits operator's output is partitioned into.
+            In case of `num_splits` > 1, bundles are routed to corresponding queue
+             based on their `bundle.output_split_idx`.
     """
 
-    def __init__(self):
-        self._num_blocks = 0
-        self._queue = create_bundle_queue()
-        self._num_per_split = defaultdict(int)
-        self._lock = threading.Lock()
-        # Used to buffer output RefBundles indexed by output splits.
-        self._outputs_by_split = defaultdict(create_bundle_queue)
-        super().__init__()
+    def __init__(self, num_splits: int):
+        assert num_splits >= 1, f"n_splits must be >= 1, got {num_splits}"
+
+        self._queues: List[ThreadSafeBundleQueue] = [
+            ThreadSafeBundleQueue(create_bundle_queue()) for _ in range(num_splits)
+        ]
 
     @property
     def memory_usage(self) -> int:
         """The total memory usage of the queue in bytes."""
-        with self._lock:
-            # The split queues contain bundles popped from the main queue. So, a bundle
-            # will either be in the main queue or in one of the split queues, and we
-            # don't need to worry about double counting.
-            return self._queue.estimate_size_bytes() + sum(
-                split_queue.estimate_size_bytes()
-                for split_queue in self._outputs_by_split.values()
-            )
+        return sum(q.estimate_size_bytes() for q in self._queues)
 
     @property
     def num_blocks(self) -> int:
         """The total number of blocks in the queue."""
-        with self._lock:
-            return self._num_blocks
+        return sum(q.num_blocks() for q in self._queues)
 
     def __len__(self):
-        with self._lock:
-            return len(self._queue)
+        return sum(len(q) for q in self._queues)
 
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         """Whether next RefBundle is available.
 
         Args:
             output_split_idx: If specified, only check ref bundles with the
-                given output split.
+                given output split. When None, checks the default queue (index 0).
         """
-        if output_split_idx is None:
-            with self._lock:
-                return len(self._queue) > 0
-        else:
-            with self._lock:
-                return self._num_per_split[output_split_idx] > 0
+        return self._get_queue_for(output_split_idx).has_next()
 
-    def append(self, ref: RefBundle):
+    def append(self, bundle: RefBundle):
         """Append a RefBundle to the queue."""
-        with self._lock:
-            self._queue.add(ref)
-            self._num_blocks += len(ref.blocks)
-            if ref.output_split_idx is not None:
-                self._num_per_split[ref.output_split_idx] += 1
+        self._get_queue_for(bundle.output_split_idx).add(bundle)
 
     def pop(self, output_split_idx: Optional[int] = None) -> Optional[RefBundle]:
         """Pop a RefBundle from the queue.
+
         Args:
             output_split_idx: If specified, only pop a RefBundle
-                with the given output split.
+                with the given output split. When None, pops from the default
+                queue (index 0).
         Returns:
             A RefBundle if available, otherwise None.
         """
-        ret = None
-        if output_split_idx is None:
-            try:
-                with self._lock:
-                    ret = self._queue.get_next()
-            except IndexError:
-                pass
-        else:
-            with self._lock:
-                split_queue = self._outputs_by_split[output_split_idx]
-            if len(split_queue) == 0:
-                # Move all ref bundles to their indexed queues
-                # Note, the reason why we do indexing here instead of in the append
-                # is because only the last `OpBufferQueue` in the DAG, which will call
-                # pop with output_split_idx, needs indexing.
-                # If we also index the `OpBufferQueue`s in the middle, we cannot
-                # preserve the order of ref bundles with different output splits.
-                with self._lock:
-                    while len(self._queue) > 0:
-                        ref = self._queue.get_next()
-                        self._outputs_by_split[ref.output_split_idx].add(ref)
-            try:
-                ret = split_queue.get_next()
-            except IndexError:
-                pass
-        if ret is None:
+        try:
+            bundle = self._get_queue_for(output_split_idx).get_next()
+            # NOTE: We're making a copy of the `RefBundle` object to seal off
+            #       any potential modifcations to it from propagating backwards:
+            #
+            #       For ex, `OutputSplitter` modifies `RefBundle.output_split_idx`
+            #       that could affect original bundles that could be materialized,
+            #       therefore undermining these when these are being reused.
+            return dataclasses.replace(bundle)
+        except IndexError:
             return None
-        with self._lock:
-            self._num_blocks -= len(ret.blocks)
-            if ret.output_split_idx is not None:
-                self._num_per_split[ret.output_split_idx] -= 1
-        return ret
 
     def clear(self):
-        with self._lock:
-            self._queue.clear()
-            self._num_blocks = 0
-            self._num_per_split.clear()
+        for q in self._queues:
+            q.clear()
+
+    def _get_queue_for(self, output_split_idx: Optional[int]) -> ThreadSafeBundleQueue:
+        assert output_split_idx is not None or len(self._queues) == 1, (
+            "Setting `output_split_idx` to null is only allowed for queues "
+            f"with no output splitting (got {len(self._queues)} total queues)"
+        )
+
+        target_output_split_idx = output_split_idx or 0
+
+        assert target_output_split_idx < len(self._queues), (
+            f"Output split index is out of range (got {target_output_split_idx}, "
+            f"but only {list(range(len(self._queues)))} splits are available)"
+        )
+
+        # If output split idx is null, fallback to the first queue
+        return self._queues[target_output_split_idx]
 
 
 @dataclass
@@ -190,7 +174,9 @@ class OpState:
         # Note: this queue is also accessed concurrently from the consumer thread.
         # (in addition to the streaming executor thread). Hence, it must be a
         # thread-safe type such as `deque`.
-        self.output_queue: OpBufferQueue = OpBufferQueue()
+        self.output_queue: OpBufferQueue = OpBufferQueue(
+            num_splits=op.num_output_splits()
+        )
         self.op = op
         self.num_completed_tasks = 0
         self.inputs_done_called = False
@@ -202,6 +188,16 @@ class OpState:
         self._scheduling_status = OpSchedulingStatus()
         self._schema: Optional["Schema"] = None
         self._warned_on_schema_divergence: bool = False
+        # Tracks consumers blocked in get_output_blocking().
+        # Used to detect consumer starvation. Guarded by
+        # _waiting_consumers_lock since += is not atomic.
+        self._num_waiting_consumers: int = 0
+        self._waiting_consumers_lock = threading.Lock()
+
+    @property
+    def num_waiting_consumers(self) -> int:
+        """Return the number of consumers currently blocked in get_output_blocking."""
+        return self._num_waiting_consumers
 
     def __repr__(self):
         return f"OpState({self.op.name})"
@@ -269,24 +265,26 @@ class OpState:
     def add_output(self, ref: RefBundle) -> None:
         """Move a bundle produced by the operator to its outqueue."""
 
-        out_ref, diverged = dedupe_schemas_with_validation(
-            self._schema,
-            ref,
-            enforce_schemas=self.op.data_context.enforce_schemas,
-        )
+        if ref.schema is not None:
+            out_ref, diverged = dedupe_schemas_with_validation(
+                self._schema,
+                ref,
+                enforce_schemas=self.op.data_context.enforce_schemas,
+            )
 
-        if (
-            diverged
-            and not self._warned_on_schema_divergence
-            and self.op.data_context.enforce_schemas
-        ):
-            warning_message = _build_schemas_mismatch_warning(self._schema, ref.schema)
-            logger.warning(warning_message)
+            if (
+                diverged
+                and not self._warned_on_schema_divergence
+                and self.op.data_context.enforce_schemas
+            ):
+                warning_message = _build_schemas_mismatch_warning(
+                    self._schema, ref.schema
+                )
+                logger.warning(warning_message)
 
-        ref = out_ref
-
-        self._schema = ref.schema
-        self._warned_on_schema_divergence |= diverged
+            ref = out_ref
+            self._schema = ref.schema
+            self._warned_on_schema_divergence |= diverged
 
         self.output_queue.append(ref)
         self.num_completed_tasks += 1
@@ -296,6 +294,11 @@ class OpState:
         self.op.metrics.num_alive_actors = actor_info.running
         self.op.metrics.num_restarting_actors = actor_info.restarting
         self.op.metrics.num_pending_actors = actor_info.pending
+        # Update actor pool utilization metrics for monitoring scaling behavior
+        self.op.metrics.num_active_actors = actor_info.active
+        self.op.metrics.num_idle_actors = actor_info.idle
+        self.op.metrics.pool_utilization = actor_info.pool_utilization
+        self.op.metrics.num_tasks_in_flight = actor_info.tasks_in_flight
         for next_op in self.op.output_dependencies:
             next_op.metrics.num_external_inqueue_blocks += len(ref.blocks)
             next_op.metrics.num_external_inqueue_bytes += ref.size_bytes()
@@ -322,6 +325,8 @@ class OpState:
     def get_output_blocking(self, output_split_idx: Optional[int]) -> RefBundle:
         """Get an item from this node's output queue, blocking as needed.
 
+        This method must be thread-safe.
+
         Returns:
             The RefBundle from the output queue, or an error / end of stream indicator.
 
@@ -329,20 +334,35 @@ class OpState:
             StopIteration: If all outputs are already consumed.
             Exception: If there was an exception raised during execution.
         """
-        while True:
-            # Check if StreamingExecutor has caught an exception or is done execution.
-            if self._exception is not None:
-                raise self._exception
-            elif self._finished and not self.output_queue.has_next(output_split_idx):
-                raise StopIteration()
-            ref = self.output_queue.pop(output_split_idx)
-            if ref is not None:
-                # Update outqueue metrics when blocks are removed from this operator's outqueue
-                # TODO: Abstract queue-releated metrics to queue.
-                self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
-                self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
-                return ref
-            time.sleep(0.01)
+        starving = False
+        try:
+            while True:
+                # Check if StreamingExecutor has caught an exception or is done
+                # execution.
+                if self._exception is not None:
+                    raise self._exception
+                elif self._finished and not self.output_queue.has_next(
+                    output_split_idx
+                ):
+                    raise StopIteration()
+                ref = self.output_queue.pop(output_split_idx)
+                if ref is not None:
+                    # Update outqueue metrics when blocks are removed from
+                    # this operator's outqueue.
+                    # TODO: Abstract queue-releated metrics to queue.
+                    self.op.metrics.num_external_outqueue_blocks -= len(ref.blocks)
+                    self.op.metrics.num_external_outqueue_bytes -= ref.size_bytes()
+                    return ref
+                if not starving:
+                    # Queue is empty — mark this consumer as starving.
+                    with self._waiting_consumers_lock:
+                        self._num_waiting_consumers += 1
+                    starving = True
+                time.sleep(0.01)
+        finally:
+            if starving:
+                with self._waiting_consumers_lock:
+                    self._num_waiting_consumers -= 1
 
     def input_queue_bytes(self) -> int:
         """Return the object store memory of this operator's inqueue."""
@@ -428,7 +448,7 @@ def process_completed_tasks(
         for task in op.get_active_tasks():
             active_tasks[task.get_waitable()] = (state, task)
 
-    max_bytes_to_read_per_op: Dict[OpState, int] = {}
+    remaining_output_budget: Dict[OpState, int] = {}
     for op, state in topology.items():
         # Check all backpressure policies for max_task_output_bytes_to_read
         # Use the minimum limit from all policies (most restrictive)
@@ -445,10 +465,15 @@ def process_completed_tasks(
                 else:
                     max_bytes_to_read = min(max_bytes_to_read, policy_limit)
 
+        assert (
+            max_bytes_to_read is None or max_bytes_to_read >= 0
+        ), f"Max bytes to read must either be null or >= 0 (got {max_bytes_to_read})"
+
         # If no policy provides a limit, there's no limit
         op.notify_in_task_output_backpressure(max_bytes_to_read == 0, limiting_policy)
+
         if max_bytes_to_read is not None:
-            max_bytes_to_read_per_op[state] = max_bytes_to_read
+            remaining_output_budget[state] = max_bytes_to_read
 
     # Process completed Ray tasks and notify operators.
     num_errored_blocks = 0
@@ -477,10 +502,13 @@ def process_completed_tasks(
                 if isinstance(task, DataOpTask):
                     try:
                         bytes_read = task.on_data_ready(
-                            max_bytes_to_read_per_op.get(state, None)
+                            remaining_output_budget.get(state, None)
                         )
-                        if state in max_bytes_to_read_per_op:
-                            max_bytes_to_read_per_op[state] -= bytes_read
+                        if state in remaining_output_budget:
+                            # Clamp remaining output budget at 0
+                            remaining_output_budget[state] = max(
+                                remaining_output_budget[state] - bytes_read, 0
+                            )
                     except Exception as e:
                         num_errored_blocks += 1
                         should_ignore = (
@@ -545,14 +573,19 @@ def update_operator_states(topology: Topology) -> None:
             op_state.inputs_done_called = True
 
     # Traverse the topology in reverse topological order.
-    # For each op, if all of its downstream operators have completed.
+    # For each op, if all of its downstream operators have completed,
     # call mark_execution_finished() to also complete this op.
     for op, op_state in reversed(list(topology.items())):
 
         dependents_completed = len(op.output_dependencies) > 0 and all(
             dep.has_completed() for dep in op.output_dependencies
         )
-        if dependents_completed:
+        # For terminal operators (no output dependencies, e.g. OutputSplitter),
+        # mark execution finished once the operator has fully completed so that
+        # internal queues are properly cleared via clear_internal_input_queue()
+        # and clear_internal_output_queue().
+        terminal_completed = len(op.output_dependencies) == 0 and op.has_completed()
+        if dependents_completed or terminal_completed:
             op.mark_execution_finished()
 
         # Drain external input queue if current operator is execution finished.
@@ -674,7 +707,7 @@ def select_operator_to_run(
     return next_op
 
 
-def _actor_info_summary_str(info: _ActorPoolInfo) -> str:
+def _actor_info_summary_str(info: ActorPoolInfo) -> str:
     total = info.running + info.pending + info.restarting
     base = f"Actors: {total}"
 

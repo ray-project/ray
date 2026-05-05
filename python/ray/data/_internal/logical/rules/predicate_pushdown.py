@@ -1,4 +1,5 @@
 import copy
+from dataclasses import is_dataclass, replace
 from typing import List
 
 from ray.data._internal.logical.interfaces import (
@@ -9,7 +10,17 @@ from ray.data._internal.logical.interfaces import (
     PredicatePassThroughBehavior,
     Rule,
 )
-from ray.data._internal.logical.operators import Filter, Project
+from ray.data._internal.logical.operators import (
+    AbstractAllToAll,
+    AbstractMap,
+    Filter,
+    Join,
+    Limit,
+    Project,
+    RandomShuffle,
+    Repartition,
+    Union,
+)
 from ray.data._internal.planner.plan_expression.expression_visitors import (
     _ColumnSubstitutionVisitor,
 )
@@ -63,8 +74,8 @@ class PredicatePushdown(Rule):
 
         # Create new filter on the input of the lower filter
         return Filter(
-            input_op.input_dependencies[0],
             predicate_expr=combined_predicate,
+            input_dependencies=[input_op.input_dependencies[0]],
         )
 
     @classmethod
@@ -243,8 +254,8 @@ class PredicatePushdown(Rule):
 
                 # Push filter through and recursively try to push further
                 new_filter = Filter(
-                    input_op.input_dependencies[0],
                     predicate_expr=predicate_expr,
+                    input_dependencies=[input_op.input_dependencies[0]],
                 )
                 pushed_filter = cls._try_push_down_predicate(new_filter)
 
@@ -256,7 +267,9 @@ class PredicatePushdown(Rule):
                 # Apply filter to each branch and recursively push down
                 new_inputs = []
                 for branch_op in input_op.input_dependencies:
-                    branch_filter = Filter(branch_op, predicate_expr=predicate_expr)
+                    branch_filter = Filter(
+                        predicate_expr=predicate_expr, input_dependencies=[branch_op]
+                    )
                     pushed_branch = cls._try_push_down_predicate(branch_filter)
                     new_inputs.append(pushed_branch)
 
@@ -296,8 +309,8 @@ class PredicatePushdown(Rule):
         # Push to the appropriate branch
         new_inputs = list(conditional_op.input_dependencies)
         branch_filter = Filter(
-            new_inputs[branch_idx],
             predicate_expr=filter_op.predicate_expr,
+            input_dependencies=[new_inputs[branch_idx]],
         )
         new_inputs[branch_idx] = cls._try_push_down_predicate(branch_filter)
 
@@ -317,6 +330,36 @@ class PredicatePushdown(Rule):
         Returns:
             A shallow copy of the operator with updated input dependencies
         """
+        if isinstance(op, Limit):
+            assert len(new_inputs) == 1, len(new_inputs)
+            return Limit(op.limit, input_dependencies=[new_inputs[0]])
+        if isinstance(op, AbstractMap) and is_dataclass(op):
+            assert len(new_inputs) == 1, len(new_inputs)
+            return replace(op, input_dependencies=[new_inputs[0]])
+        if isinstance(op, AbstractAllToAll) and is_dataclass(op):
+            assert len(new_inputs) == 1, len(new_inputs)
+            kwargs = {"input_dependencies": [new_inputs[0]]}
+            if isinstance(op, Repartition):
+                kwargs["num_outputs"] = op.num_outputs
+            if isinstance(op, RandomShuffle):
+                kwargs["name"] = op.name
+            return replace(op, **kwargs)
+        if isinstance(op, Join) and is_dataclass(op):
+            assert len(new_inputs) == 2, len(new_inputs)
+            return Join(
+                new_inputs[0],
+                new_inputs[1],
+                op.join_type,
+                op.left_key_columns,
+                op.right_key_columns,
+                num_partitions=op.num_outputs,
+                left_columns_suffix=op.left_columns_suffix,
+                right_columns_suffix=op.right_columns_suffix,
+                partition_size_hint=op.partition_size_hint,
+                aggregator_ray_remote_args=op.aggregator_ray_remote_args,
+            )
+        if isinstance(op, Union) and is_dataclass(op):
+            return Union(*new_inputs)
         new_op = copy.copy(op)
         new_op.input_dependencies = new_inputs
         return new_op

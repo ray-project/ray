@@ -404,9 +404,12 @@ class GcsClientTest : public ::testing::TestWithParam<bool> {
     std::promise<bool> promise;
     std::vector<rpc::GcsNodeInfo> nodes;
     gcs_client_->Nodes().AsyncGetAll(
-        [&nodes, &promise](Status status, std::vector<rpc::GcsNodeInfo> &&result) {
+        [&nodes, &promise](
+            Status status,
+            const std::optional<std::pair<std::vector<rpc::GcsNodeInfo>, int64_t>>
+                &results) {
           assert(!result.empty());
-          nodes = std::move(result);
+          nodes = std::move(results->first);
           promise.set_value(status.ok());
         },
         rpc::GetGcsTimeoutMs());
@@ -1086,20 +1089,3 @@ TEST_P(GcsClientTest, TestInternalKVDelByPrefix) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      /*app_name=*/argv[0],
-      ray::RayLogLevel::INFO,
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 3);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  return RUN_ALL_TESTS();
-}

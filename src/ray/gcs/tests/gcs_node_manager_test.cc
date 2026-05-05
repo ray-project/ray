@@ -25,6 +25,8 @@
 #include "ray/common/test_utils.h"
 #include "ray/gcs/store_client/in_memory_store_client.h"
 #include "ray/observability/fake_ray_event_recorder.h"
+#include "ray/pubsub/fake_publisher.h"
+#include "ray/pubsub/gcs_publisher.h"
 #include "ray/raylet_rpc_client/fake_raylet_client.h"
 
 namespace ray {
@@ -42,12 +44,15 @@ class GcsNodeManagerTest : public ::testing::Test {
         std::make_shared<gcs::InMemoryStoreClient>());
     io_context_ = std::make_unique<instrumented_io_context>("GcsNodeManagerTest");
     fake_ray_event_recorder_ = std::make_unique<observability::FakeRayEventRecorder>();
+    observability_publisher_ = std::make_unique<pubsub::ObservabilityPublisher>(
+        std::make_unique<pubsub::FakePublisher>());
   }
 
  protected:
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::unique_ptr<rpc::RayletClientPool> client_pool_;
   std::unique_ptr<pubsub::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<pubsub::ObservabilityPublisher> observability_publisher_;
   std::unique_ptr<instrumented_io_context> io_context_;
   std::unique_ptr<observability::FakeRayEventRecorder> fake_ray_event_recorder_;
 };
@@ -65,7 +70,8 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get());
   auto node = GenNodeInfo();
   rpc::RegisterNodeRequest register_request;
   register_request.mutable_node_info()->CopyFrom(*node);
@@ -137,7 +143,7 @@ TEST_F(GcsNodeManagerTest, TestRayEventNodeEvents) {
   auto send_unregister_reply_callback =
       [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
   node_manager.HandleUnregisterNode(
-      unregister_request, &unregister_reply, send_unregister_reply_callback);
+      unregister_request, &unregister_reply, send_unregister_reply_callback, "");
   // Exhaust the event loop
   while (io_context_->poll() > 0) {
   }
@@ -170,7 +176,8 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get());
   // Test Add/Get/Remove functionality.
   auto node = GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -190,7 +197,8 @@ TEST_F(GcsNodeManagerTest, TestListener) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get());
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::atomic_int callbacks_remaining = node_count;
@@ -264,7 +272,8 @@ TEST_F(GcsNodeManagerTest, TestAddNodeListenerCallbackDeadlock) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get());
   int node_count = 10;
   std::atomic_int callbacks_remaining = node_count;
   node_manager.AddNodeAddedListener(
@@ -295,7 +304,8 @@ TEST_F(GcsNodeManagerTest, TestUpdateAliveNode) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get());
 
   // Create a test node
   auto node = GenNodeInfo();
@@ -374,7 +384,8 @@ TEST_F(GcsNodeManagerTest, TestGetNodeAddressAndLiveness) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get());
 
   // Create and add a test node
   auto node = GenNodeInfo();
@@ -413,7 +424,8 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeInfo) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get());
 
   // Add multiple alive nodes with different properties
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;
@@ -446,7 +458,7 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeInfo) {
     auto send_unregister_reply_callback =
         [](ray::Status status, std::function<void()> f1, std::function<void()> f2) {};
     node_manager.HandleUnregisterNode(
-        unregister_request, &unregister_reply, send_unregister_reply_callback);
+        unregister_request, &unregister_reply, send_unregister_reply_callback, "");
     // Ensure the unregister request is processed
     while (io_context_->poll() > 0)
       ;
@@ -611,7 +623,8 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
                                    client_pool_.get(),
                                    ClusterID::Nil(),
                                    *fake_ray_event_recorder_,
-                                   "test_session_name");
+                                   "test_session_name",
+                                   observability_publisher_.get());
 
   // Add multiple alive nodes
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> alive_nodes;
@@ -641,7 +654,7 @@ TEST_F(GcsNodeManagerTest, TestHandleGetAllNodeAddressAndLiveness) {
           // NoOp
         };
     node_manager.HandleUnregisterNode(
-        unregister_request, &unregister_reply, send_unregister_reply_callback);
+        unregister_request, &unregister_reply, send_unregister_reply_callback, "");
     while (io_context_->poll() > 0)
       ;
   }

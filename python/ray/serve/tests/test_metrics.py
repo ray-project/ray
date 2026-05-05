@@ -29,6 +29,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_DIRECT_INGRESS,
 )
 from ray.serve._private.test_utils import (
+    PROMETHEUS_METRICS_TIMEOUT_S,
     TEST_METRICS_EXPORT_PORT,
     check_metric_float_eq,
     get_application_url,
@@ -72,7 +73,9 @@ def check_sum_metric_eq(
         timeseries = PrometheusTimeseries()
 
     metrics = fetch_prometheus_metric_timeseries(
-        [f"localhost:{TEST_METRICS_EXPORT_PORT}"], timeseries
+        [f"localhost:{TEST_METRICS_EXPORT_PORT}"],
+        timeseries,
+        timeout=PROMETHEUS_METRICS_TIMEOUT_S,
     )
     metrics = {k: v for k, v in metrics.items() if "ray_serve_" in k}
     metric_samples = metrics.get(metric_name, None)
@@ -808,7 +811,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
 
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_request_counter_total")
+            get_metric_dictionaries(
+                "ray_serve_deployment_request_counter_total", wait=False
+            )
         )
         == 2,
         timeout=40,
@@ -840,7 +845,9 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     # Latency metrics
     wait_for_condition(
         lambda: len(
-            get_metric_dictionaries("ray_serve_deployment_processing_latency_ms_count")
+            get_metric_dictionaries(
+                "ray_serve_deployment_processing_latency_ms_count", wait=False
+            )
         )
         == 2,
         timeout=40,
@@ -859,8 +866,11 @@ def test_replica_metrics_fields(metrics_start_shutdown):
         } == expected_output
 
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_replica_processing_queries"))
-        == 2
+        lambda: len(
+            get_metric_dictionaries("ray_serve_replica_processing_queries", wait=False)
+        )
+        == 2,
+        timeout=40,
     )
     processing_queries = get_metric_dictionaries("ray_serve_replica_processing_queries")
     expected_output = {("f", "app1"), ("g", "app2")}
@@ -877,7 +887,11 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     url_h = get_application_url("HTTP", "app3")
     assert 500 == httpx.get(url_h).status_code
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_error_counter_total"))
+        lambda: len(
+            get_metric_dictionaries(
+                "ray_serve_deployment_error_counter_total", wait=False
+            )
+        )
         == 1,
         timeout=40,
     )
@@ -891,21 +905,27 @@ def test_replica_metrics_fields(metrics_start_shutdown):
     ) == expected_output
     assert err_requests[0]["exception_type"] == "ZeroDivisionError"
 
-    wait_for_condition(
-        lambda: len(get_metric_dictionaries("ray_serve_deployment_replica_healthy"))
-        == 3,
-        timeout=40,
+    expected_deployments = {("f", "app1"), ("g", "app2"), ("h", "app3")}
+    health_timeseries = PrometheusTimeseries()
+
+    def _check_replica_healthy():
+        metrics = get_metric_dictionaries(
+            "ray_serve_deployment_replica_healthy",
+            wait=False,
+            timeseries=health_timeseries,
+        )
+        return {
+            (m["deployment"], m["application"]) for m in metrics
+        } >= expected_deployments
+
+    wait_for_condition(_check_replica_healthy, timeout=40)
+    health_metrics = get_metric_dictionaries(
+        "ray_serve_deployment_replica_healthy", timeseries=health_timeseries
     )
-    health_metrics = get_metric_dictionaries("ray_serve_deployment_replica_healthy")
-    expected_output = {
-        ("f", "app1"),
-        ("g", "app2"),
-        ("h", "app3"),
-    }
     assert {
         (health_metric["deployment"], health_metric["application"])
         for health_metric in health_metrics
-    } == expected_output
+    } >= expected_deployments
 
 
 def test_deployment_error_counter_exception_type(metrics_start_shutdown):
@@ -923,7 +943,7 @@ def test_deployment_error_counter_exception_type(metrics_start_shutdown):
 
     def check_metric():
         err_metrics = get_metric_dictionaries(
-            "ray_serve_deployment_error_counter_total"
+            "ray_serve_deployment_error_counter_total", wait=False
         )
         value_error_metrics = [
             m for m in err_metrics if m.get("exception_type") == "ValueError"
@@ -961,7 +981,9 @@ def test_queue_wait_time_metric(metrics_start_shutdown):
 
     def check_queue_wait_time_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_request_router_fulfillment_time_ms_sum", timeseries=timeseries
+            "ray_serve_request_router_fulfillment_time_ms_sum",
+            timeseries=timeseries,
+            wait=False,
         )
         if not metrics:
             return False
@@ -1017,7 +1039,7 @@ def test_router_queue_len_metric(metrics_start_shutdown):
         # Check that the router queue length metric appears with correct tags
         def check_router_queue_len():
             metrics = get_metric_dictionaries(
-                "ray_serve_request_router_queue_len", timeseries=timeseries
+                "ray_serve_request_router_queue_len", timeseries=timeseries, wait=False
             )
             if not metrics:
                 return False
@@ -1165,7 +1187,9 @@ def test_proxy_metrics_with_route_patterns(metrics_start_shutdown, use_factory_p
 
     # Wait for metrics to be updated
     def metrics_available():
-        metrics = get_metric_dictionaries("ray_serve_num_http_requests_total")
+        metrics = get_metric_dictionaries(
+            "ray_serve_num_http_requests_total", wait=False
+        )
         api_metrics = [m for m in metrics if m.get("application") == "api_app"]
         return len(api_metrics) >= 3
 
@@ -1262,15 +1286,15 @@ def test_routing_stats_delay_metric(metrics_start_shutdown):
     # This metric is recorded when the controller polls routing stats from replicas
     def check_routing_stats_delay_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_routing_stats_delay_ms_count", timeseries=timeseries
+            "ray_serve_routing_stats_delay_ms_count", timeseries=timeseries, wait=False
         )
         if not metrics:
             return False
-        # Check that at least one metric has expected tags
+        # Check that at least one metric has expected tags (no per-replica label)
         for metric in metrics:
             assert metric["deployment"] == "Model"
             assert metric["application"] == "app"
-            assert "replica" in metric
+            assert "replica" not in metric
             return True
         return False
 
@@ -1338,7 +1362,7 @@ def test_routing_stats_error_metric(metrics_start_shutdown):
     # Check that error metric with error_type="exception" is reported
     def check_exception_error_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_routing_stats_error_total", timeseries=timeseries
+            "ray_serve_routing_stats_error_total", timeseries=timeseries, wait=False
         )
         for metric in metrics:
             if (
@@ -1364,7 +1388,7 @@ def test_routing_stats_error_metric(metrics_start_shutdown):
     # Check that error metric with error_type="timeout" is reported
     def check_timeout_error_metric():
         metrics = get_metric_dictionaries(
-            "ray_serve_routing_stats_error_total", timeseries=timeseries
+            "ray_serve_routing_stats_error_total", timeseries=timeseries, wait=False
         )
         for metric in metrics:
             if (
@@ -1432,7 +1456,9 @@ def test_replica_utilization_metric(metrics_start_shutdown):
         # Wait for the utilization metric to be reported
         def check_utilization_metric_exists():
             metrics = get_metric_dictionaries(
-                "ray_serve_replica_utilization_percent", timeseries=timeseries
+                "ray_serve_replica_utilization_percent",
+                timeseries=timeseries,
+                wait=False,
             )
             if not metrics:
                 return False
@@ -1476,6 +1502,214 @@ def test_replica_utilization_metric(metrics_start_shutdown):
     finally:
         stop_sending.set()
         sender.join(timeout=10)
+
+
+def test_max_processing_latency_metric(metrics_start_shutdown):
+    """Test that the max processing latency metric is correctly reported per route.
+
+    This test verifies that:
+    1. The serve_deployment_max_processing_latency_ms metric is emitted
+    2. Separate max values are tracked per route tag
+    3. Each route's max reflects its actual maximum latency
+    4. A fast route has a lower max than a slow route
+
+    Uses a FastAPI app with two routes having different sleep durations
+    to produce distinct per-route max latencies.
+    """
+
+    app = FastAPI()
+
+    @serve.deployment(name="MaxLatencyTest", max_ongoing_requests=2)
+    @serve.ingress(app)
+    class MultiRouteDeployment:
+        @app.get("/fast")
+        def fast(self):
+            time.sleep(0.1)
+            return {"route": "fast"}
+
+        @app.get("/slow")
+        def slow(self):
+            time.sleep(0.8)
+            return {"route": "slow"}
+
+    app_name = "max_latency_app"
+    serve.run(MultiRouteDeployment.bind(), name=app_name, route_prefix="/api")
+
+    stop_sending = threading.Event()
+
+    def _send_requests_forever(route: str):
+        while not stop_sending.is_set():
+            try:
+                httpx.get(f"http://localhost:8000/api{route}", timeout=5)
+            except Exception:
+                pass
+
+    fast_sender = threading.Thread(
+        target=_send_requests_forever, args=("/fast",), daemon=True
+    )
+    slow_sender = threading.Thread(
+        target=_send_requests_forever, args=("/slow",), daemon=True
+    )
+    fast_sender.start()
+    slow_sender.start()
+
+    try:
+        report_interval_s = float(
+            os.environ.get(
+                "RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S", "10"
+            )
+        )
+        time.sleep(report_interval_s + 2)
+
+        timeseries = PrometheusTimeseries()
+
+        def check_both_routes_reported():
+            metrics = get_metric_dictionaries(
+                "ray_serve_deployment_max_processing_latency_ms",
+                timeseries=timeseries,
+                wait=False,
+            )
+            if not metrics:
+                return False
+
+            routes_found = set()
+            for metric in metrics:
+                if (
+                    metric.get("deployment") == "MaxLatencyTest"
+                    and metric.get("application") == app_name
+                ):
+                    route = metric.get("route", "")
+                    routes_found.add(route)
+
+            return "/api/fast" in routes_found and "/api/slow" in routes_found
+
+        wait_for_condition(check_both_routes_reported, timeout=30)
+
+        def check_per_route_values():
+            fast_value = get_metric_float(
+                "ray_serve_deployment_max_processing_latency_ms",
+                timeseries=timeseries,
+                expected_tags={
+                    "deployment": "MaxLatencyTest",
+                    "application": app_name,
+                    "route": "/api/fast",
+                },
+            )
+            slow_value = get_metric_float(
+                "ray_serve_deployment_max_processing_latency_ms",
+                timeseries=timeseries,
+                expected_tags={
+                    "deployment": "MaxLatencyTest",
+                    "application": app_name,
+                    "route": "/api/slow",
+                },
+            )
+
+            assert fast_value >= 0, f"Fast max latency should be >= 0, got {fast_value}"
+            assert slow_value >= 0, f"Slow max latency should be >= 0, got {slow_value}"
+
+            # /fast sleeps 100ms, /slow sleeps 800ms.
+            assert (
+                fast_value >= 80
+            ), f"Fast route max should be >= 80ms with 100ms sleep, got {fast_value}"
+            assert (
+                slow_value >= 600
+            ), f"Slow route max should be >= 600ms with 800ms sleep, got {slow_value}"
+            assert (
+                slow_value > fast_value
+            ), f"Slow route ({slow_value}ms) should exceed fast route ({fast_value}ms)"
+            return True
+
+        wait_for_condition(check_per_route_values, timeout=30)
+    finally:
+        stop_sending.set()
+        fast_sender.join(timeout=10)
+        slow_sender.join(timeout=10)
+
+
+def test_objref_resolution_latency_metric(metrics_start_shutdown):
+    """Test that objref resolution latency metric is emitted when a
+    DeploymentResponse is passed as an argument to another handle call.
+    """
+    signal = SignalActor.remote()
+
+    @serve.deployment
+    class Upstream:
+        async def __call__(self):
+            await signal.wait.remote()
+            return "upstream_result"
+
+    @serve.deployment
+    class Downstream:
+        def __call__(self, val: str):
+            return f"got_{val}"
+
+    @serve.deployment
+    class Router:
+        def __init__(self, upstream, downstream):
+            self._upstream = upstream
+            self._downstream = downstream
+
+        async def __call__(self):
+            upstream_resp = self._upstream.remote()
+            downstream_resp = self._downstream.remote(upstream_resp)
+            return await downstream_resp
+
+    serve.run(
+        Router.bind(Upstream.bind(), Downstream.bind()),
+        name="app1",
+        route_prefix="/chain",
+    )
+
+    url = get_application_url("HTTP", "app1") + "/chain"
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        future = executor.submit(httpx.get, url, timeout=30)
+
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) == 1, timeout=10
+        )
+        time.sleep(0.5)
+        ray.get(signal.send.remote())
+
+        resp = future.result()
+        assert resp.status_code == 200
+        assert resp.text == "got_upstream_result"
+
+    timeseries = PrometheusTimeseries()
+
+    def check_objref_resolution_metric():
+        metrics = get_metric_dictionaries(
+            "ray_serve_router_args_resolution_latency_ms_count",
+            timeseries=timeseries,
+            wait=False,
+        )
+        if not metrics:
+            return False
+        for metric in metrics:
+            if (
+                metric.get("deployment") == "Downstream"
+                and metric.get("application") == "app1"
+            ):
+                handle = metric.get("handle", "")
+                actor_id = metric.get("actor_id", "")
+                if handle and actor_id:
+                    return True
+        return False
+
+    wait_for_condition(check_objref_resolution_metric, timeout=30)
+
+    def check_objref_resolution_metric_value():
+        value = get_metric_float(
+            "ray_serve_router_args_resolution_latency_ms_sum",
+            timeseries=timeseries,
+            expected_tags={"deployment": "Downstream", "application": "app1"},
+        )
+        if value < 0:
+            return False
+        assert value >= 400, f"Resolution latency should be >= 400ms got {value}"
+        return True
+
+    wait_for_condition(check_objref_resolution_metric_value, timeout=30)
 
 
 if __name__ == "__main__":

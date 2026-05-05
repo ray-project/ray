@@ -20,6 +20,11 @@ package(
     default_visibility = ["//visibility:public"],
 )
 
+exports_files([
+    ".rayciversion",
+    "ray-images.json",
+])
+
 # C/C++ toolchain constraint configs.
 
 config_setting(
@@ -61,8 +66,9 @@ alias(
 # https://github.com/hedronvision/bazel-compile-commands-extractor?tab=readme-ov-file#vscode - directions for clangd config
 refresh_compile_commands(
     name = "refresh_compile_commands",
+    exclude_external_sources = False,
     targets = {
-        "//:ray_pkg_zip": "",
+        "//src/ray/...": "",
     },
 )
 
@@ -82,6 +88,7 @@ ray_cc_library(
     deps = [
         "//src/ray/observability:fake_metric",
         "//src/ray/observability:fake_ray_event_recorder",
+        "//src/ray/pubsub:fake_publisher",
     ],
 )
 
@@ -172,6 +179,11 @@ pyx_library(
         linkopts = select({
             "@platforms//os:osx": [
                 "-Wl,-exported_symbols_list,$(location //:src/ray/ray_exported_symbols.lds)",
+                # The Apple CC toolchain adds -undefined dynamic_lookup implicitly via
+                # cc_toolchain_config.bzl for dynamic library link actions. Making it
+                # explicit here ensures Python extension .so files link correctly regardless
+                # of which CC toolchain is active (Apple CC or generic @local_config_cc).
+                "-Wl,-undefined,dynamic_lookup",
             ],
             "@platforms//os:windows": [],
             "//conditions:default": [

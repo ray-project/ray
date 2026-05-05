@@ -326,8 +326,16 @@ def assert_cgroup_hierarchy_exists_for_node(
     assert non_ray_cgroup.is_dir()
 
     # 2) Verify the constraints are applied correctly.
-    with open(system_cgroup / "memory.min", "r") as memory_min_file:
-        contents = memory_min_file.read().strip()
+    total_memory = ray._common.utils.get_system_memory()
+    with open(user_cgroup / "memory.high", "r") as memory_high_file:
+        contents = memory_high_file.read().strip()
+        assert contents == str(
+            total_memory
+            - resource_isolation_config.system_reserved_memory
+            + resource_isolation_config.object_store_memory
+        )
+    with open(system_cgroup / "memory.low", "r") as memory_low_file:
+        contents = memory_low_file.read().strip()
         assert contents == str(resource_isolation_config.system_reserved_memory)
     with open(system_cgroup / "cpu.weight", "r") as cpu_weight_file:
         contents = cpu_weight_file.read().strip()

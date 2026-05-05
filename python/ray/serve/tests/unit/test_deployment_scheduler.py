@@ -10,19 +10,28 @@ import pytest
 import ray
 from ray._raylet import NodeID
 from ray.serve._private import default_impl
-from ray.serve._private.common import DeploymentID, ReplicaID
+from ray.serve._private.common import (
+    GANG_PG_NAME_PREFIX,
+    CreatePlacementGroupRequest,
+    DeploymentID,
+    GangPlacementGroupRequest,
+    ReplicaID,
+)
 from ray.serve._private.config import ReplicaConfig
 from ray.serve._private.constants import (
     RAY_SERVE_USE_PACK_SCHEDULING_STRATEGY,
 )
 from ray.serve._private.deployment_scheduler import (
+    AvailableNodeResources,
     DeploymentDownscaleRequest,
     DeploymentSchedulingInfo,
     ReplicaSchedulingRequest,
     ReplicaSchedulingRequestStatus,
+    RequestedResources,
     Resources,
     SpreadDeploymentSchedulingPolicy,
 )
+from ray.serve._private.deployment_state import DeploymentStateManager
 from ray.serve._private.test_utils import (
     MockActorClass,
     MockClusterNodeInfoCache,
@@ -45,7 +54,7 @@ def rconfig(**config_opts):
     return ReplicaConfig.create(dummy, **config_opts)
 
 
-def get_random_resources(n: int) -> List[Resources]:
+def get_random_resources(n: int) -> List[dict]:
     """Gets n random resources."""
 
     resources = {
@@ -62,69 +71,86 @@ def get_random_resources(n: int) -> List[Resources]:
             if random.randint(0, 1) == 0:
                 resource_dict[resource] = callable()
 
-        res.append(Resources(resource_dict))
+        res.append(resource_dict)
 
     return res
 
 
 class TestResources:
+    def test_base_resources_cannot_be_instantiated(self):
+        with pytest.raises(TypeError, match="cannot be instantiated directly"):
+            Resources()
+
     @pytest.mark.parametrize("resource_type", ["CPU", "GPU", "memory"])
     def test_basic(self, resource_type: str):
         # basic resources
-        a = Resources({resource_type: 1})
-        b = Resources({resource_type: 0})
+        a = AvailableNodeResources({resource_type: 1})
+        b = RequestedResources({resource_type: 0})
         assert a.can_fit(b)
+
+        b = AvailableNodeResources({resource_type: 0})
+        a = RequestedResources({resource_type: 1})
         assert not b.can_fit(a)
 
     def test_neither_bigger(self):
-        a = Resources({"CPU": 1, "GPU": 0})
-        b = Resources({"CPU": 0, "GPU": 1})
+        a = AvailableNodeResources({"CPU": 1, "GPU": 0})
+        b = RequestedResources({"CPU": 0, "GPU": 1})
         assert not a == b
         assert not a.can_fit(b)
-        assert not b.can_fit(a)
 
     combos = [tuple(get_random_resources(20)[i : i + 2]) for i in range(0, 20, 2)]
 
     @pytest.mark.parametrize("resource_A,resource_B", combos)
-    def test_soft_resources_consistent_comparison(self, resource_A, resource_B):
+    @pytest.mark.parametrize(
+        "resource_class", [AvailableNodeResources, RequestedResources]
+    )
+    def test_soft_resources_consistent_comparison(
+        self, resource_A, resource_B, resource_class
+    ):
         """Resources should have consistent comparison. Either A==B, A<B, or A>B."""
 
         assert (
-            resource_A == resource_B
-            or resource_A > resource_B
-            or resource_A < resource_B
+            resource_class(resource_A) == resource_class(resource_B)
+            or resource_class(resource_A) > resource_class(resource_B)
+            or resource_class(resource_A) < resource_class(resource_B)
         )
 
-    def test_compare_resources(self):
+    @pytest.mark.parametrize(
+        "resource_class", [AvailableNodeResources, RequestedResources]
+    )
+    def test_compare_resources(self, resource_class):
         # Prioritize GPU
-        a = Resources({"GPU": 1, "CPU": 10, "memory": 10, "custom": 10})
-        b = Resources({"GPU": 2, "CPU": 0, "memory": 0, "custom": 0})
+        a = resource_class({"GPU": 1, "CPU": 10, "memory": 10, "custom": 10})
+        b = resource_class({"GPU": 2, "CPU": 0, "memory": 0, "custom": 0})
         assert b > a
 
         # Then CPU
-        a = Resources({"GPU": 1, "CPU": 1, "memory": 10, "custom": 10})
-        b = Resources({"GPU": 1, "CPU": 2, "memory": 0, "custom": 0})
+        a = resource_class({"GPU": 1, "CPU": 1, "memory": 10, "custom": 10})
+        b = resource_class({"GPU": 1, "CPU": 2, "memory": 0, "custom": 0})
         assert b > a
 
         # Then memory
-        a = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 10})
-        b = Resources({"GPU": 1, "CPU": 1, "memory": 2, "custom": 0})
+        a = resource_class({"GPU": 1, "CPU": 1, "memory": 1, "custom": 10})
+        b = resource_class({"GPU": 1, "CPU": 1, "memory": 2, "custom": 0})
         assert b > a
 
         # Then custom resources
-        a = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 1})
-        b = Resources({"GPU": 1, "CPU": 1, "memory": 1, "custom": 2})
+        a = resource_class({"GPU": 1, "CPU": 1, "memory": 1, "custom": 1})
+        b = resource_class({"GPU": 1, "CPU": 1, "memory": 1, "custom": 2})
         assert b > a
 
-    def test_sort_resources(self):
+    @pytest.mark.parametrize(
+        "resource_class", [AvailableNodeResources, RequestedResources]
+    )
+    def test_sort_resources(self, resource_class):
         """Prioritize GPUs, CPUs, memory, then custom resources when sorting."""
 
-        a = Resources({"GPU": 0, "CPU": 4, "memory": 99, "A": 10})
-        b = Resources({"GPU": 0, "CPU": 2, "memory": 100})
-        c = Resources({"GPU": 1, "CPU": 1, "memory": 50})
-        d = Resources({"GPU": 2, "CPU": 0, "memory": 0})
-        e = Resources({"GPU": 3, "CPU": 8, "memory": 10000, "A": 6})
-        f = Resources({"GPU": 3, "CPU": 8, "memory": 10000, "A": 2})
+        a = resource_class({"GPU": 0, "CPU": 4, "memory": 99, "A": 10})
+        b = resource_class({"GPU": 0, "CPU": 2, "memory": 100})
+        c = resource_class({"GPU": 1, "CPU": 1, "memory": 50})
+        d = resource_class({"GPU": 2, "CPU": 0, "memory": 0})
+        e = resource_class({"GPU": 3, "CPU": 8, "memory": 10000, "A": 6})
+        f = resource_class({"GPU": 3, "CPU": 8, "memory": 10000, "A": 2})
 
         for _ in range(10):
             resources = [a, b, c, d, e, f]
@@ -133,18 +159,18 @@ class TestResources:
             assert resources == [e, f, d, c, a, b]
 
     def test_custom_resources(self):
-        a = Resources({"alice": 2})
-        b = Resources({"alice": 3})
-        assert a < b
-        assert b.can_fit(a)
-        assert a + b == Resources(**{"alice": 5})
+        a = AvailableNodeResources({"alice": 3})
+        b = AvailableNodeResources({"alice": 2})
+        assert b < a
+        assert a.can_fit(b)
+        assert a + b == AvailableNodeResources(**{"alice": 5})
 
-        a = Resources({"bob": 2})
-        b = Resources({"CPU": 4})
-        assert a + b == Resources(**{"CPU": 4, "bob": 2})
+        a = AvailableNodeResources({"bob": 2})
+        b = AvailableNodeResources({"CPU": 4})
+        assert a + b == AvailableNodeResources(**{"CPU": 4, "bob": 2})
 
     def test_implicit_resources(self):
-        r = Resources()
+        r = AvailableNodeResources()
         # Implicit resources
         assert r.get(f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}random") == 1
         # Everything else
@@ -154,56 +180,113 @@ class TestResources:
         assert r.get("random_custom") == 0
 
         # Arithmetric with implicit resources
-        implicit_resource = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}whatever"
-        a = Resources()
-        b = Resources({implicit_resource: 0.5})
-        assert a.get(implicit_resource) == 1
-        assert b.get(implicit_resource) == 0.5
+        implicit_resource_1 = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}whatever"
+        implicit_resource_2 = f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}whatever2"
+        a = AvailableNodeResources()
+        b = RequestedResources({implicit_resource_1: 0.5})
+        c = RequestedResources({implicit_resource_2: 0.25})
+        assert a.get(implicit_resource_1) == 1
         assert a.can_fit(b)
 
         a -= b
-        assert a.get(implicit_resource) == 0.5
+        assert a.get(implicit_resource_1) == 0.5
         assert a.can_fit(b)
 
         a -= b
-        assert a.get(implicit_resource) == 0
+        assert a.get(implicit_resource_1) == 0
         assert not a.can_fit(b)
+
+        for i in range(4):
+            assert a.can_fit(c)
+
+            a -= c
+            assert a.get(implicit_resource_1) == 0
+            assert a.get(implicit_resource_2) == 1 - 0.25 * (i + 1)
+
+        # Implicit resources exhausted
+        assert not a.can_fit(c)
 
 
 def test_deployment_scheduling_info():
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=RequestedResources({"CPU": 2, "GPU": 1}),
     )
-    assert info.required_resources == Resources({"CPU": 2, "GPU": 1})
+    assert info.required_resources == RequestedResources({"CPU": 2, "GPU": 1})
     assert not info.is_non_strict_pack_pg()
 
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=RequestedResources({"CPU": 2, "GPU": 1}),
         placement_group_bundles=[
-            Resources({"CPU": 100}),
-            Resources({"GPU": 100}),
+            RequestedResources({"CPU": 100}),
+            RequestedResources({"GPU": 100}),
         ],
         placement_group_strategy="STRICT_PACK",
     )
-    assert info.required_resources == Resources({"CPU": 100, "GPU": 100})
+    assert info.required_resources == RequestedResources({"CPU": 100, "GPU": 100})
     assert not info.is_non_strict_pack_pg()
 
     info = DeploymentSchedulingInfo(
         deployment_id=DeploymentID("a", "b"),
         scheduling_policy=SpreadDeploymentSchedulingPolicy,
-        actor_resources=Resources({"CPU": 2, "GPU": 1}),
+        actor_resources=RequestedResources({"CPU": 2, "GPU": 1}),
         placement_group_bundles=[
-            Resources({"CPU": 100}),
-            Resources({"GPU": 100}),
+            RequestedResources({"CPU": 100}),
+            RequestedResources({"GPU": 100}),
         ],
         placement_group_strategy="PACK",
     )
-    assert info.required_resources == Resources({"CPU": 2, "GPU": 1})
+    assert info.required_resources == RequestedResources({"CPU": 2, "GPU": 1})
     assert info.is_non_strict_pack_pg()
+
+
+def test_deployment_scheduling_info_required_resources_no_mutation():
+    dep_id = DeploymentID("app", "name")
+    actor = RequestedResources({"CPU": 1})
+    info = DeploymentSchedulingInfo(
+        deployment_id=dep_id,
+        scheduling_policy=SpreadDeploymentSchedulingPolicy,
+        actor_resources=actor,
+        max_replicas_per_node=2,
+    )
+    implicit = (
+        f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}" f"{dep_id.app_name}:{dep_id.name}"
+    )
+    assert info.required_resources == RequestedResources({"CPU": 1, implicit: 0.5})
+    assert actor == RequestedResources({"CPU": 1})
+    assert implicit not in actor
+
+
+def test_max_replicas_per_node_zero_skips_implicit_resource():
+    """Falsy max_replicas_per_node (e.g. 0) must not trigger 1.0 / 0."""
+    dep_id = DeploymentID("app", "name")
+    implicit = (
+        f"{ray._raylet.IMPLICIT_RESOURCE_PREFIX}" f"{dep_id.app_name}:{dep_id.name}"
+    )
+
+    info = DeploymentSchedulingInfo(
+        deployment_id=dep_id,
+        scheduling_policy=SpreadDeploymentSchedulingPolicy,
+        actor_resources=RequestedResources({"CPU": 1}),
+        max_replicas_per_node=0,
+    )
+    assert info.required_resources == RequestedResources({"CPU": 1})
+    assert implicit not in info.required_resources
+
+    req = ReplicaSchedulingRequest(
+        replica_id=ReplicaID("r0", dep_id),
+        actor_def=MockActorClass(),
+        actor_resources={"CPU": 1},
+        actor_options={"name": "r0"},
+        actor_init_args=(),
+        on_scheduled=lambda *args, **kwargs: None,
+        max_replicas_per_node=0,
+    )
+    assert req.requested_resources == RequestedResources({"CPU": 1})
+    assert implicit not in req.requested_resources
 
 
 def test_get_available_resources_per_node():
@@ -239,7 +322,9 @@ def test_get_available_resources_per_node():
     scheduler._on_replica_launching(
         ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 9,
             "CPU": 29,
@@ -254,7 +339,9 @@ def test_get_available_resources_per_node():
     scheduler.on_replica_running(
         ReplicaID(unique_id="replica1", deployment_id=d_id), node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -271,7 +358,9 @@ def test_get_available_resources_per_node():
     cluster_node_info_cache.set_available_resources_per_node(
         "node1", {"GPU": 10, "CPU": 32, "memory": 256, "customx": 1}
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -348,7 +437,9 @@ def test_get_available_resources_per_node_pg():
     scheduler._on_replica_launching(
         ReplicaID(unique_id="replica0", deployment_id=d_id), target_node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 9,
             "CPU": 29,
@@ -362,7 +453,9 @@ def test_get_available_resources_per_node_pg():
     scheduler.on_replica_running(
         ReplicaID(unique_id="replica1", deployment_id=d_id), node_id="node1"
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -378,7 +471,9 @@ def test_get_available_resources_per_node_pg():
     cluster_node_info_cache.set_available_resources_per_node(
         "node1", {"GPU": 10, "CPU": 32, "memory": 256, "customx": 1}
     )
-    assert scheduler._get_available_resources_per_node().get("node1") == Resources(
+    assert scheduler._get_available_resources_per_node().get(
+        "node1"
+    ) == AvailableNodeResources(
         **{
             "GPU": 8,
             "CPU": 26,
@@ -400,10 +495,10 @@ def test_best_fit_node():
     # None of the nodes can schedule the replica
     assert (
         scheduler._best_fit_node(
-            required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+            required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
             available_resources={
-                "node1": Resources(GPU=3, CPU=3),
-                "node2": Resources(CPU=3, customx=1),
+                "node1": AvailableNodeResources(GPU=3, CPU=3),
+                "node2": AvailableNodeResources(CPU=3, customx=1),
             },
         )
         is None
@@ -411,30 +506,30 @@ def test_best_fit_node():
 
     # Only node2 can fit the replica
     assert "node2" == scheduler._best_fit_node(
-        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
-            "node1": Resources(CPU=3),
-            "node2": Resources(GPU=1, CPU=3, customx=1),
-            "node3": Resources(CPU=3, customx=1),
+            "node1": AvailableNodeResources(CPU=3),
+            "node2": AvailableNodeResources(GPU=1, CPU=3, customx=1),
+            "node3": AvailableNodeResources(CPU=3, customx=1),
         },
     )
 
     # We should prioritize minimizing fragementation of GPUs over CPUs
     assert "node1" == scheduler._best_fit_node(
-        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
-            "node1": Resources(GPU=2, CPU=10, customx=1),
-            "node2": Resources(GPU=10, CPU=2, customx=1),
+            "node1": AvailableNodeResources(GPU=2, CPU=10, customx=1),
+            "node2": AvailableNodeResources(GPU=10, CPU=2, customx=1),
         },
     )
 
     # When GPU is the same, should prioritize minimizing fragmentation
     # of CPUs over customer resources
     assert "node2" == scheduler._best_fit_node(
-        required_resources=Resources(GPU=1, CPU=1, customx=0.1),
+        required_resources=RequestedResources(GPU=1, CPU=1, customx=0.1),
         available_resources={
-            "node1": Resources(GPU=10, CPU=5, customx=0.1),
-            "node2": Resources(GPU=10, CPU=2, customx=10),
+            "node1": AvailableNodeResources(GPU=10, CPU=5, customx=0.1),
+            "node2": AvailableNodeResources(GPU=10, CPU=2, customx=10),
         },
     )
 
@@ -447,19 +542,19 @@ def test_best_fit_node():
         Resources.CUSTOM_PRIORITY = ["customx", "customy"]
 
         assert "node2" == scheduler._best_fit_node(
-            required_resources=Resources(customx=1, customy=1),
+            required_resources=RequestedResources(customx=1, customy=1),
             available_resources={
-                "node1": Resources(customx=2, customy=5),
-                "node2": Resources(customx=2, customy=1),
+                "node1": AvailableNodeResources(customx=2, customy=5),
+                "node2": AvailableNodeResources(customx=2, customy=1),
             },
         )
 
         # If customx and customy are equal, GPU should determine best fit
         assert "node2" == scheduler._best_fit_node(
-            required_resources=Resources(customx=1, customy=1, GPU=1),
+            required_resources=RequestedResources(customx=1, customy=1, GPU=1),
             available_resources={
-                "node1": Resources(customx=2, customy=2, GPU=10),
-                "node2": Resources(customx=2, customy=2, GPU=2),
+                "node1": AvailableNodeResources(customx=2, customy=2, GPU=10),
+                "node2": AvailableNodeResources(customx=2, customy=2, GPU=2),
             },
         )
 
@@ -927,9 +1022,9 @@ def test_filter_nodes_by_label_selector():
     scheduler = MockScheduler()
 
     nodes = {
-        "n1": Resources(),
-        "n2": Resources(),
-        "n3": Resources(),
+        "n1": AvailableNodeResources(),
+        "n2": AvailableNodeResources(),
+        "n3": AvailableNodeResources(),
     }
     node_labels = {
         "n1": {"region": "us-west", "gpu": "T4", "env": "prod"},
@@ -1379,6 +1474,110 @@ class TestPackScheduling:
         assert state[node_id_1] == 4
         assert state[node_id_2] == 1
 
+    def test_heterogeneous_resources_with_max_replicas_per_node(self):
+        d_id1 = DeploymentID(name="deployment1")
+        d_id2 = DeploymentID(name="deployment2")
+        max_replicas_per_node = {d_id1: 2, d_id2: 3}
+
+        cluster_node_info_cache = MockClusterNodeInfoCache()
+        node1 = NodeID.from_random().hex()
+        node2 = NodeID.from_random().hex()
+
+        cluster_node_info_cache.add_node(node1, {"GPU": 8, "CPU": 32})
+        cluster_node_info_cache.add_node(node2, {"GPU": 10, "CPU": 32})
+        scheduler = default_impl.create_deployment_scheduler(
+            cluster_node_info_cache,
+            head_node_id_override="fake-head-node-id",
+            create_placement_group_fn_override=None,
+        )
+        scheduler.on_deployment_created(d_id1, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_created(d_id2, SpreadDeploymentSchedulingPolicy())
+        scheduler.on_deployment_deployed(
+            d_id1,
+            ReplicaConfig.create(
+                dummy,
+                max_replicas_per_node=max_replicas_per_node[d_id1],
+                ray_actor_options={"num_gpus": 2, "num_cpus": 1},
+            ),
+        )
+        scheduler.on_deployment_deployed(
+            d_id2,
+            ReplicaConfig.create(
+                dummy,
+                max_replicas_per_node=max_replicas_per_node[d_id2],
+                ray_actor_options={"num_gpus": 2, "num_cpus": 1},
+            ),
+        )
+
+        state = defaultdict(list)
+
+        def on_scheduled(actor_handle, *args, **kwargs):
+            scheduling_strategy = actor_handle._options["scheduling_strategy"]
+            assert isinstance(scheduling_strategy, NodeAffinitySchedulingStrategy)
+            state[scheduling_strategy.node_id].append(
+                actor_handle._options["deployment"]
+            )
+
+        # Schedule one d1 and one d2
+        scheduler.schedule(
+            upscales={
+                d_id1: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="replica0", deployment_id=d_id1),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 2},
+                        max_replicas_per_node=max_replicas_per_node[d_id1],
+                        actor_options={"name": "random", "deployment": d_id1},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    ),
+                ],
+                d_id2: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(unique_id="replica1", deployment_id=d_id2),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 2},
+                        max_replicas_per_node=max_replicas_per_node[d_id2],
+                        actor_options={"name": "random", "deployment": d_id2},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    )
+                ],
+            },
+            downscales={},
+        )
+        assert state[node1].count(d_id1) == 1
+        assert state[node1].count(d_id2) == 1
+        assert len(state[node2]) == 0
+
+        # Schedule two more d1
+        scheduler.schedule(
+            upscales={
+                d_id1: [
+                    ReplicaSchedulingRequest(
+                        replica_id=ReplicaID(
+                            unique_id=f"replica{i+2}", deployment_id=d_id1
+                        ),
+                        actor_def=MockActorClass(),
+                        actor_resources={"GPU": 2},
+                        max_replicas_per_node=max_replicas_per_node[d_id1],
+                        actor_options={"name": "random", "deployment": d_id1},
+                        actor_init_args=(),
+                        on_scheduled=on_scheduled,
+                    )
+                    for i in range(2)
+                ],
+            },
+            downscales={},
+        )
+        # 2 d1 + 1 d2 on node1
+        assert state[node1].count(d_id1) == 2
+        assert state[node1].count(d_id2) == 1
+
+        # 1 d1 on node2 because of max_replicas_per_node=2 (otherwise node1 could have fit both new d1 replicas)
+        assert state[node2].count(d_id1) == 1
+        assert state[node2].count(d_id2) == 0
+
     def test_custom_resources(self):
         d_id = DeploymentID(name="deployment1")
         node_id_1 = NodeID.from_random().hex()
@@ -1670,6 +1869,275 @@ class TestPackScheduling:
         assert isinstance(strategy2, NodeAffinitySchedulingStrategy)
         assert strategy2.node_id == node_id_1
         assert call2.kwargs == {"placement_group": None}
+
+
+class TestScheduleGangPlacementGroups:
+    def test_schedule_gang_placement_groups(self, mock_deployment_state_manager):
+        """Creates gangs successfully and verifies placement requests include expected bundles and strategy."""
+        captured_requests = []
+        gang_size = 2
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+        replica_resource_dict = {"CPU": 2.0, "GPU": 1.0}
+        gang_strategy = "SPREAD"
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            captured_requests.append(request)
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d1", app_name="app1")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            gang_strategy,
+            num_replicas_to_add,
+            replica_resource_dict=replica_resource_dict,
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert deployment_id in result
+        reservation = result[deployment_id]
+        assert reservation.success
+        assert len(reservation.gang_pgs) == num_gangs
+        assert len(captured_requests) == num_gangs
+        for req in captured_requests:
+            assert isinstance(req, CreatePlacementGroupRequest)
+            assert req.bundles == [replica_resource_dict] * gang_size
+            assert req.strategy == gang_strategy
+
+        assert len(reservation.gang_ids) == num_gangs
+        assert len(reservation.gang_pg_names) == num_gangs
+        assert len(set(reservation.gang_ids)) == num_gangs
+        for pg_name in reservation.gang_pg_names:
+            assert pg_name.startswith(GANG_PG_NAME_PREFIX)
+
+    def test_schedule_gang_placement_groups_invalid_gang_size(
+        self, mock_deployment_state_manager
+    ):
+        """Returns failure when desired replicas cannot be evenly divided by gang size."""
+        gang_size = 3
+        num_replicas_to_add = 4
+        create_pg_fn = Mock()
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d2", app_name="app2")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            {"CPU": 1.0},
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert not result[deployment_id].success
+        assert "not divisible by gang_size" in result[deployment_id].error_message
+        create_pg_fn.assert_not_called()
+
+    def test_schedule_gang_placement_groups_all_pg_creation_failures(
+        self, mock_deployment_state_manager
+    ):
+        """Reports failure when every gang placement group creation attempt raises exceptions."""
+        gang_size = 2
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            raise RuntimeError("simulated placement group creation failure")
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d3", app_name="app3")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            {"CPU": 1.0},
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert not result[deployment_id].success
+        assert (
+            "Failed to create any gang placement groups"
+            in result[deployment_id].error_message
+        )
+
+    def test_schedule_gang_placement_groups_partial_pg_creation_failures(
+        self, mock_deployment_state_manager
+    ):
+        """Keeps successful gang reservations when only a subset of placement groups fail."""
+        gang_size = 2
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+        failed_gangs = 1
+        num_calls = 0
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            nonlocal num_calls
+            num_calls += 1
+            if num_calls == 1:
+                raise RuntimeError("fail first gang only")
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d4", app_name="app4")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            {"CPU": 1.0},
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert result[deployment_id].success
+        assert len(result[deployment_id].gang_pgs) == num_gangs - failed_gangs
+
+    def test_schedule_gang_placement_groups_with_per_replica_bundles(
+        self, mock_deployment_state_manager
+    ):
+        """Flattens per-replica bundles and propagates label selectors and fallback strategies correctly."""
+        captured_requests = []
+        gang_size = 2
+        num_gangs = 4
+        num_replicas_to_add = num_gangs * gang_size
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            captured_requests.append(request)
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d5", app_name="app5")
+        per_replica_bundles = [{"GPU": 1.0, "CPU": 1.0}, {"CPU": 1.0}]
+        per_replica_label_selector = [{"gpu": "a100"}, {"zone": "z1"}]
+        per_replica_fallback = [{"allow_soft": True}, {"allow_soft": False}]
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            replica_resource_dict={"CPU": 1.0},
+            replica_placement_group_bundles=per_replica_bundles,
+            replica_pg_bundle_label_selector=per_replica_label_selector,
+            replica_pg_fallback_strategy=per_replica_fallback,
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert result[deployment_id].success
+        assert len(captured_requests) == num_gangs
+        expected_bundles = per_replica_bundles * gang_size
+        expected_label_selector = per_replica_label_selector * gang_size
+        expected_fallback = per_replica_fallback * gang_size
+        for req in captured_requests:
+            assert req.bundles == expected_bundles
+            assert req.bundle_label_selector == expected_label_selector
+            assert req.fallback_strategy == expected_fallback
+
+    def test_schedule_gang_placement_groups_without_per_replica_bundles_uses_resource_dict(
+        self, mock_deployment_state_manager
+    ):
+        """Uses replica resource dict for each gang bundle without optional selectors."""
+        captured_requests = []
+        gang_size = 3
+        num_gangs = 2
+        num_replicas_to_add = gang_size * num_gangs
+        replica_resource_dict = {"CPU": 2.0, "GPU": 0.5}
+
+        def create_pg_fn(request: CreatePlacementGroupRequest, *args, **kwargs):
+            captured_requests.append(request)
+            return Mock()
+
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id = DeploymentID(name="d6", app_name="app6")
+        gang_request = GangPlacementGroupRequest(
+            deployment_id,
+            gang_size,
+            "STRICT_PACK",
+            num_replicas_to_add,
+            replica_resource_dict=replica_resource_dict,
+        )
+
+        result = scheduler.schedule_gang_placement_groups({deployment_id: gang_request})
+
+        assert result[deployment_id].success
+        assert len(captured_requests) == num_gangs
+        for req in captured_requests:
+            assert req.bundles == [replica_resource_dict] * gang_size
+            assert req.bundle_label_selector is None
+            assert req.fallback_strategy is None
+
+    def test_schedule_gang_placement_groups_multiple_deployments(
+        self, mock_deployment_state_manager
+    ):
+        """Schedules gang placement groups for multiple deployments and returns independent results."""
+        create_pg_fn = Mock(return_value=Mock())
+        gang_size_1 = 2
+        num_gangs_1 = 2
+        num_replicas_to_add_1 = gang_size_1 * num_gangs_1
+        gang_size_2 = 3
+        num_gangs_2 = 2
+        num_replicas_to_add_2 = gang_size_2 * num_gangs_2
+        create_dsm, _, _, _ = mock_deployment_state_manager
+        dsm: DeploymentStateManager = create_dsm(
+            create_placement_group_fn_override=create_pg_fn,
+        )
+        scheduler = dsm._deployment_scheduler
+        deployment_id_1 = DeploymentID(name="d7", app_name="app7")
+        deployment_id_2 = DeploymentID(name="d8", app_name="app8")
+        gang_requests = {
+            deployment_id_1: GangPlacementGroupRequest(
+                deployment_id_1,
+                gang_size_1,
+                "STRICT_PACK",
+                num_replicas_to_add_1,
+                {"CPU": 1.0},
+            ),
+            deployment_id_2: GangPlacementGroupRequest(
+                deployment_id_2,
+                gang_size_2,
+                "STRICT_PACK",
+                num_replicas_to_add_2,
+                {"CPU": 1.0},
+            ),
+        }
+
+        result = scheduler.schedule_gang_placement_groups(gang_requests)
+
+        assert set(result.keys()) == {deployment_id_1, deployment_id_2}
+        assert result[deployment_id_1].success
+        assert result[deployment_id_2].success
+        assert len(result[deployment_id_1].gang_pgs) == num_gangs_1
+        assert len(result[deployment_id_2].gang_pgs) == num_gangs_2
+        assert create_pg_fn.call_count == num_gangs_1 + num_gangs_2
 
 
 if __name__ == "__main__":

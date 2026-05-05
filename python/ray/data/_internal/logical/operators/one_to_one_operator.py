@@ -1,3 +1,4 @@
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, List, Optional
 
 from ray.data._internal.logical.interfaces import (
@@ -19,6 +20,7 @@ __all__ = [
 ]
 
 
+@dataclass(frozen=True, repr=False, eq=False, init=False)
 class AbstractOneToOne(LogicalOperator):
     """Abstract class for one-to-one logical operators, which
     have one input and one output dependency.
@@ -44,31 +46,31 @@ class AbstractOneToOne(LogicalOperator):
                 inspecting the logical plan of a Dataset.
         """
         super().__init__(
-            input_dependencies=[input_op] if input_op else [],
-            num_outputs=num_outputs,
-            name=name,
+            _num_outputs=num_outputs,
         )
-        self.can_modify_num_rows = can_modify_num_rows
+        object.__setattr__(self, "_input_dependencies", [input_op] if input_op else [])
+        if name is not None:
+            object.__setattr__(self, "_name", name)
+        object.__setattr__(self, "can_modify_num_rows", can_modify_num_rows)
 
     @property
-    def input_dependency(self) -> LogicalOperator:
-        return self.input_dependencies[0]
+    def num_outputs(self) -> Optional[int]:
+        return self._num_outputs
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
     """Logical operator for limit."""
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        limit: int,
-    ):
-        super().__init__(
-            input_op=input_op,
-            can_modify_num_rows=True,
-            name=f"limit={limit}",
-        )
-        self.limit = limit
+    limit: int
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
+    can_modify_num_rows: bool = field(init=False, default=True)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        object.__setattr__(self, "_name", f"limit={self.limit}")
+        object.__setattr__(self, "_num_outputs", None)
 
     def infer_metadata(self) -> BlockMetadata:
         return BlockMetadata(
@@ -105,27 +107,26 @@ class Limit(AbstractOneToOne, LogicalOperatorSupportsPredicatePassThrough):
         return PredicatePassThroughBehavior.PASSTHROUGH
 
 
+@dataclass(frozen=True, repr=False, eq=False)
 class Download(AbstractOneToOne):
     """Logical operator for download operation.
 
     Supports downloading from multiple URI columns in a single operation.
     """
 
-    def __init__(
-        self,
-        input_op: LogicalOperator,
-        uri_column_names: List[str],
-        output_bytes_column_names: List[str],
-        ray_remote_args: Optional[Dict[str, Any]] = None,
-        filesystem: Optional["pyarrow.fs.FileSystem"] = None,
-    ):
-        super().__init__(input_op=input_op, can_modify_num_rows=False)
-        if len(uri_column_names) != len(output_bytes_column_names):
+    uri_column_names: List[str]
+    output_bytes_column_names: List[str]
+    ray_remote_args: Dict[str, Any] = field(default_factory=dict)
+    filesystem: Optional["pyarrow.fs.FileSystem"] = None
+    input_dependencies: List[LogicalOperator] = field(repr=False, kw_only=True)
+    can_modify_num_rows: bool = field(init=False, default=False)
+    _num_outputs: Optional[int] = field(init=False, default=None, repr=False)
+
+    def __post_init__(self):
+        assert len(self.input_dependencies) == 1, len(self.input_dependencies)
+        if len(self.uri_column_names) != len(self.output_bytes_column_names):
             raise ValueError(
-                f"Number of URI columns ({len(uri_column_names)}) must match "
-                f"number of output columns ({len(output_bytes_column_names)})"
+                f"Number of URI columns ({len(self.uri_column_names)}) must match "
+                f"number of output columns ({len(self.output_bytes_column_names)})"
             )
-        self.uri_column_names = uri_column_names
-        self.output_bytes_column_names = output_bytes_column_names
-        self.ray_remote_args = ray_remote_args or {}
-        self.filesystem = filesystem
+        object.__setattr__(self, "_num_outputs", None)

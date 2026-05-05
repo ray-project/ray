@@ -1,7 +1,7 @@
 import itertools
 import logging
 from collections import defaultdict
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional, Union
 
 import numpy as np
 from packaging.version import parse as parse_version
@@ -10,7 +10,6 @@ from ray._common.utils import env_integer
 from ray._private.utils import INT32_MAX
 from ray.data._internal.tensor_extensions.arrow import (
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
-    PYARROW_VERSION,
     get_arrow_extension_fixed_shape_tensor_types,
     get_arrow_extension_tensor_types,
     unify_tensor_arrays,
@@ -28,6 +27,8 @@ except ImportError:
 MIN_PYARROW_VERSION_VIEW_TYPES = parse_version("16.0.0")
 MIN_PYARROW_VERSION_RUN_END_ENCODED_TYPES = parse_version("12.0.0")
 MIN_PYARROW_VERSION_TYPE_PROMOTION = parse_version("14.0.0")
+
+PYARROW_VERSION = get_pyarrow_version()
 
 
 # pyarrow.Table.slice is slow when the table has many chunks
@@ -74,18 +75,60 @@ def _create_empty_table(schema: "pyarrow.Schema"):
     return pa.table(arrays, schema=schema)
 
 
+def _has_unhashable_pandas_types(schema: "pyarrow.Schema") -> bool:
+    """Check if any column type becomes unhashable after to_pandas() conversion.
+
+    Nested PyArrow types (struct/list/large_list/fixed_size_list/map/union and
+    their view variants) convert to Python dicts/lists, and Ray's tensor and
+    Python-object extension types convert to numpy arrays / Python objects.
+    None of these are hashable by pandas' hash_pandas_object. We check the
+    schema upfront so the hash algorithm choice is deterministic per schema,
+    not per block data.
+    """
+    from ray.data._internal.object_extensions.arrow import ArrowPythonObjectType
+
+    tensor_types = get_arrow_extension_tensor_types()
+    for field in schema:
+        # `is_nested` covers struct/list/large_list/map/union and (on pyarrow
+        # 16+) list_view/large_list_view. It does NOT include fixed_size_list
+        # on older pyarrow (<10-ish), so check that explicitly.
+        if pyarrow.types.is_nested(field.type) or pyarrow.types.is_fixed_size_list(
+            field.type
+        ):
+            return True
+        if isinstance(field.type, tensor_types):
+            return True
+        if isinstance(field.type, ArrowPythonObjectType):
+            return True
+    return False
+
+
 def _hash_partition(
     table: "pyarrow.Table",
     num_partitions: int,
 ) -> np.ndarray:
+    if _has_unhashable_pandas_types(table.schema):
+        # Struct/list/map columns become dicts/lists in pandas, which are
+        # unhashable. Use row-by-row hashing on PyArrow scalars instead.
+        partitions = np.zeros((table.num_rows,), dtype=np.int64)
+        for i in range(table.num_rows):
+            _tuple = tuple(c[i] for c in table.columns)
+            partitions[i] = hash(_tuple) % num_partitions
+    else:
+        # Use pandas' vectorized hash (xxhash-based) instead of a Python
+        # row-by-row loop.
+        import pandas as pd
 
-    partitions = np.zeros((table.num_rows,), dtype=np.int64)
-    for i in range(table.num_rows):
-        _tuple = tuple(c[i] for c in table.columns)
-        partitions[i] = hash(_tuple) % num_partitions
+        # Use types_mapper=pd.ArrowDtype to keep Arrow-backed extension arrays
+        # in pandas. This avoids int64 -> float64 promotion for nullable integer
+        # columns, which would cause the same value to hash differently across
+        # blocks depending on whether the block contains nulls.
+        hashes = pd.util.hash_pandas_object(
+            table.to_pandas(types_mapper=pd.ArrowDtype), index=False
+        ).values
+        np.mod(hashes, num_partitions, out=hashes)
+        partitions = hashes
 
-    # Convert to ndarray to compute hash partition indices
-    # more efficiently
     return partitions
 
 
@@ -121,6 +164,7 @@ def hash_partition(
     #       chunks w/in the individual columns, and therefore to improve performance
     #       we attempt to defragment the table to potentially combine some of those
     #       chunks into contiguous arrays.
+    # TODO: can we always combine chunks?
     table = try_combine_chunked_columns(table)
 
     return {
@@ -432,7 +476,11 @@ def _backfill_missing_fields(
     import pyarrow as pa
 
     from ray.data._internal.tensor_extensions.arrow import (
+        ArrowVariableShapedTensorArray,
         ArrowVariableShapedTensorType,
+    )
+    from ray.data._internal.utils.transform_pyarrow import (
+        _is_native_tensor_type,
     )
 
     # Flatten chunked arrays into a single array if necessary
@@ -477,9 +525,14 @@ def _backfill_missing_fields(
                 current_array.type, get_arrow_extension_fixed_shape_tensor_types()
             ):
                 # Convert to variable-shaped if needed
-                current_array = current_array.to_var_shaped_tensor_array(
-                    ndim=field_type.ndim
-                )
+                if _is_native_tensor_type(current_array.type):
+                    current_array = ArrowVariableShapedTensorArray.from_numpy(
+                        current_array.to_numpy_ndarray()
+                    )
+                else:
+                    current_array = current_array.to_var_shaped_tensor_array(
+                        ndim=field_type.ndim
+                    )
 
             # Handle type mismatches for primitive types
             # The schema should already be unified by unify_schemas, but
@@ -512,12 +565,32 @@ def _align_struct_fields(
     """
     Align struct columns across blocks to match the provided schema.
 
+    Struct columns in each block are backfilled with nulls for any fields
+    present in the unified schema but missing in that block. Non-struct
+    columns missing from a block are also appended as null columns, and
+    columns are reordered to match the schema.
+
     Args:
         blocks: List of Arrow tables to align.
         schema: Unified schema with desired struct column alignment.
 
     Returns:
         List[pa.Table]: List of aligned Arrow tables.
+
+    Example::
+
+        >>> import pyarrow as pa
+        >>> block1 = pa.table({"a": [1], "s": [{"x": 1}]})
+        >>> block2 = pa.table({"a": [2], "s": [{"x": 2, "y": "hello"}]})
+        >>> schema = pa.schema([
+        ...     ("a", pa.int64()),
+        ...     ("s", pa.struct([("x", pa.int64()), ("y", pa.string())])),
+        ... ])
+        >>> aligned = _align_struct_fields([block1, block2], schema)
+        >>> aligned[0].to_pydict()
+        {'a': [1], 's': [{'x': 1, 'y': None}]}
+        >>> aligned[1].to_pydict()
+        {'a': [2], 's': [{'x': 2, 'y': 'hello'}]}
     """
     import pyarrow as pa
 
@@ -596,39 +669,96 @@ def shuffle(block: "pyarrow.Table", seed: Optional[int] = None) -> "pyarrow.Tabl
 def _concat_cols_with_null_list(
     col_chunked_arrays: List["pyarrow.ChunkedArray"],
 ) -> "pyarrow.ChunkedArray":
+    """Concatenate chunked arrays where at least one has type ``list<null>``.
+
+    When a column is empty in some blocks (e.g. an empty TFRecord feature),
+    PyArrow infers its type as ``list<item: null>``.  Other blocks may have
+    a concrete type for the same column (``binary``, ``list<float32>``, etc.).
+    ``pa.concat_tables`` can promote ``list<null>`` to ``list<X>`` natively,
+    but cannot merge ``list<null>`` with a non-list type like ``binary``.
+    This function resolves both cases (for simplicity) by casting or replacing
+    ``list<null>`` arrays to match the concrete type found in other blocks.
+
+    Args:
+        col_chunked_arrays: Chunked arrays (one per block) for a single
+            column, where at least one has type ``list<item: null>``.
+
+    Returns:
+        A single concatenated ``ChunkedArray`` with a consistent type.
+
+    Example::
+
+        >>> import pyarrow as pa
+        >>> ca1 = pa.chunked_array([pa.array([], type=pa.list_(pa.null()))])
+        >>> ca2 = pa.chunked_array([pa.array([[b"hello"]], type=pa.list_(pa.binary()))])
+        >>> result = _concat_cols_with_null_list([ca1, ca2])
+        >>> result.type
+        ListType(list<item: binary>)
+    """
     import pyarrow as pa
 
     # For each opaque list column, iterate through all schemas until
     # we find a valid value_type that can be used to override the
     # column types in the following for-loop.
-    scalar_type = None
+    value_type = None
     for arr in col_chunked_arrays:
         if not pa.types.is_list(arr.type) or not pa.types.is_null(arr.type.value_type):
-            scalar_type = arr.type
+            value_type = arr.type
             break
 
-    if scalar_type is not None:
+    if value_type is not None:
         for c_idx in range(len(col_chunked_arrays)):
             c = col_chunked_arrays[c_idx]
             if pa.types.is_list(c.type) and pa.types.is_null(c.type.value_type):
-                if pa.types.is_list(scalar_type):
+                if pa.types.is_list(value_type):
                     # If we are dealing with a list input,
-                    # cast the array to the scalar_type found above.
-                    col_chunked_arrays[c_idx] = c.cast(scalar_type)
+                    # cast the array to the value_type found above.
+                    col_chunked_arrays[c_idx] = c.cast(value_type)
                 else:
                     # If we are dealing with a single value, construct
                     # a new array with null values filled.
                     col_chunked_arrays[c_idx] = pa.chunked_array(
-                        [pa.nulls(c.length(), type=scalar_type)]
+                        [pa.nulls(c.length(), type=value_type)]
                     )
 
     return _concatenate_chunked_arrays(col_chunked_arrays)
 
 
 def _concat_cols_with_extension_tensor_types(
-    col_chunked_arrays: List["pyarrow.ChunkedArray"],
+    col_chunked_arrays: Iterable["pyarrow.ChunkedArray"],
 ) -> "pyarrow.ChunkedArray":
+    """Concatenate chunked arrays that have tensor extension types.
 
+    Flattens all chunks from the input chunked arrays and unifies them
+    via ``unify_tensor_arrays``.  When every chunk already shares the same
+    fixed-shape tensor type the chunks are returned as-is.  When shapes
+    differ across chunks, ``unify_tensor_arrays`` promotes them to a
+    single variable-shaped tensor type so the result is always a
+    consistently-typed ``ChunkedArray``.
+
+    Args:
+        col_chunked_arrays: Chunked arrays (one per block) for a single
+            tensor column whose element shapes may differ across blocks.
+
+    Returns:
+        A single ``ChunkedArray`` with a unified tensor type.
+
+    Example::
+
+        >>> import numpy as np, pyarrow as pa
+        >>> from ray.data._internal.tensor_extensions.arrow import (
+        ...     ArrowTensorArray,
+        ... )
+        >>> # Two blocks with different tensor shapes for the same column:
+        >>> # 2 rows of shape-(3,) tensors and 2 rows of shape-(4,) tensors
+        >>> ca1 = pa.chunked_array([ArrowTensorArray.from_numpy(np.zeros((2, 3)))])
+        >>> ca2 = pa.chunked_array([ArrowTensorArray.from_numpy(np.zeros((2, 4)))])
+        >>> result = _concat_cols_with_extension_tensor_types([ca1, ca2])
+        >>> # Result is a single ChunkedArray promoted to variable-shaped type
+        >>> # with 2 + 2 = 4 total rows
+        >>> len(result)
+        4
+    """
     import pyarrow as pa
 
     # For our tensor extension types, manually construct a chunked array
@@ -644,8 +774,34 @@ def _concat_cols_with_extension_tensor_types(
 
 
 def _concat_cols_with_extension_object_types(
-    col_chunked_arrays: List["pyarrow.ChunkedArray"],
+    col_chunked_arrays: Iterable["pyarrow.ChunkedArray"],
 ) -> "pyarrow.ChunkedArray":
+    """Concatenate chunked arrays where the unified type is ``ArrowPythonObjectType``.
+
+    Each chunk that is already an ``ArrowPythonObjectType`` is kept as-is.
+    Chunks with a different type are converted to ``ArrowPythonObjectArray``
+    via ``from_objects``, so the resulting ``ChunkedArray`` has a uniform
+    object extension type.
+
+    Args:
+        col_chunked_arrays: Chunked arrays (one per block) for a single
+            column whose unified type is ``ArrowPythonObjectType``.
+
+    Returns:
+        A single ``ChunkedArray`` with ``ArrowPythonObjectType``.
+
+    Example::
+
+        >>> import pyarrow as pa
+        >>> from ray.data.extensions import ArrowPythonObjectArray
+        >>> # One block already stores Python objects, another has plain ints
+        >>> ca1 = pa.chunked_array([ArrowPythonObjectArray.from_objects([1, 2])])
+        >>> ca2 = pa.chunked_array([[3, 4]])
+        >>> result = _concat_cols_with_extension_object_types([ca1, ca2])
+        >>> # Both chunks are now ArrowPythonObjectType, 2 + 2 = 4 total rows
+        >>> len(result)
+        4
+    """
     import pyarrow as pa
 
     from ray.data.extensions import ArrowPythonObjectArray, ArrowPythonObjectType
@@ -663,9 +819,46 @@ def _concat_cols_with_extension_object_types(
     return pa.chunked_array(chunks_to_concat)
 
 
-def _concat_cols_with_native_pyarrow_types(
+def _concat_cols_via_concat_tables(
     col_names: List[str], blocks: List["pyarrow.Table"], promote_types: bool = False
 ) -> Dict[str, "pyarrow.ChunkedArray"]:
+    """Concatenate columns by delegating to ``pa.concat_tables``.
+
+    Selects the named columns from each block and concatenates them using
+    PyArrow's built-in ``concat_tables``.  This is suitable for:
+
+    - **Native types** (int, float, string, struct, …) — type promotion
+      across blocks is controlled by *promote_types*.
+    - **Extension types whose type already matches across all blocks**
+      (e.g. same-shaped tensor columns, uniform ``ArrowPythonObjectType``
+      columns) — ``concat_tables`` handles these as a no-op promotion
+      since the types are identical.
+
+    Columns that are missing from a block are silently skipped (the caller
+    is expected to have backfilled them beforehand via
+    ``_align_struct_fields`` or similar).
+
+    Args:
+        col_names: Column names to concatenate.
+        blocks: Arrow tables containing the columns.
+        promote_types: If True, use permissive type promotion (e.g.
+            int32 -> int64). Only affects native types; uniform extension
+            types are concatenated as-is regardless of this flag.
+
+    Returns:
+        Dict mapping each column name to its concatenated ``ChunkedArray``.
+
+    Example::
+
+        >>> import pyarrow as pa
+        >>> b1 = pa.table({"x": [1, 2], "y": ["a", "b"]})
+        >>> b2 = pa.table({"x": [3, 4], "y": ["c", "d"]})
+        >>> result = _concat_cols_via_concat_tables(["x", "y"], [b1, b2])
+        >>> result["x"].to_pylist()
+        [1, 2, 3, 4]
+        >>> result["y"].to_pylist()
+        ['a', 'b', 'c', 'd']
+    """
     if not col_names:
         return {}
 
@@ -693,18 +886,32 @@ def _concat_cols_with_native_pyarrow_types(
 
 
 def concat(
-    blocks: List["pyarrow.Table"], *, promote_types: bool = False
+    blocks: List["pyarrow.Table"],
+    *,
+    promote_types: bool = False,
+    preserve_order: Optional[bool] = None,
 ) -> "pyarrow.Table":
     """Concatenate provided Arrow Tables into a single Arrow Table. This has special
     handling for extension types that pyarrow.concat_tables does not yet support.
+
+    Args:
+        blocks: Tables to concatenate.
+        promote_types: Whether to allow permissive type promotion for native
+            columns.
+        preserve_order: If True, rows appear in the same order as the input
+            blocks.  If False, schema-matching blocks may be grouped together
+            for faster concatenation, which can reorder rows relative to
+            non-matching blocks.  Defaults to
+            ``DataContext.get_current().execution_options.preserve_order``.
+
+    Returns:
+        A single Arrow Table containing all rows from the input tables.
     """
     import pyarrow as pa
 
     from ray.data._internal.tensor_extensions.arrow import ArrowConversionError
-    from ray.data.extensions import (
-        ArrowPythonObjectType,
-        get_arrow_extension_tensor_types,
-    )
+    from ray.data.context import DataContext
+    from ray.data.extensions import get_arrow_extension_tensor_types
 
     tensor_types = get_arrow_extension_tensor_types()
 
@@ -728,10 +935,76 @@ def concat(
             f"{schemas_to_unify}"
         ) from e
 
+    matched_blocks: List[pa.Table] = []
+    mismatched_blocks: List[pa.Table] = []
+    for block in blocks:
+        if block.schema == schema:
+            matched_blocks.append(block)
+        else:
+            mismatched_blocks.append(block)
+
+    # Fast path: all blocks already share the unified schema.
+    if len(matched_blocks) == len(blocks):
+        return pa.concat_tables(blocks)
+
+    if preserve_order is None:
+        preserve_order = DataContext.get_current().execution_options.preserve_order
+
+    if preserve_order or len(matched_blocks) <= 1:
+        return _concat_mismatched_blocks(
+            blocks,
+            schema=schema,
+            tensor_types=tensor_types,
+            promote_types=promote_types,
+        )
+
+    # When order doesn't matter, split blocks into schema-matching (fast
+    # path) and mismatched (slow path) groups, concat each group, then
+    # combine.
+    single_matched_block = pa.concat_tables(matched_blocks)
+
+    return _concat_mismatched_blocks(
+        mismatched_blocks + [single_matched_block],
+        schema=schema,
+        tensor_types=tensor_types,
+        promote_types=promote_types,
+    )
+
+
+def _concat_mismatched_blocks(
+    blocks: List["pyarrow.Table"],
+    schema: "pyarrow.Schema",
+    tensor_types: tuple,
+    promote_types: bool,
+) -> "pyarrow.Table":
+    """Concatenate blocks whose schemas differ from the unified schema.
+
+    Handles struct alignment, ``list<null>`` resolution, and per-column
+    reconciliation for tensor / object extension types before delegating
+    remaining columns to ``pa.concat_tables``.
+
+    NOTE: Concatenates blocks in the same order as input (preserve_order).
+
+    Args:
+        blocks: Tables that do not all share the same schema.
+        schema: The unified target schema.
+        tensor_types: Tuple of Arrow tensor extension types.
+        promote_types: Whether to allow permissive type promotion for
+            native columns.
+
+    Returns:
+        A single table with columns ordered according to *schema*.
+    """
+    import pyarrow as pa
+
+    from ray.data.extensions import ArrowPythonObjectType
+
     # Handle alignment of struct type columns.
     blocks = _align_struct_fields(blocks, schema)
 
-    # Identify columns with null lists
+    # Identify columns where any block has list<null> (e.g. empty TFRecord
+    # features).  These need special handling because pa.concat_tables
+    # cannot merge list<null> with a concrete type like binary.
     cols_with_null_list = set()
     for b in blocks:
         for col_name in b.schema.names:
@@ -740,34 +1013,39 @@ def concat(
                 cols_with_null_list.add(col_name)
 
     # Concatenate the columns according to their type
-    concatenated_cols = {}
-    native_pyarrow_cols = []
+    concatenated_cols: Dict[str, pa.ChunkedArray] = {}
+
+    # Names of columns that can use pa.concat_tables. This includes
+    #   - native types (supports type promotion across blocks)
+    #   - extension types (does not support type promotion across blocks)
+    concatable_cols: List[str] = []
     for col_name in schema.names:
         col_type = schema.field(col_name).type
 
-        # _align_struct_fields guarantees the existence of the column
-        col_chunked_arrays = [block.column(col_name) for block in blocks]
-
         if col_name in cols_with_null_list:
             concatenated_cols[col_name] = _concat_cols_with_null_list(
-                col_chunked_arrays
+                [block.column(col_name) for block in blocks]
             )
-        elif isinstance(col_type, tensor_types):
-            concatenated_cols[col_name] = _concat_cols_with_extension_tensor_types(
-                col_chunked_arrays
+        elif isinstance(col_type, (*tensor_types, ArrowPythonObjectType)):
+            concat_fn = (
+                _concat_cols_with_extension_tensor_types
+                if isinstance(col_type, tensor_types)
+                else _concat_cols_with_extension_object_types
             )
-        elif isinstance(col_type, ArrowPythonObjectType):
-            concatenated_cols[col_name] = _concat_cols_with_extension_object_types(
-                col_chunked_arrays
-            )
+            # Cache field lookups once instead of re-fetching per block in all()
+            col_types = [block.schema.field(col_name).type for block in blocks]
+            if all(t == col_type for t in col_types):
+                concatable_cols.append(col_name)
+            else:
+                concatenated_cols[col_name] = concat_fn(
+                    block.column(col_name) for block in blocks
+                )
         else:
             # Add to the list of native pyarrow columns, these will be concatenated after the loop using pyarrow.concat_tables
-            native_pyarrow_cols.append(col_name)
+            concatable_cols.append(col_name)
 
     concatenated_cols.update(
-        _concat_cols_with_native_pyarrow_types(
-            native_pyarrow_cols, blocks, promote_types
-        )
+        _concat_cols_via_concat_tables(concatable_cols, blocks, promote_types)
     )
 
     # Ensure that the columns are in the same order as the schema, reconstruct the table.
@@ -830,13 +1108,25 @@ def to_numpy(
 
     import pyarrow as pa
 
+    from ray.data._internal.utils.transform_pyarrow import _is_native_tensor_type
+
     if isinstance(array, pa.Array):
         if pa.types.is_null(array.type):
             return np.full(len(array), np.nan, dtype=np.float32)
+        if _is_native_tensor_type(array.type):
+            # This is zero-copy. We use to_numpy_ndarray() because to_numpy
+            # will flatten n-dim array into 1d.
+            return array.to_numpy_ndarray()
         return array.to_numpy(zero_copy_only=zero_copy_only)
     elif isinstance(array, pa.ChunkedArray):
         if pa.types.is_null(array.type):
             return np.full(array.length(), np.nan, dtype=np.float32)
+        if _is_native_tensor_type(array.type):
+            # Convert each chunk to numpy, then stack them
+            numpy_chunks = [chunk.to_numpy_ndarray() for chunk in array.chunks]
+            if len(numpy_chunks) == 0:
+                return np.empty((0,) + tuple(array.type.shape))
+            return np.vstack(numpy_chunks)
         if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
             return array.to_numpy(zero_copy_only=zero_copy_only)
         else:
@@ -847,24 +1137,34 @@ def to_numpy(
         )
 
 
-def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
+def try_combine_chunked_columns(
+    table: "pyarrow.Table",
+    min_chunks_to_combine: int = MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS,
+) -> "pyarrow.Table":
     """This method attempts to coalesce table by combining any of its
-    columns exceeding threshold of `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
-    chunks in its `ChunkedArray`.
+    columns with at least ``min_chunks_to_combine`` chunks in its
+    ``ChunkedArray``.
 
     This is necessary to improve performance for some operations (like `take`, etc)
     when dealing with `ChunkedArrays` w/ large number of chunks
 
     For more details check out https://github.com/apache/arrow/issues/35126
-    """
 
+    Args:
+        table: The PyArrow table to combine chunks for.
+        min_chunks_to_combine: Minimum number of chunks in a column to trigger
+            combining. Defaults to MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS.
+
+    Returns:
+        A new table with chunked columns combined where applicable.
+    """
     if table.num_columns == 0:
         return table
 
     new_column_values_arrays = []
 
     for col in table.columns:
-        if col.num_chunks >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS:
+        if col.num_chunks >= min_chunks_to_combine and col.num_chunks > 1:
             new_col = combine_chunked_array(col)
         else:
             new_col = col
