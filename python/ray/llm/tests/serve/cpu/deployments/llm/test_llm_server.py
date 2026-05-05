@@ -28,6 +28,7 @@ def serve_handle(mock_llm_config, stream_batching_interval_ms=0):
     }
 
     app = serve.deployment(LLMServer).bind(mock_llm_config, engine_cls=MockVLLMEngine)
+    serve.start(http_options={"port": 0})
     handle = serve.run(app)
     # We set stream=True because the interfaces are async generators regardless
     # of the stream flag on request.
@@ -53,6 +54,7 @@ def multiplexed_serve_handle(mock_llm_config, stream_batching_interval_ms=0):
         engine_cls=MockVLLMEngine,
         model_downloader=FakeLoraModelLoader,
     )
+    serve.start(http_options={"port": 0})
     handle = serve.run(app)
     handle = handle.options(stream=True, multiplexed_model_id="test_model_id")
     yield handle
@@ -430,7 +432,11 @@ class TestLLMServer:
             chunks.append(chunk)
 
         assert len(chunks) == 1
-        assert chunks[0].id == "test_request_id"
+        # Ray Serve intentionally drops internal request IDs to comply with strict
+        # OpenAI schemas (Pydantic v2). Verify the engine successfully processed
+        # the request and generated its own valid OpenAI-style ID instead.
+        assert isinstance(chunks[0].id, str)
+        assert chunks[0].id.startswith("chatcmpl-")
 
     @pytest.mark.parametrize("api_type", ["chat", "completion"])
     @pytest.mark.parametrize("stream", [False, True])

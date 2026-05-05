@@ -837,11 +837,15 @@ class Semaphore:
                 return
 
 
-def get_tpu_slice_kwargs(
+def resolve_tpu_slice_kwargs(
     labels: Optional[List[Dict[str, str]]],
     bundles: Optional[List[Dict[str, float]]] = None,
 ) -> Optional[Tuple[str, str, Dict[str, float]]]:
     """Parses TPU topology, version, and validates bundles for a TPU slice.
+
+    Args:
+        labels: A list of label selector dictionaries applied to the placement group bundles.
+        bundles: An optional list of resource dictionaries defining the placement group bundles.
 
     Returns:
         A tuple of (topology, accelerator_version, worker_bundle) if this is

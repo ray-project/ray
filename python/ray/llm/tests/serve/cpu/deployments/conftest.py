@@ -1,7 +1,6 @@
 import pytest
 
 import ray
-from ray import serve
 from ray.tests.conftest import _ray_start_cluster
 
 
@@ -14,19 +13,6 @@ def llm_config_with_mock_engine(llm_config):
         "RAYLLM_VLLM_ENGINE_CLS"
     ] = "ray.llm.tests.serve.mocks.mock_vllm_engine.MockVLLMEngine"
     yield llm_config
-
-
-@pytest.fixture(autouse=True)
-def isolated_serve_state(ray_tpu_cluster):
-    """
-    Automatically runs before and after every test to ensure Serve
-    starts on a random port and wipes its state, while reusing the
-    module scoped cluster.
-    """
-    serve.shutdown()
-    serve.start(http_options={"port": 0})
-    yield
-    serve.shutdown()
 
 
 @pytest.fixture(scope="module")
@@ -65,6 +51,6 @@ def ray_tpu_cluster():
                 env_vars=env_vars,
             )
 
-        ray.init(address=cluster.address)
+        ray.init(address=cluster.address, ignore_reinit_error=True)
         yield cluster
         ray.shutdown()
