@@ -181,6 +181,9 @@ doc/*.ipynb
 doc/BUILD
 doc/*/BUILD
 doc/*.rst
+doc/requirements-doc.txt
+python/deplocks/docs/*.lock
+ci/raydepsets/configs/docs.depsets.yaml
 .vale.ini
 .vale/
 .buildkite/doc.rayci.yml
