@@ -39,6 +39,140 @@
       s3://ray-benchmark-data-internal-us-west-2/imagenet/parquet --format parquet
       --iter-bundles
 
+- name: "read_large_parquet_oom_test_eps_{{scaling}}_4_mb"
+  python: "3.10"
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1  # Allow worker OOM during test
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES=4194304
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles
+
+- name: "read_large_parquet_oom_test_eps_{{scaling}}_16_mb"
+  python: "3.10"
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1  # Allow worker OOM during test
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES=16777216
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles
+
+- name: "read_large_parquet_oom_test_eps_{{scaling}}_32_mb"
+  python: "3.10"
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1  # Allow worker OOM during test
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES=33554432
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles
+
+- name: "read_large_parquet_oom_test_eps_{{scaling}}_64_mb"
+  python: "3.10"
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1  # Allow worker OOM during test
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES=67108864
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles
+
+
+- name: "read_large_parquet_oom_test_eps_{{scaling}}_128_mb"
+  python: "3.10"
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1  # Allow worker OOM during test
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES=134217728
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles
+
+
+- name: "read_large_parquet_oom_test_eps_{{scaling}}_256_mb"
+  python: "3.10"
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_DATA_DEBUG_RESOURCE_MANAGER=1
+        - RAYTEST_FAIL_ON_WORKER_OOM=1  # Allow worker OOM during test
+        - RAYTEST_FAIL_ON_DEAD_NODES=0
+        - RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES=268435456
+    cluster_compute: "{{scaling}}_cpu_compute.yaml"
+
+  matrix:
+    setup:
+      scaling: [fixed_size]
+
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal-us-west-2/large-parquet/ --format parquet
+      --iter-bundles
+
 - name: "read_large_parquet_{{scaling}}"
   python: "3.10"
   cluster:
