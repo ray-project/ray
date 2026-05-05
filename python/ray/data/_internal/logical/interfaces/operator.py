@@ -15,6 +15,7 @@ class Operator:
     ):
         self._name = name
         self._input_dependencies = input_dependencies
+        self._output_dependencies: List["Operator"] = []
 
     @property
     def name(self) -> str:
@@ -39,6 +40,11 @@ class Operator:
         ), "Operator.__init__() was not called."
         return self._input_dependencies
 
+    @property
+    def output_dependencies(self) -> List["Operator"]:
+        """List of operators that depend on the output of this operator."""
+        return self._output_dependencies
+
     def post_order_iter(self) -> Iterator["Operator"]:
         """Depth-first traversal of this operator and its input dependencies."""
         for op in self.input_dependencies:
@@ -56,23 +62,40 @@ class Operator:
         """
 
         transformed_input_ops = []
-        has_changes = False
+        input_changed = False
 
         for input_op in self.input_dependencies:
             transformed_input_op = input_op._apply_transform(transform)
             transformed_input_ops.append(transformed_input_op)
+            # Keep track of whether any input ops changed
             if transformed_input_op is not input_op:
-                has_changes = True
+                input_changed = True
 
-        if has_changes:
+        if input_changed:
             # Make a shallow copy to avoid modifying operators in-place
             target = copy.copy(self)
+            # Create a fresh output_dependencies list for the copy to avoid
+            # sharing the same list object as the original operator
+            target._output_dependencies = []
 
+            # Remove stale references: unchanged input ops still point to
+            # the original operator in their output_dependencies
+            for input_op in self.input_dependencies:
+                if self in input_op._output_dependencies:
+                    input_op._output_dependencies.remove(self)
+
+            # Wire all transformed input ops to the new target
+            target._wire_output_deps(transformed_input_ops)
             target._input_dependencies = transformed_input_ops
         else:
             target = self
 
         return transform(target)
+
+    def _wire_output_deps(self, input_dependencies: List["Operator"]) -> None:
+        """Wire this operator as an output dependency of each input operator."""
+        for input_op in input_dependencies:
+            input_op._output_dependencies.append(self)
 
     def __repr__(self) -> str:
         return f"{self.__class__.__name__}[{self._name}]"
