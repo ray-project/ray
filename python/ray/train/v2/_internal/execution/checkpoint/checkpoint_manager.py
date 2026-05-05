@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import ray
@@ -44,10 +45,26 @@ You can set the {warn_interval_env_var} environment variable to change the frequ
 
 
 class _TrainingResultState(BaseModel):
-    # Increment version if the schema changes
-    version: int = 0
-    checkpoint_dir_name: str
+    # Schema version. Bump when fields change.
+    # v0: only metrics and checkpoint_dir_name.
+    # v1: adds out_of_band + checkpoint_filesystem_type to support checkpoints
+    #       that are out-of-band of the experiment directory.
+    version: int = 1
     metrics: dict
+    # In-band (out_of_band=False): relative dir name within experiment_fs_path
+    #     on storage_filesystem. Stored relative for portability (copying the
+    #     experiment dir keeps it valid).
+    # Out-of-band (out_of_band=True): full path on the checkpoint's own
+    #     filesystem. Field name preserved for v0 wire compatibility.
+    checkpoint_dir_name: str
+    # Out-of-band only: pyarrow FileSystem.type_name ("local", "s3", "gcs", ...).
+    #   None for in-band. Importantly, reconstructing on resume; may lack
+    #   custom config (credentials, region, endpoint overrides). User should
+    #   overwrite filesystem in this case.
+    checkpoint_filesystem_type: Optional[str] = None
+    # True iff the checkpoint's path/filesystem is outside the experiment
+    #   storage path on the storage filesystem.
+    out_of_band: bool = False
 
 
 class _CheckpointManagerState(BaseModel):
@@ -61,18 +78,68 @@ class _CheckpointManagerState(BaseModel):
     validated_checkpoint_dir_names: List[str]
 
 
+# Mapping from pyarrow FileSystem.type_name to URI scheme for from_uri.
+# LocalFileSystem is special-cased and reconstructed without going through from_uri.
+_TYPE_NAME_TO_URI_SCHEME = {
+    "local": "",
+    "s3": "s3://",
+    "gcs": "gs://",
+    "hdfs": "hdfs://",
+    "abfs": "abfs://",
+}
+
+
+def _is_in_band(checkpoint: Checkpoint, storage_context: StorageContext) -> bool:
+    """A checkpoint is in-band iff its filesystem matches the storage filesystem
+    AND its path lives under experiment_fs_path. Otherwise it is out-of-band
+    (e.g., user reported via NO_UPLOAD or a custom checkpoint_upload_fn that
+    targeted a different prefix or filesystem).
+    """
+    return checkpoint.filesystem == storage_context.storage_filesystem and Path(
+        checkpoint.path
+    ).is_relative_to(storage_context.experiment_fs_path)
+
+
+def _live_checkpoint_id(checkpoint: Checkpoint, storage_context: StorageContext) -> str:
+    """Stable identifier for a live Checkpoint, matching _TrainingResultState.checkpoint_dir_name."""
+    if _is_in_band(checkpoint, storage_context):
+        return storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
+    return checkpoint.path
+
+
 def _get_training_result_from_state(
     state: _TrainingResultState,
     storage_context: StorageContext,
 ) -> _TrainingResult:
     """Get a TrainingResult object from a Pydantic state object."""
-    return _TrainingResult(
-        checkpoint=Checkpoint(
-            path=storage_context.build_checkpoint_path_from_name(
-                state.checkpoint_dir_name
+    if not state.out_of_band:
+        # In-band: resolve relative dir name on the storage filesystem.
+        return _TrainingResult(
+            checkpoint=Checkpoint(
+                path=storage_context.build_checkpoint_path_from_name(
+                    state.checkpoint_dir_name
+                ),
+                filesystem=storage_context.storage_filesystem,
             ),
-            filesystem=storage_context.storage_filesystem,
-        ),
+            metrics=state.metrics,
+        )
+
+    # Out-of-band: checkpoint_dir_name holds the full path; reconstruct the
+    # filesystem from type_name.
+    if state.checkpoint_filesystem_type != "local":
+        logger.warning(
+            "Restoring an out-of-band checkpoint of %s at %s. Its filesystem "
+            "was reconstructed from its type_name only and may be missing "
+            "configurations (e.g. credentials, region, endpoint overrides). "
+            "If this causes issues, update the checkpoint's filesystem with a "
+            "fully configured filesystem.",
+            state.checkpoint_filesystem_type,
+            state.checkpoint_dir_name,
+        )
+
+    scheme = _TYPE_NAME_TO_URI_SCHEME.get(state.checkpoint_filesystem_type)
+    return _TrainingResult(
+        checkpoint=Checkpoint(f"{scheme}{state.checkpoint_dir_name}"),
         metrics=state.metrics,
     )
 
@@ -81,12 +148,35 @@ def _get_state_from_training_result(
     training_result: _TrainingResult,
     storage_context: StorageContext,
 ) -> _TrainingResultState:
-    """Get a Pydantic state object from a TrainingResult object."""
+    """Get a Pydantic state object from a TrainingResult object.
+
+    In-band vs out-of-band is derived from the checkpoint's path/filesystem
+    relative to the storage path/filesystem.
+    """
+    if _is_in_band(training_result.checkpoint, storage_context):
+        return _TrainingResultState(
+            checkpoint_dir_name=storage_context.extract_checkpoint_dir_name_from_path(
+                training_result.checkpoint.path
+            ),
+            metrics=training_result.metrics,
+            out_of_band=False,
+        )
+
+    fs_type = training_result.checkpoint.filesystem.type_name
+    if fs_type != "local":
+        logger.info(
+            "Persisting out-of-band checkpoint reference (%s, %s). On resume, "
+            "the filesystem will be reconstructed from its type_name only, "
+            "which may lose custom configuration such as credentials, region, "
+            "or endpoint overrides.",
+            fs_type,
+            training_result.checkpoint.path,
+        )
     return _TrainingResultState(
-        checkpoint_dir_name=storage_context.extract_checkpoint_dir_name_from_path(
-            training_result.checkpoint.path
-        ),
+        checkpoint_dir_name=training_result.checkpoint.path,
+        checkpoint_filesystem_type=fs_type,
         metrics=training_result.metrics,
+        out_of_band=True,
     )
 
 
@@ -292,7 +382,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         ]
 
         validated_checkpoint_dir_names = [
-            self._storage_context.extract_checkpoint_dir_name_from_path(checkpoint.path)
+            _live_checkpoint_id(checkpoint, self._storage_context)
             for checkpoint in self._validated_checkpoints
         ]
 
@@ -334,14 +424,14 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             raise CheckpointManagerInitializationError(error) from e
 
         # Do this so we are using the same checkpoint and trainingresult objects.
-        # TODO: consider asserting that every checkpoint has a unique dir name
-        checkpoint_dir_name_to_checkpoint_result = {}
+        # TODO: consider asserting that every checkpoint has a unique id
+        checkpoint_id_to_checkpoint_result = {}
 
         for training_result_state in manager_snapshot.checkpoint_results:
             training_result = _get_training_result_from_state(
                 training_result_state, self._storage_context
             )
-            checkpoint_dir_name_to_checkpoint_result[
+            checkpoint_id_to_checkpoint_result[
                 training_result_state.checkpoint_dir_name
             ] = training_result
             self._checkpoint_results.append(training_result)
@@ -358,7 +448,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         }
 
         self._latest_checkpoint_result = (
-            checkpoint_dir_name_to_checkpoint_result[
+            checkpoint_id_to_checkpoint_result[
                 manager_snapshot.latest_checkpoint_result.checkpoint_dir_name
             ]
             if manager_snapshot.latest_checkpoint_result is not None
@@ -372,7 +462,7 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             manager_snapshot.pending_training_results,
             manager_snapshot.pending_validation_specs,
         ):
-            training_result = checkpoint_dir_name_to_checkpoint_result[
+            training_result = checkpoint_id_to_checkpoint_result[
                 training_result_state.checkpoint_dir_name
             ]
             self._pending_training_results[training_result.checkpoint] = (
@@ -381,10 +471,10 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
             )
 
         # Restore validated checkpoints. Only checkpoints still in _checkpoint_results can be looked up; evicted checkpoints are irrelevant.
-        for dir_name in manager_snapshot.validated_checkpoint_dir_names:
-            if dir_name in checkpoint_dir_name_to_checkpoint_result:
+        for checkpoint_id in manager_snapshot.validated_checkpoint_dir_names:
+            if checkpoint_id in checkpoint_id_to_checkpoint_result:
                 self._validated_checkpoints.add(
-                    checkpoint_dir_name_to_checkpoint_result[dir_name].checkpoint
+                    checkpoint_id_to_checkpoint_result[checkpoint_id].checkpoint
                 )
 
         self._current_report_index = manager_snapshot.current_report_index
@@ -437,24 +527,56 @@ class CheckpointManager(_CheckpointManager, ReportCallback, WorkerGroupCallback)
         the checkpoints specified in manager snapshot is compatible with the
         checkpoint folders of the experiment storage filesystem.
 
+        For in-band checkpoints, a missing checkpoint raises. For out-of-band
+        checkpoints we warn and continue: the filesystem may have been
+        reconstructed without credentials, the user may have moved the data,
+        or it may live on a system the resuming process cannot reach.
+
         Raises:
-            CheckpointManagerInitializationError: If the checkpoint manager snapshot
-                is not consistent with the stored checkpoints.
+            CheckpointManagerInitializationError: If an in-band checkpoint
+                referenced by the snapshot does not exist.
         """
         for checkpoint_result in self._checkpoint_results:
             checkpoint = checkpoint_result.checkpoint
             assert checkpoint is not None
-            if not _exists_at_fs_path(
-                fs=checkpoint.filesystem, fs_path=checkpoint.path
-            ):
-                raise CheckpointManagerInitializationError(
-                    "The run snapshot contains a reference to a checkpoint "
-                    f"that does not exist anymore ({checkpoint}). You are "
-                    "running in a corrupted run directory `experiment_fs_path`. "
-                    "Please configure a new, unique `RunConfig(name)` "
-                    "or delete the existing folder at "
-                    f"`{self._storage_context.experiment_fs_path}`."
+            is_out_of_band = not _is_in_band(checkpoint, self._storage_context)
+            try:
+                exists = _exists_at_fs_path(
+                    fs=checkpoint.filesystem, fs_path=checkpoint.path
                 )
+            except Exception:
+                if is_out_of_band:
+                    logger.warning(
+                        "Could not verify out-of-band checkpoint exists at %s. "
+                        "The filesystem may have been reconstructed without "
+                        "credentials. Continuing — `to_directory()` may fail "
+                        "until you provide a fully configured filesystem.",
+                        checkpoint,
+                        exc_info=True,
+                    )
+                    continue
+                raise
+
+            if exists:
+                continue
+
+            if is_out_of_band:
+                logger.warning(
+                    "Out-of-band checkpoint at %s no longer exists at the "
+                    "recorded location. It will remain referenced in the "
+                    "snapshot but cannot be loaded.",
+                    checkpoint,
+                )
+                continue
+
+            raise CheckpointManagerInitializationError(
+                "The run snapshot contains a reference to a checkpoint "
+                f"that does not exist anymore ({checkpoint}). You are "
+                "running in a corrupted run directory `experiment_fs_path`. "
+                "Please configure a new, unique `RunConfig(name)` "
+                "or delete the existing folder at "
+                f"`{self._storage_context.experiment_fs_path}`."
+            )
 
     # --------------------------
     # ReportCallback

@@ -1,17 +1,21 @@
 import uuid
+from pathlib import Path
 from typing import Optional
 from unittest.mock import create_autospec
 
+import pyarrow.fs
 import pytest
 
 import ray
-from ray.train import CheckpointConfig
+from ray.train import Checkpoint, CheckpointConfig
 from ray.train._internal.session import _TrainingResult
 from ray.train.v2._internal.exceptions import CheckpointManagerInitializationError
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
+    _is_in_band,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.execution.training_report import _TrainingReport
 from ray.train.v2._internal.execution.worker_group import Worker
 from ray.train.v2.tests.util import create_dummy_training_reports
 
@@ -336,6 +340,106 @@ def test_update_checkpoints_with_metrics_not_in_checkpoint_results(tmp_path):
         checkpoint_manager.update_checkpoints_with_metrics(
             {training_reports[0].checkpoint: {"score": 100}}
         )
+
+
+@pytest.mark.asyncio
+async def test_save_load_out_of_band_checkpoint(monkeypatch, tmp_path):
+    """Out-of-band checkpoints (path outside experiment_fs_path or on a
+    different filesystem) should round-trip through the snapshot using their
+    full path + filesystem type, alongside in-band checkpoints in the same run.
+    """
+    monkeypatch.setattr(
+        ray.train.v2._internal.execution.checkpoint.checkpoint_manager,
+        "delete_fs_path",
+        lambda *args, **kwargs: None,
+    )
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name=f"oob_test-{uuid.uuid4().hex}",
+    )
+    cm = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(),
+    )
+
+    # An in-band checkpoint (under experiment_fs_path on storage_filesystem).
+    in_band_report = create_dummy_training_reports(
+        num_results=1, storage_context=storage_context
+    )[0]
+    assert _is_in_band(in_band_report.checkpoint, storage_context)
+
+    # An out-of-band checkpoint at a path NOT under experiment_fs_path
+    # (on the same local filesystem, exercising same-FS-out-of-band).
+    oob_dir = tmp_path / "external_checkpoint"
+    oob_dir.mkdir()
+    oob_path = Path(oob_dir).as_posix()
+    oob_report = _TrainingReport(
+        checkpoint=Checkpoint(path=oob_path, filesystem=pyarrow.fs.LocalFileSystem()),
+        metrics={"score": 1},
+        validation=False,
+    )
+    assert not _is_in_band(oob_report.checkpoint, storage_context)
+
+    cm.register_checkpoint(in_band_report)
+    cm.register_checkpoint(oob_report)
+
+    # Reload from disk and confirm both checkpoints round-trip to the same
+    # paths, with the out-of-band one still resolving outside the storage path.
+    cm2 = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(),
+    )
+    assert _checkpoint_managers_equal(cm, cm2)
+
+    cm2_paths = [tr.checkpoint.path for tr in cm2._checkpoint_results]
+    assert cm2_paths == [in_band_report.checkpoint.path, oob_path]
+    assert _is_in_band(cm2._checkpoint_results[0].checkpoint, storage_context)
+    assert not _is_in_band(cm2._checkpoint_results[1].checkpoint, storage_context)
+
+
+@pytest.mark.asyncio
+async def test_load_v0_snapshot_assumes_in_band(monkeypatch, tmp_path):
+    """A v0 snapshot (no version, no out_of_band fields) should load as in-band
+    using the storage filesystem.
+    """
+    monkeypatch.setattr(
+        ray.train.v2._internal.execution.checkpoint.checkpoint_manager,
+        "delete_fs_path",
+        lambda *args, **kwargs: None,
+    )
+    storage_context = StorageContext(
+        storage_path=tmp_path,
+        experiment_dir_name=f"v0_test-{uuid.uuid4().hex}",
+    )
+
+    # Make a real checkpoint dir under the experiment so existence check passes.
+    ckpt_dir = Path(storage_context.experiment_fs_path) / "checkpoint_0"
+    ckpt_dir.mkdir(parents=True, exist_ok=True)
+
+    cm = CheckpointManager(
+        storage_context=storage_context,
+        checkpoint_config=CheckpointConfig(),
+    )
+    # Hand-craft a v0-style snapshot: no `out_of_band`, no `checkpoint_path`,
+    # `version: 0`, only `checkpoint_dir_name`.
+    v0_snapshot = (
+        '{"ray_version": "%s",'
+        ' "checkpoint_results": [{"version": 0, "checkpoint_dir_name": "checkpoint_0",'
+        ' "metrics": {"score": 1}}],'
+        ' "checkpoint_report_indices": [0],'
+        ' "latest_checkpoint_result": {"version": 0, "checkpoint_dir_name":'
+        ' "checkpoint_0", "metrics": {"score": 1}},'
+        ' "pending_training_results": [], "pending_validation_specs": [],'
+        ' "current_report_index": 1, "validated_checkpoint_dir_names": []}'
+    ) % ray.__version__
+    cm._load_state(v0_snapshot)
+
+    assert len(cm._checkpoint_results) == 1
+    restored = cm._checkpoint_results[0].checkpoint
+    assert restored.path == Path(ckpt_dir).as_posix()
+    assert restored.filesystem.type_name == storage_context.storage_filesystem.type_name
+    # v0 entries default to in-band.
+    assert _is_in_band(restored, storage_context)
 
 
 if __name__ == "__main__":
