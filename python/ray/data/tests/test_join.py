@@ -66,6 +66,7 @@ def test_simple_inner_join(
 
     # Sort resulting frame and reset index (to be able to compare with expected one)
     joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -165,6 +166,9 @@ def test_simple_left_right_outer_semi_anti_join(
         # Sort resulting frame and reset index (to be able to compare with expected one)
         joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
         expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+        expected_pd_sorted = expected_pd_sorted.astype(
+            joined_pd_sorted.dtypes.to_dict()
+        )
 
         pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -226,6 +230,9 @@ def test_simple_full_outer_join(
         # Sort resulting frame and reset index (to be able to compare with expected one)
         joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
         expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+        expected_pd_sorted = expected_pd_sorted.astype(
+            joined_pd_sorted.dtypes.to_dict()
+        )
 
         pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -261,7 +268,9 @@ def test_simple_self_join(ray_start_regular_shared_2_cpus, left_suffix, right_su
         with pytest.raises(RayTaskError) as exc_info:
             joined.count()
 
-        assert 'Field "double" exists 2 times' in str(exc_info.value.cause)
+        assert "Left and right columns suffixes cannot be both None" in str(
+            exc_info.value.cause
+        )
     else:
         joined_pd = joined.to_pandas()
 
@@ -387,6 +396,7 @@ def test_anti_join_no_matches(
     # Should get all rows from the respective table
     joined_pd_sorted = joined_pd.sort_values(by=["id"]).reset_index(drop=True)
     expected_pd_sorted = expected_pd.sort_values(by=["id"]).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -482,6 +492,7 @@ def test_anti_join_multi_key(
         drop=True
     )
     joined_pd_sorted = joined_pd.sort_values(by=expected_cols).reset_index(drop=True)
+    expected_pd_sorted = expected_pd_sorted.astype(joined_pd_sorted.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected_pd_sorted, joined_pd_sorted)
 
@@ -935,6 +946,41 @@ def test_chained_left_outer_join_with_empty_blocks(ray_start_regular_shared_2_cp
     )
 
     assert rows_same(result, expected)
+
+
+@pytest.mark.parametrize(
+    "join_type, expected_row_count",
+    [
+        ("inner", None),
+        ("left_outer", None),
+        ("right_outer", None),
+        ("full_outer", None),
+        ("left_semi", 1),
+        ("right_semi", 1),
+        ("left_anti", 1),
+        ("right_anti", 0),
+    ],
+)
+def test_overlapping_non_key_columns_without_suffixes(
+    ray_start_regular_shared_2_cpus, join_type, expected_row_count
+):
+    """When both sides share a non-key column and no suffixes are provided,
+    inner/outer joins must raise a clear ValueError (expected_row_count=None),
+    while semi/anti joins should succeed because only one side's columns
+    appear in the result."""
+    left = ray.data.from_items([{"id": 1, "value": 10}, {"id": 2, "value": 20}])
+    right = ray.data.from_items([{"id": 1, "value": 99}])
+
+    joined = left.join(right, join_type=join_type, on=("id",), num_partitions=1)
+
+    if expected_row_count is not None:
+        assert len(joined.take_all()) == expected_row_count
+    else:
+        with pytest.raises(RayTaskError) as exc_info:
+            joined.count()
+        assert "Left and right columns suffixes cannot be both None" in str(
+            exc_info.value.cause
+        )
 
 
 if __name__ == "__main__":

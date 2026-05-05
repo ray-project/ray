@@ -10,7 +10,11 @@ import requests
 import ray
 from ray._private.accelerators.accelerator import AcceleratorManager
 from ray._private.ray_constants import env_bool
-from ray.util.placement_group import PlacementGroup, placement_group
+from ray.util.placement_group import (
+    PlacementGroup,
+    placement_group,
+    remove_placement_group,
+)
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -55,15 +59,11 @@ TPU_SINGLE_HOST_BOUNDS = "1,1,1"
 DEFAULT_TPU_NUM_CHIPS_PER_HOST = 4
 DEFAULT_TPU_NUM_CORES_PER_CHIP = 2
 
-# Accelerators that are 4 chips per host: v2, v3, v4, v5p, v6e, v7x
-# Accelerators that are 8 chips per host: v5e
-SINGLE_HOST_8_CHIPS_TPU_TYPE = "v5litepod"
+# Accelerators that support up to 8 chips per host for single-host topologies: v5e, v6e
+TPU_8_CHIPS_PER_HOST_TYPES = ("v5litepod", "v6e")
 
-# TPU v6e single host topologies
-TPU_V6E_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
-
-# TPU v6e single host types
-TPU_V6E_SINGLE_HOST_TYPES = ("v6e-1", "v6e-4", "v6e-8")
+# Topologies that are always sub-host or single-host
+TPU_SINGLE_HOST_TOPOLOGIES = ("1x1", "2x2", "2x4")
 
 # Accelerators that are 2 cores per chip: v2, v3, v4, v5p, v7x
 # Accelerators that are 1 core per chip: v5e, v6e
@@ -152,14 +152,33 @@ def _accelerator_type_check(accelerator_type: str):
         )
 
 
+def get_total_chips_from_accelerator_type(accelerator_type: str) -> int:
+    """Calculates total chips from a GCP accelerator ("pod") type string (e.g. "v6e-16")."""
+    _accelerator_type_check(accelerator_type)
+
+    parts = accelerator_type.split("-")
+    if len(parts) < 2:
+        raise ValueError(
+            f"Accelerator type must include size (e.g. 'v6e-8'), got: {accelerator_type}"
+        )
+
+    num_cores = int(parts[1])
+    cores_per_chip = get_tpu_cores_per_chip(accelerator_type)
+
+    return num_cores // cores_per_chip
+
+
 def get_num_tpu_visible_chips_per_host(accelerator_type: str) -> int:
     _accelerator_type_check(accelerator_type)
-    if (
-        accelerator_type.startswith(SINGLE_HOST_8_CHIPS_TPU_TYPE)
-        or accelerator_type in TPU_V6E_SINGLE_HOST_TYPES
-    ):
-        return 8
 
+    if accelerator_type.startswith(TPU_8_CHIPS_PER_HOST_TYPES):
+        total_chips = get_total_chips_from_accelerator_type(accelerator_type)
+
+        # Sub/single-host topologies return their exact chip count
+        if total_chips <= 8:
+            return total_chips
+
+    # Multi-host topologies default to 4 visible chips per host
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
 
 
@@ -218,37 +237,39 @@ def fetch_tpu_slice_name_from_pg(pg):
 def get_chips_per_host(topology: str, accelerator_version: str) -> int:
     """Get the number of chips per host based on topology and accelerator version.
 
-    The current rule is as follows:
-        Default chips per host is 4.
-        If accelerator_version is v5e or v6e:
-            If topology total chips < 8, return total chips (partial host).
-            Otherwise return 8.
-        If accelerator_version is v5p or other versions, the chips per host will be 4
+    Rules for determining the default number of chips per host:
+        - Default for most TPU generations (v4, v5p, v7x, etc.) is 4 chips per host.
+        - For v5e and v6e:
+            - Topologies with <= 8 chips use the exact chip count (e.g. 1x1 -> 1).
+              These topologies are always sub or single-host.
+            - Multi-host topologies (> 8 chips) default to 4-chip hosts.
 
     Args:
-        topology: The TPU topology string (e.g. "2x2x2").
-        accelerator_version: The accelerator version of the node (e.g. "V4", "v4").
+        topology: The TPU topology string (e.g. "2x2x2", "2x4").
+        accelerator_version: The accelerator version string (e.g. "v4", "v6e").
 
     Returns:
-        A int representing the number of chips per host
+        The default number of chips per host for the given configuration.
     """
     total_chips = get_num_chips_from_topology(topology)
 
-    # Check for 8-chip host types, v5litepod or v6e (1x1, 2x2, 2x4 only)
-    if accelerator_version.strip().lower() == SINGLE_HOST_8_CHIPS_TPU_TYPE or (
-        accelerator_version.strip().lower() == "v6e"
-        and topology.strip().lower() in TPU_V6E_SINGLE_HOST_TOPOLOGIES
+    # Check for 8-chip host types (v5litepod, v6e) for single host setups
+    if (
+        accelerator_version.strip().lower() in TPU_8_CHIPS_PER_HOST_TYPES
+        and topology.strip().lower() in TPU_SINGLE_HOST_TOPOLOGIES
     ):
-        if total_chips < 8:
-            return total_chips
-        return 8
+        return total_chips
 
     return DEFAULT_TPU_NUM_CHIPS_PER_HOST
+
+
+DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S: float = 100.0
 
 
 def reserve_tpu_slice(
     topology: str,
     accelerator_type: str,
+    timeout_s: Optional[float] = DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S,
 ) -> Optional[Tuple[str, PlacementGroup]]:
     """Reserves a TPU slice using its head resource and returns the slice name.
     This enables gang scheduling of training workers with multi-host TPUs.
@@ -257,10 +278,19 @@ def reserve_tpu_slice(
     Args:
         topology: The TPU topology string (e.g. "2x2x2").
         accelerator_type: The accelerator type of the node (e.g. "TPU-V4").
+        timeout_s: The maximum time in seconds to wait for the TPU head
+            placement group to become ready. The head reservation must succeed
+            before the slice name can be retrieved, so this call is necessarily
+            blocking. Defaults to ``DEFAULT_TPU_HEAD_RESERVATION_TIMEOUT_S``.
+            Pass ``None`` to wait indefinitely.
 
     Returns:
         A tuple of a string representing a unique TPU slice name and the placement
         group handle reserving the TPU head.
+
+    Raises:
+        TimeoutError: If the TPU head placement group does not become ready
+            within ``timeout_s`` seconds.
     """
     pod_type = infer_tpu_pod_type_from_topology(topology, accelerator_type)
     if pod_type is None:
@@ -276,16 +306,28 @@ def reserve_tpu_slice(
         bundle_label_selector=[head_label_selector],
     )
 
-    logger.debug("Waiting to reserve multi-host slice head.")
-    timeout = 100
-    ready, _ = ray.wait([head_placement_group.ready()], timeout=timeout)
+    logger.debug(
+        "Waiting up to %s seconds to reserve multi-host slice head.", timeout_s
+    )
+    ready, _ = ray.wait([head_placement_group.ready()], timeout=timeout_s)
 
     if not ready:
+        # Clean up the pending head reservation so that resources are not
+        # held while the caller decides whether to retry.
+        try:
+            remove_placement_group(head_placement_group)
+        except Exception:
+            logger.exception(
+                "Failed to clean up pending TPU head placement group after timeout."
+            )
         raise TimeoutError(
-            "Failed to reserve TPU head for slice with shape: {}. "
-            "Ensure your cluster has sufficient resources. Requesting TPU "
-            "head node with labels: {}. Current resources: {}".format(
-                pod_type, head_label_selector, ray.available_resources()
+            "Failed to reserve TPU head for slice with shape: {} after {} "
+            "seconds. Ensure your cluster has sufficient resources. Requesting "
+            "TPU head node with labels: {}. Current resources: {}".format(
+                pod_type,
+                timeout_s,
+                head_label_selector,
+                ray.available_resources(),
             )
         )
 

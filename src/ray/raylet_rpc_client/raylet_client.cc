@@ -51,16 +51,8 @@ RayletClient::RayletClient(const rpc::Address &address,
       pins_in_flight_(std::make_shared<std::atomic<int64_t>>(0)) {}
 
 void RayletClient::RequestWorkerLease(
-    const rpc::LeaseSpec &lease_spec,
-    bool grant_or_reject,
-    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback,
-    const int64_t backlog_size,
-    const bool is_selected_based_on_locality) {
-  rpc::RequestWorkerLeaseRequest request;
-  request.mutable_lease_spec()->CopyFrom(lease_spec);
-  request.set_grant_or_reject(grant_or_reject);
-  request.set_backlog_size(backlog_size);
-  request.set_is_selected_based_on_locality(is_selected_based_on_locality);
+    rpc::RequestWorkerLeaseRequest &&request,
+    const rpc::ClientCallback<rpc::RequestWorkerLeaseReply> &callback) {
   INVOKE_RETRYABLE_RPC_CALL(retryable_grpc_client_,
                             NodeManagerService,
                             RequestWorkerLease,
@@ -85,12 +77,7 @@ std::shared_ptr<grpc::Channel> RayletClient::GetChannel() const {
   return grpc_client_->Channel();
 }
 
-void RayletClient::ReportWorkerBacklog(
-    const WorkerID &worker_id,
-    const std::vector<rpc::WorkerBacklogReport> &backlog_reports) {
-  rpc::ReportWorkerBacklogRequest request;
-  request.set_worker_id(worker_id.Binary());
-  request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
+void RayletClient::ReportWorkerBacklog(const rpc::ReportWorkerBacklogRequest &request) {
   INVOKE_RPC_CALL(
       NodeManagerService,
       ReportWorkerBacklog,

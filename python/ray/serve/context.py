@@ -6,16 +6,20 @@ can use this state to access metadata or the Serve controller.
 import asyncio
 import contextvars
 import logging
+import os
 from collections import defaultdict
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
 import ray
-from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import DeploymentConfig
 from ray.serve._private.constants import (
+    RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR,
+    RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
     SERVE_NAMESPACE,
@@ -31,6 +35,7 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
+_INTERNAL_DEPLOYMENT_ACTOR_CONTEXT: "DeploymentActorContext" = None
 _global_client: ServeControllerClient = None
 
 
@@ -72,15 +77,30 @@ class ReplicaContext:
         return self.replica_id.unique_id
 
 
+@DeveloperAPI
+@dataclass
+class DeploymentActorContext:
+    """Stores runtime context info for deployment-scoped actors."""
+
+    deployment_id: DeploymentID
+    actor_name: str
+    code_version: Optional[str] = None
+
+    @property
+    def app_name(self) -> str:
+        return self.deployment_id.app_name
+
+    @property
+    def deployment(self) -> str:
+        return self.deployment_id.name
+
+
 def _get_global_client(
-    _health_check_controller: bool = False, raise_if_no_controller_running: bool = True
+    raise_if_no_controller_running: bool = True,
 ) -> Optional[ServeControllerClient]:
     """Gets the global client, which stores the controller's handle.
 
     Args:
-        _health_check_controller: If True, run a health check on the
-            cached controller if it exists. If the check fails, try reconnecting
-            to the controller.
         raise_if_no_controller_running: Whether to raise an exception if
             there is no currently running Serve controller.
 
@@ -94,16 +114,37 @@ def _get_global_client(
             and raise_if_no_controller_running is set to True.
     """
 
-    try:
-        if _global_client is not None:
-            if _health_check_controller:
-                ray.get(_global_client._controller.check_alive.remote())
-            return _global_client
-    except RayActorError:
-        logger.info("The cached controller has died. Reconnecting.")
-        _set_global_client(None)
+    if _global_client is not None:
+        return _global_client
 
     return _connect(raise_if_no_controller_running)
+
+
+def _check_cached_client_alive() -> tuple:
+    """Health-check the cached controller client.
+
+    Returns:
+        (client, had_cached) tuple.
+        - ``(client, True)`` — cached client is alive.
+        - ``(None, True)``  — cached client existed but is unreachable;
+          the cache has been cleared.  Callers should **not** attempt to
+          reconnect via ``_connect()`` because GCS is likely dead and
+          ``ray.get_actor()`` would hang until the 60-second C++ GCS
+          reconnection timeout kills the process.
+        - ``(None, False)`` — no cached client.  Callers may safely call
+          ``_get_global_client()`` to discover a running controller.
+    """
+
+    if _global_client is None:
+        return None, False
+
+    try:
+        ray.get(_global_client._controller.check_alive.remote(), timeout=5)
+        return _global_client, True
+    except Exception as e:
+        logger.info(f"The cached controller has died or is unreachable: {e}.")
+        _set_global_client(None)
+        return None, True
 
 
 def _set_global_client(client):
@@ -113,6 +154,27 @@ def _set_global_client(client):
 
 def _get_internal_replica_context():
     return _INTERNAL_REPLICA_CONTEXT
+
+
+def _get_internal_deployment_actor_context():
+    global _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT
+
+    if _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT is not None:
+        return _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT
+
+    app_name = os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_APP_NAME_ENV_VAR)
+    deployment_name = os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_NAME_ENV_VAR)
+    actor_name = os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_ACTOR_NAME_ENV_VAR)
+
+    if app_name is None or deployment_name is None or actor_name is None:
+        return None
+
+    _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT = DeploymentActorContext(
+        deployment_id=DeploymentID(name=deployment_name, app_name=app_name),
+        actor_name=actor_name,
+        code_version=os.environ.get(RAY_SERVE_INTERNAL_DEPLOYMENT_CODE_VERSION_ENV_VAR),
+    )
+    return _INTERNAL_DEPLOYMENT_ACTOR_CONTEXT
 
 
 def _get_deployment_actor(actor_name: str):
@@ -224,6 +286,7 @@ class _RequestContext:
     _internal_request_id: str = ""
     app_name: str = ""
     multiplexed_model_id: str = ""
+    session_id: str = ""
     grpc_context: Optional[RayServegRPCContext] = None
     is_http_request: bool = False
     cancel_on_parent_request_cancel: bool = False

@@ -833,6 +833,20 @@ py_test(
 )
 
 py_test(
+    name = "test_auto_batch_size",
+    size = "medium",
+    srcs = ["tests/test_auto_batch_size.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_with_column",
     size = "medium",
     srcs = ["tests/test_with_column.py"],
@@ -1333,20 +1347,6 @@ py_test(
     name = "test_limit_operator",
     size = "small",
     srcs = ["tests/test_limit_operator.py"],
-    tags = [
-        "exclusive",
-        "team:data",
-    ],
-    deps = [
-        ":conftest",
-        "//:ray_lib",
-    ],
-)
-
-py_test(
-    name = "test_block_ref_bundler",
-    size = "small",
-    srcs = ["tests/test_block_ref_bundler.py"],
     tags = [
         "exclusive",
         "team:data",
@@ -2119,6 +2119,20 @@ py_test(
 )
 
 py_test(
+    name = "test_iter_jax",
+    size = "small",
+    srcs = ["tests/test_iter_jax.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
     name = "test_random_api",
     size = "small",
     srcs = ["tests/test_random_api.py"],
@@ -2136,6 +2150,20 @@ py_test(
     name = "test_synthetic_expression",
     size = "small",
     srcs = ["tests/test_synthetic_expression.py"],
+    tags = [
+        "exclusive",
+        "team:data",
+    ],
+    deps = [
+        ":conftest",
+        "//:ray_lib",
+    ],
+)
+
+py_test(
+    name = "test_mix",
+    size = "small",
+    srcs = ["tests/test_mix.py"],
     tags = [
         "exclusive",
         "team:data",
