@@ -92,8 +92,9 @@ void LocalObjectManager::PinObjectsAndWaitForFree(
                                                      const Status &) {
       const auto obj_id = ObjectID::FromBinary(object_id_binary);
       ReleaseFreedLocalObject(obj_id);
-      // TODO currently just frees objects directly here, will wire in better way in the
-      // following PR that gets rid of this owner dead callback dependency
+      // TODO(aaronscalene) currently just frees objects directly here, will wire
+      // in better way in the following PR that gets rid of this owner dead
+      // callback dependency
       on_objects_freed_({obj_id});
     };
 
@@ -149,7 +150,7 @@ void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
   }
 }
 
-// TODO Deal with ProcessSpilledObjectsDeleteQueue within FlushFreeObjects
+// TODO(aaronscalene): Deal with ProcessSpilledObjectsDeleteQueue within FlushFreeObjects
 void LocalObjectManager::FlushFreeObjects() {
   if (!objects_pending_deletion_.empty()) {
     objects_pending_deletion_.clear();

@@ -323,7 +323,7 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// from plasma. The cache is flushed when it reaches the
   /// free_objects_batch_size, or if objects have been in the cache for longer
   /// than the config's free_objects_period, whichever occurs first.
-  /// TODO: Re-evaluate whether the set is still needed and either
+  /// TODO(aaronscalene): Re-evaluate whether the set is still needed and either
   /// remove it (and ObjectPendingDeletion + the FlushFreeObjects clear) or
   /// repurpose it once the cleanup path is unified.
   absl::flat_hash_set<ObjectID> objects_pending_deletion_;
