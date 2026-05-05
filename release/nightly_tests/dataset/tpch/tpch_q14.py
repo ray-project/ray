@@ -2,7 +2,7 @@ import ray
 from ray.data.aggregate import Sum
 from ray.data.datatype import DataType
 from ray.data.expressions import col
-from common import parse_tpch_args, load_table, to_f64, run_tpch_benchmark
+from common import parse_tpch_args, load_table, run_tpch_benchmark
 
 
 def main(args):
@@ -52,7 +52,8 @@ def main(args):
 
         joined = joined.with_column(
             "revenue",
-            to_f64(col("l_extendedprice")) * (1 - to_f64(col("l_discount"))),
+            col("l_extendedprice").cast(DataType.float64())
+            * (1 - col("l_discount").cast(DataType.float64())),
         ).with_column(
             "promo_revenue",
             col("revenue")
