@@ -266,6 +266,7 @@ class ApplicationState:
         self._endpoint_state = endpoint_state
         self._route_prefix: Optional[str] = None
         self._ingress_deployment_name: Optional[str] = None
+        self._ingress_request_router_deployment_name: Optional[str] = None
 
         self._status: ApplicationStatus = ApplicationStatus.DEPLOYING
         self._deployment_timestamp = time.time()
@@ -335,6 +336,10 @@ class ApplicationState:
         return self._ingress_deployment_name
 
     @property
+    def ingress_request_router_deployment(self) -> Optional[str]:
+        return self._ingress_request_router_deployment_name
+
+    @property
     def api_type(self) -> APIType:
         return self._target_state.api_type
 
@@ -400,12 +405,15 @@ class ApplicationState:
         else:
             self._update_status(ApplicationStatus.DEPLOYING)
 
-        if deployment_infos is None:
-            self._ingress_deployment_name = None
-        else:
+        ingress_deployment_name = None
+        ingress_request_router_deployment_name = None
+
+        if deployment_infos is not None:
             for name, info in deployment_infos.items():
                 if info.ingress:
-                    self._ingress_deployment_name = name
+                    ingress_deployment_name = name
+                if info.ingress_request_router:
+                    ingress_request_router_deployment_name = name
 
         target_state = ApplicationTargetState(
             deployment_infos,
@@ -419,6 +427,10 @@ class ApplicationState:
             serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
         )
 
+        self._ingress_deployment_name = ingress_deployment_name
+        self._ingress_request_router_deployment_name = (
+            ingress_request_router_deployment_name
+        )
         self._target_state = target_state
 
     def _set_target_state_deleting(self):
@@ -1390,6 +1402,12 @@ class ApplicationStateManager:
             return None
 
         return self._application_states[name].ingress_deployment
+
+    def get_ingress_request_router_deployment_name(self, name: str) -> Optional[str]:
+        if name not in self._application_states:
+            return None
+
+        return self._application_states[name].ingress_request_router_deployment
 
     def get_app_source(self, name: str) -> APIType:
         return self._application_states[name].api_type

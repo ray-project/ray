@@ -656,7 +656,7 @@ class ServeController:
         # Direct ingress port management
         if self._direct_ingress_enabled:
             # Update port values for ingress replicas.
-            # Non-ingress replicas are not expected to have ports allocated.
+            # Ingress request router replicas also need direct-ingress ports.
             ingress_replicas_info_list: List[
                 Tuple[str, str, int, int]
             ] = self.deployment_state_manager.get_ingress_replicas_info()
@@ -1352,6 +1352,7 @@ class ServeController:
                     route_prefix="/",
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
+                    ingress_request_router_targets=[],
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1363,6 +1364,7 @@ class ServeController:
                             RequestProtocol.GRPC
                         ),
                         app_name="",
+                        ingress_request_router_targets=[],
                     )
                 )
         return target_groups
@@ -1444,14 +1446,11 @@ class ServeController:
 
         return target_groups
 
-    def _get_running_replica_details_for_ingress_deployment(
-        self, app_name: str
+    def _get_running_replica_details_for_deployment(
+        self, app_name: str, deployment_name: str
     ) -> List[ReplicaDetails]:
-        """Get running replica details for a specific application."""
-        ingress_deployment_name = (
-            self.application_state_manager.get_ingress_deployment_name(app_name)
-        )
-        deployment_id = DeploymentID(app_name=app_name, name=ingress_deployment_name)
+        """Get running replica details for a specific deployment in an app."""
+        deployment_id = DeploymentID(app_name=app_name, name=deployment_name)
         details = self.deployment_state_manager.get_deployment_details(deployment_id)
         if not details:
             return []
@@ -1468,6 +1467,17 @@ class ServeController:
             if replica_detail.replica_id in running_replica_ids
         ]
 
+    def _get_running_replica_details_for_ingress_deployment(
+        self, app_name: str
+    ) -> List[ReplicaDetails]:
+        """Get running replica details for the ingress deployment."""
+        ingress_deployment_name = (
+            self.application_state_manager.get_ingress_deployment_name(app_name)
+        )
+        return self._get_running_replica_details_for_deployment(
+            app_name, ingress_deployment_name
+        )
+
     def _get_target_groups_for_app(
         self, app_name: str, route_prefix: str
     ) -> List[TargetGroup]:
@@ -1477,13 +1487,35 @@ class ServeController:
         This function can return empty list if there are no running replicas.
         Or replicas have not fully initialized yet, where their ports are not
         allocated yet.
+
+        When an ingress request router deployment is configured (ingress
+        bypass), its replicas go into ``ingress_request_router_targets`` for Lua
+        routing decisions and the app's ingress replicas remain the main
+        targets for data plane traffic.
         """
+        ingress_request_router_deployment_name = (
+            self.application_state_manager.get_ingress_request_router_deployment_name(
+                app_name
+            )
+        )
+
         # Get running replicas for the ingress deployment
         replica_details = self._get_running_replica_details_for_ingress_deployment(
             app_name
         )
+        # Without ingress replicas, HAProxy has no data-plane targets to route to,
+        # so suppress router targets too — the app is effectively unreachable.
         if not replica_details:
             return []
+
+        ingress_request_router_targets = []
+        if ingress_request_router_deployment_name is not None:
+            ingress_request_router_targets = self._get_targets_for_protocol(
+                self._get_running_replica_details_for_deployment(
+                    app_name, ingress_request_router_deployment_name
+                ),
+                RequestProtocol.HTTP,
+            )
 
         target_groups = []
 
@@ -1498,6 +1530,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=ingress_request_router_targets,
                 )
             )
 
@@ -1513,6 +1546,7 @@ class ServeController:
                         route_prefix=route_prefix,
                         targets=grpc_targets,
                         app_name=app_name,
+                        ingress_request_router_targets=[],
                     )
                 )
 
@@ -1545,6 +1579,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=[],
                 )
             )
         if include_grpc:
@@ -1554,6 +1589,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=grpc_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=[],
                 )
             )
 
