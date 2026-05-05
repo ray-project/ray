@@ -17,9 +17,9 @@ if "SMOKE_TEST" in os.environ:
     MIN_NODES = 5
     MIN_CPUS_PER_NODE = 4
 else:
-    NUM_PGS = 1250
-    NUM_ACTORS_PER_PG = 4
-    MIN_NODES = 1250
+    NUM_PGS = 700
+    NUM_ACTORS_PER_PG = 16
+    MIN_NODES = 700
     MIN_CPUS_PER_NODE = 4
     is_smoke_test = False
 
