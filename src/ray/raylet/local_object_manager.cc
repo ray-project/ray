@@ -152,7 +152,7 @@ void LocalObjectManager::ReleaseFreedLocalObject(const ObjectID &object_id) {
 // TODO Deal with ProcessSpilledObjectsDeleteQueue within FlushFreeObjects
 void LocalObjectManager::FlushFreeObjects() {
   if (!objects_pending_deletion_.empty()) {
-        objects_pending_deletion_.clear();
+    objects_pending_deletion_.clear();
   }
   ProcessSpilledObjectsDeleteQueue(free_objects_batch_size_);
   last_free_objects_at_ms_ = current_time_ms();

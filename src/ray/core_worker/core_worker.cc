@@ -4627,8 +4627,8 @@ std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
   if (node_id == GetCurrentNodeId()) {
     return local_raylet_rpc_client_;
   }
-  auto node_info = gcs_client_->Nodes().GetNodeAddressAndLiveness(
-      node_id, /*filter_dead_nodes=*/true);
+  auto node_info =
+      gcs_client_->Nodes().GetNodeAddressAndLiveness(node_id, /*filter_dead_nodes=*/true);
   if (!node_info) {
     return nullptr;
   }
