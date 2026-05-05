@@ -49,7 +49,7 @@ TEST(PythonRayEventTest, TestSerializeDefinitionEvent) {
             rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT);
 
   // Serialize to RayEvent proto and verify nested message.
-  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize().value();
 
   EXPECT_EQ(ray_event.source_type(), rpc::events::RayEvent::GCS);
   EXPECT_EQ(ray_event.event_type(),
@@ -88,7 +88,7 @@ TEST(PythonRayEventTest, TestSerializeLifecycleEvent) {
       /*nested_event_field_number=*/
       rpc::events::RayEvent::kSubmissionJobLifecycleEventFieldNumber);
 
-  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize().value();
 
   ASSERT_TRUE(ray_event.has_submission_job_lifecycle_event());
   const auto &nested = ray_event.submission_job_lifecycle_event();
@@ -132,7 +132,7 @@ TEST(PythonRayEventTest, TestExplicitEventIdIsPreserved) {
       rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber,
       /*event_id=*/explicit_event_id,
       /*timestamp_ns=*/0);
-  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize().value();
   EXPECT_EQ(ray_event.event_id(), explicit_event_id);
 }
 
@@ -152,7 +152,7 @@ TEST(PythonRayEventTest, TestDefaultEventIdIsRandomAndNotEntityId) {
       /*session_name=*/"test-session",
       serialized,
       rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber);
-  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize().value();
   EXPECT_FALSE(ray_event.event_id().empty());
   EXPECT_NE(ray_event.event_id(), entity_id);
 }
@@ -174,11 +174,32 @@ TEST(PythonRayEventTest, TestExplicitTimestampIsPreserved) {
       rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber,
       /*event_id=*/"",
       explicit_ts_ns);
-  rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+  rpc::events::RayEvent ray_event = std::move(*event).Serialize().value();
   ASSERT_TRUE(ray_event.has_timestamp());
   const int64_t got_ns =
       ray_event.timestamp().seconds() * 1'000'000'000LL + ray_event.timestamp().nanos();
   EXPECT_EQ(got_ns, explicit_ts_ns);
+}
+
+TEST(PythonRayEventTest, TestSerializeReturnsErrorOnParseFailure) {
+  // Random bytes that are not a valid SubmissionJobDefinitionEvent encoding.
+  const std::string garbage = "\xff\xff\xff\xff\xff";
+
+  auto event = CreatePythonRayEvent(
+      /*source_type=*/static_cast<int>(rpc::events::RayEvent::GCS),
+      /*event_type=*/
+      static_cast<int>(rpc::events::RayEvent::SUBMISSION_JOB_DEFINITION_EVENT),
+      /*severity=*/static_cast<int>(rpc::events::RayEvent::INFO),
+      /*entity_id=*/"test-submission",
+      /*message=*/"",
+      /*session_name=*/"test-session",
+      /*serialized_event_data=*/garbage,
+      /*nested_event_field_number=*/
+      rpc::events::RayEvent::kSubmissionJobDefinitionEventFieldNumber);
+
+  auto result = std::move(*event).Serialize();
+  EXPECT_FALSE(result.ok());
+  EXPECT_TRUE(result.IsInvalid());
 }
 
 TEST(PythonRayEventTest, TestSupportsMerge) {

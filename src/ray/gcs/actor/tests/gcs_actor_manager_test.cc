@@ -1585,7 +1585,7 @@ TEST_F(GcsActorManagerTest, TestRestartActorForLineageReconstruction) {
     if (event->GetEventType() != rpc::events::RayEvent::ACTOR_LIFECYCLE_EVENT) {
       continue;
     }
-    auto ray_event = std::move(*event).Serialize();
+    auto ray_event = std::move(*event).Serialize().value();
     const auto &lifecycle_event = ray_event.actor_lifecycle_event();
     if (lifecycle_event.state_transitions_size() == 0) {
       continue;

@@ -133,7 +133,15 @@ void RayEventRecorder::ExportEvents() {
     }
   }
   for (auto &event : grouped_events) {
-    rpc::events::RayEvent ray_event = std::move(*event).Serialize();
+    StatusOr<rpc::events::RayEvent> ray_event_or = std::move(*event).Serialize();
+    if (!ray_event_or.ok()) {
+      // TODO: Add a metric to track the number of events skipped due to
+      // serialization failure.
+      RAY_LOG(ERROR) << "Skipping event that failed to serialize: "
+                     << ray_event_or.status().ToString();
+      continue;
+    }
+    rpc::events::RayEvent ray_event = std::move(ray_event_or).value();
     // Set node_id centrally for all events
     ray_event.set_node_id(node_id_.Binary());
     *ray_event_data.mutable_events()->Add() = std::move(ray_event);

@@ -14,6 +14,7 @@
 
 #include "ray/observability/python_event_interface.h"
 
+#include "absl/strings/str_cat.h"
 #include "google/protobuf/descriptor.h"
 #include "google/protobuf/message.h"
 #include "ray/common/grpc_util.h"
@@ -55,7 +56,7 @@ void PythonRayEvent::Merge(RayEventInterface &&other) {
                    << "The recorder should skip grouping for non-mergeable events.";
 }
 
-rpc::events::RayEvent PythonRayEvent::Serialize() && {
+StatusOr<rpc::events::RayEvent> PythonRayEvent::Serialize() && {
   rpc::events::RayEvent event;
 
   event.set_event_id(event_id_.empty() ? UniqueID::FromRandom().Binary() : event_id_);
@@ -75,8 +76,8 @@ rpc::events::RayEvent PythonRayEvent::Serialize() && {
   google::protobuf::Message *nested =
       event.GetReflection()->MutableMessage(&event, field);
   if (!nested->ParseFromString(serialized_event_data_)) {
-    RAY_LOG(ERROR) << "Failed to parse nested event data for field " << field->name();
-    event.GetReflection()->ClearField(&event, field);
+    return Status::Invalid(
+        absl::StrCat("Failed to parse nested event data for field ", field->name()));
   }
 
   return event;

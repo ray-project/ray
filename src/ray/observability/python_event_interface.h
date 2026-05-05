@@ -70,7 +70,7 @@ class PythonRayEvent : public RayEventInterface {
 
   std::string GetEntityId() const override;
   void Merge(RayEventInterface &&other) override;
-  rpc::events::RayEvent Serialize() && override;
+  StatusOr<rpc::events::RayEvent> Serialize() && override;
   rpc::events::RayEvent::EventType GetEventType() const override;
   bool SupportsMerge() const override;
 
