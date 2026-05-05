@@ -82,9 +82,15 @@ async def _get_prometheus_metrics(
             **kwargs,
         ),
         "memory_usage": client.query_prometheus(
-            query=f"ray_node_mem_used_host{sf}", **kwargs
+            query=f"ray_node_mem_used{sf}", **kwargs
         ),
         "total_memory": client.query_prometheus(
+            query=f"ray_node_mem_total{sf}", **kwargs
+        ),
+        "memory_usage_host": client.query_prometheus(
+            query=f"ray_node_mem_used_host{sf}", **kwargs
+        ),
+        "total_memory_host": client.query_prometheus(
             query=f"ray_node_mem_total_host{sf}", **kwargs
         ),
         "memory_usage_cgroup": client.query_prometheus(
