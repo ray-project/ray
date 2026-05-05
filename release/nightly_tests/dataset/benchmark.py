@@ -30,7 +30,7 @@ def collect_dataset_stats(ds: "ray.data.Dataset") -> Dict[str, Any]:
     """Collect execution stats from a Dataset as a JSON-serializable dict.
     This is a subset from `get_stats_summary`, because we are only adding the ones
     we care about for the release tests."""
-    summary = ds.get_stats_summary(detail=True)
+    summary = ds._get_stats_summary()
     return {
         "avg_scheduling_loop_duration_s": summary.streaming_exec_schedule_s,
         "p50_scheduling_loop_duration_s": summary.streaming_exec_schedule_p50_s,
