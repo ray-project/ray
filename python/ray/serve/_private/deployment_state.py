@@ -5898,7 +5898,10 @@ class DeploymentStateManager:
         return node_ids
 
     def get_ingress_replicas_info(self) -> List[Tuple[str, str, int, int]]:
-        """Get replicas that own direct-ingress ports."""
+        """Get replicas that own direct-ingress ports.
+
+        Includes both ingress deployments and ingress request router deployments.
+        """
         ingress_replicas_list = [
             deployment_state._replicas.get()
             for deployment_state in self._deployment_states.values()
