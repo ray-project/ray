@@ -116,8 +116,7 @@ class ActorTaskSubmitterTest : public ::testing::TestWithParam<bool> {
             fake_owned_object_count_gauge_,
             fake_owned_object_size_gauge_,
             /*lineage_pinning_enabled=*/false,
-            /*is_node_dead=*/[](const NodeID &) { return false; }
-        )),
+            /*is_node_dead=*/[](const NodeID &) { return false; })),
         submitter_(
             *client_pool_,
             *raylet_client_pool_,

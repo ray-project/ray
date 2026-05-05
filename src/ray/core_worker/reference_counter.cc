@@ -1564,8 +1564,8 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
 
   it->second.spilled = true;
   it->second.did_spill = true;
-  bool spilled_location_alive = spilled_node_id.IsNil() || !is_node_dead_ ||
-                                !is_node_dead_(spilled_node_id);
+  bool spilled_location_alive =
+      spilled_node_id.IsNil() || !is_node_dead_ || !is_node_dead_(spilled_node_id);
   if (spilled_location_alive) {
     if (!spilled_url.empty()) {
       it->second.spilled_url = spilled_url;
