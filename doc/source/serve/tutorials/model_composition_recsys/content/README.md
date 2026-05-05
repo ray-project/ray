@@ -348,7 +348,7 @@ Ray Serve exposes per-deployment metrics that help you understand pipeline perfo
 | `ray_serve_deployment_request_counter` | Total requests per deployment |
 | `ray_serve_deployment_processing_latency_ms` | Processing time per replica |
 | `ray_serve_num_deployment_http_error_requests_total` | Error rate per deployment |
-| `ray_serve_deployment_queued_queries` | Queue depth per replica |
+| `ray_serve_router_num_queued_requests` | Queue depth per replica |
 
 See [Monitoring and Debugging](https://docs.ray.io/en/latest/serve/monitoring.html) for more details on monitoring a Serve application.
 
