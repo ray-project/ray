@@ -465,7 +465,7 @@ class StreamingExecutor(Executor, threading.Thread):
 
             topology[op].dispatch_next_task()
 
-            self._resource_manager.update_usages()
+            self._resource_manager.update_usages_incremental(op)
 
             i += 1
             if i % self._progress_manager.TOTAL_PROGRESS_REFRESH_EVERY_N_STEPS == 0:
