@@ -415,7 +415,7 @@ NODE_HARDWARE_UTILIZATION_BY_RAY_COMPONENT_PANELS = [
                 legend="shared_memory",
             ),
             Target(
-                expr='sum(ray_node_mem_total_host{{instance=~"$Instance",{global_filters}}})',
+                expr='min(label_replace(sum(ray_node_mem_total_host{{instance=~"$Instance",{global_filters}}}), "mem_cap_source", "host", "", "") or label_replace(sum(ray_node_cgroup_mem_total{{instance=~"$Instance",{global_filters}}}), "mem_cap_source", "cgroup", "", ""))',
                 legend="MAX",
             ),
         ],
