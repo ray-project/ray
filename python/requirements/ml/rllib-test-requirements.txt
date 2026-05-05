@@ -1,9 +1,13 @@
+# Testing framework.
+pytest
+pytest-asyncio
+
 # Environment adapters.
 # ---------------------
 # Atari
 ale_py==0.10.1
 imageio==2.34.2
-opencv-python-headless==4.9.0.80
+opencv-python-headless==4.10.0.84
 
 # For testing MuJoCo envs with gymnasium.
 mujoco==3.2.4
@@ -28,3 +32,7 @@ h5py==3.12.1
 
 # Requirements for rendering.
 moviepy
+
+# numexpr is an optional pandas dependency that gets imported at runtime.
+# It must be explicitly pinned here to ensure compatibility with numpy 2.x.
+numexpr

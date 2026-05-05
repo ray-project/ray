@@ -4418,9 +4418,9 @@ tensorboard-data-server==0.7.2 \
     --hash=sha256:9fe5d24221b29625dbc7328b0436ca7fc1c23de4acf4d272f1180856e32f9f60 \
     --hash=sha256:ef687163c24185ae9754ed5650eb5bc4d84ff257aabdc33f0cc6f74d8ba54530
     # via tensorboard
-tensorboardx==2.6.2.2 \
-    --hash=sha256:160025acbf759ede23fd3526ae9d9bfbfd8b68eb16c38a010ebe326dc6395db8 \
-    --hash=sha256:c6476d7cd0d529b0b72f4acadb1269f9ed8b22f441e87a84f2a3b940bb87b666
+tensorboardx==2.6.5 \
+    --hash=sha256:c10b891d00af306537cb8b58a039b2ba41571f0da06f433a41c4ca8d6abe1373 \
+    --hash=sha256:ca176db3997ee8c07d2eb77381225956a3fd1c10c91beafab1f17069adc47017
     # via
     #   -r release/ray_release/byod/requirements_byod_gpu_3.10.in
     #   ray
