@@ -3418,28 +3418,12 @@ class UserCallableWrapper:
 
     @_run_user_code
     async def _call_user_health_probe(self):
-        """No-op that runs on the user code event loop (and thread pool when used).
+        """No-op that runs on the user code event loop.
 
         Used when there is no user-defined health check. If the loop is blocked
-        (e.g. by a stuck request), or when sync code runs in a thread pool and
-        that pool is stuck, this will not complete and the health check will
-        timeout, allowing the controller to mark the replica unhealthy.
-
-        When RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1, the thread-pool part uses a
-        short fixed timeout (1s) so that replicas with a busy pool (e.g. one
-        request blocking the only worker) still pass and are not killed (see
-        test_healthcheck_timeout).
+        (e.g. by a stuck request), this will not complete and the health check
+        will timeout, allowing the controller to mark the replica unhealthy.
         """
-        if self._run_sync_methods_in_threadpool:
-            try:
-                await asyncio.wait_for(
-                    to_thread.run_sync(lambda: None),
-                    timeout=1.0,
-                )
-            except asyncio.TimeoutError:
-                # Pool is busy (e.g. all workers handling requests); don't fail
-                # the health check so we don't kill busy replicas.
-                pass
         await asyncio.sleep(0)
 
     @_run_user_code
