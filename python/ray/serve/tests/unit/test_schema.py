@@ -994,26 +994,22 @@ class TestServeDeploySchema:
             assert s.target_capacity == output_val
 
     def test_apply_strategy_defaults_to_replace(self):
-        """apply_strategy should default to 'replace' when not specified."""
         config = ServeDeploySchema.model_validate({"applications": []})
         assert config.apply_strategy == ApplyStrategy.REPLACE
 
     def test_apply_strategy_accepts_merge(self):
-        """apply_strategy should accept 'merge'."""
         config = ServeDeploySchema.model_validate(
             {"applications": [], "apply_strategy": "merge"}
         )
         assert config.apply_strategy == ApplyStrategy.MERGE
 
     def test_apply_strategy_accepts_replace(self):
-        """apply_strategy should accept 'replace' explicitly."""
         config = ServeDeploySchema.model_validate(
             {"applications": [], "apply_strategy": "replace"}
         )
         assert config.apply_strategy == ApplyStrategy.REPLACE
 
     def test_apply_strategy_rejects_invalid(self):
-        """apply_strategy should reject invalid values."""
         with pytest.raises(ValidationError):
             ServeDeploySchema.model_validate(
                 {"applications": [], "apply_strategy": "invalid"}

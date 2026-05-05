@@ -21,7 +21,6 @@ from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
 from ray.dashboard.subprocesses.module import SubprocessModule
 from ray.dashboard.subprocesses.routes import SubprocessRouteTable as routes
 from ray.exceptions import RayTaskError
-from ray.serve.schema import ApplyStrategy
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -155,7 +154,7 @@ class ServeHead(SubprocessModule):
         from ray._common.usage.usage_lib import TagKey, record_extra_usage_tag
         from ray.serve._private.api import serve_start_async
         from ray.serve.config import ProxyLocation
-        from ray.serve.schema import ServeDeploySchema
+        from ray.serve.schema import ApplyStrategy, ServeDeploySchema
 
         try:
             config: ServeDeploySchema = ServeDeploySchema.model_validate(
