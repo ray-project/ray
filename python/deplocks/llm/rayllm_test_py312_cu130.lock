@@ -6233,12 +6233,10 @@ virtualenv==21.2.4 \
     # via
     #   -c python/deplocks/llm/ray_test_py312_cu130.lock
     #   -r python/requirements.txt
-vllm==0.20.1 \
-    --hash=sha256:11907857c94c226caf82ada92ab09b1e0dbf538b5b80a93aed74be29e861020c \
-    --hash=sha256:1cfa5f5654e4c7a8a9f949ef7a9597a63b9736129202c96c006434b57f511223 \
-    --hash=sha256:4a5c24a94be8413ce682e72d6c22762ac7be64635cf191f4807d30910f928268 \
-    --hash=sha256:778df065237704d51e8b4cc95bcc6f6a0c2317f13feb38295de3ce76146bf140 \
-    --hash=sha256:da89341f2a07f49a2571edecbec612071839b04b6d7ea1e3bddb5347d47859df
+vllm==0.20.0 \
+    --hash=sha256:24d28892e210200f6e1bd13f699c42a74cd2bb7364c11248e2348f677c7f6dfb \
+    --hash=sha256:29a135ca0d70650f057f15c7c0b560d24659524c771f70fbddc24597c861c118 \
+    --hash=sha256:a6d50152936ee292455af3ffbe359f7a284ac43bf3b68caccf29f368e196cc72
     # via -r python/requirements/llm/llm-requirements.txt
 watchfiles==0.19.0 \
     --hash=sha256:0089c6dc24d436b373c3c57657bf4f9a453b13767150d17284fc6162b2791911 \
