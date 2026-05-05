@@ -710,11 +710,7 @@ def test_worker_group_callback():
 def _make_backend_setup_callback_with_failing_shutdown(
     error: Exception,
 ) -> BackendSetupCallback:
-    """Build a BackendSetupCallback whose backend raises `error` from `on_shutdown`.
-
-    `Backend` uses a Singleton metaclass, so we bypass `backend_cls()` and
-    inject the mock backend directly onto the callback.
-    """
+    """Build a `BackendSetupCallback` whose backend raises `error` from `on_shutdown`."""
     failing_backend = MagicMock()
     failing_backend.on_shutdown.side_effect = error
     backend_config = MagicMock()
@@ -762,7 +758,7 @@ def test_backend_setup_callback_swallows_shutdown_failure(shutdown_error):
 
 def test_backend_setup_callback_propagates_unexpected_shutdown_error():
     """Non-Ray exceptions from `on_shutdown` must propagate so they aren't
-    silently masked (e.g. programmer errors in a user-defined backend)."""
+    silently masked."""
     cb = _make_backend_setup_callback_with_failing_shutdown(
         ValueError("unexpected backend bug")
     )
