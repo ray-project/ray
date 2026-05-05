@@ -1654,6 +1654,11 @@
   variations:
     # Low-latency / high-throughput workload
     - __suffix__: aws.standard
+      cluster:
+        byod:
+          runtime_env:
+            - RAY_SERVE_RUN_USER_CODE_IN_SEPARATE_THREAD=0
+            - RAY_SERVE_RUN_ROUTER_IN_SEPARATE_LOOP=0
       run:
         timeout: 7200
         long_running: false
