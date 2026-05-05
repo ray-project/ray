@@ -129,6 +129,7 @@ Ray Train Configuration
     ~train.CheckpointConfig
     ~train.DataConfig
     ~train.FailureConfig
+    ~train.LoggingConfig
     ~train.RunConfig
     ~train.ScalingConfig
     ~train.ValidationConfig
