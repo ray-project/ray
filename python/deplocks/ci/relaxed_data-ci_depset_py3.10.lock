@@ -2705,17 +2705,17 @@ networkx==3.2.1 \
     --hash=sha256:9f1bb5cf3409bf324e0a722c20bdb4c20ee39bf1c30ce8ae499c8502b0b5e0c6 \
     --hash=sha256:f18c69adc97877c42332c170849c96cefa91881c99a7cb3e95b7c659ebdc1ec2
 # via torch
-nixl-cu13==1.0.0; sys_platform != "darwin" \
-    --hash=sha256:27645aba4a9ceceff3efe8cea4c02832cd04e03aa0bea1a1e1cbd7a70e5180a1 \
-    --hash=sha256:310f276057d2a321055c0906024419104d8cdf3fc1ebaa5351f34edb8196b47b \
-    --hash=sha256:4b7d875fad57ada0ffe06c1c6cf07c269f173254ebae4623791aefce49f09e02 \
-    --hash=sha256:6111ec2f60e3a014c80a6145f1dab5fddd9e55a38dcfb94e5483a1a372507be8 \
-    --hash=sha256:71e69782e4b6f8b8fe1a69b99650c29aab8d0f7ada44c16e9716f05f297b84ed \
-    --hash=sha256:8f4a8a9e9a229eccf7b9736d9dad49b46f07d898a76895e9d785dd9dc561d1fb \
-    --hash=sha256:ba78cf478fce2401b8fa3c8977d44172d500ee277af7a7bc1624693299ea8a3b \
-    --hash=sha256:c1552a57828ec943e18ea26ecc943eddf42b8f1f936440469eaf1db9862cfcf5 \
-    --hash=sha256:eba80119a6b1e5d2a3b7525c04281100e4d0b5e25d6bf1d9202de384ea77ccaf \
-    --hash=sha256:ff95b44729aa64284a16a6e7b758ddd8c54dc2288f390ed2c8943976564d86ab
+nixl-cu13==0.10.1; sys_platform != "darwin" \
+    --hash=sha256:0cbd4ffc25398f565a378e6da09b60d8d2625f1eda96bfe20d6d9c5f3fdba2c0 \
+    --hash=sha256:129f41f6855cf13837b55516319512ee1561e0a8cbbc2e4a9be3d839631ebf36 \
+    --hash=sha256:234752e979465e98aae5866e32777a4d98892c1d9fd2f59f25fef69e1e26716e \
+    --hash=sha256:322e4702606ad498a493d99a065af46c0c16ce84a4bed6495f85efab75670f0a \
+    --hash=sha256:66ad915a090da0b8928d9fea2aaac98c3468bb5e08a1a293ef211615bd49e460 \
+    --hash=sha256:67c913c0345f8703f1b3c96dd5f63c914bc6c173e3f283f62c46c07b5fcc5618 \
+    --hash=sha256:909d00ffc1929ef45cd3cfa0cd3585999274c90a6bcf0799000677cf83a8f0e2 \
+    --hash=sha256:9346f26d4b97088ee23921d567b7836eceb57473638455eac73b2f2b7388cbfc \
+    --hash=sha256:efa8f95ac57b9cf71fd5a0dcaa51ecef8d40510ca5ab3347e046a972905edbf1 \
+    --hash=sha256:f32bfd6f649ef1968e4f6d37d7c3cae61a58fe1f57a987d2fad324f18d5dc6e5
 # via -r python/requirements/ml/py313/dl-gpu-requirements.txt
 numexpr==2.14.1; python_full_version < "3.12" \
     --hash=sha256:03130afa04edf83a7b590d207444f05a00363c9b9ea5d81c0f53b1ea13fad55a \
