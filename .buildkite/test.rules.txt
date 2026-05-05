@@ -97,6 +97,12 @@ python/deplocks/ci/macos_depset_py*
 @ macos_wheels python_dependencies
 ;
 
+# Short-circuit deps handling for docs-specific.
+python/deplocks/docs/*.lock
+ci/raydepsets/configs/docs.depsets.yaml
+@ doc python_dependencies
+;
+
 # Raydepsets-generated lock files and raydepsets configs that drive
 # their generation. These do NOT affect the macOS smoke test (which
 # only consumes macos_depset_py*, handled above), so we deliberately
@@ -181,6 +187,7 @@ doc/*.ipynb
 doc/BUILD
 doc/*/BUILD
 doc/*.rst
+doc/requirements-doc.txt
 .vale.ini
 .vale/
 .buildkite/doc.rayci.yml
