@@ -39,6 +39,7 @@ from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.exceptions import RayServeException
 from ray.serve.schema import (
     LoggingConfig,
+    RolloutStrategySchema,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
@@ -240,6 +241,7 @@ def _generate_config_from_file_or_import_path(
     name: Optional[str],
     arguments: Dict[str, str],
     runtime_env: Optional[Dict[str, Any]],
+    rollback_on_failure: bool = False,
 ) -> ServeDeploySchema:
     """Generates a deployable config schema for the passed application(s)."""
     if pathlib.Path(config_or_import_path).is_file():
@@ -273,6 +275,8 @@ def _generate_config_from_file_or_import_path(
         if name is not None:
             app.name = name
         config = ServeDeploySchema(applications=[app])
+    if rollback_on_failure:
+        config.rollout_strategy = RolloutStrategySchema(auto_rollback=True)
 
     return config
 
@@ -338,6 +342,15 @@ def _generate_config_from_file_or_import_path(
     type=str,
     help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
+@click.option(
+    "--rollback-on-failure",
+    is_flag=True,
+    default=False,
+    help=(
+        "Rollback cluster config to the last known good config if there are any failures "
+        "on applying the current config."
+    ),
+)
 def deploy(
     config_or_import_path: str,
     arguments: Tuple[str],
@@ -346,6 +359,7 @@ def deploy(
     working_dir: str,
     name: Optional[str],
     address: str,
+    rollback_on_failure: bool,
 ):
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -359,6 +373,7 @@ def deploy(
         name=name,
         arguments=args_dict,
         runtime_env=final_runtime_env,
+        rollback_on_failure=rollback_on_failure,
     )
 
     ServeSubmissionClient(address).deploy_applications(

@@ -24,6 +24,7 @@ from ray.serve.schema import (
     DeploymentSchema,
     LoggingConfig,
     RayActorOptionsSchema,
+    RolloutStrategySchema,
     ServeApplicationSchema,
     ServeDeploySchema,
     ServeInstanceDetails,
@@ -991,6 +992,44 @@ class TestServeDeploySchema:
         else:
             s = ServeDeploySchema.model_validate(deploy_config_dict)
             assert s.target_capacity == output_val
+
+    @pytest.mark.parametrize(
+        "input_val,expected_auto_rollback",
+        [
+            # Can be omitted,defaults to None.
+            (None, None),
+            # Accepts auto_rollback: true.
+            ({"auto_rollback": True}, True),
+            # Accepts auto_rollback: false.
+            ({"auto_rollback": False}, False),
+        ],
+    )
+    def test_rollout_strategy(self, input_val, expected_auto_rollback):
+        """Test validation of rollout_strategy field."""
+
+        deploy_config_dict = {"applications": []}
+        if input_val is not None:
+            deploy_config_dict["rollout_strategy"] = input_val
+
+        s = ServeDeploySchema.model_validate(deploy_config_dict)
+        if expected_auto_rollback is None:
+            assert s.rollout_strategy is None
+        else:
+            assert s.rollout_strategy.auto_rollback == expected_auto_rollback
+
+
+class TestRolloutStrategySchema:
+    """
+    Tests RolloutStrategySchema
+    """
+
+    def test_defaults_to_false(self):
+        s = RolloutStrategySchema()
+        assert s.auto_rollback is False
+
+    def test_accepts_true(self):
+        s = RolloutStrategySchema(auto_rollback=True)
+        assert s.auto_rollback is True
 
 
 class TestLoggingConfig:
