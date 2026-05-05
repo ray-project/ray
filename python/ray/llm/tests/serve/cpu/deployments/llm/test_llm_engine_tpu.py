@@ -289,6 +289,7 @@ def test_tpu_serve_deployment_explicit_host_level_bundles(ray_tpu_cluster):
         worker_pg = [pg for pg in active_pgs if pg not in head_pgs][0]
 
         assert worker_pg["strategy"] == "PACK"
+
         assert len(worker_pg["bundles"]) == 4
         for bundle in worker_pg["bundles"].values():
             assert bundle.get("TPU", 0) == 4

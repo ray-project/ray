@@ -68,8 +68,8 @@ def _default_create_placement_group(
         request.bundle_label_selector, request.bundles
     )
     if tpu_kwargs is not None:
-        # If TPU-related bundle label selectors are present, we utilize
-        # TPU specific PG creation logic to ensure atomic scheduling of co-located slices.
+        # If TPU-specific bundle label selectors are present, we utilize
+        # Slice PG utility to ensure atomic scheduling of co-located slices.
         tpu_topology, tpu_version, worker_bundle = tpu_kwargs
         slice_pg = slice_placement_group(
             topology=tpu_topology,
@@ -77,6 +77,7 @@ def _default_create_placement_group(
             resources_per_bundle=worker_bundle,
             strategy=request.strategy,
             name=request.name,
+            lifetime="detached",
         )
         return slice_pg.placement_group
 
