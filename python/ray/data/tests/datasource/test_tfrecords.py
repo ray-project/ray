@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 from unittest.mock import MagicMock
 
 import numpy as np
+import pandas as pd
 import pyarrow as pa
 import pytest
 from packaging.version import Version
@@ -30,6 +31,41 @@ if TYPE_CHECKING:
 if sys.version_info <= (3, 12):
     # Skip this test for Python 3.12+ due to to incompatibility tensorflow
     import tensorflow as tf
+
+
+def _is_object_like(dtype):
+    """Match the pre-Arrow-dtype semantics of ``is_object_dtype``: pandas used
+    object dtype for lists, bytes, and strings; ArrowBlockAccessor.to_pandas()
+    now preserves these as ``pd.ArrowDtype`` via a ``types_mapper``."""
+    if is_object_dtype(dtype):
+        return True
+    if isinstance(dtype, pd.ArrowDtype):
+        pa_type = dtype.pyarrow_dtype
+        return (
+            pa.types.is_list(pa_type)
+            or pa.types.is_large_list(pa_type)
+            or pa.types.is_binary(pa_type)
+            or pa.types.is_large_binary(pa_type)
+            or pa.types.is_string(pa_type)
+            or pa.types.is_large_string(pa_type)
+        )
+    return False
+
+
+def _is_int64_like(dtype):
+    if is_int64_dtype(dtype):
+        return True
+    if isinstance(dtype, pd.ArrowDtype):
+        return dtype.pyarrow_dtype == pa.int64()
+    return False
+
+
+def _is_float_like(dtype):
+    if is_float_dtype(dtype):
+        return True
+    if isinstance(dtype, pd.ArrowDtype):
+        return pa.types.is_floating(dtype.pyarrow_dtype)
+    return False
 
 
 def tf_records_partial():
@@ -403,33 +439,31 @@ def test_read_tfrecords(
     df = ds.to_pandas()
     # Protobuf serializes features in a non-deterministic order.
     if with_tf_schema:
-        assert is_object_dtype(dict(df.dtypes)["int_item"])
+        assert _is_object_like(dict(df.dtypes)["int_item"])
     else:
-        assert is_int64_dtype(dict(df.dtypes)["int_item"])
-    assert is_object_dtype(dict(df.dtypes)["int_list"])
-    assert is_object_dtype(dict(df.dtypes)["int_partial"])
-    assert is_object_dtype(dict(df.dtypes)["int_empty"])
+        assert _is_int64_like(dict(df.dtypes)["int_item"])
+    assert _is_object_like(dict(df.dtypes)["int_list"])
+    assert _is_object_like(dict(df.dtypes)["int_partial"])
+    assert _is_object_like(dict(df.dtypes)["int_empty"])
 
     if with_tf_schema:
-        assert is_object_dtype(dict(df.dtypes)["float_item"])
-        assert is_object_dtype(dict(df.dtypes)["float_partial"])
+        assert _is_object_like(dict(df.dtypes)["float_item"])
+        assert _is_object_like(dict(df.dtypes)["float_partial"])
     else:
-        assert is_float_dtype(dict(df.dtypes)["float_item"])
-        assert is_float_dtype(dict(df.dtypes)["float_partial"])
-    assert is_object_dtype(dict(df.dtypes)["float_list"])
-    assert is_object_dtype(dict(df.dtypes)["float_empty"])
+        assert _is_float_like(dict(df.dtypes)["float_item"])
+        assert _is_float_like(dict(df.dtypes)["float_partial"])
+    assert _is_object_like(dict(df.dtypes)["float_list"])
+    assert _is_object_like(dict(df.dtypes)["float_empty"])
 
-    # In both cases, bytes are of `object` dtype in pandas
-    assert is_object_dtype(dict(df.dtypes)["bytes_item"])
-    assert is_object_dtype(dict(df.dtypes)["bytes_partial"])
-    assert is_object_dtype(dict(df.dtypes)["bytes_list"])
-    assert is_object_dtype(dict(df.dtypes)["bytes_empty"])
+    assert _is_object_like(dict(df.dtypes)["bytes_item"])
+    assert _is_object_like(dict(df.dtypes)["bytes_partial"])
+    assert _is_object_like(dict(df.dtypes)["bytes_list"])
+    assert _is_object_like(dict(df.dtypes)["bytes_empty"])
 
-    # strings are of `object` dtype in pandas
-    assert is_object_dtype(dict(df.dtypes)["string_item"])
-    assert is_object_dtype(dict(df.dtypes)["string_partial"])
-    assert is_object_dtype(dict(df.dtypes)["string_list"])
-    assert is_object_dtype(dict(df.dtypes)["string_empty"])
+    assert _is_object_like(dict(df.dtypes)["string_item"])
+    assert _is_object_like(dict(df.dtypes)["string_partial"])
+    assert _is_object_like(dict(df.dtypes)["string_list"])
+    assert _is_object_like(dict(df.dtypes)["string_empty"])
 
     # If the schema is specified, we should not perform the
     # automatic unwrapping of single-element lists.
@@ -445,10 +479,11 @@ def test_read_tfrecords(
     if with_tf_schema:
         assert isinstance(df["float_item"], pd.Series)
         assert df["float_item"].tolist() == [[1.0]]
+        assert df["float_partial"].tolist() == [[1.0]]
     else:
         assert list(df["float_item"]) == [1.0]
+        assert list(df["float_partial"]) == [1.0]
     assert np.array_equal(df["float_list"][0], np.array([2.0, 3.0, 4.0]))
-    assert list(df["float_partial"]) == [1.0]
     assert np.array_equal(df["float_empty"][0], np.array([], dtype=np.float32))
 
     if with_tf_schema:

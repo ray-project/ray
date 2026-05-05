@@ -1827,13 +1827,47 @@ def _sort_df(df: pd.DataFrame) -> pd.DataFrame:
             return tuple(sorted((k, to_sortable(v)) for k, v in x.items()))
         return x
 
+    def needs_proxy(dtype: "np.dtype | pd.api.extensions.ExtensionDtype") -> bool:
+        if dtype == "object":
+            return True
+        if isinstance(dtype, pd.ArrowDtype):
+            pa_type = dtype.pyarrow_dtype
+            return (
+                pyarrow.types.is_list(pa_type)
+                or pyarrow.types.is_large_list(pa_type)
+                or pyarrow.types.is_fixed_size_list(pa_type)
+                or pyarrow.types.is_struct(pa_type)
+                or pyarrow.types.is_map(pa_type)
+            )
+        return False
+
+    # Cast Arrow-backed *float* columns to numpy floats — pandas's multi-column
+    # ``sort_values`` builds an ordered Categorical per key column, which rejects
+    # arrow-backed floats containing both ``-0.0`` and ``0.0`` ("categories must
+    # be unique") because they're stored distinctly but compare equal under
+    # numpy. We deliberately leave other Arrow scalar types alone: int columns
+    # may contain ``<NA>`` (which can't fit in numpy ``int64``), and string
+    # columns sort ``<NA>`` first whereas object-with-``None`` sorts last,
+    # which would diverge from the expected DataFrame on the other side.
+    arrow_to_numpy = {}
+    for col in df.columns:
+        dtype = df[col].dtype
+        if isinstance(dtype, pd.ArrowDtype) and pyarrow.types.is_floating(
+            dtype.pyarrow_dtype
+        ):
+            numpy_dtype = getattr(dtype, "numpy_dtype", None)
+            if numpy_dtype is not None:
+                arrow_to_numpy[col] = numpy_dtype
+    if arrow_to_numpy:
+        df = df.astype(arrow_to_numpy)
+
     sort_cols = []
     temp_cols = []
     # Sort by all columns to ensure deterministic order.
     columns = sorted(df.columns)
 
     for col in columns:
-        if df[col].dtype == "object":
+        if needs_proxy(df[col].dtype):
             # Create a temporary column for sorting to handle unhashable types.
             # Use UUID to avoid collisions with existing column names.
             temp_col = f"__sort_proxy_{uuid.uuid4().hex}_{col}__"
