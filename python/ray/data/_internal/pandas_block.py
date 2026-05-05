@@ -453,8 +453,20 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         return self._table.assign(**{column_name: column_data})
 
-    def random_shuffle(self, random_seed: Optional[int]) -> "pandas.DataFrame":
-        table = self._table.sample(frac=1, random_state=random_seed)
+    def random_shuffle(self, random_seed: tuple[int, ...] | None) -> "pandas.DataFrame":
+        """Randomly shuffle this block.
+
+        Args:
+            random_seed: A tuple of integers to seed ``np.random.default_rng()``,
+                or None for non-deterministic shuffling.
+
+        Returns:
+            A new ``pandas.DataFrame`` with rows in random order.
+        """
+        import numpy as np
+
+        rng = np.random.default_rng(random_seed)
+        table = self._table.sample(frac=1, random_state=rng)
         table.reset_index(drop=True, inplace=True)
         return table
 

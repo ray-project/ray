@@ -8,8 +8,10 @@ from ray.data._internal.arrow_ops import transform_pyarrow
 from ray.data._internal.arrow_ops.transform_pyarrow import try_combine_chunked_columns
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.util import memory_string
+from ray.data._internal.random_config import RandomSeedConfig
 from ray.data._internal.util import get_total_obj_store_mem_on_node
 from ray.data.block import Block, BlockAccessor
+from ray.data.context import DataContext
 from ray.util import log_once
 
 # Delay compaction until the shuffle buffer has reached this ratio over the min
@@ -195,7 +197,7 @@ class ShufflingBatcher(BatcherInterface):
         self,
         batch_size: Optional[int],
         shuffle_buffer_min_size: int,
-        shuffle_seed: Optional[int] = None,
+        shuffle_seed: RandomSeedConfig | None = None,
     ):
         """Constructs a random-shuffling block batcher.
 
@@ -208,12 +210,15 @@ class ShufflingBatcher(BatcherInterface):
                 and the final batch may have less than ``batch_size`` rows. Increasing
                 this will improve the randomness of the shuffle but may increase the
                 latency to the first batch.
-            shuffle_seed: The seed to use for the local random shuffle.
+            shuffle_seed: The seed configuration for the local random shuffle.
+                Use :meth:`RandomSeedConfig.create_with_split_index` to create
+                a config with the split index set for multi-worker scenarios.
         """
         if batch_size is None:
             raise ValueError("Must specify a batch_size if using a local shuffle.")
         self._batch_size = batch_size
-        self._rng = np.random.default_rng(shuffle_seed)
+        self._shuffle_seed = shuffle_seed
+        self._compaction_idx = 0
         if shuffle_buffer_min_size < batch_size:
             # Round it up internally to `batch_size` since our algorithm requires it.
             # This is harmless since it only offers extra randomization.
@@ -341,8 +346,37 @@ class ShufflingBatcher(BatcherInterface):
             self._done_adding
             or self._num_compacted_rows() <= self._min_rows_to_yield_batch
         ):
-            if self._shuffle_buffer is not None and self._batch_head < len(
-                self._shuffled_indices
+            if self._shuffle_buffer is not None:
+                if self._batch_head > 0:
+                    # Compact the materialized shuffle buffer.
+                    block = BlockAccessor.for_block(self._shuffle_buffer)
+                    self._shuffle_buffer = block.slice(
+                        self._batch_head, block.num_rows()
+                    )
+                # Add the unyielded rows from the existing shuffle buffer.
+                self._builder.add_block(self._shuffle_buffer)
+            # Build the new shuffle buffer.
+            self._shuffle_buffer = self._builder.build()
+            # Build a hierarchical seed (least-variable → most-variable):
+            #   base_seed, [split_index,] [execution_idx,] compaction_idx
+            # Materialized (reversed) for np.random.default_rng():
+            #   (compaction_idx, [execution_idx,] [split_index,] base_seed)
+            shuffle_seed_tuple: tuple[int, ...] | None = None
+            if self._shuffle_seed is not None:
+                seed = self._shuffle_seed.make_base_seed()
+                if seed is not None:
+                    seed = self._shuffle_seed.apply_execution_idx(
+                        seed, data_context=DataContext.get_current()
+                    )
+                    seed = seed.spawn(self._compaction_idx)
+                    shuffle_seed_tuple = seed.as_rng_seed()
+            self._shuffle_buffer = BlockAccessor.for_block(
+                self._shuffle_buffer
+            ).random_shuffle(shuffle_seed_tuple)
+            self._compaction_idx += 1
+
+            if isinstance(
+                BlockAccessor.for_block(self._shuffle_buffer), ArrowBlockAccessor
             ):
                 remaining_indices = self._shuffled_indices[self._batch_head :]
                 remaining_block = BlockAccessor.for_block(self._shuffle_buffer).take(

@@ -228,7 +228,7 @@ def test_shuffle():
     shuffled = shuffle(t, seed=0xDEED)
 
     assert shuffled == pa.Table.from_pydict(
-        {"index": pa.array([4, 3, 6, 8, 7, 1, 5, 2, 9, 0])}
+        {"index": pa.array([9, 2, 7, 0, 6, 8, 3, 5, 4, 1])}
     )
 
 
