@@ -97,9 +97,17 @@ class UnBatchToIndividualItems(ConnectorV2):
                         # If an episode has not just started and the agent's episode
                         # is done do not return data.
                         # This should not be `True` for new `MultiAgentEpisode`s.
+                        # Use .get() to safely handle agent IDs that may have been
+                        # removed from the multi-agent environment (e.g. when
+                        # agents leave mid-episode).
+                        agent_episode = (
+                            episode.agent_episodes.get(agent_id)
+                            if episode.agent_episodes
+                            else None
+                        )
                         if (
-                            episode.agent_episodes
-                            and episode.agent_episodes[agent_id].is_done
+                            agent_episode is not None
+                            and agent_episode.is_done
                             and not episode.is_done
                         ):
                             continue
