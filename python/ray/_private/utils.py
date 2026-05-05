@@ -570,7 +570,7 @@ def get_cgroup_mem_stats() -> Optional[Tuple[int, int]]:
                 cgroup_total = system_total
         except Exception as exception:
             logger.warning(
-                f"Failed to obtain current container memory limit from {mem_limit_v2_file}: {repr(exception)}"
+                f"Failed to obtain current container memory limit from {mem_limit_v2_file}: {repr(exception)}. "
                 "Falling back to system total memory."
             )
             cgroup_total = system_total
