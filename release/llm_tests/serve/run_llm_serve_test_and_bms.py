@@ -26,7 +26,7 @@ from benchmark.common import read_from_s3, get_llm_config
 from benchmark.firehose_utils import FirehoseRecord, RecordName
 from test_utils import (
     start_service,
-    get_current_compute_config,
+    get_service_compute_config,
     get_applications,
     get_hf_token_env_var,
     setup_client_env_vars,
@@ -55,6 +55,15 @@ SERVICE_NAME = "serve_llm_release_test_service"
 )
 @click.option("--serve-config-file", type=str, help="Serve config file for this test")
 @click.option(
+    "--compute-config",
+    type=str,
+    default=None,
+    help=(
+        "Optional Anyscale compute config name/version to use for the service. "
+        "Defaults to ANYSCALE_JOB_CLUSTER_COMPUTE_NAME from the release job."
+    ),
+)
+@click.option(
     "--run-probes",
     type=bool,
     default=True,
@@ -82,6 +91,7 @@ SERVICE_NAME = "serve_llm_release_test_service"
 def main(
     image_uri: Optional[str],
     serve_config_file: str,
+    compute_config: Optional[str],
     run_probes: bool,
     run_serve_llm_profiler: bool,
     skip_hf_token: bool,
@@ -94,7 +104,8 @@ def main(
         image_uri = f"anyscale/image/{cluster_env}:1"
 
     applications = get_applications(serve_config_file)
-    compute_config = get_current_compute_config()
+    compute_config = get_service_compute_config(compute_config)
+    logger.info("Using service compute config: %s", compute_config)
     env_vars = get_hf_token_env_var() if not skip_hf_token else {}
 
     if run_vllm_profiler:
