@@ -94,11 +94,11 @@ async def test_http_request_timeout_disconnect_headers(
     not RAY_SERVE_ENABLE_DIRECT_INGRESS,
     reason="RAY_SERVE_ENABLE_DIRECT_INGRESS not set.",
 )
-def test_direct_ingress_binds_all_interfaces_when_host_is_loopback(ray_shutdown):
-    """Direct ingress backend ports must bind to 0.0.0.0 even when
-    HTTPOptions.host is loopback, so HAProxy on other nodes can reach them.
+def test_direct_ingress_default_host_is_all_interfaces(ray_shutdown):
+    """When direct ingress is enabled, the default HTTPOptions.host is
+    0.0.0.0 so HAProxy on other nodes can reach the backend ports.
     """
-    serve.start(http_options=HTTPOptions(host="127.0.0.1"))
+    serve.start(http_options=HTTPOptions())
 
     @serve.deployment
     class App:

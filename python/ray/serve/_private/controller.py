@@ -208,6 +208,15 @@ class ServeController:
                 "on head node only."
             )
 
+            if http_options.host not in (None, "0.0.0.0"):
+                logger.warning(
+                    f"HTTPOptions.host={http_options.host!r} is not reachable "
+                    "from HAProxy on other nodes. Direct ingress backend ports "
+                    "should bind to '0.0.0.0' (the default when "
+                    "RAY_SERVE_ENABLE_DIRECT_INGRESS=1) so cross-node routing "
+                    "works."
+                )
+
             http_options.location = DeploymentMode.HeadOnly
 
         # Configure proxy default HTTP and gRPC options.
