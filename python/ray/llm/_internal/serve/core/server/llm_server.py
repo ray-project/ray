@@ -706,27 +706,40 @@ class LLMServer(LLMServerProtocol):
         # deployment_options
         ray_actor_options = deployment_options.get("ray_actor_options", {})
 
-        if not engine_config.accelerator.requires_deferred_placement_group:
-            replica_actor_resources = {
-                "CPU": ray_actor_options.get("num_cpus", 1),
-                "GPU": ray_actor_options.get("num_gpus", 0),
-                **ray_actor_options.get("resources", {}),
+        replica_actor_resources = {
+            "CPU": ray_actor_options.get("num_cpus", 1),
+            "GPU": ray_actor_options.get("num_gpus", 0),
+            **ray_actor_options.get("resources", {}),
+        }
+        if "memory" in ray_actor_options:
+            replica_actor_resources["memory"] = ray_actor_options["memory"]
+
+        # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
+        # more generic place.
+        pg_bundles = _merge_replica_actor_and_child_actor_bundles(
+            engine_config.placement_bundles, replica_actor_resources
+        )
+
+        deployment_options.update(
+            {
+                "placement_group_bundles": pg_bundles,
+                "placement_group_strategy": engine_config.placement_strategy,
             }
-            if "memory" in ray_actor_options:
-                replica_actor_resources["memory"] = ray_actor_options["memory"]
+        )
 
-            # TODO: Move this _merge_replica_actor_and_child_actor_bundles to a
-            # more generic place.
-            pg_bundles = _merge_replica_actor_and_child_actor_bundles(
-                engine_config.placement_bundles, replica_actor_resources
+        # Append hardware-specific `bundle_label_selectors` to the deployment options if needed
+        accelerator_type_str = (
+            getattr(
+                llm_config.accelerator_type, "value", str(llm_config.accelerator_type)
             )
-
-            deployment_options.update(
-                {
-                    "placement_group_bundles": pg_bundles,
-                    "placement_group_strategy": engine_config.placement_strategy,
-                }
-            )
+            if llm_config.accelerator_type
+            else None
+        )
+        engine_config.accelerator.apply_placement_group_bundle_labels(
+            deployment_options=deployment_options,
+            accelerator_type_str=accelerator_type_str,
+            num_bundles=len(pg_bundles),
+        )
 
         # Handle env vars from runtime_env
         default_runtime_env = ray.get_runtime_context().runtime_env
@@ -735,7 +748,6 @@ class LLMServer(LLMServerProtocol):
                 "worker_process_setup_hook"
             ] = "ray.llm._internal.serve._worker_process_setup_hook"
 
-        ray_actor_options = deployment_options.get("ray_actor_options", {})
         ray_actor_options["runtime_env"] = {
             **default_runtime_env,
             # Existing runtime_env should take precedence over the default.
