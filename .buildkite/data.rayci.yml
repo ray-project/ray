@@ -55,7 +55,7 @@ steps:
     wanda: ci/docker/docgpu.build.wanda.yaml
     env:
       PYTHON: "3.12"
-    depends_on: oss-ci-base_gpu-multipy(*)
+    depends_on: oss-ci-base_gpu-multipy(python=3.12)
     tags: cibase
 
   # type check
@@ -72,7 +72,7 @@ steps:
   - label: ":database: data: arrow v17 tests"
     tags:
       - data
-    instance_type: medium
+    instance_type: large
     parallelism: 8
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/data/... //python/ray/air/... data

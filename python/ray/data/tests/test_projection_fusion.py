@@ -10,6 +10,7 @@ import ray
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import Project
+from ray.data._internal.logical.operators.one_to_one_operator import AbstractOneToOne
 from ray.data._internal.logical.optimizers import LogicalOptimizer
 from ray.data._internal.logical.rules import (
     ProjectionPushdown,
@@ -123,7 +124,11 @@ class TestProjectionFusion:
                 named_expr = expr.alias(name)
                 exprs.append(named_expr)
 
-            current_op = Project(current_op, exprs=[star()] + exprs, ray_remote_args={})
+            current_op = Project(
+                exprs=[star()] + exprs,
+                input_dependencies=[current_op],
+                ray_remote_args={},
+            )
 
         return current_op
 
@@ -137,7 +142,7 @@ class TestProjectionFusion:
             levels.append(
                 {expr.name for expr in current.exprs if not isinstance(expr, StarExpr)}
             )
-            current = current.input_dependency
+            current = current.input_dependencies[0]
 
         return list(reversed(levels))  # Return bottom-up order
 
@@ -149,7 +154,11 @@ class TestProjectionFusion:
         while current:
             if isinstance(current, Project):
                 count += 1
-            current = getattr(current, "input_dependency", None)
+            current = (
+                current.input_dependencies[0]
+                if isinstance(current, AbstractOneToOne)
+                else None
+            )
 
         return count
 
@@ -164,7 +173,11 @@ class TestProjectionFusion:
                 operators.append(f"Project({expr_count} exprs)")
             else:
                 operators.append(current.__class__.__name__)
-            current = getattr(current, "input_dependency", None)
+            current = (
+                current.input_dependencies[0]
+                if isinstance(current, AbstractOneToOne)
+                else None
+            )
 
         return " -> ".join(operators)
 

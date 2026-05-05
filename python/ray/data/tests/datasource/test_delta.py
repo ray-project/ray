@@ -128,6 +128,8 @@ def test_delta_read_schema_evolution(tmp_path):
     expected = pd.DataFrame(
         {"x": [1, 2, 3, 4], "y": [None, None, "a", "b"]},
     )
+    # Match the Arrow-backed null sentinel produced by ``to_pandas()``.
+    expected["y"] = expected["y"].astype("string")
 
     assert rows_same(ds.to_pandas(), expected)
 

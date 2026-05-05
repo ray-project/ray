@@ -7,7 +7,7 @@ steps:
   - name: llmbuild
     wanda: ci/docker/llm.build.wanda.yaml
     depends_on:
-      - oss-ci-base_build-multipy(*)
+      - oss-ci-base_build-multipy(python=3.11)
     env:
       PYTHON: "3.11"
       BASE_TYPE: "build"
@@ -18,7 +18,7 @@ steps:
   - name: llmbuild-py312
     wanda: ci/docker/llm.build.wanda.yaml
     depends_on:
-      - oss-ci-base_build-multipy(*)
+      - oss-ci-base_build-multipy(python=3.12)
     env:
       PYTHON: "3.12"
       BASE_TYPE: "build"
@@ -40,7 +40,7 @@ steps:
   - name: llmgpubuild-py312
     wanda: ci/docker/llm.build.wanda.yaml
     depends_on:
-      - oss-ci-base_cu130-multipy(*)
+      - oss-ci-base_cu130-multipy(python=3.12)
     env:
       PYTHON: "3.12"
       BASE_TYPE: "cu130"

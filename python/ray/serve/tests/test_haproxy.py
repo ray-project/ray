@@ -23,6 +23,7 @@ from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_NAMESPACE,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.test_utils import get_application_url
@@ -585,6 +586,34 @@ def test_haproxy_http_options(ray_shutdown):
     assert httpx.get(url).text == "hello1"
     with pytest.raises(httpx.ConnectError):
         _ = httpx.get(url.replace(":8001", ":8000")).status_code
+
+    serve.shutdown()
+
+
+@pytest.mark.parametrize(
+    "header_key",
+    [
+        SERVE_SESSION_ID,  # underscore form
+        "x-session-id",  # hyphenated form
+        "X-Session-Id",  # title-cased hyphenated form
+    ],
+)
+def test_session_id_header_forwarded_through_haproxy(ray_shutdown, header_key):
+    """The session_id header must survive an HAProxy hop and reach the deployment."""
+    ray.init(num_cpus=4)
+    serve.start()
+
+    @serve.deployment
+    class Model:
+        def __call__(self) -> str:
+            return ray.serve.context._get_serve_request_context().session_id
+
+    serve.run(Model.bind())
+
+    session_id = "sess_user_42"
+    resp = httpx.get("http://localhost:8000/", headers={header_key: session_id})
+    assert resp.status_code == 200
+    assert resp.text == session_id
 
     serve.shutdown()
 

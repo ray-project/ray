@@ -56,6 +56,7 @@ class DynamicHandleOptionsBase(ABC):
 
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
+    session_id: str = ""
     stream: bool = False
 
     @abstractmethod

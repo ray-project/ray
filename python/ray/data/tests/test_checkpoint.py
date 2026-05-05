@@ -125,7 +125,7 @@ def generate_sample_physical_plan(generate_sample_data_csv, tmp_path):
 
     read_op = Read(datasource, datasource, -1, None)
     write_path = os.path.join(tmp_path, "output")
-    write_op = Write(read_op, ParquetDatasink(write_path))
+    write_op = Write(ParquetDatasink(write_path), input_dependencies=[read_op])
     logical_plan = LogicalPlan(write_op, ctx)
     physical_plan, _ = get_execution_plan(logical_plan)
     yield physical_plan
