@@ -50,13 +50,12 @@ from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-# Number of consecutive ActorUnavailableError probes before the router treats a
-# replica as dead and evicts it from the local routing table. This avoids
-# repeatedly probing replicas that Ray has already marked unavailable while we
-# wait for the (slow) long-poll DEPLOYMENT_TARGETS update from the controller.
-# Tuned to balance fast convergence during downscale waves vs. tolerance for
-# transient network blips.
-REPLICA_UNAVAILABLE_EVICTION_THRESHOLD = 3
+# Number of consecutive probe failures (ActorUnavailableError or max-deadline
+# timeout) before the router treats a replica as dead and evicts it from the
+# local routing table. This avoids repeatedly probing dead replicas while
+# waiting for the (slow) long-poll DEPLOYMENT_TARGETS update from the
+# controller. Counter resets on a successful probe.
+REPLICA_UNAVAILABLE_EVICTION_THRESHOLD = 2
 
 
 class LocalityScope(str, enum.Enum):
@@ -990,17 +989,51 @@ class RequestRouter(ABC):
             timeout=queue_len_response_deadline_s,
             return_when=asyncio.ALL_COMPLETED,
         )
+        # A probe at the max deadline that still times out is an evidence that
+        # the replica is unresponsive. Probes at smaller deadlines could be
+        # alive-but-slow replicas; the deadline-doubling retry path will give
+        # them another chance, so don't count those toward eviction.
+        deadline_was_max = (
+            queue_len_response_deadline_s >= max_queue_len_response_deadline_s
+        )
         for t in pending:
             replica = t.replica
             result.append((replica, None))
             t.cancel()
-            logger.warning(
+            msg = (
                 f"Failed to get queue length from {replica.replica_id} "
-                f"within {queue_len_response_deadline_s}s. If this happens repeatedly "
-                "it's likely caused by high network latency in the cluster. You can "
-                "configure the deadline using the "
-                "`RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` environment variable."
+                f"within {queue_len_response_deadline_s}s."
             )
+            if deadline_was_max:
+                count = self._replica_unavailable_consecutive_count.get(
+                    replica.replica_id, 0
+                ) + 1
+                self._replica_unavailable_consecutive_count[
+                    replica.replica_id
+                ] = count
+                if count >= REPLICA_UNAVAILABLE_EVICTION_THRESHOLD:
+                    self.on_replica_actor_died(replica.replica_id)
+                    self._replica_unavailable_consecutive_count.pop(
+                        replica.replica_id, None
+                    )
+                    msg += (
+                        f" Evicted after {count} consecutive max-deadline "
+                        "timeouts; will no longer be considered for requests."
+                    )
+                else:
+                    msg += (
+                        f" Max-deadline timeout {count}/"
+                        f"{REPLICA_UNAVAILABLE_EVICTION_THRESHOLD}."
+                    )
+            else:
+                msg += (
+                    " If this happens repeatedly it's likely caused by high "
+                    "network latency in the cluster. You can configure the "
+                    "deadline using the "
+                    "`RAY_SERVE_QUEUE_LENGTH_RESPONSE_DEADLINE_S` environment "
+                    "variable."
+                )
+            logger.warning(msg)
 
         for t in done:
             replica = t.replica
