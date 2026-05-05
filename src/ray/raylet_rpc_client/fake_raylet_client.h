@@ -316,6 +316,11 @@ class FakeRayletClient : public RayletClientInterface {
     num_cancel_local_task_requested += 1;
   }
 
+  void FreeLocalObjects(const FreeLocalObjectsRequest &request,
+                        const ClientCallback<FreeLocalObjectsReply> &callback) override {
+    num_free_local_objects_requested += 1;
+  }
+
   int num_workers_requested = 0;
   int num_workers_returned = 0;
   int num_workers_disconnected = 0;
@@ -326,6 +331,7 @@ class FakeRayletClient : public RayletClientInterface {
   int num_return_requested = 0;
   int num_commit_requested = 0;
   int num_cancel_local_task_requested = 0;
+  int num_free_local_objects_requested = 0;
   int num_release_unused_bundles_requested = 0;
   NodeID node_id_ = NodeID::FromRandom();
   std::vector<ActorID> killed_actors;

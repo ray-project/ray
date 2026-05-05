@@ -44,6 +44,11 @@ namespace ray {
 
 namespace raylet {
 
+// TODO: revamp for the FreeLocalObjects RPC path. The eviction-pubsub callback
+// and on_objects_freed_ trigger have been retired, so these tests inline
+// `manager.ReleaseFreedLocalObject(...)` and `on_objects_freed_(...)` after
+// each PublishObjectEviction to mimic the retired wiring.
+
 using ::testing::_;
 
 class MockSubscriber : public pubsub::SubscriberInterface {
@@ -342,12 +347,7 @@ class LocalObjectManagerTestWithMinSpillingSize {
             /*max_io_workers=*/2,
             /*is_external_storage_type_fs=*/true,
             /*max_fused_object_count*/ max_fused_object_count_,
-            /*on_objects_freed=*/
-            [&](const std::vector<ObjectID> &object_ids) {
-              for (const auto &object_id : object_ids) {
-                freed.insert(object_id);
-              }
-            },
+            /*on_objects_freed=*/on_objects_freed_,
             /*is_plasma_object_spillable=*/
             [&](const ray::ObjectID &object_id) {
               return unevictable_objects_.count(object_id) == 0;
@@ -421,9 +421,17 @@ class LocalObjectManagerTestWithMinSpillingSize {
       fake_spill_manager_objects_bytes_gauge_,
       fake_spill_manager_request_total_gauge_,
       fake_spill_manager_throughput_mb_gauge_};
+  std::unordered_set<ObjectID> freed;
+  // Hoisted out of the manager constructor so tests can invoke it directly to
+  // simulate the eventual cluster-propagation trigger; see the file-level TODO.
+  std::function<void(const std::vector<ObjectID> &)> on_objects_freed_ =
+      [this](const std::vector<ObjectID> &ids) {
+        for (const auto &id : ids) {
+          freed.insert(id);
+        }
+      };
   LocalObjectManager manager;
 
-  std::unordered_set<ObjectID> freed;
   // This hashmap is incremented when objects are unpinned by destroying their
   // unique_ptr.
   std::shared_ptr<absl::flat_hash_map<ObjectID, int>> unpins;
@@ -479,7 +487,9 @@ TEST_F(LocalObjectManagerTest, TestPin) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
+  on_objects_freed_(object_ids);
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
 }
@@ -1020,6 +1030,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpilledObjects) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
 
   // Make sure all spilled objects are deleted.
@@ -1081,6 +1092,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -1098,6 +1110,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCount) {
                           std::make_optional<std::string>(
                               object_ids[free_objects_batch_size - 1].Binary())));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
+  manager.ReleaseFreedLocalObject(object_ids[free_objects_batch_size - 1]);
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
   // Now the object is deleted.
@@ -1168,6 +1181,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteSpillingObjectsBlocking) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
   // Now, deletion queue would process only the first spill set. Everything else won't be
   // deleted although it is out of scope because they are still spilling.
@@ -1238,6 +1252,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteMaxObjects) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
 
   // The spilled objects should be deleted as number of spilled urls exceeds the batch
@@ -1291,6 +1306,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
   EXPECT_CALL(*subscriber_,
               Unsubscribe(_, _, std::make_optional<std::string>(object_ids[0].Binary())));
   ASSERT_TRUE(subscriber_->PublishObjectEviction());
+  manager.ReleaseFreedLocalObject(object_ids[0]);
   // Delete operation is called. In this case, the file with the url should not be
   // deleted.
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
@@ -1307,6 +1323,7 @@ TEST_F(LocalObjectManagerTest, TestDeleteURLRefCountRaceCondition) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -1376,7 +1393,9 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePin) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction(owner_id1));
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
+  on_objects_freed_(object_ids);
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
 
@@ -1419,7 +1438,9 @@ TEST_F(LocalObjectManagerTest, TestDuplicatePinAndSpill) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction(owner_id1));
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
+  on_objects_freed_(object_ids);
   std::unordered_set<ObjectID> expected(object_ids.begin(), object_ids.end());
   ASSERT_EQ(freed, expected);
 
@@ -1747,6 +1768,7 @@ TEST_F(LocalObjectManagerTest, TestPinBytes) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
   manager.ProcessSpilledObjectsDeleteQueue(/* max_batch_size */ 30);
   int deleted_urls_size = worker_pool.io_worker_client->ReplyDeleteSpilledObjects();
@@ -1811,6 +1833,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete1) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
 
   // Spill finishes, they should get deleted now.
@@ -1884,6 +1907,7 @@ TEST_F(LocalObjectManagerTest, TestConcurrentSpillAndDelete2) {
         *subscriber_,
         Unsubscribe(_, _, std::make_optional<std::string>(object_ids[i].Binary())));
     ASSERT_TRUE(subscriber_->PublishObjectEviction());
+    manager.ReleaseFreedLocalObject(object_ids[i]);
   }
 
   EXPECT_CALL(worker_pool, PushSpillWorker(_));

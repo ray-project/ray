@@ -331,13 +331,17 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::CreateCoreWorker(
       rpc_address,
       /*object_info_publisher=*/object_info_publisher.get(),
       /*object_info_subscriber=*/object_info_subscriber.get(),
+      *owned_objects_counter_,
+      *owned_objects_size_counter_,
+      RayConfig::instance().lineage_pinning_enabled(),
       /*is_node_dead=*/
       [this](const NodeID &node_id) {
         return GetCoreWorker()->gcs_client_->Nodes().IsNodeDead(node_id);
       },
-      *owned_objects_counter_,
-      *owned_objects_size_counter_,
-      RayConfig::instance().lineage_pinning_enabled());
+      /*spread_free_local_objects=*/
+      [this](const ObjectID &object_id, const std::vector<NodeID> &locations) {
+        GetCoreWorker()->SpreadFreeLocalObjects(object_id, locations);
+      });
   std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter;
   if (RayConfig::instance().max_pending_lease_requests_per_scheduling_category() > 0) {
     lease_request_rate_limiter = std::make_shared<StaticLeaseRequestRateLimiter>(

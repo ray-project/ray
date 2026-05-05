@@ -34,15 +34,18 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/protobuf_utils.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/gcs_rpc_client/gcs_client.h"
+#include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/event_aggregator_client.h"
 #include "ray/util/container_util.h"
 #include "ray/util/event.h"
+#include "ray/util/exponential_backoff.h"
 #include "ray/util/process_utils.h"
 #include "ray/util/subreaper.h"
 #include "ray/util/time.h"
@@ -4617,6 +4620,69 @@ void CoreWorker::AsyncRetryTask(TaskSpecification &spec, uint32_t delay_ms) {
   RAY_LOG(INFO) << "Will resubmit task after a " << delay_ms
                 << "ms delay: " << spec.DebugString();
   to_resubmit_.push(std::move(task_to_retry));
+}
+
+std::shared_ptr<RayletClientInterface> CoreWorker::GetRayletRpcClient(
+    const NodeID &node_id) {
+  if (node_id == GetCurrentNodeId()) {
+    return local_raylet_rpc_client_;
+  }
+  auto node_info = gcs_client_->Nodes().GetNodeAddressAndLiveness(
+      node_id, /*filter_dead_nodes=*/true);
+  if (!node_info) {
+    return nullptr;
+  }
+  auto address = rpc::RayletClientPool::GenerateRayletAddress(
+      node_id, node_info->node_manager_address(), node_info->node_manager_port());
+  return raylet_client_pool_->GetOrConnectByAddress(address);
+}
+
+void CoreWorker::SpreadFreeLocalObjects(const ObjectID &object_id,
+                                        const std::vector<NodeID> &locations) {
+  io_service_.post(
+      [this, object_id, locations]() {
+        rpc::FreeLocalObjectsRequest request;
+        request.add_object_ids(object_id.Binary());
+
+        for (const auto &node_id : locations) {
+          auto client = GetRayletRpcClient(node_id);
+          if (client == nullptr) {
+            continue;
+          }
+          client->FreeLocalObjects(
+              request,
+              [this, node_id, request](const Status &status,
+                                       const rpc::FreeLocalObjectsReply &reply) {
+                if (!status.ok()) {
+                  RetryFreeLocalObjects(node_id, /*attempt_number=*/0, request);
+                }
+              });
+        }
+      },
+      "CoreWorker.SpreadFreeLocalObjects");
+}
+
+void CoreWorker::RetryFreeLocalObjects(const NodeID &node_id,
+                                       uint32_t attempt_number,
+                                       const rpc::FreeLocalObjectsRequest &request) {
+  auto delay_ms = ExponentialBackoff::GetBackoffMs(attempt_number, /*base_ms=*/1000);
+  execute_after(
+      io_service_,
+      [this, node_id, attempt_number, request]() {
+        auto client = GetRayletRpcClient(node_id);
+        if (client == nullptr) {
+          return;
+        }
+        client->FreeLocalObjects(
+            request,
+            [this, node_id, attempt_number, request](
+                const Status &status, const rpc::FreeLocalObjectsReply &reply) {
+              if (!status.ok()) {
+                RetryFreeLocalObjects(node_id, attempt_number + 1, request);
+              }
+            });
+      },
+      std::chrono::milliseconds(delay_ms));
 }
 
 }  // namespace ray::core

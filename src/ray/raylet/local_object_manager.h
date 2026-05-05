@@ -208,6 +208,11 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// filesystem.
   bool HasLocallySpilledObjects() const override;
 
+  /// Release a local primary object that has been freed by its owner, or if it is
+  /// if it has been spilled or already spilling mark it to be spilled.
+  /// If this is called on secondary copies, this will be a no-op.
+  void ReleaseFreedLocalObject(const ObjectID &object_id) override;
+
   std::string DebugString() const override;
 
  private:
@@ -245,9 +250,6 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// Internal helper method for spilling objects.
   void SpillObjectsInternal(const std::vector<ObjectID> &objects_ids,
                             std::function<void(const ray::Status &)> callback);
-
-  /// Release an object that has been freed by its owner.
-  void ReleaseFreedObject(const ObjectID &object_id);
 
   /// Do operations that are needed after spilling objects such as
   /// 1. Unpin the pending spilling object.
@@ -321,6 +323,9 @@ class LocalObjectManager : public LocalObjectManagerInterface {
   /// from plasma. The cache is flushed when it reaches the
   /// free_objects_batch_size, or if objects have been in the cache for longer
   /// than the config's free_objects_period, whichever occurs first.
+  /// TODO: Re-evaluate whether the set is still needed and either
+  /// remove it (and ObjectPendingDeletion + the FlushFreeObjects clear) or
+  /// repurpose it once the cleanup path is unified.
   absl::flat_hash_set<ObjectID> objects_pending_deletion_;
 
   /// The total size of the objects that are currently being

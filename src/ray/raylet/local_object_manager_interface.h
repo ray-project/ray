@@ -66,6 +66,8 @@ class LocalObjectManagerInterface {
 
   virtual bool HasLocallySpilledObjects() const = 0;
 
+  virtual void ReleaseFreedLocalObject(const ObjectID &object_id) = 0;
+
   virtual std::string DebugString() const = 0;
 };
 

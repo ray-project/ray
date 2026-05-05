@@ -840,6 +840,19 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
   RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
                  << it->first << " num callbacks: "
                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
+  absl::flat_hash_set<NodeID> locations_set = it->second.locations;
+  if (it->second.pinned_at_node_id_.has_value()) {
+    locations_set.insert(*it->second.pinned_at_node_id_);
+  }
+  std::vector<NodeID> locations(locations_set.begin(), locations_set.end());
+  // Only the owner is allowed to broadcast a free for an object. Borrowers
+  // also reach this code path when their local refs drop to zero, but they
+  // must not tell the cluster to evict an object that is still owned
+  // elsewhere.
+  if (spread_free_local_objects_ && it->second.owned_by_us_) {
+    spread_free_local_objects_(it->first, locations);
+  }
+
   for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
     callback(it->first);
   }
@@ -937,7 +950,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
     if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
       // Decrement counter for old state
       UpdateOwnedObjectCounters(object_id, it->second, /*decrement=*/true);
-      if (!is_node_dead_(node_id)) {
+      if (!is_node_dead_ || !is_node_dead_(node_id)) {
         it->second.pinned_at_node_id_ = node_id;
       } else {
         UnsetObjectPrimaryCopy(it);
@@ -1551,8 +1564,8 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
 
   it->second.spilled = true;
   it->second.did_spill = true;
-  bool spilled_location_alive =
-      spilled_node_id.IsNil() || !is_node_dead_(spilled_node_id);
+  bool spilled_location_alive = spilled_node_id.IsNil() || !is_node_dead_ ||
+                                !is_node_dead_(spilled_node_id);
   if (spilled_location_alive) {
     if (!spilled_url.empty()) {
       it->second.spilled_url = spilled_url;

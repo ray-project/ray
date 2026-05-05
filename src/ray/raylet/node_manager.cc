@@ -3606,4 +3606,19 @@ void NodeManager::HandleCancelLocalTask(rpc::CancelLocalTaskRequest request,
       });
 }
 
+void NodeManager::HandleFreeLocalObjects(rpc::FreeLocalObjectsRequest request,
+                                         rpc::FreeLocalObjectsReply *reply,
+                                         rpc::SendReplyCallback send_reply_callback) {
+  std::vector<ObjectID> object_ids;
+  object_ids.reserve(request.object_ids_size());
+  for (auto &object_id_str : request.object_ids()) {
+    ObjectID object_id = ObjectID::FromBinary(object_id_str);
+    object_ids.push_back(object_id);
+    local_object_manager_.ReleaseFreedLocalObject(object_id);
+  }
+
+  auto status = store_client_->Delete(object_ids);
+  send_reply_callback(status, nullptr, nullptr);
+}
+
 }  // namespace ray::raylet
