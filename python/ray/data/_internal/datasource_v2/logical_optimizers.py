@@ -52,6 +52,17 @@ class SupportsColumnPruning(ABC):
         """
         ...
 
+    @abstractmethod
+    def pruned_column_names(self) -> Optional[Tuple[str, ...]]:
+        """Physical column names selected after pruning, if any.
+
+        Returns:
+            ``None`` when no pruning has been applied (read all columns).
+            A tuple (possibly empty) after :meth:`prune_columns` has been
+            applied, listing on-disk / reader column names in read order.
+        """
+        ...
+
 
 @DeveloperAPI
 class SupportsLimitPushdown(ABC):

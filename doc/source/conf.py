@@ -245,7 +245,12 @@ nb_mime_priority_overrides = [
 
 html_extra_path = ["robots.txt"]
 
-html_baseurl = "https://docs.ray.io/en/latest"
+html_baseurl = "https://docs.ray.io/en/latest/"
+
+# `html_baseurl` already encodes `/en/latest/`, so override sphinx-sitemap's
+# default `{lang}{version}{link}` scheme to just `{link}`. Otherwise the
+# extension prepends `en/` again, producing URLs like `en/latesten/<page>`.
+sitemap_url_scheme = "{link}"
 
 # This pattern matches:
 # - Python Repl prompts (">>> ") and it's continuation ("... ")
