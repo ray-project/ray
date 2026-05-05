@@ -1576,6 +1576,8 @@ def iterate_with_retry(
                 )
                 time.sleep(backoff)
             else:
+                if unwrap_cause:
+                    raise e
                 raise e from None
 
 
