@@ -40,7 +40,6 @@ extensions = [
     "sphinx-jsonschema",
     "sphinxemoji.sphinxemoji",
     "sphinx_copybutton",
-    "sphinxcontrib.yt",
     "versionwarning.extension",
     "sphinx_sitemap",
     "myst_nb",
