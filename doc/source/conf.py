@@ -78,6 +78,7 @@ extensions = [
     "sphinx.ext.intersphinx",
     "sphinx_docsearch",
     "sphinx_collections",
+    "sphinx_llms_txt",
 ]
 
 # -- sphinx-collections: pull external template files at build time -----------

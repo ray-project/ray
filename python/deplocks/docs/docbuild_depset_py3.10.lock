@@ -1632,6 +1632,7 @@ sphinx==7.3.7 \
     #   sphinx-copybutton
     #   sphinx-design
     #   sphinx-docsearch
+    #   sphinx-llms-txt
     #   sphinx-remove-toctrees
     #   sphinx-sitemap
     #   sphinxcontrib-redoc
@@ -1662,6 +1663,10 @@ sphinx-docsearch==0.0.7 \
     # via -r doc/requirements-doc.txt
 sphinx-jsonschema==1.19.1 \
     --hash=sha256:b2385fe1c7acf2e759152aefed0cb17c920645b2a75c9934000c9c528e7d53c1
+    # via -r doc/requirements-doc.txt
+sphinx-llms-txt==0.7.1 \
+    --hash=sha256:8f1cfcfe5897f5be118792f33f73eeb04cbbf66fc60c4c15982ec59252522263 \
+    --hash=sha256:b5cefec19d3fd56670aa4a28917d17d32b22c61a9feadbab8564ad11e932f5c0
     # via -r doc/requirements-doc.txt
 sphinx-remove-toctrees==0.0.3 \
     --hash=sha256:1077ebc00652f8a896ce27404d31cb5bdde9eeaefc80ada72d95a7a0a7b99a9d \
