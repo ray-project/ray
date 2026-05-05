@@ -2,9 +2,9 @@
 (including :data:`READ_FILES_TASK_MEMORY_EPS_BYTES`) into Ray task ``memory``.
 
 These tests exercise the full ListFiles → manifest enrichment → ReadFiles scheduling
-path. Manifest enrichment runs in Ray workers, which load ``eps`` from the installed
-module — do not assert on a driver-only ``monkeypatch`` of
-``READ_FILES_TASK_MEMORY_EPS_BYTES`` here.
+path. Manifest enrichment runs in Ray workers, which resolve ``eps`` at import from
+``RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES`` or the built-in default — do not assert
+on a driver-only ``monkeypatch`` of ``READ_FILES_TASK_MEMORY_EPS_BYTES`` here.
 
 For tuning and probes, see ``README_read_files_task_memory.md`` and
 ``read_files_task_memory_probe.py``.
@@ -39,7 +39,8 @@ def _expected_read_files_task_memory_bytes(
 ) -> int:
     """Match :func:`estimate_read_files_task_memory_bytes` for a single local file."""
     rg = _parquet_max_uncompressed_row_group_bytes(parquet_path, None)
-    base = max(int(rg), int(target_max_block_size))
+    tmax = int(target_max_block_size)
+    base = max(int(rg), 2 * tmax)
     return base + int(eps)
 
 
@@ -79,8 +80,9 @@ def test_read_parquet_v2_merged_ray_memory_matches_task_estimate(
     """End-to-end: Ray ``memory`` on ReadFiles tasks reflects ``base + eps``.
 
     Manifest enrichment runs in Ray workers, so ``READ_FILES_TASK_MEMORY_EPS_BYTES``
-    must match the value those processes load from the installed module (do not rely
-    on driver-only ``monkeypatch`` of that constant here).
+    must match the value those processes resolve at import (from
+    ``RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES`` or the built-in default). Do not
+    rely on driver-only ``monkeypatch`` of that name here.
     """
     captured: List[int] = []
     monkeypatch.setattr(
@@ -114,8 +116,8 @@ def test_read_parquet_v2_larger_target_max_block_size_raises_ray_memory_reservat
     """Larger ``DataContext.target_max_block_size`` raises merged ``memory`` (workers see it).
 
     Varying ``READ_FILES_TASK_MEMORY_EPS_BYTES`` cannot be asserted from a driver-only
-    ``monkeypatch`` because ListFiles tasks run in other processes and import the
-    default constant. ``target_max_block_size`` is carried on the serialized
+    ``monkeypatch`` because ListFiles tasks run in other processes and read ``eps`` at
+    import. ``target_max_block_size`` is carried on the serialized
     :class:`~ray.data.context.DataContext` ref, so it is safe to compare two reads.
     """
     captured: List[int] = []
@@ -154,8 +156,8 @@ def test_read_parquet_v2_larger_target_max_block_size_raises_ray_memory_reservat
     assert mem_small < mem_large
     parquet_path = str(d2 / "b.parquet")
     rg = int(_parquet_max_uncompressed_row_group_bytes(parquet_path, None))
-    base_small = max(rg, t_small)
-    base_large = max(rg, t_large)
+    base_small = max(rg, 2 * t_small)
+    base_large = max(rg, 2 * t_large)
     assert mem_small == base_small + eps
     assert mem_large == base_large + eps
     assert mem_large - mem_small == base_large - base_small

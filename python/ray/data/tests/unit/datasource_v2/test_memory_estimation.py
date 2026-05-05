@@ -20,6 +20,7 @@ from ray.data._internal.datasource_v2.listing.file_manifest import (
 from ray.data._internal.datasource_v2.readers.read_files_task_memory import (
     MAP_TASK_KWARG_MERGE_READ_TASK_MEMORY,
     READ_FILES_TASK_MEMORY_EPS_BYTES,
+    _parse_read_files_task_memory_eps_bytes_env,
     enrich_file_manifest_block_metadata_if_applicable,
     estimate_read_files_task_memory_bytes,
 )
@@ -631,7 +632,7 @@ class TestMapOperatorMemoryEstimation:
 
 
 class TestReadFilesTaskMemoryEstimate:
-    """``max(uncompressed_rg, batch, block) + eps`` for ReadFiles scheduling."""
+    """``max(uncompressed_rg, 2 * target_max_block_size) + eps`` for ReadFiles."""
 
     def test_estimate_prefers_row_group_over_target_block(self):
         manifest = FileManifest.construct_manifest(
@@ -654,7 +655,7 @@ class TestReadFilesTaskMemoryEstimate:
         got = estimate_read_files_task_memory_bytes(
             manifest, target_max_block_size=8_000_000
         )
-        assert got == 8_000_000 + READ_FILES_TASK_MEMORY_EPS_BYTES
+        assert got == 16_000_000 + READ_FILES_TASK_MEMORY_EPS_BYTES
 
     def test_enrich_manifest_metadata_sets_task_memory_and_input_estimates(self):
         manifest = FileManifest.construct_manifest(
@@ -672,6 +673,15 @@ class TestReadFilesTaskMemoryEstimate:
         assert (
             enriched.task_memory_bytes == 2_000_000 + READ_FILES_TASK_MEMORY_EPS_BYTES
         )
+
+    def test_parse_read_files_task_memory_eps_bytes_env(self):
+        default = 64 * 1024 * 1024
+        assert _parse_read_files_task_memory_eps_bytes_env(None) == default
+        assert _parse_read_files_task_memory_eps_bytes_env("") == default
+        assert _parse_read_files_task_memory_eps_bytes_env("   ") == default
+        assert _parse_read_files_task_memory_eps_bytes_env("  42 ") == 42
+        assert _parse_read_files_task_memory_eps_bytes_env("nope") == default
+        assert _parse_read_files_task_memory_eps_bytes_env("-1") == default
 
     def test_non_manifest_block_not_enriched(self):
         block = pa.table({"x": [1, 2]})

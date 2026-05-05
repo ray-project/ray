@@ -1,19 +1,20 @@
 #!/usr/bin/env python3
 """Probe ReadFiles Ray ``memory`` reservations against the live module default.
 
-ListFiles workers run in separate processes and load
-``READ_FILES_TASK_MEMORY_EPS_BYTES`` from the installed package, so mutating that
-name in this driver process does **not** change worker-side task estimates. This
-script only records what the scheduler merged and compares it to the formula using
-``read_files_task_memory.READ_FILES_TASK_MEMORY_EPS_BYTES`` as imported here (same
-as workers if you run from an editable install of this tree).
+ListFiles workers run in separate processes and resolve
+``READ_FILES_TASK_MEMORY_EPS_BYTES`` at import (from
+``RAY_DATA_READ_FILES_TASK_MEMORY_EPS_BYTES`` or the built-in default), so mutating
+that name in this driver process does **not** change worker-side task estimates.
+This script records what the scheduler merged and compares it to the formula using
+``read_files_task_memory.READ_FILES_TASK_MEMORY_EPS_BYTES`` as imported here (same as
+workers if you run from an editable install of this tree with the same environment).
 
 Run from the ``python/`` directory::
 
     cd python
     python ray/data/tests/datasource_v2/read_files_task_memory_probe.py
 
-See ``README_read_files_task_memory.md`` for tuning the constant in source.
+See ``README_read_files_task_memory.md`` for tuning ``eps`` (env var or default).
 """
 
 from __future__ import annotations
@@ -68,7 +69,7 @@ def main() -> None:
         print("No ReadFiles memory observations (unexpected).", file=sys.stderr)
         sys.exit(1)
 
-    base = max(int(rg_max), int(target_max))
+    base = max(int(rg_max), 2 * int(target_max))
     expected = base + eps
     print(
         "read_files_task_memory_probe:",
