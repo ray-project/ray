@@ -2041,39 +2041,7 @@ class Replica:
 
         grpc_enabled = self._ingress and is_grpc_enabled(self._grpc_options)
 
-        # Allocate and start HTTP server. If the user callable provided a
-        # late-bound ASGI app, serve it directly on the backend HTTP port.
-        # This keeps the LLM direct-streaming path equivalent to the earlier
-        # custom-ASGI path while still updating Serve's ongoing-request count
-        # for load-aware routing.
-        asgi_app_to_serve = self._direct_ingress_asgi
-        if self._user_callable_asgi_app is not None:
-            inner_app = self._user_callable_asgi_app
-            metrics_manager = self._metrics_manager
-            request_metadata = RequestMetadata(
-                request_id="",
-                internal_request_id="",
-                call_method="__call__",
-                route=self._route_prefix,
-                app_name=self._deployment_id.app_name,
-                multiplexed_model_id="",
-                is_streaming=True,
-                _request_protocol=RequestProtocol.HTTP,
-                is_direct_ingress=True,
-            )
-
-            async def count_ongoing_requests(scope, receive, send):
-                if scope["type"] == "http":
-                    metrics_manager.inc_num_ongoing_requests(request_metadata)
-                    try:
-                        await inner_app(scope, receive, send)
-                    finally:
-                        metrics_manager.dec_num_ongoing_requests(request_metadata)
-                else:
-                    await inner_app(scope, receive, send)
-
-            asgi_app_to_serve = count_ongoing_requests
-
+        # Allocate and start HTTP server
         async def start_http_server(port):
             options = configure_http_middlewares(
                 configure_http_options_with_defaults(
@@ -2082,7 +2050,7 @@ class Replica:
             )
 
             return await start_asgi_http_server(
-                asgi_app_to_serve,
+                self._direct_ingress_asgi,
                 options,
                 event_loop=self._event_loop,
                 enable_so_reuseport=False,
