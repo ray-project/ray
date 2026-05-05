@@ -1,7 +1,7 @@
 group: rllib tests
 depends_on:
   - forge
-  - ray-core-build(*)
+  - ray-core-build(python=3.10)
   - ray-dashboard-build
 steps:
   # builds
