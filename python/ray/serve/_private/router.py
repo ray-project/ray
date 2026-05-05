@@ -135,6 +135,10 @@ class RouterMetricsManager:
         )
         self.num_queued_requests_gauge.set(0)
 
+        # Counts requests awaiting a replica's accept/reject verdict. Gated
+        # by `wrap_request_assignment`; not exported to the autoscaler.
+        self.num_waiting_for_acceptance = 0
+
         # Track queries sent to replicas for the autoscaling algorithm.
         self.num_requests_sent_to_replicas: DefaultDict[ReplicaID, int] = defaultdict(
             int
@@ -193,10 +197,8 @@ class RouterMetricsManager:
             if self._deployment_config is not None
             else -1
         )
-        if (
-            max_queued_requests != -1
-            and self.num_queued_requests >= max_queued_requests
-        ):
+        in_flight = self.num_queued_requests + self.num_waiting_for_acceptance
+        if max_queued_requests != -1 and in_flight >= max_queued_requests:
             # Due to the async nature of request handling, we may reject more requests
             # than strictly necessary. This is more likely to happen during
             # high concurrency. Here's why:
@@ -214,7 +216,7 @@ class RouterMetricsManager:
             # - Request 1 gets assigned and frees queue slot (num_queued_requests=0)
             # - But we already rejected Request 2 which could have been queued
             e = BackPressureError(
-                num_queued_requests=self.num_queued_requests,
+                num_queued_requests=in_flight,
                 max_queued_requests=max_queued_requests,
             )
             logger.warning(e.message)
@@ -243,6 +245,15 @@ class RouterMetricsManager:
             # raised. The finally block ensures that num_queued_requests
             # is correctly decremented in this case.
             self.dec_num_queued_requests()
+
+    @contextmanager
+    def wrap_waiting_for_acceptance(self):
+        """Track a request awaiting a replica's accept/reject verdict."""
+        try:
+            self.num_waiting_for_acceptance += 1
+            yield
+        finally:
+            self.num_waiting_for_acceptance -= 1
 
     def _update_running_replicas(self, running_replicas: List[RunningReplicaInfo]):
         """Prune list of replica ids in self.num_queries_sent_to_replicas.
@@ -976,38 +987,39 @@ class AsyncioRouter:
                 # Proactively update the queue length cache.
                 self.request_router.on_send_request(replica.replica_id)
 
-                # Keep track of requests that have been sent out to replicas
-                if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
-                    self._metrics_manager.inc_num_running_requests_for_replica(
-                        replica.replica_id
-                    )
-                # Always register callback to notify router when request completes
-                # (needed for token release in queue-based routing, metrics tracking, etc.)
-                # NOTE: add_done_callback fires from a C++ worker thread (for actor
-                # ObjectRefs) or a gRPC callback thread. _process_finished_request
-                # and decrement_queue_len_cache both access shared router state
-                # (e.g., _replica_queue_len_cache) that is not thread-safe, so we
-                # schedule them on the router's event loop.
-                callback = partial(
-                    self._process_finished_request,
-                    replica.replica_id,
-                    pr.metadata.internal_request_id,
-                    replica.actor_id,
+            # Keep track of requests that have been sent out to replicas
+            if RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE:
+                self._metrics_manager.inc_num_running_requests_for_replica(
+                    replica.replica_id
                 )
+            # Always register callback to notify router when request completes
+            # (needed for token release in queue-based routing, metrics tracking, etc.)
+            # NOTE: add_done_callback fires from a C++ worker thread (for actor
+            # ObjectRefs) or a gRPC callback thread. _process_finished_request
+            # and decrement_queue_len_cache both access shared router state
+            # (e.g., _replica_queue_len_cache) that is not thread-safe, so we
+            # schedule them on the router's event loop.
+            callback = partial(
+                self._process_finished_request,
+                replica.replica_id,
+                pr.metadata.internal_request_id,
+                replica.actor_id,
+            )
+            result.add_done_callback(
+                lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
+            )
+            callback_registered = True
+
+            if not with_rejection:
                 result.add_done_callback(
-                    lambda _, cb=callback: self._event_loop.call_soon_threadsafe(cb, _)
-                )
-                callback_registered = True
-
-                if not with_rejection:
-                    result.add_done_callback(
-                        lambda _: self._event_loop.call_soon_threadsafe(
-                            self.request_router.decrement_queue_len_cache,
-                            replica.replica_id,
-                        )
+                    lambda _: self._event_loop.call_soon_threadsafe(
+                        self.request_router.decrement_queue_len_cache,
+                        replica.replica_id,
                     )
-                    return result
+                )
+                return result
 
+            with self._metrics_manager.wrap_waiting_for_acceptance():
                 queue_info = await result.get_rejection_response()
                 self.request_router.on_new_queue_len_info(
                     replica.replica_id, queue_info
