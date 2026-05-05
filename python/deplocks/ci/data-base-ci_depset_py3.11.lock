@@ -2856,17 +2856,11 @@ networkx==3.6.1 \
     # via
     #   -c /tmp/ray-deps/requirements_compiled_py3.13.txt
     #   torch
-nixl-cu13==0.10.1 ; sys_platform != 'darwin' \
-    --hash=sha256:0cbd4ffc25398f565a378e6da09b60d8d2625f1eda96bfe20d6d9c5f3fdba2c0 \
-    --hash=sha256:129f41f6855cf13837b55516319512ee1561e0a8cbbc2e4a9be3d839631ebf36 \
-    --hash=sha256:234752e979465e98aae5866e32777a4d98892c1d9fd2f59f25fef69e1e26716e \
-    --hash=sha256:322e4702606ad498a493d99a065af46c0c16ce84a4bed6495f85efab75670f0a \
-    --hash=sha256:66ad915a090da0b8928d9fea2aaac98c3468bb5e08a1a293ef211615bd49e460 \
-    --hash=sha256:67c913c0345f8703f1b3c96dd5f63c914bc6c173e3f283f62c46c07b5fcc5618 \
-    --hash=sha256:909d00ffc1929ef45cd3cfa0cd3585999274c90a6bcf0799000677cf83a8f0e2 \
-    --hash=sha256:9346f26d4b97088ee23921d567b7836eceb57473638455eac73b2f2b7388cbfc \
-    --hash=sha256:efa8f95ac57b9cf71fd5a0dcaa51ecef8d40510ca5ab3347e046a972905edbf1 \
-    --hash=sha256:f32bfd6f649ef1968e4f6d37d7c3cae61a58fe1f57a987d2fad324f18d5dc6e5
+nixl==0.4.0 ; sys_platform != 'darwin' \
+    --hash=sha256:2e28bb82708f92c1eef7766a054aeae228ccf3f9d154ee10c9516839d9d8555e \
+    --hash=sha256:435d15686c9901c1fd6132041f54ff350fa72bf0a5a6b9d3d3e4498366516a24 \
+    --hash=sha256:9a6c831bd8863ab2e2bb242f3cc916f330801836e7461820db9d01d7c6735ef0 \
+    --hash=sha256:ef19355b74e2bd5460fca897b8a6559725784694fdd20b0f254b1172d63c2460
     # via -r python/requirements/ml/py313/dl-gpu-requirements.txt
 numba==0.61.2 ; sys_platform != 'darwin' \
     --hash=sha256:34fba9406078bac7ab052efbf0d13939426c753ad72946baaa5bf9ae0ebb8dd2 \
@@ -3048,7 +3042,7 @@ numpy==2.2.6 \
     #   keras
     #   ml-dtypes
     #   modin
-    #   nixl-cu13
+    #   nixl
     #   numba
     #   numexpr
     #   pandas
@@ -5276,7 +5270,7 @@ torch==2.7.0+cu128 \
     #   -r python/requirements/ml/py313/data-test-requirements.txt
     #   -r python/requirements/ml/py313/dl-cpu-requirements.txt
     #   -r python/requirements/ml/py313/dl-gpu-requirements.txt
-    #   nixl-cu13
+    #   nixl
     #   torchmetrics
     #   torchtext
     #   torchvision
