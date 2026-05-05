@@ -5,6 +5,7 @@ from urllib.parse import urlparse, urlunparse
 import pytest
 
 import ray
+import ray.train.collective
 from ray import train
 from ray.train import Checkpoint, CheckpointConfig, RunConfig, ScalingConfig
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
@@ -61,6 +62,9 @@ def build_dummy_trainer(
                     )
             else:
                 train.report(metrics={"metric_a": i, "metric_b": -i})
+
+        # Ensure that all checkpoints are saved before the RuntimeError
+        ray.train.collective.barrier()
         raise RuntimeError()
 
     trainer = TorchTrainer(

@@ -6,8 +6,10 @@ from unittest.mock import Mock, PropertyMock, patch
 
 import cloudpickle
 import pytest
+from fastapi import FastAPI
 from pydantic import ValidationError
 
+from ray import serve
 from ray.exceptions import RayTaskError
 from ray.serve._private.application_state import (
     CHECKPOINT_KEY,
@@ -16,6 +18,7 @@ from ray.serve._private.application_state import (
     ApplicationStatusInfo,
     BuildAppStatus,
     StatusOverview,
+    build_serve_application,
     override_deployment_info,
 )
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
@@ -225,6 +228,7 @@ def deployment_params(
     route_prefix: str = None,
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
+    ingress_request_router: bool = False,
 ):
     return {
         "deployment_name": name,
@@ -240,6 +244,7 @@ def deployment_params(
         "deployer_job_id": "random",
         "route_prefix": route_prefix,
         "ingress": route_prefix is not None,
+        "ingress_request_router": ingress_request_router,
         "serialized_autoscaling_policy_def": None,
         "serialized_request_router_cls": None,
     }
@@ -250,9 +255,69 @@ def deployment_info(
     route_prefix: str = None,
     autoscaling_config: AutoscalingConfig = None,
     num_replicas: int = 1,
+    ingress_request_router: bool = False,
 ):
-    params = deployment_params(name, route_prefix, autoscaling_config, num_replicas)
+    params = deployment_params(
+        name,
+        route_prefix,
+        autoscaling_config,
+        num_replicas,
+        ingress_request_router,
+    )
     return deploy_args_to_deployment_info(**params, app_name="test_app")
+
+
+def test_build_serve_application_excludes_router_from_fastapi_ingress_count():
+    ingress_api = FastAPI()
+    router_api = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(ingress_api)
+    class LLMServer:
+        pass
+
+    @serve.deployment
+    @serve.ingress(router_api)
+    class IngressRequestRouter:
+        pass
+
+    llm_server = LLMServer.bind()
+    app = llm_server._with_ingress_request_router(
+        IngressRequestRouter.bind(llm_deployment=llm_server)
+    )
+    runtime_context = Mock()
+    runtime_context.runtime_env = {}
+    runtime_context.get_job_id.return_value = "job-id"
+
+    with (
+        patch("ray.serve._private.application_state.import_attr", return_value=app),
+        patch(
+            "ray.serve._private.application_state.ray.get_runtime_context",
+            return_value=runtime_context,
+        ),
+        patch("ray.serve._private.application_state.configure_component_logger"),
+        patch("ray.serve._private.build_app.RAY_SERVE_ENABLE_HA_PROXY", True),
+    ):
+        _, deploy_args, error = build_serve_application._function(
+            "module.app",
+            "code-version",
+            "default",
+            {},
+            LoggingConfig(),
+            None,
+            {},
+            {},
+            {},
+        )
+
+    assert error is None
+    assert [
+        (args["deployment_name"], args["ingress_request_router"])
+        for args in deploy_args
+    ] == [
+        ("LLMServer", False),
+        ("IngressRequestRouter", True),
+    ]
 
 
 @pytest.fixture
@@ -269,6 +334,28 @@ def mocked_application_state() -> Tuple[ApplicationState, MockDeploymentStateMan
         external_scaler_enabled=False,
     )
     yield application_state, deployment_state_manager
+
+
+def test_application_state_clears_stale_ingress_request_router(
+    mocked_application_state,
+):
+    application_state, _ = mocked_application_state
+
+    application_state._set_target_state(
+        {"Router": deployment_info("Router", ingress_request_router=True)},
+        api_type=APIType.IMPERATIVE,
+        code_version="1",
+        target_config=None,
+    )
+    assert application_state.ingress_request_router_deployment == "Router"
+
+    application_state._set_target_state(
+        {"Main": deployment_info("Main")},
+        api_type=APIType.IMPERATIVE,
+        code_version="2",
+        target_config=None,
+    )
+    assert application_state.ingress_request_router_deployment is None
 
 
 class TestApplicationStatusInfo:
