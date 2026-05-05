@@ -158,7 +158,7 @@ def _sanitize_chat_completion_request(
         content_val = message.get("content")
         if content_val is not None and not isinstance(content_val, str):
             try:
-                request.messages[i]["content"] = list(content_val)
+                message["content"] = list(content_val)
             except (TypeError, ValueError) as e:
                 raise ValueError(
                     "Validating message `content` raised an error. Please "
@@ -170,7 +170,7 @@ def _sanitize_chat_completion_request(
             tool_calls_val = message.get("tool_calls")
             if tool_calls_val is not None:
                 try:
-                    request.messages[i]["tool_calls"] = list(tool_calls_val)
+                    message["tool_calls"] = list(tool_calls_val)
                 except (TypeError, ValueError) as e:
                     raise ValueError(
                         "Validating messages' `tool_calls` raised an error. "
