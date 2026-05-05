@@ -44,10 +44,11 @@ namespace ray {
 
 namespace raylet {
 
-// TODO: revamp for the FreeLocalObjects RPC path. The eviction-pubsub callback
-// and on_objects_freed_ trigger have been retired, so these tests inline
-// `manager.ReleaseFreedLocalObject(...)` and `on_objects_freed_(...)` after
-// each PublishObjectEviction to mimic the retired wiring.
+// TODO(aaronscalene): revamp for the FreeLocalObjects RPC path. The
+// eviction-pubsub callback and on_objects_freed_ trigger have been retired, so
+// these tests inline `manager.ReleaseFreedLocalObject(...)` and
+// `on_objects_freed_(...)` after each PublishObjectEviction to mimic the
+// retired wiring.
 
 using ::testing::_;
 
