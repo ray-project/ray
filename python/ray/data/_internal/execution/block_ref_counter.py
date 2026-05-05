@@ -35,9 +35,9 @@ class BlockRefCounter:
            when ref_count reaches 0, block is removed and usage is updated
 
     This means:
-      - blocks in queues (not yet dispatched): counted once toward their owner
-      - blocks held by N concurrent tasks (strict repartition): counted once
-        toward their owner regardless of N
+      - blocks in queues (not yet dispatched): size_bytes counted once toward their owner
+      - blocks held by N concurrent tasks (strict repartition): ref_count incremented
+        once per task (so ref_count = N), but size_bytes counted once toward their owner
       - ref_count reaches 0 only when all tasks holding the block have completed
     """
 
