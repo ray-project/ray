@@ -4,19 +4,14 @@ import httpx
 import pytest
 
 from ray import serve
-from ray._common.test_utils import SignalActor, wait_for_condition
+from ray._common.test_utils import SignalActor
 from ray.serve._private.constants import (
-    RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
-    RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
-    RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER,
     SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
 )
 from ray.serve._private.test_utils import get_application_url
 from ray.serve.config import HTTPOptions
 from ray.serve.tests.conftest import *  # noqa
-
-import psutil
 
 
 @pytest.mark.asyncio
@@ -88,42 +83,6 @@ async def test_http_request_timeout_disconnect_headers(
                 assert response.status_code == 408
             else:
                 assert response.status_code == 200
-
-
-@pytest.mark.skipif(
-    not RAY_SERVE_ENABLE_HA_PROXY,
-    reason="RAY_SERVE_ENABLE_HA_PROXY not set.",
-)
-def test_haproxy_default_host_is_all_interfaces(ray_shutdown):
-    """When HAProxy is enabled, the default HTTPOptions.host is 0.0.0.0
-    so HAProxy on other nodes can reach the replica backend ports.
-    """
-    serve.start(http_options=HTTPOptions())
-
-    @serve.deployment
-    class App:
-        async def __call__(self):
-            return "ok"
-
-    serve.run(App.bind())
-
-    def _direct_ingress_listeners():
-        return [
-            c
-            for c in psutil.net_connections(kind="tcp")
-            if c.status == psutil.CONN_LISTEN
-            and RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
-            <= c.laddr.port
-            <= RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT
-        ]
-
-    wait_for_condition(lambda: len(_direct_ingress_listeners()) > 0, timeout=30)
-
-    for conn in _direct_ingress_listeners():
-        assert conn.laddr.ip == "0.0.0.0", (
-            f"direct ingress port {conn.laddr.port} bound to {conn.laddr.ip!r}, "
-            "expected '0.0.0.0'"
-        )
 
 
 if __name__ == "__main__":

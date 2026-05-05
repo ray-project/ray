@@ -21,11 +21,14 @@ from ray.actor import ActorHandle
 from ray.cluster_utils import Cluster
 from ray.serve._private.constants import (
     DEFAULT_UVICORN_KEEP_ALIVE_TIMEOUT_S,
+    RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT,
+    RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT,
     RAY_SERVE_ENABLE_HA_PROXY,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.haproxy import HAProxyManager
 from ray.serve._private.test_utils import get_application_url
+from ray.serve.config import HTTPOptions
 from ray.serve.context import _get_global_client
 from ray.serve.schema import (
     ProxyStatus,
@@ -36,6 +39,8 @@ from ray.serve.tests.conftest import *  # noqa
 from ray.serve.tests.test_cli_2 import ping_endpoint
 from ray.tests.conftest import call_ray_stop_only  # noqa: F401
 from ray.util.state import list_actors
+
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -1051,6 +1056,38 @@ def test_scale_from_zero_via_fallback_proxy(ray_shutdown):
     assert response.text == "hello from scale-to-zero"
 
     serve.shutdown()
+
+
+def test_default_host_is_all_interfaces(ray_shutdown):
+    """When HAProxy is enabled, the default HTTPOptions.host is 0.0.0.0
+    so HAProxy on other nodes can reach the replica backend ports.
+    """
+    serve.start(http_options=HTTPOptions())
+
+    @serve.deployment
+    class App:
+        async def __call__(self):
+            return "ok"
+
+    serve.run(App.bind())
+
+    def _direct_ingress_listeners():
+        return [
+            c
+            for c in psutil.net_connections(kind="tcp")
+            if c.status == psutil.CONN_LISTEN
+            and RAY_SERVE_DIRECT_INGRESS_MIN_HTTP_PORT
+            <= c.laddr.port
+            <= RAY_SERVE_DIRECT_INGRESS_MAX_HTTP_PORT
+        ]
+
+    wait_for_condition(lambda: len(_direct_ingress_listeners()) > 0, timeout=30)
+
+    for conn in _direct_ingress_listeners():
+        assert conn.laddr.ip == "0.0.0.0", (
+            f"direct ingress port {conn.laddr.port} bound to {conn.laddr.ip!r}, "
+            "expected '0.0.0.0'"
+        )
 
 
 if __name__ == "__main__":
