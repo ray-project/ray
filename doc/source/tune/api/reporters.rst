@@ -23,9 +23,24 @@ By default, Tune reports experiment progress periodically to the command-line as
     | MyTrainable_a826b7bc | RUNNING  | 10.234.98.164:31112 | 0.729127  | 0.0748 | 0.1784 | 0.1797 | 1.7161 |          7.05715 |    14 |
     +----------------------+----------+---------------------+-----------+--------+--------+--------+--------+------------------+-------+
 
-Note that columns will be hidden if they are completely empty. The output can be configured in various ways by
-instantiating a ``CLIReporter`` instance (or ``JupyterNotebookReporter`` if you're using jupyter notebook).
-Here's an example:
+Note that columns will be hidden if they are completely empty. To reduce the
+cadence at which the status table is reprinted (useful for long-running sweeps
+where the default 30s refresh floods the console), set
+``RunConfig(progress_report_interval_s=...)``:
+
+.. code-block:: python
+
+    import ray.tune
+
+    tuner = ray.tune.Tuner(
+        my_trainable,
+        run_config=ray.tune.RunConfig(progress_report_interval_s=300),
+    )
+    results = tuner.fit()
+
+The output can also be configured in various ways by instantiating a
+``CLIReporter`` instance (or ``JupyterNotebookReporter`` if you're using jupyter
+notebook). Here's an example:
 
 .. TODO: test these snippets
 

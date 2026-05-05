@@ -592,6 +592,7 @@ class TunerInternal:
             raise_on_failed_trial=False,
             fail_fast=(self._run_config.failure_config.fail_fast),
             progress_reporter=self._run_config.progress_reporter,
+            progress_report_interval_s=self._run_config.progress_report_interval_s,
             verbose=self._run_config.verbose,
             reuse_actors=self._tune_config.reuse_actors,
             max_concurrent_trials=self._tune_config.max_concurrent_trials,

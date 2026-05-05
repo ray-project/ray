@@ -805,6 +805,15 @@ class ProgressReporterTest(unittest.TestCase):
             self.assertFalse(isinstance(trainer_reporter, JupyterNotebookReporter))
             self.assertTrue(isinstance(trainer_reporter, CLIReporter))
 
+    def testReporterDetectionMaxReportFrequency(self):
+        """``_detect_reporter`` forwards ``max_report_frequency`` to ctor."""
+        reporter = _detect_reporter(max_report_frequency=42)
+        self.assertEqual(reporter._max_report_freqency, 42)
+
+        with patch("ray.tune.progress_reporter.IS_NOTEBOOK", True):
+            reporter = _detect_reporter(max_report_frequency=17)
+            self.assertEqual(reporter._max_report_freqency, 17)
+
     def testProgressReporterAPI(self):
         class CustomReporter(ProgressReporter):
             def should_report(self, trials, done=False):

@@ -41,6 +41,7 @@ def _create_default_callbacks(
     mode: Optional[str] = None,
     config: Optional[dict] = None,
     progress_metrics: Optional[Collection[str]] = None,
+    progress_report_interval_s: Optional[float] = None,
 ) -> List[Callback]:
     """Create default callbacks for `Tuner.fit()`.
 
@@ -102,6 +103,7 @@ def _create_default_callbacks(
             mode=mode,
             config=config,
             progress_metrics=progress_metrics,
+            heartbeat_freq=progress_report_interval_s,
         )
         callbacks.append(air_progress_reporter)
     elif not has_trial_progress_callback:  # old flow
