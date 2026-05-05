@@ -2,6 +2,7 @@ import math
 
 import lightgbm
 import pandas as pd
+import pyarrow as pa
 import pytest
 from sklearn.datasets import load_breast_cancer
 from sklearn.model_selection import train_test_split
@@ -65,13 +66,18 @@ def test_fit_with_categoricals(ray_start_6_cpus):
     ):
         remaining_iters = num_boost_round
         train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-        train_df = train_ds_iter.materialize().to_pandas()
-
-        eval_df = valid_dataset.materialize().to_pandas()
-        eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
+        train_table = pa.concat_tables(
+            train_ds_iter.iter_batches(batch_format="pyarrow", batch_size=None)
+        )
+        eval_table = pa.concat_tables(
+            valid_dataset.iter_batches(batch_format="pyarrow", batch_size=None)
+        )
+        eval_X = eval_table.drop([label_column])
+        eval_y = eval_table.column(label_column)
         valid_set = lightgbm.Dataset(eval_X, label=eval_y)
 
-        train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
+        train_X = train_table.drop([label_column])
+        train_y = train_table.column(label_column)
         train_set = lightgbm.Dataset(train_X, label=train_y)
 
         # Add network params of the worker group to enable distributed training.

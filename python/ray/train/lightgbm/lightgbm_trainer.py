@@ -3,6 +3,7 @@ from functools import partial
 from typing import Any, Callable, Dict, Optional, Union
 
 import lightgbm
+import pyarrow as pa
 
 import ray
 from ray.train import Checkpoint
@@ -49,16 +50,22 @@ def _lightgbm_train_fn_per_worker(
         )
 
     train_ds_iter = ray.train.get_dataset_shard(TRAIN_DATASET_KEY)
-    train_df = train_ds_iter.materialize().to_pandas()
+    train_table = pa.concat_tables(
+        train_ds_iter.iter_batches(batch_format="pyarrow", batch_size=None)
+    )
 
     eval_ds_iters = {
         k: ray.train.get_dataset_shard(k)
         for k in dataset_keys
         if k != TRAIN_DATASET_KEY
     }
-    eval_dfs = {k: d.materialize().to_pandas() for k, d in eval_ds_iters.items()}
+    eval_tables = {
+        k: pa.concat_tables(d.iter_batches(batch_format="pyarrow", batch_size=None))
+        for k, d in eval_ds_iters.items()
+    }
 
-    train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
+    train_X = train_table.drop([label_column])
+    train_y = train_table.column(label_column)
     train_set = lightgbm.Dataset(train_X, label=train_y)
 
     # NOTE: Include the training dataset in the evaluation datasets.
@@ -66,8 +73,9 @@ def _lightgbm_train_fn_per_worker(
     valid_sets = [train_set]
     valid_names = [TRAIN_DATASET_KEY]
 
-    for eval_name, eval_df in eval_dfs.items():
-        eval_X, eval_y = eval_df.drop(label_column, axis=1), eval_df[label_column]
+    for eval_name, eval_table in eval_tables.items():
+        eval_X = eval_table.drop([label_column])
+        eval_y = eval_table.column(label_column)
         valid_sets.append(lightgbm.Dataset(eval_X, label=eval_y))
         valid_names.append(eval_name)
 
