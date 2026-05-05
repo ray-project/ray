@@ -44,9 +44,9 @@ def test_chain():
     processed_col_c = [1, 0, 2, 2]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Transform batch.
     pred_col_a = [1, 2, None]
@@ -67,9 +67,9 @@ def test_chain():
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
 
 def test_nested_chain_state():
@@ -141,9 +141,9 @@ def test_nested_chain():
     processed_col_c = [1, 0, 2, 2]
     expected_df = pd.DataFrame.from_dict(
         {"A": processed_col_a, "B": processed_col_b, "C": processed_col_c}
-    )
+    ).astype(out_df.dtypes.to_dict())
 
-    assert out_df.equals(expected_df)
+    pd.testing.assert_frame_equal(out_df, expected_df, check_like=True)
 
     # Transform batch.
     pred_col_a = [1, 2, None]
@@ -164,9 +164,9 @@ def test_nested_chain():
             "B": pred_processed_col_b,
             "C": pred_processed_col_c,
         }
-    )
+    ).astype(pred_out_df.dtypes.to_dict())
 
-    assert pred_out_df.equals(pred_expected_df)
+    pd.testing.assert_frame_equal(pred_out_df, pred_expected_df, check_like=True)
 
 
 class PreprocessorWithoutTransform(Preprocessor):
