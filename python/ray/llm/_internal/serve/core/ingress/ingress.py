@@ -24,7 +24,6 @@ from fastapi.middleware.cors import CORSMiddleware
 from starlette.responses import JSONResponse, Response, StreamingResponse
 
 from ray import serve
-from ray._common.utils import get_or_create_event_loop
 from ray.llm._internal.common.utils.lora_utils import (
     get_base_model_id,
     get_lora_model_ids,
@@ -62,7 +61,6 @@ from ray.llm._internal.serve.core.configs.openai_api_models import (
     TranscriptionRequest,
     TranscriptionResponse,
     TranscriptionStreamResponse,
-    to_model_metadata,
 )
 from ray.llm._internal.serve.core.ingress.middleware import (
     SetRequestIdMiddleware,
@@ -376,14 +374,24 @@ async def router_request_timeout(timeout_duration: float):
 class OpenAiIngress(DeploymentProtocol):
     def __init__(
         self,
-        llm_deployments: List[DeploymentHandle],
+        llm_deployments: Dict[str, DeploymentHandle],
+        model_cards: Dict[str, ModelCard],
         *,
+        lora_paths: Optional[Dict[str, str]] = None,
         _get_lora_model_metadata_func: Optional[
-            Callable[[str, LLMConfig], Awaitable[Dict[str, Any]]]
+            Callable[[str, str], Awaitable[Dict[str, Any]]]
         ] = None,
     ):
-        self._default_serve_handles: Dict[str, DeploymentHandle] = {}
-        self._llm_configs: Dict[str, LLMConfig] = {}
+        if set(llm_deployments) != set(model_cards):
+            raise ValueError(
+                "llm_deployments and model_cards must have the same model IDs. "
+                f"Got llm_deployments={sorted(llm_deployments)}, "
+                f"model_cards={sorted(model_cards)}."
+            )
+
+        self._default_serve_handles: Dict[str, DeploymentHandle] = dict(llm_deployments)
+        self._model_cards: Dict[str, ModelCard] = dict(model_cards)
+        self._lora_paths: Dict[str, str] = dict(lora_paths or {})
 
         # Configuring a ServeHandle with .options() creates a new ServeHandle
         # object, which contains a new metrics pusher and long-polling call.
@@ -394,36 +402,13 @@ class OpenAiIngress(DeploymentProtocol):
             _get_lora_model_metadata_func or self._default_get_lora_model_metadata_func
         )
 
-        # Setup _default_serve_handles and _llm_configs asynchronously.
-        self._init_completed = asyncio.Event()
-        self.running_setup_task = get_or_create_event_loop().create_task(
-            self._setup_handle_and_config_maps(llm_deployments=llm_deployments)
-        )
-
     async def _default_get_lora_model_metadata_func(
-        self, model_id: str, llm_config: LLMConfig
+        self, model_id: str, base_path: str
     ) -> Dict[str, Any]:
-        return await get_lora_model_metadata(model_id, llm_config)
-
-    async def _setup_handle_and_config_maps(
-        self, llm_deployments: List[DeploymentHandle]
-    ):
-        for handle in llm_deployments:
-            llm_config = await handle.llm_config.remote()
-            self._default_serve_handles[llm_config.model_id] = handle
-            self._llm_configs[llm_config.model_id] = llm_config
-
-        # Note (genesu): Even though we have already checked model id uniqueness in
-        # `router_application()` under run.py. When we OSS this router component, users
-        # would be able to directly use the lower level api and bypass that check. We
-        # check it again here to ensure all the model ids are unique.
-        if len(llm_deployments) != len(self._llm_configs):
-            raise ValueError("Duplicate models found. Make sure model ids are unique.")
-
-        self._init_completed.set()
+        return await get_lora_model_metadata(model_id, base_path)
 
     async def check_health(self):
-        await self._init_completed.wait()
+        pass
 
     def _get_configured_serve_handle(self, model_id: str):
         """Gets a ServeHandle to a model deployment.
@@ -468,17 +453,17 @@ class OpenAiIngress(DeploymentProtocol):
     async def _get_model_id(self, model: Optional[str]) -> str:
         # Default to the only configured model if no model specified
         if model is None:
-            if len(self._llm_configs) == 1:
-                model = next(iter(self._llm_configs.keys()))
+            if len(self._model_cards) == 1:
+                model = next(iter(self._model_cards.keys()))
             else:
                 raise HTTPException(
                     status.HTTP_400_BAD_REQUEST,
                     "Model parameter is required when multiple models are configured. "
-                    f"Available models: {list(self._llm_configs.keys())}",
+                    f"Available models: {list(self._model_cards.keys())}",
                 )
 
         base_model_id = get_base_model_id(model)
-        if base_model_id not in self._llm_configs:
+        if base_model_id not in self._model_cards:
             raise HTTPException(
                 status.HTTP_404_NOT_FOUND,
                 f'Got request for model "{model}". '
@@ -530,23 +515,23 @@ class OpenAiIngress(DeploymentProtocol):
             yield response
 
     async def model(self, model_id: str) -> Optional[ModelCard]:
-        if model_id in self._llm_configs:
-            return to_model_metadata(model_id, self._llm_configs[model_id])
+        if model_id in self._model_cards:
+            return self._model_cards[model_id]
 
         base_model_id = get_base_model_id(model_id)
-        if (
-            base_model_id in self._llm_configs
-            and self._llm_configs[base_model_id].lora_config
-        ):
+        base_path = self._lora_paths.get(base_model_id)
+        if base_path is not None:
             try:
                 overrides = await self._get_lora_model_metadata_func(
-                    model_id, self._llm_configs[base_model_id]
+                    model_id, base_path
                 )
-
-                return to_model_metadata(
-                    model_id=model_id,
-                    model_config=self._llm_configs[base_model_id],
-                    overrides=overrides,
+                base_card = self._model_cards[base_model_id]
+                return ModelCard(
+                    id=model_id,
+                    object="model",
+                    owned_by=base_card.owned_by,
+                    permission=list(base_card.permission),
+                    metadata={**base_card.metadata, **overrides},
                 )
             except HTTPException:
                 logger.exception(
@@ -558,14 +543,15 @@ class OpenAiIngress(DeploymentProtocol):
     async def models(self) -> ModelList:
         """OpenAI API-compliant endpoint to get all rayllm models."""
         all_models = dict()
-        for base_model_id, llm_config in self._llm_configs.items():
+        for base_model_id in self._model_cards:
             # Add the base model.
             all_models[base_model_id] = await self.model(base_model_id)
 
-            if llm_config.lora_config is not None:
+            base_path = self._lora_paths.get(base_model_id)
+            if base_path is not None:
                 # Add all the fine-tuned models.
                 lora_model_ids = get_lora_model_ids(
-                    dynamic_lora_loading_path=llm_config.lora_config.dynamic_lora_loading_path,
+                    dynamic_lora_loading_path=base_path,
                     base_model_id=base_model_id,
                 )
                 for lora_id in lora_model_ids:

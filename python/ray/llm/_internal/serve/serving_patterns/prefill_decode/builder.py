@@ -14,6 +14,7 @@ from ray.llm._internal.common.dict_utils import (
     maybe_apply_llm_deployment_config_defaults,
 )
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.builder import (
     IngressClsConfig,
     load_class,
@@ -218,7 +219,17 @@ def build_pd_openai_app(pd_serving_args: dict) -> Application:
     )
 
     ingress_cls = make_fastapi_ingress(ingress_cls_config.ingress_cls)
+    # Prefill and decode share the same model_id (validated in PDServingArgs).
+    # Ingress binds to decode only (the "model" the client sees).
+    model_id = pd_config.decode_config.model_id
+    lora_config = pd_config.decode_config.lora_config
     return serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=[decode_deployment],
+        llm_deployments={model_id: decode_deployment},
+        model_cards={model_id: to_model_metadata(model_id, pd_config.decode_config)},
+        lora_paths=(
+            {model_id: lora_config.dynamic_lora_loading_path}
+            if lora_config is not None
+            else {}
+        ),
         **ingress_cls_config.ingress_extra_kwargs,
     )
