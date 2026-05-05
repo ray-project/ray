@@ -78,6 +78,28 @@ class TestIMPALA(unittest.TestCase):
         finally:
             algo.stop()
 
+    def test_local_learner_thread_stops_on_algo_stop(self):
+        # Regression test: `algo.stop()` -> `LearnerGroup.shutdown()` ->
+        # `IMPALALearner.shutdown()` must stop and join the local IMPALA
+        # `_LearnerThread`. Otherwise the daemon thread keeps spinning and
+        # can race against interpreter shutdown inside an auto_init-wrapped
+        # Ray API.
+        config = (
+            impala.IMPALAConfig()
+            .environment("CartPole-v1")
+            .learners(num_learners=0)
+            .env_runners(num_env_runners=0)
+        )
+        algo = config.build()
+        learner_thread = algo.learner_group._learner._learner_thread
+        self.assertTrue(learner_thread.is_alive())
+
+        algo.stop()
+
+        # `Learner.shutdown()` joins the thread, so it must be dead by the
+        # time `algo.stop()` returns — no extra `join()` needed here.
+        self.assertFalse(learner_thread.is_alive())
+
 
 if __name__ == "__main__":
     import sys

@@ -17,11 +17,11 @@ steps:
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
       - diff ./python/requirements_compiled.txt requirements_compiled_backup.txt || (echo "requirements_compiled.txt is not up to date. Please download it from Artifacts tab and git push the changes." && exit 1)
     job_env: oss-ci-base_test-py3.11
-    depends_on: oss-ci-base_test-multipy(*)
+    depends_on: oss-ci-base_test-multipy(python=3.11)
 
   - label: ":tapioca: build: pip-compile py3.13 dependencies"
     key: pip_compile_313_dependencies
-    tags: always
+    tags: python_dependencies
     instance_type: small
     commands:
       # uncomment the following line to update the pinned versions of pip dependencies

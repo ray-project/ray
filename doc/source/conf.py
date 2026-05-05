@@ -856,7 +856,10 @@ intersphinx_mapping = {
         "https://www.tensorflow.org/api_docs/python",
         "https://raw.githubusercontent.com/GPflow/tensorflow-intersphinx/master/tf2_py_objects.inv",
     ),
-    "torch": ("https://pytorch.org/docs/stable/", None),
+    "torch": (
+        "https://docs.pytorch.org/docs/stable/",
+        "https://docs.pytorch.org/docs/2.7/objects.inv",
+    ),
     "torchvision": ("https://pytorch.org/vision/stable/", None),
     "transformers": ("https://huggingface.co/docs/transformers/main/en/", None),
 }
