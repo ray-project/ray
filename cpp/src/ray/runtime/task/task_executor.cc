@@ -251,6 +251,7 @@ Status TaskExecutor::ExecuteTask(
     size_t total = cross_lang ? (XLANG_HEADER_LEN + data_size) : data_size;
     RAY_CHECK_OK(CoreWorkerProcess::GetCoreWorker().AllocateReturnObject(
         result_id,
+        /*generator_id=*/ray::ObjectID::Nil(),
         total,
         meta_buffer,
         std::vector<ray::ObjectID>(),
