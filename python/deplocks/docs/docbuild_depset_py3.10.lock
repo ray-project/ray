@@ -1632,8 +1632,8 @@ sphinx==7.3.7 \
     #   sphinx-copybutton
     #   sphinx-design
     #   sphinx-docsearch
+    #   sphinx-last-updated-by-git
     #   sphinx-remove-toctrees
-    #   sphinx-sitemap
     #   sphinxcontrib-redoc
     #   sphinxemoji
 sphinx-autobuild==2024.4.16 \
