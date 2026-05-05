@@ -55,7 +55,7 @@ class LogicalOperator(Operator, ABC):
 
     @property
     def input_dependencies(self) -> List["LogicalOperator"]:
-        value = super().input_dependencies  # type: ignore
+        value = self._input_dependencies
         for x in value:
             assert isinstance(x, LogicalOperator), x
         return value
