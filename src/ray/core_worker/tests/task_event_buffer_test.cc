@@ -56,6 +56,10 @@ class MockEventAggregatorClient : public ray::rpc::EventAggregatorClient {
               (rpc::events::AddEventsRequest && request,
                const rpc::ClientCallback<rpc::events::AddEventsReply> &callback),
               (override));
+  MOCK_METHOD(void,
+              WaitForServerReady,
+              (std::function<void(const Status &)> init_exporter_fn),
+              (override));
 };
 
 class TaskEventBufferTest : public ::testing::Test {
