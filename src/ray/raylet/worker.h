@@ -25,6 +25,7 @@
 #include "ray/core_worker_rpc_client/core_worker_client_interface.h"
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
+#include "ray/util/clock.h"
 #include "ray/util/process_interface.h"
 
 namespace ray {
@@ -49,7 +50,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
          rpc::WorkerType worker_type,
          const std::string &ip_address,
          std::shared_ptr<ClientConnection> connection,
-         rpc::ClientCallManager &client_call_manager);
+         rpc::ClientCallManager &client_call_manager,
+         ClockInterface &clock);
 
   rpc::WorkerType GetWorkerType() const override;
   void MarkDead() override;
@@ -212,6 +214,8 @@ class Worker : public std::enable_shared_from_this<Worker>, public WorkerInterfa
   /// The `ClientCallManager` object that is shared by `CoreWorkerClient` from all
   /// workers.
   rpc::ClientCallManager &client_call_manager_;
+  /// Clock used for timing.
+  ClockInterface &clock_;
   /// The rpc client to send tasks to this worker.
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
   /// The address of this worker's owner. The owner is the worker that

@@ -57,6 +57,7 @@
 #include "ray/raylet_rpc_client/raylet_client_pool.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
 #include "ray/rpc/rpc_callback_types.h"
+#include "ray/util/clock.h"
 
 namespace ray::raylet {
 
@@ -179,7 +180,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       local_stream_socket socket,
       ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
       ray::observability::MetricInterface
-          &node_manager_unexpected_worker_failure_total_count);
+          &node_manager_unexpected_worker_failure_total_count,
+      ClockInterface &clock);
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
@@ -1006,6 +1008,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<CgroupManagerInterface> cgroup_manager_;
 
   std::atomic_bool &shutting_down_;
+
+  /// Clock used for timing.
+  ClockInterface &clock_;
 
   /// An acceptor for new clients.
   boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor_;

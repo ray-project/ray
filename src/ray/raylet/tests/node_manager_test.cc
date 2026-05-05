@@ -444,7 +444,8 @@ class NodeManagerTest : public ::testing::Test {
         boost::asio::basic_socket_acceptor<local_stream_protocol>(io_service_),
         boost::asio::basic_stream_socket<local_stream_protocol>(io_service_),
         fake_memory_manager_worker_eviction_total_count_,
-        fake_node_manager_unexpected_worker_failure_total_count_);
+        fake_node_manager_unexpected_worker_failure_total_count_,
+        fake_clock_);
   }
 
   instrumented_io_context io_service_;
@@ -454,6 +455,7 @@ class NodeManagerTest : public ::testing::Test {
 
   NodeID raylet_node_id_;
   std::unique_ptr<pubsub::FakeSubscriber> core_worker_subscriber_;
+  FakeClock fake_clock_;
   ray::Clock clock_;
   std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::unique_ptr<LocalLeaseManager> local_lease_manager_;

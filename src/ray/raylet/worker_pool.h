@@ -43,6 +43,7 @@
 #include "ray/raylet/worker_interface.h"
 #include "ray/raylet_ipc_client/client_connection.h"
 #include "ray/stats/metric.h"
+#include "ray/util/clock.h"
 #include "ray/util/process.h"
 #include "ray/util/process_interface.h"
 
@@ -309,7 +310,7 @@ class WorkerPool : public WorkerPoolInterface {
   /// it times out to start a worker.
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
-  /// \param get_time A callback to get the current time in milliseconds.
+  /// \param clock Clock for time operations.
   /// \param add_to_cgroup_hook A lifecycle hook that the forked worker process will
   /// execute becoming a worker process. The hook adds a newly forked process into
   /// the appropriate cgroup.
@@ -328,7 +329,7 @@ class WorkerPool : public WorkerPoolInterface {
       std::string native_library_path,
       std::function<void()> starting_worker_timeout_callback,
       int ray_debugger_external,
-      std::function<absl::Time()> get_time,
+      ClockInterface &clock,
       WorkerPoolMetrics &worker_pool_metrics,
       AddProcessToCgroupHook add_to_cgroup_hook = [](const std::string &) {});
 
@@ -560,6 +561,9 @@ class WorkerPool : public WorkerPoolInterface {
       const std::shared_ptr<PopWorkerRequest> &pop_worker_request) override;
 
  protected:
+  /// Clock for getting current time.
+  ClockInterface &clock_;
+
   /// Asynchronously start a new worker process. Once the worker process has
   /// registered with an external server, the process should create and
   /// register N workers, then add them to the pool.
@@ -640,8 +644,8 @@ class WorkerPool : public WorkerPoolInterface {
     rpc::WorkerType worker_type;
     /// The worker process instance.
     std::unique_ptr<ProcessInterface> proc;
-    /// The worker process start time.
-    std::chrono::high_resolution_clock::time_point start_time;
+    /// The worker process start time (monotonic, for measuring startup latency).
+    SteadyTimePoint start_time;
     /// The runtime env Info.
     rpc::RuntimeEnvInfo runtime_env_info;
     /// The dynamic_options.
@@ -825,7 +829,7 @@ class WorkerPool : public WorkerPoolInterface {
       const WorkerID &worker_id,
       rpc::WorkerType worker_type,
       std::unique_ptr<ProcessInterface> proc,
-      const std::chrono::high_resolution_clock::time_point &start,
+      SteadyTimePoint start,
       const rpc::RuntimeEnvInfo &runtime_env_info,
       const std::vector<std::string> &dynamic_options,
       std::optional<absl::Duration> worker_startup_keep_alive_duration);
@@ -914,8 +918,6 @@ class WorkerPool : public WorkerPoolInterface {
   /// The runner to run function periodically.
   std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
-  /// A callback to get the current time.
-  const std::function<absl::Time()> get_time_;
   /// Runtime env manager client.
   std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
   /// Stats

@@ -37,7 +37,8 @@ Worker::Worker(const JobID &job_id,
                rpc::WorkerType worker_type,
                const std::string &ip_address,
                std::shared_ptr<ClientConnection> connection,
-               rpc::ClientCallManager &client_call_manager)
+               rpc::ClientCallManager &client_call_manager,
+               ClockInterface &clock)
     : worker_id_(worker_id),
       language_(language),
       worker_type_(worker_type),
@@ -50,7 +51,8 @@ Worker::Worker(const JobID &job_id,
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
       killing_(false),
       blocked_(false),
-      client_call_manager_(client_call_manager) {}
+      client_call_manager_(client_call_manager),
+      clock_(clock) {}
 
 rpc::WorkerType Worker::GetWorkerType() const { return worker_type_; }
 
@@ -183,7 +185,7 @@ void Worker::GrantLeaseId(const LeaseID &lease_id) {
   lease_id_ = lease_id;
   if (!lease_id.IsNil()) {
     RAY_CHECK(worker_type_ != rpc::WorkerType::DRIVER);
-    lease_grant_time_ = absl::Now();
+    lease_grant_time_ = clock_.Now();
   }
 };
 

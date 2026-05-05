@@ -23,6 +23,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/lease/lease.h"
 #include "ray/raylet/worker_interface.h"
+#include "ray/util/clock.h"
 #include "ray/util/compat.h"
 #include "ray/util/fake_process.h"
 #include "src/ray/protobuf/common.pb.h"
@@ -36,12 +37,14 @@ class MockWorker : public WorkerInterface {
   MockWorker(WorkerID worker_id,
              int port,
              int runtime_env_hash = 0,
-             pid_t worker_process_pid = -1)
+             pid_t worker_process_pid = -1,
+             ClockInterface *clock = nullptr)
       : worker_id_(worker_id),
         port_(port),
         runtime_env_hash_(runtime_env_hash),
         job_id_(JobID::FromInt(859)),
-        proc_(std::make_unique<FakeProcess>(worker_process_pid)) {}
+        proc_(std::make_unique<FakeProcess>(worker_process_pid)),
+        clock_(clock) {}
 
   WorkerID WorkerId() const override { return worker_id_; }
 
@@ -53,7 +56,7 @@ class MockWorker : public WorkerInterface {
 
   void GrantLease(const RayLease &granted_lease) override {
     lease_ = granted_lease;
-    lease_grant_time_ = absl::Now();
+    lease_grant_time_ = clock_ ? clock_->Now() : absl::Now();
     root_detached_actor_id_ = granted_lease.GetLeaseSpecification().RootDetachedActorId();
     const auto &lease_spec = granted_lease.GetLeaseSpecification();
     SetJobId(lease_spec.JobId());
@@ -206,6 +209,7 @@ class MockWorker : public WorkerInterface {
   std::unique_ptr<ProcessInterface> proc_;
   std::atomic<bool> killing_ = false;
   std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client_;
+  ClockInterface *clock_ = nullptr;
 };
 
 /**

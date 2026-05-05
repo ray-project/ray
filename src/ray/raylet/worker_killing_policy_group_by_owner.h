@@ -19,7 +19,6 @@
 #include <utility>
 #include <vector>
 
-#include "absl/time/clock.h"
 #include "absl/time/time.h"
 #include "ray/common/ray_config.h"
 #include "ray/raylet/worker_killing_policy_interface.h"
@@ -69,7 +68,7 @@ struct Group {
   std::vector<std::shared_ptr<WorkerInterface>> workers_;
 
   /// The earliest creation time of the leases.
-  absl::Time earliest_granted_lease_time_ = absl::Now();
+  absl::Time earliest_granted_lease_time_ = absl::InfiniteFuture();
 
   /// The owner id shared by leases of this group.
   TaskID owner_id_;
