@@ -20,6 +20,12 @@ fi
 export RAYCI_BUILD_ID="${BUILD_ID}"
 echo "RAYCI_BUILD_ID: ${RAYCI_BUILD_ID}"
 
+if [[ "${AUTOMATIC:-0}" == "1" && -n "${RAYCI_SELECT:-}" ]]; then
+  echo "Skipping custom image build and test init because RAYCI_SELECT is set"
+  echo "RAYCI_SELECT: ${RAYCI_SELECT}"
+  exit 0
+fi
+
 aws ecr get-login-password --region us-west-2 | \
     docker login --username AWS --password-stdin 029272617770.dkr.ecr.us-west-2.amazonaws.com
 
@@ -39,12 +45,6 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 UV_BIN="${HOME}/.local/bin/uv"
 "${UV_BIN}" python install "${UV_PYTHON_VERSION}"
 UV_PYTHON_BIN="$("${UV_BIN}" python find --no-project "${UV_PYTHON_VERSION}")"
-
-if [[ "${AUTOMATIC:-0}" == "1" && "${RAYCI_SELECT:-}" != "" ]]; then
-  echo "Skipping custom image build and test init because RAYCI_SELECT is set"
-  echo "RAYCI_SELECT: ${RAYCI_SELECT}"
-  exit 0
-fi
 
 echo "--- Generate custom build steps"
 
