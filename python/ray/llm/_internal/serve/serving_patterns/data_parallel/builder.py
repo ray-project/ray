@@ -7,6 +7,7 @@ from ray import serve
 from ray.llm._internal.common.base_pydantic import BaseModelExtended
 from ray.llm._internal.common.dict_utils import deep_merge_dicts
 from ray.llm._internal.serve.core.configs.llm_config import LLMConfig
+from ray.llm._internal.serve.core.configs.openai_api_models import to_model_metadata
 from ray.llm._internal.serve.core.ingress.builder import IngressClsConfig
 from ray.llm._internal.serve.core.ingress.ingress import (
     make_fastapi_ingress,
@@ -119,7 +120,15 @@ def build_dp_openai_app(builder_config: dict) -> Application:
     logger.info("============== Ingress Options ==============")
     logger.info(pprint.pformat(ingress_options))
 
+    model_id = llm_config.model_id
+    lora_config = llm_config.lora_config
     return serve.deployment(ingress_cls, **ingress_options).bind(
-        llm_deployments=[dp_deployment],
+        llm_deployments={model_id: dp_deployment},
+        model_cards={model_id: to_model_metadata(model_id, llm_config)},
+        lora_paths=(
+            {model_id: lora_config.dynamic_lora_loading_path}
+            if lora_config is not None
+            else {}
+        ),
         **ingress_cls_config.ingress_extra_kwargs,
     )
