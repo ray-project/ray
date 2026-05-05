@@ -87,6 +87,9 @@ doc/tutorial.rst: doc
 .readthedocs.yaml: doc
 .vale.ini: doc
 .vale/styles/config/vocabularies/Core/accept.txt: doc
+doc/requirements-doc.txt: doc
+python/deplocks/docs/docbuild_depset_py3.10.lock: doc python_dependencies
+ci/raydepsets/configs/docs.depsets.yaml: doc python_dependencies
 
 # === Release ===
 
