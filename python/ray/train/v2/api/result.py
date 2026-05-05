@@ -59,9 +59,11 @@ class Result(ResultV1):
     def get_best_checkpoint(
         self, metric: str, mode: str, return_metrics: bool = False
     ) -> Union["ray.train.Checkpoint", Tuple["ray.train.Checkpoint", Dict[str, Any]]]:
-        """Get the best checkpoint from this trial based on a specific metric.
+        """Get the best checkpoint from this training result based on a specific metric.
 
         Any checkpoints without an associated metric value will be filtered out.
+        For values in a nested dictionary can be access through using a slash
+        between metrics like ``"root_key/nested_key"``.
 
         Args:
             metric: The key for checkpoints to order on.
