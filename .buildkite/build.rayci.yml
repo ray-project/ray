@@ -445,5 +445,5 @@ steps:
       - bazel run //ci/ray_ci/automation:generate_index -- --prefix nightly
     depends_on:
       - ray_images_push(*)
-      - ray_images_push_aarch64
+      - ray_images_push_aarch64(*)
       - forge

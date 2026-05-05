@@ -455,6 +455,10 @@ class ServeController:
             keys_to_snapshot_ids_bytes
         )
 
+    def notify_long_poll_client_disabled(self, client_id: str, reason: str) -> None:
+        """Surfaces the disabled reason from LongPollClient in the logs."""
+        self.long_poll_host.notify_client_disabled(client_id, reason)
+
     def get_all_endpoints(self) -> Dict[DeploymentID, Dict[str, Any]]:
         """Returns a dictionary of deployment name to config."""
         return self.endpoint_state.get_endpoints()
@@ -1348,6 +1352,7 @@ class ServeController:
                     route_prefix="/",
                     targets=self.proxy_state_manager.get_targets(RequestProtocol.HTTP),
                     app_name="",
+                    ingress_request_router_targets=[],
                 )
             )
             if is_grpc_enabled(self.get_grpc_config()):
@@ -1359,6 +1364,7 @@ class ServeController:
                             RequestProtocol.GRPC
                         ),
                         app_name="",
+                        ingress_request_router_targets=[],
                     )
                 )
         return target_groups
@@ -1497,6 +1503,8 @@ class ServeController:
         replica_details = self._get_running_replica_details_for_ingress_deployment(
             app_name
         )
+        # Without ingress replicas, HAProxy has no data-plane targets to route to,
+        # so suppress router targets too — the app is effectively unreachable.
         if not replica_details:
             return []
 
@@ -1538,6 +1546,7 @@ class ServeController:
                         route_prefix=route_prefix,
                         targets=grpc_targets,
                         app_name=app_name,
+                        ingress_request_router_targets=[],
                     )
                 )
 
@@ -1570,6 +1579,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=http_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=[],
                 )
             )
         if include_grpc:
@@ -1579,6 +1589,7 @@ class ServeController:
                     route_prefix=route_prefix,
                     targets=grpc_targets,
                     app_name=app_name,
+                    ingress_request_router_targets=[],
                 )
             )
 

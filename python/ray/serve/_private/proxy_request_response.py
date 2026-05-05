@@ -193,6 +193,7 @@ class gRPCProxyRequest(ProxyRequest):
         self.request_id = None
         self.method_name = "__call__"
         self.multiplexed_model_id = DEFAULT.VALUE
+        self.session_id = DEFAULT.VALUE
         # ray_serve_grpc_context is a class implemented by us to be able to serialize
         # the object and pass it into the deployment.
         self.ray_serve_grpc_context = RayServegRPCContext(context)
@@ -209,6 +210,8 @@ class gRPCProxyRequest(ProxyRequest):
                     self.request_id = value
                 elif key == "multiplexed_model_id":
                     self.multiplexed_model_id = value
+                elif key == "session_id":
+                    self.session_id = value
 
     @property
     def request_type(self) -> str:

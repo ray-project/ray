@@ -1537,11 +1537,12 @@ class TargetGroup(BaseModel):
     # Ingress request router targets for ingress bypass Lua routing. When
     # populated, HAProxy Lua calls these targets to get routing decisions,
     # then forwards data plane traffic to the main targets.
+    # Only HTTP target groups populate this; gRPC target groups always leave it empty.
     ingress_request_router_targets: List[Target] = Field(
         default_factory=list,
         description=(
             "List of HTTP ingress request router targets for Lua-based routing "
-            "decisions."
+            "decisions. Only populated on HTTP target groups; always empty for gRPC."
         ),
     )
 

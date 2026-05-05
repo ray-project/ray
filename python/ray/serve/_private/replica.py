@@ -33,7 +33,6 @@ import grpc
 import starlette.responses
 from anyio import to_thread
 from fastapi import Request
-from starlette.applications import Starlette
 from starlette.types import ASGIApp, Receive, Scope, Send
 
 import ray
@@ -116,6 +115,7 @@ from ray.serve._private.http_util import (
     convert_object_to_asgi_messages,
     parse_disconnect_disabled_header,
     parse_request_timeout_header,
+    parse_session_id_header,
     start_asgi_http_server,
 )
 from ray.serve._private.logging_utils import (
@@ -1057,14 +1057,14 @@ class Replica:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        ingress_request_router: bool = False,
+        is_ingress_request_router: bool = False,
     ):
         self._version = version
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
         self._deployment_config = deployment_config
         self._ingress = ingress
-        self._ingress_request_router = ingress_request_router
+        self._is_ingress_request_router = is_ingress_request_router
         self._route_prefix = route_prefix
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
@@ -1974,7 +1974,7 @@ class Replica:
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
             return
 
-        if not self._ingress and not self._ingress_request_router:
+        if not self._ingress and not self._is_ingress_request_router:
             return
 
         async def allocate_and_start_server(start_server_fn, protocol):
@@ -2026,13 +2026,18 @@ class Replica:
 
             raise RuntimeError(err_msg)
 
-        # Fetch configs
-        self._http_options, self._grpc_options = ray.get(
-            [
-                self._controller_handle.get_http_config.remote(),
-                self._controller_handle.get_grpc_config.remote(),
-            ]
-        )
+        if self._ingress:
+            self._http_options, self._grpc_options = ray.get(
+                [
+                    self._controller_handle.get_http_config.remote(),
+                    self._controller_handle.get_grpc_config.remote(),
+                ]
+            )
+        else:
+            self._http_options = ray.get(
+                self._controller_handle.get_http_config.remote()
+            )
+            self._grpc_options = None
 
         grpc_enabled = self._ingress and is_grpc_enabled(self._grpc_options)
 
@@ -2165,6 +2170,7 @@ class Replica:
                     _internal_request_id=request_metadata.internal_request_id,
                     app_name=self._deployment_id.app_name,
                     multiplexed_model_id=request_metadata.multiplexed_model_id,
+                    session_id=request_metadata.session_id,
                     grpc_context=request_metadata.grpc_context,
                     _client=request_metadata._client,
                     cancel_on_parent_request_cancel=self._ingress
@@ -2597,6 +2603,7 @@ class Replica:
         )
         request_disconnect_disabled = parse_disconnect_disabled_header(headers)
         request_timeout_s = self._parse_request_timeout(headers)
+        session_id = parse_session_id_header(headers)
 
         request_metadata = RequestMetadata(
             request_id=request_id,
@@ -2606,6 +2613,7 @@ class Replica:
             app_name=self._deployment_id.app_name,
             # TODO(edoakes): populate the multiplexed model ID.
             multiplexed_model_id="",
+            session_id=session_id,
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
             tracing_context=self.get_asgi_tracing_context(scope["headers"]),
@@ -2765,7 +2773,7 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
-        ingress_request_router: bool = False,
+        is_ingress_request_router: bool = False,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -2782,7 +2790,7 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
-            ingress_request_router=ingress_request_router,
+            is_ingress_request_router=is_ingress_request_router,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):

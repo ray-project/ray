@@ -405,28 +405,15 @@ class ApplicationState:
         else:
             self._update_status(ApplicationStatus.DEPLOYING)
 
-        self._ingress_deployment_name = None
-        self._ingress_request_router_deployment_name = None
+        ingress_deployment_name = None
+        ingress_request_router_deployment_name = None
 
         if deployment_infos is not None:
-            ingress_request_router_deployment_names = [
-                name
-                for name, info in deployment_infos.items()
-                if info.ingress_request_router
-            ]
-            if len(ingress_request_router_deployment_names) > 1:
-                raise ValueError(
-                    "Multiple deployments marked as ingress_request_router: "
-                    f"{ingress_request_router_deployment_names}. Only one deployment "
-                    "per application can be the ingress request router for ingress "
-                    "bypass mode."
-                )
-
             for name, info in deployment_infos.items():
                 if info.ingress:
-                    self._ingress_deployment_name = name
+                    ingress_deployment_name = name
                 if info.ingress_request_router:
-                    self._ingress_request_router_deployment_name = name
+                    ingress_request_router_deployment_name = name
 
         target_state = ApplicationTargetState(
             deployment_infos,
@@ -440,6 +427,10 @@ class ApplicationState:
             serialized_application_autoscaling_policy_def=serialized_application_autoscaling_policy_def,
         )
 
+        self._ingress_deployment_name = ingress_deployment_name
+        self._ingress_request_router_deployment_name = (
+            ingress_request_router_deployment_name
+        )
         self._target_state = target_state
 
     def _set_target_state_deleting(self):

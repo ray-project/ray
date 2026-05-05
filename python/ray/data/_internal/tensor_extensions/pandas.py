@@ -174,12 +174,17 @@ if os.getenv(_FORMATTER_ENABLED_ENV_VAR, "1") == "1":
         from pandas.io.formats.format import _ExtensionArrayFormatter
 
         formatter_cls = _ExtensionArrayFormatter
-    formatter_cls._format_strings_orig = formatter_cls._format_strings
-    if Version("1.1.0") <= Version(pd.__version__) < Version("1.3.0"):
-        formatter_cls._format_strings = _format_strings_patched
-    else:
-        formatter_cls._format_strings = _format_strings_patched_v1_0_0
-    formatter_cls._patched_by_ray_datasets = True
+
+    # Avoid double-patching: re-saving `_format_strings_orig` after `_format_strings`
+    # already points at our patch makes `_format_strings_orig()` recurse infinitely
+    # for non-Tensor extension columns (e.g. Arrow-backed ints in doctests).
+    if not getattr(formatter_cls, "_patched_by_ray_datasets", False):
+        formatter_cls._format_strings_orig = formatter_cls._format_strings
+        if Version("1.1.0") <= Version(pd.__version__) < Version("1.3.0"):
+            formatter_cls._format_strings = _format_strings_patched
+        else:
+            formatter_cls._format_strings = _format_strings_patched_v1_0_0
+        formatter_cls._patched_by_ray_datasets = True
 
 ###########################################
 # End patching of ExtensionArrayFormatter #

@@ -6,9 +6,11 @@ import logging
 import os
 import re
 import shutil
+import string
 import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
 
 from jinja2 import Environment
@@ -70,6 +72,78 @@ from ray.serve.schema import (
 )
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Shared by the Lua router call and the frontend `wait-for-body`.
+INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
+
+_LUA_TEMPLATE = string.Template(
+    (Path(__file__).parent / "ingress_request_router.lua.tmpl").read_text()
+)
+
+
+def _routers_and_targets_by_backend(
+    backends: "List[BackendConfig]",
+) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
+    """Per-backend router and replica map, restricted to backends with both.
+
+    Deterministic min-(port, host) within each router pool avoids the
+    TTFT regression from cycling routers across requests.
+    """
+    routers: Dict[str, ServerConfig] = {}
+    targets: Dict[str, List[Tuple[str, str]]] = {}
+    for backend in backends:
+        if not backend.ingress_request_router_servers:
+            continue
+        entries = [
+            (s.replica_id, s.name) for s in backend.servers if s.replica_id is not None
+        ]
+        if not entries:
+            continue
+        routers[backend.name] = min(
+            backend.ingress_request_router_servers, key=lambda s: (s.port, s.host)
+        )
+        targets[backend.name] = entries
+    return routers, targets
+
+
+def _format_routers_lua(routers: "Dict[str, ServerConfig]") -> str:
+    """Render {backend_name: ServerConfig} as a Lua table literal."""
+    body = ",\n".join(
+        f"    [{json.dumps(name)}] = "
+        f"{{ host = {json.dumps(s.host)}, port = {s.port}, "
+        f"host_header = {json.dumps(f'{s.host}:{s.port}')} }}"
+        for name, s in routers.items()
+    )
+    return "{\n" + body + "\n}"
+
+
+def _format_replica_targets_lua(
+    targets: "Dict[str, List[Tuple[str, str]]]",
+) -> str:
+    """Render {backend_name: {replica_id: server_name}} as nested Lua tables."""
+    backends_lua = []
+    for backend_name, entries in targets.items():
+        inner = ",\n".join(
+            f"        [{json.dumps(rid)}] = {json.dumps(sname)}"
+            for rid, sname in entries
+        )
+        backends_lua.append(
+            f"    [{json.dumps(backend_name)}] = " + "{\n" + inner + "\n    }"
+        )
+    return "{\n" + ",\n".join(backends_lua) + "\n}"
+
+
+def _write_if_changed(path: str, content: str) -> bool:
+    """Write content to path only if it differs from what's there."""
+    try:
+        with open(path) as f:
+            if f.read() == content:
+                return False
+    except FileNotFoundError:
+        pass
+    with open(path, "w") as f:
+        f.write(content)
+    return True
 
 
 def get_haproxy_binary() -> str:
@@ -242,8 +316,7 @@ class ServerConfig:
     name: str  # Server identifier for HAProxy config
     host: str  # IP/hostname to connect to
     port: int  # Port to connect to
-    real_ip: Optional[str] = None  # Original IP before localhost conversion
-    routing_key: Optional[str] = None  # Stable custom-routing selection key
+    # Replica identifier returned by /internal/route.
     replica_id: Optional[str] = None
 
     def __str__(self) -> str:
@@ -309,16 +382,9 @@ class BackendConfig:
     # List of servers in this backend
     servers: List[ServerConfig] = field(default_factory=list)
 
-    # Router servers for ingress bypass Lua routing.
-    # When populated, HAProxy Lua calls these to get routing decisions.
-    router_servers: List[ServerConfig] = field(default_factory=list)
-
-    # Whether this backend should use the direct ingress custom request routing path.
-    custom_request_routing: bool = False
-
-    # Per-server connection limit for the custom-routed backend.
-    # When set, HAProxy queues excess requests instead of forwarding them all.
-    max_server_conns: Optional[int] = None
+    # Ingress request router servers. When populated, HAProxy Lua calls
+    # /internal/route on one of these to pick a data-plane replica.
+    ingress_request_router_servers: List[ServerConfig] = field(default_factory=list)
 
     # The fallback server for this backend.
     fallback_server: Optional[ServerConfig] = None
@@ -572,6 +638,7 @@ class HAProxyApi(ProxyApi):
         self._proc = None
         # Track old processes from graceful reloads that may still be draining
         self._old_procs: List[asyncio.subprocess.Process] = []
+
         # Ensure required directories exist during initialization
         self._initialize_directories_and_error_files()
 
@@ -588,7 +655,7 @@ class HAProxyApi(ProxyApi):
         socket_dir = os.path.dirname(self.cfg.socket_path)
         os.makedirs(socket_dir, exist_ok=True)
 
-        # Create a server state directory only if persistence is enabled
+        # Create a server state directory only if optimization is enabled
         if self.cfg.enable_hap_optimization:
             server_state_dir = os.path.dirname(self.cfg.server_state_file)
             os.makedirs(server_state_dir, exist_ok=True)
@@ -651,10 +718,6 @@ class HAProxyApi(ProxyApi):
         """Perform a graceful reload of HAProxy by starting a new process with -sf."""
         try:
             old_proc = self._proc
-            if old_proc is None:
-                self._proc = await self._start_and_wait_for_haproxy()
-                return
-
             await self._wait_for_hap_availability(old_proc)
 
             # Save server state if optimization is enabled
@@ -708,149 +771,30 @@ class HAProxyApi(ProxyApi):
             f"HAProxy did not enter running state within {timeout_s} seconds."
         )
 
-    def _write_lua_script(
+    def _write_ingress_request_router_lua(
         self,
         backends: List[BackendConfig],
-    ) -> str:
-        """Write the Lua routing script for direct ingress custom request routing.
+    ) -> Optional[str]:
+        """Render the ingress-request-router Lua action and write it to disk.
 
-        Per-request routing: Lua calls /internal/route on an HTTP router
-        for every request, which calls choose_replicas() to pick a replica
-        and returns its backend HTTP host/port. HAProxy then resolves that
-        endpoint to a concrete backend server name inside the local config.
-
-        Returns the path to the written Lua script.
+        Returns the script path, or None if no backend has both ingress
+        request routers AND replicas with replica IDs.
         """
-        config_dir = os.path.dirname(self.config_file_path)
-        lua_path = os.path.join(config_dir, "direct_ingress_custom_request_routing.lua")
+        routers, targets = _routers_and_targets_by_backend(backends)
+        if not routers:
+            return None
 
-        router_entries = []
-        for backend in backends:
-            if not backend.custom_request_routing or not backend.router_servers:
-                continue
-            router = sorted(
-                backend.router_servers, key=lambda server: (server.port, server.host)
-            )[0]
-            router_entries.append(
-                "    { path_prefix = "
-                f'{json.dumps(backend.path_prefix or "/")}, '
-                f"host = {json.dumps(router.host)}, "
-                f"port = {router.port} }}"
-            )
+        content = _LUA_TEMPLATE.substitute(
+            TIMEOUT_S=INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+            ROUTERS=_format_routers_lua(routers),
+            REPLICA_TARGETS=_format_replica_targets_lua(targets),
+        )
 
-        if not router_entries:
-            return lua_path
-
-        routers_lua = "{\n" + ",\n".join(router_entries) + "\n}"
-
-        lua_content = f"""local STREAMING_PATHS = {{
-    ["/v1/chat/completions"] = true,
-    ["/v1/completions"] = true,
-}}
-
-local ROUTERS = {routers_lua}
-
-local function path_matches(path, prefix)
-    if prefix == "/" then
-        return true
-    end
-    return path == prefix or string.sub(path, 1, #prefix + 1) == prefix .. "/"
-end
-
-local function find_router(path)
-    for _, router in ipairs(ROUTERS) do
-        if path_matches(path, router.path_prefix) then
-            return router
-        end
-    end
-    return nil
-end
-
-local function strip_prefix(path, prefix)
-    if prefix == "/" then
-        return path
-    end
-    if path == prefix then
-        return "/"
-    end
-    return string.sub(path, #prefix + 1)
-end
-
-local function do_request(router, body)
-    local sock = core.tcp()
-    sock:settimeout(5)
-
-    local ok, err = sock:connect(router.host, tonumber(router.port))
-    if not ok then
-        return nil
-    end
-
-    local req = "POST /internal/route HTTP/1.0\\r\\n"
-        .. "Content-Type: application/json\\r\\n"
-        .. "Content-Length: " .. #body .. "\\r\\n"
-        .. "\\r\\n"
-        .. body
-
-    local ok, err = sock:send(req)
-    if not ok then
-        sock:close()
-        return nil
-    end
-
-    local response = sock:receive("*a")
-    sock:close()
-
-    if not response then
-        return nil
-    end
-
-    return response
-end
-
-local DISABLE_ROUTING_PATH = "/tmp/ray-serve-disable-ingress-bypass-routing"
-
-core.register_action("route_direct_ingress_request", {{"http-req"}}, function(txn)
-    local f = io.open(DISABLE_ROUTING_PATH, "r")
-    if f then f:close() return end
-    local path = txn.sf:path()
-    local router = find_router(path)
-    if not router then
-        return
-    end
-
-    local relative_path = strip_prefix(path, router.path_prefix)
-    if not STREAMING_PATHS[relative_path] then
-        return
-    end
-
-    local body = txn.sf:req_body()
-    if not body or body == "" then
-        return
-    end
-
-    if not string.find(body, '"stream"') or not string.find(body, "true") then
-        return
-    end
-
-    local response = do_request(router, body)
-    if not response then
-        return
-    end
-
-    local host = response:match('"host"%s*:%s*"([^"]+)"')
-    local port = response:match('"port"%s*:%s*([0-9]+)')
-
-    if host and port then
-        local routing_key = "sc_" .. host:gsub("%.", "_") .. "_" .. port
-        txn:set_var("txn.direct_ingress_target", routing_key)
-        txn:set_var("txn.custom_request_routed", true)
-    end
-end, 0)
-"""
-        with open(lua_path, "w") as f:
-            f.write(lua_content)
-
-        logger.info(f"Wrote Lua routing script to {lua_path}")
+        lua_path = os.path.join(
+            os.path.dirname(self.config_file_path), "ingress_request_router.lua"
+        )
+        if _write_if_changed(lua_path, content):
+            logger.debug(f"Wrote Lua routing script to {lua_path}")
         return lua_path
 
     def _generate_config_file_internal(self) -> None:
@@ -866,14 +810,16 @@ end, 0)
                 key=lambda be: (-len(be.path_prefix), be.path_prefix),
             )
 
-            has_custom_request_routing = any(
-                backend.custom_request_routing for backend in backends
+            has_ingress_request_router = any(
+                backend.ingress_request_router_servers for backend in backends
             )
 
-            # Write Lua script if direct ingress custom request routing is active.
-            lua_script_path = None
-            if has_custom_request_routing:
-                lua_script_path = self._write_lua_script(backends)
+            # Write Lua script if any backend has ingress request routers.
+            ingress_request_router_lua_path = None
+            if has_ingress_request_router:
+                ingress_request_router_lua_path = (
+                    self._write_ingress_request_router_lua(backends)
+                )
 
             # Enrich backends with precomputed health check configuration strings
             backends_with_health_config = [
@@ -904,8 +850,11 @@ end, 0)
                     "backends_with_health_config": backends_with_health_config,
                     "healthz_rules": healthz_rules,
                     "route_info": health_route_info,
-                    "has_custom_request_routing": has_custom_request_routing,
-                    "lua_script_path": lua_script_path,
+                    "has_ingress_request_router": has_ingress_request_router,
+                    "ingress_request_router_lua_path": ingress_request_router_lua_path,
+                    "ingress_request_router_timeout_s": (
+                        INGRESS_REQUEST_ROUTER_TIMEOUT_S
+                    ),
                 }
             )
 
@@ -1110,6 +1059,7 @@ end, 0)
             # Regenerate the config file with the deny rule
             self._generate_config_file_internal()
 
+            # Perform a graceful reload to apply changes
             await self._graceful_reload()
             logger.info("Successfully disabled health checks.")
         except Exception as e:
@@ -1122,6 +1072,7 @@ end, 0)
             self.cfg.pass_health_checks = True
 
             self._generate_config_file_internal()
+            # Perform a graceful reload to apply changes
             await self._graceful_reload()
             logger.info("Successfully enabled health checks.")
         except Exception as e:
@@ -1199,6 +1150,7 @@ class HAProxyManager(ProxyActorInterface):
                 LongPollNamespace.FALLBACK_TARGETS: self.update_fallback_targets,
             },
             call_in_event_loop=self.event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
 
         is_head = self._node_id == get_head_node_id()
@@ -1211,10 +1163,7 @@ class HAProxyManager(ProxyActorInterface):
         )
 
         self._haproxy = HAProxyApi(
-            cfg=HAProxyConfig(
-                http_options=http_options,
-                is_head=is_head,
-            )
+            cfg=HAProxyConfig(http_options=http_options, is_head=is_head)
         )
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
@@ -1377,8 +1326,7 @@ class HAProxyManager(ProxyActorInterface):
             # Use localhost if target is on the same node as HAProxy
             host="127.0.0.1" if target.ip == self._node_ip_address else target.ip,
             port=target.port,
-            real_ip=target.ip,
-            routing_key=f"sc_{target.ip.replace('.', '_')}_{target.port}",
+            # Unsanitized actor name; matches what /internal/route returns.
             replica_id=target.name,
         )
 
@@ -1388,22 +1336,16 @@ class HAProxyManager(ProxyActorInterface):
         fallback_target: Optional[Target],
     ) -> BackendConfig:
         """Create a backend configuration from a target group and fallback target."""
-        custom_request_routing = bool(target_group.ingress_request_router_targets)
         servers = [self._target_to_server(target) for target in target_group.targets]
 
-        router_servers = [
+        ingress_request_router_servers = [
             self._target_to_server(target)
             for target in target_group.ingress_request_router_targets
         ]
-        router_servers = sorted(
-            router_servers, key=lambda server: (server.port, server.host)
-        )
 
         fallback_server = None
         if fallback_target is not None:
             fallback_server = self._target_to_server(fallback_target)
-
-        health_path = "/health" if target_group.ingress_request_router_targets else None
 
         return BackendConfig(
             # The name is lowercased and formatted as <protocol>-<app_name>. Special
@@ -1414,12 +1356,9 @@ class HAProxyManager(ProxyActorInterface):
             ),
             path_prefix=target_group.route_prefix,
             servers=servers,
-            router_servers=router_servers,
-            custom_request_routing=custom_request_routing,
-            max_server_conns=None,
+            ingress_request_router_servers=ingress_request_router_servers,
             app_name=target_group.app_name,
             fallback_server=fallback_server,
-            health_check_path=health_path,
         )
 
     async def _reload_haproxy(self) -> None:

@@ -3,7 +3,7 @@ steps:
   - name: k8sbuild
     wanda: ci/docker/k8s.build.wanda.yaml
     depends_on:
-      - oss-ci-base_build-multipy(*)
+      - oss-ci-base_build-multipy(python=3.10)
     tags: cibase
 
   - label: ":kubernetes: operator"

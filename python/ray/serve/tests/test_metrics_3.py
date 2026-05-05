@@ -965,6 +965,7 @@ def test_long_poll_latency_metric(metrics_start_shutdown):
         host_actor=host,
         key_listeners={"test_key": on_update},
         call_in_event_loop=loop,
+        client_id="test_metrics_client",
     )
 
     # Wait for initial update (client starts with snapshot_id -1)
