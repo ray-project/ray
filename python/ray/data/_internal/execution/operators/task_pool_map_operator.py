@@ -1,9 +1,15 @@
 import warnings
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Tuple
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     import pyarrow as pa
 
+from typing_extensions import override
+
+from ray.data._internal.execution.bundle_queue import (
+    BaseBundleQueue,
+    RebundleQueue,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     PhysicalOperator,
@@ -11,7 +17,6 @@ from ray.data._internal.execution.interfaces import (
     TaskContext,
 )
 from ray.data._internal.execution.operators.map_operator import (
-    BaseRefBundler,
     MapOperator,
     _map_task,
 )
@@ -31,7 +36,7 @@ class TaskPoolMapOperator(MapOperator):
         name: str = "TaskPoolMap",
         target_max_block_size_override: Optional[int] = None,
         min_rows_per_bundle: Optional[int] = None,
-        ref_bundler: Optional[BaseRefBundler] = None,
+        ref_bundler: Optional[RebundleQueue] = None,
         max_concurrency: Optional[int] = None,
         supports_fusion: bool = True,
         map_task_kwargs: Optional[Dict[str, Any]] = None,
@@ -98,6 +103,16 @@ class TaskPoolMapOperator(MapOperator):
 
         self._map_task = cached_remote_fn(_map_task, **ray_remote_static_args)
 
+    @property
+    @override
+    def _input_queues(self) -> List["BaseBundleQueue"]:
+        return [self._block_ref_bundler]
+
+    @property
+    @override
+    def _output_queues(self) -> List["BaseBundleQueue"]:
+        return [self._output_queue]
+
     def _try_schedule_task(self, bundle: RefBundle, strict: bool):
         # Notify first input for deferred initialization (e.g., Iceberg schema evolution).
         self._notify_first_input(bundle)
@@ -123,11 +138,9 @@ class TaskPoolMapOperator(MapOperator):
                 2 * self.data_context._max_num_blocks_in_streaming_gen_buffer
             )
 
-        data_context = self.data_context
-
         gen = self._map_task.options(**dynamic_ray_remote_args).remote(
             self._map_transformer_ref,
-            data_context,
+            self._data_context_ref,
             ctx,
             *bundle.block_refs,
             slices=bundle.slices,

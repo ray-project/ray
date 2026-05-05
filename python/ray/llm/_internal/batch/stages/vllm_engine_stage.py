@@ -31,6 +31,7 @@ from ray.llm._internal.batch.stages.common import (
     maybe_convert_ndarray_to_list,
     truncate_str,
 )
+from ray.llm._internal.common.errors import VLLM_FATAL_ERRORS as _VLLM_FATAL_ERRORS
 from ray.llm._internal.common.utils.cloud_utils import is_remote_path
 from ray.llm._internal.common.utils.download_utils import (
     STREAMING_LOAD_FORMATS,
@@ -41,18 +42,6 @@ from ray.llm._internal.common.utils.lora_utils import download_lora_adapter
 from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 logger = logging.getLogger(__name__)
-
-# vLLM fatal errors that should always be re-raised, never swallowed.
-# EngineDeadError indicates the vLLM engine process has crashed and is
-# unrecoverable - all subsequent requests would fail anyway.
-_VLLM_FATAL_ERRORS: Tuple[Type[Exception], ...] = ()
-try:
-    from vllm.v1.engine.exceptions import EngineDeadError
-
-    _VLLM_FATAL_ERRORS = (EngineDeadError,)
-except ImportError:
-    # vLLM not installed or older version without this exception
-    pass
 
 # Length of prompt snippet to surface in case of recoverable error
 _MAX_PROMPT_LENGTH_IN_ERROR = 500
@@ -71,14 +60,14 @@ class vLLMEngineRequest(BaseModel):
     # DEPRECATED: The images inputs for the multimodal model. Use Any to avoid importing PIL.
     images: List[Any]
     # The multimodal data for the multimodal model.
-    multimodal_data: Optional[MultiModalDataDict]
+    multimodal_data: Optional[MultiModalDataDict] = None
     # The kwargs for the multimodal processor.
-    mm_processor_kwargs: Optional[Dict[str, Any]]
+    mm_processor_kwargs: Optional[Dict[str, Any]] = None
     # The uuids for the multimodal data.
-    multimodal_uuids: Optional[Dict[str, Any]]
+    multimodal_uuids: Optional[Dict[str, Any]] = None
     # The tokenized prompt IDs. If None, then the string prompt will be
     # tokenized by the LLM engine. This is not recommended for performance reasons.
-    prompt_token_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]] = None
     # The sampling or pooling parameters. Use Any to avoid importing vLLM.
     params: Any
     # The kwargs for tokenization.
@@ -133,7 +122,7 @@ class vLLMOutputData(BaseModel):
     """The output of the vLLM engine."""
 
     prompt: str
-    prompt_token_ids: Optional[List[int]]
+    prompt_token_ids: Optional[List[int]] = None
     num_input_tokens: int
 
     # Generate fields.
@@ -535,7 +524,7 @@ class vLLMEngineWrapper:
             multi_modal_data = request.multimodal_data
 
         if request.prompt_token_ids is not None:
-            llm_prompt = vllm.inputs.data.TokensPrompt(
+            llm_prompt = vllm.inputs.TokensPrompt(
                 prompt_token_ids=request.prompt_token_ids,
                 multi_modal_data=multi_modal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
@@ -543,7 +532,7 @@ class vLLMEngineWrapper:
             )
         else:
             assert request.prompt
-            llm_prompt = vllm.inputs.data.TextPrompt(
+            llm_prompt = vllm.inputs.TextPrompt(
                 prompt=request.prompt,
                 multi_modal_data=multi_modal_data,
                 mm_processor_kwargs=request.mm_processor_kwargs,
@@ -561,12 +550,14 @@ class vLLMEngineWrapper:
                 prompt=llm_prompt,
                 pooling_params=request.params,
                 tokenization_kwargs=request.tokenization_kwargs,
+                lora_request=request.lora_request,
             )
         else:
             stream = self.engine.generate(
                 request_id=str(request.request_id),
                 prompt=llm_prompt,
                 sampling_params=request.params,
+                lora_request=request.lora_request,
             )
 
         # Consume the stream until the request is finished.
@@ -934,6 +925,15 @@ class vLLMEngineStage(StatefulStage):
         placement_group_config = fn_constructor_kwargs.pop(
             "placement_group_config", None
         )
+
+        # If bundle_per_worker is specified inside placement_group_config,
+        # expand it into full bundles list
+        if placement_group_config is not None:
+            bundle_per_worker = placement_group_config.pop("bundle_per_worker", None)
+            if bundle_per_worker is not None:
+                placement_group_config["bundles"] = [
+                    bundle_per_worker.copy() for _ in range(num_bundles_per_replica)
+                ]
         if executor_backend == "ray":
             # Note that we have to use partial() to pass a function
             # instead of an object.

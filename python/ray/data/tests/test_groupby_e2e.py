@@ -32,7 +32,7 @@ from ray.data.aggregate import (
     Unique,
 )
 from ray.data.block import BlockAccessor
-from ray.data.context import DataContext, ShuffleStrategy
+from ray.data.context import ShuffleStrategy
 from ray.data.expressions import col
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import named_values
@@ -405,12 +405,13 @@ def test_groupby_tabular_sum(
     configure_shuffle_method,
     disable_fallback_to_object_extension,
 ):
-    ctx = DataContext.get_current()
-
-    if ctx.shuffle_strategy == ShuffleStrategy.HASH_SHUFFLE and ds_format == "pandas":
+    if (
+        ds_format == "pandas"
+        and get_pyarrow_version() < MIN_PYARROW_VERSION_TYPE_PROMOTION
+    ):
         pytest.skip(
-            "Pandas derives integer columns with null as doubles, "
-            "therefore deviating schemas for blocks containing nulls"
+            "PyArrow < 14 cannot unify double vs int64 schemas produced by "
+            "pandas nullable integer columns with nulls"
         )
 
     # Test built-in sum aggregation
@@ -469,13 +470,14 @@ def test_groupby_tabular_sum(
     nan_agg_ds = ds.groupby("A").sum("B")
     assert nan_agg_ds.count() == 3
 
+    result = nan_agg_ds.sort("A").to_pandas()
+
     expected = pd.DataFrame(
         {
-            "A": [0, 1, 2],
-            "sum(B)": pd.Series([None, None, None], dtype="object"),
+            "A": pd.Series([0, 1, 2], dtype=result["A"].dtype),
+            "sum(B)": pd.Series([None, None, None], dtype=result["sum(B)"].dtype),
         },
     )
-    result = nan_agg_ds.sort("A").to_pandas()
 
     print("Result: ", result)
     print("Expected: ", expected)
@@ -494,8 +496,12 @@ def test_as_list_e2e(
     num_parts,
     disable_fallback_to_object_extension,
 ):
-    ds = ray.data.range(10)
-    ds = ds.with_column("group_key", col("id") % 3).repartition(num_parts)
+    ds = (
+        ray.data.range(10)
+        .with_column("group_key", col("id") % 3)
+        .repartition(num_parts)
+        .map_batches(lambda x: x, batch_format=batch_format)
+    )
 
     # Listing all elements per group:
     result = ds.groupby("group_key").aggregate(AsList(on="id")).take_all()
@@ -519,15 +525,19 @@ def test_as_list_with_nulls(
     disable_fallback_to_object_extension,
 ):
     # Test with nulls included (default behavior: ignore_nulls=False)
-    ds = ray.data.from_items(
-        [
-            {"group": "A", "value": 1},
-            {"group": "A", "value": None},
-            {"group": "A", "value": 3},
-            {"group": "B", "value": None},
-            {"group": "B", "value": 5},
-        ]
-    ).repartition(num_parts)
+    ds = (
+        ray.data.from_items(
+            [
+                {"group": "A", "value": 1},
+                {"group": "A", "value": None},
+                {"group": "A", "value": 3},
+                {"group": "B", "value": None},
+                {"group": "B", "value": 5},
+            ]
+        )
+        .repartition(num_parts)
+        .map_batches(lambda x: x, batch_format=batch_format)
+    )
 
     # Default: nulls are included in the list
     result = ds.groupby("group").aggregate(AsList(on="value")).take_all()
@@ -652,6 +662,12 @@ def test_groupby_arrow_multi_agg(
 
     agg_df["unique(B)"] = _sort_series_of_lists_elements(agg_df["unique(B)"])
     expected_df["unique(B)"] = _sort_series_of_lists_elements(expected_df["unique(B)"])
+
+    # to_pandas() now preserves Arrow-backed dtypes via types_mapper; coerce
+    # the expected DataFrame's numeric columns to match.
+    expected_df = expected_df.astype(
+        {col: agg_df[col].dtype for col in expected_df.columns if col != "unique(B)"}
+    )
 
     print(f"Expected: {expected_df}")
     print(f"Result: {agg_df}")
@@ -1002,11 +1018,13 @@ def test_groupby_map_groups_for_pandas(
     # The function (i.e. the normalization) performed on each group doesn't
     # aggregate rows, so we still have 3 rows.
     assert mapped.count() == 3
+    result = mapped.sort(["A", "C"]).to_pandas()
+
+    # to_pandas() now preserves Arrow-backed dtypes via types_mapper; build the
+    # expected DataFrame with matching dtypes.
     expected = pd.DataFrame(
         {"A": ["a", "a", "b"], "B": [0.5, 0.5, 1.000000], "C": [0.4, 0.6, 1.0]}
-    )
-
-    result = mapped.sort(["A", "C"]).to_pandas()
+    ).astype(result.dtypes.to_dict())
 
     pd.testing.assert_frame_equal(expected, result)
 

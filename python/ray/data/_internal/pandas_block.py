@@ -61,6 +61,46 @@ def lazy_import_pandas():
     return _pandas
 
 
+def _from_pandas_safe(df: "pandas.DataFrame") -> "pyarrow.Table":
+    """Convert a pandas DataFrame to an Arrow table, handling object-dtype columns.
+
+    ``pa.Table.from_pandas`` infers Arrow types for object-dtype columns by inspecting
+    the first Python value, then calls ``pa.array()`` on the whole column. This fails
+    for values that PyArrow cannot convert natively — e.g. multi-dimensional numpy
+    arrays, PIL images, or mixed list/scalar content.
+
+    This function routes object-dtype columns through ``convert_to_pyarrow_array``,
+    which produces ``ArrowTensorArray`` for ndarray elements and falls back to
+    ``ArrowPythonObjectArray`` (pickle) for arbitrary Python objects. All other columns
+    go through ``pa.array(col, from_pandas=True)`` which handles nullable dtypes and
+    extension types via ``__arrow_array__``.
+    """
+    import pyarrow as pa
+
+    from ray.data._internal.tensor_extensions.arrow import convert_to_pyarrow_array
+
+    # If no object-dtype columns, use fast path with regular from_pandas()
+    if not any(is_object_dtype(df[col].dtype) for col in df.columns):
+        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
+        return pa.Table.from_pandas(df, preserve_index=False)
+
+    # Convert column by column: object-dtype columns go through
+    # convert_to_pyarrow_array (handles tensors, PIL images, arbitrary objects),
+    # all others go through pa.array() with from_pandas=True.
+    arrays = []
+    fields = []
+    for col_name in df.columns:
+        col = df[col_name]
+        if is_object_dtype(col.dtype):
+            arr = convert_to_pyarrow_array(col.values, col_name)
+        else:
+            arr = pa.array(col, from_pandas=True)
+        arrays.append(arr)
+        fields.append(pa.field(col_name, arr.type))
+
+    return pa.table(dict(zip(df.columns, arrays)), schema=pa.schema(fields))
+
+
 class PandasRow(Mapping):
     """
     Row of a tabular Dataset backed by a Pandas DataFrame block.
@@ -301,7 +341,6 @@ class PandasBlockBuilder(TableBlockBuilder):
         from ray.data.extensions.tensor_extension import TensorArray
 
         pandas = lazy_import_pandas()
-
         return pandas.DataFrame(
             {
                 column_name: (
@@ -346,7 +385,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         return BlockType.PANDAS
 
 
-# NOTE: This has to be compatible with pyarrow.lib.schema
+# NOTE: This has to be compatible with Pyarrow ``Schema``
 @dataclass(frozen=True, init=False)
 class PandasBlockSchema:
     # Stored as tuples for hash-ability.
@@ -479,9 +518,9 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         from ray.data._internal.tensor_extensions.pandas import TensorDtype
 
-        # Set `preserve_index=False` so that Arrow doesn't add a '__index_level_0__'
-        # column to the resulting table.
-        arrow_table = pa.Table.from_pandas(self._table, preserve_index=False)
+        # _from_pandas_safe handles object-dtype columns that pa.Table.from_pandas
+        # cannot convert (e.g. multi-dimensional numpy arrays, PIL images), because Arrow cannot handle them natively.
+        arrow_table = _from_pandas_safe(self._table)
 
         # NOTE: Pandas by default coerces all-null column types (including None,
         #       NaN, etc) into "double" type by default, which is incorrect in a
@@ -498,7 +537,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
             # Skip coercing tensors to null-type to avoid type information loss
             # See https://github.com/ray-project/ray/issues/59087 for context
-            if isinstance(col.dtype, TensorDtype):
+            if isinstance(col.dtype, (TensorDtype, pd.ArrowDtype)):
                 continue
 
             if not col.notna().any():

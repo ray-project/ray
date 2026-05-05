@@ -11,7 +11,6 @@ import threading
 import time
 import traceback
 import warnings
-from abc import ABC, abstractmethod
 from collections import defaultdict, deque
 from contextlib import asynccontextmanager, contextmanager
 from dataclasses import dataclass
@@ -71,6 +70,9 @@ from ray.serve._private.constants import (
     RAY_SERVE_METRICS_EXPORT_INTERVAL_MS,
     RAY_SERVE_RECORD_AUTOSCALING_STATS_TIMEOUT_S,
     RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+    RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS,
+    RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S,
+    RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S,
     RAY_SERVE_REPLICA_UTILIZATION_NUM_BUCKETS,
     RAY_SERVE_REPLICA_UTILIZATION_REPORT_INTERVAL_S,
     RAY_SERVE_REPLICA_UTILIZATION_WINDOW_S,
@@ -82,9 +84,7 @@ from ray.serve._private.constants import (
     REQUEST_LATENCY_BUCKETS_MS,
     REQUEST_ROUTING_STATS_METHOD,
     SERVE_CONTROLLER_NAME,
-    SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER,
     SERVE_HTTP_REQUEST_ID_HEADER,
-    SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER,
     SERVE_LOG_APPLICATION,
     SERVE_LOG_COMPONENT,
     SERVE_LOG_DEPLOYMENT,
@@ -114,6 +114,9 @@ from ray.serve._private.http_util import (
     configure_http_middlewares,
     configure_http_options_with_defaults,
     convert_object_to_asgi_messages,
+    parse_disconnect_disabled_header,
+    parse_request_timeout_header,
+    parse_session_id_header,
     start_asgi_http_server,
 )
 from ray.serve._private.logging_utils import (
@@ -127,7 +130,10 @@ from ray.serve._private.logging_utils import (
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.proxy_request_response import ResponseStatus, gRPCStreamingType
 from ray.serve._private.replica_response_generator import ReplicaResponseGenerator
-from ray.serve._private.rolling_window_accumulator import RollingWindowAccumulator
+from ray.serve._private.rolling_window import (
+    RollingWindowAccumulator,
+    RollingWindowMax,
+)
 from ray.serve._private.serialization import RPCSerializer
 from ray.serve._private.task_consumer import TaskConsumerWrapper
 from ray.serve._private.thirdparty.get_asgi_route_name import (
@@ -393,6 +399,23 @@ class ReplicaMetricsManager:
         if self._cached_metrics_enabled:
             self._cached_latencies = defaultdict(deque)
             self._event_loop.create_task(self._report_cached_metrics_forever())
+
+        # Track maximum processing latency over a rolling window.
+        self._max_processing_latency_trackers = defaultdict(
+            lambda: RollingWindowMax(
+                window_duration_s=RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_WINDOW_S,
+                num_buckets=RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_NUM_BUCKETS,
+            )
+        )
+        self._max_processing_latency_gauge = metrics.Gauge(
+            "serve_deployment_max_processing_latency_ms",
+            description="The maximum observed time spent processing a query.",
+            tag_keys=("route",),
+        )
+        self._max_processing_latency_report_interval_s = (
+            RAY_SERVE_REPLICA_MAX_PROCESSING_LATENCY_REPORT_INTERVAL_S
+        )
+        self._event_loop.create_task(self._report_max_processing_latency_forever())
 
         self._num_ongoing_requests_gauge = metrics.Gauge(
             "serve_replica_processing_queries",
@@ -718,7 +741,8 @@ class ReplicaMetricsManager:
         if custom_metrics_enabled:
             self._custom_metrics_enabled = custom_metrics_enabled
             self._record_autoscaling_stats_fn = record_autoscaling_stats_fn
-            self.start_metrics_pusher()
+            if self._autoscaling_config:
+                self.start_metrics_pusher()
 
     def inc_num_ongoing_requests(self, request_metadata: RequestMetadata) -> int:
         self._num_ongoing_requests += 1
@@ -757,6 +781,31 @@ class ReplicaMetricsManager:
     def set_max_ongoing_requests(self, max_ongoing_requests: int) -> None:
         """Update max_ongoing_requests when deployment config changes."""
         self._max_ongoing_requests = max_ongoing_requests
+
+    async def _report_max_processing_latency_forever(self) -> None:
+        """Background task to emit max processing latency gauge continuously."""
+        consecutive_errors = 0
+        while True:
+            try:
+                await asyncio.sleep(self._max_processing_latency_report_interval_s)
+                for route, tracker in list(
+                    self._max_processing_latency_trackers.items()
+                ):
+                    max_latency = tracker.get_max()
+                    self._max_processing_latency_gauge.set(
+                        max_latency, tags={"route": route}
+                    )
+
+                consecutive_errors = 0
+            except Exception:
+                logger.exception(
+                    "Unexpected error reporting max processing latency metrics."
+                )
+
+                # Exponential backoff starting at 1s and capping at 10s.
+                backoff_time_s = min(10, 2**consecutive_errors)
+                consecutive_errors += 1
+                await asyncio.sleep(backoff_time_s)
 
     async def _report_utilization_forever(self) -> None:
         """Background task to emit utilization gauge continuously."""
@@ -810,6 +859,7 @@ class ReplicaMetricsManager:
         """Records per-request metrics."""
         # Track latency for utilization calculation (rolling window).
         self._user_code_time_accumulator.add(latency_ms)
+        self._max_processing_latency_trackers[route].add(latency_ms)
 
         if self._cached_metrics_enabled:
             self._cached_latencies[route].append(latency_ms)
@@ -995,7 +1045,7 @@ class ReplicaMetricsManager:
 StatusCodeCallback = Callable[[str], None]
 
 
-class ReplicaBase(ABC):
+class Replica:
     def __init__(
         self,
         replica_id: ReplicaID,
@@ -1006,12 +1056,14 @@ class ReplicaBase(ABC):
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        is_ingress_request_router: bool = False,
     ):
         self._version = version
         self._replica_id = replica_id
         self._deployment_id = replica_id.deployment_id
         self._deployment_config = deployment_config
         self._ingress = ingress
+        self._is_ingress_request_router = is_ingress_request_router
         self._route_prefix = route_prefix
         self._component_name = f"{self._deployment_id.name}"
         if self._deployment_id.app_name:
@@ -1101,6 +1153,34 @@ class ReplicaBase(ABC):
         )
         # Silence spammy false positive errors from gRPC Python
         self._event_loop.set_exception_handler(asyncio_grpc_exception_handler)
+
+        try:
+            is_tracing_setup_successful = setup_tracing(
+                component_type=ServeComponentType.REPLICA,
+                component_name=self._component_name,
+                component_id=self._component_id,
+            )
+            if is_tracing_setup_successful:
+                logger.info("Successfully set up tracing for replica")
+        except Exception as e:
+            logger.warning(
+                f"Failed to set up tracing: {e}. "
+                "The replica will continue running, but traces will not be exported."
+            )
+
+        self._controller_handle = ray.get_actor(
+            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
+        )
+
+        # get node ID
+        self._node_id = ray.get_runtime_context().get_node_id()
+        self._http_options: Optional[HTTPOptions] = None
+        self._grpc_options: Optional[gRPCOptions] = None
+
+        self._direct_ingress_http_server_task: Optional[asyncio.Task] = None
+        self._direct_ingress_grpc_server_task: Optional[asyncio.Task] = None
+
+        self._num_queued_requests = 0
 
     @property
     def max_ongoing_requests(self) -> int:
@@ -1253,6 +1333,13 @@ class ReplicaBase(ABC):
             }
 
     def _can_accept_request(self, request_metadata: RequestMetadata) -> bool:
+        if request_metadata.is_direct_ingress:
+            limit = self.max_queued_requests
+            if limit != -1 and self._num_queued_requests >= limit:
+                return False
+
+            return True
+
         # This replica gates concurrent request handling with an asyncio.Semaphore.
         # Each in-flight request acquires the semaphore. When the number of ongoing
         # requests reaches max_ongoing_requests, the semaphore becomes locked.
@@ -1332,6 +1419,23 @@ class ReplicaBase(ABC):
             was_error=user_exception is not None,
             exception_type=exception_type,
         )
+
+        if is_span_recording():
+            if request_metadata.is_http_request:
+                set_http_span_attributes(
+                    method=request_metadata._http_method,
+                    status_code=status_code,
+                    route=request_metadata.route,
+                )
+            else:
+                set_rpc_span_attributes(
+                    system=request_metadata._request_protocol,
+                    method=request_metadata.call_method,
+                    status_code=status_code,
+                    service=self._deployment_id.name,
+                )
+            if user_exception is not None:
+                set_span_exception(user_exception, escaped=False)
 
         # Record ingress metrics for direct ingress HTTP requests
         if request_metadata.is_direct_ingress and status_code is not None:
@@ -1481,8 +1585,10 @@ class ReplicaBase(ABC):
                         request_metadata, request_args, request_kwargs
                     )
                 except Exception as e:
-                    # For gRPC requests, wrap exception with user-set status code
-                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+                    # For gRPC requests, wrap exception with user-set status code.
+                    # Non-gRPC requests should preserve the original exception
+                    # without creating a self-referential __cause__ chain.
+                    self._raise_user_exception(e, request_metadata)
 
     async def handle_request_streaming(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -1513,8 +1619,7 @@ class ReplicaBase(ABC):
                         ):
                             yield result
                 except Exception as e:
-                    # For gRPC requests, wrap exception with user-set status code
-                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+                    self._raise_user_exception(e, request_metadata)
 
     def _maybe_wrap_grpc_exception(
         self, e: BaseException, request_metadata: RequestMetadata
@@ -1534,6 +1639,14 @@ class ReplicaBase(ABC):
                     details=grpc_context.details(),
                 )
         return e
+
+    def _raise_user_exception(
+        self, e: BaseException, request_metadata: RequestMetadata
+    ) -> None:
+        wrapped_exception = self._maybe_wrap_grpc_exception(e, request_metadata)
+        if wrapped_exception is e:
+            raise e
+        raise wrapped_exception from e
 
     async def handle_request_with_rejection(
         self, request_metadata: RequestMetadata, *request_args, **request_kwargs
@@ -1585,12 +1698,29 @@ class ReplicaBase(ABC):
                             request_metadata, request_args, request_kwargs
                         )
                 except Exception as e:
-                    # For gRPC requests, wrap exception with user-set status code
-                    raise self._maybe_wrap_grpc_exception(e, request_metadata) from e
+                    self._raise_user_exception(e, request_metadata)
 
-    @abstractmethod
     async def _on_initialized(self):
-        raise NotImplementedError
+        await self._maybe_start_direct_ingress_servers()
+
+        current_rank = ray.serve.context._get_internal_replica_context().rank
+        self._set_internal_replica_context(
+            servable_object=self._user_callable_wrapper.user_callable,
+            rank=current_rank,
+        )
+
+        # Start the gRPC server for inter-deployment communication
+        add_ASGIServiceServicer_to_server(self, self._server)
+        self._internal_grpc_port = self._server.add_insecure_port("[::]:0")
+        await self._server.start()
+        logger.debug(
+            f"Started inter-deployment gRPC server on port {self._internal_grpc_port}"
+        )
+
+        # Save the initialization latency if the replica is initializing
+        # for the first time.
+        if self._initialization_latency is None:
+            self._initialization_latency = time.time() - self._initialization_start_time
 
     async def initialize(
         self,
@@ -1703,22 +1833,34 @@ class ReplicaBase(ABC):
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
-    @abstractmethod
     def _on_request_cancelled(
         self, request_metadata: RequestMetadata, e: asyncio.CancelledError
     ):
-        pass
+        """Recursively cancel child requests.
 
-    @abstractmethod
+        This includes all requests that are pending assignment, and gRPC
+        requests that have already been assigned.
+        """
+        # Cancel child requests pending assignment
+        requests_pending_assignment = (
+            ray.serve.context._get_requests_pending_assignment(
+                request_metadata.internal_request_id
+            )
+        )
+        for task in requests_pending_assignment.values():
+            task.cancel()
+
+        # Cancel child requests that have already been assigned.
+        # This is for gRPC requests and direct ingress requests.
+        in_flight_requests = _get_in_flight_requests(
+            request_metadata.internal_request_id
+        )
+        for replica_result in in_flight_requests.values():
+            replica_result.cancel()
+
     def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
-        pass
-
-    @abstractmethod
-    @contextmanager
-    def _wrap_request(
-        self, request_metadata: RequestMetadata
-    ) -> Generator[StatusCodeCallback, None, None]:
-        pass
+        if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
+            ray.util.pdb._post_mortem()
 
     @asynccontextmanager
     async def _start_request(self, request_metadata: RequestMetadata):
@@ -1772,12 +1914,33 @@ class ReplicaBase(ABC):
     async def perform_graceful_shutdown(self):
         self._shutting_down = True
 
+        coros = []
+        if (
+            RAY_SERVE_ENABLE_DIRECT_INGRESS
+            and self._ingress
+            and self._user_callable_initialized
+        ):
+            # In direct ingress mode, we need to wait at least
+            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
+            # balancers (e.g., ALB) time to deregister the replica, in addition to
+            # waiting for requests to drain.
+            coros.append(asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S))
+
         # If the replica was never initialized it never served traffic, so we
         # can skip the wait period.
         if self._user_callable_initialized:
-            await self._drain_ongoing_requests()
+            coros.append(self._drain_ongoing_requests())
+
+        if coros:
+            await asyncio.gather(*coros)
 
         await self.shutdown()
+
+        # Cancel direct ingress HTTP/gRPC server tasks if they exist.
+        if self._direct_ingress_http_server_task:
+            self._direct_ingress_http_server_task.cancel()
+        if self._direct_ingress_grpc_server_task:
+            self._direct_ingress_grpc_server_task.cancel()
 
     async def check_health(self):
         try:
@@ -1802,48 +1965,6 @@ class ReplicaBase(ABC):
             logger.warning("Replica record routing stats failed.")
             raise e from None
 
-
-async def send_http_response(message, status_code, send):
-    for msg in convert_object_to_asgi_messages(
-        message,
-        status_code=status_code,
-    ):
-        await send(msg)
-
-
-class Replica(ReplicaBase):
-    def __init__(self, **kwargs):
-
-        super().__init__(**kwargs)
-
-        try:
-            is_tracing_setup_successful = setup_tracing(
-                component_type=ServeComponentType.REPLICA,
-                component_name=self._component_name,
-                component_id=self._component_id,
-            )
-            if is_tracing_setup_successful:
-                logger.info("Successfully set up tracing for replica")
-        except Exception as e:
-            logger.warning(
-                f"Failed to set up tracing: {e}. "
-                "The replica will continue running, but traces will not be exported."
-            )
-
-        self._controller_handle = ray.get_actor(
-            SERVE_CONTROLLER_NAME, namespace=SERVE_NAMESPACE
-        )
-
-        # get node ID
-        self._node_id = ray.get_runtime_context().get_node_id()
-        self._http_options: Optional[HTTPOptions] = None
-        self._grpc_options: Optional[gRPCOptions] = None
-
-        self._direct_ingress_http_server_task: Optional[asyncio.Task] = None
-        self._direct_ingress_grpc_server_task: Optional[asyncio.Task] = None
-
-        self._num_queued_requests = 0
-
     @property
     def max_queued_requests(self) -> int:
         return self._deployment_config.max_queued_requests
@@ -1852,7 +1973,7 @@ class Replica(ReplicaBase):
         if not RAY_SERVE_ENABLE_DIRECT_INGRESS:
             return
 
-        if not self._ingress:
+        if not self._ingress and not self._is_ingress_request_router:
             return
 
         async def allocate_and_start_server(start_server_fn, protocol):
@@ -1904,15 +2025,20 @@ class Replica(ReplicaBase):
 
             raise RuntimeError(err_msg)
 
-        # Fetch configs
-        self._http_options, self._grpc_options = ray.get(
-            [
-                self._controller_handle.get_http_config.remote(),
-                self._controller_handle.get_grpc_config.remote(),
-            ]
-        )
+        if self._ingress:
+            self._http_options, self._grpc_options = ray.get(
+                [
+                    self._controller_handle.get_http_config.remote(),
+                    self._controller_handle.get_grpc_config.remote(),
+                ]
+            )
+        else:
+            self._http_options = ray.get(
+                self._controller_handle.get_http_config.remote()
+            )
+            self._grpc_options = None
 
-        grpc_enabled = is_grpc_enabled(self._grpc_options)
+        grpc_enabled = self._ingress and is_grpc_enabled(self._grpc_options)
 
         # Allocate and start HTTP server
         async def start_http_server(port):
@@ -1937,7 +2063,8 @@ class Replica(ReplicaBase):
             protocol=RequestProtocol.HTTP,
         )
 
-        # Allocate and start gRPC server if enabled
+        # Allocate and start gRPC server for ingress replicas if enabled.
+        # Ingress request router replicas only need HTTP for /internal/route.
         if grpc_enabled:
 
             async def start_grpc_server_fn(port):
@@ -1963,65 +2090,6 @@ class Replica(ReplicaBase):
             f"Started HTTP server on port {self._http_port}"
             + (f" and gRPC server on port {self._grpc_port}" if grpc_enabled else "")
         )
-
-    async def _on_initialized(self):
-        await self._maybe_start_direct_ingress_servers()
-
-        current_rank = ray.serve.context._get_internal_replica_context().rank
-        self._set_internal_replica_context(
-            servable_object=self._user_callable_wrapper.user_callable,
-            rank=current_rank,
-        )
-
-        # Start the gRPC server for inter-deployment communication
-        add_ASGIServiceServicer_to_server(self, self._server)
-        self._internal_grpc_port = self._server.add_insecure_port("[::]:0")
-        await self._server.start()
-        logger.debug(
-            f"Started inter-deployment gRPC server on port {self._internal_grpc_port}"
-        )
-
-        # Save the initialization latency if the replica is initializing
-        # for the first time.
-        if self._initialization_latency is None:
-            self._initialization_latency = time.time() - self._initialization_start_time
-
-    def _on_request_cancelled(
-        self, metadata: RequestMetadata, e: asyncio.CancelledError
-    ):
-        """Recursively cancel child requests.
-
-        This includes all requests that are pending assignment, and gRPC
-        requests that have already been assigned.
-        """
-        # Cancel child requests pending assignment
-        requests_pending_assignment = (
-            ray.serve.context._get_requests_pending_assignment(
-                metadata.internal_request_id
-            )
-        )
-        for task in requests_pending_assignment.values():
-            task.cancel()
-
-        # Cancel child requests that have already been assigned.
-        # This is for gRPC requests and direct ingress requests.
-        in_flight_requests = _get_in_flight_requests(metadata.internal_request_id)
-        for replica_result in in_flight_requests.values():
-            replica_result.cancel()
-
-    def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
-        if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
-            ray.util.pdb._post_mortem()
-
-    def _can_accept_request(self, request_metadata: RequestMetadata):
-        if request_metadata.is_direct_ingress:
-            limit = self.max_queued_requests
-            if limit != -1 and self._num_queued_requests >= limit:
-                return False
-
-            return True
-        else:
-            return super()._can_accept_request(request_metadata)
 
     @contextmanager
     def _tracing_context(self, request_metadata: RequestMetadata):
@@ -2069,6 +2137,7 @@ class Replica(ReplicaBase):
                     _internal_request_id=request_metadata.internal_request_id,
                     app_name=self._deployment_id.app_name,
                     multiplexed_model_id=request_metadata.multiplexed_model_id,
+                    session_id=request_metadata.session_id,
                     grpc_context=request_metadata.grpc_context,
                     _client=request_metadata._client,
                     cancel_on_parent_request_cancel=self._ingress
@@ -2081,34 +2150,6 @@ class Replica(ReplicaBase):
                 request_metadata
             ) as status_code_callback:
                 yield status_code_callback
-
-    def _record_errors_and_metrics(
-        self,
-        user_exception: Optional[BaseException],
-        status_code: Optional[str],
-        latency_ms: float,
-        request_metadata: RequestMetadata,
-    ):
-        super()._record_errors_and_metrics(
-            user_exception, status_code, latency_ms, request_metadata
-        )
-
-        if is_span_recording():
-            if request_metadata.is_http_request:
-                set_http_span_attributes(
-                    method=request_metadata._http_method,
-                    status_code=status_code,
-                    route=request_metadata.route,
-                )
-            else:
-                set_rpc_span_attributes(
-                    system=request_metadata._request_protocol,
-                    method=request_metadata.call_method,
-                    status_code=status_code,
-                    service=self._deployment_id.name,
-                )
-            if user_exception is not None:
-                set_span_exception(user_exception, escaped=False)
 
     @_wrap_grpc_call
     async def HandleRequest(
@@ -2432,23 +2473,14 @@ class Replica(ReplicaBase):
 
         return route
 
-    def _parse_request_timeout(self, headers: Dict[str, str]) -> Optional[float]:
+    def _parse_request_timeout(self, headers: Dict[bytes, bytes]) -> Optional[float]:
         """Gets the desired request timeout from the headers.
         If the header is missing or invalid, returns the default request timeout
         from HttpOptions. If the header is non-positive, timeout is disabled.
         """
-        header_name = SERVE_HTTP_REQUEST_TIMEOUT_S_HEADER.encode("utf-8")
-        if header_name not in headers:
-            return self._http_options.request_timeout_s
-
-        value = headers.get(header_name).decode("utf-8")
-        try:
-            timeout = float(value)
-            if timeout > 0:
-                return timeout
-            return None
-        except ValueError:
-            return self._http_options.request_timeout_s
+        return parse_request_timeout_header(
+            headers, self._http_options.request_timeout_s
+        )
 
     async def _direct_ingress_asgi(
         self,
@@ -2517,12 +2549,9 @@ class Replica(ReplicaBase):
             headers.get(SERVE_HTTP_REQUEST_ID_HEADER.encode("utf-8")).decode("utf-8")
             or generate_request_id()
         )
-        request_disconnect_disabled = (
-            headers.get(
-                SERVE_HTTP_REQUEST_DISCONNECT_DISABLED_HEADER.encode("utf-8"), b"?0"
-            ).decode("utf-8")
-        ) == "?1"
+        request_disconnect_disabled = parse_disconnect_disabled_header(headers)
         request_timeout_s = self._parse_request_timeout(headers)
+        session_id = parse_session_id_header(headers)
 
         request_metadata = RequestMetadata(
             request_id=request_id,
@@ -2532,6 +2561,7 @@ class Replica(ReplicaBase):
             app_name=self._deployment_id.app_name,
             # TODO(edoakes): populate the multiplexed model ID.
             multiplexed_model_id="",
+            session_id=session_id,
             is_streaming=True,
             _request_protocol=RequestProtocol.HTTP,
             tracing_context=self.get_asgi_tracing_context(scope["headers"]),
@@ -2662,28 +2692,13 @@ class Replica(ReplicaBase):
                     await send_http_response(msg, 408, send)
                 raise asyncio.CancelledError
 
-    async def perform_graceful_shutdown(self):
-        if (
-            RAY_SERVE_ENABLE_DIRECT_INGRESS
-            and self._ingress
-            and self._user_callable_initialized
-        ):
-            # In direct ingress mode, we need to wait at least
-            # RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S to give external load
-            # balancers (e.g., ALB) time to deregister the replica, in addition to
-            # waiting for requests to drain.
-            await asyncio.gather(
-                asyncio.sleep(RAY_SERVE_DIRECT_INGRESS_MIN_DRAINING_PERIOD_S),
-                super().perform_graceful_shutdown(),
-            )
-        else:
-            await super().perform_graceful_shutdown()
 
-        # Cancel direct ingress HTTP/gRPC server tasks if they exist.
-        if self._direct_ingress_http_server_task:
-            self._direct_ingress_http_server_task.cancel()
-        if self._direct_ingress_grpc_server_task:
-            self._direct_ingress_grpc_server_task.cancel()
+async def send_http_response(message, status_code, send):
+    for msg in convert_object_to_asgi_messages(
+        message,
+        status_code=status_code,
+    ):
+        await send(msg)
 
 
 class ReplicaActor:
@@ -2706,6 +2721,7 @@ class ReplicaActor:
         version: DeploymentVersion,
         ingress: bool,
         route_prefix: str,
+        is_ingress_request_router: bool = False,
     ):
         deployment_config = DeploymentConfig.from_proto_bytes(
             deployment_config_proto_bytes
@@ -2713,7 +2729,7 @@ class ReplicaActor:
         deployment_def = cloudpickle.loads(serialized_deployment_def)
         if isinstance(deployment_def, str):
             deployment_def = _load_deployment_def_from_import_path(deployment_def)
-        self._replica_impl: ReplicaBase = create_replica_impl(
+        self._replica_impl: Replica = create_replica_impl(
             replica_id=replica_id,
             deployment_def=deployment_def,
             init_args=cloudpickle.loads(serialized_init_args),
@@ -2722,6 +2738,7 @@ class ReplicaActor:
             version=version,
             ingress=ingress,
             route_prefix=route_prefix,
+            is_ingress_request_router=is_ingress_request_router,
         )
 
     def push_proxy_handle(self, handle: ActorHandle):

@@ -403,7 +403,7 @@ scaling_config = ScalingConfig(
 
 Docs on <a href="https://docs.ray.io/en/latest/train/api/doc/ray.train.ScalingConfig.html#ray-train-scalingconfig" target="_blank">ScalingConfig</a> can be found with the link in this sentence.
 
-See docs on configuring <a href="https://docs.ray.io/en/latest/train/user-guides/using-gpus.html" target="_blank">scale and GPUs</a> for more details.
+See docs on configuring <a href="https://docs.ray.io/en/latest/train/user-guides/using-accelerators.html" target="_blank">scale and accelerators</a> for more details.
 </div>
 
 ## 08 · Wrap the model with `prepare_model()`  

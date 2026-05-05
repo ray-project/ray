@@ -129,6 +129,8 @@ struct NodeManagerConfig {
   int max_io_workers;
   // The key-value labels of this node.
   absl::flat_hash_map<std::string, std::string> labels;
+  // Whether resource isolation via cgroupv2 is enabled.
+  bool enable_resource_isolation;
 };
 
 enum RayletShutdownState : std::uint8_t {
@@ -175,7 +177,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       PlacementGroupResourceManager &placement_group_resource_manager,
       boost::asio::basic_socket_acceptor<local_stream_protocol> acceptor,
       local_stream_socket socket,
-      ray::observability::MetricInterface &memory_manager_worker_eviction_total_count);
+      ray::observability::MetricInterface &memory_manager_worker_eviction_total_count,
+      ray::observability::MetricInterface
+          &node_manager_unexpected_worker_failure_total_count);
 
   void Start(rpc::GcsNodeInfo &&self_node_info);
 
@@ -342,6 +346,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                              rpc::CancelLocalTaskReply *reply,
                              rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                               rpc::IsLocalWorkerDeadReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
+
  private:
   FRIEND_TEST(NodeManagerStaticTest, TestHandleReportWorkerBacklog);
 
@@ -437,9 +445,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Convert a worker to an actor since it's finished an actor creation task.
   /// \param worker The worker that was granted the actor creation lease.
-  /// \param lease The lease of the actor creation task.
+  /// \param lease_spec The lease specification of the actor creation task.
   void ConvertWorkerToActor(const std::shared_ptr<WorkerInterface> &worker,
-                            const RayLease &lease);
+                            const LeaseSpecification &lease_spec);
 
   /// Start a wait request for the requested objects.
   ///
@@ -649,10 +657,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                             rpc::ShutdownRayletReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
-                               rpc::IsLocalWorkerDeadReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
-
   /// Handle a `NodeStats` request.
   void HandleGetNodeStats(rpc::GetNodeStatsRequest request,
                           rpc::GetNodeStatsReply *reply,
@@ -762,6 +766,20 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
    * to select workers to kill via the set killing policy and kill them.
    */
   KillWorkersCallback CreateKillWorkersCallback();
+
+  /**
+   * @brief Marks kill worker in progress and disables all monitors to
+   * prevent more than one in-flight kill worker operation.
+   * @return True if we successfully marked the kill worker in progress.
+   *         False if the kill worker operation is already in progress.
+   */
+  bool MarkKillWorkerInProgress();
+
+  /**
+   * @brief Disables kill worker in progress flag and enables all monitors
+   * to begin accepting new kill worker requests.
+   */
+  void ReleaseKillWorkerInProgress();
 
   /**
    * @param workers_to_kill The workers to print the kill details for.
@@ -918,6 +936,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   ray::observability::MetricInterface &memory_manager_worker_eviction_total_count_;
 
+  ray::observability::MetricInterface
+      &node_manager_unexpected_worker_failure_total_count_;
+
   /// These classes make up the new scheduler. ClusterResourceScheduler is
   /// responsible for maintaining a view of the cluster state w.r.t resource
   /// usage. ClusterLeaseManager is responsible for queuing, spilling back, and
@@ -968,8 +989,15 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The Policy for selecting the worker to kill when the node runs out of memory.
   std::unique_ptr<WorkerKillingPolicyInterface> worker_killing_policy_;
 
-  /// Monitors and reports node memory usage and whether it is above threshold.
-  std::unique_ptr<MemoryMonitorInterface> memory_monitor_;
+  /// Guards worker_killing_in_progress_ and serializes kill callbacks from monitors.
+  absl::Mutex worker_killing_in_progress_mutex_;
+
+  /// True while a kill-workers operation is inflight; prevents concurrent kills.
+  bool worker_killing_in_progress_ ABSL_GUARDED_BY(worker_killing_in_progress_mutex_) =
+      false;
+
+  /// Monitors node memory usage and triggers kill callbacks when pressure is detected.
+  std::vector<std::unique_ptr<MemoryMonitorInterface>> memory_monitors_;
 
   /// Used to move the dashboard and runtime_env agents into the system cgroup.
   AddProcessToCgroupHook add_process_to_system_cgroup_hook_;

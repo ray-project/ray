@@ -428,20 +428,3 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   ASSERT_TRUE(client->InternalKV().Keys("", "A", rpc::GetGcsTimeoutMs(), values).ok());
   ASSERT_EQ(std::vector<std::string>{"A"}, values);
 }
-
-int main(int argc, char **argv) {
-  InitShutdownRAII ray_log_shutdown_raii(
-      ray::RayLog::StartRayLog,
-      ray::RayLog::ShutDownRayLog,
-      argv[0],
-      ray::RayLogLevel::INFO,
-      ray::GetLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::GetErrLogFilepathFromDirectory(/*log_dir=*/"", /*app_name=*/argv[0]),
-      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
-      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
-  ::testing::InitGoogleTest(&argc, argv);
-  RAY_CHECK(argc == 3);
-  ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
-  ray::TEST_REDIS_CLIENT_EXEC_PATH = argv[2];
-  return RUN_ALL_TESTS();
-}

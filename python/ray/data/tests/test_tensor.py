@@ -595,6 +595,8 @@ def test_tensors_in_tables_pandas_roundtrip(
     expected_df = df + 1
     if enable_automatic_tensor_extension_cast:
         expected_df["two"] = list(expected_df["two"].to_numpy())
+    # Roundtrip may use Arrow-backed dtypes (e.g. int64[pyarrow]) for plain columns.
+    expected_df["one"] = expected_df["one"].astype(ds_df["one"].dtype)
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 
@@ -619,6 +621,8 @@ def test_tensors_in_tables_pandas_roundtrip_variable_shaped(
         expected_df["two"] = _create_possibly_ragged_ndarray(
             expected_df["two"].to_numpy()
         )
+    # Roundtrip may use Arrow-backed dtypes (e.g. int64[pyarrow]) for plain columns.
+    expected_df["one"] = expected_df["one"].astype(ds_df["one"].dtype)
     pd.testing.assert_frame_equal(ds_df, expected_df)
 
 

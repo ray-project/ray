@@ -47,7 +47,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
                             rpc::RayletClientPool &raylet_client_pool,
                             InternalKVInterface &kv,
                             instrumented_io_context &io_context,
-                            pubsub::GcsPublisher *gcs_publisher);
+                            pubsub::GcsPublisher *gcs_publisher,
+                            pubsub::ObservabilityPublisher *observability_publisher);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -70,7 +71,8 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
 
   void HandleDrainNode(rpc::autoscaler::DrainNodeRequest request,
                        rpc::autoscaler::DrainNodeReply *reply,
-                       rpc::SendReplyCallback send_reply_callback) override;
+                       rpc::SendReplyCallback send_reply_callback,
+                       const std::string &grpc_peer) override;
 
   void HandleResizeRayletResourceInstances(
       rpc::autoscaler::ResizeRayletResourceInstancesRequest request,
@@ -200,6 +202,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateService
 
   // A publisher for publishing gcs messages.
   pubsub::GcsPublisher *gcs_publisher_;
+  pubsub::ObservabilityPublisher *observability_publisher_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
