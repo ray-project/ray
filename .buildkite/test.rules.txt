@@ -178,7 +178,6 @@ docker/
 
 doc/*.py
 doc/*.ipynb
-doc/*.md
 doc/BUILD
 doc/*/BUILD
 doc/*.rst
