@@ -15,6 +15,7 @@ from ray.data._internal.execution.operators.input_data_buffer import (
 )
 from ray.data._internal.execution.operators.join import JoinOperator
 from ray.data._internal.execution.operators.limit_operator import LimitOperator
+from ray.data._internal.execution.operators.mix_operator import MixOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.operators.union_operator import UnionOperator
 from ray.data._internal.execution.operators.zip_operator import ZipOperator
@@ -33,8 +34,11 @@ from ray.data._internal.logical.operators import (
     InputData,
     Join,
     Limit,
+    ListFiles,
+    Mix,
     Project,
     Read,
+    ReadFiles,
     StreamingRepartition,
     StreamingSplit,
     Union,
@@ -47,6 +51,8 @@ from ray.data._internal.planner.checkpoint import (
 )
 from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
 from ray.data._internal.planner.plan_download_op import plan_download_op
+from ray.data._internal.planner.plan_list_files_op import plan_list_files_op
+from ray.data._internal.planner.plan_read_files_op import plan_read_files_op
 from ray.data._internal.planner.plan_read_op import plan_read_op
 from ray.data._internal.planner.plan_udf_map_op import (
     plan_filter_op,
@@ -91,6 +97,16 @@ def plan_from_op(
 def plan_zip_op(_, physical_children, data_context):
     assert len(physical_children) >= 2
     return ZipOperator(data_context, *physical_children)
+
+
+def plan_mix_op(logical_op, physical_children, data_context):
+    assert len(physical_children) >= 1
+    return MixOperator(
+        data_context,
+        *physical_children,
+        weights=logical_op.weights,
+        stopping_condition=logical_op.stopping_condition,
+    )
 
 
 def plan_union_op(_, physical_children, data_context):
@@ -155,12 +171,15 @@ class Planner:
 
     _DEFAULT_PLAN_FNS = {
         Read: plan_read_op,
+        ReadFiles: plan_read_files_op,
+        ListFiles: plan_list_files_op,
         InputData: plan_input_data_op,
         Write: plan_write_op,
         AbstractFrom: plan_from_op,
         Filter: plan_filter_op,
         AbstractUDFMap: plan_udf_map_op,
         AbstractAllToAll: plan_all_to_all_op,
+        Mix: plan_mix_op,
         Union: plan_union_op,
         Zip: plan_zip_op,
         Limit: plan_limit_op,
