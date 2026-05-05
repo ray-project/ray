@@ -60,6 +60,9 @@ local function http_response_body(response)
     return response:sub(separator_end + 1)
 end
 
+-- Router contract: response MUST be a flat JSON object with `replica_id` as a
+-- plain string actor name (no escaped quotes, no nested objects). The regex
+-- relies on this; broaden the parser if the contract grows.
 local function extract_replica_id(json_body)
     return json_body:match('"replica_id"%s*:%s*"([^"]+)"')
 end

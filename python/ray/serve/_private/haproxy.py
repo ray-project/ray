@@ -1,5 +1,6 @@
 import asyncio
 import csv
+import functools
 import io
 import json
 import logging
@@ -75,9 +76,16 @@ from ray.serve.schema import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-_LUA_TEMPLATE = string.Template(
-    (Path(__file__).parent / "ingress_request_router.lua.tmpl").read_text()
-)
+
+@functools.cache
+def _load_lua_template() -> string.Template:
+    path = Path(__file__).parent / "ingress_request_router.lua.tmpl"
+    try:
+        return string.Template(path.read_text())
+    except FileNotFoundError as e:
+        raise FileNotFoundError(
+            f"{path.name} is missing. Ray Serve installation is incomplete."
+        ) from e
 
 
 def _routers_and_targets_by_backend(
@@ -85,8 +93,8 @@ def _routers_and_targets_by_backend(
 ) -> "Tuple[Dict[str, ServerConfig], Dict[str, List[Tuple[str, str]]]]":
     """Per-backend router and replica map, restricted to backends with both.
 
-    Deterministic min-(port, host) within each router pool avoids the
-    first-response latency regression from cycling routers across requests.
+    Pick deterministically within each router pool to avoid the first-response
+    latency regression from cycling routers across requests.
     """
     routers: Dict[str, ServerConfig] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
@@ -98,8 +106,9 @@ def _routers_and_targets_by_backend(
         ]
         if not entries:
             continue
+        # Host-first so co-located routers sort adjacent in debug output.
         routers[backend.name] = min(
-            backend.ingress_request_router_servers, key=lambda s: (s.port, s.host)
+            backend.ingress_request_router_servers, key=lambda s: (s.host, s.port)
         )
         targets[backend.name] = entries
     return routers, targets
@@ -783,7 +792,7 @@ class HAProxyApi(ProxyApi):
         if not routers:
             return None
 
-        content = _LUA_TEMPLATE.substitute(
+        content = _load_lua_template().substitute(
             TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
