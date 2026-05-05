@@ -63,12 +63,12 @@ def main(args):
         top = revenue.filter(expr=col("total_revenue") == max_revenue)
 
         _ = (
-            top.join(
-                supplier,
+            supplier.join(
+                top,
                 join_type="inner",
                 num_partitions=16,
-                on=("l_suppkey",),
-                right_on=("s_suppkey",),
+                on=("s_suppkey",),
+                right_on=("l_suppkey",),
             )
             .select_columns(
                 ["s_suppkey", "s_name", "s_address", "s_phone", "total_revenue"]
