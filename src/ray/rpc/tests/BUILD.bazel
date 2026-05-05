@@ -58,6 +58,5 @@ ray_cc_test(
     tags = ["team:core"],
     deps = [
         "//src/ray/rpc:event_aggregator_client",
-        "@com_google_googletest//:gtest_main",
     ],
 )
