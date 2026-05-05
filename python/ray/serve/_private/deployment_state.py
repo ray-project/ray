@@ -719,6 +719,16 @@ class ActorReplicaWrapper:
         # Populated in either self.start() or self.recover()
         self._allocated_obj_ref: ObjectRef = None
         self._ready_obj_ref: ObjectRef = None
+        # Populated in self.recover() for non-cross-language replicas to
+        # asynchronously verify the actor finished its initial setup before
+        # we trigger `initialize_and_get_metadata`.
+        self._was_initialized_obj_ref: Optional[ObjectRef] = None
+        # Set to True when `check_ready()` determines the actor cannot be
+        # recovered (e.g., the previous controller crashed before the actor
+        # finished its initial setup). The reconciler treats this case as a
+        # silent drop / replace rather than a deploy failure, since the
+        # underlying cause is a controller-side crash, not user code.
+        self._recovery_unrecoverable: bool = False
 
         self._actor_resources: Dict[str, float] = None
         # If the replica is being started, this will be the true version
@@ -822,6 +832,10 @@ class ActorReplicaWrapper:
     @property
     def gang_context(self) -> Optional[GangContext]:
         return self._gang_context
+
+    @property
+    def recovery_unrecoverable(self) -> bool:
+        return self._recovery_unrecoverable
 
     @property
     def app_name(self) -> str:
@@ -1213,14 +1227,19 @@ class ActorReplicaWrapper:
 
         Also confirm that actor is allocated and initialized before marking as running.
 
+        This call is non-blocking: any RPCs needed to query the actor are
+        fired here as ObjectRefs and observed in `check_ready()` from the
+        reconcile loop.
+
         Args:
             ingress: Whether this replica is an ingress replica.
 
         Returns:
-            False if the replica actor is no longer alive; the
-            actor could have been killed in the time between when the
-            controller fetching all Serve actors in the cluster and when
-            the controller tries to recover it. Otherwise, return True.
+            False if the replica actor is no longer alive; the caller drops
+            the replica from tracking. Otherwise True. Replicas that are
+            alive but never finished their initial setup are detected
+            asynchronously in `check_ready()` rather than here so that
+            controller recovery does not block.
         """
         logger.info(f"Recovering {self.replica_id}.")
         self._ingress = ingress
@@ -1251,11 +1270,36 @@ class ActorReplicaWrapper:
         if self._is_cross_language:
             self._ready_obj_ref = self._actor_handle.check_health.remote()
         else:
-            self._ready_obj_ref = (
-                self._actor_handle.initialize_and_get_metadata.remote()
-            )
+            # For non-cross-language replicas, asynchronously probe whether
+            # the actor finished its initial setup before triggering
+            # `initialize_and_get_metadata`. If the previous controller
+            # crashed between actor creation and the first
+            # `initialize_and_get_metadata(rank=...)` call, the actor has
+            # neither a rank nor an initialized user callable. Recovering it
+            # would silently complete its initialization with `rank=None`,
+            # leaving rank tracking permanently broken for that replica.
+            # `check_ready()` waits for this probe and replaces the replica
+            # if it reports `False`. We defer firing
+            # `initialize_and_get_metadata` until the probe passes so we
+            # don't accidentally drive the bad actor through initialization
+            # only to kill it afterwards.
+            self._was_initialized_obj_ref = self._actor_handle.was_initialized.remote()
 
         return True
+
+    def _kill_unrecoverable_actor(self) -> None:
+        """Force-kill an actor that cannot be recovered.
+
+        Best-effort: any failure to kill the actor is
+        logged but ignored.
+        """
+        try:
+            ray.kill(self._actor_handle, no_restart=True)
+        except Exception:
+            logger.exception(
+                f"Failed to kill unrecoverable replica actor "
+                f"{self._replica_id} during controller recovery."
+            )
 
     def check_ready(self) -> Tuple[ReplicaStartupStatus, Optional[str]]:
         """
@@ -1308,6 +1352,47 @@ class ActorReplicaWrapper:
                 )
                 logger.exception(msg)
                 return ReplicaStartupStatus.FAILED, msg
+
+        # If we issued a `was_initialized` probe in `recover()`, wait for it
+        # before triggering `initialize_and_get_metadata`. If the actor was
+        # never initialized previously (the previous controller crashed
+        # mid-startup), kill it and signal an unrecoverable drop so the
+        # reconciler replaces it without counting a deploy failure.
+        if self._was_initialized_obj_ref is not None:
+            if not check_obj_ref_ready_nowait(self._was_initialized_obj_ref):
+                return ReplicaStartupStatus.PENDING_INITIALIZATION, None
+
+            probe_ref = self._was_initialized_obj_ref
+            self._was_initialized_obj_ref = None
+            try:
+                was_initialized = ray.get(probe_ref)
+            except Exception as e:
+                msg = (
+                    f"Failed to probe initialization state of "
+                    f"{self._replica_id} during controller recovery ({e!r}). "
+                    "Replacing with a fresh replica."
+                )
+                logger.warning(msg)
+                self._kill_unrecoverable_actor()
+                self._recovery_unrecoverable = True
+                return ReplicaStartupStatus.FAILED, msg
+
+            if not was_initialized:
+                msg = (
+                    f"{self._replica_id} was found alive but never finished "
+                    "its initial setup; the previous controller likely "
+                    "crashed during replica startup. Replacing with a fresh "
+                    "replica."
+                )
+                logger.warning(msg)
+                self._kill_unrecoverable_actor()
+                self._recovery_unrecoverable = True
+                return ReplicaStartupStatus.FAILED, msg
+
+            # Probe succeeded; safe to drive the actor through recovery.
+            self._ready_obj_ref = (
+                self._actor_handle.initialize_and_get_metadata.remote()
+            )
 
         if self._ready_obj_ref is None:
             # Perform auto method name translation for java handles.
@@ -1884,6 +1969,16 @@ class DeploymentReplica:
     def gang_context(self) -> Optional[GangContext]:
         """Get the gang context for this replica."""
         return self._actor.gang_context
+
+    @property
+    def recovery_unrecoverable(self) -> bool:
+        """Whether `check_ready()` determined the actor cannot be recovered.
+
+        When True, the reconciler should drop and replace the replica
+        without counting it as a deploy failure (the underlying cause is a
+        previous controller crash, not user code).
+        """
+        return self._actor.recovery_unrecoverable
 
     def check_started(
         self,
@@ -4118,6 +4213,20 @@ class DeploymentState:
 
             elif start_status == ReplicaStartupStatus.FAILED:
                 # Replica reconfigure (deploy / upgrade) failed.
+                # When `check_ready()` flagged the replica as unrecoverable
+                # (e.g., the previous controller crashed before assigning a
+                # rank to it), don't bump the deploy failure counter -- the
+                # underlying cause is controller-side, not user code, and a
+                # fresh replica will be started in its place. The actor was
+                # already killed in `check_ready()`, so force-stop to avoid
+                # issuing a graceful shutdown RPC to a dead actor. We still
+                # propagate gang failure tracking so siblings get cleaned up.
+                if replica.recovery_unrecoverable:
+                    self._stop_replica(replica, graceful_stop=False)
+                    if replica.gang_context is not None:
+                        failed_gang_ids.add(replica.gang_context.gang_id)
+                    continue
+
                 # For gang replicas, count the failure once per gang and not per replica so the
                 # retry counter isn't inflated by gang_size on every cycle.
                 if (
