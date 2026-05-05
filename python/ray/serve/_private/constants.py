@@ -266,6 +266,7 @@ DEFAULT_MAX_ONGOING_REQUESTS = 5
 DEFAULT_TARGET_ONGOING_REQUESTS = 2
 DEFAULT_CONSUMER_CONCURRENCY = DEFAULT_MAX_ONGOING_REQUESTS
 DEFAULT_CONSTRUCTOR_RETRY_COUNT = 20
+DEFAULT_ROLLING_UPDATE_PERCENTAGE = 0.2
 
 # HTTP Proxy health check configs
 PROXY_HEALTH_CHECK_TIMEOUT_S = get_env_float_positive(
@@ -384,6 +385,9 @@ SERVE_LOG_EXTRA_FIELDS = "ray_serve_extra_fields"
 
 # Serve HTTP request header key for routing requests.
 SERVE_MULTIPLEXED_MODEL_ID = "serve_multiplexed_model_id"
+
+# Serve HTTP request header key for session-stickiness routing.
+SERVE_SESSION_ID = "x_session_id"
 
 # HTTP request ID
 SERVE_HTTP_REQUEST_ID_HEADER = "x-request-id"
@@ -719,6 +723,9 @@ RAY_SERVE_HAPROXY_HARD_STOP_AFTER_S = int(
 RAY_SERVE_HAPROXY_METRICS_PORT = int(
     os.environ.get("RAY_SERVE_HAPROXY_METRICS_PORT", "9101")
 )
+
+# HAProxy stats UI port
+RAY_SERVE_HAPROXY_STATS_PORT = get_env_int("RAY_SERVE_HAPROXY_STATS_PORT", 8404)
 
 # HAProxy log port
 RAY_SERVE_HAPROXY_SYSLOG_PORT = int(

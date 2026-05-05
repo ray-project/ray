@@ -21,6 +21,7 @@ class DeploymentInfo:
         end_time_ms: Optional[int] = None,
         route_prefix: str = None,
         ingress: bool = False,
+        ingress_request_router: bool = False,
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
     ):
@@ -39,6 +40,7 @@ class DeploymentInfo:
 
         self.route_prefix = route_prefix
         self.ingress = ingress
+        self.ingress_request_router = ingress_request_router
 
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
@@ -69,6 +71,7 @@ class DeploymentInfo:
             end_time_ms=self.end_time_ms,
             route_prefix=route_prefix or self.route_prefix,
             ingress=self.ingress,
+            ingress_request_router=self.ingress_request_router,
             target_capacity=self.target_capacity,
             target_capacity_direction=self.target_capacity_direction,
         )
@@ -143,6 +146,7 @@ class DeploymentInfo:
             "deployer_job_id": ray.get_runtime_context().get_job_id(),
             "target_capacity": target_capacity,
             "target_capacity_direction": target_capacity_direction,
+            "ingress_request_router": proto.ingress_request_router,
         }
 
         return cls(**data)
@@ -166,6 +170,7 @@ class DeploymentInfo:
             data["target_capacity_direction"] = TargetCapacityDirectionProto.UNSET
         else:
             data["target_capacity_direction"] = self.target_capacity_direction.name
+        data["ingress_request_router"] = self.ingress_request_router
         return DeploymentInfoProto(**data)
 
     def to_dict(self):

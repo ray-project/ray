@@ -42,6 +42,7 @@ from ray.serve._private.constants import (
     SERVE_LOGGER_NAME,
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
+    SERVE_SESSION_ID,
 )
 from ray.serve._private.default_impl import get_proxy_handle
 from ray.serve._private.event_loop_monitoring import EventLoopMonitor
@@ -826,6 +827,7 @@ class gRPCProxy(GenericProxy):
         handle.
         """
         multiplexed_model_id = proxy_request.multiplexed_model_id
+        session_id = proxy_request.session_id
         request_id = proxy_request.request_id
         if not request_id:
             request_id = generate_request_id()
@@ -834,6 +836,7 @@ class gRPCProxy(GenericProxy):
         handle = handle.options(
             stream=proxy_request.stream,
             multiplexed_model_id=multiplexed_model_id,
+            session_id=session_id,
             method_name=proxy_request.method_name,
         )
 
@@ -843,6 +846,7 @@ class gRPCProxy(GenericProxy):
             "_internal_request_id": internal_request_id,
             "app_name": app_name,
             "multiplexed_model_id": multiplexed_model_id,
+            "session_id": session_id,
             "grpc_context": proxy_request.ray_serve_grpc_context,
             "_client": proxy_request.client,
         }
@@ -1241,6 +1245,10 @@ class HTTPProxy(GenericProxy):
                 multiplexed_model_id = value.decode()
                 handle = handle.options(multiplexed_model_id=multiplexed_model_id)
                 request_context_info["multiplexed_model_id"] = multiplexed_model_id
+            elif normalized_key == SERVE_SESSION_ID:
+                session_id = value.decode()
+                handle = handle.options(session_id=session_id)
+                request_context_info["session_id"] = session_id
             if key.decode() == SERVE_HTTP_REQUEST_ID_HEADER:
                 request_context_info["request_id"] = value.decode()
         ray.serve.context._serve_request_context.set(
@@ -1419,9 +1427,11 @@ class HTTPProxy(GenericProxy):
                     yield asgi_message
                     response_started = True
         except BaseException as e:
-            status = get_http_response_status(e, request_timeout_s, request_id)
+            error_status = get_http_response_status(e, request_timeout_s, request_id)
+            if status is None:
+                status = error_status
             for asgi_message in send_http_response_on_exception(
-                status, response_started
+                error_status, response_started
             ):
                 yield asgi_message
             exc = e
@@ -1648,6 +1658,7 @@ class ProxyActor(ProxyActorInterface):
                 LongPollNamespace.ROUTE_TABLE: self._update_routes_in_proxies,
             },
             call_in_event_loop=event_loop,
+            client_id=f"{type(self).__name__}:{ray.get_runtime_context().get_actor_id()}",
         )
 
         try:
