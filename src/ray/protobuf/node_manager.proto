@@ -450,6 +450,12 @@ message CancelLocalTaskReply {
   bool attempt_succeeded = 2;
 }
 
+message FreeLocalObjectsRequest {
+  repeated bytes object_ids = 1;
+}
+
+message FreeLocalObjectsReply {}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Handle the case when GCS restarted.
@@ -586,4 +592,7 @@ service NodeManagerService {
   // If force_kill is false, the worker remains alive for subsequent tasks.
   // Failure: Retries, it's idempotent.
   rpc CancelLocalTask(CancelLocalTaskRequest) returns (CancelLocalTaskReply);
+  // Tell node manager to free requested local objects
+  // Failure: Retries, it's idempotent.
+  rpc FreeLocalObjects(FreeLocalObjectsRequest) returns (FreeLocalObjectsReply);
 }

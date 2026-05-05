@@ -103,6 +103,8 @@ class FakeLocalObjectManager : public LocalObjectManagerInterface {
 
   bool HasLocallySpilledObjects() const override { return false; }
 
+  void ReleaseFreedLocalObject(const ObjectID &object_id) override {}
+
   std::string DebugString() const override { return ""; }
 
  private:

@@ -57,7 +57,6 @@ class ReferenceCountTest : public ::testing::Test {
         addr,
         publisher_.get(),
         subscriber_.get(),
-        [](const NodeID &node_id) { return false; },
         *owned_object_count_metric_,
         *owned_object_size_metric_);
   }
@@ -91,7 +90,6 @@ class ReferenceCountLineageEnabledTest : public ::testing::Test {
         addr,
         publisher_.get(),
         subscriber_.get(),
-        [](const NodeID &node_id) { return false; },
         *owned_object_count_metric_,
         *owned_object_size_metric_,
         /*lineage_pinning_enabled=*/true);
@@ -320,14 +318,13 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             client_factory)),
         owned_object_count_metric_(std::make_shared<ray::observability::FakeGauge>()),
         owned_object_size_metric_(std::make_shared<ray::observability::FakeGauge>()),
-        rc_(
-            address_,
+        rc_(address_,
             publisher_.get(),
             subscriber_.get(),
-            [](const NodeID &node_id) { return true; },
             *owned_object_count_metric_,
             *owned_object_size_metric_,
-            /*lineage_pinning_enabled=*/false) {}
+            /*lineage_pinning_enabled=*/false,
+            /*is_node_dead=*/[](const NodeID &node_id) { return true; }) {}
 
   ~MockWorkerClient() override {
     if (!failed_) {
@@ -894,7 +891,6 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       rpc::Address(),
       publisher.get(),
       subscriber.get(),
-      /*is_node_dead=*/[](const NodeID &) { return false; },
       *owned_object_count_metric,
       *owned_object_size_metric);
   InstrumentedIOContextWithThread io_context("TestSimple");
