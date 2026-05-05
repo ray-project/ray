@@ -1,9 +1,5 @@
 """Batch inference with SGLang using Ray Data.
 
-This is a demonstration and reference only. It is not actively maintained
-and is not part of Ray's officially supported feature set.
-See https://github.com/ray-project/ray/issues/61114 for status.
-
 Usage:
     RAY_EXPERIMENTAL_NOSET_CUDA_VISIBLE_DEVICES=0 python batch_sglang_example.py
 """

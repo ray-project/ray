@@ -74,7 +74,6 @@ from ray.train.v2.api.config import ScalingConfig
 from ray.types import ObjectRef
 from ray.util.placement_group import PlacementGroup, placement_group
 from ray.util.scheduling_strategies import (
-    NodeAffinitySchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
 from ray.util.tpu import (
@@ -304,10 +303,9 @@ class WorkerGroup(ExecutionGroup):
 
             # Initialize the synchronization actor on the driver node
             sync_actor = SynchronizationActor.options(
-                scheduling_strategy=NodeAffinitySchedulingStrategy(
-                    node_id=ray.get_runtime_context().get_node_id(),
-                    soft=False,
-                )
+                label_selector={
+                    ray._raylet.RAY_NODE_ID_KEY: ray.get_runtime_context().get_node_id()
+                }
             ).remote(
                 timeout_s=self._collective_timeout_s,
                 warn_interval_s=self._collective_warn_interval_s,
@@ -598,12 +596,26 @@ class WorkerGroup(ExecutionGroup):
                     num_slices=worker_group_context.num_slices,
                     resources_per_bundle=worker_group_context.resources_per_worker,
                     strategy=worker_group_context.placement_strategy,
+                    head_reservation_timeout_s=self._worker_group_start_timeout_s,
                 )
 
                 return SlicePlacementGroupHandle(spg)
 
+            except TimeoutError as e:
+                # Unlike the default placement group path, ``SlicePlacementGroup``
+                # synchronously reserves a TPU head placement group inside its
+                # constructor and raises ``TimeoutError`` when the cluster does
+                # not yet have enough TPU capacity (e.g. autoscaler is still
+                # bringing up nodes). Convert this into the standard
+                # ``WorkerGroupStartupTimeoutError`` so the controller retries
+                # via SCHEDULING -> RESCHEDULING instead of failing the run.
+                raise WorkerGroupStartupTimeoutError(
+                    num_workers=worker_group_context.num_workers
+                ) from e
             except Exception as e:
-                raise ValueError(f"Failed to reserve TPU slice(s): {e}") from e
+                raise WorkerGroupStartupFailedError(
+                    f"Failed to reserve TPU slice(s): {e}"
+                ) from e
 
         pg = placement_group(
             # TODO: support heterogeneous workers and placement
