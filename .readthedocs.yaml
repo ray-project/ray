@@ -1,0 +1,31 @@
+# .readthedocs.yaml
+# Read the Docs configuration for the Ray 2.0.0 release branch.
+#
+# Added because Read the Docs now requires this file explicitly, even
+# on previously-built archives. This file is scoped to the
+# releases/2.0.0 branch only; current Ray (master) maintains its own
+# .readthedocs.yaml.
+#
+# Backported in DOC-850 alongside the sitemap fix in doc/source/conf.py
+# and the setuptools<81 pin in doc/requirements-doc.txt.
+#
+# Schema reference:
+#   https://docs.readthedocs.com/platform/stable/config-file/v2.html
+
+version: 2
+
+build:
+  # Older Ubuntu image to give 2.0.0-era dependencies a better chance
+  # of resolving cleanly. Master uses ubuntu-24.04.
+  os: ubuntu-22.04
+  tools:
+    # Python 3.10 is the newest version Ray 2.0.0 originally supported.
+    # Older Pythons (3.6-3.9) may no longer be available on RtD images.
+    python: "3.10"
+
+sphinx:
+  configuration: doc/source/conf.py
+
+python:
+  install:
+    - requirements: doc/requirements-doc.txt
