@@ -2896,7 +2896,7 @@ class Dataset:
         cls,
         datasets: List["Dataset"],
         weights: Optional[List[float]] = None,
-        stopping_condition: MixStoppingCondition = MixStoppingCondition.STOP_ON_SHORTEST,
+        stopping_condition: MixStoppingCondition = MixStoppingCondition.STOP_ON_LONGEST_DROP,
     ) -> "Dataset":
         """Mix multiple :class:`Datasets <ray.data.Dataset>` with weighted
         interleaving.
@@ -2924,7 +2924,7 @@ class Dataset:
                 so they don't need to sum to 1.
             stopping_condition: Controls when the pipeline terminates.
                 See :class:`~ray.data.MixStoppingCondition` for options.
-                Defaults to ``STOP_ON_SHORTEST``.
+                Defaults to ``STOP_ON_LONGEST_DROP``.
 
         Returns:
             A new dataset whose rows are interleaved from the input datasets
