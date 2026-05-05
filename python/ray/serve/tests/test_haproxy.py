@@ -303,21 +303,9 @@ async def test_drain_and_undrain_haproxy_manager(
     monkeypatch.setenv("SERVE_SOCKET_REUSE_PORT_ENABLED", "1")
 
     cluster = Cluster()
-
-    # Give each raylet its own HAProxy paths so co-located managers don't
-    # stomp each other's config (raylets inherit os.environ at fork).
-    def add_node(i, num_cpus):
-        for var, name in [
-            ("RAY_SERVE_HAPROXY_CONFIG_FILE_LOC", f"haproxy-{i}.cfg"),
-            ("RAY_SERVE_HAPROXY_SOCKET_PATH", f"admin-{i}.sock"),
-            ("RAY_SERVE_HAPROXY_SERVER_STATE_FILE", f"server-state-{i}"),
-        ]:
-            monkeypatch.setenv(var, f"/tmp/haproxy-serve/{name}")
-        return cluster.add_node(num_cpus=num_cpus)
-
-    head_node = add_node(0, num_cpus=0)
-    add_node(1, num_cpus=1)
-    add_node(2, num_cpus=1)
+    head_node = cluster.add_node(num_cpus=0)
+    cluster.add_node(num_cpus=1)
+    cluster.add_node(num_cpus=1)
     cluster.wait_for_nodes()
     ray.init(address=head_node.address)
     serve.start(http_options={"location": "EveryNode"})
@@ -804,7 +792,9 @@ def test_haproxy_healthcheck_multiple_apps_and_backends(ray_shutdown):
         return "hello"
 
     # Helpers
-    SOCKET_PATH = "/tmp/haproxy-serve/admin.sock"
+    SOCKET_PATH = (
+        f"/tmp/haproxy-serve/{ray.get_runtime_context().get_node_id()}/admin.sock"
+    )
 
     def app_to_backend(app: str) -> str:
         return f"http-{app}"

@@ -1038,8 +1038,23 @@ class HAProxyManager(ProxyActorInterface):
             f"logger with logging config: {logging_config}"
         )
 
+        # Scope paths under node_id so co-located managers (multi-raylet
+        # test clusters on one host) don't stomp each other's files.
+        def _per_node(path: str) -> str:
+            d, f = os.path.split(path)
+            return os.path.join(d, self._node_id, f)
+
         self._haproxy = HAProxyApi(
-            cfg=HAProxyConfig(http_options=http_options, is_head=is_head)
+            cfg=HAProxyConfig(
+                http_options=http_options,
+                is_head=is_head,
+                socket_path=_per_node(RAY_SERVE_HAPROXY_SOCKET_PATH),
+                server_state_base=os.path.join(
+                    RAY_SERVE_HAPROXY_SERVER_STATE_BASE, self._node_id
+                ),
+                server_state_file=_per_node(RAY_SERVE_HAPROXY_SERVER_STATE_FILE),
+            ),
+            config_file_path=_per_node(RAY_SERVE_HAPROXY_CONFIG_FILE_LOC),
         )
         self._haproxy_start_task = self.event_loop.create_task(self._haproxy.start())
 
