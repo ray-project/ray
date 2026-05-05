@@ -140,7 +140,10 @@ def test_does_not_double_count_usage_from_union():
     bundle1 = RefBundle([(block_ref1, block_metadata)], owns_blocks=True, schema=None)
     bundle2 = RefBundle([(block_ref2, block_metadata)], owns_blocks=True, schema=None)
 
-    # Add two 1-byte `RefBundle` to the union operator.
+    # Register blocks with the counter, then add them to the topology output queue.
+    counter = resource_manager.block_ref_counter
+    counter.on_block_produced(block_ref1, 1, union_op)
+    counter.on_block_produced(block_ref2, 1, union_op)
     topology[union_op].add_output(bundle1)
     topology[union_op].add_output(bundle2)
     resource_manager.update_usages()
@@ -199,8 +202,10 @@ def test_per_input_inqueue_attribution_for_union():
     bundle1 = RefBundle([(block_ref1, block_metadata)], owns_blocks=True, schema=None)
     bundle2 = RefBundle([(block_ref2, block_metadata)], owns_blocks=True, schema=None)
 
-    # Add blocks only to input2's buffer inside the union operator.
-    # With preserve_order=True, _add_input_inner routes to _input_buffers[input_index].
+    # Register blocks with the counter, then dispatch them into union_op's internal input buffer.
+    counter = resource_manager.block_ref_counter
+    counter.on_block_produced(block_ref1, 10, input2)
+    counter.on_block_produced(block_ref2, 10, input2)
     union_op.add_input(bundle1, input_index=1)
     union_op.add_input(bundle2, input_index=1)
 
