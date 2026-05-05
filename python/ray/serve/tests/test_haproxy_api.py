@@ -15,6 +15,7 @@ import requests
 import uvicorn
 from fastapi import FastAPI, Request, Response
 
+from ray._common.network_utils import find_free_port
 from ray._common.test_utils import async_wait_for_condition, wait_for_condition
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_HA_PROXY,
@@ -500,6 +501,43 @@ def test_write_ingress_request_router_lua_no_routers(haproxy_api_cleanup):
         assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
 
 
+def test_router_servers_without_replica_ids_emits_no_lua_directives(
+    haproxy_api_cleanup,
+):
+    """Backend with router servers but no replica IDs must emit neither the
+    global `lua-load-per-thread` nor the frontend `lua.route_*` action."""
+    with tempfile.TemporaryDirectory() as temp_dir:
+        api = _make_api(
+            temp_dir,
+            {
+                "llm": BackendConfig(
+                    name="llm",
+                    path_prefix="/",
+                    app_name="llm",
+                    # Router is configured, but no replica has a replica_id.
+                    servers=[
+                        ServerConfig(
+                            name="r1", host="10.0.0.1", port=30001, replica_id=None
+                        )
+                    ],
+                    ingress_request_router_servers=[
+                        ServerConfig(name="router", host="10.0.0.10", port=9000)
+                    ],
+                ),
+            },
+        )
+        with mock.patch(
+            "ray.serve._private.constants.RAY_SERVE_HAPROXY_CONFIG_FILE_LOC",
+            api.config_file_path,
+        ):
+            api._generate_config_file_internal()
+        with open(api.config_file_path) as f:
+            cfg = f.read()
+
+        assert "lua.route_via_ingress_request_router" not in cfg
+        assert not os.path.exists(os.path.join(temp_dir, "ingress_request_router.lua"))
+
+
 def test_ingress_request_router_does_not_leak_into_other_backends(
     haproxy_api_cleanup,
 ):
@@ -598,11 +636,11 @@ async def test_ingress_request_router_end_to_end(haproxy_api_cleanup):
     is pinned to the replica the router selects, while a GET (which doesn't
     trigger the router-routed path) is not."""
     with tempfile.TemporaryDirectory() as temp_dir:
-        haproxy_port = 8200
-        stats_port = 8201
-        replica_a_port = 8202
-        replica_b_port = 8203
-        router_port = 8204
+        haproxy_port = find_free_port()
+        stats_port = find_free_port()
+        replica_a_port = find_free_port()
+        replica_b_port = find_free_port()
+        router_port = find_free_port()
 
         actor_name_a = "SERVE_REPLICA::app#dep#aaa"
         actor_name_b = "SERVE_REPLICA::app#dep#bbb"

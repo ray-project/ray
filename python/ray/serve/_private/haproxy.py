@@ -40,6 +40,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_HAPROXY_HEALTH_CHECK_FASTINTER,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_INTER,
     RAY_SERVE_HAPROXY_HEALTH_CHECK_RISE,
+    RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
     RAY_SERVE_HAPROXY_MAXCONN,
     RAY_SERVE_HAPROXY_METRICS_PORT,
     RAY_SERVE_HAPROXY_NBTHREAD,
@@ -73,9 +74,6 @@ from ray.serve.schema import (
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
-# Shared by the Lua router call and the frontend `wait-for-body`.
-INGRESS_REQUEST_ROUTER_TIMEOUT_S = 5
-
 _LUA_TEMPLATE = string.Template(
     (Path(__file__).parent / "ingress_request_router.lua.tmpl").read_text()
 )
@@ -87,7 +85,7 @@ def _routers_and_targets_by_backend(
     """Per-backend router and replica map, restricted to backends with both.
 
     Deterministic min-(port, host) within each router pool avoids the
-    TTFT regression from cycling routers across requests.
+    first-response latency regression from cycling routers across requests.
     """
     routers: Dict[str, ServerConfig] = {}
     targets: Dict[str, List[Tuple[str, str]]] = {}
@@ -785,7 +783,7 @@ class HAProxyApi(ProxyApi):
             return None
 
         content = _LUA_TEMPLATE.substitute(
-            TIMEOUT_S=INGRESS_REQUEST_ROUTER_TIMEOUT_S,
+            TIMEOUT_S=RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S,
             ROUTERS=_format_routers_lua(routers),
             REPLICA_TARGETS=_format_replica_targets_lua(targets),
         )
@@ -810,16 +808,12 @@ class HAProxyApi(ProxyApi):
                 key=lambda be: (-len(be.path_prefix), be.path_prefix),
             )
 
-            has_ingress_request_router = any(
-                backend.ingress_request_router_servers for backend in backends
+            # Derive from the write result: returns None when no backend has
+            # both routers and replicas with IDs (transient during scaling).
+            ingress_request_router_lua_path = self._write_ingress_request_router_lua(
+                backends
             )
-
-            # Write Lua script if any backend has ingress request routers.
-            ingress_request_router_lua_path = None
-            if has_ingress_request_router:
-                ingress_request_router_lua_path = (
-                    self._write_ingress_request_router_lua(backends)
-                )
+            has_ingress_request_router = ingress_request_router_lua_path is not None
 
             # Enrich backends with precomputed health check configuration strings
             backends_with_health_config = [
@@ -853,7 +847,7 @@ class HAProxyApi(ProxyApi):
                     "has_ingress_request_router": has_ingress_request_router,
                     "ingress_request_router_lua_path": ingress_request_router_lua_path,
                     "ingress_request_router_timeout_s": (
-                        INGRESS_REQUEST_ROUTER_TIMEOUT_S
+                        RAY_SERVE_HAPROXY_INGRESS_REQUEST_ROUTER_TIMEOUT_S
                     ),
                 }
             )

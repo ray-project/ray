@@ -26,7 +26,7 @@ HAPROXY_CONFIG_TEMPLATE = """global
     stats timeout 30s
     maxconn {{ config.maxconn }}
     nbthread {{ config.nbthread }}
-    {%- if has_ingress_request_router and ingress_request_router_lua_path %}
+    {%- if has_ingress_request_router %}
     lua-load-per-thread {{ ingress_request_router_lua_path }}
     tune.bufsize 65536
     {%- endif %}
